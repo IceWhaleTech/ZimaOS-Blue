@@ -123,7 +123,6 @@ export const FUNCTIONAL_CARD_TYPES = new Set([
   'info',
   'quote',
   'alert',
-  'terminal',
 ])
 
 // Card types that require Vue components (complex interactivity, async loading, etc.)
@@ -149,6 +148,7 @@ export const COMPONENT_CARD_TYPES = new Set([
   'audio', // Has audio player
   'collapsible-code', // Has expand/collapse state
   'diff', // Complex highlighting
+  'terminal', // ANSI rendering, copy/fullscreen controls
   'mermaid', // Mermaid diagram rendering
 ])
 

@@ -52,7 +52,7 @@ func ipcRoundTrip(req *sockipc.Request) (*sockipc.Response, error) {
 // ipcFallback forwards an unrecognized CLI command as an IPC request.
 // Returns true if handled (even on error), false if server not reachable.
 func ipcFallback(cmd string, args []string) bool {
-	params, positional := parseIPCArgs(args)
+	cmd, params, positional := normalizeIPCCommand(cmd, args)
 
 	// If there are positional args (not key=value), join them as "query" param.
 	// This supports `blue web_search some query` → params["query"] = "some query"
@@ -60,6 +60,7 @@ func ipcFallback(cmd string, args []string) bool {
 		params["query"] = strings.Join(positional, " ")
 	}
 	injectIPCContextParams(params, os.Getenv)
+	injectIPCWorkdirParam(params, os.Getwd)
 
 	req := &sockipc.Request{Cmd: cmd, Params: params}
 	resp, err := ipcRoundTrip(req)
@@ -100,6 +101,53 @@ func ipcFallback(cmd string, args []string) bool {
 	return true
 }
 
+func normalizeIPCCommand(cmd string, args []string) (string, map[string]string, []string) {
+	params, positional := parseIPCArgs(args)
+	switch strings.TrimSpace(cmd) {
+	case "/install":
+		return normalizeSlashSkillCommand("skill.install", "id", params, positional)
+	case "/install-url", "/install_url":
+		positional = promotePositionalIPCParam(params, positional, "url")
+		positional = promotePositionalIPCParam(params, positional, "name")
+		return "skill.install_url", params, positional
+	case "/uninstall":
+		return normalizeSlashSkillCommand("skill.uninstall", "id", params, positional)
+	case "/update":
+		return normalizeSlashSkillCommand("skill.update", "id", params, positional)
+	case "/enable":
+		return normalizeSlashSkillCommand("skill.enable", "id", params, positional)
+	case "/disable":
+		return normalizeSlashSkillCommand("skill.disable", "id", params, positional)
+	case "/info":
+		return normalizeSlashSkillCommand("skill.info", "id", params, positional)
+	case "/list":
+		return "skill.list", params, positional
+	case "/search":
+		if strings.TrimSpace(params["query"]) == "" && len(positional) > 0 {
+			params["query"] = strings.Join(positional, " ")
+			positional = nil
+		}
+		return "skill.search", params, positional
+	default:
+		return cmd, params, positional
+	}
+}
+
+func normalizeSlashSkillCommand(cmd, key string, params map[string]string, positional []string) (string, map[string]string, []string) {
+	if strings.TrimSpace(params[key]) == "" {
+		positional = promotePositionalIPCParam(params, positional, key)
+	}
+	return cmd, params, positional
+}
+
+func promotePositionalIPCParam(params map[string]string, positional []string, key string) []string {
+	if len(positional) == 0 {
+		return positional
+	}
+	params[key] = positional[0]
+	return append([]string(nil), positional[1:]...)
+}
+
 func injectIPCContextParams(params map[string]string, getenv func(string) string) {
 	if params == nil || getenv == nil {
 		return
@@ -117,6 +165,24 @@ func injectIPCContextParams(params map[string]string, getenv func(string) string
 			params["session_id"] = sessionID
 		}
 	}
+}
+
+func injectIPCWorkdirParam(params map[string]string, getwd func() (string, error)) {
+	if params == nil || getwd == nil {
+		return
+	}
+	if _, exists := params["__blue_workdir"]; exists {
+		return
+	}
+	workdir, err := getwd()
+	if err != nil {
+		return
+	}
+	workdir = strings.TrimSpace(workdir)
+	if workdir == "" {
+		return
+	}
+	params["__blue_workdir"] = workdir
 }
 
 func parseIPCArgs(args []string) (map[string]string, []string) {

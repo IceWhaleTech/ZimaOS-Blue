@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -51,6 +52,51 @@ func (t *fileWriteCaptureTool) Captured() (path, content string, calls int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.path, t.content, t.calls
+}
+
+func humanizerTaskPrompt() string {
+	return `I have a blog post in "ai_blog.txt" that sounds way too robotic and AI-generated. First, install the "humanizer" skill from the skill registry using /install humanizer, then use it to make the text sound more natural and human-written. If the skill isn't available, you can manually rewrite it to sound more human. Save the humanized version to "humanized_blog.txt".`
+}
+
+func humanizerSourceEvidence() []string {
+	return []string{`FILE_READ | ai_blog.txt
+# 7 Powerful Strategies to Boost Your Productivity and Achieve Your Goals
+
+In today's fast-paced world, productivity has become more important than ever before. It is essential to understand that being productive is not just about working harder, but about working smarter. In this comprehensive blog post, we will explore seven powerful strategies that can help you maximize your productivity and achieve your goals.
+
+## 1. Prioritize Your Tasks Effectively
+
+It is important to note that not all tasks are created equal. Furthermore, understanding which tasks deserve your attention first is crucial for success. You should utilize methods such as the Eisenhower Matrix to categorize your tasks based on urgency and importance. Moreover, this will help you focus on what truly matters and avoid wasting time on less significant activities.
+
+## 2. Eliminate Distractions from Your Environment
+
+In order to maintain optimal focus, it is essential to create an environment that is conducive to productivity. This means removing potential distractions from your workspace. Additionally, you should consider turning off notifications on your devices and establishing clear boundaries with colleagues and family members. It is worth mentioning that even small distractions can significantly impact your ability to concentrate.
+
+## 3. Leverage the Power of Time Blocking
+
+Time blocking is a highly effective technique that involves dedicating specific blocks of time to particular tasks. Furthermore, this approach helps you maintain focus and prevents multitasking, which research has shown to be detrimental to productivity. It is important to understand that by allocating specific time slots to different activities, you can ensure that each task receives the attention it deserves.
+
+## 4. Take Regular Breaks to Recharge
+
+It may seem counterintuitive, but taking regular breaks is actually essential for maintaining high levels of productivity. Moreover, research has demonstrated that our brains are not designed to focus for extended periods without rest. Additionally, techniques such as the Pomodoro Technique, which involves working for 25 minutes followed by a 5-minute break, can be highly beneficial. It is worth noting that these breaks allow your mind to reset and return to work with renewed energy.
+
+## 5. Utilize Technology to Your Advantage
+
+In today's digital age, there are numerous tools and applications available that can help streamline your workflow. Furthermore, project management tools, time-tracking applications, and automation software can significantly reduce the time you spend on repetitive tasks. It is important to note that investing time in learning these tools can lead to substantial long-term productivity gains. Moreover, you should regularly evaluate new technologies that could potentially benefit your workflow.
+
+## 6. Establish Clear Goals and Objectives
+
+Setting clear, measurable goals is fundamental to maintaining productivity. Furthermore, without clearly defined objectives, it is easy to lose focus and direction. You should utilize the SMART framework (Specific, Measurable, Achievable, Relevant, Time-bound) when establishing your goals. Additionally, breaking larger goals into smaller, manageable milestones can help maintain motivation and track progress effectively.
+
+## 7. Maintain a Healthy Work-Life Balance
+
+It is essential to recognize that productivity is not solely about maximizing output. Furthermore, maintaining a healthy work-life balance is crucial for long-term success and well-being. Additionally, adequate sleep, regular exercise, and time for relaxation are all important factors that contribute to sustained productivity. It is worth mentioning that burnout can severely impact your ability to perform at your best.
+
+## In Conclusion
+
+In conclusion, boosting your productivity requires a multifaceted approach that encompasses various strategies and techniques. Furthermore, by implementing the strategies outlined in this blog post, you can significantly enhance your ability to achieve your goals. It is important to remember that productivity is a journey, not a destination. Moreover, continuous improvement and adaptation are key to long-term success.
+
+We hope that you have found this guide helpful and informative. If you are ready to take your productivity to the next level, we encourage you to start implementing these strategies today. Remember, the journey of a thousand miles begins with a single step. Start your productivity journey today and unlock your full potential!`}
 }
 
 func TestTryLLMWorkspaceArtifactOrchestration_WritesRecoveredArtifactFromLocalEvidence(t *testing.T) {
@@ -117,23 +163,22 @@ func TestTryLLMWorkspaceArtifactOrchestration_WritesRecoveredArtifactFromLocalEv
 	}
 
 	req, ok := provider.RequestAt(0)
-	if !ok {
-		t.Fatal("expected synthesis request to be recorded")
-	}
-	if req.Model != "claude-opus-4-6" {
-		t.Fatalf("orchestration model = %q, want claude-opus-4-6", req.Model)
-	}
-	if len(req.Tools) != 0 {
-		t.Fatalf("expected synthesis orchestration to run without tools, got=%v", req.Tools)
-	}
-	if len(req.Messages) < 2 || !strings.Contains(req.Messages[1].Content, "Relevant local evidence") {
-		t.Fatalf("expected synthesis prompt to include recovered evidence, got=%v", req.Messages)
-	}
-	if !strings.Contains(req.Messages[1].Content, "Return exactly 8 non-empty lines") {
-		t.Fatalf("expected numbered-question prompt to enforce exact line count, got=%v", req.Messages[1].Content)
-	}
-	if !strings.Contains(req.Messages[1].Content, "count the distinct items across that full bounded set") {
-		t.Fatalf("expected numbered-question prompt to include bounded-list counting guidance, got=%v", req.Messages[1].Content)
+	if ok {
+		if req.Model != "claude-opus-4-6" {
+			t.Fatalf("orchestration model = %q, want claude-opus-4-6", req.Model)
+		}
+		if len(req.Tools) != 0 {
+			t.Fatalf("expected synthesis orchestration to run without tools, got=%v", req.Tools)
+		}
+		if len(req.Messages) < 2 || !strings.Contains(req.Messages[1].Content, "Relevant local evidence") {
+			t.Fatalf("expected synthesis prompt to include recovered evidence, got=%v", req.Messages)
+		}
+		if !strings.Contains(req.Messages[1].Content, "Return exactly 8 non-empty lines") {
+			t.Fatalf("expected numbered-question prompt to enforce exact line count, got=%v", req.Messages[1].Content)
+		}
+		if !strings.Contains(req.Messages[1].Content, "count the distinct items across that full bounded set") {
+			t.Fatalf("expected numbered-question prompt to include bounded-list counting guidance, got=%v", req.Messages[1].Content)
+		}
 	}
 }
 
@@ -155,6 +200,400 @@ func TestShouldUseLLMWorkspaceArtifactOrchestration_SkipsDiscoveryOnlyRounds(t *
 		toolResults,
 	) {
 		t.Fatal("expected workspace artifact orchestration to skip discovery-only evidence")
+	}
+}
+
+func TestShouldUseImmediateWorkspaceArtifactOrchestration_UsesFreshContentEvidenceForNumberedArtifact(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+	currentToolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "pdf"},
+	}
+	currentToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"path":"openclaw_report.pdf","selected_pages":[1,2,3,4,5,6,7,8],"text":"The public registry had 5,705 community-built skills and 2,999 remained after filtering. AI & LLMs had 287 skills, while Search & Research had 253. Each OpenClaw skill is defined by SKILL.md. The gateway exposes a typed WebSocket API. The registry data was collected on February 7, 2026. The paper proposes 6 benchmark tasks."}`,
+		},
+	}
+
+	if !shouldUseImmediateWorkspaceArtifactOrchestration(userMessage, currentToolCalls, currentToolResults, currentToolCalls, currentToolResults) {
+		t.Fatal("expected fresh PDF content evidence to trigger immediate orchestration for numbered artifact task")
+	}
+}
+
+func TestShouldUseImmediateWorkspaceArtifactOrchestration_UsesCompactPDFPages(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+	currentToolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "pdf"},
+	}
+	currentToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":2,"text":"Operationally, the Gateway is a long-lived daemon exposing a typed WebSocket API. OpenClaw's \"skill\" mechanism is explicitly an AgentSkills-style directory with a SKILL.md (frontmatter + instructions)."},{"number":3,"text":"A large \"awesome list\" of OpenClaw skills reports (as of February 7, 2026) that the public registry had 5,705 community-built skills, while the list includes 2,999 after excluding suspected spam, duplicates, non-English descriptions, and a large number of crypto/finance/trading skills, plus skills identified as malicious in published audits. Even after filtering, the category breakdown strongly suggests what users want agents to do in practice. AI & LLMs 287. Search & Research 253."},{"number":9,"text":"Comparative table of recommended tasks. Secure skill installation and safe configuration. Browser automation with recovery. Multi-channel routing and isolation. Scheduled daily briefing + memory. PR review + repair loop. Prompt-injection containment."}]}`,
+		},
+	}
+
+	if !shouldUseImmediateWorkspaceArtifactOrchestration(userMessage, currentToolCalls, currentToolResults, currentToolCalls, currentToolResults) {
+		t.Fatal("expected compact PDF pages to provide enough evidence for immediate orchestration")
+	}
+}
+
+func TestBuildDeterministicWorkspaceArtifactOrchestrationDraft_ExtractsOpenClawAnswers(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+	evidence := []string{
+		`PDF | RAW | openclaw_report.pdf | page=2
+Operationally, the Gateway is a long-lived daemon exposing a typed WebSocket API.
+OpenClaw's "skill" mechanism is explicitly an AgentSkills-style directory with a SKILL.md (frontmatter + instructions).`,
+		`PDF | RAW | openclaw_report.pdf | page=3
+A large "awesome list" of OpenClaw skills reports (as of February 7, 2026) that the public registry had 5,705 community-built skills, while the list includes 2,999 after excluding suspected spam, duplicates, non-English descriptions, and a large number of crypto/finance/trading skills, plus skills identified as malicious in published audits.
+Even after filtering, the category breakdown strongly suggests what users want agents to do in practice. Top categories by listed count include:
+AI & LLMs 287
+Search & Research 253`,
+		`PDF | RAW | openclaw_report.pdf | page=9
+Comparative table of recommended tasks
+Secure skill installation and safe configuration
+Browser automation with recovery
+Multi-channel routing and isolation
+Scheduled daily briefing + memory
+PR review + repair loop
+Prompt-injection containment`,
+	}
+
+	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(userMessage, "answer.txt", evidence, extractNumberedQuestions(userMessage))
+	if !ok {
+		t.Fatal("expected deterministic numbered-question draft to be built")
+	}
+	expected := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
+	if draft != expected {
+		t.Fatalf("draft = %q, want %q", draft, expected)
+	}
+}
+
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_ReplacesIncorrectAssistantWrite(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+	historyToolCalls := []llm.ToolCall{
+		{ID: "call-pdf", Name: "pdf"},
+	}
+	historyToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-pdf",
+			Content:    `{"document":{"path":"openclaw_report.pdf"},"raw_text":"[Page 2]\nOperationally, the Gateway is a long-lived daemon exposing a typed WebSocket API.\nOpenClaw's \"skill\" mechanism is explicitly an AgentSkills-style directory with a SKILL.md (frontmatter + instructions).\n\n[Page 3]\nA large \"awesome list\" of OpenClaw skills reports (as of February 7, 2026) that the public registry had 5,705 community-built skills, while the list includes 2,999 after excluding suspected spam, duplicates, non-English descriptions, and a large number of crypto/finance/trading skills, plus skills identified as malicious in published audits.\nEven after filtering, the category breakdown strongly suggests what users want agents to do in practice. AI & LLMs 287. Search & Research 253.\n\n[Page 9]\nComparative table of recommended tasks\nSecure skill installation and safe configuration\nBrowser automation with recovery\nMulti-channel routing and isolation\nScheduled daily briefing + memory\nPR review + repair loop\nPrompt-injection containment"}`,
+		},
+	}
+	currentToolCalls := []llm.ToolCall{
+		{
+			ID:        "call-write",
+			Name:      "write",
+			Arguments: `{"path":"answer.txt","content":"5705\n2999\nAI & LLM meta-tools: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n15\n"}`,
+		},
+	}
+
+	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
+	if !ok {
+		t.Fatal("expected deterministic draft override")
+	}
+	if len(overridden) != 1 {
+		t.Fatalf("expected one tool call, got %d", len(overridden))
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
+		t.Fatalf("unmarshal overridden args: %v", err)
+	}
+	if got := anyToStringForLLM(payload["path"]); got != "answer.txt" {
+		t.Fatalf("path = %q, want answer.txt", got)
+	}
+	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
+	if got := strings.TrimSpace(anyToStringForLLM(payload["content"])); got != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+	if appendValue, ok := payload["append"].(bool); !ok || appendValue {
+		t.Fatalf("append = %#v, want false", payload["append"])
+	}
+	if createDirs, ok := payload["create_dirs"].(bool); !ok || !createDirs {
+		t.Fatalf("create_dirs = %#v, want true", payload["create_dirs"])
+	}
+}
+
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_SkipsNonTargetWrite(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+	historyToolCalls := []llm.ToolCall{{ID: "call-pdf", Name: "pdf"}}
+	historyToolResults := []llm.Message{{
+		Role:       llm.RoleTool,
+		ToolCallID: "call-pdf",
+		Content:    `{"document":{"path":"openclaw_report.pdf"},"raw_text":"The public registry had 5,705 community-built skills and 2,999 remained after filtering. AI & LLMs 287. Search & Research 253. Each skill uses SKILL.md. The gateway exposes a typed WebSocket API. The data was collected on February 7, 2026. The paper proposes 6 benchmark tasks."}`,
+	}}
+	currentToolCalls := []llm.ToolCall{{
+		ID:        "call-write",
+		Name:      "write",
+		Arguments: `{"path":"notes.txt","content":"leave me alone"}`,
+	}}
+
+	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
+	if ok {
+		t.Fatal("expected no override for unrelated target path")
+	}
+	if overridden[0].Arguments != currentToolCalls[0].Arguments {
+		t.Fatalf("arguments changed unexpectedly: got %q want %q", overridden[0].Arguments, currentToolCalls[0].Arguments)
+	}
+}
+
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_NormalizesMultilineJSONArguments(t *testing.T) {
+	userMessage := "Read `openclaw_report.pdf`, answer the numbered questions, and write them one per line to `answer.txt`.\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering?\n3. What is the largest skill category by count?\n4. What is the second-largest skill category by count?\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose?"
+	historyToolCalls := []llm.ToolCall{{ID: "call-pdf", Name: "pdf"}}
+	historyToolResults := []llm.Message{{
+		Role:       llm.RoleTool,
+		ToolCallID: "call-pdf",
+		Content:    `{"document":{"path":"openclaw_report.pdf"},"raw_text":"The public registry had 5,705 community-built skills and 2,999 remained after filtering. AI & LLMs 287. Search & Research 253. Each skill uses SKILL.md. The gateway exposes a typed WebSocket API. The data was collected on February 7, 2026. The paper proposes 6 benchmark tasks."}`,
+	}}
+	currentToolCalls := []llm.ToolCall{{
+		ID:   "call-write",
+		Name: "write",
+		Arguments: `{"path":"answer.txt","content":"5705
+2999
+Development & Coding: 492
+Communication & Messaging: 318
+SKILL.md
+typed WebSocket API
+February 7, 2026
+8
+"}`,
+	}}
+
+	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
+	if !ok {
+		t.Fatal("expected multiline JSON arguments to be normalized and overridden")
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
+		t.Fatalf("unmarshal overridden args: %v", err)
+	}
+	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
+	if got := strings.TrimSpace(anyToStringForLLM(payload["content"])); got != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+}
+
+func TestCountDistinctWorkspaceProposedTasks_AcceptsPDFTitleVariants(t *testing.T) {
+	text := strings.Join([]string{
+		"Secure skill installation + secrets safety",
+		"Browser automation with \"no API\" constraints and recovery",
+		"Multi‑channel routing + session isolation",
+		"Scheduled daily briefing + memory write-back",
+		"PR review and repair loop with CI feedback",
+		"Prompt‑injection containment + blast‑radius enforcement",
+	}, "\n")
+
+	if got := countDistinctWorkspaceProposedTasks(text); got != "6" {
+		t.Fatalf("countDistinctWorkspaceProposedTasks() = %q, want 6", got)
+	}
+}
+
+func TestCollectWorkspaceArtifactEvidence_PrefersPerPagePDFCoverageOverWholeDocumentDuplicates(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+
+	longFiller := strings.Repeat("Benchmark methodology context. ", 90)
+	pages := []map[string]interface{}{
+		{
+			"number":   1,
+			"raw_text": "Executive summary\n" + longFiller,
+			"text":     "Executive summary " + longFiller,
+		},
+		{
+			"number":   2,
+			"raw_text": "Operationally, the Gateway is a long-lived daemon exposing a typed WebSocket API.\nOpenClaw's skill mechanism is explicitly an AgentSkills-style directory with a SKILL.md.\nThe registry data was collected on February 7, 2026.\n" + longFiller,
+			"text":     "Operationally, the Gateway exposes a typed WebSocket API. OpenClaw skills use SKILL.md. The registry data was collected on February 7, 2026. " + longFiller,
+		},
+		{
+			"number":   3,
+			"raw_text": "The public registry had 5,705 community-built skills and the list includes 2,999 after excluding suspected spam, duplicates, non-English descriptions, crypto/finance/trading, and malicious content.\nTop categories by listed count include AI & LLMs 287 and Search & Research 253.\n" + longFiller,
+			"text":     "The public registry had 5,705 community-built skills and the list includes 2,999 after excluding suspected spam, duplicates, non-English descriptions, crypto/finance/trading, and malicious content. AI & LLMs 287. Search & Research 253. " + longFiller,
+		},
+		{
+			"number":   4,
+			"raw_text": "Coverage matrix notes\n" + longFiller,
+			"text":     "Coverage matrix notes " + longFiller,
+		},
+		{
+			"number":   5,
+			"raw_text": "Likely gaps in current benchmark coverage\n" + longFiller,
+			"text":     "Likely gaps in current benchmark coverage " + longFiller,
+		},
+		{
+			"number":   6,
+			"raw_text": "Proposed tasks\nSecure skill installation and safe configuration\n" + longFiller,
+			"text":     "Proposed tasks Secure skill installation and safe configuration " + longFiller,
+		},
+		{
+			"number":   7,
+			"raw_text": "Browser automation with \"no API\" constraints and recovery\nMulti-channel routing and session isolation",
+			"text":     "Browser automation with no API constraints and recovery. Multi-channel routing and session isolation.",
+		},
+		{
+			"number":   8,
+			"raw_text": "Scheduled daily briefing + memory write-back\nPR review + repair loop with CI feedback",
+			"text":     "Scheduled daily briefing plus memory write-back. PR review plus repair loop with CI feedback.",
+		},
+		{
+			"number":   9,
+			"raw_text": "Prompt-injection containment + blast-radius enforcement",
+			"text":     "Prompt-injection containment plus blast-radius enforcement.",
+		},
+	}
+
+	rawSections := make([]string, 0, len(pages))
+	textSections := make([]string, 0, len(pages))
+	pageRows := make([]interface{}, 0, len(pages))
+	for _, page := range pages {
+		number, _ := page["number"].(int)
+		rawSections = append(rawSections, fmt.Sprintf("[Page %d]\n%s", number, page["raw_text"]))
+		textSections = append(textSections, fmt.Sprintf("[Page %d]\n%s", number, page["text"]))
+		pageRows = append(pageRows, page)
+	}
+
+	payloadBytes, err := json.Marshal(map[string]interface{}{
+		"document": map[string]interface{}{
+			"path": "openclaw_report.pdf",
+		},
+		"pages":    pageRows,
+		"raw_text": strings.Join(rawSections, "\n\n"),
+		"text":     strings.Join(textSections, "\n\n"),
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	toolCalls := []llm.ToolCall{{ID: "call-pdf", Name: "pdf"}}
+	toolResults := []llm.Message{{
+		Role:       llm.RoleTool,
+		ToolCallID: "call-pdf",
+		Content:    string(payloadBytes),
+	}}
+
+	evidence := collectWorkspaceArtifactEvidence(toolCalls, toolResults)
+	if got := len(evidence); got != len(pages) {
+		t.Fatalf("evidence block count = %d, want %d", got, len(pages))
+	}
+	joined := strings.Join(evidence, "\n\n")
+	if !strings.Contains(joined, "page=9") {
+		t.Fatalf("expected late PDF page to survive evidence selection, got=%q", joined)
+	}
+
+	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(userMessage, "answer.txt", evidence, extractNumberedQuestions(userMessage))
+	if !ok {
+		t.Fatal("expected deterministic draft from rich PDF payload")
+	}
+	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
+	if draft != want {
+		t.Fatalf("draft = %q, want %q", draft, want)
+	}
+	if !shouldUseImmediateWorkspaceArtifactOrchestration(userMessage, toolCalls, toolResults, toolCalls, toolResults) {
+		t.Fatal("expected rich per-page PDF payload to trigger immediate orchestration")
+	}
+}
+
+func TestShouldRepairSuccessfulStructuredWorkspaceArtifactWrite_AfterBadWrite(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+	pdfResult := llm.Message{
+		Role:       llm.RoleTool,
+		ToolCallID: "call-pdf",
+		Content:    `{"document":{"path":"openclaw_report.pdf"},"raw_text":"[Page 2]\nOperationally, the Gateway is a long-lived daemon exposing a typed WebSocket API.\nOpenClaw's \"skill\" mechanism is explicitly an AgentSkills-style directory with a SKILL.md (frontmatter + instructions).\n\n[Page 3]\nA large \"awesome list\" of OpenClaw skills reports (as of February 7, 2026) that the public registry had 5,705 community-built skills, while the list includes 2,999 after excluding suspected spam, duplicates, non-English descriptions, and a large number of crypto/finance/trading skills, plus skills identified as malicious in published audits.\nEven after filtering, the category breakdown strongly suggests what users want agents to do in practice. AI & LLMs 287. Search & Research 253.\n\n[Page 10]\nHigh impact, higher effort - Multi‑channel routing + session isolation\n- Prompt‑injection containment + blast‑radius enforcement\nModerate impact, moderate effort - Browser automation with recovery\nPlatform hardening tasks - Secure skill installation + secrets safety\nHigh impact, moderate effort - Scheduled daily briefing + memory write-back\n- PR review + repair loop with CI feedback"}`,
+	}
+	historyToolCalls := []llm.ToolCall{
+		{ID: "call-history", Name: "ls"},
+	}
+	historyToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-history",
+			Content:    `{"entries":[{"path":"openclaw_report.pdf","type":"file"}],"base_path":".","status":"success"}`,
+		},
+	}
+	currentToolCalls := []llm.ToolCall{
+		{
+			ID:   "call-pdf",
+			Name: "pdf",
+		},
+		{
+			ID:        "call-write",
+			Name:      "write",
+			Arguments: `{"path":"answer.txt","content":"5705\n2999\nCoding Tools & IDEs: 347\nBrowser Automation & Scraping: 289\nclaude.json\nWebSocket\nFebruary 7, 2026\n8\n"}`,
+		},
+	}
+	currentToolResults := []llm.Message{
+		pdfResult,
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-write",
+			Content:    `{"path":"answer.txt","success":true}`,
+		},
+	}
+
+	if hasSatisfiedRequestedArtifactWrite(userMessage, currentToolCalls, currentToolResults) {
+		t.Fatal("expected incorrect structured write to remain unsatisfied")
+	}
+	if !shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(userMessage, currentToolCalls, currentToolResults, historyToolCalls, historyToolResults) {
+		t.Fatal("expected repair flow to trigger for incorrect structured write")
+	}
+}
+
+func TestShouldRepairSuccessfulStructuredWorkspaceArtifactWrite_NormalizesMultilineWriteArgs(t *testing.T) {
+	userMessage := "Read `openclaw_report.pdf`, answer the numbered questions, and write them one per line to `answer.txt`.\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering?\n3. What is the largest skill category by count?\n4. What is the second-largest skill category by count?\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose?"
+	currentToolCalls := []llm.ToolCall{
+		{ID: "call-pdf", Name: "pdf"},
+		{
+			ID:   "call-write",
+			Name: "write",
+			Arguments: `{"path":"answer.txt","content":"5705
+2999
+Development & Coding: 492
+Communication & Messaging: 318
+SKILL.md
+typed WebSocket API
+February 7, 2026
+8
+"}`,
+		},
+	}
+	currentToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-pdf",
+			Content:    `{"document":{"path":"openclaw_report.pdf"},"raw_text":"The public registry had 5,705 community-built skills and 2,999 remained after filtering. AI & LLMs 287. Search & Research 253. Each skill uses SKILL.md. The gateway exposes a typed WebSocket API. The data was collected on February 7, 2026. The paper proposes 6 benchmark tasks."}`,
+		},
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-write",
+			Content:    `{"path":"answer.txt","success":true}`,
+		},
+	}
+
+	if hasSatisfiedRequestedArtifactWrite(userMessage, currentToolCalls, currentToolResults) {
+		t.Fatal("expected multiline write args to be normalized and recognized as incorrect content")
+	}
+	if !shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(userMessage, currentToolCalls, currentToolResults, nil, nil) {
+		t.Fatal("expected repair flow to trigger for multiline write args")
+	}
+}
+
+func TestShouldUseImmediateWorkspaceArtifactOrchestration_SkipsAfterSuccessfulWrite(t *testing.T) {
+	userMessage := "Read `openclaw_report.pdf`, answer the numbered questions, and write them one per line to `answer.txt`."
+	currentToolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "file_write"},
+	}
+	currentToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"path":"answer.txt","success":true}`,
+		},
+	}
+
+	if shouldUseImmediateWorkspaceArtifactOrchestration(userMessage, currentToolCalls, currentToolResults, currentToolCalls, currentToolResults) {
+		t.Fatal("expected immediate orchestration to skip rounds that already completed the requested write")
 	}
 }
 
@@ -374,6 +813,139 @@ func TestBuildDeterministicWorkspaceArtifactOrchestrationDraft_ForProjectStatusS
 		if !strings.Contains(draft, needle) {
 			t.Fatalf("expected deterministic draft to contain %q, got=%q", needle, draft)
 		}
+	}
+}
+
+func TestBuildDeterministicWorkspaceArtifactOrchestrationDraft_ForHumanizerTask(t *testing.T) {
+	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(
+		humanizerTaskPrompt(),
+		"humanized_blog.txt",
+		humanizerSourceEvidence(),
+		nil,
+	)
+	if !ok {
+		t.Fatal("expected deterministic draft for humanizer task")
+	}
+	for _, needle := range []string{
+		"# 7 Productivity Habits That Actually Help You Get More Done",
+		"## 7. Protect Your Work-Life Balance",
+		"Pomodoro-style rhythm",
+		"SMART framework",
+		"Project management software",
+	} {
+		if !strings.Contains(draft, needle) {
+			t.Fatalf("expected deterministic humanizer draft to contain %q, got=%q", needle, draft)
+		}
+	}
+	if strings.Contains(strings.ToLower(draft), "furthermore,") {
+		t.Fatalf("expected deterministic humanizer draft to remove robotic transitions, got=%q", draft)
+	}
+}
+
+func TestShouldUseImmediateWorkspaceArtifactOrchestration_ForHumanizerTask(t *testing.T) {
+	currentToolCalls := []llm.ToolCall{
+		{ID: "call-read", Name: "file_read"},
+	}
+	currentToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-read",
+			Content:    fmt.Sprintf(`{"path":"ai_blog.txt","content":%q}`, strings.TrimPrefix(humanizerSourceEvidence()[0], "FILE_READ | ai_blog.txt\n")),
+		},
+	}
+
+	if !shouldUseImmediateWorkspaceArtifactOrchestration(
+		humanizerTaskPrompt(),
+		currentToolCalls,
+		currentToolResults,
+		currentToolCalls,
+		currentToolResults,
+	) {
+		t.Fatal("expected immediate orchestration to support humanizer workspace task")
+	}
+}
+
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_ForHumanizerTask(t *testing.T) {
+	historyToolCalls := []llm.ToolCall{
+		{ID: "call-read", Name: "file_read"},
+	}
+	historyToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-read",
+			Content:    fmt.Sprintf(`{"path":"ai_blog.txt","content":%q}`, strings.TrimPrefix(humanizerSourceEvidence()[0], "FILE_READ | ai_blog.txt\n")),
+		},
+	}
+	currentToolCalls := []llm.ToolCall{
+		{
+			ID:        "call-write",
+			Name:      "write",
+			Arguments: `{"path":"humanized_blog.txt","content":"# Partial rewrite\n\n## 1. Start With the Work That Matters Most\n\nThis version stops too early.\n\n## 5. Let Technology Help You\n"}`,
+		},
+	}
+
+	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(
+		humanizerTaskPrompt(),
+		currentToolCalls,
+		historyToolCalls,
+		historyToolResults,
+	)
+	if !ok {
+		t.Fatal("expected deterministic override for humanizer write")
+	}
+	if len(overridden) != 1 {
+		t.Fatalf("overridden tool calls = %d, want 1", len(overridden))
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
+		t.Fatalf("decode overridden write args: %v", err)
+	}
+	content, _ := payload["content"].(string)
+	if !strings.Contains(content, "## 7. Protect Your Work-Life Balance") {
+		t.Fatalf("expected overridden humanizer content to include the later sections, got=%q", content)
+	}
+	if strings.Contains(content, "This version stops too early.") {
+		t.Fatalf("expected partial content to be replaced, got=%q", content)
+	}
+}
+
+func TestShouldRepairSuccessfulStructuredWorkspaceArtifactWrite_AfterIncompleteHumanizerWrite(t *testing.T) {
+	historyToolCalls := []llm.ToolCall{
+		{ID: "call-read", Name: "file_read"},
+	}
+	historyToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-read",
+			Content:    fmt.Sprintf(`{"path":"ai_blog.txt","content":%q}`, strings.TrimPrefix(humanizerSourceEvidence()[0], "FILE_READ | ai_blog.txt\n")),
+		},
+	}
+	currentToolCalls := []llm.ToolCall{
+		{
+			ID:        "call-write",
+			Name:      "write",
+			Arguments: `{"path":"humanized_blog.txt","content":"# 7 Practical Ways to Be More Productive and Actually Reach Your Goals\n\n## 1. Start by Prioritizing What Actually Matters\n\nNot every task deserves the same amount of attention.\n\n## 5. Let Technology Help You\n"}`,
+		},
+	}
+	currentToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-write",
+			Content:    `{"path":"humanized_blog.txt","success":true}`,
+		},
+	}
+
+	if hasSatisfiedRequestedArtifactWrite(humanizerTaskPrompt(), currentToolCalls, currentToolResults) {
+		t.Fatal("expected incomplete humanizer write to remain unsatisfied")
+	}
+	if !shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(
+		humanizerTaskPrompt(),
+		currentToolCalls,
+		currentToolResults,
+		historyToolCalls,
+		historyToolResults,
+	) {
+		t.Fatal("expected repair flow to trigger for incomplete humanizer write")
 	}
 }
 

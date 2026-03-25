@@ -51,6 +51,61 @@ func TestNormalizeToolSchemaForLLM_PreservesTypedCompositeSlices(t *testing.T) {
 	}
 }
 
+func TestNormalizeToolSchemaForLLM_AddsEmptyRequiredForNestedObjects(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"questions": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"question": map[string]interface{}{"type": "string"},
+						"options": map[string]interface{}{
+							"type": "array",
+							"items": map[string]interface{}{
+								"oneOf": []map[string]interface{}{
+									{"type": "string"},
+									{
+										"type": "object",
+										"properties": map[string]interface{}{
+											"label": map[string]interface{}{"type": "string"},
+										},
+									},
+								},
+							},
+						},
+					},
+					"required": []string{"question"},
+				},
+			},
+		},
+	}
+
+	normalized := NormalizeToolSchemaForLLM("", "", "", schema)
+	required, ok := normalized["required"].([]string)
+	if !ok {
+		t.Fatalf("top-level required type = %T, want []string", normalized["required"])
+	}
+	if len(required) != 0 {
+		t.Fatalf("top-level required = %v, want empty", required)
+	}
+
+	props := normalized["properties"].(map[string]interface{})
+	questions := props["questions"].(map[string]interface{})
+	items := questions["items"].(map[string]interface{})
+	options := items["properties"].(map[string]interface{})["options"].(map[string]interface{})
+	oneOf := options["items"].(map[string]interface{})["oneOf"].([]interface{})
+	nestedObject := oneOf[1].(map[string]interface{})
+	nestedRequired, ok := nestedObject["required"].([]string)
+	if !ok {
+		t.Fatalf("nested required type = %T, want []string", nestedObject["required"])
+	}
+	if len(nestedRequired) != 0 {
+		t.Fatalf("nested required = %v, want empty", nestedRequired)
+	}
+}
+
 func TestValidateToolArguments_HonorsEnumStringSlices(t *testing.T) {
 	schema := map[string]interface{}{
 		"type": "object",

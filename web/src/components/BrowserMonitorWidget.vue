@@ -3,9 +3,10 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
+  getSessionMonitor,
   getSessions,
-  takeScreenshot,
   type BrowserSession,
+  type BrowserSessionMonitorResponse,
   type BrowserSessionScreenshot,
 } from '@/api/browser'
 import { taskProjectionApi, type UserTaskProjection } from '@/api/tasks'
@@ -41,6 +42,15 @@ type ScreenshotState = {
   history: BrowserSessionScreenshot[]
   lastScreenshotAt: string
 }
+type TextMonitorState = {
+  title: string
+  url: string
+  summary: string
+  treePreview: string
+  interactiveCount: number
+  updatedAt: string
+  status: string
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -72,6 +82,8 @@ const tasks = ref<UserTaskProjection[]>([])
 const screenshot = ref('')
 const screenshotHistory = ref<BrowserSessionScreenshot[]>([])
 const screenshotCache = ref<Record<string, ScreenshotState>>({})
+const textMonitor = ref<TextMonitorState | null>(null)
+const textMonitorCache = ref<Record<string, TextMonitorState>>({})
 const screenshotError = ref('')
 const overviewError = ref('')
 const lastScreenshotAt = ref('')
@@ -88,6 +100,19 @@ let launcherClickResetTimer: ReturnType<typeof setTimeout> | null = null
 
 function tr(key: string, fallback: string): string {
   return te(key) ? t(key) : fallback
+}
+
+function interpolateTemplate(
+  template: string,
+  params: Record<string, string | number> = {}
+): string {
+  return Object.entries(params).reduce((result, [name, value]) => {
+    return result.split(`{${name}}`).join(String(value))
+  }, template)
+}
+
+function trp(key: string, fallback: string, params: Record<string, string | number> = {}): string {
+  return te(key) ? String(t(key, params)) : interpolateTemplate(fallback, params)
 }
 
 function loadStoredString(key: string): string {
@@ -156,10 +181,7 @@ function loadStoredSize() {
     if (!raw) return defaultSize
     const parsed = JSON.parse(raw) as { width?: number; height?: number }
     const storedSize = clampSize(Number(parsed?.width), Number(parsed?.height))
-    if (
-      storedSize.width === LEGACY_DEFAULT_WIDTH &&
-      storedSize.height === LEGACY_DEFAULT_HEIGHT
-    ) {
+    if (storedSize.width === LEGACY_DEFAULT_WIDTH && storedSize.height === LEGACY_DEFAULT_HEIGHT) {
       return defaultSize
     }
     return storedSize
@@ -183,7 +205,10 @@ function getDefaultPanelPosition() {
     return { x: 16, y: 16 }
   }
   const defaultSize = clampSize(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-  const maxY = Math.max(VIEWPORT_PADDING, window.innerHeight - defaultSize.height - VIEWPORT_PADDING)
+  const maxY = Math.max(
+    VIEWPORT_PADDING,
+    window.innerHeight - defaultSize.height - VIEWPORT_PADDING
+  )
   return {
     x: Math.max(VIEWPORT_PADDING, window.innerWidth - defaultSize.width - VIEWPORT_PADDING),
     y: Math.min(DEFAULT_PANEL_TOP_OFFSET, maxY),
@@ -309,25 +334,27 @@ function formatAbsoluteTime(value: string): string {
 }
 
 function formatScreenshotScope(value: string | undefined): string {
-  const normalized = String(value || '').trim().toLowerCase()
-  const isChinese = String(locale.value || '')
+  const normalized = String(value || '')
     .trim()
     .toLowerCase()
-    .startsWith('zh')
 
   switch (normalized) {
     case 'viewport':
-      return isChinese ? '视口截图' : 'Viewport'
+      return tr('browserMonitor.previewScopeViewport', 'Viewport')
     case 'full_page':
     case 'fullpage':
-      return isChinese ? '整页截图' : 'Full page'
+      return tr('browserMonitor.previewScopeFullPage', 'Full page')
     default:
-      return normalized ? normalized.replace(/_/g, ' ') : isChinese ? '最新截图' : 'Latest frame'
+      return normalized
+        ? normalized.replace(/_/g, ' ')
+        : tr('browserMonitor.previewScopeLatestFrame', 'Latest frame')
   }
 }
 
 function screenshotFrameKey(frame: Pick<BrowserSessionScreenshot, 'captured_at' | 'data'>): string {
-  return `${String(frame.captured_at || '').trim()}:${String(frame.data || '').trim().slice(0, 32)}`
+  return `${String(frame.captured_at || '').trim()}:${String(frame.data || '')
+    .trim()
+    .slice(0, 32)}`
 }
 
 function normalizeScreenshotHistory(
@@ -437,6 +464,65 @@ function getCachedScreenshotState(sessionID: string): ScreenshotState | null {
     history: cloneScreenshotHistory(cached.history),
     lastScreenshotAt: String(cached.lastScreenshotAt || '').trim(),
   }
+}
+
+function clearTextMonitorState() {
+  textMonitor.value = null
+}
+
+function applyTextMonitorState(state: TextMonitorState | null | undefined) {
+  if (!state) {
+    clearTextMonitorState()
+    return
+  }
+  textMonitor.value = {
+    title: String(state.title || '').trim(),
+    url: String(state.url || '').trim(),
+    summary: String(state.summary || '').trim(),
+    treePreview: String(state.treePreview || '').trim(),
+    interactiveCount: Number.isFinite(Number(state.interactiveCount))
+      ? Number(state.interactiveCount)
+      : 0,
+    updatedAt: String(state.updatedAt || '').trim(),
+    status: String(state.status || '').trim(),
+  }
+  lastScreenshotAt.value = textMonitor.value.updatedAt
+}
+
+function normalizeTextMonitorState(
+  payload: BrowserSessionMonitorResponse['text'] | null | undefined
+): TextMonitorState | null {
+  if (!payload) return null
+  const summary = String(payload.summary || '').trim()
+  const treePreview = String(payload.tree_preview || '').trim()
+  if (!summary && !treePreview) return null
+  return {
+    title: String(payload.title || '').trim(),
+    url: String(payload.url || '').trim(),
+    summary,
+    treePreview,
+    interactiveCount: Number.isFinite(Number(payload.interactive_count))
+      ? Number(payload.interactive_count)
+      : 0,
+    updatedAt: String(payload.updated_at || '').trim(),
+    status: String(payload.status || '').trim(),
+  }
+}
+
+function rememberTextMonitorState(sessionID: string, state: TextMonitorState | null | undefined) {
+  const normalizedID = String(sessionID || '').trim()
+  if (!normalizedID || !state) return
+  textMonitorCache.value = {
+    ...textMonitorCache.value,
+    [normalizedID]: { ...state },
+  }
+}
+
+function getCachedTextMonitorState(sessionID: string): TextMonitorState | null {
+  const normalizedID = String(sessionID || '').trim()
+  if (!normalizedID) return null
+  const cached = textMonitorCache.value[normalizedID]
+  return cached ? { ...cached } : null
 }
 
 function stageLabel(task: Pick<UserTaskProjection, 'stage'> | null | undefined): string {
@@ -696,15 +782,34 @@ async function refreshScreenshot() {
   screenshotLoading.value = true
   screenshotError.value = ''
   try {
-    const response = await takeScreenshot(sessionID)
-    const nextHistory = normalizeScreenshotHistory(response.history)
-    const nextScreenshot = String(response.screenshot || '').trim()
+    const response = await getSessionMonitor(sessionID)
+    if (response.kind === 'text' || session.monitor_kind === 'text') {
+      const nextTextState = normalizeTextMonitorState(response.text)
+      if (nextTextState) {
+        rememberTextMonitorState(sessionID, nextTextState)
+      }
+      if (selectedSession.value?.id === sessionID) {
+        applyTextMonitorState(nextTextState || getCachedTextMonitorState(sessionID))
+        clearScreenshotState()
+      }
+      if (!nextTextState) {
+        screenshotError.value =
+          response.error || tr('browserMonitor.screenshotError', 'Preview unavailable')
+      } else if (response.error) {
+        screenshotError.value = response.error
+      }
+      return
+    }
+
+    const nextHistory = normalizeScreenshotHistory(response.image?.history || [])
+    const nextScreenshot = String(response.image?.screenshot || '').trim()
     const resolvedState = resolveScreenshotState(session, nextScreenshot, nextHistory)
     if (resolvedState) {
       rememberScreenshotState(sessionID, resolvedState)
     }
 
     if (selectedSession.value?.id === sessionID) {
+      clearTextMonitorState()
       if (resolvedState) {
         applyScreenshotState(resolvedState)
       } else {
@@ -716,14 +821,22 @@ async function refreshScreenshot() {
     }
 
     if (!resolvedState) {
-      screenshotError.value = response.error || tr('browserMonitor.screenshotError', 'Preview unavailable')
+      screenshotError.value =
+        response.error || tr('browserMonitor.screenshotError', 'Preview unavailable')
     } else if (response.error && !nextScreenshot) {
       screenshotError.value = response.error
     }
   } catch (error) {
-    const cachedState = getCachedScreenshotState(sessionID)
-    if (cachedState && selectedSession.value?.id === sessionID) {
-      applyScreenshotState(cachedState)
+    if (session.monitor_kind === 'text') {
+      const cachedState = getCachedTextMonitorState(sessionID)
+      if (cachedState && selectedSession.value?.id === sessionID) {
+        applyTextMonitorState(cachedState)
+      }
+    } else {
+      const cachedState = getCachedScreenshotState(sessionID)
+      if (cachedState && selectedSession.value?.id === sessionID) {
+        applyScreenshotState(cachedState)
+      }
     }
     screenshotError.value =
       error instanceof Error
@@ -812,7 +925,13 @@ const launcherMeta = computed(() => {
   }
   return parts.join(' · ') || tr('browserMonitor.launcherMeta', 'Click to open')
 })
+const isTextMonitor = computed(() => selectedSession.value?.monitor_kind === 'text')
+const activeTextMonitor = computed<TextMonitorState | null>(() => {
+  if (!isTextMonitor.value) return null
+  return textMonitor.value
+})
 const previewFrames = computed<BrowserSessionScreenshot[]>(() => {
+  if (isTextMonitor.value) return []
   if (screenshotHistory.value.length > 0) return screenshotHistory.value
   if (!screenshot.value) return []
   return [
@@ -834,6 +953,7 @@ const activeScreenshotFrame = computed<BrowserSessionScreenshot | null>(() => {
 })
 const previewTitle = computed(() => {
   return (
+    activeTextMonitor.value?.title ||
     activeScreenshotFrame.value?.title ||
     selectedSession.value?.page_title ||
     tr('browserMonitor.previewIdleTitle', 'Waiting for browser activity')
@@ -841,13 +961,16 @@ const previewTitle = computed(() => {
 })
 const previewUrl = computed(() => {
   return (
+    activeTextMonitor.value?.url ||
     activeScreenshotFrame.value?.url ||
     selectedSession.value?.current_url ||
     tr('browserMonitor.previewIdleUrl', 'Open or reuse a browser tab to start the live feed.')
   )
 })
 const screenshotSrc = computed(() =>
-  activeScreenshotFrame.value?.data ? `data:image/png;base64,${activeScreenshotFrame.value.data}` : ''
+  activeScreenshotFrame.value?.data
+    ? `data:image/png;base64,${activeScreenshotFrame.value.data}`
+    : ''
 )
 const activeFrameCapturedAt = computed(() =>
   String(activeScreenshotFrame.value?.captured_at || lastScreenshotAt.value || '').trim()
@@ -855,15 +978,33 @@ const activeFrameCapturedAt = computed(() =>
 const activeFrameIndex = computed(() => {
   const activeFrame = activeScreenshotFrame.value
   if (!activeFrame) return -1
-  return previewFrames.value.findIndex((frame) => screenshotFrameKey(frame) === screenshotFrameKey(activeFrame))
+  return previewFrames.value.findIndex(
+    (frame) => screenshotFrameKey(frame) === screenshotFrameKey(activeFrame)
+  )
 })
 const previewMeta = computed(() => {
+  if (isTextMonitor.value) {
+    const items: string[] = []
+    const absoluteTime = formatAbsoluteTime(
+      activeTextMonitor.value?.updatedAt || lastScreenshotAt.value
+    )
+    if (absoluteTime) {
+      items.push(absoluteTime)
+    }
+    if ((activeTextMonitor.value?.interactiveCount || 0) > 0) {
+      items.push(
+        trp('browserMonitor.textInteractiveCount', '{count} interactive elements', {
+          count: activeTextMonitor.value?.interactiveCount || 0,
+        })
+      )
+    }
+    if (selectedSession.value?.engine) {
+      items.push(selectedSession.value.engine.replace(/_/g, ' '))
+    }
+    return items.filter((item) => item.trim().length > 0)
+  }
   if (!activeScreenshotFrame.value && !activeFrameCapturedAt.value) return []
 
-  const isChinese = String(locale.value || '')
-    .trim()
-    .toLowerCase()
-    .startsWith('zh')
   const items: string[] = [formatScreenshotScope(activeScreenshotFrame.value?.scope)]
   const absoluteTime = formatAbsoluteTime(activeFrameCapturedAt.value)
   if (absoluteTime) {
@@ -871,9 +1012,10 @@ const previewMeta = computed(() => {
   }
   if (previewFrames.value.length > 1 && activeFrameIndex.value >= 0) {
     items.push(
-      isChinese
-        ? `第 ${activeFrameIndex.value + 1}/${previewFrames.value.length} 帧`
-        : `Frame ${activeFrameIndex.value + 1}/${previewFrames.value.length}`
+      trp('browserMonitor.previewFrameLabel', 'Frame {current}/{total}', {
+        current: activeFrameIndex.value + 1,
+        total: previewFrames.value.length,
+      })
     )
   }
   return items.filter((item) => item.trim().length > 0)
@@ -1006,16 +1148,28 @@ watch(
   (nextID, previousID) => {
     if (!nextID) {
       screenshotError.value = ''
+      clearTextMonitorState()
       return
     }
 
     selectedSessionId.value = nextID
     persistString(MONITOR_SESSION_KEY, nextID)
-    const cachedState = getCachedScreenshotState(nextID)
-    if (cachedState) {
-      applyScreenshotState(cachedState)
-    } else if (nextID !== previousID) {
+    if (selectedSession.value?.monitor_kind === 'text') {
+      const cachedState = getCachedTextMonitorState(nextID)
+      if (cachedState) {
+        applyTextMonitorState(cachedState)
+      } else if (nextID !== previousID) {
+        clearTextMonitorState()
+      }
       clearScreenshotState()
+    } else {
+      const cachedState = getCachedScreenshotState(nextID)
+      if (cachedState) {
+        applyScreenshotState(cachedState)
+      } else if (nextID !== previousID) {
+        clearScreenshotState()
+      }
+      clearTextMonitorState()
     }
     screenshotError.value = ''
     void refreshScreenshot()
@@ -1172,6 +1326,7 @@ onUnmounted(() => {
             {{
               taskTitle(leadTask) ||
               selectedSession?.page_title ||
+              activeTextMonitor?.title ||
               activeScreenshotFrame?.title ||
               tr('browserMonitor.subtitle', 'Track the latest task and tab state here.')
             }}
@@ -1215,7 +1370,9 @@ onUnmounted(() => {
           <span class="browser-monitor__compact-label">{{
             tr('browserMonitor.compactTask', 'Lead task')
           }}</span>
-          <strong>{{ taskTitle(leadTask) || tr('browserMonitor.compactTaskIdle', 'No active task') }}</strong>
+          <strong>{{
+            taskTitle(leadTask) || tr('browserMonitor.compactTaskIdle', 'No active task')
+          }}</strong>
           <span>{{
             leadTask
               ? `${stageLabel(leadTask)} · ${Math.round(leadTask.progress || 0)}%`
@@ -1346,18 +1503,40 @@ onUnmounted(() => {
           </div>
 
           <div v-if="previewMeta.length > 0" class="browser-monitor__preview-meta">
-            <span
-              v-for="item in previewMeta"
-              :key="item"
-              class="browser-monitor__preview-chip"
-            >
+            <span v-for="item in previewMeta" :key="item" class="browser-monitor__preview-chip">
               {{ item }}
             </span>
           </div>
 
           <div class="browser-monitor__frame">
+            <div v-if="isTextMonitor && activeTextMonitor" class="browser-monitor__text-monitor">
+              <div class="browser-monitor__text-card">
+                <strong>{{ tr('browserMonitor.textSummaryHeading', 'Summary') }}</strong>
+                <p>
+                  {{
+                    activeTextMonitor.summary ||
+                    tr('browserMonitor.textSummaryIdle', 'Waiting for readable summary...')
+                  }}
+                </p>
+              </div>
+              <div class="browser-monitor__text-card">
+                <strong>{{ tr('browserMonitor.textTreeHeading', 'Tree Preview') }}</strong>
+                <pre>{{
+                  activeTextMonitor.treePreview ||
+                  tr('browserMonitor.textTreeIdle', 'Waiting for structured tree preview...')
+                }}</pre>
+              </div>
+              <div class="browser-monitor__text-stats">
+                <span>{{ selectedSession?.engine?.replace(/_/g, ' ') }}</span>
+                <span>{{
+                  trp('browserMonitor.textInteractiveCount', '{count} interactive elements', {
+                    count: activeTextMonitor.interactiveCount,
+                  })
+                }}</span>
+              </div>
+            </div>
             <img
-              v-if="screenshotSrc"
+              v-else-if="screenshotSrc"
               :src="screenshotSrc"
               :alt="tr('browserMonitor.previewAlt', 'Browser preview')"
               class="browser-monitor__image"
@@ -1375,7 +1554,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div v-if="previewFrames.length > 1" class="browser-monitor__timeline">
+          <div v-if="!isTextMonitor && previewFrames.length > 1" class="browser-monitor__timeline">
             <button
               v-for="frame in previewFrames"
               :key="screenshotFrameKey(frame)"
@@ -1935,6 +2114,65 @@ onUnmounted(() => {
   background: rgba(15, 23, 42, 0.98);
 }
 
+.browser-monitor__text-monitor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: 100%;
+  height: 100%;
+  padding: 1rem;
+  color: #e2e8f0;
+}
+
+.browser-monitor__text-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  padding: 0.82rem 0.9rem;
+  border-radius: 0.82rem;
+  background: rgba(15, 23, 42, 0.56);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.browser-monitor__text-card strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #bae6fd;
+}
+
+.browser-monitor__text-card p,
+.browser-monitor__text-card pre {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: rgba(226, 232, 240, 0.9);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.browser-monitor__text-card pre {
+  font-family: 'SFMono-Regular', 'IBM Plex Mono', monospace;
+}
+
+.browser-monitor__text-stats {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.browser-monitor__text-stats span {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.58rem;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.12);
+  color: #e0f2fe;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .browser-monitor__frame-empty {
   display: flex;
   flex-direction: column;
@@ -2116,8 +2354,14 @@ onUnmounted(() => {
   width: 1.1rem;
   height: 1.1rem;
   pointer-events: none;
-  background:
-    linear-gradient(135deg, transparent 0 42%, rgba(148, 163, 184, 0.35) 42% 52%, transparent 52% 62%, rgba(148, 163, 184, 0.6) 62% 72%, transparent 72% 100%);
+  background: linear-gradient(
+    135deg,
+    transparent 0 42%,
+    rgba(148, 163, 184, 0.35) 42% 52%,
+    transparent 52% 62%,
+    rgba(148, 163, 184, 0.6) 62% 72%,
+    transparent 72% 100%
+  );
 }
 
 @media (max-width: 900px) {
@@ -2157,8 +2401,7 @@ onUnmounted(() => {
 :global([data-theme='dark']) .browser-monitor-launcher {
   border-color: rgba(71, 85, 105, 0.48);
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.94)),
-    rgba(15, 23, 42, 0.94);
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.94)), rgba(15, 23, 42, 0.94);
 }
 
 :global([data-theme='dark']) .browser-monitor-launcher__copy strong {
@@ -2251,7 +2494,13 @@ onUnmounted(() => {
 }
 
 :global([data-theme='dark']) .browser-monitor__resize-grip {
-  background:
-    linear-gradient(135deg, transparent 0 42%, rgba(100, 116, 139, 0.4) 42% 52%, transparent 52% 62%, rgba(148, 163, 184, 0.78) 62% 72%, transparent 72% 100%);
+  background: linear-gradient(
+    135deg,
+    transparent 0 42%,
+    rgba(100, 116, 139, 0.4) 42% 52%,
+    transparent 52% 62%,
+    rgba(148, 163, 184, 0.78) 62% 72%,
+    transparent 72% 100%
+  );
 }
 </style>

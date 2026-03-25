@@ -35,10 +35,14 @@ const requiredKeys = [
   'previewEmptyBody',
   'previewEmptyTitle',
   'previewHeading',
+  'previewFrameLabel',
   'previewIdleTitle',
   'previewIdleUrl',
   'previewLoading',
   'previewPending',
+  'previewScopeFullPage',
+  'previewScopeLatestFrame',
+  'previewScopeViewport',
   'refresh',
   'refreshing',
   'screenshotError',
@@ -51,6 +55,11 @@ const requiredKeys = [
   'taskViewCurrent',
   'taskViewCurrentShort',
   'taskViewSmart',
+  'textInteractiveCount',
+  'textSummaryHeading',
+  'textSummaryIdle',
+  'textTreeHeading',
+  'textTreeIdle',
   'tasksCount',
   'tasksHeading',
   'tasksShort',
@@ -134,7 +143,10 @@ describe('browser monitor locale coverage', () => {
       for (const key of requiredKeys) {
         const value = messages[key]
         expect(typeof value, `${locale} should provide browserMonitor.${key}`).toBe('string')
-        expect(value.trim().length, `${locale} should not leave browserMonitor.${key} empty`).toBeGreaterThan(0)
+        expect(
+          value.trim().length,
+          `${locale} should not leave browserMonitor.${key} empty`
+        ).toBeGreaterThan(0)
       }
     }
   })
@@ -161,4 +173,3 @@ describe('browser monitor locale coverage', () => {
     }
   })
 })
-

@@ -12,6 +12,7 @@ import (
 type browserCompatBackend struct {
 	navigateURL               string
 	navigateTargetID          string
+	lastRouteHint             BrowserRouteHint
 	recipeName                string
 	recipeParams              map[string]string
 	screenshotData            string
@@ -30,7 +31,10 @@ func (b *browserCompatBackend) Start(context.Context) error { return nil }
 func (b *browserCompatBackend) UsesRelay(context.Context, string) bool {
 	return b.usesRelay
 }
-func (b *browserCompatBackend) Navigate(_ context.Context, url string, targetID string) (BrowserNavResult, error) {
+func (b *browserCompatBackend) Navigate(ctx context.Context, url string, targetID string) (BrowserNavResult, error) {
+	if ctxHint := GetBrowserRouteHint(ctx); ctxHint.Action != "" {
+		b.lastRouteHint = ctxHint
+	}
 	b.navigateURL = url
 	b.navigateTargetID = targetID
 	if targetID == "" {
@@ -116,6 +120,12 @@ func TestBrowserToolExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 	if backend.navigateTargetID != "tab-9" {
 		t.Fatalf("navigateTargetID = %q, want tab-9", backend.navigateTargetID)
+	}
+	if backend.lastRouteHint.Action != "navigate" || backend.lastRouteHint.FollowupAction != "snapshot_auto" {
+		t.Fatalf("lastRouteHint = %#v, want navigate/snapshot_auto", backend.lastRouteHint)
+	}
+	if !backend.lastRouteHint.Vision || !backend.lastRouteHint.RequiresImage {
+		t.Fatalf("lastRouteHint = %#v, want vision/image hint", backend.lastRouteHint)
 	}
 	var out map[string]interface{}
 	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {

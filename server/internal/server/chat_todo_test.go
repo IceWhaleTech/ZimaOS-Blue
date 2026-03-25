@@ -2068,6 +2068,13 @@ func TestExtractRequestedArtifactWriteTarget_PrefersExplicitOutputPathInMultiFil
 	}
 }
 
+func TestExtractRequestedArtifactWriteTarget_IgnoresSourcePathMentionedAsWorkspaceAlias(t *testing.T) {
+	prompt := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`."
+	if got := extractRequestedArtifactWriteTarget(prompt); got != "answer.txt" {
+		t.Fatalf("write target = %q, want answer.txt", got)
+	}
+}
+
 func TestExtractRequestedArtifactWriteTarget_PrefersExplicitMemoryStoreTargetInMultiFilePrompt(t *testing.T) {
 	prompt := "Use `memory/MEMORY.md` as the source of truth and save the cleaned summary to `memory/project_summary.md` for future recall."
 	if got := extractRequestedArtifactWriteTarget(prompt); got != "memory/project_summary.md" {
@@ -2365,6 +2372,32 @@ func TestBuildPostWorkspaceArtifactContinuationTools_PrioritizesWritingAfterRead
 	}
 	if containsLLMToolName(reduced, "ls") || containsLLMToolName(reduced, "find") {
 		t.Fatalf("expected continuation tools to de-prioritize fresh discovery after successful reads, got=%v", reduced)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationTools_StructuredTasksDropEditAfterContentEvidence(t *testing.T) {
+	reduced := buildPostWorkspaceArtifactContinuationTools([]llm.Tool{
+		{Name: "file_write"},
+		{Name: "edit"},
+		{Name: "write_begin"},
+		{Name: "write_chunk"},
+		{Name: "write_commit"},
+		{Name: "pdf"},
+		{Name: "file_read"},
+	}, "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. Extract several answers from it and write them one answer per line to `answer.txt`.", []llm.ToolCall{
+		{ID: "call-1", Name: "pdf"},
+	}, []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"openclaw_report.pdf","raw_text":"The public registry had 5,705 skills and 2,999 after filtering."}`},
+	})
+
+	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected structured continuation tools to preserve file_write, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "edit") {
+		t.Fatalf("expected structured continuation tools to exclude edit after content evidence, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "pdf") || containsLLMToolName(reduced, "file_read") {
+		t.Fatalf("expected structured continuation tools to focus on writing once evidence exists, got=%v", reduced)
 	}
 }
 

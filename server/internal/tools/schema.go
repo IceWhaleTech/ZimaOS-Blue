@@ -232,6 +232,11 @@ func normalizeSchemaValue(raw interface{}, topLevel bool) interface{} {
 		if _, exists := out["properties"]; !exists {
 			out["properties"] = map[string]interface{}{}
 		}
+		if _, exists := out["required"]; !exists {
+			// Some OpenAI-compatible relays reject object schemas when `required`
+			// is omitted, even though plain JSON Schema treats it as optional.
+			out["required"] = []string{}
+		}
 		if props, ok := out["properties"].(map[string]interface{}); ok && len(props) > 0 {
 			if _, exists := out["additionalProperties"]; !exists {
 				out["additionalProperties"] = false

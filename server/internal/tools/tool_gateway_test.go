@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
 
@@ -273,6 +274,126 @@ func TestToolGatewayWrapsExternalContentForLLM(t *testing.T) {
 	}
 	if strings.Contains(result.CompactLLMContent, "\x1b[31m") {
 		t.Fatalf("compact payload should strip ANSI, got %q", result.CompactLLMContent)
+	}
+}
+
+func TestToolGatewayCompactsPDFPayloadForLLM(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(&gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "pdf",
+			Description: "pdf",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+		result: pdfextract.ExtractResult{
+			Document:      pdfextract.DocumentInfo{FileName: "report.pdf", PageCount: 2},
+			Text:          "merged document text",
+			RawText:       "raw merged document text",
+			SelectedPages: []int{1, 2},
+			Pages: []pdfextract.PageText{
+				{Number: 1, Text: "page one", RawText: "raw page one", CharCount: 8, Source: "text"},
+				{Number: 2, Text: "page two", RawText: "raw page two", CharCount: 8, Source: "text"},
+			},
+			CharCount: 16,
+		},
+	})
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-pdf",
+		ToolName:   "pdf",
+		Arguments:  `{}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.CompactLLMContent), &payload); err != nil {
+		t.Fatalf("decode compact payload: %v", err)
+	}
+	if _, exists := payload["raw_text"]; exists {
+		t.Fatalf("compact payload should drop top-level raw_text: %#v", payload)
+	}
+	if _, exists := payload["text"]; exists {
+		t.Fatalf("compact payload should avoid duplicate merged text when pages are available: %#v", payload)
+	}
+	pages, ok := payload["pages"].([]interface{})
+	if !ok || len(pages) != 2 {
+		t.Fatalf("pages = %#v, want 2 entries", payload["pages"])
+	}
+	firstPage, ok := pages[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("first page = %#v", pages[0])
+	}
+	if _, exists := firstPage["raw_text"]; exists {
+		t.Fatalf("compact page payload should drop raw_text: %#v", firstPage)
+	}
+	if got := firstPage["text"]; got != "page one" {
+		t.Fatalf("first page text = %v, want page one", got)
+	}
+}
+
+func TestToolGatewayCompactsPDFPayloadForLLM_DerivesPagesBeforeSanitize(t *testing.T) {
+	longPage := strings.Repeat("A", 5000)
+	secondPage := strings.Repeat("B", 5000)
+	thirdPage := "final page needle"
+
+	registry := NewRegistry()
+	registry.Register(&gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "pdf",
+			Description: "pdf",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+		result: pdfextract.ExtractResult{
+			Document:      pdfextract.DocumentInfo{FileName: "report.pdf", PageCount: 3},
+			Text:          "[Page 1]\n" + longPage + "\n\n[Page 2]\n" + secondPage + "\n\n[Page 3]\n" + thirdPage,
+			SelectedPages: []int{1, 2, 3},
+			CharCount:     len(longPage) + len(secondPage) + len(thirdPage),
+		},
+	})
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-pdf-derived-pages",
+		ToolName:   "pdf",
+		Arguments:  `{}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.CompactLLMContent), &payload); err != nil {
+		t.Fatalf("decode compact payload: %v", err)
+	}
+	if _, exists := payload["text"]; exists {
+		t.Fatalf("compact payload should prefer derived pages over merged text: %#v", payload)
+	}
+	pages, ok := payload["pages"].([]interface{})
+	if !ok || len(pages) != 3 {
+		t.Fatalf("pages = %#v, want 3 entries", payload["pages"])
+	}
+	lastPage, ok := pages[2].(map[string]interface{})
+	if !ok {
+		t.Fatalf("last page = %#v", pages[2])
+	}
+	if got := lastPage["number"]; got != float64(3) {
+		t.Fatalf("last page number = %v, want 3", got)
+	}
+	if got := lastPage["text"]; got != thirdPage {
+		t.Fatalf("last page text = %v, want %q", got, thirdPage)
 	}
 }
 

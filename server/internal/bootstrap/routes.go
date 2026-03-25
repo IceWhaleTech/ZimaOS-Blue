@@ -1866,16 +1866,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 
-	// Ask-user-question: QuestionManager for handling question dialogs
-	var questionMgr *tools.QuestionManager
-	if deps.SSEBroker != nil {
-		questionMgr = tools.NewQuestionManager(deps.SSEBroker, nil, 5*time.Minute)
-		if sk := s.SkillRegistry.Get("ask"); sk != nil {
-			if askSkill, ok := sk.(*builtin.Ask); ok {
-				askSkill.SetQuestioner(&questionManagerAskAdapter{mgr: questionMgr})
-			}
-		}
-	}
+	// Ask-user-question: QuestionManager for handling question dialogs.
+	// Keep ask available as both a native tool and a built-in skill.
+	questionMgr := wireAskSupport(s.ToolRegistry, s.SkillRegistry, deps.SSEBroker, 5*time.Minute)
 	browserCheckpointMgr := tools.NewBrowserCheckpointManager(5 * time.Minute)
 	var browserSiteStore *tools.BrowserSiteAllowlistStore
 	if deps.DB != nil {

@@ -93,7 +93,7 @@ func TestRodServiceSessionScreenshotLifecycleE2E(t *testing.T) {
 	)
 	require.Equal(t, http.StatusOK, firstShotRec.Code, firstShotRec.Body.String())
 
-	var firstShot browserSessionScreenshotResponse
+	var firstShot SessionScreenshotResponse
 	require.NoError(t, json.Unmarshal(firstShotRec.Body.Bytes(), &firstShot))
 	require.NotEmpty(t, firstShot.Screenshot)
 	require.Len(t, firstShot.History, 1)
@@ -117,7 +117,7 @@ func TestRodServiceSessionScreenshotLifecycleE2E(t *testing.T) {
 	)
 	require.Equal(t, http.StatusOK, secondShotRec.Code, secondShotRec.Body.String())
 
-	var secondShot browserSessionScreenshotResponse
+	var secondShot SessionScreenshotResponse
 	require.NoError(t, json.Unmarshal(secondShotRec.Body.Bytes(), &secondShot))
 	require.NotEmpty(t, secondShot.Screenshot)
 	require.NotEqual(t, firstShot.Screenshot, secondShot.Screenshot)
@@ -132,7 +132,7 @@ func TestRodServiceSessionScreenshotLifecycleE2E(t *testing.T) {
 	sessionsRec := performBrowserJSONRequest(echoServer, http.MethodGet, "/browser/sessions", "")
 	require.Equal(t, http.StatusOK, sessionsRec.Code, sessionsRec.Body.String())
 
-	var sessions []browserSessionResponse
+	var sessions []SessionInfo
 	require.NoError(t, json.Unmarshal(sessionsRec.Body.Bytes(), &sessions))
 	require.Len(t, sessions, 1)
 	assert.Equal(t, tab.TargetID, sessions[0].ID)
@@ -158,7 +158,7 @@ func TestRodServiceSessionScreenshotLifecycleE2E(t *testing.T) {
 	)
 	require.Equal(t, http.StatusOK, afterCloseRec.Code, afterCloseRec.Body.String())
 
-	var afterClose browserSessionScreenshotResponse
+	var afterClose SessionScreenshotResponse
 	require.NoError(t, json.Unmarshal(afterCloseRec.Body.Bytes(), &afterClose))
 	assert.Empty(t, afterClose.Screenshot)
 	assert.Empty(t, afterClose.History)
@@ -217,7 +217,7 @@ func TestRodServiceDetachedScreenshotAppearsInMonitorSessionsE2E(t *testing.T) {
 	sessionsRec := performBrowserJSONRequest(echoServer, http.MethodGet, "/browser/sessions", "")
 	require.Equal(t, http.StatusOK, sessionsRec.Code, sessionsRec.Body.String())
 
-	var sessions []browserSessionResponse
+	var sessions []SessionInfo
 	require.NoError(t, json.Unmarshal(sessionsRec.Body.Bytes(), &sessions))
 	require.Len(t, sessions, 1)
 	assert.Equal(t, detachedMonitorTargetID, sessions[0].ID)
@@ -232,7 +232,7 @@ func TestRodServiceDetachedScreenshotAppearsInMonitorSessionsE2E(t *testing.T) {
 	)
 	require.Equal(t, http.StatusOK, firstShotRec.Code, firstShotRec.Body.String())
 
-	var firstShot browserSessionScreenshotResponse
+	var firstShot SessionScreenshotResponse
 	require.NoError(t, json.Unmarshal(firstShotRec.Body.Bytes(), &firstShot))
 	require.Equal(t, firstResp.Data, firstShot.Screenshot)
 	require.Len(t, firstShot.History, 1)
@@ -252,7 +252,7 @@ func TestRodServiceDetachedScreenshotAppearsInMonitorSessionsE2E(t *testing.T) {
 	)
 	require.Equal(t, http.StatusOK, secondShotRec.Code, secondShotRec.Body.String())
 
-	var secondShot browserSessionScreenshotResponse
+	var secondShot SessionScreenshotResponse
 	require.NoError(t, json.Unmarshal(secondShotRec.Body.Bytes(), &secondShot))
 	require.Equal(t, secondResp.Data, secondShot.Screenshot)
 	require.Len(t, secondShot.History, 2)

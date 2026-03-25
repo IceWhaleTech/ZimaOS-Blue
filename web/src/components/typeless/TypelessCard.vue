@@ -84,8 +84,8 @@ function handleSelect(selectedIds: string[], otherText?: string) {
       <div class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-pulse" />
     </div>
 
-    <!-- Functional rendering for simple cards (table, code, list, info, quote, alert, terminal) -->
-    <!-- Dynamic components: progress, action, result, detection, chart, gallery, file, link, metric, comparison, steps, map, weather, profile, countdown, rating, accordion, audio, choice, collapsible-code, diff, video, ui-review-progress -->
+    <!-- Functional rendering for simple cards (table, code, list, info, quote, alert) -->
+    <!-- Dynamic components: progress, action, result, detection, chart, gallery, file, link, metric, comparison, steps, map, weather, profile, countdown, rating, accordion, audio, choice, collapsible-code, diff, terminal, video, ui-review-progress -->
     <div v-if="isFunctional" v-html="functionalHtml" />
 
     <!-- Loading state -->

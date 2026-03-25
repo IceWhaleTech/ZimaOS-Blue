@@ -21,6 +21,7 @@ func TestRegisterAll(t *testing.T) {
 		NewDeepResearch(),
 		NewWebSearch(),
 		NewUIReviewer(),
+		NewHumanizer(),
 	}
 
 	expected := GetSkillCount()

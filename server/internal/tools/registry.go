@@ -1442,6 +1442,11 @@ func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
 	if json.Unmarshal([]byte(raw), &args) == nil {
 		return args, true
 	}
+	if escaped := escapeLiteralJSONStringControlChars(raw); escaped != raw {
+		if json.Unmarshal([]byte(escaped), &args) == nil {
+			return args, true
+		}
+	}
 	if repaired, ok := extractLastJSONObjectFromConcatenatedPayload(raw); ok {
 		if json.Unmarshal([]byte(repaired), &args) == nil {
 			return args, true
@@ -1514,6 +1519,70 @@ func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
 	}
 
 	return nil, false
+}
+
+func escapeLiteralJSONStringControlChars(raw string) string {
+	if raw == "" {
+		return raw
+	}
+
+	var out strings.Builder
+	out.Grow(len(raw) + 16)
+
+	inString := false
+	escaped := false
+	changed := false
+
+	for i := 0; i < len(raw); i++ {
+		ch := raw[i]
+		if inString {
+			if escaped {
+				out.WriteByte(ch)
+				escaped = false
+				continue
+			}
+			switch ch {
+			case '\\':
+				out.WriteByte(ch)
+				escaped = true
+				continue
+			case '"':
+				out.WriteByte(ch)
+				inString = false
+				continue
+			case '\n':
+				out.WriteString(`\n`)
+				changed = true
+				continue
+			case '\r':
+				out.WriteString(`\r`)
+				changed = true
+				continue
+			case '\t':
+				out.WriteString(`\t`)
+				changed = true
+				continue
+			default:
+				if ch < 0x20 {
+					out.WriteString(fmt.Sprintf(`\u%04x`, ch))
+					changed = true
+					continue
+				}
+			}
+			out.WriteByte(ch)
+			continue
+		}
+
+		if ch == '"' {
+			inString = true
+		}
+		out.WriteByte(ch)
+	}
+
+	if !changed {
+		return raw
+	}
+	return out.String()
 }
 
 // parseLooseArgs tries to recover non-JSON arguments commonly emitted by LLMs:

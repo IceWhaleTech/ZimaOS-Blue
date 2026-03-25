@@ -7290,7 +7290,15 @@ func memoryFileWorkflowToolNames() []string {
 }
 
 func structuredWorkspaceArtifactWriteCompletionToolNames(target string) []string {
-	return artifactWriteCompletionToolNames(target)
+	names := make([]string, 0, 5)
+	if isOfficeArtifactPath(target) {
+		names = append(names, "office")
+	}
+	// For structured extraction tasks, prefer direct file creation over
+	// in-place edit variants so the model does not detour into editing
+	// placeholder or synthetic paths after evidence is already sufficient.
+	names = append(names, "write", "write_begin", "write_chunk", "write_commit")
+	return names
 }
 
 func artifactWriteCompletionToolNames(target string) []string {
@@ -14168,6 +14176,7 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 		if auditPayload == "" {
 			auditPayload = content
 		}
+		content = contentForChatToolHistory(tc.Name, content, auditPayload)
 		h.recordToolPayloadAudit(ctx, "tool_result", string(llm.RoleTool), tc, auditPayload, err != nil)
 		results = append(results, llm.Message{
 			Role:       llm.RoleTool,
@@ -14177,6 +14186,24 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 		})
 	}
 	return results
+}
+
+func contentForChatToolHistory(toolName, content, auditPayload string) string {
+	auditPayload = strings.TrimSpace(auditPayload)
+	if auditPayload == "" {
+		return content
+	}
+
+	switch normalizeFileToolCompatName(toolName) {
+	case "pdf":
+		return auditPayload
+	case "read", "file_read":
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(auditPayload), &payload) == nil && isPDFPayloadForLLM(payload) {
+			return auditPayload
+		}
+	}
+	return content
 }
 
 func (h *ChatHandler) withDirectoryWhitelistFSScope(ctx context.Context) context.Context {
@@ -14286,7 +14313,7 @@ func buildPostWriteCompletionNudge(userMessage string, toolCalls []llm.ToolCall,
 	}
 	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
 	if target != "" {
-		if !hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) {
+		if !hasSatisfiedRequestedArtifactWrite(userMessage, toolCalls, toolResults) {
 			return ""
 		}
 	} else {
@@ -14357,7 +14384,7 @@ func buildPostWorkspaceArtifactContinuationNudge(userMessage string, toolCalls [
 	if target == "" {
 		return ""
 	}
-	if hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) {
+	if hasSatisfiedRequestedArtifactWrite(userMessage, toolCalls, toolResults) {
 		return ""
 	}
 	if !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
@@ -14415,7 +14442,7 @@ func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage s
 		return tools
 	}
 	target := extractRequestedArtifactWriteTarget(userMessage)
-	if target == "" || hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) || !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
+	if target == "" || hasSatisfiedRequestedArtifactWrite(userMessage, toolCalls, toolResults) || !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
 		return tools
 	}
 
@@ -14758,6 +14785,69 @@ func hasWorkspaceArtifactProgress(toolCalls []llm.ToolCall, toolResults []llm.Me
 		}
 	}
 	return false
+}
+
+func maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage string, currentToolCalls []llm.ToolCall, historyToolCalls []llm.ToolCall, historyToolResults []llm.Message) ([]llm.ToolCall, bool) {
+	questions := extractNumberedQuestions(userMessage)
+	if len(currentToolCalls) == 0 {
+		return currentToolCalls, false
+	}
+
+	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
+	normalizedTarget := normalizeWorkspaceArtifactComparablePath(target)
+	if normalizedTarget == "" {
+		return currentToolCalls, false
+	}
+
+	evidence := collectWorkspaceArtifactEvidence(historyToolCalls, historyToolResults)
+	if len(evidence) == 0 {
+		return currentToolCalls, false
+	}
+
+	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(userMessage, target, evidence, questions)
+	if !ok || strings.TrimSpace(draft) == "" {
+		return currentToolCalls, false
+	}
+
+	overridden := false
+	out := append([]llm.ToolCall(nil), currentToolCalls...)
+	for i := range out {
+		toolName := normalizeFileToolCompatName(out[i].Name)
+		if toolName != "write" && toolName != "file_write" {
+			continue
+		}
+		normalizedArgs := normalizeToolCallArgumentsForExecution(out[i].Arguments)
+		if strings.TrimSpace(normalizedArgs) == "" {
+			continue
+		}
+
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(normalizedArgs), &payload) != nil || len(payload) == 0 {
+			continue
+		}
+
+		writePath := normalizeWorkspaceArtifactComparablePath(anyToStringForLLM(payload["path"]))
+		if writePath == "" || writePath != normalizedTarget {
+			continue
+		}
+
+		currentContent := strings.TrimSpace(anyToStringForLLM(payload["content"]))
+		if currentContent == strings.TrimSpace(draft) {
+			continue
+		}
+
+		payload["content"] = draft
+		payload["append"] = false
+		payload["create_dirs"] = true
+		updatedArgs, err := json.Marshal(payload)
+		if err != nil {
+			continue
+		}
+		out[i].Arguments = string(updatedArgs)
+		overridden = true
+	}
+
+	return out, overridden
 }
 
 func isWorkspaceArtifactProgressTool(name string) bool {
@@ -15454,7 +15544,8 @@ func isResearchRecoveryToolName(name string) bool {
 
 var requestedArtifactPathRegex = regexp.MustCompile("`([^`]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))`|\\b([A-Za-z0-9._/\\-]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))\\b")
 var savedGeneratedImagePathRegex = regexp.MustCompile(`(?i)\bsaved generated image to\s+["']?([^"'\n]+?\.(?:png|jpe?g|webp|gif))["']?`)
-var artifactWriteTargetPrepCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}(?:to|as|into|in|under|at)\s*$|(?:写(?:到|入|进)|保存(?:到|为|在)|输出到|导出到|生成到|存(?:到|入|在)|记录到|整理到|总结到|提取到|写成)\s*$`)
+var artifactWriteTargetPrepCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}(?:to|into|in|under|at)\s*$|(?:写(?:到|入|进)|保存(?:到|在)|输出到|导出到|生成到|存(?:到|入|在)|记录到|整理到|总结到|提取到)\s*$`)
+var artifactWriteTargetAsCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}\bas\s*$|(?:写(?:成|为)|保存为|输出为|导出为|生成为|存为|记录为|整理为|总结为|提取为)\s*$`)
 var artifactWriteTargetDirectCueRegex = regexp.MustCompile(`(?is)(?:create|generate|generated|draft|produce|output|export|write)\s*$|(?:创建|生成|写入|写出)\s*$`)
 
 type artifactPathCandidate struct {
@@ -15585,6 +15676,8 @@ func scoreArtifactWriteTargetCandidate(userMessage string, candidate artifactPat
 	}
 	switch {
 	case artifactWriteTargetPrepCueRegex.MatchString(before):
+		return 3
+	case artifactWriteTargetAsCueRegex.MatchString(before):
 		return 3
 	case artifactWriteTargetDirectCueRegex.MatchString(before):
 		return 2
@@ -15738,7 +15831,7 @@ func buildSuccessfulArtifactCompletion(userMessage string, toolCalls []llm.ToolC
 	if target == "" || isImageArtifactPath(target) {
 		return ""
 	}
-	if extractRequestedArtifactWriteTarget(userMessage) != "" && !hasRequestedArtifactWriteSuccess(userMessage, toolCalls, toolResults) {
+	if extractRequestedArtifactWriteTarget(userMessage) != "" && !hasSatisfiedRequestedArtifactWrite(userMessage, toolCalls, toolResults) {
 		return ""
 	}
 	return fmt.Sprintf("Saved the requested file to %q.", target)
@@ -16443,20 +16536,21 @@ func compactPDFPayloadForLLM(payload map[string]interface{}) map[string]interfac
 		}
 	}
 
-	if text := strings.TrimSpace(anyToStringForLLM(payload["text"])); text != "" {
-		out["text"] = compactPDFTextForLLM(text, 6, 3600)
-	}
-	if rawText := strings.TrimSpace(anyToStringForLLM(payload["raw_text"])); rawText != "" {
-		compactedRaw := compactPDFTextForLLM(rawText, 4, 2200)
-		if compactedRaw != anyToStringForLLM(out["text"]) {
-			out["raw_text"] = compactedRaw
-		}
-	}
-
 	if pages, ok := payload["pages"].([]interface{}); ok && len(pages) > 0 {
-		compactedPages := compactPDFPagesForLLM(pages, 4)
+		compactedPages := compactPDFPagesForLLM(pages, 12)
 		if len(compactedPages) > 0 {
 			out["pages"] = compactedPages
+		}
+	}
+	if _, hasPages := out["pages"]; !hasPages {
+		if text := strings.TrimSpace(anyToStringForLLM(payload["text"])); text != "" {
+			out["text"] = compactPDFTextForLLM(text, 6, 3600)
+		}
+		if rawText := strings.TrimSpace(anyToStringForLLM(payload["raw_text"])); rawText != "" {
+			compactedRaw := compactPDFTextForLLM(rawText, 4, 2200)
+			if compactedRaw != anyToStringForLLM(out["text"]) {
+				out["raw_text"] = compactedRaw
+			}
 		}
 	}
 
@@ -16470,7 +16564,14 @@ func compactPDFPagesForLLM(pages []interface{}, limit int) []interface{} {
 	if len(pages) == 0 || limit <= 0 {
 		return nil
 	}
-	indexes := selectDistributedIndexesForLLM(len(pages), limit)
+	indexes := make([]int, 0, min(len(pages), limit))
+	if len(pages) <= limit {
+		for i := 0; i < len(pages); i++ {
+			indexes = append(indexes, i)
+		}
+	} else {
+		indexes = selectDistributedIndexesForLLM(len(pages), limit)
+	}
 	out := make([]interface{}, 0, len(indexes))
 	for _, idx := range indexes {
 		row, ok := pages[idx].(map[string]interface{})
@@ -18710,6 +18811,20 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 			}
 			staleIntentGuardTrips = 0
+			if workspaceArtifactHistoryTarget != "" {
+				if overriddenToolCalls, overridden := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(
+					routingMessage,
+					resp.Message.ToolCalls,
+					workspaceArtifactHistoryCalls,
+					workspaceArtifactHistoryResults,
+				); overridden {
+					resp.Message.ToolCalls = overriddenToolCalls
+					logger.Info().
+						Int("round", round).
+						Str("target", workspaceArtifactHistoryTarget).
+						Msg("[chat] replaced assistant write content with deterministic workspace artifact draft")
+				}
+			}
 			// Execute tool calls and feed results back
 			logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
 			roundToolCtx := withToolProviderContext(toolCtx, resp.Provider, resp.ProviderID, resp.Model)
@@ -18763,6 +18878,42 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			chatReq.Messages = append(chatReq.Messages, compactAssistantToolContextForLLM(resp.Message))
 			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
 			awaitingPostToolSummary = len(toolResults) > 0
+			if shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(
+				routingMessage,
+				resp.Message.ToolCalls,
+				toolResults,
+				workspaceArtifactHistoryCalls,
+				workspaceArtifactHistoryResults,
+			) {
+				if artifactFallback, ok := h.tryLLMWorkspaceArtifactOrchestration(
+					llmCtx,
+					chatReq.Model,
+					routingMessage,
+					workspaceArtifactHistoryCalls,
+					workspaceArtifactHistoryResults,
+				); ok {
+					workspaceArtifactWriteRecoveryPending = false
+					workspaceArtifactWriteRecoveryRetries = 0
+					workspaceArtifactEvidenceRoundsWithoutWrite = 0
+					searchArtifactRoundsWithoutWrite = 0
+					resp = &llm.ChatResponse{
+						Model:      artifactFallback.Model,
+						Provider:   artifactFallback.Provider,
+						ProviderID: artifactFallback.ProviderID,
+						Message: llm.Message{
+							Role:    llm.RoleAssistant,
+							Content: artifactFallback.Content,
+						},
+					}
+					logger.Warn().
+						Int("round", round).
+						Str("conv_id", convID).
+						Str("target", extractRequestedArtifactPath(routingMessage)).
+						Msg("[chat] repaired unsatisfactory structured workspace artifact write via synthesis orchestration")
+					awaitingPostToolSummary = false
+					break
+				}
+			}
 			if completion := buildSuccessfulArtifactCompletion(routingMessage, resp.Message.ToolCalls, toolResults); completion != "" {
 				resp = &llm.ChatResponse{
 					Model:      resp.Model,
@@ -18779,6 +18930,42 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 				awaitingPostToolSummary = false
 				break
+			}
+			if shouldUseImmediateWorkspaceArtifactOrchestration(
+				routingMessage,
+				resp.Message.ToolCalls,
+				toolResults,
+				workspaceArtifactHistoryCalls,
+				workspaceArtifactHistoryResults,
+			) {
+				if artifactFallback, ok := h.tryLLMWorkspaceArtifactOrchestration(
+					llmCtx,
+					chatReq.Model,
+					routingMessage,
+					workspaceArtifactHistoryCalls,
+					workspaceArtifactHistoryResults,
+				); ok {
+					workspaceArtifactWriteRecoveryPending = false
+					workspaceArtifactWriteRecoveryRetries = 0
+					workspaceArtifactEvidenceRoundsWithoutWrite = 0
+					searchArtifactRoundsWithoutWrite = 0
+					resp = &llm.ChatResponse{
+						Model:      artifactFallback.Model,
+						Provider:   artifactFallback.Provider,
+						ProviderID: artifactFallback.ProviderID,
+						Message: llm.Message{
+							Role:    llm.RoleAssistant,
+							Content: artifactFallback.Content,
+						},
+					}
+					logger.Info().
+						Int("round", round).
+						Str("conv_id", convID).
+						Str("target", extractRequestedArtifactPath(routingMessage)).
+						Msg("[chat] finalized numbered artifact directly after local content evidence via synthesis orchestration")
+					awaitingPostToolSummary = false
+					break
+				}
 			}
 			if todoContent != "" {
 				if progress := extractTodoProgress(todoContent); progress != "" {

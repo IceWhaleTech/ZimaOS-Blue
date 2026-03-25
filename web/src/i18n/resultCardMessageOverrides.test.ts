@@ -42,6 +42,8 @@ const requiredKeys = [
   'resultCard.messageTemplates.single_entry_in_path',
   'resultCard.messageTemplates.no_entries_in_path',
   'resultCard.messageTemplates.showing_first_entries_in_path',
+  'resultCard.messageTemplates.matches_for_pattern_in_path',
+  'resultCard.messageTemplates.no_matches_for_pattern_in_path',
   'resultCard.messageTemplates.screenshot_captured_for',
   'resultCard.warnings.listing_truncated',
 ] as const

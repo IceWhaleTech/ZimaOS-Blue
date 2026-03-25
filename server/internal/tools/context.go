@@ -26,11 +26,23 @@ const (
 	runStepKey     toolContextKey = "tool_run_step"
 	checkpointKey  toolContextKey = "tool_browser_checkpoint"
 	browserModeKey toolContextKey = "tool_browser_launch_mode"
+	browserHintKey toolContextKey = "tool_browser_route_hint"
 	fsScopeKey     toolContextKey = "tool_fs_scope"
 )
 
 type BrowserLaunchMode string
 type ToolRouteKind string
+
+// BrowserRouteHint carries high-level browser intent so the backend can choose
+// the right runtime before a request turns into engine-specific calls.
+type BrowserRouteHint struct {
+	Action           string
+	FollowupAction   string
+	Vision           bool
+	RequiresImage    bool
+	RequiresInteract bool
+	RequiresRecipe   bool
+}
 
 // ToolImageInput carries an inline image attachment through tool execution
 // context so review-style tools can recover the original image input even when
@@ -81,6 +93,20 @@ func WithCardEmitter(ctx context.Context, fn CardEmitFunc) context.Context {
 // WithBrowserCheckpointRequester returns a context carrying checkpoint callback.
 func WithBrowserCheckpointRequester(ctx context.Context, fn BrowserCheckpointFunc) context.Context {
 	return context.WithValue(ctx, checkpointKey, fn)
+}
+
+// WithBrowserRouteHint returns a context carrying browser routing hints.
+func WithBrowserRouteHint(ctx context.Context, hint BrowserRouteHint) context.Context {
+	return context.WithValue(ctx, browserHintKey, hint)
+}
+
+// GetBrowserRouteHint extracts browser routing hints from context.
+func GetBrowserRouteHint(ctx context.Context) BrowserRouteHint {
+	if ctx == nil {
+		return BrowserRouteHint{}
+	}
+	hint, _ := ctx.Value(browserHintKey).(BrowserRouteHint)
+	return hint
 }
 
 // EmitCard sends a typeless card to the client if an emitter is set.

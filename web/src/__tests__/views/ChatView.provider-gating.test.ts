@@ -406,6 +406,43 @@ describe('ChatView provider gating', () => {
     )
   })
 
+  it('anchors the routing menu to the clicked guidance button when providers need attention', async () => {
+    mocks.providerPoolStore.providers = [
+      {
+        id: 'openai',
+        type: 'builtin',
+        enabled: true,
+        status: 'error',
+        last_error: 'auth_error:invalid_api_key',
+      } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.enabledProviders = [...mocks.providerPoolStore.providers]
+    mocks.providerPoolStore.activeProviders = []
+
+    const wrapper = await mountChatView()
+    const guidanceRoutingButton = wrapper.get('[data-testid="chat-provider-guidance-routing"]')
+    const buttonEl = guidanceRoutingButton.element as HTMLButtonElement
+
+    vi.spyOn(buttonEl, 'getBoundingClientRect').mockReturnValue({
+      x: 840,
+      y: 580,
+      width: 120,
+      height: 44,
+      top: 580,
+      right: 960,
+      bottom: 624,
+      left: 840,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    await guidanceRoutingButton.trigger('click')
+    await settleView()
+
+    const menuStyle = wrapper.get('.routing-menu-floating').attributes('style')
+    expect(menuStyle).not.toContain('left: 0px')
+    expect(menuStyle).not.toContain('top: 0px')
+  })
+
   it('shows the enhanced mode info card on hover when Claude Code CLI is enabled', async () => {
     mocks.settingsStore.claudeCodeEnabled = true
 

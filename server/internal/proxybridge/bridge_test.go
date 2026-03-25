@@ -209,6 +209,80 @@ func TestMarshalChatRequestNormalizesTypedCompositeToolSchema(t *testing.T) {
 	}
 }
 
+func TestMarshalChatRequest_PreservesEmptyRequiredOnNestedObjectSchemas(t *testing.T) {
+	data, err := MarshalChatRequest(llm.ChatRequest{
+		Model: "gpt-5",
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hi"},
+		},
+		Tools: []llm.Tool{{
+			Name: "ask",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"questions": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"question": map[string]interface{}{"type": "string"},
+								"options": map[string]interface{}{
+									"type": "array",
+									"items": map[string]interface{}{
+										"oneOf": []interface{}{
+											map[string]interface{}{"type": "string"},
+											map[string]interface{}{
+												"type": "object",
+												"properties": map[string]interface{}{
+													"label": map[string]interface{}{"type": "string"},
+												},
+											},
+										},
+									},
+								},
+							},
+							"required": []string{"question"},
+						},
+					},
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("MarshalChatRequest() error = %v", err)
+	}
+
+	var req bridgeRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if len(req.Tools) != 1 {
+		t.Fatalf("len(req.Tools) = %d, want 1", len(req.Tools))
+	}
+
+	topRequired, ok := req.Tools[0].Function.Parameters["required"].([]interface{})
+	if !ok {
+		t.Fatalf("top-level required type = %T, want []interface{}", req.Tools[0].Function.Parameters["required"])
+	}
+	if len(topRequired) != 0 {
+		t.Fatalf("top-level required = %v, want empty array", topRequired)
+	}
+
+	props := req.Tools[0].Function.Parameters["properties"].(map[string]interface{})
+	questions := props["questions"].(map[string]interface{})
+	items := questions["items"].(map[string]interface{})
+	options := items["properties"].(map[string]interface{})["options"].(map[string]interface{})
+	oneOf := options["items"].(map[string]interface{})["oneOf"].([]interface{})
+	nestedObject := oneOf[1].(map[string]interface{})
+	nestedRequired, ok := nestedObject["required"].([]interface{})
+	if !ok {
+		t.Fatalf("nested required type = %T, want []interface{}", nestedObject["required"])
+	}
+	if len(nestedRequired) != 0 {
+		t.Fatalf("nested required = %v, want empty array", nestedRequired)
+	}
+}
+
 func TestMarshalChatRequest_EmptyAssistantContentStaysString(t *testing.T) {
 	data, err := MarshalChatRequest(llm.ChatRequest{
 		Model: "gpt-5",

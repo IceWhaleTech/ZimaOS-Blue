@@ -345,6 +345,11 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	if command == "" {
 		return nil, errors.New("command is required")
 	}
+	workdirArg := firstCompatString(args, "workdir", "cwd", "work_dir", "working_dir", "workDir", "workingDir")
+	if normalizedCommand, normalizedWorkdir, ok := normalizeBlueCLIExecCommand(command, workdirArg); ok {
+		command = normalizedCommand
+		workdirArg = normalizedWorkdir
+	}
 	strictShell, _ := compatBoolArg(args, execStrictShellArg)
 
 	if !strictShell {
@@ -427,7 +432,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 				)
 			}
 			if shouldParsePinnedSkillArgs(firstWord, restArgs) {
-				if result, ok := t.trySkillShortCircuit(ctx, command, nil); ok {
+				if result, ok := t.trySkillShortCircuit(ctx, command, nil, ""); ok {
 					return result, nil
 				}
 				return nil, fmt.Errorf("invalid %s arguments", firstWord)
@@ -456,7 +461,6 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		slog.Warn("[exec] toolNames is nil, auto-forward disabled", "command", command)
 	}
 
-	workdirArg := firstCompatString(args, "workdir", "cwd", "work_dir", "working_dir", "workDir", "workingDir")
 	langArg := firstCompatString(args, "lang", "language")
 	envRaw, _ := compatArgValue(args, "env")
 	envArg := parseEnvArg(envRaw)
@@ -581,6 +585,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Build environment.
 	env := buildExecEnv(envArg)
+	execCommand := rewriteBlueCLIExecutable(command)
 
 	// Auto-upgrade to sandbox for medium+ risk commands when sandbox is available
 	// and the caller didn't explicitly choose a host.
@@ -601,7 +606,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	// directly instead of spawning a subprocess + IPC round-trip.
 	if !strictShell && t.skillExec != nil && isBlueCommand {
 		slog.Info("[exec] trying blue skill short-circuit", "command", truncateStr(command, 200))
-		if result, ok := t.trySkillShortCircuit(ctx, command, warnings); ok {
+		if result, ok := t.trySkillShortCircuit(ctx, command, warnings, workdirArg); ok {
 			return result, nil
 		}
 		slog.Info("[exec] blue skill short-circuit not taken", "command", truncateStr(command, 200))
@@ -609,7 +614,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Sandbox mode: delegate to sandbox.Manager for filesystem-level isolation.
 	if hostArg == "sandbox" {
-		return t.runSandbox(ctx, command, workdir, envArg, timeout, warnings)
+		return t.runSandbox(ctx, execCommand, workdir, envArg, timeout, warnings)
 	}
 
 	// Create session.
@@ -639,9 +644,9 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	var execErr error
 
 	if usePTY && t.config.AllowPTY {
-		exitCode, execErr = t.runWithPTY(ctx, session, command, workdir, env, timeout)
+		exitCode, execErr = t.runWithPTY(ctx, session, execCommand, workdir, env, timeout)
 	} else {
-		exitCode, execErr = t.runDirect(ctx, session, command, workdir, env, timeout)
+		exitCode, execErr = t.runDirect(ctx, session, execCommand, workdir, env, timeout)
 	}
 
 	durationMs := time.Since(startedAt).Milliseconds()
@@ -950,7 +955,7 @@ func extractCardPayload(line string) (map[string]interface{}, bool) {
 // by calling the skill executor directly, avoiding subprocess + IPC overhead.
 // Returns (result, true) on success, (nil, false) if the command doesn't match
 // a skill or the skill executor fails (fall through to normal exec).
-func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, warnings []string) (interface{}, bool) {
+func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, warnings []string, workdirHint string) (interface{}, bool) {
 	// Parse: "blue <skillName> key=value key2=value2 ..." or "<skillName> key=value ..."
 	trimmed := strings.TrimSpace(command)
 
@@ -996,6 +1001,9 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 			}
 		}
 		parseKeyValuePairs(restArgs, input)
+	}
+	if trimmedWorkdir := strings.TrimSpace(workdirHint); trimmedWorkdir != "" {
+		input["__blue_workdir"] = trimmedWorkdir
 	}
 
 	// Support dotted skill aliases (e.g. "reminder.add ...") by mapping to
@@ -2065,6 +2073,62 @@ func buildExecEnv(extra map[string]string) []string {
 	return result
 }
 
+func normalizeBlueCLIExecCommand(command, workdirArg string) (string, string, bool) {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return command, workdirArg, false
+	}
+	if strings.HasPrefix(trimmed, "blue ") {
+		return trimmed, workdirArg, true
+	}
+	if strings.HasPrefix(trimmed, "/") {
+		return "blue " + trimmed, workdirArg, true
+	}
+	if strings.TrimSpace(workdirArg) != "" {
+		return command, workdirArg, false
+	}
+
+	left, right, ok := strings.Cut(trimmed, "&&")
+	if !ok {
+		return command, workdirArg, false
+	}
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if !strings.HasPrefix(left, "cd ") || right == "" {
+		return command, workdirArg, false
+	}
+
+	cdTarget := strings.TrimSpace(strings.TrimPrefix(left, "cd "))
+	cdTarget = strings.Trim(cdTarget, `"'`)
+	if cdTarget == "" {
+		return command, workdirArg, false
+	}
+
+	switch {
+	case strings.HasPrefix(right, "blue "):
+		return right, cdTarget, true
+	case strings.HasPrefix(right, "/"):
+		return "blue " + right, cdTarget, true
+	default:
+		return command, workdirArg, false
+	}
+}
+
+func rewriteBlueCLIExecutable(command string) string {
+	trimmed := strings.TrimSpace(command)
+	if !strings.HasPrefix(trimmed, "blue ") {
+		return command
+	}
+	exePath, err := os.Executable()
+	if err != nil {
+		return command
+	}
+	if strings.EqualFold(filepath.Base(exePath), "blue") {
+		return command
+	}
+	return strconv.Quote(exePath) + strings.TrimPrefix(trimmed, "blue")
+}
+
 func parseEnvArg(v interface{}) map[string]string {
 	if v == nil {
 		return nil
@@ -2289,10 +2353,24 @@ func resolveCommandPathToken(commandName string, index int, token string, cwd st
 	if token == "" {
 		return "", false
 	}
+	if isBlueSlashCommandToken(commandName, index, token) {
+		return "", false
+	}
 	if strings.EqualFold(commandName, "cd") && index == 1 {
 		return normalizeCommandPathToken(token, cwd, true), true
 	}
 	return normalizeCommandPathToken(token, cwd, false), false
+}
+
+func isBlueSlashCommandToken(commandName string, index int, token string) bool {
+	if index != 1 || !strings.EqualFold(strings.TrimSpace(commandName), "blue") {
+		return false
+	}
+	token = strings.TrimSpace(token)
+	if !strings.HasPrefix(token, "/") || len(token) <= 1 {
+		return false
+	}
+	return !strings.Contains(token[1:], "/") && !strings.Contains(token, `\`)
 }
 
 func normalizeCommandPathToken(token string, cwd string, allowBare bool) string {

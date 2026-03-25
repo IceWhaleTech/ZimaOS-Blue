@@ -102,6 +102,77 @@ func TestResolveWorkdir(t *testing.T) {
 	}
 }
 
+func TestNormalizeBlueCLIExecCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		command     string
+		workdirArg  string
+		wantCommand string
+		wantWorkdir string
+		wantOK      bool
+	}{
+		{
+			name:        "plain blue command",
+			command:     "blue /install humanizer",
+			wantCommand: "blue /install humanizer",
+			wantOK:      true,
+		},
+		{
+			name:        "plain slash command",
+			command:     "/install humanizer",
+			wantCommand: "blue /install humanizer",
+			wantOK:      true,
+		},
+		{
+			name:        "cd chain with blue command",
+			command:     "cd /tmp/workspace && blue /install humanizer",
+			wantCommand: "blue /install humanizer",
+			wantWorkdir: "/tmp/workspace",
+			wantOK:      true,
+		},
+		{
+			name:        "cd chain with slash command",
+			command:     "cd /tmp/workspace && /install humanizer",
+			wantCommand: "blue /install humanizer",
+			wantWorkdir: "/tmp/workspace",
+			wantOK:      true,
+		},
+		{
+			name:        "explicit workdir keeps original command",
+			command:     "cd /tmp/workspace && blue /install humanizer",
+			workdirArg:  "/already/set",
+			wantCommand: "cd /tmp/workspace && blue /install humanizer",
+			wantWorkdir: "/already/set",
+			wantOK:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotCommand, gotWorkdir, gotOK := normalizeBlueCLIExecCommand(tt.command, tt.workdirArg)
+			if gotCommand != tt.wantCommand {
+				t.Fatalf("command = %q, want %q", gotCommand, tt.wantCommand)
+			}
+			if gotWorkdir != tt.wantWorkdir {
+				t.Fatalf("workdir = %q, want %q", gotWorkdir, tt.wantWorkdir)
+			}
+			if gotOK != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", gotOK, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestRewriteBlueCLIExecutable_UsesCurrentBinary(t *testing.T) {
+	rewritten := rewriteBlueCLIExecutable("blue /install humanizer")
+	if !strings.Contains(rewritten, "/install humanizer") {
+		t.Fatalf("rewritten command = %q, want slash command preserved", rewritten)
+	}
+	if strings.HasPrefix(rewritten, "blue ") {
+		t.Fatalf("rewritten command = %q, want current executable path prefix", rewritten)
+	}
+}
+
 // --- Session registry ---
 
 func TestSessionRegistry(t *testing.T) {
@@ -989,6 +1060,43 @@ func TestExecSkillShortCircuit_DottedAliasKeepsExplicitAction(t *testing.T) {
 	}
 	if gotInput["id"] != "push_1" {
 		t.Fatalf("id = %v, want %q", gotInput["id"], "push_1")
+	}
+}
+
+func TestExecSkillShortCircuit_PassesNormalizedWorkdirHint(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		if skillID != "humanizer" {
+			t.Fatalf("skillID = %q, want %q", skillID, "humanizer")
+		}
+		gotInput = input
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `cd /tmp/pinchbench && blue humanizer input=ai_blog.txt output=humanized_blog.txt`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := gotInput["__blue_workdir"]; got != "/tmp/pinchbench" {
+		t.Fatalf("__blue_workdir = %v, want %q", got, "/tmp/pinchbench")
+	}
+	if got := gotInput["input"]; got != "ai_blog.txt" {
+		t.Fatalf("input = %v, want %q", got, "ai_blog.txt")
+	}
+	if got := gotInput["output"]; got != "humanized_blog.txt" {
+		t.Fatalf("output = %v, want %q", got, "humanized_blog.txt")
 	}
 }
 
@@ -2044,6 +2152,7 @@ func TestExtractCommandPaths(t *testing.T) {
 		{name: "cd chain", command: "cd sub && cat ../allowed.txt", want: []string{filepath.Join(workdir, "sub"), filepath.Join(workdir, "allowed.txt")}},
 		{name: "redirect", command: "echo ok > ../out.txt", want: []string{filepath.Join(parentDir, "out.txt")}},
 		{name: "option assignment", command: "tool --output=./report.txt", want: []string{filepath.Join(workdir, "report.txt")}},
+		{name: "blue slash command", command: "blue /install humanizer", want: nil},
 	}
 
 	for _, tt := range tests {
@@ -2058,6 +2167,23 @@ func TestExtractCommandPaths(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestValidateCommandPathsIgnoresBlueSlashCommands(t *testing.T) {
+	allowedDir := t.TempDir()
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 10 * time.Second,
+		MaxTimeout:     30 * time.Second,
+		AllowedDirs:    []string{allowedDir},
+	}, sessions, nil, nil, nil)
+
+	if err := tool.validateCommandPaths(context.Background(), "blue /install humanizer", allowedDir, nil); err != nil {
+		t.Fatalf("validateCommandPaths returned error for blue slash command: %v", err)
 	}
 }
 

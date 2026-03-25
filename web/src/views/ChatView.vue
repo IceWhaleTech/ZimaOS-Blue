@@ -288,6 +288,7 @@ const enhancedModeCardCapabilities = computed(() => [
 
 const showRoutingMenu = ref(false)
 const routingMenuAnchorEl = ref<HTMLElement | null>(null)
+const desktopRoutingMenuAnchorEl = ref<HTMLElement | null>(null)
 const routingMenuFloatingRef = ref<HTMLElement | null>(null)
 const routingMenuPosition = ref({ x: 0, y: 0 })
 
@@ -1500,7 +1501,11 @@ function openAppSidebar() {
   toggleAppSidebar()
 }
 
-function positionRoutingMenu(trigger: HTMLElement | null = routingMenuAnchorEl.value) {
+function resolveRoutingMenuAnchor(trigger?: HTMLElement | null) {
+  return trigger ?? routingMenuAnchorEl.value ?? desktopRoutingMenuAnchorEl.value
+}
+
+function positionRoutingMenu(trigger: HTMLElement | null = resolveRoutingMenuAnchor()) {
   if (!trigger) return
 
   const rect = trigger.getBoundingClientRect()
@@ -1524,7 +1529,7 @@ function positionRoutingMenu(trigger: HTMLElement | null = routingMenuAnchorEl.v
 function updateRoutingMenuPosition() {
   if (isMobile.value || !showRoutingMenu.value) return
   nextTick(() => {
-    scheduleRoutingMenuReposition.flush()
+    positionRoutingMenu()
   })
 }
 
@@ -1534,8 +1539,9 @@ const scheduleRoutingMenuReposition = rafThrottle(() => {
 
 function toggleRoutingMenu(trigger?: HTMLElement | null) {
   showTopbarMenu.value = false
-  if (trigger) {
-    routingMenuAnchorEl.value = trigger
+  const anchor = resolveRoutingMenuAnchor(trigger)
+  if (anchor) {
+    routingMenuAnchorEl.value = anchor
   }
   if (showRoutingMenu.value) {
     showRoutingMenu.value = false
@@ -3147,6 +3153,7 @@ onUnmounted(() => {
                   }}</span>
                 </button>
                 <button
+                  ref="desktopRoutingMenuAnchorEl"
                   class="chat-thread-detail-btn chat-thread-routing-btn inline-flex items-center gap-2 transition-colors cursor-pointer routing-menu-anchor"
                   :class="{ 'is-active': showRoutingMenu }"
                   :title="routingButtonTitle"
@@ -3426,8 +3433,9 @@ onUnmounted(() => {
                           {{ providerInlineGuidanceCopy.primaryAction }}
                         </button>
                         <button
+                          data-testid="chat-provider-guidance-routing"
                           class="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                          @click="showRoutingMenu = true"
+                          @click.stop="handleRoutingMenuButtonClick"
                         >
                           {{ t('chat.routingMode.title') }}
                         </button>

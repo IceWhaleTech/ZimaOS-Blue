@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	maxToolGatewayAuditStringBytes = 64 * 1024
-	maxToolGatewayLLMStringBytes   = 8 * 1024
-	maxToolGatewaySanitizeDepth    = 64
+	maxToolGatewayAuditStringBytes   = 64 * 1024
+	maxToolGatewayLLMStringBytes     = 8 * 1024
+	maxToolGatewayPDFPreCompactBytes = 256 * 1024
+	maxToolGatewaySanitizeDepth      = 64
 )
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
@@ -492,6 +493,10 @@ func normalizeGatewayToolResult(raw interface{}) interface{} {
 }
 
 func compactToolPayloadForLLM(toolName string, raw interface{}) interface{} {
+	if strings.EqualFold(strings.TrimSpace(toolName), "pdf") {
+		preCompacted := sanitizeToolPayload(raw, maxToolGatewayPDFPreCompactBytes)
+		return sanitizeToolPayload(compactPDFPayloadForLLM(preCompacted), maxToolGatewayLLMStringBytes)
+	}
 	sanitized := sanitizeToolPayload(raw, maxToolGatewayLLMStringBytes)
 	if isExternalContentTool(toolName) {
 		return map[string]interface{}{
@@ -501,6 +506,155 @@ func compactToolPayloadForLLM(toolName string, raw interface{}) interface{} {
 		}
 	}
 	return sanitized
+}
+
+func compactPDFPayloadForLLM(raw interface{}) interface{} {
+	payload, ok := raw.(map[string]interface{})
+	if !ok || len(payload) == 0 {
+		return raw
+	}
+
+	out := make(map[string]interface{}, 8)
+	for _, key := range []string{
+		"document",
+		"selected_pages",
+		"char_count",
+		"truncated",
+		"ocr_used",
+		"ocr_pages",
+		"ocr_models",
+		"vision_used",
+		"vision_pages",
+		"vision_models",
+		"warnings",
+		"mode",
+		"count",
+		"documents",
+		"results",
+	} {
+		if value, exists := payload[key]; exists {
+			out[key] = value
+		}
+	}
+
+	if pages, exists := payload["pages"].([]interface{}); exists && len(pages) > 0 {
+		compactedPages := make([]interface{}, 0, len(pages))
+		for _, item := range pages {
+			page, ok := item.(map[string]interface{})
+			if !ok || len(page) == 0 {
+				continue
+			}
+			compacted := make(map[string]interface{}, 5)
+			for _, key := range []string{"number", "text", "char_count", "source", "empty"} {
+				if value, exists := page[key]; exists {
+					compacted[key] = value
+				}
+			}
+			if len(compacted) > 0 {
+				compactedPages = append(compactedPages, compacted)
+			}
+		}
+		if len(compactedPages) > 0 {
+			out["pages"] = compactedPages
+		}
+	} else if text, exists := payload["text"]; exists {
+		if derived := derivePDFPagesForLLM(anyToStringForLLM(text)); len(derived) > 0 {
+			out["pages"] = derived
+		}
+	}
+
+	if _, hasPages := out["pages"]; !hasPages {
+		if rawText, exists := payload["raw_text"]; exists {
+			if derived := derivePDFPagesForLLM(anyToStringForLLM(rawText)); len(derived) > 0 {
+				out["pages"] = derived
+			}
+		}
+	}
+
+	if _, hasPages := out["pages"]; !hasPages {
+		if text, exists := payload["text"]; exists {
+			out["text"] = text
+		}
+	}
+
+	if len(out) == 0 {
+		return raw
+	}
+	return out
+}
+
+func derivePDFPagesForLLM(text string) []interface{} {
+	sections := splitPDFSectionsForToolLLM(text)
+	if len(sections) == 0 {
+		return nil
+	}
+	pages := make([]interface{}, 0, len(sections))
+	for _, section := range sections {
+		number, body := parsePDFSectionForToolLLM(section)
+		if strings.TrimSpace(body) == "" {
+			continue
+		}
+		entry := map[string]interface{}{
+			"text": body,
+		}
+		if number > 0 {
+			entry["number"] = number
+		}
+		pages = append(pages, entry)
+	}
+	if len(pages) <= 1 {
+		return nil
+	}
+	return pages
+}
+
+func splitPDFSectionsForToolLLM(text string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	lines := strings.Split(text, "\n")
+	sections := make([]string, 0, 8)
+	var current strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[Page ") && strings.HasSuffix(trimmed, "]") {
+			if strings.TrimSpace(current.String()) != "" {
+				sections = append(sections, strings.TrimSpace(current.String()))
+				current.Reset()
+			}
+		}
+		if current.Len() > 0 {
+			current.WriteString("\n")
+		}
+		current.WriteString(line)
+	}
+	if strings.TrimSpace(current.String()) != "" {
+		sections = append(sections, strings.TrimSpace(current.String()))
+	}
+	if len(sections) <= 1 {
+		return nil
+	}
+	return sections
+}
+
+func parsePDFSectionForToolLLM(section string) (int, string) {
+	section = strings.TrimSpace(section)
+	if section == "" {
+		return 0, ""
+	}
+	lines := strings.Split(section, "\n")
+	if len(lines) == 0 {
+		return 0, section
+	}
+	first := strings.TrimSpace(lines[0])
+	if strings.HasPrefix(first, "[Page ") && strings.HasSuffix(first, "]") {
+		pageToken := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(first, "[Page "), "]"))
+		pageNumber, _ := strconv.Atoi(pageToken)
+		body := strings.TrimSpace(strings.Join(lines[1:], "\n"))
+		return pageNumber, body
+	}
+	return 0, section
 }
 
 // SafeToolPayloadValue normalizes arbitrary tool payloads into a JSON-safe,

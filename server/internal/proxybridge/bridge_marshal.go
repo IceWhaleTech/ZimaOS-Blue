@@ -417,6 +417,7 @@ func normalizeBridgeToolSchema(schema map[string]interface{}) map[string]interfa
 		return map[string]interface{}{
 			"type":                 "object",
 			"properties":           map[string]interface{}{},
+			"required":             []string{},
 			"additionalProperties": false,
 		}
 	}
@@ -475,7 +476,7 @@ func normalizeBridgeToolSchema(schema map[string]interface{}) map[string]interfa
 				out[key] = normalizeBridgeToolSchema(typed)
 			}
 		case "required":
-			if normalized := bridgeNormalizeStringList(value); len(normalized) > 0 {
+			if normalized := bridgeNormalizeStringList(value); normalized != nil {
 				out[key] = normalized
 			}
 		case "nullable":
@@ -494,6 +495,11 @@ func normalizeBridgeToolSchema(schema map[string]interface{}) map[string]interfa
 	if typeName, ok := out["type"].(string); ok && typeName == "object" {
 		if _, exists := out["properties"]; !exists {
 			out["properties"] = map[string]interface{}{}
+		}
+		if _, exists := out["required"]; !exists {
+			// Some OpenAI-compatible relays reject object schemas when `required`
+			// is omitted, even though plain JSON Schema treats it as optional.
+			out["required"] = []string{}
 		}
 		if _, exists := out["additionalProperties"]; !exists {
 			out["additionalProperties"] = false

@@ -21,21 +21,37 @@ type ConnectionPool struct {
 
 // NewConnectionPool creates a new connection pool
 func NewConnectionPool(config *ConnectionConfig) *ConnectionPool {
+	if config == nil {
+		config = DefaultConnectionConfig()
+	}
+	effective := *config
+	if !effective.KeepAlive {
+		// HTTP/2 is inherently connection-oriented and tends to keep a single
+		// session warm. When callers explicitly disable keep-alives, honor that
+		// intent by also disabling opportunistic HTTP/2 reuse.
+		effective.ForceHTTP2 = false
+	}
+
 	dnsCache := NewDNSCache(5*time.Minute, 128)
+	dialKeepAlive := effective.KeepAliveInterval
+	if !effective.KeepAlive {
+		dialKeepAlive = -1
+	}
 	dialer := &net.Dialer{
-		Timeout:   config.DialTimeout,
-		KeepAlive: config.KeepAliveInterval,
+		Timeout:   effective.DialTimeout,
+		KeepAlive: dialKeepAlive,
 	}
 
 	transport := &http.Transport{
 		DialContext:           dnsCache.DialContext(dialer),
-		MaxIdleConns:          config.MaxIdleConns,
-		MaxIdleConnsPerHost:   config.MaxIdleConnsPerHost,
-		MaxConnsPerHost:       config.MaxConnsPerHost,
-		IdleConnTimeout:       config.IdleConnTimeout,
-		TLSHandshakeTimeout:   config.TLSHandshakeTimeout,
-		ResponseHeaderTimeout: config.ResponseHeaderTimeout,
-		ForceAttemptHTTP2:     config.ForceHTTP2,
+		MaxIdleConns:          effective.MaxIdleConns,
+		MaxIdleConnsPerHost:   effective.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       effective.MaxConnsPerHost,
+		IdleConnTimeout:       effective.IdleConnTimeout,
+		DisableKeepAlives:     !effective.KeepAlive,
+		TLSHandshakeTimeout:   effective.TLSHandshakeTimeout,
+		ResponseHeaderTimeout: effective.ResponseHeaderTimeout,
+		ForceAttemptHTTP2:     effective.ForceHTTP2,
 		WriteBufferSize:       32 * 1024,
 		ReadBufferSize:        64 * 1024,
 		TLSClientConfig: &tls.Config{
@@ -46,10 +62,12 @@ func NewConnectionPool(config *ConnectionConfig) *ConnectionPool {
 	// Configure HTTP/2 with PING keepalive to detect dead connections early.
 	// Without this, idle HTTP/2 connections may be silently closed by intermediate
 	// proxies/LBs, causing the first request after idle to fail.
-	http2Transport, err := http2.ConfigureTransports(transport)
-	if err == nil {
-		http2Transport.ReadIdleTimeout = 30 * time.Second // send PING after 30s idle
-		http2Transport.PingTimeout = 15 * time.Second     // wait 15s for PONG
+	if effective.ForceHTTP2 {
+		http2Transport, err := http2.ConfigureTransports(transport)
+		if err == nil {
+			http2Transport.ReadIdleTimeout = 30 * time.Second // send PING after 30s idle
+			http2Transport.PingTimeout = 15 * time.Second     // wait 15s for PONG
+		}
 	}
 
 	insecureTransport := transport.Clone()
@@ -58,13 +76,15 @@ func NewConnectionPool(config *ConnectionConfig) *ConnectionPool {
 		InsecureSkipVerify: true, //nolint:gosec // user-opted skip for self-signed certs
 	}
 	// HTTP/2 PING for insecure transport too
-	if h2, err := http2.ConfigureTransports(insecureTransport); err == nil {
-		h2.ReadIdleTimeout = 30 * time.Second
-		h2.PingTimeout = 15 * time.Second
+	if effective.ForceHTTP2 {
+		if h2, err := http2.ConfigureTransports(insecureTransport); err == nil {
+			h2.ReadIdleTimeout = 30 * time.Second
+			h2.PingTimeout = 15 * time.Second
+		}
 	}
 
 	return &ConnectionPool{
-		config:            config,
+		config:            &effective,
 		transport:         transport,
 		insecureTransport: insecureTransport,
 		dnsCache:          dnsCache,

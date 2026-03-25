@@ -345,6 +345,12 @@ func (t *BrowserTool) doNavigate(ctx context.Context, b BrowserBackend, args map
 		return nil, errors.New("url is required for navigate")
 	}
 	targetID := firstCompatString(args, "target_id", "targetId")
+	ctx = WithBrowserRouteHint(ctx, BrowserRouteHint{
+		Action:         "navigate",
+		FollowupAction: "snapshot_auto",
+		Vision:         vision,
+		RequiresImage:  vision,
+	})
 	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, url, "use_connected_session"); handled || err != nil {
 		return gated, err
 	}

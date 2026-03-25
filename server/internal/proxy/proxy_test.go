@@ -85,6 +85,42 @@ func TestConnectionPool(t *testing.T) {
 			t.Errorf("expected 2 clients, got %v", stats["client_count"])
 		}
 	})
+
+	t.Run("default transport keeps http2 enabled", func(t *testing.T) {
+		transport := pool.GetTransport()
+		if transport.DisableKeepAlives {
+			t.Error("default transport should keep keep-alives enabled")
+		}
+		if !transport.ForceAttemptHTTP2 {
+			t.Error("default transport should still attempt HTTP/2")
+		}
+		if !pool.config.ForceHTTP2 {
+			t.Error("default effective config should keep HTTP/2 enabled")
+		}
+	})
+
+	t.Run("disabling keep-alive also disables http2 reuse", func(t *testing.T) {
+		noKeepAlive := DefaultConnectionConfig()
+		noKeepAlive.KeepAlive = false
+		noKeepAlive.ForceHTTP2 = true
+
+		noKeepAlivePool := NewConnectionPool(noKeepAlive)
+		defer noKeepAlivePool.Close()
+
+		transport := noKeepAlivePool.GetTransport()
+		if !transport.DisableKeepAlives {
+			t.Error("transport should disable keep-alives when requested")
+		}
+		if transport.ForceAttemptHTTP2 {
+			t.Error("transport should not attempt HTTP/2 when keep-alives are disabled")
+		}
+		if noKeepAlivePool.config.KeepAlive {
+			t.Error("effective config should keep keep_alive disabled")
+		}
+		if noKeepAlivePool.config.ForceHTTP2 {
+			t.Error("effective config should disable HTTP/2 when keep-alives are disabled")
+		}
+	})
 }
 
 func TestRouter(t *testing.T) {

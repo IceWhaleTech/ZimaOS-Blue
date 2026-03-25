@@ -3,13 +3,16 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 
 import BrowserMonitorWidget from '@/components/BrowserMonitorWidget.vue'
-import { __resetBrowserMonitorStateForTests, useBrowserMonitor } from '@/composables/useBrowserMonitor'
+import {
+  __resetBrowserMonitorStateForTests,
+  useBrowserMonitor,
+} from '@/composables/useBrowserMonitor'
 
-const { pushMock, listTasksMock, getSessionsMock, takeScreenshotMock } = vi.hoisted(() => ({
+const { pushMock, listTasksMock, getSessionsMock, getSessionMonitorMock } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   listTasksMock: vi.fn(),
   getSessionsMock: vi.fn(),
-  takeScreenshotMock: vi.fn(),
+  getSessionMonitorMock: vi.fn(),
 }))
 
 const localStorageMock = (() => {
@@ -67,7 +70,7 @@ vi.mock('@/api/tasks', () => ({
 
 vi.mock('@/api/browser', () => ({
   getSessions: getSessionsMock,
-  takeScreenshot: takeScreenshotMock,
+  getSessionMonitor: getSessionMonitorMock,
 }))
 
 function createTestI18n() {
@@ -108,8 +111,12 @@ function createTestI18n() {
           previewEmptyBody: '一旦浏览器标签页处于活跃状态，监控就会显示截图。',
           previewLoading: '正在捕获当前视口...',
           previewAlt: '浏览器预览',
+          previewFrameLabel: '第 {current}/{total} 帧',
           untitledTab: '未命名标签页',
           updated: '已更新',
+          previewScopeFullPage: '整页截图',
+          previewScopeLatestFrame: '最新截图',
+          previewScopeViewport: '视口截图',
           noCurrentConversation: '打开一个聊天会话后，可只跟踪当前这次执行。',
           noCurrentTasks: '当前会话里还没有最近任务。',
           noTasks: '还没有最近任务。',
@@ -131,6 +138,11 @@ function createTestI18n() {
           hideTooltip: '隐藏执行监控',
           buttonLabel: '监控',
           blockerFallback: '等待输入',
+          textInteractiveCount: '{count} 个交互元素',
+          textSummaryHeading: '正文摘要',
+          textSummaryIdle: '等待正文摘要...',
+          textTreeHeading: '树预览',
+          textTreeIdle: '等待结构化树预览...',
         },
         chat: {
           taskStagePlanning: '规划中',
@@ -164,7 +176,7 @@ describe('BrowserMonitorWidget', () => {
     pushMock.mockReset()
     listTasksMock.mockReset()
     getSessionsMock.mockReset()
-    takeScreenshotMock.mockReset()
+    getSessionMonitorMock.mockReset()
     localStorage.clear()
     setViewport(1440, 900)
     __resetBrowserMonitorStateForTests()
@@ -203,7 +215,11 @@ describe('BrowserMonitorWidget', () => {
       ],
     })
     getSessionsMock.mockResolvedValue([])
-    takeScreenshotMock.mockResolvedValue({ screenshot: '', history: [], error: '' })
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'image',
+      image: { screenshot: '', history: [] },
+      error: '',
+    })
   })
 
   it('renders localized task details and exposes the resizable task list structure', async () => {
@@ -276,16 +292,14 @@ describe('BrowserMonitorWidget', () => {
     await flushPromises()
 
     const setupState = (wrapper.vm.$ as any).setupState
-    setupState.startLauncherDragging(
-      {
-        clientX: 990,
-        clientY: 674,
-        pointerId: 7,
-        pointerType: 'touch',
-        isPrimary: true,
-        button: 0,
-      } as PointerEvent
-    )
+    setupState.startLauncherDragging({
+      clientX: 990,
+      clientY: 674,
+      pointerId: 7,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+    } as PointerEvent)
 
     expect(addEventListenerSpy).toHaveBeenCalledWith('pointermove', setupState.onDrag)
     expect(addEventListenerSpy).toHaveBeenCalledWith('pointerup', setupState.stopDragging)
@@ -308,26 +322,31 @@ describe('BrowserMonitorWidget', () => {
         page_title: 'Live Session',
         created_at: '2026-03-23T00:00:00.000Z',
         last_activity: '2026-03-23T00:00:00.000Z',
+        engine: 'chromium_managed',
+        monitor_kind: 'image',
       },
     ])
-    takeScreenshotMock.mockResolvedValue({
-      screenshot: 'latest-base64',
-      history: [
-        {
-          data: 'latest-base64',
-          captured_at: '2026-03-23T00:00:00.000Z',
-          title: 'Latest Snapshot',
-          url: 'https://snapshots.example.com/latest',
-          scope: 'viewport',
-        },
-        {
-          data: 'older-base64',
-          captured_at: '2026-03-22T23:58:00.000Z',
-          title: 'Earlier Snapshot',
-          url: 'https://snapshots.example.com/earlier',
-          scope: 'full_page',
-        },
-      ],
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'image',
+      image: {
+        screenshot: 'latest-base64',
+        history: [
+          {
+            data: 'latest-base64',
+            captured_at: '2026-03-23T00:00:00.000Z',
+            title: 'Latest Snapshot',
+            url: 'https://snapshots.example.com/latest',
+            scope: 'viewport',
+          },
+          {
+            data: 'older-base64',
+            captured_at: '2026-03-22T23:58:00.000Z',
+            title: 'Earlier Snapshot',
+            url: 'https://snapshots.example.com/earlier',
+            scope: 'full_page',
+          },
+        ],
+      },
       error: '',
     })
 
@@ -361,6 +380,53 @@ describe('BrowserMonitorWidget', () => {
     expect(wrapper.text()).toContain('第 2/2 帧')
   })
 
+  it('renders text monitor sessions without requiring screenshot data', async () => {
+    getSessionsMock.mockResolvedValue([
+      {
+        id: 'lp-1',
+        status: 'active',
+        current_url: 'https://docs.example.com',
+        page_title: 'Docs',
+        created_at: '2026-03-23T00:00:00.000Z',
+        last_activity: '2026-03-23T00:00:00.000Z',
+        engine: 'lightpanda',
+        monitor_kind: 'text',
+      },
+    ])
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'text',
+      text: {
+        title: 'Docs',
+        url: 'https://docs.example.com',
+        summary: 'This page explains the hybrid browser routing plan.',
+        tree_preview: '[document] "Docs"\n  [heading1] "Hybrid routing"',
+        interactive_count: 3,
+        updated_at: '2026-03-23T00:00:00.000Z',
+        status: 'active',
+      },
+      error: '',
+    })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.browser-monitor__text-monitor').exists()).toBe(true)
+    expect(wrapper.text()).toContain('正文摘要')
+    expect(wrapper.text()).toContain('This page explains the hybrid browser routing plan.')
+    expect(wrapper.text()).toContain('树预览')
+    expect(wrapper.text()).toContain('[heading1] "Hybrid routing"')
+    expect(wrapper.text()).toContain('3 个交互元素')
+    expect(wrapper.find('.browser-monitor__image').exists()).toBe(false)
+  })
+
   it('keeps the last successful screenshot when later refreshes return no frame', async () => {
     getSessionsMock.mockResolvedValue([
       {
@@ -370,18 +436,23 @@ describe('BrowserMonitorWidget', () => {
         page_title: 'Example',
         created_at: '2026-03-23T00:00:00.000Z',
         last_activity: '2026-03-23T00:00:00.000Z',
+        engine: 'chromium_managed',
+        monitor_kind: 'image',
       },
     ])
-    takeScreenshotMock.mockResolvedValue({
-      screenshot: 'stable-base64',
-      history: [
-        {
-          data: 'stable-base64',
-          captured_at: '2026-03-23T00:00:00.000Z',
-          title: 'Example',
-          url: 'https://example.com',
-        },
-      ],
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'image',
+      image: {
+        screenshot: 'stable-base64',
+        history: [
+          {
+            data: 'stable-base64',
+            captured_at: '2026-03-23T00:00:00.000Z',
+            title: 'Example',
+            url: 'https://example.com',
+          },
+        ],
+      },
       error: '',
     })
 
@@ -398,9 +469,12 @@ describe('BrowserMonitorWidget', () => {
 
     expect(wrapper.get('.browser-monitor__image').attributes('src')).toContain('stable-base64')
 
-    takeScreenshotMock.mockResolvedValue({
-      screenshot: '',
-      history: [],
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'image',
+      image: {
+        screenshot: '',
+        history: [],
+      },
       error: 'capture failed',
     })
     const [refreshButton] = wrapper.findAll('.browser-monitor__icon-button')

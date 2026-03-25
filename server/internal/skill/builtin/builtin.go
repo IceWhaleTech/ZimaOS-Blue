@@ -22,6 +22,7 @@ func RegisterAll(registry *skill.Registry) error {
 		NewDeepResearch(),
 		NewWebSearch(),
 		NewUIReviewer(),
+		NewHumanizer(),
 	}
 
 	for _, s := range skills {
@@ -35,5 +36,5 @@ func RegisterAll(registry *skill.Registry) error {
 
 // GetSkillCount returns the number of built-in skills
 func GetSkillCount() int {
-	return 14
+	return 15
 }

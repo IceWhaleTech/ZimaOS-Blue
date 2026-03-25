@@ -64,6 +64,8 @@ export interface BrowserSession {
   page_title?: string
   created_at: string
   last_activity: string
+  engine: 'lightpanda' | 'chromium_managed' | 'chromium_relay'
+  monitor_kind: 'text' | 'image'
 }
 
 export interface BrowserSessionScreenshot {
@@ -77,6 +79,30 @@ export interface BrowserSessionScreenshot {
 export interface BrowserSessionScreenshotResponse {
   screenshot: string
   history: BrowserSessionScreenshot[]
+  error?: string
+}
+
+export interface BrowserSessionTextMonitor {
+  title?: string
+  url?: string
+  summary?: string
+  tree_preview?: string
+  interactive_count?: number
+  updated_at?: string
+  status?: string
+}
+
+export interface BrowserSessionImageMonitor {
+  screenshot?: string
+  history?: BrowserSessionScreenshot[]
+  updated_at?: string
+  status?: string
+}
+
+export interface BrowserSessionMonitorResponse {
+  kind: 'text' | 'image'
+  image?: BrowserSessionImageMonitor
+  text?: BrowserSessionTextMonitor
   error?: string
 }
 
@@ -162,6 +188,48 @@ export async function takeScreenshot(sessionId: string): Promise<BrowserSessionS
     history: Array.isArray(payload.history)
       ? payload.history.filter((item: unknown): item is BrowserSessionScreenshot => !!item)
       : [],
+    error: typeof payload.error === 'string' ? payload.error : '',
+  }
+}
+
+export async function getSessionMonitor(sessionId: string): Promise<BrowserSessionMonitorResponse> {
+  const response = await api.post(`/browser/sessions/${sessionId}/monitor`, null, {
+    baseURL: '/api',
+  })
+  const payload = response.data || {}
+  return {
+    kind: payload.kind === 'text' ? 'text' : 'image',
+    image:
+      payload.image && typeof payload.image === 'object'
+        ? {
+            screenshot:
+              typeof payload.image.screenshot === 'string' ? payload.image.screenshot : '',
+            history: Array.isArray(payload.image.history)
+              ? payload.image.history.filter(
+                  (item: unknown): item is BrowserSessionScreenshot => !!item
+                )
+              : [],
+            updated_at:
+              typeof payload.image.updated_at === 'string' ? payload.image.updated_at : '',
+            status: typeof payload.image.status === 'string' ? payload.image.status : '',
+          }
+        : undefined,
+    text:
+      payload.text && typeof payload.text === 'object'
+        ? {
+            title: typeof payload.text.title === 'string' ? payload.text.title : '',
+            url: typeof payload.text.url === 'string' ? payload.text.url : '',
+            summary: typeof payload.text.summary === 'string' ? payload.text.summary : '',
+            tree_preview:
+              typeof payload.text.tree_preview === 'string' ? payload.text.tree_preview : '',
+            interactive_count:
+              typeof payload.text.interactive_count === 'number'
+                ? payload.text.interactive_count
+                : 0,
+            updated_at: typeof payload.text.updated_at === 'string' ? payload.text.updated_at : '',
+            status: typeof payload.text.status === 'string' ? payload.text.status : '',
+          }
+        : undefined,
     error: typeof payload.error === 'string' ? payload.error : '',
   }
 }

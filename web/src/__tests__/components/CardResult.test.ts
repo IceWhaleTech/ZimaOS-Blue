@@ -33,6 +33,9 @@ function createTestI18n(locale = 'en-US') {
             browser: 'Browser',
             file_write: 'File Write',
             ls: 'ls',
+            find: 'find',
+            grep: 'grep',
+            rg: 'rg',
             analyze: 'analyze',
           },
           labels: {
@@ -44,6 +47,12 @@ function createTestI18n(locale = 'en-US') {
             target_id: 'Target ID',
             strategy: 'Strategy',
             include_hidden: 'Include Hidden',
+            pattern: 'Pattern',
+            max_results: 'Max Results',
+            case_sensitive: 'Case Sensitive',
+            backend: 'Backend',
+            backend_source: 'Backend Source',
+            fallback_reason: 'Fallback Reason',
           },
           values: {
             strategy: {
@@ -71,6 +80,8 @@ function createTestI18n(locale = 'en-US') {
             single_entry_in_path: '1 entry in {path}',
             no_entries_in_path: 'No entries in {path}',
             showing_first_entries_in_path: 'Showing first {count} entries in {path} (more omitted)',
+            matches_for_pattern_in_path: '{count} matches for {pattern} in {path}',
+            no_matches_for_pattern_in_path: 'No matches for {pattern} in {path}',
             screenshot_captured_for: 'Screenshot captured for {target}',
           },
           warnings: {
@@ -103,6 +114,9 @@ function createTestI18n(locale = 'en-US') {
             browser: '浏览器',
             file_write: '写入文件',
             ls: 'ls',
+            find: 'find',
+            grep: 'grep',
+            rg: 'rg',
             analyze: '分析',
           },
           labels: {
@@ -114,6 +128,12 @@ function createTestI18n(locale = 'en-US') {
             target_id: '目标 ID',
             strategy: '策略',
             include_hidden: '包含隐藏项',
+            pattern: '模式',
+            max_results: '最大结果数',
+            case_sensitive: '区分大小写',
+            backend: '后端',
+            backend_source: '后端来源',
+            fallback_reason: '回退原因',
           },
           values: {
             strategy: {
@@ -140,6 +160,8 @@ function createTestI18n(locale = 'en-US') {
             single_entry_in_path: '{path} 中有 1 个条目',
             no_entries_in_path: '{path} 中没有条目',
             showing_first_entries_in_path: '显示 {path} 中前 {count} 个条目（更多已省略）',
+            matches_for_pattern_in_path: '{path} 中找到 {count} 处匹配 {pattern}',
+            no_matches_for_pattern_in_path: '{path} 中未找到 {pattern} 的匹配',
             screenshot_captured_for: '已为 {target} 捕获截图',
           },
           warnings: {
@@ -290,6 +312,237 @@ describe('CardResult', () => {
     expect(wrapper.text()).not.toContain(
       'Listing was truncated; narrow the path or increase max_entries.'
     )
+  })
+
+  it('renders raw ls JSON payload messages as a structured directory listing', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'ls',
+          status: 'info',
+          message: JSON.stringify({
+            base_path: '.',
+            count: 2,
+            entries: [
+              {
+                path: '.blue/',
+                type: 'dir',
+                mode: 'drwxr-xr-x',
+                size: 96,
+                modified_at: '2026-03-23T16:15:35Z',
+              },
+              {
+                path: 'README.md',
+                type: 'file',
+                mode: '-rw-r--r--',
+                size: 1024,
+                modified_at: '2026-03-23T16:15:35Z',
+              },
+            ],
+            max_depth: 1,
+            max_entries: 200,
+            include_hidden: false,
+          }),
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('. 中有 2 个条目')
+    expect(wrapper.text()).toContain('.blue/')
+    expect(wrapper.text()).toContain('README.md')
+    expect(wrapper.text()).not.toContain('"base_path"')
+    expect(wrapper.text()).not.toContain('"entries"')
+  })
+
+  it('renders ls preview details as directory rows instead of raw bracketed lines', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'ls',
+          status: 'success',
+          message: '3 entries in .',
+          details: [
+            { label: 'path', value: '.' },
+            { label: 'count', value: '3' },
+            { label: 'entries', value: '[dir] sub\n[file] README.md (123 B)\n[dir] server', multiline: true },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('sub')
+    expect(wrapper.text()).toContain('README.md')
+    expect(wrapper.text()).toContain('server')
+    expect(wrapper.text()).not.toContain('[dir] sub')
+    expect(wrapper.text()).not.toContain('[file] README.md (123 B)')
+  })
+
+  it('renders find results as a structured search listing instead of raw JSON arrays', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'find',
+          status: 'success',
+          details: [
+            { label: 'base_path', value: 'web/src' },
+            { label: 'pattern', value: '*.vue' },
+            { label: 'type', value: 'file' },
+            {
+              label: 'entries',
+              value: JSON.stringify([
+                { path: 'components/ChatMessage.vue', type: 'file', size: 2048 },
+                { path: 'views/ChatView.vue', type: 'file', size: 4096 },
+              ]),
+              multiline: true,
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('2 matches for *.vue in web/src')
+    expect(wrapper.text()).toContain('Pattern')
+    expect(wrapper.text()).toContain('*.vue')
+    expect(wrapper.text()).toContain('components/ChatMessage.vue')
+    expect(wrapper.text()).toContain('views/ChatView.vue')
+    expect(wrapper.text()).not.toContain('[{"path":"components/ChatMessage.vue"')
+  })
+
+  it('renders grep details as a specialized text-search card instead of raw matches JSON', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'grep',
+          status: 'success',
+          details: [
+            { label: 'path', value: 'web/src' },
+            { label: 'pattern', value: 'CardResult' },
+            { label: 'max_results', value: '20' },
+            { label: 'case_sensitive', value: 'false' },
+            { label: 'include_hidden', value: 'true' },
+            { label: 'backend', value: 'builtin' },
+            { label: 'fallback_reason', value: 'ripgrep execution failed with exit code 2' },
+            {
+              label: 'matches',
+              value: JSON.stringify([
+                {
+                  path: 'components/typeless/CardResult.vue',
+                  line: 42,
+                  column: 7,
+                  preview: 'const cardResult = true',
+                },
+                {
+                  path: 'views/ChatView.vue',
+                  line: 103,
+                  column: 15,
+                  preview: 'import CardResult from \"@/components/typeless/CardResult.vue\"',
+                },
+              ]),
+              multiline: true,
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('2 matches for CardResult in web/src')
+    expect(wrapper.text()).toContain('Max Results')
+    expect(wrapper.text()).toContain('Case Sensitive')
+    expect(wrapper.text()).toContain('Include Hidden')
+    expect(wrapper.text()).toContain('Backend')
+    expect(wrapper.text()).toContain('builtin')
+    expect(wrapper.text()).toContain('components/typeless/CardResult.vue')
+    expect(wrapper.text()).toContain('views/ChatView.vue')
+    expect(wrapper.text()).toContain('L42:C7')
+    expect(wrapper.text()).toContain('L103:C15')
+    expect(wrapper.text()).toContain('const cardResult = true')
+    expect(wrapper.text()).toContain('Fallback Reason')
+    expect(wrapper.text()).toContain('ripgrep execution failed with exit code 2')
+    expect(wrapper.text()).not.toContain(
+      '[{"path":"components/typeless/CardResult.vue","line":42,"column":7'
+    )
+  })
+
+  it('renders rg message payloads as the same specialized search card and localizes the summary', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'rg',
+          status: 'info',
+          message: JSON.stringify({
+            path: 'web/src',
+            pattern: 'createTestI18n',
+            count: 1,
+            max_results: 50,
+            case_sensitive: false,
+            backend: 'ripgrep',
+            matches: [
+              {
+                path: 'tests/components/CardResult.test.ts',
+                line: 16,
+                column: 10,
+                preview: 'function createTestI18n(locale = \"en-US\") {',
+              },
+            ],
+          }),
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('web/src 中找到 1 处匹配 createTestI18n')
+    expect(wrapper.text()).toContain('后端')
+    expect(wrapper.text()).toContain('ripgrep')
+    expect(wrapper.text()).toContain('tests/components/CardResult.test.ts')
+    expect(wrapper.text()).toContain('L16:C10')
+    expect(wrapper.text()).not.toContain('1 matches for createTestI18n in web/src')
+  })
+
+  it('synthesizes no-match grep summaries from structured payloads without showing raw JSON', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'grep',
+          status: 'info',
+          message: JSON.stringify({
+            path: 'server/internal',
+            pattern: 'DefinitelyMissingToken',
+            count: 0,
+            max_results: 25,
+            case_sensitive: true,
+            matches: [],
+          }),
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('No matches for DefinitelyMissingToken in server/internal')
+    expect(wrapper.text()).toContain('Pattern')
+    expect(wrapper.text()).toContain('DefinitelyMissingToken')
+    expect(wrapper.text()).not.toContain('"matches":[]')
   })
 
   it('renders image previews for result cards and normalizes raw base64 strings', () => {

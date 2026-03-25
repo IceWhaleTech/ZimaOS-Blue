@@ -98,6 +98,7 @@ class ComponentPool {
       choice: () => import('@/components/typeless/CardChoice.vue'),
       'collapsible-code': () => import('@/components/typeless/CardCollapsibleCode.vue'),
       diff: () => import('@/components/typeless/CardDiff.vue'),
+      terminal: () => import('@/components/typeless/CardTerminal.vue'),
       video: () => import('@/components/typeless/CardVideo.vue'),
       mermaid: () => import('@/components/typeless/CardMermaid.vue'),
       search: () => import('@/components/typeless/CardSearch.vue'),

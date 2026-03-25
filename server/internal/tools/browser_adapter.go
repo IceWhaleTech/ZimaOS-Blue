@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 )
@@ -88,6 +89,20 @@ func NewLeaseAwareRodBrowserBackend(acquireDefault, acquireVisible rodServiceAcq
 	return &RodBrowserBackend{
 		defaultSource: rodServiceSource{acquire: acquireDefault},
 		visibleSource: rodServiceSource{acquire: acquireVisible},
+	}
+}
+
+// NewPeekLeaseAwareRodBrowserBackend creates an adapter that can both peek at
+// live services without warming them and acquire leases for active work.
+func NewPeekLeaseAwareRodBrowserBackend(
+	resolveDefault func() *browser.RodService,
+	acquireDefault rodServiceAcquireFunc,
+	resolveVisible func() *browser.RodService,
+	acquireVisible rodServiceAcquireFunc,
+) *RodBrowserBackend {
+	return &RodBrowserBackend{
+		defaultSource: rodServiceSource{resolve: resolveDefault, acquire: acquireDefault},
+		visibleSource: rodServiceSource{resolve: resolveVisible, acquire: acquireVisible},
 	}
 }
 
@@ -459,4 +474,182 @@ func cloneStringMap(src map[string]string) map[string]string {
 		dst[key] = value
 	}
 	return dst
+}
+
+func peekRodServiceSource(source rodServiceSource) *browser.RodService {
+	switch {
+	case source.svc != nil:
+		return source.svc
+	case source.resolve != nil:
+		return source.resolve()
+	default:
+		return nil
+	}
+}
+
+func tabToSessionInfo(tab *browser.Tab, engine browser.SessionEngine, now time.Time) browser.SessionInfo {
+	info := browser.SessionInfo{
+		CreatedAt:    now.Format(time.RFC3339),
+		LastActivity: now.Format(time.RFC3339),
+		Engine:       engine,
+		MonitorKind:  browser.SessionMonitorKindImage,
+	}
+	if tab == nil {
+		info.Status = "idle"
+		return info
+	}
+	info.ID = tab.TargetID
+	info.CurrentURL = tab.URL
+	info.PageTitle = tab.Title
+	if tab.Active {
+		info.Status = "active"
+	} else {
+		info.Status = "idle"
+	}
+	return info
+}
+
+func (a *RodBrowserBackend) sources() []rodServiceSource {
+	if a == nil {
+		return nil
+	}
+	out := make([]rodServiceSource, 0, 2)
+	if a.defaultSource.svc != nil || a.defaultSource.resolve != nil || a.defaultSource.acquire != nil {
+		out = append(out, a.defaultSource)
+	}
+	if a.visibleSource.svc != nil || a.visibleSource.resolve != nil || a.visibleSource.acquire != nil {
+		out = append(out, a.visibleSource)
+	}
+	return out
+}
+
+// ListSessionInfos returns active Chromium sessions without warming cold runtimes.
+func (a *RodBrowserBackend) ListSessionInfos(ctx context.Context) ([]browser.SessionInfo, error) {
+	seen := make(map[string]struct{})
+	out := make([]browser.SessionInfo, 0, 8)
+	now := time.Now().UTC()
+	for _, source := range a.sources() {
+		svc := peekRodServiceSource(source)
+		if svc == nil {
+			continue
+		}
+		tabs, err := svc.Tabs(ctx)
+		if err != nil {
+			continue
+		}
+		engine := browser.SessionEngineChromiumManaged
+		if svc.UsesRelayDriver() {
+			engine = browser.SessionEngineChromiumRelay
+		}
+		for _, tab := range tabs {
+			if tab == nil {
+				continue
+			}
+			key := strings.TrimSpace(tab.TargetID)
+			if key != "" {
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+			}
+			out = append(out, tabToSessionInfo(tab, engine, now))
+		}
+	}
+	return out, nil
+}
+
+// GetSessionInfo returns a single Chromium session summary.
+func (a *RodBrowserBackend) GetSessionInfo(ctx context.Context, targetID string) (*browser.SessionInfo, error) {
+	targetID = strings.TrimSpace(targetID)
+	if targetID == "" {
+		return nil, browser.ErrTabNotFound
+	}
+	sessions, err := a.ListSessionInfos(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range sessions {
+		if strings.TrimSpace(sessions[i].ID) == targetID {
+			session := sessions[i]
+			return &session, nil
+		}
+	}
+	return nil, browser.ErrTabNotFound
+}
+
+func captureRodSessionScreenshot(ctx context.Context, svc *browser.RodService, targetID string) *browser.SessionScreenshotResponse {
+	if svc == nil {
+		return &browser.SessionScreenshotResponse{Error: "browser service unavailable"}
+	}
+
+	var captureErrors []string
+	if screenshot, err := svc.ScreenshotViewport(ctx, targetID); err == nil && strings.TrimSpace(screenshot) != "" {
+		return &browser.SessionScreenshotResponse{
+			Screenshot: screenshot,
+			History:    svc.SessionScreenshotHistory(targetID),
+		}
+	} else if err != nil {
+		captureErrors = append(captureErrors, err.Error())
+	}
+
+	if screenshot, err := svc.ScreenshotTab(ctx, targetID); err == nil && strings.TrimSpace(screenshot) != "" {
+		return &browser.SessionScreenshotResponse{
+			Screenshot: screenshot,
+			History:    svc.SessionScreenshotHistory(targetID),
+		}
+	} else if err != nil {
+		captureErrors = append(captureErrors, err.Error())
+	}
+
+	history := svc.SessionScreenshotHistory(targetID)
+	latest := ""
+	if len(history) > 0 {
+		latest = history[0].Data
+	}
+	message := "preview unavailable"
+	if len(captureErrors) > 0 {
+		message = strings.Join(captureErrors, "; ")
+	}
+	return &browser.SessionScreenshotResponse{
+		Screenshot: latest,
+		History:    history,
+		Error:      message,
+	}
+}
+
+// CaptureSessionScreenshot returns the legacy screenshot compatibility payload.
+func (a *RodBrowserBackend) CaptureSessionScreenshot(ctx context.Context, targetID string) (*browser.SessionScreenshotResponse, error) {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer lease.close()
+	return captureRodSessionScreenshot(ctx, lease.svc, targetID), nil
+}
+
+// CaptureSessionMonitor returns the screenshot-based monitor payload for a Chromium session.
+func (a *RodBrowserBackend) CaptureSessionMonitor(ctx context.Context, targetID string) (*browser.SessionMonitorResponse, error) {
+	screenshot, err := a.CaptureSessionScreenshot(ctx, targetID)
+	if err != nil {
+		return nil, err
+	}
+	info, _ := a.GetSessionInfo(ctx, targetID)
+	status := "idle"
+	if info != nil && info.Status != "" {
+		status = info.Status
+	}
+	updatedAt := ""
+	if len(screenshot.History) > 0 {
+		updatedAt = screenshot.History[0].CapturedAt
+	}
+	return &browser.SessionMonitorResponse{
+		Kind: browser.SessionMonitorKindImage,
+		Image: &browser.SessionImageMonitor{
+			Screenshot: screenshot.Screenshot,
+			History:    screenshot.History,
+			UpdatedAt:  updatedAt,
+			Status:     status,
+		},
+		Error: screenshot.Error,
+	}, nil
 }

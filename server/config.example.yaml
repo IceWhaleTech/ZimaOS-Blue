@@ -322,6 +322,7 @@ performance:
 
 # Browser automation runtime
 browser:
+  strategy: "single"    # single or hybrid_capability
   driver: "managed"     # managed (launch isolated Chromium) or relay/cdp (attach to an existing CDP endpoint)
   relay_enabled: false  # starts Blue's built-in loopback relay for the companion Chrome extension
   relay_host: "127.0.0.1"
@@ -346,6 +347,14 @@ browser:
   relay_preferred_fallback_driver: "managed" # retry driver when relay/local Chrome is unavailable
   evaluate_enabled: true
   network_observe_enabled: true
+  lightpanda:
+    enabled: false
+    binary_path: ""     # optional explicit Lightpanda binary path; when empty Blue can use cached/downloaded binaries
+    args: []
+  chromium:
+    prefer_local_chrome: true
+  capability_router:
+    escalate_on_failure: true
 
 # Harness control plane (runtime-first, benchmark-ready)
 harness:

@@ -1055,10 +1055,14 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	var syncBrowserMonitorRetention func(time.Duration)
 	var cleanupBrowserMonitorFrames func()
 	type browserRuntime struct {
-		lazy    func() *browser.RodService
-		acquire func() (*browser.RodService, func(), error)
-		backend tools.BrowserBackend
-		close   func(context.Context) error
+		lazy           func() *browser.RodService
+		peek           func() *browser.RodService
+		acquire        func() (*browser.RodService, func(), error)
+		peekVisible    func() *browser.RodService
+		acquireVisible func() (*browser.RodService, func(), error)
+		rodBackend     *tools.RodBrowserBackend
+		backend        tools.BrowserBackend
+		close          func(context.Context) error
 	}
 	var browserRuntimePeekers []func() *browser.RodService
 	var browserRuntimeRetentionUpdaters []func(time.Duration)
@@ -1118,8 +1122,22 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 				}
 				return svc
 			},
+			peek: func() *browser.RodService {
+				svc, ok := headlessRuntime.Peek()
+				if !ok {
+					return nil
+				}
+				return svc
+			},
 			acquire: headlessRuntime.Acquire,
-			backend: tools.NewLeaseAwareRodBrowserBackend(headlessRuntime.Acquire, visibleRuntime.Acquire),
+			peekVisible: func() *browser.RodService {
+				svc, ok := visibleRuntime.Peek()
+				if !ok {
+					return nil
+				}
+				return svc
+			},
+			acquireVisible: visibleRuntime.Acquire,
 			close: func(ctx context.Context) error {
 				if err := visibleRuntime.Close(ctx); err != nil {
 					_ = headlessRuntime.Close(ctx)
@@ -1128,6 +1146,13 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 				return headlessRuntime.Close(ctx)
 			},
 		}
+		runtime.rodBackend = tools.NewPeekLeaseAwareRodBrowserBackend(
+			runtime.peek,
+			runtime.acquire,
+			runtime.peekVisible,
+			runtime.acquireVisible,
+		)
+		runtime.backend = runtime.rodBackend
 		registerCleanup(func() error {
 			return runtime.close(context.Background())
 		})
@@ -1152,9 +1177,29 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	}
 
 	defaultRuntime := makeBrowserRuntime(&cfg.Browser)
+	managedRuntime := defaultRuntime
+	if cfg.Browser.ResolvedDriver() != "managed" {
+		managedRuntime = makeBrowserRuntime(cfg.Browser.CloneForDriver("managed"))
+	}
+	relayRuntime := defaultRuntime
+	if cfg.Browser.ResolvedDriver() != "relay" {
+		relayRuntime = makeBrowserRuntime(cfg.Browser.CloneForDriver("relay"))
+	}
 	lazyBrowserSvc = defaultRuntime.lazy
 	acquireBrowserSvc = defaultRuntime.acquire
-	browserBackend := defaultRuntime.backend
+	relayPreferredSites := cfg.Browser.ExpandedRelayPreferredSites()
+	var browserBackend tools.BrowserBackend = tools.NewHybridCapabilityBrowserBackend(
+		&cfg.Browser,
+		browser.NewLightpandaService(&cfg.Browser),
+		managedRuntime.rodBackend,
+		relayRuntime.rodBackend,
+		func(rawURL string) bool {
+			return browser.MatchSitePatternList(rawURL, relayPreferredSites)
+		},
+	)
+	if provider, ok := browserBackend.(browser.SessionRouteProvider); ok {
+		browserHandler.SetSessionRouteProvider(provider)
+	}
 	syncBrowserMonitorRetention = func(retention time.Duration) {
 		if retention < 0 {
 			retention = 0
@@ -1190,28 +1235,6 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 	}
 	syncBrowserMonitorRetention(initialBrowserMonitorRetention)
-	relayPreferredSites := cfg.Browser.ExpandedRelayPreferredSites()
-	if len(relayPreferredSites) > 0 {
-		managedBackend := defaultRuntime.backend
-		if cfg.Browser.ResolvedDriver() != "managed" {
-			managedBackend = makeBrowserRuntime(cfg.Browser.CloneForDriver("managed")).backend
-		}
-
-		relayBackend := defaultRuntime.backend
-		if cfg.Browser.ResolvedDriver() != "relay" {
-			relayBackend = makeBrowserRuntime(cfg.Browser.CloneForDriver("relay")).backend
-		}
-
-		browserBackend = tools.NewSitePolicyBrowserBackend(
-			defaultRuntime.backend,
-			managedBackend,
-			relayBackend,
-			func(rawURL string) bool {
-				return browser.MatchSitePatternList(rawURL, relayPreferredSites)
-			},
-			cfg.Browser.RelayPreferredFallback(),
-		)
-	}
 	browserIPC := sockipc.NewToolBrowserIPCAdapter(browserBackend)
 	if companionHandler != nil {
 		companionHandler.SetRetentionChangeHook(func(_ context.Context, retention companion.RetentionConfig) error {

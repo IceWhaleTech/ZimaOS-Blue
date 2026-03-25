@@ -29,6 +29,50 @@ interface ResolvedImageItem {
   src: string
 }
 
+interface DirectoryListingEntry {
+  path: string
+  type: string
+  mode?: string
+  size?: number
+  modifiedAt?: string
+  display?: string
+}
+
+interface DirectoryListingData {
+  kind: 'ls' | 'find'
+  basePath: string
+  count: number | null
+  maxDepth: number | null
+  maxEntries: number | null
+  includeHidden: boolean | null
+  truncated: boolean
+  hiddenEntries: number | null
+  pattern?: string
+  typeFilter?: string
+  entries: DirectoryListingEntry[]
+}
+
+interface TextSearchMatch {
+  path: string
+  line?: number
+  column?: number
+  preview?: string
+}
+
+interface TextSearchData {
+  basePath: string
+  pattern: string
+  count: number | null
+  maxResults: number | null
+  caseSensitive: boolean | null
+  includeHidden: boolean | null
+  truncated: boolean
+  backend?: string
+  backendSource?: string
+  fallbackReason?: string
+  matches: TextSearchMatch[]
+}
+
 const IMAGE_DETAIL_LABELS = new Set([
   'image',
   'images',
@@ -115,18 +159,23 @@ function isMapValue(val: unknown): val is Record<string, unknown> {
   return val !== null && typeof val === 'object' && !Array.isArray(val)
 }
 
+function tryParseJSON(val: unknown): unknown | null {
+  if (typeof val !== 'string') return null
+  const trimmed = val.trim()
+  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return null
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return null
+  }
+}
+
 /** Try to parse a string as JSON object; returns the object or null */
 function tryParseObject(val: unknown): Record<string, unknown> | null {
   if (isMapValue(val)) return val
-  if (typeof val === 'string') {
-    const trimmed = val.trim()
-    if (!trimmed.startsWith('{')) return null
-    try {
-      const o = JSON.parse(trimmed)
-      if (isMapValue(o)) return o
-    } catch {
-      /* not JSON */
-    }
+  const parsed = tryParseJSON(val)
+  if (isMapValue(parsed)) {
+    return parsed
   }
   return null
 }
@@ -181,6 +230,538 @@ function handleAction(actionId: string, disabled = false) {
   emit('action', actionId, props.card.id)
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function toBooleanOrNull(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    const lowered = value.trim().toLowerCase()
+    if (lowered === 'true') return true
+    if (lowered === 'false') return false
+  }
+  return null
+}
+
+function normalizeDirectoryEntry(value: unknown): DirectoryListingEntry | null {
+  if (!isMapValue(value)) return null
+  const pathValue =
+    typeof value.path === 'string'
+      ? value.path.trim()
+      : typeof value.name === 'string'
+        ? value.name.trim()
+        : ''
+  if (!pathValue) return null
+
+  const typeValue =
+    typeof value.type === 'string'
+      ? value.type.trim()
+      : pathValue.endsWith('/')
+        ? 'dir'
+        : 'file'
+
+  const sizeValue = toNumberOrNull(value.size)
+  const modifiedAtValue =
+    typeof value.modified_at === 'string'
+      ? value.modified_at.trim()
+      : typeof value.modifiedAt === 'string'
+        ? value.modifiedAt.trim()
+        : ''
+  const modeValue = typeof value.mode === 'string' ? value.mode.trim() : ''
+  const displayValue = typeof value.display === 'string' ? value.display.trim() : ''
+
+  return {
+    path: pathValue,
+    type: typeValue || 'file',
+    mode: modeValue || undefined,
+    size: sizeValue ?? undefined,
+    modifiedAt: modifiedAtValue || undefined,
+    display: displayValue || undefined,
+  }
+}
+
+function extractDirectoryEntries(value: unknown): DirectoryListingEntry[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeDirectoryEntry(entry))
+      .filter((entry): entry is DirectoryListingEntry => !!entry)
+  }
+  if (isMapValue(value)) {
+    const nestedEntries = Array.isArray(value.entries) ? value.entries : []
+    if (nestedEntries.length > 0) {
+      return extractDirectoryEntries(nestedEntries)
+    }
+    const normalized = normalizeDirectoryEntry(value)
+    return normalized ? [normalized] : []
+  }
+  if (typeof value === 'string') {
+    const parsed = tryParseJSON(value)
+    if (parsed !== null) {
+      return extractDirectoryEntries(parsed)
+    }
+    return parseDirectoryListingPreview(value)
+  }
+  return []
+}
+
+function normalizeTextSearchMatch(value: unknown): TextSearchMatch | null {
+  if (!isMapValue(value)) return null
+  const path =
+    typeof value.path === 'string'
+      ? value.path.trim()
+      : typeof value.file === 'string'
+        ? value.file.trim()
+        : ''
+  if (!path) return null
+  return {
+    path,
+    line: toNumberOrNull(value.line) ?? undefined,
+    column: toNumberOrNull(value.column) ?? undefined,
+    preview:
+      typeof value.preview === 'string'
+        ? value.preview.trim()
+        : typeof value.content === 'string'
+          ? value.content.trim()
+          : undefined,
+  }
+}
+
+function extractTextSearchMatches(value: unknown): TextSearchMatch[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeTextSearchMatch(entry))
+      .filter((entry): entry is TextSearchMatch => !!entry)
+  }
+  if (isMapValue(value)) {
+    const nestedMatches = Array.isArray(value.matches) ? value.matches : []
+    if (nestedMatches.length > 0) return extractTextSearchMatches(nestedMatches)
+    const normalized = normalizeTextSearchMatch(value)
+    return normalized ? [normalized] : []
+  }
+  if (typeof value === 'string') {
+    const parsed = tryParseJSON(value)
+    if (parsed !== null) return extractTextSearchMatches(parsed)
+  }
+  return []
+}
+
+function extractTextSearchPayload(value: unknown): TextSearchData | null {
+  const parsed = typeof value === 'string' ? tryParseJSON(value) ?? value : value
+  if (!isMapValue(parsed)) return null
+  const basePath =
+    typeof parsed.base_path === 'string'
+      ? parsed.base_path.trim()
+      : typeof parsed.path === 'string'
+        ? parsed.path.trim()
+        : '.'
+  const pattern = typeof parsed.pattern === 'string' ? parsed.pattern.trim() : ''
+  const count = toNumberOrNull(parsed.count)
+  const matches = extractTextSearchMatches(parsed.matches)
+  if (!pattern) return null
+  if (matches.length === 0 && count !== 0) return null
+
+  return {
+    basePath: basePath || '.',
+    pattern,
+    count,
+    maxResults: toNumberOrNull(parsed.max_results ?? parsed.maxResults),
+    caseSensitive: toBooleanOrNull(parsed.case_sensitive ?? parsed.caseSensitive),
+    includeHidden: toBooleanOrNull(parsed.include_hidden ?? parsed.includeHidden),
+    truncated: parsed.truncated === true,
+    backend: typeof parsed.backend === 'string' ? parsed.backend.trim() : undefined,
+    backendSource:
+      typeof parsed.backend_source === 'string' ? parsed.backend_source.trim() : undefined,
+    fallbackReason:
+      typeof parsed.fallback_reason === 'string' ? parsed.fallback_reason.trim() : undefined,
+    matches,
+  }
+}
+
+function extractTextSearchFromDetails(
+  details: TypelessCardResult['details']
+): TextSearchData | null {
+  if (!details?.length) return null
+
+  let basePath = '.'
+  let pattern = ''
+  let count: number | null = null
+  let maxResults: number | null = null
+  let caseSensitive: boolean | null = null
+  let includeHidden: boolean | null = null
+  let truncated = false
+  let backend = ''
+  let backendSource = ''
+  let fallbackReason = ''
+  let matches: TextSearchMatch[] = []
+
+  details.forEach((detail) => {
+    const key = normalizeResultCardKey(detail.label)
+    if (key === 'path' || key === 'base_path') {
+      const value = toDisplayString(detail.value).trim()
+      if (value) basePath = value
+      return
+    }
+    if (key === 'pattern') {
+      pattern = toDisplayString(detail.value).trim()
+      return
+    }
+    if (key === 'count') {
+      count = toNumberOrNull(detail.value)
+      return
+    }
+    if (key === 'max_results') {
+      maxResults = toNumberOrNull(detail.value)
+      return
+    }
+    if (key === 'case_sensitive') {
+      caseSensitive = toBooleanOrNull(detail.value)
+      return
+    }
+    if (key === 'include_hidden') {
+      includeHidden = toBooleanOrNull(detail.value)
+      return
+    }
+    if (key === 'truncated') {
+      truncated = toBooleanOrNull(detail.value) === true
+      return
+    }
+    if (key === 'backend') {
+      backend = toDisplayString(detail.value).trim()
+      return
+    }
+    if (key === 'backend_source') {
+      backendSource = toDisplayString(detail.value).trim()
+      return
+    }
+    if (key === 'fallback_reason') {
+      fallbackReason = toDisplayString(detail.value).trim()
+      return
+    }
+    if (key !== 'matches') return
+
+    const structured = extractTextSearchPayload(detail.value)
+    if (structured) {
+      matches = structured.matches
+      if (structured.basePath) basePath = structured.basePath
+      if (structured.pattern) pattern = structured.pattern
+      if (structured.count !== null) count = structured.count
+      if (structured.maxResults !== null) maxResults = structured.maxResults
+      if (structured.caseSensitive !== null) caseSensitive = structured.caseSensitive
+      if (structured.includeHidden !== null) includeHidden = structured.includeHidden
+      truncated = truncated || structured.truncated
+      if (structured.backend) backend = structured.backend
+      if (structured.backendSource) backendSource = structured.backendSource
+      if (structured.fallbackReason) fallbackReason = structured.fallbackReason
+      return
+    }
+
+    matches = extractTextSearchMatches(detail.value)
+  })
+
+  if (!pattern || (matches.length === 0 && count !== 0)) return null
+
+  return {
+    basePath,
+    pattern,
+    count,
+    maxResults,
+    caseSensitive,
+    includeHidden,
+    truncated,
+    backend: backend || undefined,
+    backendSource: backendSource || undefined,
+    fallbackReason: fallbackReason || undefined,
+    matches,
+  }
+}
+
+function extractDirectoryListingPayload(value: unknown): DirectoryListingData | null {
+  const parsed = typeof value === 'string' ? tryParseJSON(value) ?? value : value
+  if (!isMapValue(parsed)) return null
+
+  const entries = extractDirectoryEntries(parsed.entries)
+  const count = toNumberOrNull(parsed.count)
+  const basePath =
+    typeof parsed.base_path === 'string'
+      ? parsed.base_path.trim()
+      : typeof parsed.basePath === 'string'
+        ? parsed.basePath.trim()
+        : '.'
+  if (entries.length === 0 && !(count === 0 && basePath)) return null
+
+  const pattern =
+    typeof parsed.pattern === 'string'
+      ? parsed.pattern.trim()
+      : typeof parsed.glob === 'string'
+        ? parsed.glob.trim()
+        : ''
+  const typeFilter =
+    typeof parsed.type === 'string'
+      ? parsed.type.trim()
+      : typeof parsed.type_filter === 'string'
+        ? parsed.type_filter.trim()
+        : ''
+
+  return {
+    kind: pattern ? 'find' : 'ls',
+    basePath: basePath || '.',
+    count,
+    maxDepth: toNumberOrNull(parsed.max_depth ?? parsed.maxDepth),
+    maxEntries: toNumberOrNull(parsed.max_entries ?? parsed.maxEntries),
+    includeHidden: toBooleanOrNull(parsed.include_hidden ?? parsed.includeHidden),
+    truncated: parsed.truncated === true,
+    hiddenEntries: toNumberOrNull(parsed.entries_hidden_in_card ?? parsed.hiddenEntries),
+    pattern: pattern || undefined,
+    typeFilter: typeFilter || undefined,
+    entries,
+  }
+}
+
+function parseDirectoryListingPreview(raw: string): DirectoryListingEntry[] {
+  const entries: DirectoryListingEntry[] = []
+  raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line) => {
+      const match = line.match(/^\[(dir|file)\]\s+(.+?)(?:\s+\((\d+)\s+B\))?$/i)
+      if (!match) return
+      entries.push({
+        path: (match[2] || '').trim(),
+        type: (match[1] || 'file').toLowerCase(),
+        size: match[3] ? Number(match[3]) : undefined,
+      })
+    })
+  return entries
+}
+
+function extractDirectoryListingFromDetails(
+  details: TypelessCardResult['details']
+): DirectoryListingData | null {
+  if (!details?.length) return null
+
+  let basePath = '.'
+  let count: number | null = null
+  let maxDepth: number | null = null
+  let maxEntries: number | null = null
+  let includeHidden: boolean | null = null
+  let hiddenEntries: number | null = null
+  let truncated = false
+  let pattern = ''
+  let typeFilter = ''
+  let entries: DirectoryListingEntry[] = []
+
+  details.forEach((detail) => {
+    const key = normalizeResultCardKey(detail.label)
+    if (key === 'path' || key === 'base_path') {
+      const value = toDisplayString(detail.value).trim()
+      if (value) basePath = value
+      return
+    }
+    if (key === 'count') {
+      count = toNumberOrNull(detail.value)
+      return
+    }
+    if (key === 'max_depth') {
+      maxDepth = toNumberOrNull(detail.value)
+      return
+    }
+    if (key === 'max_entries') {
+      maxEntries = toNumberOrNull(detail.value)
+      return
+    }
+    if (key === 'include_hidden') {
+      includeHidden = toBooleanOrNull(detail.value)
+      return
+    }
+    if (key === 'entries_hidden_in_card') {
+      hiddenEntries = toNumberOrNull(detail.value)
+      return
+    }
+    if (key === 'truncated') {
+      truncated = toBooleanOrNull(detail.value) === true
+      return
+    }
+    if (key === 'pattern') {
+      pattern = toDisplayString(detail.value).trim()
+      return
+    }
+    if (key === 'type') {
+      typeFilter = toDisplayString(detail.value).trim()
+      return
+    }
+    if (key !== 'entries') return
+
+    const structuredEntries = extractDirectoryListingPayload(detail.value)
+    if (structuredEntries) {
+      entries = structuredEntries.entries
+      if (structuredEntries.count !== null) count = structuredEntries.count
+      if (structuredEntries.maxDepth !== null) maxDepth = structuredEntries.maxDepth
+      if (structuredEntries.maxEntries !== null) maxEntries = structuredEntries.maxEntries
+      if (structuredEntries.includeHidden !== null) includeHidden = structuredEntries.includeHidden
+      if (structuredEntries.hiddenEntries !== null) hiddenEntries = structuredEntries.hiddenEntries
+      if (structuredEntries.pattern) pattern = structuredEntries.pattern
+      if (structuredEntries.typeFilter) typeFilter = structuredEntries.typeFilter
+      truncated = truncated || structuredEntries.truncated
+      if (structuredEntries.basePath) basePath = structuredEntries.basePath
+      return
+    }
+
+    entries = extractDirectoryEntries(detail.value)
+  })
+
+  if (entries.length === 0 && count !== 0) return null
+
+  return {
+    kind: pattern ? 'find' : 'ls',
+    basePath,
+    count,
+    maxDepth,
+    maxEntries,
+    includeHidden,
+    truncated,
+    hiddenEntries,
+    pattern: pattern || undefined,
+    typeFilter: typeFilter || undefined,
+    entries,
+  }
+}
+
+function normalizeSyntheticDetailValue(value: unknown): string | Record<string, unknown> {
+  if (value === null || value === undefined) return ''
+  if (isMapValue(value)) return value
+  if (Array.isArray(value)) return JSON.stringify(value, null, 2)
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return JSON.stringify(value, null, 2)
+}
+
+function buildDirectoryListingMessage(listing: DirectoryListingData): string {
+  const basePath = listing.basePath || '.'
+  const count = listing.count ?? listing.entries.length
+  if (listing.kind === 'find') {
+    if (count === 0) {
+      return listing.pattern
+        ? `No matches for ${listing.pattern} in ${basePath}`
+        : `No matches in ${basePath}`
+    }
+    if (listing.pattern) {
+      return `${count} matches for ${listing.pattern} in ${basePath}`
+    }
+    return `${count} matches in ${basePath}`
+  }
+  if (listing.truncated) {
+    return `Showing first ${count} entries in ${basePath} (more omitted)`
+  }
+  if (count === 0) return `No entries in ${basePath}`
+  if (count === 1) return `1 entry in ${basePath}`
+  return `${count} entries in ${basePath}`
+}
+
+function buildTextSearchMessage(search: TextSearchData): string {
+  const basePath = search.basePath || '.'
+  const count = search.count ?? search.matches.length
+  if (count === 0) return `No matches for ${search.pattern} in ${basePath}`
+  return `${count} matches for ${search.pattern} in ${basePath}`
+}
+
+function directoryEntryBadgeClass(entry: DirectoryListingEntry): string {
+  return entry.type === 'dir'
+    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
+    : 'bg-slate-200 text-slate-700 dark:bg-slate-700/80 dark:text-slate-200'
+}
+
+function formatDirectoryEntrySize(size?: number): string {
+  if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) return ''
+  if (size < 1024) return `${size} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = size
+  let unitIndex = -1
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  if (unitIndex < 0) return `${size} B`
+  const precision = value >= 10 ? 0 : 1
+  return `${value.toFixed(precision)} ${units[unitIndex]}`
+}
+
+function formatDirectoryEntryTimestamp(value?: string): string {
+  if (!value) return ''
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) return value
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(parsed))
+  } catch {
+    return value
+  }
+}
+
+function directoryEntryMeta(entry: DirectoryListingEntry): string {
+  const parts = [entry.mode, formatDirectoryEntrySize(entry.size), formatDirectoryEntryTimestamp(entry.modifiedAt)]
+    .map((part) => (part || '').trim())
+    .filter(Boolean)
+  if (parts.length > 0) return parts.join('  ')
+  return (entry.display || '').trim()
+}
+
+const listingSummaryItems = computed(() => {
+  const listing = directoryListing.value
+  if (!listing) return []
+
+  const items = [
+    { label: 'path', value: listing.basePath || '.' },
+    ...(listing.pattern ? [{ label: 'pattern', value: listing.pattern }] : []),
+    ...(listing.typeFilter && listing.typeFilter !== 'all'
+      ? [{ label: 'type', value: listing.typeFilter }]
+      : []),
+    ...(listing.maxDepth !== null ? [{ label: 'max_depth', value: String(listing.maxDepth) }] : []),
+    ...(listing.maxEntries !== null ? [{ label: 'max_entries', value: String(listing.maxEntries) }] : []),
+    ...(listing.includeHidden !== null
+      ? [{ label: 'include_hidden', value: listing.includeHidden ? t('common.yes', 'Yes') : t('common.no', 'No') }]
+      : []),
+  ]
+
+  if (listing.hiddenEntries && listing.hiddenEntries > 0) {
+    items.push({
+      label: 'entries_hidden_in_card',
+      value: String(listing.hiddenEntries),
+    })
+  }
+
+  return items
+})
+
+function searchMatchLocation(match: TextSearchMatch): string {
+  const line = match.line ?? null
+  const column = match.column ?? null
+  if (line !== null && column !== null) return `L${line}:C${column}`
+  if (line !== null) return `L${line}`
+  if (column !== null) return `C${column}`
+  return ''
+}
+
+const textSearchBadgeLabel = computed(() => {
+  const normalizedTitle = normalizeResultCardKey(props.card.title || '')
+  if (normalizedTitle === 'rg' || normalizedTitle === 'ripgrep') return 'RG'
+  if (normalizedTitle === 'grep') return 'GREP'
+  if (textSearchResults.value?.backend === 'ripgrep') return 'RG'
+  if (textSearchResults.value?.backend === 'builtin') return 'GREP'
+  return 'SEARCH'
+})
+
 function normalizeResultCardKey(input: string): string {
   return input
     .toLowerCase()
@@ -234,6 +815,20 @@ const RESULT_CARD_MESSAGE_PATTERNS: ResultCardPattern[] = [
     key: 'entries_in_path',
     regex: /^(\d+) entries in (.+)$/,
     params: (match) => ({ count: Number(match[1] || 0), path: match[2] || '' }),
+  },
+  {
+    key: 'matches_for_pattern_in_path',
+    regex: /^(\d+) matches for (.+) in (.+)$/,
+    params: (match) => ({
+      count: Number(match[1] || 0),
+      pattern: match[2] || '',
+      path: match[3] || '',
+    }),
+  },
+  {
+    key: 'no_matches_for_pattern_in_path',
+    regex: /^No matches for (.+) in (.+)$/,
+    params: (match) => ({ pattern: match[1] || '', path: match[2] || '' }),
   },
   {
     key: 'screenshot_captured_for',
@@ -492,13 +1087,32 @@ const translatedTitle = computed(() => {
 })
 
 const parsedMessagePayload = computed(() => tryParseObject(props.card.message))
+const textSearchResults = computed<TextSearchData | null>(() => {
+  const fromMessage = extractTextSearchPayload(parsedMessagePayload.value)
+  if (fromMessage) return fromMessage
+  return extractTextSearchFromDetails(props.card.details)
+})
+const directoryListing = computed<DirectoryListingData | null>(() => {
+  const fromMessage = extractDirectoryListingPayload(parsedMessagePayload.value)
+  if (fromMessage) return fromMessage
+  return extractDirectoryListingFromDetails(props.card.details)
+})
 const displayMessage = computed(() => {
   const payload = parsedMessagePayload.value
   if (payload) {
     const nestedMessage = typeof payload.message === 'string' ? payload.message.trim() : ''
-    return nestedMessage
+    if (nestedMessage) return nestedMessage
+    const search = extractTextSearchPayload(payload)
+    if (search) return buildTextSearchMessage(search)
+    const listing = extractDirectoryListingPayload(payload)
+    if (listing) return buildDirectoryListingMessage(listing)
+    return ''
   }
-  return (props.card.message || '').trim()
+  const plainMessage = (props.card.message || '').trim()
+  if (plainMessage) return plainMessage
+  if (textSearchResults.value) return buildTextSearchMessage(textSearchResults.value)
+  if (directoryListing.value) return buildDirectoryListingMessage(directoryListing.value)
+  return ''
 })
 
 const errorKeyMap: [RegExp, string][] = [
@@ -522,6 +1136,33 @@ const translatedMessage = computed(() => {
 const warningText = computed(() => (props.card.warning || '').trim())
 const translatedWarningText = computed(() => translateResultCardWarning(warningText.value))
 const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.warning_code, t))
+const syntheticMessageDetails = computed(() => {
+  const payload = parsedMessagePayload.value
+  if (!payload) return []
+
+  const nestedMessage = typeof payload.message === 'string' ? payload.message.trim() : ''
+  if (nestedMessage) return []
+
+  return Object.entries(payload)
+    .filter(([key]) => key !== 'message')
+    .filter(([key]) => !(textSearchResults.value && normalizeResultCardKey(key) === 'matches'))
+    .filter(([key]) => !(directoryListing.value && normalizeResultCardKey(key) === 'entries'))
+    .filter(([key]) => !(hasRenderedImages.value && isImageDetailLabel(key)))
+    .map(([key, value]) => {
+      const normalizedValue = normalizeSyntheticDetailValue(value)
+      return {
+        label: key,
+        value: normalizedValue,
+        multiline:
+          typeof normalizedValue === 'string' &&
+          (normalizedValue.includes('\n') || normalizedValue.length > 120),
+      }
+    })
+    .filter((detail) => {
+      if (typeof detail.value === 'string') return detail.value.trim() !== ''
+      return true
+    })
+})
 const resolvedImageItems = computed<ResolvedImageItem[]>(() => {
   const items: ResolvedImageItem[] = []
   const seen = new Set<string>()
@@ -554,16 +1195,80 @@ const resolvedImageItems = computed<ResolvedImageItem[]>(() => {
   return items
 })
 const hasRenderedImages = computed(() => resolvedImageItems.value.length > 0)
+const textSearchSummaryItems = computed(() => {
+  const search = textSearchResults.value
+  if (!search) return []
+
+  return [
+    { label: 'path', value: search.basePath || '.' },
+    { label: 'pattern', value: search.pattern },
+    ...(search.maxResults !== null ? [{ label: 'max_results', value: String(search.maxResults) }] : []),
+    ...(search.caseSensitive !== null
+      ? [{ label: 'case_sensitive', value: search.caseSensitive ? t('common.yes', 'Yes') : t('common.no', 'No') }]
+      : []),
+    ...(search.includeHidden !== null
+      ? [{ label: 'include_hidden', value: search.includeHidden ? t('common.yes', 'Yes') : t('common.no', 'No') }]
+      : []),
+    ...(search.backend ? [{ label: 'backend', value: search.backend }] : []),
+    ...(search.backendSource ? [{ label: 'backend_source', value: search.backendSource }] : []),
+  ]
+})
 
 // Filter out details that are redundant with the title/message
 const visibleDetails = computed(() => {
-  if (!props.card.details) return []
-  return props.card.details
+  const explicitDetails = props.card.details || []
+  const seenLabels = new Set(explicitDetails.map((detail) => normalizeResultCardKey(detail.label)))
+  const mergedDetails = [...explicitDetails]
+
+  syntheticMessageDetails.value.forEach((detail) => {
+    const key = normalizeResultCardKey(detail.label)
+    if (seenLabels.has(key)) return
+    seenLabels.add(key)
+    mergedDetails.push(detail)
+  })
+
+  return mergedDetails
     .filter((d) => {
       const lbl = d.label.toLowerCase()
       if (lbl === 'status' || lbl === '状态') return false
       if (lbl === 'warning' || lbl === 'warning_code') return false
       if (isImageDetailLabel(d.label) && hasRenderedImages.value) return false
+      if (textSearchResults.value) {
+        const normalizedLabel = normalizeResultCardKey(d.label)
+        if (
+          normalizedLabel === 'matches' ||
+          normalizedLabel === 'path' ||
+          normalizedLabel === 'base_path' ||
+          normalizedLabel === 'pattern' ||
+          normalizedLabel === 'count' ||
+          normalizedLabel === 'max_results' ||
+          normalizedLabel === 'case_sensitive' ||
+          normalizedLabel === 'include_hidden' ||
+          normalizedLabel === 'truncated' ||
+          normalizedLabel === 'backend' ||
+          normalizedLabel === 'backend_source'
+        ) {
+          return false
+        }
+      }
+      if (directoryListing.value) {
+        const normalizedLabel = normalizeResultCardKey(d.label)
+        if (
+          normalizedLabel === 'entries' ||
+          normalizedLabel === 'path' ||
+          normalizedLabel === 'base_path' ||
+          normalizedLabel === 'count' ||
+          normalizedLabel === 'pattern' ||
+          normalizedLabel === 'type' ||
+          normalizedLabel === 'max_depth' ||
+          normalizedLabel === 'max_entries' ||
+          normalizedLabel === 'include_hidden' ||
+          normalizedLabel === 'entries_hidden_in_card' ||
+          normalizedLabel === 'truncated'
+        ) {
+          return false
+        }
+      }
       if ((lbl === 'result' || lbl === '结果') && props.card.message) return false
       return true
     })
@@ -694,6 +1399,118 @@ const visibleDetails = computed(() => {
         >
           {{ translatedWarningText }}
         </p>
+      </div>
+
+      <div
+        v-if="textSearchResults"
+        class="rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700/60 dark:bg-gray-900/40"
+        :class="translatedMessage || warningText || warningCodeLabel ? 'mt-3' : ''"
+      >
+        <div
+          v-if="textSearchSummaryItems.length > 0"
+          class="flex flex-wrap gap-2 px-3.5 py-3 border-b border-gray-200 dark:border-gray-700/60"
+        >
+          <span
+            class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
+          >
+            {{ textSearchBadgeLabel }}
+          </span>
+          <span
+            v-for="item in textSearchSummaryItems"
+            :key="`${item.label}-${item.value}`"
+            class="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-600 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300"
+          >
+            <span class="text-gray-400 dark:text-gray-500">{{ tLabel(item.label) }}</span>
+            <span class="font-medium text-gray-700 dark:text-gray-100">{{ item.value }}</span>
+          </span>
+        </div>
+        <div
+          v-if="textSearchResults.matches.length > 0"
+          class="max-h-80 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700/60"
+        >
+          <div
+            v-for="(match, index) in textSearchResults.matches"
+            :key="`${match.path}-${match.line ?? 0}-${match.column ?? 0}-${index}`"
+            class="px-3.5 py-3"
+          >
+            <div class="flex items-start gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="break-all font-mono text-xs text-gray-800 dark:text-gray-100">
+                    {{ match.path }}
+                  </div>
+                  <span
+                    v-if="searchMatchLocation(match)"
+                    class="inline-flex items-center rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800/60 dark:bg-gray-800/80 dark:text-amber-200"
+                  >
+                    {{ searchMatchLocation(match) }}
+                  </span>
+                </div>
+                <pre
+                  v-if="match.preview"
+                  class="mt-2 overflow-x-auto rounded border border-gray-200 bg-white px-3 py-2 text-xs leading-relaxed text-gray-700 dark:border-gray-700/60 dark:bg-gray-950/50 dark:text-gray-200 font-mono whitespace-pre-wrap break-all"
+                >{{ match.preview }}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="directoryListing && directoryListing.entries.length > 0"
+        class="rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700/60 dark:bg-gray-900/40"
+        :class="translatedMessage || warningText || warningCodeLabel ? 'mt-3' : ''"
+      >
+        <div
+          v-if="listingSummaryItems.length > 0"
+          class="flex flex-wrap gap-2 px-3.5 py-3 border-b border-gray-200 dark:border-gray-700/60"
+        >
+          <span
+            class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide"
+            :class="
+              directoryListing.kind === 'find'
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
+            "
+          >
+            {{ directoryListing.kind === 'find' ? 'FIND' : 'LIST' }}
+          </span>
+          <span
+            v-for="item in listingSummaryItems"
+            :key="`${item.label}-${item.value}`"
+            class="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-600 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300"
+          >
+            <span class="text-gray-400 dark:text-gray-500">{{ tLabel(item.label) }}</span>
+            <span class="font-medium text-gray-700 dark:text-gray-100">{{ item.value }}</span>
+          </span>
+        </div>
+        <div class="max-h-80 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700/60">
+          <div
+            v-for="(entry, index) in directoryListing.entries"
+            :key="`${entry.path}-${index}`"
+            class="px-3.5 py-2.5"
+          >
+            <div class="flex items-start gap-3">
+              <span
+                class="mt-0.5 inline-flex min-w-[3.5rem] items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-wide"
+                :class="directoryEntryBadgeClass(entry)"
+              >
+                {{ entry.type === 'dir' ? 'DIR' : 'FILE' }}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="break-all font-mono text-xs text-gray-800 dark:text-gray-100">
+                  {{ entry.path }}
+                </div>
+                <div
+                  v-if="directoryEntryMeta(entry)"
+                  class="mt-1 break-all text-[11px] leading-relaxed text-gray-500 dark:text-gray-400"
+                >
+                  {{ directoryEntryMeta(entry) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Details -->

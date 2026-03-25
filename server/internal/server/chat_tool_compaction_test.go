@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -264,6 +265,74 @@ func TestCompactToolResultContentForLLM_PDFKeepsDistributedPageExcerpts(t *testi
 		if !strings.Contains(text, needle) {
 			t.Fatalf("expected compacted pdf text to keep %q, got=%q", needle, text)
 		}
+	}
+}
+
+func TestCompactToolResultContentForLLM_PDFKeepsAllCompactPagesWhenAvailable(t *testing.T) {
+	pages := make([]interface{}, 0, 6)
+	for i := 1; i <= 6; i++ {
+		pages = append(pages, map[string]interface{}{
+			"number": i,
+			"text":   fmt.Sprintf("page %d details %s", i, strings.Repeat(string(rune('a'+i-1)), 160)),
+		})
+	}
+	payload := map[string]interface{}{
+		"document": map[string]interface{}{
+			"path":       "/tmp/workspace/openclaw_report.pdf",
+			"file_name":  "openclaw_report.pdf",
+			"page_count": 6,
+		},
+		"selected_pages": []interface{}{1, 2, 3, 4, 5, 6},
+		"char_count":     9000,
+		"text":           "merged text that should be omitted when compact pages are present",
+		"pages":          pages,
+	}
+	contentBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pdf payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("pdf", string(contentBytes))
+	if len(compacted) > maxLLMToolOutputBytes {
+		t.Fatalf("compacted pdf output too large: %d", len(compacted))
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted pdf payload: %v", err)
+	}
+	if _, exists := out["text"]; exists {
+		t.Fatalf("expected compacted pdf to omit merged text when compact pages are available: %#v", out)
+	}
+	compactedPages, ok := out["pages"].([]interface{})
+	if !ok || len(compactedPages) != 6 {
+		t.Fatalf("pages = %#v, want 6 entries", out["pages"])
+	}
+	lastPage, ok := compactedPages[5].(map[string]interface{})
+	if !ok {
+		t.Fatalf("last page = %#v", compactedPages[5])
+	}
+	if got := lastPage["number"]; got != float64(6) {
+		t.Fatalf("last page number = %v, want 6", got)
+	}
+	if text := anyToStringForLLM(lastPage["text"]); !strings.Contains(text, "page 6 details") {
+		t.Fatalf("last page text = %q, want page 6 details", text)
+	}
+}
+
+func TestContentForChatToolHistory_PrefersRawPDFAuditPayload(t *testing.T) {
+	compact := `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":1,"text":"sample"}]}`
+	raw := `{"document":{"path":"openclaw_report.pdf"},"raw_text":"[Page 1]\nfull raw text"}`
+	if got := contentForChatToolHistory("pdf", compact, raw); got != raw {
+		t.Fatalf("contentForChatToolHistory() = %q, want raw audit payload", got)
+	}
+}
+
+func TestContentForChatToolHistory_PrefersRawFileReadAuditPayloadForPDF(t *testing.T) {
+	compact := `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":1,"text":"sample"}]}`
+	raw := `{"document":{"path":"openclaw_report.pdf"},"raw_text":"[Page 1]\nfull raw text"}`
+	if got := contentForChatToolHistory("read", compact, raw); got != raw {
+		t.Fatalf("contentForChatToolHistory() = %q, want raw audit payload for PDF-like file_read results", got)
 	}
 }
 

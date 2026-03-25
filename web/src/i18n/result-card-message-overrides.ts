@@ -21,6 +21,9 @@ export default {
         no_entries_in_path: 'No hi ha entrades a {path}',
         showing_first_entries_in_path:
           "S'estan mostrant les primeres {count} entrades de {path} (se n'han omès més)",
+        matches_for_pattern_in_path: "{count} coincidències per a {pattern} a {path}",
+        no_matches_for_pattern_in_path: "No s'han trobat coincidències per a {pattern} a {path}",
+
         screenshot_captured_for: 'Captura de pantalla feta per a {target}',
       },
       warnings: {
@@ -47,6 +50,9 @@ export default {
         no_entries_in_path: 'V {path} nejsou žádné položky',
         showing_first_entries_in_path:
           'Zobrazuje se prvních {count} položek v {path} (další byly vynechány)',
+        matches_for_pattern_in_path: "{count} shod pro {pattern} v {path}",
+        no_matches_for_pattern_in_path: "Žádné shody pro {pattern} v {path}",
+
         screenshot_captured_for: 'Snímek obrazovky pořízen pro {target}',
       },
       warnings: {
@@ -72,6 +78,9 @@ export default {
         single_entry_in_path: '1 element i {path}',
         no_entries_in_path: 'Ingen elementer i {path}',
         showing_first_entries_in_path: 'Viser de første {count} elementer i {path} (flere udeladt)',
+        matches_for_pattern_in_path: "{count} matches for {pattern} i {path}",
+        no_matches_for_pattern_in_path: "Ingen matches for {pattern} i {path}",
+
         screenshot_captured_for: 'Skærmbillede taget for {target}',
       },
       warnings: {
@@ -98,6 +107,9 @@ export default {
         no_entries_in_path: 'Keine Einträge in {path}',
         showing_first_entries_in_path:
           'Erste {count} Einträge in {path} werden angezeigt (weitere ausgelassen)',
+        matches_for_pattern_in_path: "{count} Treffer für {pattern} in {path}",
+        no_matches_for_pattern_in_path: "Keine Treffer für {pattern} in {path}",
+
         screenshot_captured_for: 'Screenshot für {target} aufgenommen',
       },
       warnings: {
@@ -125,6 +137,9 @@ export default {
         no_entries_in_path: 'Δεν υπάρχουν καταχωρίσεις στο {path}',
         showing_first_entries_in_path:
           'Εμφανίζονται οι πρώτες {count} καταχωρίσεις στο {path} (οι υπόλοιπες παραλείφθηκαν)',
+        matches_for_pattern_in_path: "{count} αντιστοιχίες για {pattern} στο {path}",
+        no_matches_for_pattern_in_path: "Δεν βρέθηκαν αντιστοιχίες για {pattern} στο {path}",
+
         screenshot_captured_for: 'Λήφθηκε στιγμιότυπο οθόνης για το {target}',
       },
       warnings: {
@@ -150,6 +165,8 @@ export default {
         single_entry_in_path: '1 entry in {path}',
         no_entries_in_path: 'No entries in {path}',
         showing_first_entries_in_path: 'Showing first {count} entries in {path} (more omitted)',
+        matches_for_pattern_in_path: '{count} matches for {pattern} in {path}',
+        no_matches_for_pattern_in_path: 'No matches for {pattern} in {path}',
         screenshot_captured_for: 'Screenshot captured for {target}',
       },
       warnings: {
@@ -175,6 +192,8 @@ export default {
         single_entry_in_path: '1 entry in {path}',
         no_entries_in_path: 'No entries in {path}',
         showing_first_entries_in_path: 'Showing first {count} entries in {path} (more omitted)',
+        matches_for_pattern_in_path: '{count} matches for {pattern} in {path}',
+        no_matches_for_pattern_in_path: 'No matches for {pattern} in {path}',
         screenshot_captured_for: 'Screenshot captured for {target}',
       },
       warnings: {
@@ -201,6 +220,9 @@ export default {
         no_entries_in_path: 'No hay entradas en {path}',
         showing_first_entries_in_path:
           'Mostrando las primeras {count} entradas de {path} (se omitieron más)',
+        matches_for_pattern_in_path: "{count} coincidencias para {pattern} en {path}",
+        no_matches_for_pattern_in_path: "No hay coincidencias para {pattern} en {path}",
+
         screenshot_captured_for: 'Captura de pantalla realizada para {target}',
       },
       warnings: {
@@ -227,6 +249,9 @@ export default {
         no_entries_in_path: 'Aucun élément dans {path}',
         showing_first_entries_in_path:
           'Affichage des {count} premiers éléments dans {path} (autres omis)',
+        matches_for_pattern_in_path: "{count} correspondances pour {pattern} dans {path}",
+        no_matches_for_pattern_in_path: "Aucune correspondance pour {pattern} dans {path}",
+
         screenshot_captured_for: 'Capture d’écran effectuée pour {target}',
       },
       warnings: {
@@ -253,6 +278,9 @@ export default {
         no_entries_in_path: 'Níl aon iontrálacha i {path}',
         showing_first_entries_in_path:
           'Ag taispeáint na chéad {count} iontráil i {path} (fágadh cinn eile ar lár)',
+        matches_for_pattern_in_path: "{count} meaitseálacha do {pattern} in {path}",
+        no_matches_for_pattern_in_path: "Níl aon mheaitseáil do {pattern} in {path}",
+
         screenshot_captured_for: 'Tógadh seat scáileáin do {target}',
       },
       warnings: {
@@ -279,6 +307,9 @@ export default {
         no_entries_in_path: 'Nema stavki u {path}',
         showing_first_entries_in_path:
           'Prikazuje se prvih {count} stavki u {path} (ostale su izostavljene)',
+        matches_for_pattern_in_path: "{count} podudaranja za {pattern} u {path}",
+        no_matches_for_pattern_in_path: "Nema podudaranja za {pattern} u {path}",
+
         screenshot_captured_for: 'Snimka zaslona zabilježena za {target}',
       },
       warnings: {
@@ -305,6 +336,9 @@ export default {
         no_entries_in_path: 'Nincs bejegyzés itt: {path}',
         showing_first_entries_in_path:
           'Az első {count} bejegyzés látható itt: {path} (a többi ki van hagyva)',
+        matches_for_pattern_in_path: "{count} találat erre: {pattern} itt: {path}",
+        no_matches_for_pattern_in_path: "Nincs találat erre: {pattern} itt: {path}",
+
         screenshot_captured_for: 'Képernyőkép készült erről: {target}',
       },
       warnings: {
@@ -331,6 +365,9 @@ export default {
         single_entry_in_path: '1 elemento in {path}',
         no_entries_in_path: 'Nessun elemento in {path}',
         showing_first_entries_in_path: 'Mostra i primi {count} elementi in {path} (altri omessi)',
+        matches_for_pattern_in_path: "{count} corrispondenze per {pattern} in {path}",
+        no_matches_for_pattern_in_path: "Nessuna corrispondenza per {pattern} in {path}",
+
         screenshot_captured_for: 'Screenshot acquisito per {target}',
       },
       warnings: {
@@ -358,6 +395,9 @@ export default {
         no_entries_in_path: '{path} に項目はありません',
         showing_first_entries_in_path:
           '{path} の先頭 {count} 件の項目を表示しています（残りは省略）',
+        matches_for_pattern_in_path: "{path} で {pattern} に {count} 件一致",
+        no_matches_for_pattern_in_path: "{path} で {pattern} の一致はありません",
+
         screenshot_captured_for: '{target} のスクリーンショットを取得しました',
       },
       warnings: {
@@ -385,6 +425,9 @@ export default {
         no_entries_in_path: '{path}에 항목이 없습니다',
         showing_first_entries_in_path:
           '{path}의 처음 {count}개 항목을 표시하는 중(더 많은 항목은 생략됨)',
+        matches_for_pattern_in_path: "{path}에서 {pattern} 일치 {count}건",
+        no_matches_for_pattern_in_path: "{path}에서 {pattern} 일치 없음",
+
         screenshot_captured_for: '{target}의 스크린샷을 캡처했습니다',
       },
       warnings: {
@@ -411,6 +454,9 @@ export default {
         no_entries_in_path: '{path} ൽ എൻട്രികളില്ല',
         showing_first_entries_in_path:
           '{path} ൽ ആദ്യ {count} എൻട്രികൾ കാണിക്കുന്നു (കൂടുതൽ ഒഴിവാക്കി)',
+        matches_for_pattern_in_path: "{path} ൽ {pattern} ന് {count} പൊരുത്തങ്ങൾ",
+        no_matches_for_pattern_in_path: "{path} ൽ {pattern} ന് പൊരുത്തങ്ങളില്ല",
+
         screenshot_captured_for: '{target} ന് വേണ്ടി സ്ക്രീൻഷോട്ട് എടുത്തു',
       },
       warnings: {
@@ -438,6 +484,9 @@ export default {
         no_entries_in_path: 'Ingen oppføringer i {path}',
         showing_first_entries_in_path:
           'Viser de første {count} oppføringene i {path} (flere utelatt)',
+        matches_for_pattern_in_path: "{count} treff for {pattern} i {path}",
+        no_matches_for_pattern_in_path: "Ingen treff for {pattern} i {path}",
+
         screenshot_captured_for: 'Skjermbilde tatt for {target}',
       },
       warnings: {
@@ -464,6 +513,9 @@ export default {
         no_entries_in_path: 'Geen items in {path}',
         showing_first_entries_in_path:
           'De eerste {count} items in {path} worden getoond (meer weggelaten)',
+        matches_for_pattern_in_path: "{count} overeenkomsten voor {pattern} in {path}",
+        no_matches_for_pattern_in_path: "Geen overeenkomsten voor {pattern} in {path}",
+
         screenshot_captured_for: 'Screenshot gemaakt voor {target}',
       },
       warnings: {
@@ -490,6 +542,9 @@ export default {
         no_entries_in_path: 'Brak elementów w {path}',
         showing_first_entries_in_path:
           'Wyświetlanie pierwszych {count} elementów w {path} (pozostałe pominięto)',
+        matches_for_pattern_in_path: "{count} dopasowań dla {pattern} w {path}",
+        no_matches_for_pattern_in_path: "Brak dopasowań dla {pattern} w {path}",
+
         screenshot_captured_for: 'Zrzut ekranu został wykonany dla {target}',
       },
       warnings: {
@@ -516,6 +571,9 @@ export default {
         no_entries_in_path: 'Nenhuma entrada em {path}',
         showing_first_entries_in_path:
           'Mostrando as primeiras {count} entradas em {path} (outras omitidas)',
+        matches_for_pattern_in_path: "{count} correspondências para {pattern} em {path}",
+        no_matches_for_pattern_in_path: "Nenhuma correspondência para {pattern} em {path}",
+
         screenshot_captured_for: 'Captura de tela realizada para {target}',
       },
       warnings: {
@@ -542,6 +600,9 @@ export default {
         no_entries_in_path: 'Sem entradas em {path}',
         showing_first_entries_in_path:
           'A mostrar as primeiras {count} entradas em {path} (outras omitidas)',
+        matches_for_pattern_in_path: "{count} correspondências para {pattern} em {path}",
+        no_matches_for_pattern_in_path: "Nenhuma correspondência para {pattern} em {path}",
+
         screenshot_captured_for: 'Captura de ecrã efetuada para {target}',
       },
       warnings: {
@@ -568,6 +629,9 @@ export default {
         no_entries_in_path: 'Nu există intrări în {path}',
         showing_first_entries_in_path:
           'Se afișează primele {count} intrări din {path} (restul au fost omise)',
+        matches_for_pattern_in_path: "{count} potriviri pentru {pattern} în {path}",
+        no_matches_for_pattern_in_path: "Nicio potrivire pentru {pattern} în {path}",
+
         screenshot_captured_for: 'Captura de ecran a fost realizată pentru {target}',
       },
       warnings: {
@@ -594,6 +658,9 @@ export default {
         no_entries_in_path: 'В {path} нет элементов',
         showing_first_entries_in_path:
           'Показаны первые {count} элементов в {path} (остальные скрыты)',
+        matches_for_pattern_in_path: "{count} совпадений для {pattern} в {path}",
+        no_matches_for_pattern_in_path: "Нет совпадений для {pattern} в {path}",
+
         screenshot_captured_for: 'Сделан снимок экрана для {target}',
       },
       warnings: {
@@ -620,6 +687,9 @@ export default {
         no_entries_in_path: 'V {path} nie sú žiadne položky',
         showing_first_entries_in_path:
           'Zobrazuje sa prvých {count} položiek v {path} (ďalšie boli vynechané)',
+        matches_for_pattern_in_path: "{count} zhôd pre {pattern} v {path}",
+        no_matches_for_pattern_in_path: "Žiadne zhody pre {pattern} v {path}",
+
         screenshot_captured_for: 'Snímka obrazovky bola vytvorená pre {target}',
       },
       warnings: {
@@ -646,6 +716,9 @@ export default {
         no_entries_in_path: 'Inga poster i {path}',
         showing_first_entries_in_path:
           'Visar de första {count} posterna i {path} (fler utelämnade)',
+        matches_for_pattern_in_path: "{count} träffar för {pattern} i {path}",
+        no_matches_for_pattern_in_path: "Inga träffar för {pattern} i {path}",
+
         screenshot_captured_for: 'Skärmbild tagen för {target}',
       },
       warnings: {
@@ -670,6 +743,8 @@ export default {
         single_entry_in_path: '{path} 中有 1 个条目',
         no_entries_in_path: '{path} 中没有条目',
         showing_first_entries_in_path: '显示 {path} 中前 {count} 个条目（更多已省略）',
+        matches_for_pattern_in_path: '{path} 中找到 {count} 处匹配 {pattern}',
+        no_matches_for_pattern_in_path: '{path} 中未找到 {pattern} 的匹配',
         screenshot_captured_for: '已为 {target} 捕获截图',
       },
       warnings: {
@@ -694,6 +769,8 @@ export default {
         single_entry_in_path: '{path} 中有 1 個項目',
         no_entries_in_path: '{path} 中沒有項目',
         showing_first_entries_in_path: '顯示 {path} 中前 {count} 個項目（更多已省略）',
+        matches_for_pattern_in_path: '{path} 中找到 {count} 處匹配 {pattern}',
+        no_matches_for_pattern_in_path: '{path} 中未找到 {pattern} 的匹配',
         screenshot_captured_for: '已為 {target} 擷取截圖',
       },
       warnings: {

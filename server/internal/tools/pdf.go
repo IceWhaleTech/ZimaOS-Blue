@@ -299,7 +299,13 @@ func (t *PDFTool) resolveLocalPDFPath(ctx context.Context, raw string) (string, 
 		return "", errors.New("pdf reference cannot be empty")
 	}
 	if t != nil && t.scope != nil {
-		absPath, _, _, err := t.scope.resolvePathWithContext(ctx, "pdf", trimmed, false)
+		scopeCtx := ctx
+		if !filepath.IsAbs(trimmed) {
+			if roots, aliases := GetFSScope(ctx); len(roots) > 0 || len(aliases) > 0 {
+				scopeCtx = WithFSRootOverride(ctx, roots, aliases)
+			}
+		}
+		absPath, _, _, err := t.scope.resolvePathWithContext(scopeCtx, "pdf", trimmed, false)
 		if err == nil {
 			return absPath, nil
 		}
@@ -693,5 +699,9 @@ func RegisterPDFTool(registry *Registry, service PDFService) {
 	if registry == nil || service == nil {
 		return
 	}
-	registry.Register(NewPDFTool(service))
+	tool := NewPDFTool(service)
+	if read, ok := registry.Get("file_read").(*FileReadTool); ok && read != nil {
+		tool.scope = newFSToolScope(read.AllowedPaths)
+	}
+	registry.Register(tool)
 }

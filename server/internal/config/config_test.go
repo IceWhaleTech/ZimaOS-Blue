@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 )
 
 func isolateConfigDiscovery(t *testing.T) {
@@ -73,6 +75,18 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Browser.MaxTimeout != 300000 {
 		t.Errorf("Browser.MaxTimeout = %v, want %v", cfg.Browser.MaxTimeout, 300000)
+	}
+	if got := cfg.Browser.ResolvedStrategy(); got != browser.BrowserStrategySingle {
+		t.Errorf("Browser.ResolvedStrategy() = %q, want %q", got, browser.BrowserStrategySingle)
+	}
+	if cfg.Browser.Lightpanda.Enabled {
+		t.Errorf("Browser.Lightpanda.Enabled = %v, want false", cfg.Browser.Lightpanda.Enabled)
+	}
+	if !cfg.Browser.PreferLocalChrome() {
+		t.Errorf("Browser.PreferLocalChrome() = %v, want true", cfg.Browser.PreferLocalChrome())
+	}
+	if !cfg.Browser.CapabilityEscalateOnFailure() {
+		t.Errorf("Browser.CapabilityEscalateOnFailure() = %v, want true", cfg.Browser.CapabilityEscalateOnFailure())
 	}
 	if cfg.Browser.RelayPreferredFallback() != "managed" {
 		t.Errorf("Browser.RelayPreferredFallback() = %q, want managed", cfg.Browser.RelayPreferredFallback())
@@ -167,6 +181,7 @@ log:
 worker:
   pool_size: 20
 browser:
+  strategy: "hybrid_capability"
   driver: "relay"
   relay_enabled: true
   relay_port: 18792
@@ -179,6 +194,14 @@ browser:
   relay_preferred_sites: ["zhihu.com"]
   relay_preferred_site_presets: ["browser_common"]
   relay_preferred_fallback_driver: "managed"
+  lightpanda:
+    enabled: true
+    binary_path: "/tmp/lightpanda"
+    args: ["--headless"]
+  chromium:
+    prefer_local_chrome: false
+  capability_router:
+    escalate_on_failure: false
 performance:
   database:
     conn_max_idle_time: "2m"
@@ -215,6 +238,9 @@ performance:
 	if got := cfg.Browser.ResolvedDriver(); got != "relay" {
 		t.Errorf("Browser.ResolvedDriver() = %v, want %v", got, "relay")
 	}
+	if got := cfg.Browser.ResolvedStrategy(); got != browser.BrowserStrategyHybridCapability {
+		t.Errorf("Browser.ResolvedStrategy() = %v, want %v", got, browser.BrowserStrategyHybridCapability)
+	}
 	if !cfg.Browser.RelayEnabled {
 		t.Fatalf("Browser.RelayEnabled = false, want true")
 	}
@@ -241,6 +267,21 @@ performance:
 	}
 	if got := cfg.Browser.RelayPreferredFallback(); got != "managed" {
 		t.Errorf("Browser.RelayPreferredFallback() = %q, want managed", got)
+	}
+	if !cfg.Browser.Lightpanda.Enabled {
+		t.Fatalf("Browser.Lightpanda.Enabled = false, want true")
+	}
+	if cfg.Browser.Lightpanda.BinaryPath != "/tmp/lightpanda" {
+		t.Fatalf("Browser.Lightpanda.BinaryPath = %q, want /tmp/lightpanda", cfg.Browser.Lightpanda.BinaryPath)
+	}
+	if len(cfg.Browser.Lightpanda.Args) != 1 || cfg.Browser.Lightpanda.Args[0] != "--headless" {
+		t.Fatalf("Browser.Lightpanda.Args = %#v, want [--headless]", cfg.Browser.Lightpanda.Args)
+	}
+	if cfg.Browser.PreferLocalChrome() {
+		t.Fatalf("Browser.PreferLocalChrome() = true, want false")
+	}
+	if cfg.Browser.CapabilityEscalateOnFailure() {
+		t.Fatalf("Browser.CapabilityEscalateOnFailure() = true, want false")
 	}
 	if cfg.Performance.Database.ConnMaxIdleTime != 2*time.Minute {
 		t.Errorf("Performance.Database.ConnMaxIdleTime = %v, want %v", cfg.Performance.Database.ConnMaxIdleTime, 2*time.Minute)

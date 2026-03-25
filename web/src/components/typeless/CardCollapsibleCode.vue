@@ -4,8 +4,9 @@ import { useI18n } from 'vue-i18n'
 import type { TypelessCardCollapsibleCode } from '@/types/typeless'
 import { useFullscreen } from '@/composables/useFullscreen'
 import { renderMarkdown } from '@/utils/markdown'
+import { getLocalizedToolName } from '@/utils/toolLocalization'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardCollapsibleCode
@@ -18,11 +19,41 @@ const isMarkdown = computed(
   () => !props.card.language || props.card.language.toLowerCase() === 'markdown'
 )
 const renderedMarkdown = computed(() => (isMarkdown.value ? renderMarkdown(props.card.code) : ''))
+const isFileReadCard = computed(() => {
+  const normalizedTitle = (props.card.title || '').trim().toLowerCase().replace(/\s+/g, '_')
+  return normalizedTitle === 'file_read' || normalizedTitle === 'read'
+})
+const filePath = computed(() => (props.card.filename || '').trim())
+const fileName = computed(() => {
+  const path = filePath.value
+  if (!path) return ''
+  return path.split(/[\\/]/).filter(Boolean).pop() || path
+})
+const fileDirectory = computed(() => {
+  const path = filePath.value
+  const name = fileName.value
+  if (!path || !name) return ''
+  const idx = path.lastIndexOf(name)
+  if (idx <= 0) return ''
+  return path.slice(0, idx).replace(/[\\/]$/, '')
+})
+const fileExtension = computed(() => {
+  const name = fileName.value
+  const idx = name.lastIndexOf('.')
+  if (idx <= 0 || idx === name.length - 1) return ''
+  return name.slice(idx + 1).toUpperCase()
+})
+const localizedTitle = computed(() => {
+  if (isFileReadCard.value) {
+    return getLocalizedToolName('file_read', t, te)
+  }
+  return (props.card.title || '').trim()
+})
 
 function handleDoubleClick() {
   openFullscreen({
     type: 'code',
-    title: props.card.filename || props.card.title || getLanguageDisplay(),
+    title: fileName.value || props.card.filename || localizedTitle.value || getLanguageDisplay(),
     language: props.card.language,
     content: props.card.code,
   })
@@ -104,37 +135,71 @@ function getLanguageDisplay(): string {
       "
     >
       <div class="flex items-center gap-2">
-        <!-- Markdown icon -->
-        <span v-if="isMarkdown" class="text-base">📄</span>
-        <!-- Filename or title -->
-        <span
-          v-if="card.filename || card.title"
-          class="text-xs"
-          :class="
-            isMarkdown
-              ? 'text-gray-700 dark:text-gray-300 font-medium'
-              : 'text-gray-500 dark:text-gray-400'
-          "
-        >
-          {{ card.filename || card.title }}
-        </span>
-        <!-- Language badge -->
-        <span
-          v-if="card.language && !isMarkdown && !(card.filename || card.title)"
-          class="text-xs text-gray-500 dark:text-gray-400"
-        >
-          {{ getLanguageDisplay() }}
-        </span>
-        <!-- Fallback label -->
-        <span
-          v-if="!isMarkdown && !card.filename && !card.title && !card.language"
-          class="text-xs text-gray-500 dark:text-gray-400"
-          >{{ t('codeBlock.code', 'code') }}</span
-        >
-        <!-- Lines count -->
-        <span v-if="!isMarkdown" class="text-xs text-gray-400 dark:text-gray-500"
-          >{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span
-        >
+        <template v-if="isFileReadCard">
+          <span class="text-base">📄</span>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span
+                class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+              >
+                {{ localizedTitle || card.title }}
+              </span>
+              <span
+                v-if="fileExtension"
+                class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-wide bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+              >
+                {{ fileExtension }}
+              </span>
+              <span class="text-xs text-gray-400 dark:text-gray-500"
+                >{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span
+              >
+            </div>
+            <div class="mt-1 min-w-0">
+              <div class="truncate text-xs font-medium text-gray-700 dark:text-gray-200">
+                {{ fileName || card.filename || localizedTitle || card.title }}
+              </div>
+              <div
+                v-if="fileDirectory || filePath"
+                class="truncate text-[11px] font-mono text-gray-400 dark:text-gray-500"
+              >
+                {{ fileDirectory || filePath }}
+              </div>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <!-- Markdown icon -->
+          <span v-if="isMarkdown" class="text-base">📄</span>
+          <!-- Filename or title -->
+          <span
+            v-if="card.filename || localizedTitle"
+            class="text-xs"
+            :class="
+              isMarkdown
+                ? 'text-gray-700 dark:text-gray-300 font-medium'
+                : 'text-gray-500 dark:text-gray-400'
+            "
+          >
+            {{ card.filename || localizedTitle }}
+          </span>
+          <!-- Language badge -->
+          <span
+            v-if="card.language && !isMarkdown && !(card.filename || localizedTitle)"
+            class="text-xs text-gray-500 dark:text-gray-400"
+          >
+            {{ getLanguageDisplay() }}
+          </span>
+          <!-- Fallback label -->
+          <span
+            v-if="!isMarkdown && !card.filename && !localizedTitle && !card.language"
+            class="text-xs text-gray-500 dark:text-gray-400"
+            >{{ t('codeBlock.code', 'code') }}</span
+          >
+          <!-- Lines count -->
+          <span v-if="!isMarkdown" class="text-xs text-gray-400 dark:text-gray-500"
+            >{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span
+          >
+        </template>
       </div>
       <div class="flex items-center gap-2">
         <!-- Fullscreen hint -->

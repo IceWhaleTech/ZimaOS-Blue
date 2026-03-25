@@ -98,6 +98,36 @@ func TestRegisterPDFToolLeavesToolEnabled(t *testing.T) {
 	}
 }
 
+func TestRegisterPDFToolInheritsFileReadAllowedPaths(t *testing.T) {
+	workspaceDir := t.TempDir()
+	path := filepath.Join(workspaceDir, "report.pdf")
+	if err := os.WriteFile(path, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write pdf: %v", err)
+	}
+
+	registry := NewRegistry()
+	registry.Register(NewFileReadTool([]string{workspaceDir}, 0))
+	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello", Document: pdfextract.DocumentInfo{FileName: "report.pdf"}}}
+	RegisterPDFTool(registry, svc)
+
+	rawTool := registry.Get("pdf")
+	if rawTool == nil {
+		t.Fatal("expected registered pdf tool")
+	}
+
+	result, err := rawTool.Execute(context.Background(), map[string]interface{}{"path": "report.pdf"})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(pdfextract.ExtractResult)
+	if payload.Text != "hello" {
+		t.Fatalf("text = %q, want %q", payload.Text, "hello")
+	}
+	if svc.lastExtractReq.Path != path {
+		t.Fatalf("extract path = %q, want %q", svc.lastExtractReq.Path, path)
+	}
+}
+
 func TestPDFToolInfoExecuteSupportsMultiplePDFs(t *testing.T) {
 	now := time.Now().UTC()
 	path1 := writeTestPDF(t, "one.pdf", 256)
@@ -218,6 +248,30 @@ func TestPDFToolReadExecuteResolvesRelativeWorkspacePath(t *testing.T) {
 	ctx := WithFSRootOverride(context.Background(), []string{workspaceDir}, map[string]string{"workspace": workspaceDir})
 
 	result, err := tool.Execute(ctx, map[string]interface{}{"path": "report.pdf"})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(pdfextract.ExtractResult)
+	if payload.Text != "hello" {
+		t.Fatalf("text = %q, want %q", payload.Text, "hello")
+	}
+	if svc.lastExtractReq.Path != path {
+		t.Fatalf("extract path = %q, want %q", svc.lastExtractReq.Path, path)
+	}
+}
+
+func TestPDFToolReadExecuteResolvesRelativeWorkspacePathFromAdditionalScope(t *testing.T) {
+	workspaceDir := t.TempDir()
+	path := filepath.Join(workspaceDir, "openclaw_report.pdf")
+	if err := os.WriteFile(path, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write pdf: %v", err)
+	}
+
+	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello", Document: pdfextract.DocumentInfo{FileName: "openclaw_report.pdf"}}}
+	tool := NewPDFTool(svc)
+	ctx := WithFSScope(context.Background(), []string{workspaceDir}, map[string]string{"workspace": workspaceDir})
+
+	result, err := tool.Execute(ctx, map[string]interface{}{"path": "openclaw_report.pdf"})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}

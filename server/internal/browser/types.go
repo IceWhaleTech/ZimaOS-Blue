@@ -121,6 +121,113 @@ type SessionScreenshot struct {
 	Scope string `json:"scope,omitempty"`
 }
 
+// SessionEngine identifies which browser engine owns a session.
+type SessionEngine string
+
+const (
+	// SessionEngineLightpanda is the read-only Lightpanda engine.
+	SessionEngineLightpanda SessionEngine = "lightpanda"
+	// SessionEngineChromiumManaged is Blue-managed Chromium.
+	SessionEngineChromiumManaged SessionEngine = "chromium_managed"
+	// SessionEngineChromiumRelay is a relay/local-Chrome Chromium session.
+	SessionEngineChromiumRelay SessionEngine = "chromium_relay"
+)
+
+// SessionMonitorKind identifies how a session should be monitored.
+type SessionMonitorKind string
+
+const (
+	// SessionMonitorKindText represents structured text monitoring.
+	SessionMonitorKindText SessionMonitorKind = "text"
+	// SessionMonitorKindImage represents screenshot-based monitoring.
+	SessionMonitorKindImage SessionMonitorKind = "image"
+)
+
+// SessionInfo is the unified browser session summary returned to clients.
+type SessionInfo struct {
+	ID           string             `json:"id"`
+	Status       string             `json:"status"`
+	CurrentURL   string             `json:"current_url,omitempty"`
+	PageTitle    string             `json:"page_title,omitempty"`
+	CreatedAt    string             `json:"created_at"`
+	LastActivity string             `json:"last_activity"`
+	Engine       SessionEngine      `json:"engine"`
+	MonitorKind  SessionMonitorKind `json:"monitor_kind"`
+}
+
+// SessionTextMonitor contains the lightweight text monitor payload.
+type SessionTextMonitor struct {
+	Title            string `json:"title,omitempty"`
+	URL              string `json:"url,omitempty"`
+	Summary          string `json:"summary,omitempty"`
+	TreePreview      string `json:"tree_preview,omitempty"`
+	InteractiveCount int    `json:"interactive_count,omitempty"`
+	UpdatedAt        string `json:"updated_at,omitempty"`
+	Status           string `json:"status,omitempty"`
+}
+
+// SessionImageMonitor contains screenshot monitor payload for Chromium sessions.
+type SessionImageMonitor struct {
+	Screenshot string              `json:"screenshot,omitempty"`
+	History    []SessionScreenshot `json:"history,omitempty"`
+	UpdatedAt  string              `json:"updated_at,omitempty"`
+	Status     string              `json:"status,omitempty"`
+}
+
+// SessionMonitorResponse is the unified monitor API payload.
+type SessionMonitorResponse struct {
+	Kind  SessionMonitorKind   `json:"kind"`
+	Image *SessionImageMonitor `json:"image,omitempty"`
+	Text  *SessionTextMonitor  `json:"text,omitempty"`
+	Error string               `json:"error,omitempty"`
+}
+
+// SessionScreenshotResponse is the legacy screenshot compatibility payload.
+type SessionScreenshotResponse struct {
+	Screenshot string              `json:"screenshot,omitempty"`
+	History    []SessionScreenshot `json:"history,omitempty"`
+	Error      string              `json:"error,omitempty"`
+}
+
+// SessionRouteProvider allows browser session HTTP routes to be backed by a
+// multi-engine session manager instead of a single browser.Service instance.
+type SessionRouteProvider interface {
+	ListBrowserSessions(ctx context.Context) ([]SessionInfo, error)
+	CreateBrowserSession(ctx context.Context) (*SessionInfo, error)
+	GetBrowserSession(ctx context.Context, id string) (*SessionInfo, error)
+	CloseBrowserSession(ctx context.Context, id string) error
+	NavigateBrowserSession(ctx context.Context, id string, url string) (*NavigateResponse, error)
+	CaptureBrowserSessionMonitor(ctx context.Context, id string) (*SessionMonitorResponse, error)
+	CaptureBrowserSessionScreenshot(ctx context.Context, id string) (*SessionScreenshotResponse, error)
+}
+
+// BrowserStrategy selects how Blue routes browser work.
+type BrowserStrategy string
+
+const (
+	// BrowserStrategySingle keeps Blue on a single browser runtime.
+	BrowserStrategySingle BrowserStrategy = "single"
+	// BrowserStrategyHybridCapability routes by capability between engines.
+	BrowserStrategyHybridCapability BrowserStrategy = "hybrid_capability"
+)
+
+// LightpandaConfig configures the read-only Lightpanda runtime.
+type LightpandaConfig struct {
+	Enabled    bool     `json:"enabled" yaml:"enabled"`
+	BinaryPath string   `json:"binary_path" yaml:"binary_path"`
+	Args       []string `json:"args" yaml:"args"`
+}
+
+// ChromiumConfig configures Chromium-specific routing preferences.
+type ChromiumConfig struct {
+	PreferLocalChrome *bool `json:"prefer_local_chrome" yaml:"prefer_local_chrome"`
+}
+
+// CapabilityRouterConfig configures hybrid browser escalation behavior.
+type CapabilityRouterConfig struct {
+	EscalateOnFailure *bool `json:"escalate_on_failure" yaml:"escalate_on_failure"`
+}
+
 // PDFRequest represents a request to generate a PDF.
 type PDFRequest struct {
 	// URL is the page URL to convert.
@@ -283,6 +390,8 @@ type StepResult struct {
 
 // Config contains browser service configuration.
 type Config struct {
+	// Strategy selects the runtime routing strategy.
+	Strategy BrowserStrategy `json:"strategy" yaml:"strategy"`
 	// Driver selects how Blue connects to the browser.
 	// Supported values: "managed" (default), "relay", "cdp".
 	Driver string `json:"driver" yaml:"driver"`
@@ -347,12 +456,21 @@ type Config struct {
 	// SessionScreenshotRetention controls how long monitor frame history is kept
 	// in memory. It is derived from companion session retention at runtime.
 	SessionScreenshotRetention time.Duration `json:"-" yaml:"-"`
+	// Lightpanda configures the lightweight read-only browser runtime.
+	Lightpanda LightpandaConfig `json:"lightpanda" yaml:"lightpanda"`
+	// Chromium configures Chromium routing preferences.
+	Chromium ChromiumConfig `json:"chromium" yaml:"chromium"`
+	// CapabilityRouter configures hybrid escalation behavior.
+	CapabilityRouter CapabilityRouterConfig `json:"capability_router" yaml:"capability_router"`
 }
 
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
 	evaluateEnabled := true
+	preferLocalChrome := true
+	escalateOnFailure := true
 	return &Config{
+		Strategy:                     BrowserStrategySingle,
 		Driver:                       "managed",
 		RelayEnabled:                 false,
 		RelayHost:                    DefaultRelayHost,
@@ -378,6 +496,17 @@ func DefaultConfig() *Config {
 		EvaluateEnabled:              &evaluateEnabled,
 		NetworkObserveEnabled:        true,
 		SessionScreenshotRetention:   30 * 24 * time.Hour,
+		Lightpanda: LightpandaConfig{
+			Enabled:    false,
+			BinaryPath: "",
+			Args:       nil,
+		},
+		Chromium: ChromiumConfig{
+			PreferLocalChrome: &preferLocalChrome,
+		},
+		CapabilityRouter: CapabilityRouterConfig{
+			EscalateOnFailure: &escalateOnFailure,
+		},
 	}
 }
 
@@ -393,9 +522,18 @@ func (c *Config) Clone() *Config {
 	cloned.TrustedSitePresets = append([]string(nil), c.TrustedSitePresets...)
 	cloned.RelayPreferredSites = append([]string(nil), c.RelayPreferredSites...)
 	cloned.RelayPreferredSitePresets = append([]string(nil), c.RelayPreferredSitePresets...)
+	cloned.Lightpanda.Args = append([]string(nil), c.Lightpanda.Args...)
 	if c.EvaluateEnabled != nil {
 		enabled := *c.EvaluateEnabled
 		cloned.EvaluateEnabled = &enabled
+	}
+	if c.Chromium.PreferLocalChrome != nil {
+		preferLocalChrome := *c.Chromium.PreferLocalChrome
+		cloned.Chromium.PreferLocalChrome = &preferLocalChrome
+	}
+	if c.CapabilityRouter.EscalateOnFailure != nil {
+		escalateOnFailure := *c.CapabilityRouter.EscalateOnFailure
+		cloned.CapabilityRouter.EscalateOnFailure = &escalateOnFailure
 	}
 	return &cloned
 }
@@ -423,6 +561,36 @@ func normalizeBrowserDriverName(raw string) string {
 	default:
 		return ""
 	}
+}
+
+// ResolvedStrategy returns the normalized browser routing strategy.
+func (c *Config) ResolvedStrategy() BrowserStrategy {
+	if c == nil {
+		return BrowserStrategySingle
+	}
+	switch BrowserStrategy(strings.ToLower(strings.TrimSpace(string(c.Strategy)))) {
+	case BrowserStrategyHybridCapability:
+		return BrowserStrategyHybridCapability
+	default:
+		return BrowserStrategySingle
+	}
+}
+
+// PreferLocalChrome reports whether Chromium routes should try relay/local Chrome first.
+func (c *Config) PreferLocalChrome() bool {
+	if c == nil || c.Chromium.PreferLocalChrome == nil {
+		return true
+	}
+	return *c.Chromium.PreferLocalChrome
+}
+
+// CapabilityEscalateOnFailure reports whether Lightpanda failures should be
+// upgraded to Chromium once during new-session routing.
+func (c *Config) CapabilityEscalateOnFailure() bool {
+	if c == nil || c.CapabilityRouter.EscalateOnFailure == nil {
+		return true
+	}
+	return *c.CapabilityRouter.EscalateOnFailure
 }
 
 // ExpandedTrustedSites returns the merged explicit trusted sites and preset origins.
