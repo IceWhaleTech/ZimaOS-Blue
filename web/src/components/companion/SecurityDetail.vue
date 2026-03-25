@@ -88,7 +88,7 @@ function getThreatTypeIcon(type: string): string {
             size="lg"
           />
         </div>
-        <div class="text-right">
+        <div class="text-end">
           <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">
             {{ t('companion.security.action') }}
           </div>

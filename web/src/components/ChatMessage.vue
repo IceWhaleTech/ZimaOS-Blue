@@ -2749,7 +2749,7 @@ async function handleMobileDelete() {
     <!-- Selection checkbox in multi-select mode (absolute left) -->
     <div
       v-if="isMultiSelectMode"
-      class="absolute left-2 top-1/2 -translate-y-1/2 flex items-center z-10"
+      class="message-select-checkbox absolute top-1/2 -translate-y-1/2 flex items-center z-10"
     >
       <div
         class="w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
@@ -2781,7 +2781,7 @@ async function handleMobileDelete() {
       class="flex gap-2 sm:gap-3.5"
       :class="{
         'justify-end': isUser,
-        'pl-8': isMultiSelectMode,
+        'message-content-multi-select-offset': isMultiSelectMode,
       }"
     >
       <div
@@ -3266,11 +3266,7 @@ async function handleMobileDelete() {
                 v-if="showStreamingProcessPanel && chatStore.toolResults.length > 0"
                 class="tool-detail-cards my-2 -mx-1"
               >
-                <ToolDetailCard
-                  v-for="item in chatStore.toolResults"
-                  :key="item.id"
-                  :item="item"
-                />
+                <ToolDetailCard v-for="item in chatStore.toolResults" :key="item.id" :item="item" />
               </div>
               <div
                 v-if="showAssistantStatusBar"
@@ -3373,7 +3369,7 @@ async function handleMobileDelete() {
       >
         <div class="relative max-w-[90vw] max-h-[90vh]">
           <button
-            class="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"
+            class="attachment-preview-close absolute -top-10 text-white hover:text-gray-300 transition-colors"
             @click="closeAttachmentPreview"
           >
             <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3808,7 +3804,7 @@ async function handleMobileDelete() {
   display: inline-flex;
   width: 0.58rem;
   height: 1.15rem;
-  margin-left: 0.14rem;
+  margin-inline-start: 0.14rem;
   vertical-align: text-bottom;
   border-radius: 999px;
   background: rgba(14, 165, 233, 0.85);
@@ -3956,7 +3952,7 @@ async function handleMobileDelete() {
 
 .prose :deep(ul),
 .prose :deep(ol) {
-  padding-left: 1.5rem;
+  padding-inline-start: 1.5rem;
 }
 
 .assistant-message :deep(p) {
@@ -3967,7 +3963,9 @@ async function handleMobileDelete() {
 .prose-content :deep(ul),
 .prose-content :deep(ol) {
   margin-block: 0.46rem;
-  padding: 0.48rem 0.78rem 0.48rem 1.24rem;
+  padding-block: 0.48rem;
+  padding-inline-start: 1.24rem;
+  padding-inline-end: 0.78rem;
   border: 1px solid rgba(203, 213, 225, 0.64);
   border-radius: 0.68rem;
   background: rgba(248, 250, 252, 0.62);
@@ -3982,9 +3980,9 @@ async function handleMobileDelete() {
 }
 
 .prose :deep(blockquote) {
-  border-left-width: 3px;
-  border-left-color: rgba(148, 163, 184, 0.7);
-  padding-left: 0.9rem;
+  border-inline-start-width: 3px;
+  border-inline-start-color: rgba(148, 163, 184, 0.7);
+  padding-inline-start: 0.9rem;
   color: #64748b;
 }
 
@@ -4367,14 +4365,26 @@ async function handleMobileDelete() {
   background: transparent;
 }
 
+.message-select-checkbox {
+  inset-inline-start: 0.5rem;
+}
+
+.message-content-multi-select-offset {
+  padding-inline-start: 2rem;
+}
+
+.attachment-preview-close {
+  inset-inline-end: 0;
+}
+
 .assistant-message-with-actions {
-  padding-right: 2.4rem;
+  padding-inline-end: 2.4rem;
 }
 
 .assistant-actions {
   position: absolute;
   top: 0.1rem;
-  right: 0;
+  inset-inline-end: 0;
   display: flex;
   flex-direction: column;
   gap: 0.16rem;
@@ -4429,9 +4439,13 @@ async function handleMobileDelete() {
   background: rgba(100, 116, 139, 0.35);
 }
 
+:global(html[dir='rtl']) .assistant-actions {
+  transform: translateX(-2px);
+}
+
 @media (max-width: 639px) {
   .assistant-message-with-actions {
-    padding-right: 0;
+    padding-inline-end: 0;
   }
 }
 
@@ -4487,7 +4501,7 @@ async function handleMobileDelete() {
 .user-actions {
   position: absolute;
   top: 50%;
-  left: -0.7rem;
+  inset-inline-start: -0.7rem;
   display: flex;
   flex-direction: column;
   gap: 0.16rem;
@@ -4504,10 +4518,19 @@ async function handleMobileDelete() {
     transform 0.16s ease;
 }
 
+:global(html[dir='rtl']) .user-actions {
+  transform: translate(100%, -50%);
+}
+
 .message:hover .user-actions,
 .message:focus-within .user-actions {
   opacity: 1;
   transform: translate(calc(-100% - 0.18rem), -50%);
+}
+
+:global(html[dir='rtl']) .message:hover .user-actions,
+:global(html[dir='rtl']) .message:focus-within .user-actions {
+  transform: translate(calc(100% + 0.18rem), -50%);
 }
 
 .user-action-btn {
@@ -4725,7 +4748,7 @@ async function handleMobileDelete() {
   display: inline-flex;
   align-items: center;
   color: #16a34a;
-  margin-left: -0.125rem;
+  margin-inline-start: -0.125rem;
 }
 
 :root.dark .sandbox-badge,

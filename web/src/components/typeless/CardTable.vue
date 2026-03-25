@@ -44,7 +44,7 @@ function renderContent(content: string | number | null | undefined): string {
             <th
               v-for="(header, index) in card.headers"
               :key="index"
-              class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+              class="px-4 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
               v-html="renderContent(header)"
             />
           </tr>

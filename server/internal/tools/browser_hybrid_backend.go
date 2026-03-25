@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 )
@@ -18,7 +20,14 @@ type HybridCapabilityBrowserBackend struct {
 	managed     *RodBrowserBackend
 	relay       *RodBrowserBackend
 	preferRelay func(rawURL string) bool
+	relayReady  func(ctx context.Context) bool
+
+	relayAvailabilityMu        sync.RWMutex
+	relayAvailabilityValue     bool
+	relayAvailabilityCheckedAt time.Time
 }
+
+const hybridRelayAvailabilityTTL = 2 * time.Second
 
 // NewHybridCapabilityBrowserBackend creates a hybrid browser router.
 func NewHybridCapabilityBrowserBackend(
@@ -27,6 +36,7 @@ func NewHybridCapabilityBrowserBackend(
 	managed *RodBrowserBackend,
 	relay *RodBrowserBackend,
 	preferRelay func(rawURL string) bool,
+	relayReady func(ctx context.Context) bool,
 ) *HybridCapabilityBrowserBackend {
 	return &HybridCapabilityBrowserBackend{
 		config:      config.Clone(),
@@ -34,6 +44,7 @@ func NewHybridCapabilityBrowserBackend(
 		managed:     managed,
 		relay:       relay,
 		preferRelay: preferRelay,
+		relayReady:  relayReady,
 	}
 }
 
@@ -95,6 +106,50 @@ func (b *HybridCapabilityBrowserBackend) chromiumCandidateList(rawURL string) []
 	return out
 }
 
+func (b *HybridCapabilityBrowserBackend) relayAvailable(ctx context.Context) bool {
+	if b == nil || b.relay == nil {
+		return false
+	}
+	if b.relayReady == nil {
+		return true
+	}
+	now := time.Now()
+	b.relayAvailabilityMu.RLock()
+	if !b.relayAvailabilityCheckedAt.IsZero() && now.Sub(b.relayAvailabilityCheckedAt) < hybridRelayAvailabilityTTL {
+		available := b.relayAvailabilityValue
+		b.relayAvailabilityMu.RUnlock()
+		return available
+	}
+	b.relayAvailabilityMu.RUnlock()
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	available := b.relayReady(ctx)
+	b.relayAvailabilityMu.Lock()
+	b.relayAvailabilityValue = available
+	b.relayAvailabilityCheckedAt = now
+	b.relayAvailabilityMu.Unlock()
+	return available
+}
+
+func (b *HybridCapabilityBrowserBackend) chromiumCandidatesForNewSession(ctx context.Context, rawURL string) (*RodBrowserBackend, *RodBrowserBackend) {
+	primary, fallback := b.chromiumCandidates(rawURL)
+	if b.relay == nil || b.relayAvailable(ctx) {
+		return primary, fallback
+	}
+	if primary == b.relay {
+		primary = fallback
+		fallback = nil
+	} else if fallback == b.relay {
+		fallback = nil
+	}
+	if primary == fallback {
+		fallback = nil
+	}
+	return primary, fallback
+}
+
 func (b *HybridCapabilityBrowserBackend) lightpandaPreferredNavigate(ctx context.Context, rawURL, targetID string) bool {
 	if !b.lightpandaEnabled() || strings.TrimSpace(targetID) != "" {
 		return false
@@ -150,6 +205,9 @@ func (b *HybridCapabilityBrowserBackend) isLightpandaEscalationError(err error) 
 
 func (b *HybridCapabilityBrowserBackend) navigateChromium(ctx context.Context, rawURL string, targetID string) (BrowserNavResult, error) {
 	primary, fallback := b.chromiumCandidates(rawURL)
+	if strings.TrimSpace(targetID) == "" {
+		primary, fallback = b.chromiumCandidatesForNewSession(ctx, rawURL)
+	}
 	return invokeBrowserWithFallback(ctx, primary, fallback, func(selected BrowserBackend) (BrowserNavResult, error) {
 		return selected.Navigate(ctx, rawURL, targetID)
 	})
@@ -203,7 +261,7 @@ func (b *HybridCapabilityBrowserBackend) UsesRelay(ctx context.Context, targetID
 	case browser.SessionEngineLightpanda:
 		return false
 	default:
-		primary, _ := b.chromiumCandidates("")
+		primary, _ := b.chromiumCandidatesForNewSession(ctx, "")
 		return primary != nil && primary == b.relay
 	}
 }
@@ -219,7 +277,7 @@ func (b *HybridCapabilityBrowserBackend) UsesRelayFor(ctx context.Context, targe
 	if b.lightpandaPreferredNavigate(ctx, rawURL, targetID) {
 		return false
 	}
-	primary, _ := b.chromiumCandidates(rawURL)
+	primary, _ := b.chromiumCandidatesForNewSession(ctx, rawURL)
 	return primary != nil && primary == b.relay
 }
 
@@ -253,6 +311,9 @@ func (b *HybridCapabilityBrowserBackend) CookieHeader(ctx context.Context, targe
 		return "", unsupportedLightpandaAction("cookie/session continuity")
 	default:
 		primary, fallback := b.chromiumCandidates(rawURL)
+		if strings.TrimSpace(targetID) == "" {
+			primary, fallback = b.chromiumCandidatesForNewSession(ctx, rawURL)
+		}
 		return invokeBrowserWithFallback(ctx, primary, fallback, func(selected BrowserBackend) (string, error) {
 			return selected.CookieHeader(ctx, targetID, rawURL)
 		})
@@ -265,7 +326,7 @@ func (b *HybridCapabilityBrowserBackend) ObserveNetwork(ctx context.Context, tar
 	}
 	backend := b.chromiumForTarget(ctx, targetID)
 	if backend == nil {
-		backend, _ = b.chromiumCandidates("")
+		backend, _ = b.chromiumCandidatesForNewSession(ctx, "")
 	}
 	if backend == nil {
 		return BrowserObservedNetworkResult{}, fmt.Errorf("browser service not available")
@@ -279,7 +340,7 @@ func (b *HybridCapabilityBrowserBackend) WaitNetworkIdle(ctx context.Context, ta
 	}
 	backend := b.chromiumForTarget(ctx, targetID)
 	if backend == nil {
-		backend, _ = b.chromiumCandidates("")
+		backend, _ = b.chromiumCandidatesForNewSession(ctx, "")
 	}
 	if backend == nil {
 		return fmt.Errorf("browser service not available")
@@ -370,7 +431,7 @@ func (b *HybridCapabilityBrowserBackend) ActByInteractiveRef(ctx context.Context
 }
 
 func (b *HybridCapabilityBrowserBackend) Screenshot(ctx context.Context, rawURL string) (string, error) {
-	primary, fallback := b.chromiumCandidates(rawURL)
+	primary, fallback := b.chromiumCandidatesForNewSession(ctx, rawURL)
 	return invokeBrowserWithFallback(ctx, primary, fallback, func(selected BrowserBackend) (string, error) {
 		return selected.Screenshot(ctx, rawURL)
 	})
@@ -454,13 +515,16 @@ func (b *HybridCapabilityBrowserBackend) ExecuteRecipe(ctx context.Context, reci
 	}
 	rawURL := strings.TrimSpace(params["url"])
 	primary, fallback := b.chromiumCandidates(rawURL)
+	if targetID == "" {
+		primary, fallback = b.chromiumCandidatesForNewSession(ctx, rawURL)
+	}
 	return invokeBrowserWithFallback(ctx, primary, fallback, func(selected BrowserBackend) (BrowserRecipeResult, error) {
 		return selected.ExecuteRecipe(ctx, recipe, params)
 	})
 }
 
 func (b *HybridCapabilityBrowserBackend) ListRecipes(ctx context.Context) []BrowserRecipeInfo {
-	primary, fallback := b.chromiumCandidates("")
+	primary, fallback := b.chromiumCandidatesForNewSession(ctx, "")
 	if primary != nil {
 		if infos := primary.ListRecipes(ctx); len(infos) > 0 {
 			return infos

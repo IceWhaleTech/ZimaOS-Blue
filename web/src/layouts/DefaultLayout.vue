@@ -367,7 +367,7 @@ html[data-blue-macos-glass='true'] .layout-public-view {
 .layout-right {
   min-height: 0;
   overflow: hidden;
-  transition: padding-right 0.22s ease;
+  transition: padding-inline-end 0.22s ease;
 }
 
 .layout-main {
@@ -420,7 +420,7 @@ html.dark .layout-mobile-nav-button:hover {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  border-right: 1px solid rgba(148, 163, 184, 0.16);
+  border-inline-end: 1px solid rgba(148, 163, 184, 0.16);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(248, 250, 252, 0.92));
 }
 
@@ -516,7 +516,7 @@ html.dark .layout-mobile-nav-button:hover {
 [data-theme='dark'] .layout-sidebar-loading,
 html.dark .layout-sidebar-loading {
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(15, 23, 42, 0.96));
-  border-right-color: rgba(71, 85, 105, 0.32);
+  border-inline-end-color: rgba(71, 85, 105, 0.32);
 }
 
 :root.dark .layout-sidebar-loading__logo,
@@ -571,7 +571,7 @@ html.dark .layout-route-loading__line::after {
   }
 
   .layout-body.layout-body-chat.layout-body-chat-nav-hidden {
-    padding-left: 0;
+    padding-inline-start: 0;
   }
 
   .layout-right {
@@ -591,7 +591,7 @@ html.dark .layout-route-loading__line::after {
   }
 
   .layout-right-with-workspace {
-    padding-right: calc(var(--workspace-dock-width) + var(--layout-shell-spacing));
+    padding-inline-end: calc(var(--workspace-dock-width) + var(--layout-shell-spacing));
   }
 }
 

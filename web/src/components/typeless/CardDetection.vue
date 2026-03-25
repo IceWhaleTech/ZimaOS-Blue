@@ -95,11 +95,11 @@ function handleDetectionClick(detection: Detection) {
         >
           <!-- Label badge -->
           <div
-            class="detection-label absolute -top-6 left-0 px-2 py-0.5 text-xs font-medium text-white rounded whitespace-nowrap"
+            class="detection-label absolute -top-6 detection-inline-start px-2 py-0.5 text-xs font-medium text-white rounded whitespace-nowrap"
             :style="{ backgroundColor: getDetectionColor(detection, index) }"
           >
             {{ detection.label }}
-            <span v-if="detection.confidence" class="ml-1 opacity-80">
+            <span v-if="detection.confidence" class="detection-inline-gap opacity-80">
               {{ formatConfidence(detection.confidence) }}
             </span>
           </div>
@@ -143,7 +143,7 @@ function handleDetectionClick(detection: Detection) {
           @click="handleDetectionClick(detection)"
         >
           {{ detection.label }}
-          <span v-if="detection.confidence" class="ml-1 opacity-80">
+          <span v-if="detection.confidence" class="detection-inline-gap opacity-80">
             {{ formatConfidence(detection.confidence) }}
           </span>
         </button>
@@ -196,22 +196,22 @@ function handleDetectionClick(detection: Detection) {
 
 .corner-marker.top-left {
   top: -4px;
-  left: -4px;
+  inset-inline-start: -4px;
 }
 
 .corner-marker.top-right {
   top: -4px;
-  right: -4px;
+  inset-inline-end: -4px;
 }
 
 .corner-marker.bottom-left {
   bottom: -4px;
-  left: -4px;
+  inset-inline-start: -4px;
 }
 
 .corner-marker.bottom-right {
   bottom: -4px;
-  right: -4px;
+  inset-inline-end: -4px;
 }
 
 @keyframes pulse {
@@ -228,6 +228,14 @@ function handleDetectionClick(detection: Detection) {
 
 .detection-label {
   pointer-events: none;
+}
+
+.detection-inline-start {
+  inset-inline-start: 0;
+}
+
+.detection-inline-gap {
+  margin-inline-start: 0.25rem;
 }
 
 .detection-tag:hover {

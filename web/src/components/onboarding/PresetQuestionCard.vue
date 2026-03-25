@@ -43,7 +43,7 @@ const hasExpandedContent = computed(
 
 <template>
   <button
-    class="preset-question-card group block w-full text-left"
+    class="preset-question-card group block w-full text-start"
     :data-testid="`preset-question-card-${question.id}`"
     :title="displayDescription || displayPromptPreview || displayTitle"
     :aria-label="displayDescription ? `${displayTitle}：${displayDescription}` : displayTitle"

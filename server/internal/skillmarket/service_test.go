@@ -167,6 +167,24 @@ func parseChecksum(raw string) string {
 	return parsed.Checksum
 }
 
+func findEvidenceByType(items []SecurityEvidence, evidenceType string) *SecurityEvidence {
+	for i := range items {
+		if items[i].Type == evidenceType {
+			return &items[i]
+		}
+	}
+	return nil
+}
+
+func hasFindingMessage(items []SecurityFinding, contains string) bool {
+	for _, item := range items {
+		if strings.Contains(item.Message, contains) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestServiceInstallMaterializesSkill(t *testing.T) {
 	svc, cleanup := newTestService(t)
 	defer cleanup()
@@ -292,8 +310,16 @@ func TestDiscoverFromClawHubEnrichesCategoryAndSecurity(t *testing.T) {
 					"score":22,
 					"riskLevel":"high",
 					"badge":"red",
+					"summary":"High risk: prompt and shell execution patterns were detected.",
 					"vulnerabilityStatus":"detected",
 					"vulnerabilities":["CVE-2026-0001"],
+					"warnings":[
+						{
+							"type":"external_policy",
+							"severity":"high",
+							"message":"Requires manual review before install"
+						}
+					],
 					"signals":{
 						"promptInjection":true,
 						"shellInjection":true,
@@ -398,8 +424,44 @@ Inspect skills and prompts for dangerous behavior.
 	if got := detail.Skill.VulnerabilityStatus; got != VulnerabilityStatusDetected {
 		t.Fatalf("vulnerability status = %q, want %q", got, VulnerabilityStatusDetected)
 	}
+	if detail.Security == nil {
+		t.Fatal("expected persisted security report")
+	}
+	summary := findEvidenceByType(detail.Security.Evidence, "security_summary")
+	if summary == nil {
+		t.Fatal("expected security summary evidence from ClawHub scan")
+	}
+	if !strings.Contains(summary.Description, "High risk") {
+		t.Fatalf("security summary = %q, want ClawHub summary text", summary.Description)
+	}
+	if !hasFindingMessage(detail.Security.Risks, "Requires manual review before install") {
+		t.Fatalf("expected ClawHub warning to be recorded in risks, got %+v", detail.Security.Risks)
+	}
 	if _, err := svc.Install(context.Background(), InstallRequest{ID: "secure-ai-assistant"}); err == nil {
 		t.Fatal("expected install to be blocked by enriched red security scan")
+	}
+}
+
+func TestExtractClawHubSecuritySignalsSynthesizesNoRiskSummary(t *testing.T) {
+	signals := extractClawHubSecuritySignals(map[string]interface{}{
+		"securityScan": map[string]interface{}{
+			"score":     float64(96),
+			"riskLevel": "low",
+			"badge":     "green",
+		},
+	})
+	if signals == nil {
+		t.Fatal("expected security signals")
+	}
+	summary := findEvidenceByType(signals.Evidence, "security_summary")
+	if summary == nil {
+		t.Fatal("expected synthesized security summary")
+	}
+	if summary.Severity != "low" {
+		t.Fatalf("summary severity = %q, want low", summary.Severity)
+	}
+	if !strings.Contains(summary.Description, "did not flag major risks") {
+		t.Fatalf("summary description = %q, want no-risk note", summary.Description)
 	}
 }
 
@@ -1191,12 +1253,9 @@ func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 		"skillstack",
 		"skillsmp",
 		"llmskills",
-		"seed-1",
-		"seed-2",
-		"seed-3",
-		"seed-4",
-		"seed-5",
-		"seed-6",
+	}
+	for i := range defaultSeedURLs {
+		expectedIDs = append(expectedIDs, fmt.Sprintf("seed-%d", i+1))
 	}
 	if len(sources) != len(expectedIDs) {
 		t.Fatalf("enabled source count = %d, want %d (%+v)", len(sources), len(expectedIDs), sources)

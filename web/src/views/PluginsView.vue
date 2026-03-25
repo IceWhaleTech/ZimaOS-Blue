@@ -411,7 +411,7 @@ html.dark .plugins-page {
   border-radius: 1rem;
   background: #ffffff;
   color: #0f172a;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   box-shadow: none;
   transition:
@@ -898,7 +898,7 @@ html.dark .plugins-tab-button--active .plugins-tab-button__state {
 
 .upload-info ul {
   margin: 0;
-  padding-left: 16px;
+  padding-inline-start: 16px;
   color: var(--text-secondary);
   font-size: 10px;
   line-height: 1.45;
@@ -1018,8 +1018,7 @@ html.dark .plugins-tab-button--active .plugins-tab-button__state {
   .modal-header,
   .modal-footer,
   .modal-body {
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-inline: 16px;
   }
 
   .modal-footer {

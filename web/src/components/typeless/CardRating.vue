@@ -65,7 +65,7 @@ function getBarWidth(percentage?: number, count?: number): string {
                 :style="{ width: getBarWidth(item.percentage, item.count) }"
               />
             </div>
-            <span class="text-xs text-gray-500 dark:text-gray-400 w-10 text-right">
+            <span class="text-xs text-gray-500 dark:text-gray-400 w-10 text-end">
               {{ item.count?.toLocaleString() || `${item.percentage}%` }}
             </span>
           </div>

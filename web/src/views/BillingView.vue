@@ -760,15 +760,15 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
           <table class="w-full text-sm">
             <thead>
               <tr
-                class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+                class="billing-table-head text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
               >
-                <th class="py-2 pr-3">{{ t('billing.anomalyTable.day') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.anomalyTable.tokens') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.anomalyTable.baseline') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.anomalyTable.spike') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.anomalyTable.requests') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.anomalyTable.cost') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.anomalyTable.action') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.anomalyTable.day') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.anomalyTable.tokens') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.anomalyTable.baseline') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.anomalyTable.spike') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.anomalyTable.requests') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.anomalyTable.cost') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.anomalyTable.action') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -780,19 +780,21 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                   selectedAnomalyDay === item.day ? 'bg-orange-50/60 dark:bg-orange-900/10' : ''
                 "
               >
-                <td class="py-2 pr-3 whitespace-nowrap">{{ item.day }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.totalTokens) }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(Math.round(item.baselineTokens)) }}</td>
-                <td class="py-2 pr-3">
+                <td class="billing-cell-end py-2 whitespace-nowrap">{{ item.day }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.totalTokens) }}</td>
+                <td class="billing-cell-end py-2">
+                  {{ formatInteger(Math.round(item.baselineTokens)) }}
+                </td>
+                <td class="billing-cell-end py-2">
                   <span
                     class="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"
                   >
                     {{ item.spikeRatio.toFixed(2) }}x
                   </span>
                 </td>
-                <td class="py-2 pr-3">{{ formatInteger(item.requestCount) }}</td>
-                <td class="py-2 pr-3">{{ formatCurrency(item.estimatedCost) }}</td>
-                <td class="py-2 pr-3">
+                <td class="billing-cell-end py-2">{{ formatInteger(item.requestCount) }}</td>
+                <td class="billing-cell-end py-2">{{ formatCurrency(item.estimatedCost) }}</td>
+                <td class="billing-cell-end py-2">
                   <button
                     class="px-2.5 py-1 rounded text-xs bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white transition-colors"
                     @click="analyzeAnomaly(item.day)"
@@ -839,14 +841,18 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
               <table v-else class="w-full text-xs">
                 <thead>
                   <tr
-                    class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+                    class="billing-table-head text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
                   >
-                    <th class="py-1 pr-2">{{ t('billing.table.provider') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.table.totalTokens') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.table.estimatedCost') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.drilldownTable.tokenShare') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.drilldownTable.costShare') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.anomalyTable.action') }}</th>
+                    <th class="billing-cell-end-sm py-1">{{ t('billing.table.provider') }}</th>
+                    <th class="billing-cell-end-sm py-1">{{ t('billing.table.totalTokens') }}</th>
+                    <th class="billing-cell-end-sm py-1">{{ t('billing.table.estimatedCost') }}</th>
+                    <th class="billing-cell-end-sm py-1">
+                      {{ t('billing.drilldownTable.tokenShare') }}
+                    </th>
+                    <th class="billing-cell-end-sm py-1">
+                      {{ t('billing.drilldownTable.costShare') }}
+                    </th>
+                    <th class="billing-cell-end-sm py-1">{{ t('billing.anomalyTable.action') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -855,16 +861,20 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                     :key="item.key"
                     class="border-b border-gray-100 dark:border-gray-800"
                   >
-                    <td class="py-1 pr-2">{{ item.provider_id || item.key }}</td>
-                    <td class="py-1 pr-2">{{ formatInteger(item.total_tokens || 0) }}</td>
-                    <td class="py-1 pr-2">{{ formatCurrency(item.estimated_cost || 0) }}</td>
-                    <td class="py-1 pr-2">
+                    <td class="billing-cell-end-sm py-1">{{ item.provider_id || item.key }}</td>
+                    <td class="billing-cell-end-sm py-1">
+                      {{ formatInteger(item.total_tokens || 0) }}
+                    </td>
+                    <td class="billing-cell-end-sm py-1">
+                      {{ formatCurrency(item.estimated_cost || 0) }}
+                    </td>
+                    <td class="billing-cell-end-sm py-1">
                       {{ percent(item.total_tokens || 0, selectedAnomaly?.totalTokens || 0) }}
                     </td>
-                    <td class="py-1 pr-2">
+                    <td class="billing-cell-end-sm py-1">
                       {{ percent(item.estimated_cost || 0, selectedAnomaly?.estimatedCost || 0) }}
                     </td>
-                    <td class="py-1 pr-2">
+                    <td class="billing-cell-end-sm py-1">
                       <button
                         class="px-2 py-0.5 rounded text-[11px] bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white transition-colors"
                         @click="applyDrilldownFilter('provider', item.provider_id || item.key)"
@@ -890,14 +900,18 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
               <table v-else class="w-full text-xs">
                 <thead>
                   <tr
-                    class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+                    class="billing-table-head text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
                   >
-                    <th class="py-1 pr-2">{{ t('billing.table.model') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.table.totalTokens') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.table.estimatedCost') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.drilldownTable.tokenShare') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.drilldownTable.costShare') }}</th>
-                    <th class="py-1 pr-2">{{ t('billing.anomalyTable.action') }}</th>
+                    <th class="billing-cell-end-sm py-1">{{ t('billing.table.model') }}</th>
+                    <th class="billing-cell-end-sm py-1">{{ t('billing.table.totalTokens') }}</th>
+                    <th class="billing-cell-end-sm py-1">{{ t('billing.table.estimatedCost') }}</th>
+                    <th class="billing-cell-end-sm py-1">
+                      {{ t('billing.drilldownTable.tokenShare') }}
+                    </th>
+                    <th class="billing-cell-end-sm py-1">
+                      {{ t('billing.drilldownTable.costShare') }}
+                    </th>
+                    <th class="billing-cell-end-sm py-1">{{ t('billing.anomalyTable.action') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -906,16 +920,20 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                     :key="item.key"
                     class="border-b border-gray-100 dark:border-gray-800"
                   >
-                    <td class="py-1 pr-2">{{ item.model_id || item.key }}</td>
-                    <td class="py-1 pr-2">{{ formatInteger(item.total_tokens || 0) }}</td>
-                    <td class="py-1 pr-2">{{ formatCurrency(item.estimated_cost || 0) }}</td>
-                    <td class="py-1 pr-2">
+                    <td class="billing-cell-end-sm py-1">{{ item.model_id || item.key }}</td>
+                    <td class="billing-cell-end-sm py-1">
+                      {{ formatInteger(item.total_tokens || 0) }}
+                    </td>
+                    <td class="billing-cell-end-sm py-1">
+                      {{ formatCurrency(item.estimated_cost || 0) }}
+                    </td>
+                    <td class="billing-cell-end-sm py-1">
                       {{ percent(item.total_tokens || 0, selectedAnomaly?.totalTokens || 0) }}
                     </td>
-                    <td class="py-1 pr-2">
+                    <td class="billing-cell-end-sm py-1">
                       {{ percent(item.estimated_cost || 0, selectedAnomaly?.estimatedCost || 0) }}
                     </td>
-                    <td class="py-1 pr-2">
+                    <td class="billing-cell-end-sm py-1">
                       <button
                         class="px-2 py-0.5 rounded text-[11px] bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white transition-colors"
                         @click="applyDrilldownFilter('model', item.model_id || item.key)"
@@ -939,12 +957,12 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
           <table class="w-full text-sm">
             <thead>
               <tr
-                class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+                class="billing-table-head text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
               >
-                <th class="py-2 pr-3">{{ t('billing.filters.groupBy') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.totals.requests') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.totals.totalTokens') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.totals.estimatedCost') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.filters.groupBy') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.totals.requests') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.totals.totalTokens') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.totals.estimatedCost') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -953,10 +971,10 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                 :key="item.key"
                 class="border-b border-gray-100 dark:border-gray-800 text-gray-900 dark:text-gray-100"
               >
-                <td class="py-2 pr-3">{{ formatGroupLabel(item) }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.request_count) }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.total_tokens) }}</td>
-                <td class="py-2 pr-3">{{ formatCurrency(item.estimated_cost) }}</td>
+                <td class="billing-cell-end py-2">{{ formatGroupLabel(item) }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.request_count) }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.total_tokens) }}</td>
+                <td class="billing-cell-end py-2">{{ formatCurrency(item.estimated_cost) }}</td>
               </tr>
             </tbody>
           </table>
@@ -978,22 +996,22 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
           <table class="w-full text-sm">
             <thead>
               <tr
-                class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+                class="billing-table-head text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
               >
-                <th class="py-2 pr-3">{{ t('billing.table.timestamp') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.provider') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.model') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.inputTokens') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.outputTokens') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.cacheReadTokens') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.cacheWriteTokens') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.totalTokens') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.estimatedCost') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.requests') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.status') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.latencyMs') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.user') }}</th>
-                <th class="py-2 pr-3">{{ t('billing.table.session') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.timestamp') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.provider') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.model') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.inputTokens') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.outputTokens') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.cacheReadTokens') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.cacheWriteTokens') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.totalTokens') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.estimatedCost') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.requests') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.status') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.latencyMs') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.user') }}</th>
+                <th class="billing-cell-end py-2">{{ t('billing.table.session') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -1002,17 +1020,19 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                 :key="`${item.timestamp}-${item.provider_id}-${item.model_id}-${item.session_id || ''}`"
                 class="border-b border-gray-100 dark:border-gray-800 text-gray-900 dark:text-gray-100 align-top"
               >
-                <td class="py-2 pr-3 whitespace-nowrap">{{ formatDateTime(item.timestamp) }}</td>
-                <td class="py-2 pr-3">{{ item.provider_id }}</td>
-                <td class="py-2 pr-3">{{ item.model_id }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.input_tokens) }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.output_tokens) }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.cache_read_tokens) }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.cache_write_tokens) }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.total_tokens) }}</td>
-                <td class="py-2 pr-3">{{ formatCurrency(item.estimated_cost) }}</td>
-                <td class="py-2 pr-3">{{ formatInteger(item.request_count) }}</td>
-                <td class="py-2 pr-3">
+                <td class="billing-cell-end py-2 whitespace-nowrap">
+                  {{ formatDateTime(item.timestamp) }}
+                </td>
+                <td class="billing-cell-end py-2">{{ item.provider_id }}</td>
+                <td class="billing-cell-end py-2">{{ item.model_id }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.input_tokens) }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.output_tokens) }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.cache_read_tokens) }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.cache_write_tokens) }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.total_tokens) }}</td>
+                <td class="billing-cell-end py-2">{{ formatCurrency(item.estimated_cost) }}</td>
+                <td class="billing-cell-end py-2">{{ formatInteger(item.request_count) }}</td>
+                <td class="billing-cell-end py-2">
                   <span
                     class="px-2 py-0.5 rounded-full text-xs"
                     :class="
@@ -1024,11 +1044,11 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
                     {{ item.success ? t('audit.success') : t('audit.failure') }}
                   </span>
                 </td>
-                <td class="py-2 pr-3">
+                <td class="billing-cell-end py-2">
                   {{ item.latency_ms > 0 ? `${formatInteger(item.latency_ms)}ms` : '-' }}
                 </td>
-                <td class="py-2 pr-3">{{ item.user_id || '-' }}</td>
-                <td class="py-2 pr-3">{{ item.session_id || '-' }}</td>
+                <td class="billing-cell-end py-2">{{ item.user_id || '-' }}</td>
+                <td class="billing-cell-end py-2">{{ item.session_id || '-' }}</td>
               </tr>
             </tbody>
           </table>
@@ -1065,3 +1085,17 @@ function formatGroupLabel(item: BillingSummaryBreakdown): string {
     </template>
   </div>
 </template>
+
+<style scoped>
+.billing-table-head {
+  text-align: start;
+}
+
+.billing-cell-end {
+  padding-inline-end: 0.75rem;
+}
+
+.billing-cell-end-sm {
+  padding-inline-end: 0.5rem;
+}
+</style>

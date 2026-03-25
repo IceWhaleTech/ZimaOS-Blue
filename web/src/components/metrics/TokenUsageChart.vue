@@ -229,7 +229,7 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
                   segment.label
                 }}</span>
               </div>
-              <div class="text-right">
+              <div class="text-end">
                 <div class="text-sm font-semibold text-gray-900 dark:text-white">
                   {{ formatNumber(segment.value) }}
                 </div>
@@ -293,7 +293,7 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
                 :key="model.model"
                 class="flex justify-between items-center text-sm"
               >
-                <span class="text-gray-600 dark:text-gray-400 truncate pr-3">{{
+                <span class="text-gray-600 dark:text-gray-400 truncate pe-3">{{
                   model.model
                 }}</span>
                 <div class="flex items-center gap-2">

@@ -396,7 +396,7 @@ onUnmounted(() => {
           </div>
           <div class="flex items-center gap-3">
             <template v-if="!portEditing">
-              <div class="text-right">
+              <div class="text-end">
                 <div class="font-mono text-lg text-gray-900 dark:text-white">
                   {{ serverConfig?.actual_port || serverConfig?.port || '-' }}
                 </div>

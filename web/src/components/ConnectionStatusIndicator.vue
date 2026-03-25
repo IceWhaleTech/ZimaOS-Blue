@@ -182,7 +182,7 @@ watch(isOnline, (newVal) => {
     <Transition name="slide-down">
       <div
         v-if="showReconnectBanner"
-        class="fixed top-0 left-0 right-0 z-50 bg-red-500 text-white px-4 py-2 text-center text-sm"
+        class="fixed inset-x-0 top-0 z-50 bg-red-500 text-white px-4 py-2 text-center text-sm"
       >
         <div class="flex items-center justify-center gap-2">
           <svg v-if="reconnecting" class="animate-spin h-4 w-4" viewBox="0 0 24 24">
@@ -208,7 +208,7 @@ watch(isOnline, (newVal) => {
           </span>
           <button
             v-if="!reconnecting"
-            class="ml-2 px-2 py-0.5 bg-white/20 rounded hover:bg-white/30 transition-colors"
+            class="ms-2 px-2 py-0.5 bg-white/20 rounded hover:bg-white/30 transition-colors"
             @click="attemptReconnect"
           >
             {{ t('connections.retry') }}

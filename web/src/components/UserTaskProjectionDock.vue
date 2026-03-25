@@ -85,7 +85,7 @@ watch(collapsed, (value) => {
     >
       <button
         type="button"
-        class="flex min-h-12 w-full items-start gap-3 bg-slate-50/80 px-4 py-3 text-left hover:bg-slate-100/80 dark:bg-slate-950/60 dark:hover:bg-slate-900/70"
+        class="flex min-h-12 w-full items-start gap-3 bg-slate-50/80 px-4 py-3 text-start hover:bg-slate-100/80 dark:bg-slate-950/60 dark:hover:bg-slate-900/70"
         :aria-expanded="!collapsed"
         @click="collapsed = !collapsed"
       >
@@ -166,7 +166,10 @@ watch(collapsed, (value) => {
               <div class="mt-2 break-words text-sm font-medium text-slate-800 dark:text-slate-100">
                 {{ taskTitle(task) }}
               </div>
-              <div v-if="taskSubtitle(task)" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <div
+                v-if="taskSubtitle(task)"
+                class="mt-1 text-xs text-slate-500 dark:text-slate-400"
+              >
                 {{ taskSubtitle(task) }}
               </div>
               <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">

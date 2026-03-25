@@ -112,12 +112,12 @@ function stepBg(status: string): string {
         </span>
         <span
           v-if="isRunning"
-          class="ml-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0"
+          class="ms-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0"
         />
       </div>
       <div
         v-if="url"
-        class="mt-1 pl-6 text-xs text-gray-400 whitespace-normal break-all leading-relaxed"
+        class="mt-1 ps-6 text-xs text-gray-400 whitespace-normal break-all leading-relaxed"
       >
         {{ url }}
       </div>

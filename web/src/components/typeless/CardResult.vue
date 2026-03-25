@@ -260,11 +260,7 @@ function normalizeDirectoryEntry(value: unknown): DirectoryListingEntry | null {
   if (!pathValue) return null
 
   const typeValue =
-    typeof value.type === 'string'
-      ? value.type.trim()
-      : pathValue.endsWith('/')
-        ? 'dir'
-        : 'file'
+    typeof value.type === 'string' ? value.type.trim() : pathValue.endsWith('/') ? 'dir' : 'file'
 
   const sizeValue = toNumberOrNull(value.size)
   const modifiedAtValue =
@@ -352,7 +348,7 @@ function extractTextSearchMatches(value: unknown): TextSearchMatch[] {
 }
 
 function extractTextSearchPayload(value: unknown): TextSearchData | null {
-  const parsed = typeof value === 'string' ? tryParseJSON(value) ?? value : value
+  const parsed = typeof value === 'string' ? (tryParseJSON(value) ?? value) : value
   if (!isMapValue(parsed)) return null
   const basePath =
     typeof parsed.base_path === 'string'
@@ -482,7 +478,7 @@ function extractTextSearchFromDetails(
 }
 
 function extractDirectoryListingPayload(value: unknown): DirectoryListingData | null {
-  const parsed = typeof value === 'string' ? tryParseJSON(value) ?? value : value
+  const parsed = typeof value === 'string' ? (tryParseJSON(value) ?? value) : value
   if (!isMapValue(parsed)) return null
 
   const entries = extractDirectoryEntries(parsed.entries)
@@ -710,7 +706,11 @@ function formatDirectoryEntryTimestamp(value?: string): string {
 }
 
 function directoryEntryMeta(entry: DirectoryListingEntry): string {
-  const parts = [entry.mode, formatDirectoryEntrySize(entry.size), formatDirectoryEntryTimestamp(entry.modifiedAt)]
+  const parts = [
+    entry.mode,
+    formatDirectoryEntrySize(entry.size),
+    formatDirectoryEntryTimestamp(entry.modifiedAt),
+  ]
     .map((part) => (part || '').trim())
     .filter(Boolean)
   if (parts.length > 0) return parts.join('  ')
@@ -728,9 +728,16 @@ const listingSummaryItems = computed(() => {
       ? [{ label: 'type', value: listing.typeFilter }]
       : []),
     ...(listing.maxDepth !== null ? [{ label: 'max_depth', value: String(listing.maxDepth) }] : []),
-    ...(listing.maxEntries !== null ? [{ label: 'max_entries', value: String(listing.maxEntries) }] : []),
+    ...(listing.maxEntries !== null
+      ? [{ label: 'max_entries', value: String(listing.maxEntries) }]
+      : []),
     ...(listing.includeHidden !== null
-      ? [{ label: 'include_hidden', value: listing.includeHidden ? t('common.yes', 'Yes') : t('common.no', 'No') }]
+      ? [
+          {
+            label: 'include_hidden',
+            value: listing.includeHidden ? t('common.yes', 'Yes') : t('common.no', 'No'),
+          },
+        ]
       : []),
   ]
 
@@ -1202,12 +1209,24 @@ const textSearchSummaryItems = computed(() => {
   return [
     { label: 'path', value: search.basePath || '.' },
     { label: 'pattern', value: search.pattern },
-    ...(search.maxResults !== null ? [{ label: 'max_results', value: String(search.maxResults) }] : []),
+    ...(search.maxResults !== null
+      ? [{ label: 'max_results', value: String(search.maxResults) }]
+      : []),
     ...(search.caseSensitive !== null
-      ? [{ label: 'case_sensitive', value: search.caseSensitive ? t('common.yes', 'Yes') : t('common.no', 'No') }]
+      ? [
+          {
+            label: 'case_sensitive',
+            value: search.caseSensitive ? t('common.yes', 'Yes') : t('common.no', 'No'),
+          },
+        ]
       : []),
     ...(search.includeHidden !== null
-      ? [{ label: 'include_hidden', value: search.includeHidden ? t('common.yes', 'Yes') : t('common.no', 'No') }]
+      ? [
+          {
+            label: 'include_hidden',
+            value: search.includeHidden ? t('common.yes', 'Yes') : t('common.no', 'No'),
+          },
+        ]
       : []),
     ...(search.backend ? [{ label: 'backend', value: search.backend }] : []),
     ...(search.backendSource ? [{ label: 'backend_source', value: search.backendSource }] : []),
@@ -1449,7 +1468,8 @@ const visibleDetails = computed(() => {
                 <pre
                   v-if="match.preview"
                   class="mt-2 overflow-x-auto rounded border border-gray-200 bg-white px-3 py-2 text-xs leading-relaxed text-gray-700 dark:border-gray-700/60 dark:bg-gray-950/50 dark:text-gray-200 font-mono whitespace-pre-wrap break-all"
-                >{{ match.preview }}</pre>
+                  >{{ match.preview }}</pre
+                >
               </div>
             </div>
           </div>
@@ -1543,7 +1563,7 @@ const visibleDetails = computed(() => {
               >
                 <span class="text-gray-400 dark:text-gray-500">{{ tLabel(String(subKey)) }}</span>
                 <span
-                  class="text-gray-700 dark:text-gray-300 font-mono text-right max-w-[70%] break-all"
+                  class="result-detail-value text-gray-700 dark:text-gray-300 font-mono max-w-[70%] break-all"
                   >{{ toDisplayString(subVal) }}</span
                 >
               </div>
@@ -1644,12 +1664,26 @@ const visibleDetails = computed(() => {
         >
           <span
             v-if="isActionActive(action.id)"
-            class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+            class="result-action-icon-gap result-action-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current align-[-2px]"
           />
-          <span v-else-if="action.icon" class="mr-1">{{ action.icon }}</span>
+          <span v-else-if="action.icon" class="result-action-icon-gap">{{ action.icon }}</span>
           {{ actionButtonLabel(action) }}
         </button>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.result-detail-value {
+  text-align: end;
+}
+
+.result-action-icon-gap {
+  margin-inline-end: 0.25rem;
+}
+
+.result-action-spinner {
+  border-inline-end-color: transparent;
+}
+</style>

@@ -73,7 +73,7 @@ function notificationMessage(notification: {
 <template>
   <Teleport to="body">
     <div
-      class="fixed top-4 right-4 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none"
+      class="notification-stack fixed top-4 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none"
       aria-live="polite"
     >
       <TransitionGroup name="notification">
@@ -147,6 +147,12 @@ function notificationMessage(notification: {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.notification-stack {
+  inset-inline-end: 1rem;
+}
+</style>
 
 <style scoped>
 .notification-enter-active,

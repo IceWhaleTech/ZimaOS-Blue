@@ -982,12 +982,12 @@ function getJobPreview(job: CronJob): string {
 }
 
 .automation-stage::before {
-  right: 12%;
+  inset-inline-end: 12%;
   top: 7.6rem;
 }
 
 .automation-stage::after {
-  left: 16%;
+  inset-inline-start: 16%;
   bottom: -1.25rem;
 }
 
@@ -1213,7 +1213,7 @@ function getJobPreview(job: CronJob): string {
   color: #64748b;
   font-size: 0.8rem;
   line-height: 1.45;
-  text-align: right;
+  text-align: end;
 }
 
 .automation-list-header {
@@ -1649,7 +1649,7 @@ function getJobPreview(job: CronJob): string {
   border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 1.25rem;
   background: #ffffff;
-  text-align: left;
+  text-align: start;
   transition:
     border-color 0.22s ease,
     background-color 0.22s ease,
@@ -1706,7 +1706,7 @@ function getJobPreview(job: CronJob): string {
   border-radius: 1.15rem;
   background: rgba(248, 250, 252, 0.92);
   color: #0f172a;
-  text-align: left;
+  text-align: start;
 }
 
 .automation-disclosure-button:hover {

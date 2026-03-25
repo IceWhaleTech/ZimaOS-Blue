@@ -80,7 +80,7 @@ function handleSelect(selectedIds: string[], otherText?: string) {
 <template>
   <div :id="card.id" class="typeless-card my-3 relative" :class="{ 'opacity-80': isStreaming }">
     <!-- Streaming indicator for incomplete cards -->
-    <div v-if="isStreaming" class="absolute top-2 right-2 z-10">
+    <div v-if="isStreaming" class="absolute top-2 end-2 z-10">
       <div class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-pulse" />
     </div>
 

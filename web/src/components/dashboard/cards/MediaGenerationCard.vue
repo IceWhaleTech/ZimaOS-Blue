@@ -188,7 +188,7 @@ defineExpose({ refresh: fetchStats })
                   :key="row.provider"
                   class="flex items-center justify-between text-sm"
                 >
-                  <span class="text-gray-600 dark:text-gray-400 truncate mr-2">{{
+                  <span class="text-gray-600 dark:text-gray-400 truncate me-2">{{
                     row.provider
                   }}</span>
                   <span class="text-gray-900 dark:text-white"

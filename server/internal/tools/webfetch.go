@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"golang.org/x/net/html"
@@ -92,6 +93,7 @@ type WebFetchTool struct {
 	httpClient     *http.Client
 	nativeClient   webFetchHTTPNativeClient
 	browser        BrowserBackend
+	lightpandaShim *browser.LightpandaService
 	pdfService     PDFService
 	documentReader DocumentReadService
 	cacheMu        sync.RWMutex
@@ -288,6 +290,15 @@ func NewWebFetchTool(config WebFetchConfig) *WebFetchTool {
 // SetBrowser injects the browser backend used for session-cookie handoff.
 func (w *WebFetchTool) SetBrowser(browser BrowserBackend) {
 	w.browser = browser
+}
+
+// SetLightpandaShim injects the read-layer Lightpanda shim used by layered
+// fetch routing before full-browser escalation.
+func (w *WebFetchTool) SetLightpandaShim(service *browser.LightpandaService) {
+	if w == nil {
+		return
+	}
+	w.lightpandaShim = service
 }
 
 // SetPDFService injects the PDF extraction service for PDF responses.
@@ -998,6 +1009,42 @@ func (w *WebFetchTool) tryBrowserSessionFallback(ctx context.Context, targetURL,
 type webFetchBrowserSessionResult struct {
 	Payload  webFetchPayload
 	TargetID string
+}
+
+func (w *WebFetchTool) fetchViaLightpandaShim(ctx context.Context, targetURL, mode string) (webFetchPayload, error) {
+	if w == nil || w.lightpandaShim == nil {
+		return webFetchPayload{}, errors.New("lightpanda shim is not available")
+	}
+	doc, err := w.lightpandaShim.ReadDocument(ctx, targetURL, 0)
+	if err != nil {
+		return webFetchPayload{}, err
+	}
+	finalURL := strings.TrimSpace(doc.URL)
+	if finalURL == "" {
+		finalURL = targetURL
+	}
+	title := strings.TrimSpace(doc.Title)
+	content := strings.TrimSpace(doc.Content)
+	if content == "" {
+		content = strings.TrimSpace(doc.AccessibilityTree)
+	}
+	if mode == webFetchExtractMarkdown && title != "" {
+		content = "# " + title + "\n\n" + content
+	}
+	hitWall, wallCode, wallWarning := detectWebFetchAuthWall(http.StatusOK, finalURL, title, content)
+	return webFetchPayload{
+		URL:           finalURL,
+		Title:         title,
+		Content:       content,
+		ContentType:   "text/plain",
+		ExtractMode:   mode,
+		Extractor:     "lightpanda_shim",
+		Source:        webAccessSourceLightpandaShim,
+		Warning:       ternary(hitWall, wallWarning, ""),
+		WarningCode:   ternary(hitWall, wallCode, ""),
+		StrategyUsed:  webAccessLaneLightpandaShim,
+		BodyTruncated: false,
+	}, nil
 }
 
 func (w *WebFetchTool) fetchViaBrowserSession(ctx context.Context, targetURL, mode, browserTargetID, reasonCode, reason string) (webFetchPayload, error) {

@@ -73,20 +73,24 @@ func (t *PDFTool) Definition() ToolDefinition {
 					"enum":        []string{"info", "read", "extract"},
 					"description": "Operation to perform. Defaults to read.",
 				},
-				"path":           map[string]interface{}{"type": "string", "description": "Path or URL to one PDF file."},
-				"pdf":            map[string]interface{}{"type": "string", "description": "Alias for path; accepts local path, file:// URL, or http(s) URL."},
-				"pdfs":           map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple PDF paths or URLs. Inputs are deduped and capped at 10."},
-				"file":           map[string]interface{}{"type": "string", "description": "Alias for path."},
-				"page":           map[string]interface{}{"type": "integer", "description": "Single 1-based page number to extract."},
-				"pages":          map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
-				"max_pages":      map[string]interface{}{"type": "integer", "description": "Maximum pages to extract. Defaults to 20."},
-				"max_chars":      map[string]interface{}{"type": "integer", "description": "Maximum characters to return. Defaults to 50000."},
-				"max_bytes_mb":   map[string]interface{}{"type": "integer", "description": "Maximum size per PDF in MB. Defaults to 10."},
-				"include_pages":  map[string]interface{}{"type": "boolean", "description": "Include per-page extracted text alongside the merged text."},
-				"ocr":            map[string]interface{}{"type": "boolean", "description": "Enable OCR fallback for scanned or image-only PDF pages. Defaults to true."},
-				"disable_ocr":    map[string]interface{}{"type": "boolean", "description": "Disable OCR fallback even when available."},
-				"vision":         map[string]interface{}{"type": "boolean", "description": "Enable LLM vision fallback after OCR for hard pages. Defaults to true when configured."},
-				"disable_vision": map[string]interface{}{"type": "boolean", "description": "Disable LLM vision fallback even when available."},
+				"path":                    map[string]interface{}{"type": "string", "description": "Path or URL to one PDF file."},
+				"pdf":                     map[string]interface{}{"type": "string", "description": "Alias for path; accepts local path, file:// URL, or http(s) URL."},
+				"pdfs":                    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple PDF paths or URLs. Inputs are deduped and capped at 10."},
+				"file":                    map[string]interface{}{"type": "string", "description": "Alias for path."},
+				"page":                    map[string]interface{}{"type": "integer", "description": "Single 1-based page number to extract."},
+				"pages":                   map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
+				"max_pages":               map[string]interface{}{"type": "integer", "description": "Maximum pages to extract. Defaults to 20."},
+				"max_chars":               map[string]interface{}{"type": "integer", "description": "Maximum characters to return. Defaults to 50000."},
+				"max_bytes_mb":            map[string]interface{}{"type": "integer", "description": "Maximum size per PDF in MB. Defaults to 10."},
+				"include_pages":           map[string]interface{}{"type": "boolean", "description": "Include per-page extracted text alongside the merged text."},
+				"include_markdown":        map[string]interface{}{"type": "boolean", "description": "Include layout-aware Markdown output. Defaults to true."},
+				"include_outline":         map[string]interface{}{"type": "boolean", "description": "Include document outline/bookmarks when available. Defaults to true."},
+				"include_layout":          map[string]interface{}{"type": "boolean", "description": "Include per-page semantic blocks and tables. Defaults to false."},
+				"include_headers_footers": map[string]interface{}{"type": "boolean", "description": "Keep repeated headers and footers in derived markdown/layout output. Defaults to false."},
+				"ocr":                     map[string]interface{}{"type": "boolean", "description": "Enable OCR fallback for scanned or image-only PDF pages. Defaults to true."},
+				"disable_ocr":             map[string]interface{}{"type": "boolean", "description": "Disable OCR fallback even when available."},
+				"vision":                  map[string]interface{}{"type": "boolean", "description": "Enable LLM vision fallback after OCR for hard pages. Defaults to true when configured."},
+				"disable_vision":          map[string]interface{}{"type": "boolean", "description": "Disable LLM vision fallback even when available."},
 			},
 		},
 	}
@@ -163,13 +167,33 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 	if disabled, ok := compatBoolArg(args, "disable_vision", "disableVision"); ok && disabled {
 		disableVision = true
 	}
+	includeMarkdown := true
+	if enabled, ok := compatBoolArg(args, "include_markdown", "includeMarkdown"); ok {
+		includeMarkdown = enabled
+	}
+	includeOutline := true
+	if enabled, ok := compatBoolArg(args, "include_outline", "includeOutline"); ok {
+		includeOutline = enabled
+	}
+	includeLayout := false
+	if enabled, ok := compatBoolArg(args, "include_layout", "includeLayout"); ok {
+		includeLayout = enabled
+	}
+	includeHeadersFooters := false
+	if enabled, ok := compatBoolArg(args, "include_headers_footers", "includeHeadersFooters"); ok {
+		includeHeadersFooters = enabled
+	}
 	request := pdfextract.ExtractRequest{
-		Pages:         pages,
-		MaxPages:      compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages"),
-		MaxChars:      compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length"),
-		IncludePages:  includePages,
-		DisableOCR:    disableOCR,
-		DisableVision: disableVision,
+		Pages:                 pages,
+		MaxPages:              compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages"),
+		MaxChars:              compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length"),
+		IncludePages:          includePages,
+		IncludeMarkdown:       includeMarkdown,
+		IncludeOutline:        includeOutline,
+		IncludeLayout:         includeLayout,
+		IncludeHeadersFooters: includeHeadersFooters,
+		DisableOCR:            disableOCR,
+		DisableVision:         disableVision,
 	}
 	if len(inputs) == 1 {
 		request.Path = inputs[0].Path
@@ -184,6 +208,7 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 	documents := make([]pdfextract.DocumentInfo, 0, len(inputs))
 	warnings := make([]string, 0, len(inputs))
 	var combined strings.Builder
+	var combinedMarkdown strings.Builder
 	truncated := false
 	ocrUsed := false
 	visionUsed := false
@@ -208,6 +233,15 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 		}
 		combined.WriteString(fmt.Sprintf("[PDF %d] %s\n", index+1, result.Document.FileName))
 		combined.WriteString(strings.TrimSpace(result.Text))
+		if includeMarkdown {
+			pageMarkdown := strings.TrimSpace(result.Markdown)
+			if pageMarkdown != "" {
+				if combinedMarkdown.Len() > 0 {
+					combinedMarkdown.WriteString("\n\n---\n\n")
+				}
+				combinedMarkdown.WriteString(fmt.Sprintf("[PDF %d] %s\n\n%s", index+1, result.Document.FileName, pageMarkdown))
+			}
+		}
 	}
 	text := strings.TrimSpace(combined.String())
 	text, charCount, clipped := clipPDFRunes(text, compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length"))
@@ -215,7 +249,7 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 		truncated = true
 		warnings = append(warnings, fmt.Sprintf("combined multi-pdf text truncated to %d characters", charCount))
 	}
-	return map[string]interface{}{
+	response := map[string]interface{}{
 		"mode":          "multi",
 		"count":         len(results),
 		"documents":     documents,
@@ -227,7 +261,13 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 		"vision_used":   visionUsed,
 		"warnings":      warnings,
 		"selected_pdfs": collectPDFInputRefs(inputs),
-	}, nil
+	}
+	if includeMarkdown {
+		if markdown := strings.TrimSpace(combinedMarkdown.String()); markdown != "" {
+			response["markdown"] = markdown
+		}
+	}
+	return response, nil
 }
 
 func (t *PDFTool) resolvePDFInputs(ctx context.Context, refs []string, maxBytes int64) ([]resolvedPDFInput, func(), error) {

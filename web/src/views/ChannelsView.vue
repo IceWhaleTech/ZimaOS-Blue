@@ -1960,7 +1960,7 @@ onErrorCaptured((error, _instance, info) => {
                       class="sr-only peer"
                     />
                     <div
-                      class="channels-remote-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
+                      class="channels-remote-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
                     ></div>
                   </label>
                   <svg
@@ -2018,7 +2018,7 @@ onErrorCaptured((error, _instance, info) => {
                       <button
                         v-for="provider in tunnelProviders"
                         :key="provider.id"
-                        class="channels-remote-card__provider-option p-3 rounded-lg border text-left transition-colors flex items-center gap-3"
+                        class="channels-remote-card__provider-option p-3 rounded-lg border text-start transition-colors flex items-center gap-3"
                         :class="
                           selectedProvider === provider.id
                             ? 'border-gray-600 dark:border-slate-500 bg-gray-100 dark:bg-slate-800/70'
@@ -2105,7 +2105,9 @@ onErrorCaptured((error, _instance, info) => {
                       class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
                     >
                       {{ t('remoteAccess.ngrokDomain') }}
-                      <span class="text-gray-400 dark:text-slate-500 text-xs ml-1">
+                      <span
+                        class="channels-remote-card__optional-note text-gray-400 dark:text-slate-500 text-xs"
+                      >
                         ({{ t('common.optional') }})
                       </span>
                     </label>
@@ -2715,7 +2717,7 @@ onErrorCaptured((error, _instance, info) => {
 .channels-summary-result {
   font-size: 0.64rem;
   line-height: 1.35;
-  text-align: right;
+  text-align: end;
 }
 
 .channels-board {
@@ -2947,7 +2949,7 @@ onErrorCaptured((error, _instance, info) => {
 }
 
 .channels-group-modal__actions {
-  margin-left: auto;
+  margin-inline-start: auto;
   display: flex;
   align-items: center;
   gap: 0.62rem;
@@ -3186,13 +3188,29 @@ onErrorCaptured((error, _instance, info) => {
 .channels-remote-card__toggle {
   width: 2.12rem;
   height: 1.14rem;
+  position: relative;
 }
 
 .channels-remote-card__toggle::after {
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 0.78rem;
   height: 0.78rem;
+  content: '';
+  position: absolute;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  transition: transform 150ms ease-in-out;
+}
+
+.peer:checked + .channels-remote-card__toggle::after {
+  transform: translateX(100%);
+  border-color: #ffffff;
+}
+
+:global(html[dir='rtl']) .peer:checked + .channels-remote-card__toggle::after {
+  transform: translateX(-100%);
 }
 
 .channels-remote-card__chevron {
@@ -3206,6 +3224,10 @@ onErrorCaptured((error, _instance, info) => {
 
 .channels-remote-card__provider-option {
   padding: 0.56rem 0.66rem;
+}
+
+.channels-remote-card__optional-note {
+  margin-inline-start: 0.25rem;
 }
 
 .channels-remote-card__provider-name {
@@ -3307,8 +3329,7 @@ onErrorCaptured((error, _instance, info) => {
 
 @media (max-width: 639px) {
   .channels-page {
-    padding-left: 0.58rem;
-    padding-right: 0.58rem;
+    padding-inline: 0.58rem;
   }
 
   .channels-remote-card__header,
@@ -3331,8 +3352,7 @@ onErrorCaptured((error, _instance, info) => {
   .channels-group-modal__header,
   .channels-group-modal__body,
   .channels-group-modal__footer {
-    padding-left: 0.92rem;
-    padding-right: 0.92rem;
+    padding-inline: 0.92rem;
   }
 
   .channels-group-modal__footer,
@@ -3341,7 +3361,7 @@ onErrorCaptured((error, _instance, info) => {
   }
 
   .channels-group-modal__actions {
-    margin-left: 0;
+    margin-inline-start: 0;
     flex-direction: column-reverse;
   }
 

@@ -6204,6 +6204,8 @@ type ChatHandler struct {
 
 	// Proxy bridge: routes LLM calls through proxy pipeline (cache/pruner/routing)
 	proxyBridge *proxybridge.Bridge
+	// Unified runtime provider dispatches to Claude Code CLI or proxy at call time.
+	runtimeProvider llm.Provider
 
 	// Smart tool selection: IR-based filtering of tools per query
 	toolSelector       *tools.ToolSelector
@@ -7539,6 +7541,7 @@ func withProxyLocale(ctx context.Context, locale string) context.Context {
 	if locale == "" {
 		return ctx
 	}
+	ctx = tools.WithLang(ctx, locale)
 	if strings.TrimSpace(proxy.LocaleFromContext(ctx)) != "" {
 		return ctx
 	}
@@ -9674,9 +9677,15 @@ func (h *ChatHandler) ResetSmallModelStatsHandler(c echo.Context) error {
 	})
 }
 
-// chatOnce performs a single LLM chat call, using proxyBridge when available
-// or falling back to the first provider in the legacy registry (for tests).
+// chatOnce performs a single LLM chat call using the unified runtime provider
+// when available, or falling back to legacy bridge/registry behavior.
 func (h *ChatHandler) chatOnce(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if h.runtimeProvider != nil {
+		if strings.TrimSpace(proxy.LocaleFromContext(ctx)) == "" && h.settingsHandler != nil {
+			ctx = withProxyLocale(ctx, h.settingsHandler.GetLocale())
+		}
+		return h.runtimeProvider.Chat(ctx, req)
+	}
 	if h.proxyBridge != nil {
 		if strings.TrimSpace(proxy.LocaleFromContext(ctx)) == "" && h.settingsHandler != nil {
 			ctx = withProxyLocale(ctx, h.settingsHandler.GetLocale())
@@ -9950,6 +9959,11 @@ func (h *ChatHandler) SetProviderPool(pool *providerpool.Pool) {
 // SetProxyBridge sets the proxy bridge for routing LLM calls through the proxy pipeline.
 func (h *ChatHandler) SetProxyBridge(bridge *proxybridge.Bridge) {
 	h.proxyBridge = bridge
+}
+
+// SetRuntimeProvider sets the unified runtime provider used by chat/im/voice/heartbeat flows.
+func (h *ChatHandler) SetRuntimeProvider(provider llm.Provider) {
+	h.runtimeProvider = provider
 }
 
 // SetIMModel sets the model to use for IM channel requests (default "auto").
@@ -10266,6 +10280,30 @@ func (bp *bridgeProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRe
 		req.Model = bp.model
 	}
 	return bp.bridge.ChatStream(ctx, req, cb)
+}
+
+func (h *ChatHandler) chatStreamCallback(ctx context.Context, req llm.ChatRequest, cb llm.StreamCallback) error {
+	if h.runtimeProvider != nil {
+		if strings.TrimSpace(proxy.LocaleFromContext(ctx)) == "" && h.settingsHandler != nil {
+			ctx = withProxyLocale(ctx, h.settingsHandler.GetLocale())
+		}
+		return h.runtimeProvider.ChatStreamCallback(ctx, req, cb)
+	}
+	if h.proxyBridge != nil {
+		if strings.TrimSpace(proxy.LocaleFromContext(ctx)) == "" && h.settingsHandler != nil {
+			ctx = withProxyLocale(ctx, h.settingsHandler.GetLocale())
+		}
+		return h.proxyBridge.ChatStream(ctx, req, cb)
+	}
+	if h.providers != nil {
+		names := h.providers.List()
+		if len(names) > 0 {
+			if provider := h.providers.Get(names[0]); provider != nil {
+				return provider.ChatStreamCallback(ctx, req, cb)
+			}
+		}
+	}
+	return fmt.Errorf("no proxy bridge configured")
 }
 
 // getCompanionSessionID returns the companion session ID for a conversation.
@@ -14087,6 +14125,11 @@ func (h *ChatHandler) recordContextPackAudit(ctx context.Context, conversationID
 }
 
 func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.ToolCall) []llm.Message {
+	results, _ := h.executeToolCallsWithAudit(ctx, toolCalls)
+	return results
+}
+
+func (h *ChatHandler) executeToolCallsWithAudit(ctx context.Context, toolCalls []llm.ToolCall) ([]llm.Message, []llm.Message) {
 	// Conservative batching policy:
 	// When a round includes multiple tool calls, disable per-tool streaming card
 	// forwarding to avoid interleaved/unsafely concurrent SSE writes.
@@ -14100,6 +14143,7 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 
 	toolLang := i18n.ParseLanguage(tools.GetLang(ctx))
 	var results []llm.Message
+	var auditResults []llm.Message
 	for _, tc := range toolCalls {
 		tc.Arguments = normalizeToolCallArgumentsForExecution(tc.Arguments)
 		h.recordToolPayloadAudit(ctx, "assistant_tool_call", string(llm.RoleAssistant), tc, tc.Arguments, false)
@@ -14176,16 +14220,22 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 		if auditPayload == "" {
 			auditPayload = content
 		}
-		content = contentForChatToolHistory(tc.Name, content, auditPayload)
+		historyContent := contentForChatToolHistory(tc.Name, content, auditPayload)
 		h.recordToolPayloadAudit(ctx, "tool_result", string(llm.RoleTool), tc, auditPayload, err != nil)
 		results = append(results, llm.Message{
 			Role:       llm.RoleTool,
-			Content:    content,
+			Content:    historyContent,
+			ToolCallID: tc.ID,
+			ToolName:   tc.Name,
+		})
+		auditResults = append(auditResults, llm.Message{
+			Role:       llm.RoleTool,
+			Content:    auditPayload,
 			ToolCallID: tc.ID,
 			ToolName:   tc.Name,
 		})
 	}
-	return results
+	return results, auditResults
 }
 
 func contentForChatToolHistory(toolName, content, auditPayload string) string {
@@ -14196,11 +14246,11 @@ func contentForChatToolHistory(toolName, content, auditPayload string) string {
 
 	switch normalizeFileToolCompatName(toolName) {
 	case "pdf":
-		return auditPayload
+		return compactToolResultContentForLLM("pdf", auditPayload)
 	case "read", "file_read":
 		var payload map[string]interface{}
 		if json.Unmarshal([]byte(auditPayload), &payload) == nil && isPDFPayloadForLLM(payload) {
-			return auditPayload
+			return compactToolResultContentForLLM(normalizeFileToolCompatName(toolName), auditPayload)
 		}
 	}
 	return content
@@ -14790,26 +14840,39 @@ func hasWorkspaceArtifactProgress(toolCalls []llm.ToolCall, toolResults []llm.Me
 func maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage string, currentToolCalls []llm.ToolCall, historyToolCalls []llm.ToolCall, historyToolResults []llm.Message) ([]llm.ToolCall, bool) {
 	questions := extractNumberedQuestions(userMessage)
 	if len(currentToolCalls) == 0 {
+		logger.Debug().Msg("[chat] workspace artifact override skipped: no current tool calls")
 		return currentToolCalls, false
 	}
 
 	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
 	normalizedTarget := normalizeWorkspaceArtifactComparablePath(target)
 	if normalizedTarget == "" {
+		logger.Debug().Msg("[chat] workspace artifact override skipped: no requested write target")
 		return currentToolCalls, false
 	}
 
 	evidence := collectWorkspaceArtifactEvidence(historyToolCalls, historyToolResults)
 	if len(evidence) == 0 {
+		logger.Debug().
+			Int("history_calls", len(historyToolCalls)).
+			Int("history_results", len(historyToolResults)).
+			Str("target", normalizedTarget).
+			Msg("[chat] workspace artifact override skipped: no evidence recovered")
 		return currentToolCalls, false
 	}
 
 	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(userMessage, target, evidence, questions)
 	if !ok || strings.TrimSpace(draft) == "" {
+		logger.Debug().
+			Int("questions", len(questions)).
+			Int("evidence_blocks", len(evidence)).
+			Str("target", normalizedTarget).
+			Msg("[chat] workspace artifact override skipped: no deterministic draft")
 		return currentToolCalls, false
 	}
 
 	overridden := false
+	writeTargetMatched := false
 	out := append([]llm.ToolCall(nil), currentToolCalls...)
 	for i := range out {
 		toolName := normalizeFileToolCompatName(out[i].Name)
@@ -14830,9 +14893,14 @@ func maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage strin
 		if writePath == "" || writePath != normalizedTarget {
 			continue
 		}
+		writeTargetMatched = true
 
 		currentContent := strings.TrimSpace(anyToStringForLLM(payload["content"]))
 		if currentContent == strings.TrimSpace(draft) {
+			logger.Debug().
+				Str("target", normalizedTarget).
+				Str("draft_last_line", lastNonEmptyWorkspaceArtifactLine(draft)).
+				Msg("[chat] workspace artifact override skipped: write already matches deterministic draft")
 			continue
 		}
 
@@ -14846,8 +14914,30 @@ func maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage strin
 		out[i].Arguments = string(updatedArgs)
 		overridden = true
 	}
+	if !writeTargetMatched {
+		logger.Debug().
+			Str("target", normalizedTarget).
+			Int("tool_calls", len(currentToolCalls)).
+			Msg("[chat] workspace artifact override skipped: no matching write target in current tool calls")
+	} else if !overridden {
+		logger.Debug().
+			Str("target", normalizedTarget).
+			Str("draft_last_line", lastNonEmptyWorkspaceArtifactLine(draft)).
+			Msg("[chat] workspace artifact override skipped: matching write could not be updated")
+	}
 
 	return out, overridden
+}
+
+func lastNonEmptyWorkspaceArtifactLine(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func isWorkspaceArtifactProgressTool(name string) bool {
@@ -16220,11 +16310,25 @@ func compactToolResultContentForLLM(toolName, content string) string {
 		payload = compactJSONValueForLLM(payload, 0)
 	}
 
-	compactedBytes, err := json.Marshal(payload)
+	compactedBytes, err := marshalCompactToolPayloadForLLM(toolName, payload)
 	if err != nil {
 		return truncateUTF8Bytes(sanitized, maxLLMToolOutputBytes)
 	}
 	return truncateUTF8Bytes(string(compactedBytes), maxLLMToolOutputBytes)
+}
+
+func marshalCompactToolPayloadForLLM(toolName string, payload interface{}) ([]byte, error) {
+	switch normalizeFileToolCompatName(toolName) {
+	case "pdf":
+		if m, ok := payload.(map[string]interface{}); ok {
+			return marshalOrderedCompactPDFPayloadForLLM(m)
+		}
+	case "file_read", "read":
+		if m, ok := payload.(map[string]interface{}); ok && isPDFPayloadForLLM(m) {
+			return marshalOrderedCompactPDFPayloadForLLM(m)
+		}
+	}
+	return json.Marshal(payload)
 }
 
 func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
@@ -16486,6 +16590,14 @@ func isPDFPayloadForLLM(payload map[string]interface{}) bool {
 	if len(payload) == 0 {
 		return false
 	}
+	if strings.EqualFold(strings.TrimSpace(anyToStringForLLM(payload["mode"])), "multi") {
+		if _, ok := payload["results"]; ok {
+			return true
+		}
+		if _, ok := payload["documents"]; ok {
+			return true
+		}
+	}
 	path := strings.ToLower(strings.TrimSpace(anyToStringForLLM(payload["path"])))
 	if path == "" {
 		if doc, ok := payload["document"].(map[string]interface{}); ok {
@@ -16501,6 +16613,15 @@ func isPDFPayloadForLLM(payload map[string]interface{}) bool {
 	if _, ok := payload["raw_text"]; ok {
 		return true
 	}
+	if _, ok := payload["markdown"]; ok {
+		return true
+	}
+	if _, ok := payload["outline"]; ok {
+		return true
+	}
+	if _, ok := payload["pages"]; ok {
+		return true
+	}
 	if doc, ok := payload["document"].(map[string]interface{}); ok {
 		if pageCount := anyToIntForLLM(doc["page_count"]); pageCount > 0 {
 			return true
@@ -16513,8 +16634,11 @@ func compactPDFPayloadForLLM(payload map[string]interface{}) map[string]interfac
 	if len(payload) == 0 {
 		return map[string]interface{}{}
 	}
+	if strings.EqualFold(strings.TrimSpace(anyToStringForLLM(payload["mode"])), "multi") {
+		return compactMultiPDFPayloadForLLM(payload)
+	}
 
-	out := make(map[string]interface{}, 12)
+	out := make(map[string]interface{}, 16)
 	if doc, ok := payload["document"].(map[string]interface{}); ok && len(doc) > 0 {
 		docOut := make(map[string]interface{}, 6)
 		for _, key := range []string{"file_name", "path", "page_count", "engine", "size_bytes"} {
@@ -16536,26 +16660,715 @@ func compactPDFPayloadForLLM(payload map[string]interface{}) map[string]interfac
 		}
 	}
 
+	if outline := compactPDFOutlineForLLM(payload["outline"], 40); len(outline) > 0 {
+		out["outline"] = outline
+	}
+	if hierarchy := compactPDFOutlineHierarchyForLLM(payload["outline"], 10, 8); len(hierarchy) > 0 {
+		out["outline_hierarchy"] = hierarchy
+	}
+
+	compactedPages := []interface{}{}
 	if pages, ok := payload["pages"].([]interface{}); ok && len(pages) > 0 {
-		compactedPages := compactPDFPagesForLLM(pages, 12)
+		compactedPages = compactPDFPagesForLLM(pages, 12)
+	} else {
+		compactedPages = compactPDFSyntheticPagesForLLM(payload, 12)
+	}
+	if len(compactedPages) > 0 {
+		out["pages"] = compactedPages
+	}
+
+	if markdown := strings.TrimSpace(anyToStringForLLM(payload["markdown"])); markdown != "" {
+		pageLimit := 6
+		charBudget := 3600
 		if len(compactedPages) > 0 {
-			out["pages"] = compactedPages
+			pageLimit = 3
+			charBudget = 1200
 		}
+		out["markdown"] = compactPDFTextForLLM(markdown, pageLimit, charBudget)
 	}
 	if _, hasPages := out["pages"]; !hasPages {
-		if text := strings.TrimSpace(anyToStringForLLM(payload["text"])); text != "" {
-			out["text"] = compactPDFTextForLLM(text, 6, 3600)
+		if _, hasMarkdown := out["markdown"]; !hasMarkdown {
+			if text := strings.TrimSpace(anyToStringForLLM(payload["text"])); text != "" {
+				out["text"] = compactPDFTextForLLM(text, 6, 3600)
+			}
 		}
 		if rawText := strings.TrimSpace(anyToStringForLLM(payload["raw_text"])); rawText != "" {
 			compactedRaw := compactPDFTextForLLM(rawText, 4, 2200)
-			if compactedRaw != anyToStringForLLM(out["text"]) {
+			if compactedRaw != anyToStringForLLM(out["markdown"]) && compactedRaw != anyToStringForLLM(out["text"]) {
 				out["raw_text"] = compactedRaw
 			}
 		}
 	}
 
 	if len(out) == 0 {
-		return compactJSONValueForLLM(payload, 0).(map[string]interface{})
+		if compacted, ok := compactJSONValueForLLM(payload, 0).(map[string]interface{}); ok {
+			return compacted
+		}
+		return map[string]interface{}{}
+	}
+	return out
+}
+
+type compactPDFDocumentForLLM struct {
+	FileName  string `json:"file_name,omitempty"`
+	Path      string `json:"path,omitempty"`
+	PageCount int    `json:"page_count,omitempty"`
+	Engine    string `json:"engine,omitempty"`
+	SizeBytes int    `json:"size_bytes,omitempty"`
+}
+
+type compactPDFOutlineEntryForLLM struct {
+	Title      string `json:"title"`
+	Level      int    `json:"level,omitempty"`
+	PageNumber int    `json:"page_number,omitempty"`
+	ChildCount int    `json:"child_count,omitempty"`
+}
+
+type compactPDFOutlineHierarchyEntryForLLM struct {
+	Title       string   `json:"title"`
+	Level       int      `json:"level,omitempty"`
+	PageNumber  int      `json:"page_number,omitempty"`
+	ChildCount  int      `json:"child_count,omitempty"`
+	ChildTitles []string `json:"child_titles,omitempty"`
+}
+
+type compactPDFBlockForLLM struct {
+	Kind         string `json:"kind,omitempty"`
+	HeadingLevel int    `json:"heading_level,omitempty"`
+	Markdown     string `json:"markdown,omitempty"`
+	Text         string `json:"text,omitempty"`
+	ChildCount   int    `json:"child_count,omitempty"`
+}
+
+type compactPDFTableForLLM struct {
+	NumberOfRows    int         `json:"number_of_rows,omitempty"`
+	NumberOfColumns int         `json:"number_of_columns,omitempty"`
+	Markdown        string      `json:"markdown,omitempty"`
+	Rows            interface{} `json:"rows,omitempty"`
+}
+
+type compactPDFPageForLLM struct {
+	Number   int                     `json:"number,omitempty"`
+	Source   string                  `json:"source,omitempty"`
+	Blocks   []compactPDFBlockForLLM `json:"blocks,omitempty"`
+	Tables   []compactPDFTableForLLM `json:"tables,omitempty"`
+	Markdown string                  `json:"markdown,omitempty"`
+	Text     string                  `json:"text,omitempty"`
+	RawText  string                  `json:"raw_text,omitempty"`
+}
+
+type compactPDFPayloadEnvelopeForLLM struct {
+	Document         *compactPDFDocumentForLLM               `json:"document,omitempty"`
+	OutlineHierarchy []compactPDFOutlineHierarchyEntryForLLM `json:"outline_hierarchy,omitempty"`
+	Outline          []compactPDFOutlineEntryForLLM          `json:"outline,omitempty"`
+	Pages            []compactPDFPageForLLM                  `json:"pages,omitempty"`
+	Markdown         string                                  `json:"markdown,omitempty"`
+	Text             string                                  `json:"text,omitempty"`
+	RawText          string                                  `json:"raw_text,omitempty"`
+	SelectedPages    interface{}                             `json:"selected_pages,omitempty"`
+	CharCount        interface{}                             `json:"char_count,omitempty"`
+	Truncated        interface{}                             `json:"truncated,omitempty"`
+	OCRUsed          interface{}                             `json:"ocr_used,omitempty"`
+	OCRPages         interface{}                             `json:"ocr_pages,omitempty"`
+	VisionUsed       interface{}                             `json:"vision_used,omitempty"`
+	VisionPages      interface{}                             `json:"vision_pages,omitempty"`
+	Warnings         interface{}                             `json:"warnings,omitempty"`
+}
+
+type compactMultiPDFPayloadEnvelopeForLLM struct {
+	Mode         string                     `json:"mode,omitempty"`
+	Count        interface{}                `json:"count,omitempty"`
+	Documents    []compactPDFDocumentForLLM `json:"documents,omitempty"`
+	Results      []json.RawMessage          `json:"results,omitempty"`
+	Markdown     string                     `json:"markdown,omitempty"`
+	Text         string                     `json:"text,omitempty"`
+	RawText      string                     `json:"raw_text,omitempty"`
+	SelectedPDFs interface{}                `json:"selected_pdfs,omitempty"`
+	CharCount    interface{}                `json:"char_count,omitempty"`
+	Truncated    interface{}                `json:"truncated,omitempty"`
+	OCRUsed      interface{}                `json:"ocr_used,omitempty"`
+	VisionUsed   interface{}                `json:"vision_used,omitempty"`
+	Warnings     interface{}                `json:"warnings,omitempty"`
+}
+
+func marshalOrderedCompactPDFPayloadForLLM(payload map[string]interface{}) ([]byte, error) {
+	if strings.EqualFold(strings.TrimSpace(anyToStringForLLM(payload["mode"])), "multi") {
+		return json.Marshal(buildOrderedCompactMultiPDFPayloadForLLM(payload))
+	}
+	return json.Marshal(buildOrderedCompactPDFPayloadForLLM(payload))
+}
+
+func buildOrderedCompactPDFPayloadForLLM(payload map[string]interface{}) compactPDFPayloadEnvelopeForLLM {
+	out := compactPDFPayloadEnvelopeForLLM{
+		Document:         orderedCompactPDFDocumentForLLM(payload["document"]),
+		OutlineHierarchy: orderedCompactPDFOutlineHierarchyForLLM(payload["outline_hierarchy"]),
+		Outline:          orderedCompactPDFOutlineForLLM(payload["outline"]),
+		Pages:            orderedCompactPDFPagesForLLM(payload["pages"]),
+	}
+	if markdown := strings.TrimSpace(anyToStringForLLM(payload["markdown"])); markdown != "" {
+		out.Markdown = markdown
+	}
+	if text := strings.TrimSpace(anyToStringForLLM(payload["text"])); text != "" {
+		out.Text = text
+	}
+	if rawText := strings.TrimSpace(anyToStringForLLM(payload["raw_text"])); rawText != "" {
+		out.RawText = rawText
+	}
+	for _, entry := range []struct {
+		key string
+		dst *interface{}
+	}{
+		{key: "selected_pages", dst: &out.SelectedPages},
+		{key: "char_count", dst: &out.CharCount},
+		{key: "truncated", dst: &out.Truncated},
+		{key: "ocr_used", dst: &out.OCRUsed},
+		{key: "ocr_pages", dst: &out.OCRPages},
+		{key: "vision_used", dst: &out.VisionUsed},
+		{key: "vision_pages", dst: &out.VisionPages},
+		{key: "warnings", dst: &out.Warnings},
+	} {
+		if value, ok := payload[entry.key]; ok {
+			*entry.dst = value
+		}
+	}
+	return out
+}
+
+func buildOrderedCompactMultiPDFPayloadForLLM(payload map[string]interface{}) compactMultiPDFPayloadEnvelopeForLLM {
+	out := compactMultiPDFPayloadEnvelopeForLLM{
+		Mode:      strings.TrimSpace(anyToStringForLLM(payload["mode"])),
+		Documents: orderedCompactPDFDocumentsForLLM(payload["documents"]),
+	}
+	if markdown := strings.TrimSpace(anyToStringForLLM(payload["markdown"])); markdown != "" {
+		out.Markdown = markdown
+	}
+	if text := strings.TrimSpace(anyToStringForLLM(payload["text"])); text != "" {
+		out.Text = text
+	}
+	if rawText := strings.TrimSpace(anyToStringForLLM(payload["raw_text"])); rawText != "" {
+		out.RawText = rawText
+	}
+	if results := orderedCompactMultiPDFResultsForLLM(payload["results"]); len(results) > 0 {
+		out.Results = results
+	}
+	for _, entry := range []struct {
+		key string
+		dst *interface{}
+	}{
+		{key: "count", dst: &out.Count},
+		{key: "selected_pdfs", dst: &out.SelectedPDFs},
+		{key: "char_count", dst: &out.CharCount},
+		{key: "truncated", dst: &out.Truncated},
+		{key: "ocr_used", dst: &out.OCRUsed},
+		{key: "vision_used", dst: &out.VisionUsed},
+		{key: "warnings", dst: &out.Warnings},
+	} {
+		if value, ok := payload[entry.key]; ok {
+			*entry.dst = value
+		}
+	}
+	return out
+}
+
+func orderedCompactPDFDocumentForLLM(raw interface{}) *compactPDFDocumentForLLM {
+	row, ok := raw.(map[string]interface{})
+	if !ok || len(row) == 0 {
+		return nil
+	}
+	doc := &compactPDFDocumentForLLM{}
+	if fileName := strings.TrimSpace(anyToStringForLLM(row["file_name"])); fileName != "" {
+		doc.FileName = fileName
+	}
+	if path := strings.TrimSpace(anyToStringForLLM(row["path"])); path != "" {
+		doc.Path = path
+	}
+	if pageCount := anyToIntForLLM(row["page_count"]); pageCount > 0 {
+		doc.PageCount = pageCount
+	}
+	if engine := strings.TrimSpace(anyToStringForLLM(row["engine"])); engine != "" {
+		doc.Engine = engine
+	}
+	if sizeBytes := anyToIntForLLM(row["size_bytes"]); sizeBytes > 0 {
+		doc.SizeBytes = sizeBytes
+	}
+	if doc.FileName == "" && doc.Path == "" && doc.PageCount == 0 && doc.Engine == "" && doc.SizeBytes == 0 {
+		return nil
+	}
+	return doc
+}
+
+func orderedCompactPDFDocumentsForLLM(raw interface{}) []compactPDFDocumentForLLM {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	out := make([]compactPDFDocumentForLLM, 0, len(rows))
+	for _, item := range rows {
+		if doc := orderedCompactPDFDocumentForLLM(item); doc != nil {
+			out = append(out, *doc)
+		}
+	}
+	return out
+}
+
+func orderedCompactPDFOutlineForLLM(raw interface{}) []compactPDFOutlineEntryForLLM {
+	return normalizeCompactPDFOutlineEntriesForLLM(raw)
+}
+
+func orderedCompactPDFOutlineHierarchyForLLM(raw interface{}) []compactPDFOutlineHierarchyEntryForLLM {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	out := make([]compactPDFOutlineHierarchyEntryForLLM, 0, len(rows))
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		title := strings.TrimSpace(anyToStringForLLM(row["title"]))
+		if title == "" {
+			continue
+		}
+		entry := compactPDFOutlineHierarchyEntryForLLM{Title: title}
+		if level := anyToIntForLLM(row["level"]); level > 0 {
+			entry.Level = level
+		}
+		if pageNumber := anyToIntForLLM(row["page_number"]); pageNumber > 0 {
+			entry.PageNumber = pageNumber
+		}
+		if childCount := anyToIntForLLM(row["child_count"]); childCount > 0 {
+			entry.ChildCount = childCount
+		}
+		if childTitles, ok := row["child_titles"].([]interface{}); ok && len(childTitles) > 0 {
+			entry.ChildTitles = make([]string, 0, len(childTitles))
+			for _, childRaw := range childTitles {
+				childTitle := strings.TrimSpace(anyToStringForLLM(childRaw))
+				if childTitle == "" {
+					continue
+				}
+				entry.ChildTitles = append(entry.ChildTitles, childTitle)
+			}
+		}
+		if entry.ChildCount == 0 && len(entry.ChildTitles) == 0 {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func orderedCompactPDFPagesForLLM(raw interface{}) []compactPDFPageForLLM {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	out := make([]compactPDFPageForLLM, 0, len(rows))
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		page := compactPDFPageForLLM{}
+		if number := anyToIntForLLM(row["number"]); number > 0 {
+			page.Number = number
+		}
+		if source := strings.TrimSpace(anyToStringForLLM(row["source"])); source != "" {
+			page.Source = source
+		}
+		if blocks := orderedCompactPDFBlocksForLLM(row["blocks"]); len(blocks) > 0 {
+			page.Blocks = blocks
+		}
+		if tables := orderedCompactPDFTablesForLLM(row["tables"]); len(tables) > 0 {
+			page.Tables = tables
+		}
+		if markdown := strings.TrimSpace(anyToStringForLLM(row["markdown"])); markdown != "" {
+			page.Markdown = markdown
+		}
+		if text := strings.TrimSpace(anyToStringForLLM(row["text"])); text != "" {
+			page.Text = text
+		}
+		if rawText := strings.TrimSpace(anyToStringForLLM(row["raw_text"])); rawText != "" {
+			page.RawText = rawText
+		}
+		if page.Number == 0 && page.Source == "" && len(page.Blocks) == 0 && len(page.Tables) == 0 &&
+			page.Markdown == "" && page.Text == "" && page.RawText == "" {
+			continue
+		}
+		out = append(out, page)
+	}
+	return out
+}
+
+func orderedCompactPDFBlocksForLLM(raw interface{}) []compactPDFBlockForLLM {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	out := make([]compactPDFBlockForLLM, 0, len(rows))
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		block := compactPDFBlockForLLM{}
+		if kind := strings.TrimSpace(anyToStringForLLM(row["kind"])); kind != "" {
+			block.Kind = kind
+		}
+		if level := anyToIntForLLM(row["heading_level"]); level > 0 {
+			block.HeadingLevel = level
+		}
+		if markdown := strings.TrimSpace(anyToStringForLLM(row["markdown"])); markdown != "" {
+			block.Markdown = markdown
+		}
+		if text := strings.TrimSpace(anyToStringForLLM(row["text"])); text != "" {
+			block.Text = text
+		}
+		if childCount := anyToIntForLLM(row["child_count"]); childCount > 0 {
+			block.ChildCount = childCount
+		}
+		if block.Kind == "" && block.HeadingLevel == 0 && block.Markdown == "" && block.Text == "" && block.ChildCount == 0 {
+			continue
+		}
+		out = append(out, block)
+	}
+	return out
+}
+
+func orderedCompactPDFTablesForLLM(raw interface{}) []compactPDFTableForLLM {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	out := make([]compactPDFTableForLLM, 0, len(rows))
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		table := compactPDFTableForLLM{}
+		if numberOfRows := anyToIntForLLM(row["number_of_rows"]); numberOfRows > 0 {
+			table.NumberOfRows = numberOfRows
+		}
+		if numberOfColumns := anyToIntForLLM(row["number_of_columns"]); numberOfColumns > 0 {
+			table.NumberOfColumns = numberOfColumns
+		}
+		if markdown := strings.TrimSpace(anyToStringForLLM(row["markdown"])); markdown != "" {
+			table.Markdown = markdown
+		}
+		if rows := row["rows"]; rows != nil {
+			table.Rows = rows
+		}
+		if table.NumberOfRows == 0 && table.NumberOfColumns == 0 && table.Markdown == "" && table.Rows == nil {
+			continue
+		}
+		out = append(out, table)
+	}
+	return out
+}
+
+func orderedCompactMultiPDFResultsForLLM(raw interface{}) []json.RawMessage {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	out := make([]json.RawMessage, 0, len(rows))
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		b, err := json.Marshal(buildOrderedCompactPDFPayloadForLLM(row))
+		if err != nil {
+			continue
+		}
+		out = append(out, json.RawMessage(b))
+	}
+	return out
+}
+
+func compactMultiPDFPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, 12)
+	for _, key := range []string{
+		"mode", "count", "char_count", "truncated", "ocr_used", "vision_used", "warnings", "selected_pdfs",
+	} {
+		if value, ok := payload[key]; ok {
+			out[key] = compactJSONValueForLLM(value, 1)
+		}
+	}
+	if documents := compactPDFDocumentsForLLM(payload["documents"], 6); len(documents) > 0 {
+		out["documents"] = documents
+	}
+	if results, ok := payload["results"].([]interface{}); ok && len(results) > 0 {
+		compactedResults := compactPDFResultsForLLM(results, 4)
+		if len(compactedResults) > 0 {
+			out["results"] = compactedResults
+		}
+	}
+	if markdown := strings.TrimSpace(anyToStringForLLM(payload["markdown"])); markdown != "" {
+		out["markdown"] = compactPDFTextForLLM(markdown, 6, 3600)
+	} else if text := strings.TrimSpace(anyToStringForLLM(payload["text"])); text != "" {
+		out["text"] = compactPDFTextForLLM(text, 6, 3600)
+	}
+	if rawText := strings.TrimSpace(anyToStringForLLM(payload["raw_text"])); rawText != "" {
+		compactedRaw := compactPDFTextForLLM(rawText, 4, 1800)
+		if compactedRaw != anyToStringForLLM(out["markdown"]) && compactedRaw != anyToStringForLLM(out["text"]) {
+			out["raw_text"] = compactedRaw
+		}
+	}
+	if len(out) == 0 {
+		if compacted, ok := compactJSONValueForLLM(payload, 0).(map[string]interface{}); ok {
+			return compacted
+		}
+		return map[string]interface{}{}
+	}
+	return out
+}
+
+func compactPDFDocumentsForLLM(raw interface{}, limit int) []interface{} {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 || limit <= 0 {
+		return nil
+	}
+	indexes := selectDistributedIndexesForLLM(len(rows), min(len(rows), limit))
+	out := make([]interface{}, 0, len(indexes))
+	for _, idx := range indexes {
+		row, ok := rows[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		entry := make(map[string]interface{}, 4)
+		for _, key := range []string{"file_name", "path", "page_count", "engine"} {
+			if value, exists := row[key]; exists {
+				entry[key] = compactJSONValueForLLM(value, 1)
+			}
+		}
+		if len(entry) > 0 {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func compactPDFResultsForLLM(results []interface{}, limit int) []interface{} {
+	if len(results) == 0 || limit <= 0 {
+		return nil
+	}
+	indexes := selectDistributedIndexesForLLM(len(results), min(len(results), limit))
+	out := make([]interface{}, 0, len(indexes))
+	for _, idx := range indexes {
+		row, ok := results[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		compacted := compactPDFPayloadForLLM(row)
+		if len(compacted) > 0 {
+			out = append(out, compacted)
+		}
+	}
+	return out
+}
+
+func compactPDFOutlineForLLM(raw interface{}, limit int) []interface{} {
+	entries := normalizeCompactPDFOutlineEntriesForLLM(raw)
+	if len(entries) == 0 || limit <= 0 {
+		return nil
+	}
+	indexes := selectCompactPDFOutlineIndexesForLLM(entries, limit)
+	out := make([]interface{}, 0, len(indexes))
+	for _, idx := range indexes {
+		entry := map[string]interface{}{
+			"title": sampleLongTextForLLM(entries[idx].Title, 160),
+		}
+		if level := entries[idx].Level; level > 0 {
+			entry["level"] = level
+		}
+		if pageNumber := entries[idx].PageNumber; pageNumber > 0 {
+			entry["page_number"] = pageNumber
+		}
+		if childCount := entries[idx].ChildCount; childCount > 0 {
+			entry["child_count"] = childCount
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func normalizeCompactPDFOutlineEntriesForLLM(raw interface{}) []compactPDFOutlineEntryForLLM {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	out := make([]compactPDFOutlineEntryForLLM, 0, len(rows))
+	hasExplicitChildCounts := false
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		title := strings.TrimSpace(anyToStringForLLM(row["title"]))
+		if title == "" {
+			continue
+		}
+		entry := compactPDFOutlineEntryForLLM{Title: title}
+		if level := anyToIntForLLM(row["level"]); level > 0 {
+			entry.Level = level
+		}
+		if pageNumber := anyToIntForLLM(row["page_number"]); pageNumber > 0 {
+			entry.PageNumber = pageNumber
+		}
+		if childCount := anyToIntForLLM(row["child_count"]); childCount > 0 {
+			entry.ChildCount = childCount
+			hasExplicitChildCounts = true
+		}
+		out = append(out, entry)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	if !hasExplicitChildCounts {
+		annotateCompactPDFOutlineChildCountsForLLM(out)
+	}
+	return out
+}
+
+func annotateCompactPDFOutlineChildCountsForLLM(entries []compactPDFOutlineEntryForLLM) {
+	if len(entries) == 0 {
+		return
+	}
+	for _, parentIdx := range compactPDFOutlineParentIndexesForLLM(entries) {
+		if parentIdx >= 0 && parentIdx < len(entries) {
+			entries[parentIdx].ChildCount++
+		}
+	}
+}
+
+func compactPDFOutlineParentIndexesForLLM(entries []compactPDFOutlineEntryForLLM) []int {
+	if len(entries) == 0 {
+		return nil
+	}
+	parents := make([]int, len(entries))
+	for idx := range parents {
+		parents[idx] = -1
+	}
+	stack := make([]int, 0, 8)
+	for idx := range entries {
+		level := entries[idx].Level
+		if level <= 0 {
+			level = 1
+		}
+		for len(stack) > 0 {
+			parentLevel := entries[stack[len(stack)-1]].Level
+			if parentLevel <= 0 {
+				parentLevel = 1
+			}
+			if parentLevel < level {
+				break
+			}
+			stack = stack[:len(stack)-1]
+		}
+		if len(stack) > 0 {
+			parents[idx] = stack[len(stack)-1]
+		}
+		stack = append(stack, idx)
+	}
+	return parents
+}
+
+func selectCompactPDFOutlineIndexesForLLM(entries []compactPDFOutlineEntryForLLM, limit int) []int {
+	if len(entries) == 0 || limit <= 0 {
+		return nil
+	}
+	if len(entries) <= limit {
+		out := make([]int, 0, len(entries))
+		for idx := range entries {
+			out = append(out, idx)
+		}
+		return out
+	}
+	indexSet := make(map[int]struct{}, limit)
+	order := make([]int, 0, limit)
+	add := func(idx int) {
+		if idx < 0 || idx >= len(entries) {
+			return
+		}
+		if len(order) >= limit {
+			return
+		}
+		if _, exists := indexSet[idx]; exists {
+			return
+		}
+		indexSet[idx] = struct{}{}
+		order = append(order, idx)
+	}
+	for idx, entry := range entries {
+		if entry.ChildCount > 0 {
+			add(idx)
+		}
+	}
+	for _, idx := range selectDistributedIndexesForLLM(len(entries), min(len(entries), limit)) {
+		add(idx)
+	}
+	sort.Ints(order)
+	return order
+}
+
+func compactPDFOutlineHierarchyForLLM(raw interface{}, parentLimit, childTitleLimit int) []interface{} {
+	entries := normalizeCompactPDFOutlineEntriesForLLM(raw)
+	if len(entries) == 0 || parentLimit <= 0 {
+		return nil
+	}
+	parentIndexes := compactPDFOutlineParentIndexesForLLM(entries)
+	candidateIndexes := make([]int, 0, len(entries))
+	for idx, entry := range entries {
+		if entry.ChildCount > 0 {
+			candidateIndexes = append(candidateIndexes, idx)
+		}
+	}
+	if len(candidateIndexes) == 0 {
+		return nil
+	}
+	selectedParents := candidateIndexes
+	if len(selectedParents) > parentLimit {
+		selectedParentIndexes := selectDistributedIndexesForLLM(len(selectedParents), parentLimit)
+		trimmed := make([]int, 0, len(selectedParentIndexes))
+		for _, pick := range selectedParentIndexes {
+			if pick >= 0 && pick < len(selectedParents) {
+				trimmed = append(trimmed, selectedParents[pick])
+			}
+		}
+		selectedParents = trimmed
+	}
+
+	out := make([]interface{}, 0, len(selectedParents))
+	for _, parentIdx := range selectedParents {
+		parent := entries[parentIdx]
+		entry := map[string]interface{}{
+			"title":       sampleLongTextForLLM(parent.Title, 160),
+			"child_count": parent.ChildCount,
+		}
+		if parent.Level > 0 {
+			entry["level"] = parent.Level
+		}
+		if parent.PageNumber > 0 {
+			entry["page_number"] = parent.PageNumber
+		}
+		if childTitleLimit > 0 {
+			childTitles := make([]interface{}, 0, min(parent.ChildCount, childTitleLimit))
+			for idx, candidate := range entries {
+				if parentIndexes[idx] != parentIdx {
+					continue
+				}
+				childTitles = append(childTitles, sampleLongTextForLLM(candidate.Title, 160))
+				if len(childTitles) >= childTitleLimit {
+					break
+				}
+			}
+			if len(childTitles) > 0 {
+				entry["child_titles"] = childTitles
+			}
+		}
+		out = append(out, entry)
 	}
 	return out
 }
@@ -16564,6 +17377,7 @@ func compactPDFPagesForLLM(pages []interface{}, limit int) []interface{} {
 	if len(pages) == 0 || limit <= 0 {
 		return nil
 	}
+	markdownBudget, textBudget, rawBudget := compactPDFPageSampleBudgetsForLLM(len(pages))
 	indexes := make([]int, 0, min(len(pages), limit))
 	if len(pages) <= limit {
 		for i := 0; i < len(pages); i++ {
@@ -16578,25 +17392,166 @@ func compactPDFPagesForLLM(pages []interface{}, limit int) []interface{} {
 		if !ok {
 			continue
 		}
-		entry := make(map[string]interface{}, 4)
+		entry := make(map[string]interface{}, 8)
 		if number := anyToIntForLLM(row["number"]); number > 0 {
 			entry["number"] = number
 		}
 		if source := strings.TrimSpace(anyToStringForLLM(row["source"])); source != "" {
 			entry["source"] = source
 		}
+		if markdown := strings.TrimSpace(anyToStringForLLM(row["markdown"])); markdown != "" {
+			entry["markdown"] = sampleLongTextForLLM(markdown, markdownBudget)
+		}
+		if blocks := compactPDFBlocksForLLM(row["blocks"], 4); len(blocks) > 0 {
+			entry["blocks"] = blocks
+		}
+		if tables := compactPDFTablesForLLM(row["tables"], 2); len(tables) > 0 {
+			entry["tables"] = tables
+		}
 		if text := strings.TrimSpace(anyToStringForLLM(row["text"])); text != "" {
-			entry["text"] = sampleLongTextForLLM(text, 420)
+			entry["text"] = sampleLongTextForLLM(text, textBudget)
 		}
 		if rawText := strings.TrimSpace(anyToStringForLLM(row["raw_text"])); rawText != "" {
-			compactedRaw := sampleLongTextForLLM(rawText, 320)
-			if compactedRaw != anyToStringForLLM(entry["text"]) {
+			compactedRaw := sampleLongTextForLLM(rawText, rawBudget)
+			if compactedRaw != anyToStringForLLM(entry["markdown"]) && compactedRaw != anyToStringForLLM(entry["text"]) {
 				entry["raw_text"] = compactedRaw
 			}
 		}
 		if len(entry) > 0 {
 			out = append(out, entry)
 		}
+	}
+	return out
+}
+
+func compactPDFSyntheticPagesForLLM(payload map[string]interface{}, limit int) []interface{} {
+	if limit <= 0 {
+		return nil
+	}
+	markdown := strings.TrimSpace(anyToStringForLLM(payload["markdown"]))
+	if markdown == "" {
+		return nil
+	}
+	sections := splitPDFPageSectionsForLLM(markdown)
+	if len(sections) == 0 {
+		return nil
+	}
+	budget, _, _ := compactPDFPageSampleBudgetsForLLM(len(sections))
+	indexes := selectDistributedIndexesForLLM(len(sections), min(len(sections), limit))
+	out := make([]interface{}, 0, len(indexes))
+	for _, idx := range indexes {
+		section := sections[idx]
+		entry := make(map[string]interface{}, 2)
+		if section.PageNumber > 0 {
+			entry["number"] = section.PageNumber
+		}
+		if excerpt := sampleLongTextForLLM(section.Content, budget); excerpt != "" {
+			entry["markdown"] = excerpt
+		}
+		if len(entry) > 0 {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func compactPDFBlocksForLLM(raw interface{}, limit int) []interface{} {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 || limit <= 0 {
+		return nil
+	}
+	indexes := selectDistributedIndexesForLLM(len(rows), min(len(rows), limit))
+	out := make([]interface{}, 0, len(indexes))
+	for _, idx := range indexes {
+		row, ok := rows[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		entry := make(map[string]interface{}, 5)
+		if kind := strings.TrimSpace(anyToStringForLLM(row["kind"])); kind != "" {
+			entry["kind"] = kind
+		}
+		if level := anyToIntForLLM(row["heading_level"]); level > 0 {
+			entry["heading_level"] = level
+		}
+		if markdown := strings.TrimSpace(anyToStringForLLM(row["markdown"])); markdown != "" {
+			entry["markdown"] = sampleLongTextForLLM(markdown, 220)
+		} else if text := strings.TrimSpace(anyToStringForLLM(row["text"])); text != "" {
+			entry["text"] = sampleLongTextForLLM(text, 220)
+		}
+		if children, ok := row["children"].([]interface{}); ok && len(children) > 0 {
+			entry["child_count"] = len(children)
+		}
+		if len(entry) > 0 {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func compactPDFTablesForLLM(raw interface{}, limit int) []interface{} {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 || limit <= 0 {
+		return nil
+	}
+	indexes := selectDistributedIndexesForLLM(len(rows), min(len(rows), limit))
+	out := make([]interface{}, 0, len(indexes))
+	for _, idx := range indexes {
+		row, ok := rows[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		entry := make(map[string]interface{}, 4)
+		if numberOfRows := anyToIntForLLM(row["number_of_rows"]); numberOfRows > 0 {
+			entry["number_of_rows"] = numberOfRows
+		}
+		if numberOfColumns := anyToIntForLLM(row["number_of_columns"]); numberOfColumns > 0 {
+			entry["number_of_columns"] = numberOfColumns
+		}
+		if markdown := strings.TrimSpace(anyToStringForLLM(row["markdown"])); markdown != "" {
+			entry["markdown"] = sampleLongTextForLLM(markdown, 260)
+		} else if preview := compactPDFTableRowsForLLM(row["rows"], 3); len(preview) > 0 {
+			entry["rows"] = preview
+		}
+		if len(entry) > 0 {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func compactPDFTableRowsForLLM(raw interface{}, limit int) []interface{} {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 || limit <= 0 {
+		return nil
+	}
+	indexes := selectDistributedIndexesForLLM(len(rows), min(len(rows), limit))
+	out := make([]interface{}, 0, len(indexes))
+	for _, idx := range indexes {
+		row, ok := rows[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		cells, ok := row["cells"].([]interface{})
+		if !ok || len(cells) == 0 {
+			continue
+		}
+		values := make([]string, 0, len(cells))
+		for _, cellRaw := range cells {
+			cell, ok := cellRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			text := strings.TrimSpace(anyToStringForLLM(cell["text"]))
+			if text == "" {
+				continue
+			}
+			values = append(values, sampleLongTextForLLM(text, 80))
+		}
+		if len(values) == 0 {
+			continue
+		}
+		out = append(out, values)
 	}
 	return out
 }
@@ -16644,34 +17599,82 @@ func compactPDFTextForLLM(text string, pageLimit, charBudget int) string {
 	return strings.Join(out, "\n\n")
 }
 
+type pdfPageSectionForLLM struct {
+	PageNumber int
+	Content    string
+}
+
 func splitPDFSectionsForLLM(text string) []string {
+	pageSections := splitPDFPageSectionsForLLM(text)
+	if len(pageSections) == 0 {
+		return nil
+	}
+	sections := make([]string, 0, len(pageSections))
+	for _, section := range pageSections {
+		sections = append(sections, section.Content)
+	}
+	return sections
+}
+
+func splitPDFPageSectionsForLLM(text string) []pdfPageSectionForLLM {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
 	}
 	lines := strings.Split(text, "\n")
-	sections := make([]string, 0, 8)
+	sections := make([]pdfPageSectionForLLM, 0, 8)
 	var current strings.Builder
+	currentPage := 0
+	flush := func() {
+		content := strings.TrimSpace(current.String())
+		if content == "" {
+			return
+		}
+		sections = append(sections, pdfPageSectionForLLM{
+			PageNumber: currentPage,
+			Content:    content,
+		})
+		current.Reset()
+	}
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[Page ") && strings.HasSuffix(trimmed, "]") {
-			if strings.TrimSpace(current.String()) != "" {
-				sections = append(sections, strings.TrimSpace(current.String()))
-				current.Reset()
-			}
+		if pageNumber, ok := parsePDFPageHeaderForLLM(trimmed); ok {
+			flush()
+			currentPage = pageNumber
 		}
 		if current.Len() > 0 {
 			current.WriteString("\n")
 		}
 		current.WriteString(line)
 	}
-	if strings.TrimSpace(current.String()) != "" {
-		sections = append(sections, strings.TrimSpace(current.String()))
-	}
+	flush()
 	if len(sections) <= 1 {
 		return nil
 	}
 	return sections
+}
+
+func parsePDFPageHeaderForLLM(line string) (int, bool) {
+	if !strings.HasPrefix(line, "[Page ") || !strings.HasSuffix(line, "]") {
+		return 0, false
+	}
+	raw := strings.TrimSuffix(strings.TrimPrefix(line, "[Page "), "]")
+	pageNumber, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || pageNumber <= 0 {
+		return 0, false
+	}
+	return pageNumber, true
+}
+
+func compactPDFPageSampleBudgetsForLLM(totalPages int) (markdownBudget, textBudget, rawBudget int) {
+	switch {
+	case totalPages > 10:
+		return 180, 220, 160
+	case totalPages > 6:
+		return 240, 280, 200
+	default:
+		return 380, 420, 320
+	}
 }
 
 func sampleLongTextForLLM(text string, limit int) string {
@@ -18828,10 +19831,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			// Execute tool calls and feed results back
 			logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
 			roundToolCtx := withToolProviderContext(toolCtx, resp.Provider, resp.ProviderID, resp.Model)
-			toolResults := h.executeToolCalls(roundToolCtx, resp.Message.ToolCalls)
+			toolResults, toolAuditResults := h.executeToolCallsWithAudit(roundToolCtx, resp.Message.ToolCalls)
 			if workspaceArtifactHistoryTarget != "" {
 				workspaceArtifactHistoryCalls = append(workspaceArtifactHistoryCalls, resp.Message.ToolCalls...)
-				workspaceArtifactHistoryResults = append(workspaceArtifactHistoryResults, toolResults...)
+				workspaceArtifactHistoryResults = append(workspaceArtifactHistoryResults, toolAuditResults...)
 			}
 			writeTargets := collectSuccessfulWriteTargets(resp.Message.ToolCalls, toolResults)
 			if len(writeTargets) > 0 {
@@ -18844,7 +19847,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			} else if extractRequestedArtifactPath(routingMessage) != "" && isSearchOnlyArtifactRound(resp.Message.ToolCalls) {
 				searchArtifactRoundsWithoutWrite++
 				workspaceArtifactEvidenceRoundsWithoutWrite = 0
-			} else if workspaceArtifactHistoryTarget != "" && hasWorkspaceArtifactContentEvidence(resp.Message.ToolCalls, toolResults) {
+			} else if workspaceArtifactHistoryTarget != "" && hasWorkspaceArtifactContentEvidence(resp.Message.ToolCalls, toolAuditResults) {
 				if hasPendingWorkspaceArtifactSourceReads(routingMessage, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults) {
 					workspaceArtifactEvidenceRoundsWithoutWrite = 0
 					searchArtifactRoundsWithoutWrite = 0
@@ -18881,7 +19884,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			if shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(
 				routingMessage,
 				resp.Message.ToolCalls,
-				toolResults,
+				toolAuditResults,
 				workspaceArtifactHistoryCalls,
 				workspaceArtifactHistoryResults,
 			) {
@@ -18934,7 +19937,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			if shouldUseImmediateWorkspaceArtifactOrchestration(
 				routingMessage,
 				resp.Message.ToolCalls,
-				toolResults,
+				toolAuditResults,
 				workspaceArtifactHistoryCalls,
 				workspaceArtifactHistoryResults,
 			) {
@@ -18982,12 +19985,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				})
 				chatReq.Tools = buildPostWriteCompletionTools(chatReq.Tools, routingMessage)
 			}
-			if nudge := buildPostWorkspaceArtifactContinuationNudgeFromHistory(routingMessage, resp.Message.ToolCalls, toolResults, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults); nudge != "" {
+			if nudge := buildPostWorkspaceArtifactContinuationNudgeFromHistory(routingMessage, resp.Message.ToolCalls, toolAuditResults, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults); nudge != "" {
 				chatReq.Messages = append(chatReq.Messages, llm.Message{
 					Role:    llm.RoleUser,
 					Content: nudge,
 				})
-				chatReq.Tools = buildPostWorkspaceArtifactContinuationToolsFromHistory(chatReq.Tools, routingMessage, resp.Message.ToolCalls, toolResults, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults)
+				chatReq.Tools = buildPostWorkspaceArtifactContinuationToolsFromHistory(chatReq.Tools, routingMessage, resp.Message.ToolCalls, toolAuditResults, workspaceArtifactHistoryCalls, workspaceArtifactHistoryResults)
 			}
 			if !workspaceArtifactWriteRecoveryUsed && workspaceArtifactEvidenceRoundsWithoutWrite >= workspaceArtifactWriteRecoveryThreshold(routingMessage) {
 				if len(extractNumberedQuestions(routingMessage)) >= 2 {
@@ -20629,6 +21632,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var consecutiveToollessAutoContinueDups int
 	var deepSearchForcePending bool
 	var deepSearchForceReason string
+	streamWorkspaceArtifactTarget := extractRequestedArtifactPath(routingMessage)
+	streamWorkspaceArtifactHistoryCalls := make([]llm.ToolCall, 0, 8)
+	streamWorkspaceArtifactHistoryResults := make([]llm.Message, 0, 8)
 	var prevToolSig string          // signature of previous round's tool calls for duplicate detection
 	var consecutiveDups int         // count of consecutive identical tool call rounds
 	var staleIntentGuardTrips int   // count guard-triggered redirections away from stale carry-over
@@ -20749,6 +21755,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if pendingContextCompacting {
 		emitContextCompacting()
 	}
+	primaryStreamProviderAvailable := h.runtimeProvider != nil || h.proxyBridge != nil
 STREAM_LOOP:
 	for toolRound := 0; toolRound < maxToolRoundsForRequest; toolRound++ {
 		streamToolCalls = streamToolCalls[:0]
@@ -21206,8 +22213,8 @@ STREAM_LOOP:
 
 			return nil
 		}
-		if h.proxyBridge != nil {
-			err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+		if primaryStreamProviderAvailable {
+			err = h.chatStreamCallback(ctx, chatReq, streamCb)
 			if err != nil && toolRound == 0 && fullContent == "" && !streamErrorHandled && ctx.Err() == nil {
 				for {
 					statusCode := 0
@@ -21234,7 +22241,7 @@ STREAM_LOOP:
 						Str("fallback_model", currentBudgetAttempt.Model).
 						Str("fallback_provider", currentBudgetAttempt.ProviderID).
 						Msg("[chat] stream: upstream context limit hit, advancing prepared budget attempt")
-					err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+					err = h.chatStreamCallback(ctx, chatReq, streamCb)
 					if err == nil || fullContent != "" || streamErrorHandled || ctx.Err() != nil {
 						break
 					}
@@ -21338,7 +22345,7 @@ STREAM_LOOP:
 						"process_attempt": retryAttempt + 1,
 					},
 				)
-				err = h.proxyBridge.ChatStream(retryCtx, retryReq, streamCb)
+				err = h.chatStreamCallback(retryCtx, retryReq, streamCb)
 				if err == nil {
 					emitProcessEvent(
 						"pre_content_retry_succeeded",
@@ -21370,7 +22377,7 @@ STREAM_LOOP:
 					nil,
 				)
 			}
-			if err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil && h.proxyBridge != nil {
+			if err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil && primaryStreamProviderAvailable {
 				reducedRecoveryReq, originalBytes, reducedBytes, ok := buildReducedToolRoundRecoveryRequest(chatReq, toolRound, fullContent, err)
 				if ok {
 					hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy := continuationRequestStats(chatReq)
@@ -21398,7 +22405,7 @@ STREAM_LOOP:
 						},
 					)
 					streamErrorHandled = false
-					recoveryErr := h.proxyBridge.ChatStream(ctx, reducedRecoveryReq, streamCb)
+					recoveryErr := h.chatStreamCallback(ctx, reducedRecoveryReq, streamCb)
 					if recoveryErr == nil {
 						if hasPrevResponseID || reducedHasPrevResponseID {
 							h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage2, true, err)
@@ -21476,7 +22483,7 @@ STREAM_LOOP:
 						unpinnedCtx = proxy.WithDisableResponsesContinuation(unpinnedCtx)
 					}
 					streamErrorHandled = false
-					err = h.proxyBridge.ChatStream(unpinnedCtx, unpinnedReq, streamCb)
+					err = h.chatStreamCallback(unpinnedCtx, unpinnedReq, streamCb)
 					if err == nil {
 						ctx = unpinnedCtx
 						chatReq = unpinnedReq
@@ -21547,7 +22554,7 @@ STREAM_LOOP:
 						unpinnedReq.PreviousResponseID = ""
 					}
 					streamErrorHandled = false
-					err = h.proxyBridge.ChatStream(unpinnedCtx, unpinnedReq, streamCb)
+					err = h.chatStreamCallback(unpinnedCtx, unpinnedReq, streamCb)
 					if err == nil {
 						ctx = unpinnedCtx
 						emitProcessEvent(
@@ -21630,7 +22637,7 @@ STREAM_LOOP:
 		// retry indefinitely with exponential backoff until user cancels the stream.
 		// Uses the same provider (sticky routing) and continuation mode so the LLM
 		// picks up from where it left off without repeating content.
-		if err != nil && fullContent != "" && !streamErrorHandled && ctx.Err() == nil && h.proxyBridge != nil {
+		if err != nil && fullContent != "" && !streamErrorHandled && ctx.Err() == nil && primaryStreamProviderAvailable {
 			flushPendingDelta(true)
 			// Pin provider for sticky routing
 			if actualProviderID != "" {
@@ -21678,7 +22685,7 @@ STREAM_LOOP:
 				continueReq.Messages = continueMessages
 
 				streamErrorHandled = false
-				err = h.proxyBridge.ChatStream(ctx, continueReq, streamCb)
+				err = h.chatStreamCallback(ctx, continueReq, streamCb)
 				if err == nil {
 					logger.Info().Int("retry", retryAttempt).Msg("[chat] mid-stream retry succeeded")
 					break
@@ -21793,6 +22800,20 @@ STREAM_LOOP:
 			}
 
 			staleIntentGuardTrips = 0
+			if streamWorkspaceArtifactTarget != "" {
+				if overriddenToolCalls, overridden := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(
+					routingMessage,
+					streamToolCalls,
+					streamWorkspaceArtifactHistoryCalls,
+					streamWorkspaceArtifactHistoryResults,
+				); overridden {
+					streamToolCalls = overriddenToolCalls
+					logger.Info().
+						Int("round", toolRound).
+						Str("target", streamWorkspaceArtifactTarget).
+						Msg("[chat] stream: replaced assistant write content with deterministic workspace artifact draft")
+				}
+			}
 			logger.Info().Int("round", toolRound).Int("tool_calls", len(streamToolCalls)).Msg("[chat] stream: executing tool calls")
 			// Send tool execution status to client (include tool names for UI display)
 			toolNames := make([]string, len(streamToolCalls))
@@ -21830,7 +22851,11 @@ STREAM_LOOP:
 
 			// Execute tools (detached context — survives SSE disconnect)
 			roundToolCtx := withToolProviderContext(toolCtx, actualProvider, actualProviderID, actualModel)
-			toolResults := h.executeToolCalls(roundToolCtx, streamToolCalls)
+			toolResults, toolAuditResults := h.executeToolCallsWithAudit(roundToolCtx, streamToolCalls)
+			if streamWorkspaceArtifactTarget != "" {
+				streamWorkspaceArtifactHistoryCalls = append(streamWorkspaceArtifactHistoryCalls, streamToolCalls...)
+				streamWorkspaceArtifactHistoryResults = append(streamWorkspaceArtifactHistoryResults, toolAuditResults...)
+			}
 			deepSearchState.observeToolRound(streamToolCalls, toolResults)
 			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(streamToolCalls, toolResults)
 			if planChecklistUpdated {
@@ -22120,7 +23145,7 @@ STREAM_LOOP:
 					Msg("[chat] stream: continuation round failed after prior content, completing stream gracefully")
 				// Silent shadow recovery: keep continuation within the same session
 				// (same previous_response_id chain) and retry once.
-				if h.proxyBridge != nil && ctx.Err() == nil {
+				if primaryStreamProviderAvailable && ctx.Err() == nil {
 					recoveryCtx := ctx
 					recoveryReq := chatReq
 					hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy = continuationRequestStats(recoveryReq)
@@ -22145,7 +23170,7 @@ STREAM_LOOP:
 						continuationRecoveryStage,
 						nil,
 					)
-					if recoveryErr := h.proxyBridge.ChatStream(recoveryCtx, recoveryReq, streamCb); recoveryErr == nil {
+					if recoveryErr := h.chatStreamCallback(recoveryCtx, recoveryReq, streamCb); recoveryErr == nil {
 						h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage, true, continuationErr)
 						err = nil
 						emitProcessEvent(
@@ -22204,7 +23229,7 @@ STREAM_LOOP:
 								continuationRecoveryStage,
 								nil,
 							)
-							if reducedErr := h.proxyBridge.ChatStream(recoveryCtx, reducedRecoveryReq, streamCb); reducedErr == nil {
+							if reducedErr := h.chatStreamCallback(recoveryCtx, reducedRecoveryReq, streamCb); reducedErr == nil {
 								h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage, true, continuationErr)
 								err = nil
 								emitProcessEvent(

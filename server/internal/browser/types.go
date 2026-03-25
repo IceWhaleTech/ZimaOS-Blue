@@ -143,16 +143,58 @@ const (
 	SessionMonitorKindImage SessionMonitorKind = "image"
 )
 
+// SessionEngineDetail identifies the precise runtime behind a compatibility
+// engine bucket.
+type SessionEngineDetail string
+
+const (
+	// SessionEngineDetailLightpandaShim is Blue's read-layer Lightpanda shim.
+	SessionEngineDetailLightpandaShim SessionEngineDetail = "lightpanda_shim"
+	// SessionEngineDetailLightpandaBinary is the upstream Lightpanda binary runtime.
+	SessionEngineDetailLightpandaBinary SessionEngineDetail = "lightpanda_binary"
+	// SessionEngineDetailChromiumManaged is Blue-managed Chromium.
+	SessionEngineDetailChromiumManaged SessionEngineDetail = "chromium_managed"
+	// SessionEngineDetailChromiumRelay is relay/local-Chrome Chromium.
+	SessionEngineDetailChromiumRelay SessionEngineDetail = "chromium_relay"
+)
+
+// SessionLayer identifies the capability layer that owns a session.
+type SessionLayer string
+
+const (
+	// SessionLayerRead is the fetch/read layer.
+	SessionLayerRead SessionLayer = "read"
+	// SessionLayerBrowserLite is the browser-lite layer.
+	SessionLayerBrowserLite SessionLayer = "browser_lite"
+	// SessionLayerFullBrowser is the full browser layer.
+	SessionLayerFullBrowser SessionLayer = "full_browser"
+)
+
 // SessionInfo is the unified browser session summary returned to clients.
 type SessionInfo struct {
-	ID           string             `json:"id"`
-	Status       string             `json:"status"`
-	CurrentURL   string             `json:"current_url,omitempty"`
-	PageTitle    string             `json:"page_title,omitempty"`
-	CreatedAt    string             `json:"created_at"`
-	LastActivity string             `json:"last_activity"`
-	Engine       SessionEngine      `json:"engine"`
-	MonitorKind  SessionMonitorKind `json:"monitor_kind"`
+	ID           string              `json:"id"`
+	Status       string              `json:"status"`
+	CurrentURL   string              `json:"current_url,omitempty"`
+	PageTitle    string              `json:"page_title,omitempty"`
+	CreatedAt    string              `json:"created_at"`
+	LastActivity string              `json:"last_activity"`
+	Engine       SessionEngine       `json:"engine"`
+	EngineDetail SessionEngineDetail `json:"engine_detail,omitempty"`
+	SessionLayer SessionLayer        `json:"session_layer,omitempty"`
+	MonitorKind  SessionMonitorKind  `json:"monitor_kind"`
+}
+
+// LightpandaReadDocument is the structured read result emitted by Blue's
+// Lightpanda shim for fetch/read-layer use cases.
+type LightpandaReadDocument struct {
+	URL               string `json:"url,omitempty"`
+	Title             string `json:"title,omitempty"`
+	Content           string `json:"content,omitempty"`
+	Summary           string `json:"summary,omitempty"`
+	TreePreview       string `json:"tree_preview,omitempty"`
+	AccessibilityTree string `json:"accessibility_tree,omitempty"`
+	InteractiveTree   string `json:"interactive_tree,omitempty"`
+	InteractiveCount  int    `json:"interactive_count,omitempty"`
 }
 
 // SessionTextMonitor contains the lightweight text monitor payload.

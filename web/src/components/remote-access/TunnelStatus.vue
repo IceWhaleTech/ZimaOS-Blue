@@ -581,7 +581,7 @@ watch(
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <span class="text-gray-500 dark:text-slate-400">ID:</span>
-                <span class="ml-1 text-gray-700 dark:text-slate-200 font-mono"
+                <span class="tunnel-status__inline-gap text-gray-700 dark:text-slate-200 font-mono"
                   >{{ diagnostics.active_session.id.slice(0, 8) }}...</span
                 >
               </div>
@@ -589,7 +589,7 @@ watch(
                 <span class="text-gray-500 dark:text-slate-400"
                   >{{ t('remoteAccess.status') }}:</span
                 >
-                <span class="ml-1 text-gray-700 dark:text-slate-200">{{
+                <span class="tunnel-status__inline-gap text-gray-700 dark:text-slate-200">{{
                   diagnostics.active_session.status
                 }}</span>
               </div>
@@ -597,13 +597,13 @@ watch(
                 <span class="text-gray-500 dark:text-slate-400"
                   >{{ t('remoteAccess.startedAt') }}:</span
                 >
-                <span class="ml-1 text-gray-700 dark:text-slate-200">{{
+                <span class="tunnel-status__inline-gap text-gray-700 dark:text-slate-200">{{
                   formatTime(diagnostics.active_session.started_at)
                 }}</span>
               </div>
               <div v-if="diagnostics.active_session.error_message" class="col-span-2">
                 <span class="text-red-500 dark:text-red-400">{{ t('remoteAccess.error') }}:</span>
-                <span class="ml-1 text-red-600 dark:text-red-300">{{
+                <span class="tunnel-status__inline-gap text-red-600 dark:text-red-300">{{
                   diagnostics.active_session.error_message
                 }}</span>
               </div>
@@ -844,6 +844,10 @@ watch(
 .tunnel-status__log-badge {
   padding: 0.06rem 0.16rem;
   font-size: 0.42rem;
+}
+
+.tunnel-status__inline-gap {
+  margin-inline-start: 0.25rem;
 }
 
 @media (max-width: 639px) {

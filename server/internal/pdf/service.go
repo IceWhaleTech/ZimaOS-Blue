@@ -95,48 +95,56 @@ type DocumentInfo struct {
 
 // PageText contains text extracted from a single page.
 type PageText struct {
-	Number    int    `json:"number"`
-	Text      string `json:"text"`
-	RawText   string `json:"raw_text,omitempty"`
-	CharCount int    `json:"char_count"`
-	Source    string `json:"source,omitempty"`
-	Empty     bool   `json:"empty,omitempty"`
+	Number    int         `json:"number"`
+	Markdown  string      `json:"markdown,omitempty"`
+	Blocks    []PageBlock `json:"blocks,omitempty"`
+	Tables    []PageTable `json:"tables,omitempty"`
+	Text      string      `json:"text"`
+	RawText   string      `json:"raw_text,omitempty"`
+	CharCount int         `json:"char_count"`
+	Source    string      `json:"source,omitempty"`
+	Empty     bool        `json:"empty,omitempty"`
 }
 
 // ExtractRequest controls PDF text extraction.
 type ExtractRequest struct {
-	Path          string
-	Pages         []int
-	MaxPages      int
-	MaxChars      int
-	IncludePages  bool
-	DisableOCR    bool
-	DisableVision bool
+	Path                  string
+	Pages                 []int
+	MaxPages              int
+	MaxChars              int
+	IncludePages          bool
+	IncludeMarkdown       bool
+	IncludeOutline        bool
+	IncludeLayout         bool
+	IncludeHeadersFooters bool
+	DisableOCR            bool
+	DisableVision         bool
 }
 
 // ExtractResult contains extracted PDF text and related metadata.
 type ExtractResult struct {
-	Document        DocumentInfo `json:"document"`
-	Text            string       `json:"text"`
-	RawText         string       `json:"raw_text,omitempty"`
-	Pages           []PageText   `json:"pages,omitempty"`
-	SelectedPages   []int        `json:"selected_pages,omitempty"`
-	CharCount       int          `json:"char_count"`
-	Truncated       bool         `json:"truncated,omitempty"`
-	OCRUsed         bool         `json:"ocr_used,omitempty"`
-	OCRPages        []int        `json:"ocr_pages,omitempty"`
-	OCRModels       []string     `json:"ocr_models,omitempty"`
-	OCREngine       string       `json:"ocr_engine,omitempty"`
-	VisionUsed      bool         `json:"vision_used,omitempty"`
-	VisionPages     []int        `json:"vision_pages,omitempty"`
-	VisionProviders []string     `json:"vision_providers,omitempty"`
-	VisionModels    []string     `json:"vision_models,omitempty"`
-	VisionEngine    string       `json:"vision_engine,omitempty"`
-	Warnings        []string     `json:"warnings,omitempty"`
+	Document        DocumentInfo   `json:"document"`
+	Outline         []OutlineEntry `json:"outline,omitempty"`
+	Pages           []PageText     `json:"pages,omitempty"`
+	Text            string         `json:"text"`
+	RawText         string         `json:"raw_text,omitempty"`
+	Markdown        string         `json:"markdown,omitempty"`
+	SelectedPages   []int          `json:"selected_pages,omitempty"`
+	CharCount       int            `json:"char_count"`
+	Truncated       bool           `json:"truncated,omitempty"`
+	OCRUsed         bool           `json:"ocr_used,omitempty"`
+	OCRPages        []int          `json:"ocr_pages,omitempty"`
+	OCRModels       []string       `json:"ocr_models,omitempty"`
+	OCREngine       string         `json:"ocr_engine,omitempty"`
+	VisionUsed      bool           `json:"vision_used,omitempty"`
+	VisionPages     []int          `json:"vision_pages,omitempty"`
+	VisionProviders []string       `json:"vision_providers,omitempty"`
+	VisionModels    []string       `json:"vision_models,omitempty"`
+	VisionEngine    string         `json:"vision_engine,omitempty"`
+	Warnings        []string       `json:"warnings,omitempty"`
 }
 
-// Service extracts metadata and text from PDFs.
-// On macOS, native PDFKit is treated as the primary extraction path.
+// Service extracts metadata and structured text from PDFs.
 type Service struct {
 	mu       sync.RWMutex
 	logger   *zap.Logger
@@ -191,25 +199,41 @@ func (s *Service) Info(ctx context.Context, path string) (DocumentInfo, error) {
 	if err != nil {
 		return DocumentInfo{}, err
 	}
-	if nativeInfo, ok, nativeErr := tryNativePDFInfo(ctx, resolvedPath, stat); ok {
-		if nativeErr != nil {
-			return DocumentInfo{}, nativeErr
-		}
-		return nativeInfo, nil
-	}
 	instance, err := s.getInstance()
 	if err != nil {
+		if nativeInfo, ok, nativeErr := tryNativePDFInfo(ctx, resolvedPath, stat); ok {
+			if nativeErr != nil {
+				return DocumentInfo{}, nativeErr
+			}
+			return nativeInfo, nil
+		}
 		return DocumentInfo{}, err
 	}
 	defer instance.Close()
 
 	doc, err := openDocument(instance, resolvedPath)
 	if err != nil {
+		if nativeInfo, ok, nativeErr := tryNativePDFInfo(ctx, resolvedPath, stat); ok {
+			if nativeErr != nil {
+				return DocumentInfo{}, nativeErr
+			}
+			return nativeInfo, nil
+		}
 		return DocumentInfo{}, err
 	}
 	defer closeDocument(instance, doc.Document)
 
-	return buildDocumentInfo(instance, resolvedPath, stat, doc.Document)
+	info, infoErr := buildDocumentInfo(instance, resolvedPath, stat, doc.Document)
+	if infoErr == nil {
+		return info, nil
+	}
+	if nativeInfo, ok, nativeErr := tryNativePDFInfo(ctx, resolvedPath, stat); ok {
+		if nativeErr != nil {
+			return DocumentInfo{}, nativeErr
+		}
+		return nativeInfo, nil
+	}
+	return DocumentInfo{}, infoErr
 }
 
 // Extract reads text content from a PDF file.
@@ -221,175 +245,17 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResul
 	if err != nil {
 		return ExtractResult{}, err
 	}
+	result, err := s.extractWithPDFium(ctx, req, resolvedPath, stat)
+	if err == nil {
+		return result, nil
+	}
 	if nativeResult, ok, nativeErr := tryNativePDFExtract(ctx, req, resolvedPath, stat); ok {
 		if nativeErr != nil {
 			return ExtractResult{}, nativeErr
 		}
 		return nativeResult, nil
 	}
-	instance, err := s.getInstance()
-	if err != nil {
-		return ExtractResult{}, err
-	}
-	defer instance.Close()
-
-	doc, err := openDocument(instance, resolvedPath)
-	if err != nil {
-		return ExtractResult{}, err
-	}
-	defer closeDocument(instance, doc.Document)
-
-	info, err := buildDocumentInfo(instance, resolvedPath, stat, doc.Document)
-	if err != nil {
-		return ExtractResult{}, err
-	}
-	selectedPages, warnings, err := resolveSelectedPages(info.PageCount, req.Pages, req.MaxPages)
-	if err != nil {
-		return ExtractResult{}, err
-	}
-	if len(selectedPages) == 0 {
-		return ExtractResult{Document: info}, nil
-	}
-
-	maxChars := clampMaxChars(req.MaxChars)
-	result := ExtractResult{Document: info, Warnings: warnings}
-	remainingChars := maxChars
-	remainingRawChars := maxChars
-	vision := s.visionService()
-
-	for _, pageNumber := range selectedPages {
-		if err := ctx.Err(); err != nil {
-			return ExtractResult{}, err
-		}
-		pageText, err := instance.GetPageText(&requests.GetPageText{
-			Page: requests.Page{ByIndex: &requests.PageByIndex{Document: doc.Document, Index: pageNumber - 1}},
-		})
-		if err != nil {
-			return ExtractResult{}, fmt.Errorf("extract page %d: %w", pageNumber, err)
-		}
-
-		rawPageText := canonicalizeExtractedPDFText(pageText.Text)
-		pageOnlyText := normalizeText(pageText.Text)
-		source := "text"
-		if pageOnlyText == "" {
-			source = "none"
-		}
-
-		var ocrResult ocrruntime.Result
-		if pageOnlyText == "" && !req.DisableOCR && s.ocr != nil {
-			ocrResult, err = s.extractPageOCR(ctx, instance, doc.Document, pageNumber)
-			if err != nil {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("page %d OCR failed: %v", pageNumber, err))
-			} else {
-				rawPageText = effectiveRawPDFText(ocrResult.Text, pageOnlyText)
-				pageOnlyText = normalizeText(ocrResult.Text)
-				if pageOnlyText != "" {
-					rawPageText = effectiveRawPDFText(ocrResult.Text, pageOnlyText)
-					source = "ocr"
-					result.OCRUsed = true
-					result.OCRPages = append(result.OCRPages, pageNumber)
-					result.OCREngine = ocrResult.Engine
-					if ocrResult.Model != "" {
-						result.OCRModels = appendUniqueString(result.OCRModels, ocrResult.Model)
-					}
-					result.Warnings = append(result.Warnings, ocrResult.Warnings...)
-				}
-			}
-		}
-
-		shouldTryVision := vision != nil && !req.DisableVision && (pageOnlyText == "" || (source == "ocr" && textLooksWeak(pageOnlyText)))
-		if shouldTryVision {
-			visionResult, err := s.extractPageVision(ctx, instance, doc.Document, pageNumber, vision)
-			if err != nil {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("page %d vision fallback failed: %v", pageNumber, err))
-			} else if preferVisionText(pageOnlyText, visionResult.Text, source) {
-				if source == "ocr" && pageOnlyText != "" {
-					result.Warnings = append(result.Warnings, fmt.Sprintf("page %d used vision fallback because OCR looked low-confidence", pageNumber))
-				}
-				pageOnlyText = normalizeText(visionResult.Text)
-				if pageOnlyText != "" {
-					rawPageText = effectiveRawPDFText(visionResult.Text, pageOnlyText)
-					source = "vision"
-					result.VisionUsed = true
-					result.VisionPages = append(result.VisionPages, pageNumber)
-					if visionResult.Provider != "" {
-						result.VisionProviders = appendUniqueString(result.VisionProviders, visionResult.Provider)
-					}
-					if visionResult.Model != "" {
-						result.VisionModels = appendUniqueString(result.VisionModels, visionResult.Model)
-					}
-					result.VisionEngine = visionResult.Engine
-				}
-			}
-		}
-
-		if pageOnlyText == "" {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("page %d has no extractable text", pageNumber))
-		}
-		rawPageText = effectiveRawPDFText(rawPageText, pageOnlyText)
-
-		prefix := resultTextPrefix(pageNumber, len(selectedPages))
-		pageOutput := pageOnlyText
-		if prefix != "" {
-			pageOutput = prefix + pageOnlyText
-		}
-
-		clippedOutput, outputChars, wasClipped := clipRunes(pageOutput, remainingChars)
-		if clippedOutput != "" {
-			if result.Text != "" {
-				result.Text += "\n\n"
-			}
-			result.Text += clippedOutput
-			remainingChars -= outputChars
-		}
-		rawOutput := rawPageText
-		if prefix != "" {
-			rawOutput = prefix + rawPageText
-		}
-		clippedRawOutput, rawOutputChars, rawWasClipped := clipRunes(rawOutput, remainingRawChars)
-		if clippedRawOutput != "" {
-			if result.RawText != "" {
-				result.RawText += "\n\n"
-			}
-			result.RawText += clippedRawOutput
-			remainingRawChars -= rawOutputChars
-		}
-
-		result.SelectedPages = append(result.SelectedPages, pageNumber)
-		if req.IncludePages {
-			pageEntryText := pageOnlyText
-			pageEntryChars := utf8.RuneCountInString(pageOnlyText)
-			if wasClipped {
-				availableForText := outputChars - utf8.RuneCountInString(prefix)
-				if availableForText < 0 {
-					availableForText = 0
-				}
-				pageEntryText, pageEntryChars, _ = clipRunes(pageOnlyText, availableForText)
-			}
-			pageEntryRawText := rawPageText
-			if rawWasClipped {
-				availableForRawText := rawOutputChars - utf8.RuneCountInString(prefix)
-				if availableForRawText < 0 {
-					availableForRawText = 0
-				}
-				pageEntryRawText, _, _ = clipRunes(rawPageText, availableForRawText)
-			}
-			pageEntry := PageText{Number: pageNumber, Text: pageEntryText, CharCount: pageEntryChars, Source: source, Empty: pageOnlyText == ""}
-			if strings.TrimSpace(pageEntryRawText) != "" && strings.TrimSpace(pageEntryRawText) != strings.TrimSpace(pageEntryText) {
-				pageEntry.RawText = pageEntryRawText
-			}
-			result.Pages = append(result.Pages, pageEntry)
-		}
-
-		if wasClipped || rawWasClipped || remainingChars <= 0 || remainingRawChars <= 0 {
-			result.Truncated = true
-			result.Warnings = append(result.Warnings, fmt.Sprintf("output truncated at %d characters", maxChars))
-			break
-		}
-	}
-
-	result.CharCount = utf8.RuneCountInString(result.Text)
-	return result, nil
+	return ExtractResult{}, err
 }
 
 func (s *Service) extractPageOCR(ctx context.Context, instance pdfium.Pdfium, document references.FPDF_DOCUMENT, pageNumber int) (ocrruntime.Result, error) {

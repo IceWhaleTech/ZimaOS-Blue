@@ -5,6 +5,7 @@ import type { DeepResearchJobSummary } from '@/api/deepResearch'
 import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
 import {
   localizeDeepResearchAction,
+  localizeDeepResearchGap,
   localizeDeepResearchStage,
 } from '@/utils/deepResearchText'
 
@@ -14,13 +15,17 @@ const emit = defineEmits<{
   view: [job: DeepResearchJobSummary]
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const deepResearchJobs = useDeepResearchJobsStore()
 const cancellingJobId = ref('')
 const collapsed = ref(loadCollapsedState())
 
 const jobs = computed(() => deepResearchJobs.activeJobs)
 const leadJob = computed(() => jobs.value[0] || null)
+
+function tr(key: string, fallback: string): string {
+  return te(key) ? String(t(key)) : fallback
+}
 
 function loadCollapsedState(): boolean {
   try {
@@ -43,15 +48,11 @@ function persistCollapsedState(value: boolean) {
 }
 
 function stageLabel(stage?: string): string {
-  return (
-    localizeDeepResearchStage(stage, t) ||
-    stage ||
-    t('chat.deepResearchProgress', 'Running')
-  )
+  return localizeDeepResearchStage(stage, tr) || stage || t('chat.deepResearchProgress', 'Running')
 }
 
 function latestActionLabel(action?: string): string {
-  return localizeDeepResearchAction(action, t) || action || ''
+  return localizeDeepResearchAction(action, tr) || action || ''
 }
 
 async function handleCancel(job: DeepResearchJobSummary) {
@@ -88,7 +89,7 @@ watch(
       <button
         data-testid="deep-research-task-dock-toggle"
         type="button"
-        class="flex min-h-12 w-full items-start gap-3 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:bg-slate-100/80 dark:bg-slate-950/60 dark:hover:bg-slate-900/70"
+        class="flex min-h-12 w-full items-start gap-3 bg-slate-50/80 px-4 py-3 text-start transition-colors hover:bg-slate-100/80 dark:bg-slate-950/60 dark:hover:bg-slate-900/70"
         :aria-expanded="!collapsed"
         @click="toggleCollapsed"
       >
@@ -203,7 +204,7 @@ watch(
                   {{ latestActionLabel(job.latest_action) }}
                 </div>
                 <div v-if="job.latest_gap" class="break-words text-amber-700 dark:text-amber-200">
-                  {{ job.latest_gap }}
+                  {{ localizeDeepResearchGap(job.latest_gap, tr) }}
                 </div>
               </div>
               <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">

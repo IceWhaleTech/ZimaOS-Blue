@@ -1,5 +1,43 @@
 version: "1"
 featured: []
-boosts: []
+boosts:
+  - skill_id: skills-minimax-multimodal-toolkit
+    weight: 95
+    label: MiniMax Fresh
+    reason: Newly added by MiniMax on 2026-03-25 and should surface near the top.
+  - skill_id: skills-minimax-docx
+    weight: 92
+    label: MiniMax Fresh
+    reason: Newly added by MiniMax on 2026-03-22 for DOCX creation and editing.
+  - skill_id: skills-minimax-xlsx
+    weight: 90
+    label: MiniMax Fresh
+    reason: Newly added by MiniMax on 2026-03-22 for spreadsheet workflows.
+  - skill_id: skills-minimax-pdf
+    weight: 88
+    label: MiniMax Fresh
+    reason: Newly added by MiniMax on 2026-03-21 for PDF generation and refactoring.
 hidden: []
-additional_seeds: []
+additional_seeds:
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/android-native-dev
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/frontend-dev
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/fullstack-dev
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/gif-sticker-maker
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/ios-application-dev
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-docx
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-multimodal-toolkit
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-pdf
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-xlsx
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/pptx-generator
+  - type: skill_url
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills/shader-dev

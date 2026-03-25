@@ -14,6 +14,13 @@ type cdpVersionResponse struct {
 	WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
 }
 
+// ProbeCDPURL verifies that a CDP endpoint can be resolved into a usable
+// websocket URL.
+func ProbeCDPURL(ctx context.Context, raw string) error {
+	_, err := resolveCDPWebSocketURL(ctx, raw)
+	return err
+}
+
 func resolveCDPWebSocketURL(ctx context.Context, raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {

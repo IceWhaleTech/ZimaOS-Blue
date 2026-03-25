@@ -12,6 +12,8 @@
     "feature-intent:sync": "node scripts/sync-feature-intent-terms.mjs",
     "i18n:audit": "node scripts/i18n-audit.mjs",
     "i18n:audit:details": "node scripts/i18n-audit.mjs --details",
+    "rtl:audit": "node scripts/rtl-audit.mjs",
+    "rtl:audit:details": "node scripts/rtl-audit.mjs --details",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

@@ -164,7 +164,7 @@ function domainOf(source: UserTaskResearchSource): string {
     <button
       v-if="isTerminal && collapseByDefault"
       type="button"
-      class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+      class="flex w-full items-center justify-between gap-3 px-4 py-3 text-start"
       @click="expanded = !expanded"
     >
       <span class="flex min-w-0 items-center gap-3">
@@ -194,10 +194,7 @@ function domainOf(source: UserTaskResearchSource): string {
     </button>
 
     <div v-show="expanded" class="px-4 py-4">
-      <div
-        v-if="!usesCollapsedHeaderOnly"
-        class="flex items-start justify-between gap-3"
-      >
+      <div v-if="!usesCollapsedHeaderOnly" class="flex items-start justify-between gap-3">
         <div class="flex min-w-0 items-start gap-3">
           <span
             class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
@@ -317,13 +314,15 @@ function domainOf(source: UserTaskResearchSource): string {
             </div>
             <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
               <span v-if="source.published_at">
-                {{ t('chat.deepResearchPublishedAt', 'Published') }} {{ formatDate(source.published_at) }}
+                {{ t('chat.deepResearchPublishedAt', 'Published') }}
+                {{ formatDate(source.published_at) }}
               </span>
               <span v-if="source.fetched_at">
                 {{ t('chat.deepResearchFetchedAt', 'Fetched') }} {{ formatDate(source.fetched_at) }}
               </span>
               <span>
-                {{ t('chat.deepResearchRelevance', 'Rel') }} {{ formatScore(source.relevance_score) }}
+                {{ t('chat.deepResearchRelevance', 'Rel') }}
+                {{ formatScore(source.relevance_score) }}
               </span>
               <span>
                 {{ t('chat.deepResearchCredibility', 'Cred') }}

@@ -482,7 +482,7 @@ onMounted(async () => {
         <!-- On-device toggle -->
         <div v-if="status?.asr?.ready" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
           <div class="flex items-center justify-between">
-            <div class="flex-1 mr-3">
+            <div class="speech-settings-inline-end-gap flex-1">
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{
                 t('speech.macosNativeOnDeviceOnly')
               }}</span>
@@ -773,7 +773,7 @@ onMounted(async () => {
               <!-- Checkmark for active model -->
               <span
                 v-if="currentASRModel === model.id"
-                class="text-gray-900 dark:text-white flex-shrink-0 ml-2"
+                class="speech-settings-inline-start-gap text-gray-900 dark:text-white flex-shrink-0"
               >
                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path
@@ -786,7 +786,7 @@ onMounted(async () => {
               <!-- Switching spinner -->
               <span
                 v-else-if="switchingModelId === model.id"
-                class="text-gray-900 dark:text-white text-xs font-medium flex items-center gap-1 flex-shrink-0 ml-2"
+                class="speech-settings-inline-start-gap text-gray-900 dark:text-white text-xs font-medium flex items-center gap-1 flex-shrink-0"
               >
                 <svg
                   class="animate-spin h-4 w-4"
@@ -812,7 +812,7 @@ onMounted(async () => {
               <!-- Download button (right side) -->
               <button
                 v-else-if="!model.downloaded && !isModelDownloading(model.id)"
-                class="px-3 py-1 bg-gray-900 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-700 dark:hover:bg-gray-600 text-xs font-medium flex-shrink-0 ml-2"
+                class="speech-settings-inline-start-gap px-3 py-1 bg-gray-900 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-700 dark:hover:bg-gray-600 text-xs font-medium flex-shrink-0"
                 @click.prevent="downloadASRModel(model.id)"
               >
                 {{ t('common.download') }}
@@ -1344,3 +1344,13 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.speech-settings-inline-end-gap {
+  margin-inline-end: 0.75rem;
+}
+
+.speech-settings-inline-start-gap {
+  margin-inline-start: 0.5rem;
+}
+</style>

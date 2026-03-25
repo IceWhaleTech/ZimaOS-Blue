@@ -710,8 +710,7 @@ const containerStyle = computed(() => {
 .virtual-scroll-content {
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   overflow-anchor: none;
 }
 </style>

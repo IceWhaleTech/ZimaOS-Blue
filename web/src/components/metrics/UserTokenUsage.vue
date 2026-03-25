@@ -65,7 +65,7 @@ function formatCost(cost: number): string {
             </p>
           </div>
         </div>
-        <div class="text-right">
+        <div class="text-end">
           <p class="text-sm font-medium text-gray-900 dark:text-white">
             {{ formatNumber(user.total_tokens) }} {{ t('metrics.tokens') }}
           </p>

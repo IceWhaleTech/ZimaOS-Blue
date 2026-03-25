@@ -1161,6 +1161,9 @@ func extractClawHubSecuritySignals(raw map[string]interface{}) *SourceSecuritySi
 	if !hasSourceSecuritySignals(signals) {
 		return nil
 	}
+	ensureClawHubSecuritySummary(signals)
+	signals.Findings = dedupeSecurityFindings(signals.Findings)
+	signals.Evidence = dedupeSecurityEvidence(signals.Evidence)
 	return signals
 }
 
@@ -1219,6 +1222,19 @@ func mergeClawHubSecurityCandidate(signals *SourceSecuritySignals, node map[stri
 	signals.Evidence = append(signals.Evidence, parseClawHubEvidence(node, "issues")...)
 	signals.Evidence = append(signals.Evidence, parseClawHubEvidence(node, "risks")...)
 	signals.Evidence = append(signals.Evidence, parseClawHubEvidence(node, "warnings")...)
+	signals.Findings = append(signals.Findings, parseClawHubFindings(node, "findings")...)
+	signals.Findings = append(signals.Findings, parseClawHubFindings(node, "issues")...)
+	signals.Findings = append(signals.Findings, parseClawHubFindings(node, "risks")...)
+	signals.Findings = append(signals.Findings, parseClawHubFindings(node, "warnings")...)
+	if summary := extractClawHubSecuritySummary(node); summary != "" {
+		signals.Evidence = append(signals.Evidence, SecurityEvidence{
+			Type:        "security_summary",
+			Severity:    "low",
+			Title:       "Source scan summary",
+			Description: summary,
+			Value:       summary,
+		})
+	}
 	if len(signals.Vulnerabilities) > 0 && signals.VulnerabilityStatus == "" {
 		signals.VulnerabilityStatus = VulnerabilityStatusDetected
 	}
@@ -1526,6 +1542,302 @@ func parseClawHubEvidence(node map[string]interface{}, key string) []SecurityEvi
 	default:
 		return nil
 	}
+}
+
+func parseClawHubFindings(node map[string]interface{}, key string) []SecurityFinding {
+	value, ok := node[key]
+	if !ok {
+		return nil
+	}
+	defaultType := normalizeExternalFindingType(key)
+	defaultSeverity := defaultExternalFindingSeverity(key)
+	switch v := value.(type) {
+	case []interface{}:
+		out := make([]SecurityFinding, 0, len(v))
+		for _, item := range v {
+			switch finding := item.(type) {
+			case string:
+				message := strings.TrimSpace(finding)
+				if message == "" {
+					continue
+				}
+				out = append(out, SecurityFinding{
+					Type:     defaultType,
+					Severity: defaultSeverity,
+					Message:  message,
+				})
+			case map[string]interface{}:
+				message := firstNonBlank(
+					stringFromValue(finding["message"]),
+					stringFromValue(finding["title"]),
+					stringFromValue(finding["description"]),
+					stringFromValue(finding["detail"]),
+					stringFromValue(finding["value"]),
+				)
+				if message == "" {
+					continue
+				}
+				out = append(out, SecurityFinding{
+					Type:       firstNonBlank(normalizeExternalFindingType(namedString(finding, "type", "kind", "category", "id")), defaultType),
+					Severity:   normalizeExternalFindingSeverity(namedString(finding, "severity", "level", "status"), defaultSeverity),
+					Pattern:    namedString(finding, "pattern", "rule", "code"),
+					Message:    message,
+					Command:    namedString(finding, "command", "cmd"),
+					Permission: namedString(finding, "permission", "scope"),
+				})
+			}
+		}
+		return out
+	case string:
+		message := strings.TrimSpace(v)
+		if message == "" {
+			return nil
+		}
+		return []SecurityFinding{{
+			Type:     defaultType,
+			Severity: defaultSeverity,
+			Message:  message,
+		}}
+	default:
+		return nil
+	}
+}
+
+func extractClawHubSecuritySummary(node map[string]interface{}) string {
+	if len(node) == 0 {
+		return ""
+	}
+	for _, key := range []string{"riskSummary", "risk_summary", "overview", "verdict", "conclusion", "note"} {
+		if text := namedString(node, key); text != "" {
+			return text
+		}
+	}
+	if value, ok := node["summary"]; ok {
+		if text := clawHubSummaryText(value); text != "" {
+			return text
+		}
+	}
+	if value, ok := node["notes"]; ok {
+		if text := clawHubSummaryText(value); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func clawHubSummaryText(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case []interface{}:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			if text := clawHubSummaryText(item); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(dedupeStrings(parts), "; ")
+	case map[string]interface{}:
+		return firstNonBlank(
+			namedString(v, "message", "text", "description", "detail", "summary", "result", "verdict", "reason", "status"),
+			stringFromValue(v["value"]),
+		)
+	default:
+		return ""
+	}
+}
+
+func ensureClawHubSecuritySummary(signals *SourceSecuritySignals) {
+	if signals == nil {
+		return
+	}
+	severity := clawHubSecuritySummarySeverity(signals)
+	for i := range signals.Evidence {
+		if signals.Evidence[i].Type != "security_summary" {
+			continue
+		}
+		signals.Evidence[i].Severity = severity
+		if strings.TrimSpace(signals.Evidence[i].Title) == "" {
+			signals.Evidence[i].Title = "Source scan summary"
+		}
+		signals.Evidence[i].Description = firstNonBlank(signals.Evidence[i].Description, signals.Evidence[i].Value)
+		signals.Evidence[i].Value = firstNonBlank(signals.Evidence[i].Value, signals.Evidence[i].Description)
+		return
+	}
+	summary := synthesizeClawHubSecuritySummary(signals)
+	if summary == "" {
+		return
+	}
+	signals.Evidence = append(signals.Evidence, SecurityEvidence{
+		Type:        "security_summary",
+		Severity:    severity,
+		Title:       "Source scan summary",
+		Description: summary,
+		Value:       summary,
+	})
+}
+
+func synthesizeClawHubSecuritySummary(signals *SourceSecuritySignals) string {
+	if signals == nil {
+		return ""
+	}
+	reasons := make([]string, 0, 5)
+	if signals.HasVulnerabilities {
+		reasons = append(reasons, "dependency vulnerabilities")
+	}
+	if signals.HasPromptInjection {
+		reasons = append(reasons, "prompt injection")
+	}
+	if signals.HasShellInjection {
+		reasons = append(reasons, "command injection")
+	}
+	if signals.HasDataExfiltration {
+		reasons = append(reasons, "data exfiltration")
+	}
+	if signals.HasBinary {
+		reasons = append(reasons, "binary artifacts")
+	}
+	if len(reasons) > 0 {
+		return fmt.Sprintf("ClawHub source scan flagged risk: %s.", strings.Join(reasons, ", "))
+	}
+	switch signals.RiskLevel {
+	case RiskCritical:
+		return "ClawHub source scan marked this skill as critical risk."
+	case RiskHigh:
+		return "ClawHub source scan marked this skill as high risk."
+	case RiskMedium:
+		return "ClawHub source scan marked this skill as medium risk."
+	case RiskLow:
+		return "ClawHub source scan did not flag major risks."
+	}
+	switch signals.SecurityBadge {
+	case BadgeRed:
+		return "ClawHub source scan marked this skill as blocked or high risk."
+	case BadgeYellow:
+		return "ClawHub source scan flagged potential risks for review."
+	case BadgeGreen:
+		return "ClawHub source scan did not flag major risks."
+	}
+	if signals.Score != nil {
+		switch {
+		case *signals.Score >= 85:
+			return "ClawHub source scan did not flag major risks."
+		case *signals.Score >= 70:
+			return "ClawHub source scan flagged potential risks for review."
+		default:
+			return "ClawHub source scan flagged potential risks."
+		}
+	}
+	return "ClawHub source scan did not provide an explicit risk verdict."
+}
+
+func clawHubSecuritySummarySeverity(signals *SourceSecuritySignals) string {
+	if signals == nil {
+		return "low"
+	}
+	switch {
+	case signals.HasVulnerabilities || signals.HasPromptInjection || signals.HasShellInjection || signals.HasDataExfiltration:
+		return "high"
+	case signals.RiskLevel == RiskCritical || signals.RiskLevel == RiskHigh || signals.SecurityBadge == BadgeRed:
+		return "high"
+	case signals.RiskLevel == RiskMedium || signals.SecurityBadge == BadgeYellow || signals.HasBinary:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func normalizeExternalFindingType(value string) string {
+	normalized := strings.TrimSpace(strings.ToLower(value))
+	normalized = strings.ReplaceAll(normalized, " ", "_")
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, "/", "_")
+	if normalized == "" {
+		return "external_finding"
+	}
+	switch normalized {
+	case "finding", "findings", "issue", "issues", "risk", "risks", "warning", "warnings":
+		return "external_finding"
+	default:
+		return normalized
+	}
+}
+
+func normalizeExternalFindingSeverity(value, fallback string) string {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "critical", "high", "medium", "low", "info":
+		return strings.TrimSpace(strings.ToLower(value))
+	}
+	switch normalizeExternalRiskLevel(value) {
+	case RiskCritical:
+		return "critical"
+	case RiskHigh:
+		return "high"
+	case RiskMedium:
+		return "medium"
+	case RiskLow:
+		return "low"
+	default:
+		return fallback
+	}
+}
+
+func defaultExternalFindingSeverity(key string) string {
+	switch strings.TrimSpace(strings.ToLower(key)) {
+	case "risks", "issues":
+		return "high"
+	case "warnings":
+		return "medium"
+	default:
+		return "medium"
+	}
+}
+
+func dedupeSecurityFindings(items []SecurityFinding) []SecurityFinding {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(items))
+	out := make([]SecurityFinding, 0, len(items))
+	for _, item := range items {
+		key := strings.ToLower(strings.Join([]string{
+			item.Type,
+			item.Severity,
+			item.Pattern,
+			item.Message,
+			item.Command,
+			item.Permission,
+		}, "\x00"))
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+func dedupeSecurityEvidence(items []SecurityEvidence) []SecurityEvidence {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(items))
+	out := make([]SecurityEvidence, 0, len(items))
+	for _, item := range items {
+		key := strings.ToLower(strings.Join([]string{
+			item.Type,
+			item.Severity,
+			item.Title,
+			item.Description,
+			item.Value,
+		}, "\x00"))
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
 }
 
 func firstNonBlank(values ...string) string {

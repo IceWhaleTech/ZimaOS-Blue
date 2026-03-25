@@ -46,6 +46,7 @@ const (
 
 var defaultSeedURLs = []string{
 	"https://github.com/topics/claude-code",
+	"https://github.com/MiniMax-AI/skills/tree/main/skills",
 	"https://github.com/topics/ai-agent",
 	"https://github.com/ComposioHQ/awesome-claude-skills",
 	"https://github.com/VoltAgent/awesome-openclaw-skills",

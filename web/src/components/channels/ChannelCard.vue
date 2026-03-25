@@ -259,12 +259,12 @@ function formatRelativeTime(dateStr: string | undefined): string {
           <input
             :checked="channel.enabled"
             type="checkbox"
-            class="sr-only peer"
+            class="sr-only peer channel-card__toggle-input"
             :disabled="toggling"
             @change="emit('toggleEnabled', ($event.target as HTMLInputElement).checked)"
           />
           <div
-            class="channel-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
+            class="channel-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
           ></div>
         </label>
         <svg
@@ -503,7 +503,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
               <input
                 :checked="toggleFieldChecked(channel.fields[fieldIndex]?.value)"
                 type="checkbox"
-                class="sr-only peer"
+                class="sr-only peer channel-card__toggle-input"
                 @change="
                   emit(
                     'updateField',
@@ -513,7 +513,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
                 "
               />
               <span
-                class="channel-card__toggle relative inline-block bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
+                class="channel-card__toggle relative inline-block bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
               ></span>
             </label>
             <textarea
@@ -1117,9 +1117,14 @@ textarea.channel-card__input {
 
 .channel-card__toggle::after {
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 0.82rem;
   height: 0.82rem;
+}
+
+.channel-card__toggle-input:checked + .channel-card__toggle::after {
+  inset-inline-start: calc(100% - 0.82rem - 2px);
+  border-color: #fff;
 }
 
 .channel-card__toggle-field {

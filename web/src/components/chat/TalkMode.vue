@@ -1138,8 +1138,7 @@ onUnmounted(() => {
   justify-content: space-between;
   padding-top: env(safe-area-inset-top, 20px);
   padding-bottom: env(safe-area-inset-bottom, 20px);
-  padding-left: 16px;
-  padding-right: 16px;
+  padding-inline: 16px;
   background: linear-gradient(180deg, rgba(10, 13, 23, 0.96) 0%, rgba(18, 24, 38, 0.95) 100%);
   border: none;
 }

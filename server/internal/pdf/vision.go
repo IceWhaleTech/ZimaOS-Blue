@@ -74,7 +74,7 @@ func (a *ProxyBridgeVisionAdapter) Extract(ctx context.Context, imagePNG []byte)
 		return VisionResult{}, fmt.Errorf("vision bridge returned empty response")
 	}
 	return VisionResult{
-		Text:     normalizeText(resp.Message.Content),
+		Text:     canonicalizeExtractedPDFText(resp.Message.Content),
 		Engine:   visionEngine,
 		Provider: resp.Provider,
 		Model:    resp.Model,

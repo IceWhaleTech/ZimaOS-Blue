@@ -45,7 +45,7 @@ function handleLinkClick(url: string) {
         <!-- Verified badge -->
         <div
           v-if="card.verified"
-          class="absolute bottom-0 right-0 w-7 h-7 bg-gray-700 dark:bg-gray-500 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center"
+          class="absolute bottom-0 end-0 w-7 h-7 bg-gray-700 dark:bg-gray-500 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

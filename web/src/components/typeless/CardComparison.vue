@@ -21,7 +21,7 @@ defineProps<{
         <thead>
           <tr>
             <th
-              class="p-4 text-left text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 w-40"
+              class="p-4 text-start text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 w-40"
             >
               Feature
             </th>

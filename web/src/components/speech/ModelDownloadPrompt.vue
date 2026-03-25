@@ -272,10 +272,10 @@ watch(
                 <div class="flex-1 min-w-0">
                   <div class="font-medium text-gray-900 dark:text-white">
                     {{ trModelText(model.name) }}
-                    <span class="text-xs text-gray-400 ml-1">{{ model.size }}</span>
+                    <span class="text-xs text-gray-400 ms-1">{{ model.size }}</span>
                     <span
                       v-if="model.active"
-                      class="text-xs text-green-600 dark:text-green-400 ml-1"
+                      class="text-xs text-green-600 dark:text-green-400 ms-1"
                       >{{ t('speech.inUse') }}</span
                     >
                   </div>

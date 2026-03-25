@@ -494,7 +494,7 @@ onUnmounted(() => {
           </div>
           <div class="flex items-center gap-3">
             <template v-if="!portEditing">
-              <div class="text-right">
+              <div class="text-end">
                 <div class="font-mono text-lg text-gray-900 dark:text-white">
                   {{ serverConfig?.actual_port || serverConfig?.port || '-' }}
                 </div>
@@ -611,7 +611,7 @@ onUnmounted(() => {
               {{ t('settings.network.tls.selfSignedLabel') }}
             </span>
             <button
-              class="ml-auto px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+              class="ms-auto px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
               @click="reloadCertificate"
             >
               {{ t('settings.network.tls.reload') }}
@@ -691,7 +691,7 @@ onUnmounted(() => {
                 @change="updateHTTPSOnly(($event.target as HTMLInputElement).checked)"
               />
               <div
-                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-400/20 dark:peer-focus:ring-gray-400/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
+                class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-400/20 dark:peer-focus:ring-gray-400/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
               ></div>
             </label>
           </div>

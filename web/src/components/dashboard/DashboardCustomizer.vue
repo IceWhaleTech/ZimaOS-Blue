@@ -634,8 +634,7 @@ defineExpose({ open, close })
   .dashboard-customize-tabs,
   .dashboard-customize-list,
   .dashboard-customize-foot {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+    padding-inline: 0.75rem;
   }
 
   .dashboard-customize-foot {

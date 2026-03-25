@@ -488,10 +488,19 @@ func peekRodServiceSource(source rodServiceSource) *browser.RodService {
 }
 
 func tabToSessionInfo(tab *browser.Tab, engine browser.SessionEngine, now time.Time) browser.SessionInfo {
+	engineDetail := browser.SessionEngineDetailChromiumManaged
+	switch engine {
+	case browser.SessionEngineChromiumRelay:
+		engineDetail = browser.SessionEngineDetailChromiumRelay
+	case browser.SessionEngineChromiumManaged:
+		engineDetail = browser.SessionEngineDetailChromiumManaged
+	}
 	info := browser.SessionInfo{
 		CreatedAt:    now.Format(time.RFC3339),
 		LastActivity: now.Format(time.RFC3339),
 		Engine:       engine,
+		EngineDetail: engineDetail,
+		SessionLayer: browser.SessionLayerFullBrowser,
 		MonitorKind:  browser.SessionMonitorKindImage,
 	}
 	if tab == nil {

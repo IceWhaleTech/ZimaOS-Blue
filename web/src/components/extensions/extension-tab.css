@@ -134,7 +134,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .extension-market-hero__filters .search-icon {
@@ -144,7 +144,9 @@
 
 .extension-market-hero__filters .search-input {
   height: 30px;
-  padding: 0 9px 0 32px;
+  padding-block: 0;
+  padding-inline-start: 32px;
+  padding-inline-end: 9px;
   border-radius: 12px;
   font-size: 10px;
 }
@@ -230,7 +232,7 @@
 
 .search-icon {
   position: absolute;
-  left: 10px;
+  inset-inline-start: 10px;
   top: 50%;
   transform: translateY(-50%);
   width: 14px;
@@ -240,7 +242,9 @@
 
 .search-input {
   width: 100%;
-  padding: 6px 9px 6px 32px;
+  padding-block: 6px;
+  padding-inline-start: 32px;
+  padding-inline-end: 9px;
   border: 1px solid var(--border);
   border-radius: 7px;
   font-size: 11px;
@@ -358,7 +362,7 @@
 
   .filter-actions.extension-market-hero__actions {
     width: 100%;
-    margin-left: 0;
+    margin-inline-start: 0;
   }
 
   .filter-actions.extension-market-hero__actions .btn-refresh,
@@ -393,8 +397,7 @@
   content: '';
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   height: 3px;
   background: var(--text-muted);
   opacity: 1;
@@ -682,7 +685,7 @@
   content: '';
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 10px;
   height: 10px;
   background: #9ca3af;
@@ -696,8 +699,12 @@
 }
 
 .toggle-switch input:checked + .toggle-slider::after {
-  left: 16px;
+  transform: translateX(14px);
   background: white;
+}
+
+html[dir='rtl'] .toggle-switch input:checked + .toggle-slider::after {
+  transform: translateX(-14px);
 }
 
 :root.light .toggle-slider,

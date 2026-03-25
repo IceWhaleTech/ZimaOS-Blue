@@ -81,7 +81,7 @@ function emitSelection() {
     >
       <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white">
         {{ card.title }}
-        <span v-if="card.required" class="text-red-500 ml-1">*</span>
+        <span v-if="card.required" class="choice-inline-gap text-red-500">*</span>
       </h4>
       <p v-if="card.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
         {{ card.description }}
@@ -95,7 +95,7 @@ function emitSelection() {
       <button
         v-for="option in card.options"
         :key="option.id"
-        class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3 disabled:cursor-wait"
+        class="choice-option-button w-full p-3 rounded-lg border-2 transition-all flex items-start gap-3 disabled:cursor-wait"
         :class="{
           'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': isSelected(
             option.id
@@ -146,7 +146,7 @@ function emitSelection() {
 
       <div v-if="card.allowOther" class="space-y-2">
         <button
-          class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3 disabled:cursor-wait"
+          class="choice-option-button w-full p-3 rounded-lg border-2 transition-all flex items-start gap-3 disabled:cursor-wait"
           :class="{
             'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': otherSelected,
             'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600':
@@ -187,7 +187,7 @@ function emitSelection() {
           }}</span>
         </button>
 
-        <div v-if="otherSelected" class="pl-8">
+        <div v-if="otherSelected" class="choice-other-input">
           <input
             v-model="otherText"
             type="text"
@@ -207,9 +207,27 @@ function emitSelection() {
       class="px-4 pb-4 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
     >
       <span
-        class="inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent"
+        class="choice-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current"
       />
       <span>{{ t('common.processing', 'Processing...') }}</span>
     </div>
   </div>
 </template>
+
+<style scoped>
+.choice-inline-gap {
+  margin-inline-start: 0.25rem;
+}
+
+.choice-option-button {
+  text-align: start;
+}
+
+.choice-other-input {
+  padding-inline-start: 2rem;
+}
+
+.choice-spinner {
+  border-inline-end-color: transparent;
+}
+</style>

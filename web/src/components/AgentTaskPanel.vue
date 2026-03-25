@@ -276,7 +276,7 @@ function stepDuration(step: PlanStep): string {
         </div>
         <div
           v-if="expandedSteps.has(step.index) && step.output"
-          class="ml-6 mt-1 p-2 bg-gray-50 dark:bg-gray-900 rounded text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto"
+          class="ms-6 mt-1 p-2 bg-gray-50 dark:bg-gray-900 rounded text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto"
         >
           {{ step.output }}
         </div>
@@ -314,7 +314,7 @@ function stepDuration(step: PlanStep): string {
       <div v-for="(q, idx) in questions" :key="q.id" v-show="activeTab === idx">
         <p class="text-sm text-gray-800 dark:text-gray-200 mb-2">
           {{ q.question }}
-          <span v-if="q.required" class="text-red-500 ml-0.5">*</span>
+          <span v-if="q.required" class="text-red-500 ms-0.5">*</span>
         </p>
         <p
           v-if="q.detail"
@@ -328,7 +328,7 @@ function stepDuration(step: PlanStep): string {
           <button
             v-for="opt in q.options"
             :key="opt.value"
-            class="w-full p-2 rounded-lg border text-left text-sm transition-all flex items-start gap-2"
+            class="w-full p-2 rounded-lg border text-start text-sm transition-all flex items-start gap-2"
             :class="{
               'border-amber-500 bg-amber-100 dark:bg-amber-800/30': isOptionSelected(
                 q.id,

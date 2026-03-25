@@ -338,7 +338,7 @@ function confirmDelete(backup: BackupDisplay) {
             </p>
           </div>
 
-          <div class="flex items-center gap-1.5 ml-3">
+          <div class="flex items-center gap-1.5 ms-3">
             <button
               :data-testid="`backup-download-${backup.id}`"
               class="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"

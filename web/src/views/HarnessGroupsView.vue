@@ -744,7 +744,10 @@ function quickEvalGroupSpec(
         : undefined,
     },
     scoring: {
-      mode: firstNonEmpty(String(scoringRecord.mode || ''), presetConfig.scoringMode) as HarnessScoringMode,
+      mode: firstNonEmpty(
+        String(scoringRecord.mode || ''),
+        presetConfig.scoringMode
+      ) as HarnessScoringMode,
       rule_profile: firstNonEmpty(
         String(scoringRecord.rule_profile || ''),
         presetConfig.ruleProfile
@@ -4290,7 +4293,7 @@ onUnmounted(() => {
 
 .report-hero-caption {
   margin-top: 0;
-  text-align: right;
+  text-align: end;
 }
 
 .report-highlight-grid {
@@ -4645,7 +4648,7 @@ onUnmounted(() => {
   }
 
   .report-hero-caption {
-    text-align: left;
+    text-align: start;
   }
 
   .report-grid {

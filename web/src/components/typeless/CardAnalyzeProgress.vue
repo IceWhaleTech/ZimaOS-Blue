@@ -170,9 +170,9 @@ function stepCount(step: ProgressStep): string {
       </span>
       <span
         v-if="isRunning"
-        class="ml-auto inline-block w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse flex-shrink-0"
+        class="ms-auto inline-block w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse flex-shrink-0"
       />
-      <span v-else class="ml-auto text-xs text-gray-400 tabular-nums">{{ progressPercent }}%</span>
+      <span v-else class="ms-auto text-xs text-gray-400 tabular-nums">{{ progressPercent }}%</span>
     </div>
 
     <!-- Progress bar -->

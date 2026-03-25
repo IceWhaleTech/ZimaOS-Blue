@@ -240,7 +240,7 @@ function getLinePrefix(type: string): string {
       </div>
       <div
         v-if="viewMode === 'split'"
-        class="flex-1 px-4 py-2 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300 font-medium border-l border-gray-200 dark:border-gray-700"
+        class="card-diff-border-start flex-1 px-4 py-2 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300 font-medium"
       >
         {{ card.newLabel || t('diffCard.modified', 'Modified') }}
       </div>
@@ -251,7 +251,7 @@ function getLinePrefix(type: string): string {
       <pre class="text-sm"><code><template v-for="(line, index) in diffLines" :key="index"><div
             class="flex"
             :class="getLineClass(line.type)"
-          ><span class="w-12 px-2 text-right text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="w-12 px-2 text-right text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 flex-shrink-0">{{ line.newLineNum || '' }}</span><span
+          ><span class="card-diff-gutter w-12 px-2 text-gray-400 select-none flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="card-diff-gutter w-12 px-2 text-gray-400 select-none flex-shrink-0">{{ line.newLineNum || '' }}</span><span
               class="w-6 text-center flex-shrink-0"
               :class="{
                 'text-green-600 dark:text-green-400': line.type === 'added',
@@ -264,13 +264,13 @@ function getLinePrefix(type: string): string {
     <!-- Split view -->
     <div v-else class="flex overflow-x-auto">
       <!-- Left (old) -->
-      <div class="flex-1 border-r border-gray-200 dark:border-gray-700">
+      <div class="card-diff-border-end flex-1">
         <pre
           class="text-sm"
         ><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
               class="flex"
               :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-700/50'"
-            ><span class="w-10 px-2 text-right text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
+            ><span class="card-diff-gutter w-10 px-2 text-gray-400 select-none flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
                 v-if="line"
                 class="w-6 text-center flex-shrink-0"
                 :class="line.type === 'removed' ? 'text-red-600 dark:text-red-400' : 'text-gray-400'"
@@ -283,7 +283,7 @@ function getLinePrefix(type: string): string {
         ><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
               class="flex"
               :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-700/50'"
-            ><span class="w-10 px-2 text-right text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
+            ><span class="card-diff-gutter w-10 px-2 text-gray-400 select-none flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
                 v-if="line"
                 class="w-6 text-center flex-shrink-0"
                 :class="line.type === 'added' ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
@@ -297,5 +297,27 @@ function getLinePrefix(type: string): string {
 pre {
   margin: 0;
   font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+}
+
+.card-diff-gutter {
+  text-align: end;
+  border-inline-end: 1px solid rgb(229 231 235);
+}
+
+:global(.dark) .card-diff-gutter {
+  border-inline-end-color: rgb(55 65 81);
+}
+
+.card-diff-border-start {
+  border-inline-start: 1px solid rgb(229 231 235);
+}
+
+.card-diff-border-end {
+  border-inline-end: 1px solid rgb(229 231 235);
+}
+
+:global(.dark) .card-diff-border-start,
+:global(.dark) .card-diff-border-end {
+  border-inline-color: rgb(55 65 81);
 }
 </style>

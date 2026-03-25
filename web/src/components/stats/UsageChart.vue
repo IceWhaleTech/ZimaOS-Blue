@@ -50,7 +50,7 @@ function getColor(index: number): string {
       <div v-for="(item, index) in chartData" :key="item.label" class="space-y-1">
         <div class="flex items-center justify-between text-sm">
           <span class="text-gray-700 dark:text-gray-300 truncate">{{ item.label }}</span>
-          <span class="text-gray-500 dark:text-gray-400 ml-2">
+          <span class="text-gray-500 dark:text-gray-400 ms-2">
             {{ item.value.toLocaleString() }} ({{ item.percentage.toFixed(1) }}%)
           </span>
         </div>

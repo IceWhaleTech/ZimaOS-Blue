@@ -77,7 +77,7 @@ function resetZoom() {
       >
         <!-- Close button -->
         <button
-          class="absolute top-4 right-4 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer z-10"
+          class="absolute top-4 end-4 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer z-10"
           @click="close"
         >
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -92,7 +92,7 @@ function resetZoom() {
 
         <!-- Zoom controls -->
         <div
-          class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/10 rounded-lg p-2 z-10"
+          class="absolute bottom-4 start-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/10 rounded-lg p-2 z-10"
         >
           <button
             class="p-2 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"

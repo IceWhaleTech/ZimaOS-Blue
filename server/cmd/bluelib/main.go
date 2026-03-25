@@ -1188,13 +1188,38 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	lazyBrowserSvc = defaultRuntime.lazy
 	acquireBrowserSvc = defaultRuntime.acquire
 	relayPreferredSites := cfg.Browser.ExpandedRelayPreferredSites()
+	lightpandaSvc := browser.NewLightpandaService(&cfg.Browser)
+	if cfg.Browser.Lightpanda.Enabled {
+		go func() {
+			path, err := lightpandaSvc.EnsureBinary(context.Background())
+			if err != nil {
+				zapLogger.Warn("Lightpanda binary is not ready; hybrid routing will fall back to Chromium until it becomes available", zap.Error(err))
+				return
+			}
+			zapLogger.Info("Lightpanda binary is ready for hybrid browser routing", zap.String("binary_path", path))
+		}()
+	}
 	var browserBackend tools.BrowserBackend = tools.NewHybridCapabilityBrowserBackend(
 		&cfg.Browser,
-		browser.NewLightpandaService(&cfg.Browser),
+		lightpandaSvc,
 		managedRuntime.rodBackend,
 		relayRuntime.rodBackend,
 		func(rawURL string) bool {
 			return browser.MatchSitePatternList(rawURL, relayPreferredSites)
+		},
+		func(ctx context.Context) bool {
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			if strings.TrimSpace(cfg.Browser.CDPURL) != "" {
+				probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+				return browser.ProbeCDPURL(probeCtx, cfg.Browser.CDPURL) == nil
+			}
+			if cfg.Browser.RelayEnabled {
+				return relayInfoProvider().ExtensionConnected
+			}
+			return false
 		},
 	)
 	if provider, ok := browserBackend.(browser.SessionRouteProvider); ok {

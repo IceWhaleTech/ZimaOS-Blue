@@ -220,13 +220,13 @@ html[data-blue-window-resizing='true'] .glass-card {
   background: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid var(--glass-border);
+  border-inline-end: 1px solid var(--glass-border);
 }
 
 :root.light .glass-sidebar,
 [data-theme='light'] .glass-sidebar {
   background: rgba(255, 255, 255, 0.9);
-  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  border-inline-end: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .glass-header {
@@ -466,8 +466,7 @@ html[data-blue-window-resizing='true'] .glass-card {
 .dashboard-mini-bar::after {
   content: '';
   position: absolute;
-  left: 14%;
-  right: 14%;
+  inset-inline: 14%;
   height: 0.2rem;
   border-radius: 999px;
   background: var(--dashboard-hero-accent, #2563eb);
@@ -519,12 +518,12 @@ html[data-blue-window-resizing='true'] .glass-card {
 }
 
 .dashboard-page-stage::before {
-  right: 18%;
+  inset-inline-end: 18%;
   top: 10.5rem;
 }
 
 .dashboard-page-stage::after {
-  left: 24%;
+  inset-inline-start: 24%;
   bottom: -1.6rem;
 }
 
@@ -615,7 +614,7 @@ html[data-blue-window-resizing='true'] .glass-card {
   align-items: center;
   justify-content: flex-end;
   gap: 0.6rem;
-  margin-left: auto;
+  margin-inline-start: auto;
   flex-shrink: 0;
   padding-top: 0.1rem;
 }
@@ -623,7 +622,7 @@ html[data-blue-window-resizing='true'] .glass-card {
 .dashboard-page-toolbar {
   position: absolute;
   top: 0;
-  right: 0;
+  inset-inline-end: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -704,12 +703,12 @@ html[data-blue-window-resizing='true'] .glass-card {
 }
 
 .config-page-stage::before {
-  right: 14%;
+  inset-inline-end: 14%;
   top: 7.8rem;
 }
 
 .config-page-stage::after {
-  left: 14%;
+  inset-inline-start: 14%;
   bottom: -1.4rem;
 }
 
@@ -1156,10 +1155,10 @@ select {
 
   /* Custom dropdown arrow - using background shorthand to prevent conflicts */
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394A3B8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
-  background-position: right 0.5rem center !important;
+  background-position: calc(100% - 0.5rem) center !important;
   background-repeat: no-repeat !important;
   background-size: 1.5em 1.5em !important;
-  padding-right: 2.5rem !important;
+  padding-inline-end: 2.5rem !important;
 
   /* Ensure proper cursor */
   cursor: pointer;
@@ -1172,6 +1171,12 @@ select {
 :root.light select,
 [data-theme='light'] select {
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23475569' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
+}
+
+html[dir='rtl'] select {
+  background-position: 0.5rem center !important;
+  padding-inline-start: 2.5rem !important;
+  padding-inline-end: 0.75rem !important;
 }
 
 /* Focus state for select */
@@ -1331,8 +1336,8 @@ select:disabled {
 }
 
 .process-card__item {
-  border-left: 2px solid #e5e7eb;
-  padding-left: 8px;
+  border-inline-start: 2px solid #e5e7eb;
+  padding-inline-start: 8px;
   margin-bottom: 4px;
 }
 

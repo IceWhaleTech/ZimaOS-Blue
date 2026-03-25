@@ -128,7 +128,7 @@ const headerLabel = computed(() => {
             :class="{ 'bg-yellow-500/20': isHighlighted(index + 1) }"
           ><span
               v-if="card.showLineNumbers !== false && highlightedLines.length > 1"
-              class="inline-block w-8 text-right mr-4 text-gray-400 dark:text-gray-600 select-none"
+              class="inline-block w-8 text-end me-4 text-gray-400 dark:text-gray-600 select-none"
             >{{ index + 1 }}</span><span v-html="line"></span>
 </span></template></code></pre>
     </div>

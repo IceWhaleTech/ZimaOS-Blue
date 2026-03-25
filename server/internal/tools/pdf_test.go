@@ -324,6 +324,58 @@ func TestPDFToolReadExecuteDisablesOCRAndVision(t *testing.T) {
 	}
 }
 
+func TestPDFToolReadExecuteUsesStructuredDefaults(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{}
+	tool := NewPDFTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{"path": path})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !svc.lastExtractReq.IncludeMarkdown {
+		t.Fatal("expected IncludeMarkdown=true by default")
+	}
+	if !svc.lastExtractReq.IncludeOutline {
+		t.Fatal("expected IncludeOutline=true by default")
+	}
+	if svc.lastExtractReq.IncludeLayout {
+		t.Fatal("expected IncludeLayout=false by default")
+	}
+	if svc.lastExtractReq.IncludeHeadersFooters {
+		t.Fatal("expected IncludeHeadersFooters=false by default")
+	}
+}
+
+func TestPDFToolReadExecuteSupportsStructuredFlags(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{}
+	tool := NewPDFTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":                    path,
+		"include_markdown":        false,
+		"include_outline":         false,
+		"include_layout":          true,
+		"include_headers_footers": true,
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if svc.lastExtractReq.IncludeMarkdown {
+		t.Fatal("expected IncludeMarkdown=false")
+	}
+	if svc.lastExtractReq.IncludeOutline {
+		t.Fatal("expected IncludeOutline=false")
+	}
+	if !svc.lastExtractReq.IncludeLayout {
+		t.Fatal("expected IncludeLayout=true")
+	}
+	if !svc.lastExtractReq.IncludeHeadersFooters {
+		t.Fatal("expected IncludeHeadersFooters=true")
+	}
+}
+
 func TestPDFToolReadExecuteSupportsMultiPDFInput(t *testing.T) {
 	path1 := writeTestPDF(t, "one.pdf", 256)
 	path2 := writeTestPDF(t, "two.pdf", 256)
@@ -360,6 +412,32 @@ func TestPDFToolReadExecuteSupportsMultiPDFInput(t *testing.T) {
 	selected, ok := payload["selected_pdfs"].([]string)
 	if !ok || !reflect.DeepEqual(selected, wantPaths) {
 		t.Fatalf("selected_pdfs = %#v, want %#v", payload["selected_pdfs"], wantPaths)
+	}
+}
+
+func TestPDFToolReadExecuteSupportsMultiPDFMarkdownAggregation(t *testing.T) {
+	path1 := writeTestPDF(t, "one.pdf", 256)
+	path2 := writeTestPDF(t, "two.pdf", 256)
+	svc := &stubPDFService{extract: pdfextract.ExtractResult{
+		Text:     "hello from pdf",
+		Markdown: "# Summary\n\n- bullet",
+		Document: pdfextract.DocumentInfo{FileName: "report.pdf"},
+	}}
+	tool := NewPDFTool(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"pdf":  path1,
+		"pdfs": []interface{}{path2},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	markdown, _ := payload["markdown"].(string)
+	for _, needle := range []string{"[PDF 1] one.pdf", "[PDF 2] two.pdf", "# Summary"} {
+		if !strings.Contains(markdown, needle) {
+			t.Fatalf("expected combined markdown to contain %q, got=%q", needle, markdown)
+		}
 	}
 }
 

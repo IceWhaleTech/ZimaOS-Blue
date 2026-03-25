@@ -1060,7 +1060,8 @@ onBeforeUnmount(() => {
                       </div>
                       <div
                         v-if="
-                          summaryNumber(selectedProposalEvaluation?.takeaway_candidate_count) != null
+                          summaryNumber(selectedProposalEvaluation?.takeaway_candidate_count) !=
+                          null
                         "
                       >
                         {{ tr('memory.proposalCandidateCount', 'Takeaway candidates') }}:
@@ -1140,7 +1141,9 @@ onBeforeUnmount(() => {
                   <button
                     data-testid="memory-proposal-approve"
                     class="px-4 py-2 rounded-lg bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium transition-colors disabled:opacity-50"
-                    :disabled="selectedProposal.status !== 'pending' || proposalActionLoading !== ''"
+                    :disabled="
+                      selectedProposal.status !== 'pending' || proposalActionLoading !== ''
+                    "
                     @click="reviewSelectedProposal('approved')"
                   >
                     {{
@@ -1152,7 +1155,9 @@ onBeforeUnmount(() => {
                   <button
                     data-testid="memory-proposal-reject"
                     class="px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 text-sm font-medium transition-colors disabled:opacity-50"
-                    :disabled="selectedProposal.status !== 'pending' || proposalActionLoading !== ''"
+                    :disabled="
+                      selectedProposal.status !== 'pending' || proposalActionLoading !== ''
+                    "
                     @click="reviewSelectedProposal('rejected')"
                   >
                     {{
@@ -1402,7 +1407,7 @@ onBeforeUnmount(() => {
               v-for="mode in ['aggressive', 'balanced', 'quality'] as const"
               :key="mode"
               :data-testid="`memory-recall-mode-${mode}`"
-              class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+              class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-start"
               :class="
                 props.memoryRecallMode === mode
                   ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white'

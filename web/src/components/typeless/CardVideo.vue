@@ -299,7 +299,7 @@ onUnmounted(() => {
         <div class="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-8 w-8 text-gray-900 ml-1"
+            class="video-play-icon h-8 w-8 text-gray-900"
             fill="currentColor"
             viewBox="0 0 24 24"
           >
@@ -311,7 +311,7 @@ onUnmounted(() => {
       <!-- Custom controls -->
       <div
         v-if="card.controls !== false"
-        class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-4 py-3 transition-opacity duration-300"
+        class="video-controls-overlay absolute bottom-0 bg-gradient-to-t from-black/80 to-transparent px-4 py-3 transition-opacity duration-300"
         :class="showControls || !isPlaying ? 'opacity-100' : 'opacity-0'"
       >
         <!-- Progress bar -->
@@ -321,7 +321,7 @@ onUnmounted(() => {
             :style="{ width: `${progress}%` }"
           >
             <div
-              class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-gray-700 dark:bg-gray-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+              class="video-progress-handle absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-gray-700 dark:bg-gray-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
             />
           </div>
         </div>
@@ -470,3 +470,17 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.video-play-icon {
+  margin-inline-start: 0.25rem;
+}
+
+.video-controls-overlay {
+  inset-inline: 0;
+}
+
+.video-progress-handle {
+  inset-inline-end: 0;
+}
+</style>

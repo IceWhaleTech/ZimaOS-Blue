@@ -64,7 +64,9 @@ export interface BrowserSession {
   page_title?: string
   created_at: string
   last_activity: string
-  engine: 'lightpanda' | 'chromium_managed' | 'chromium_relay'
+  engine: string
+  engine_detail?: string
+  session_layer?: string
   monitor_kind: 'text' | 'image'
 }
 
@@ -120,6 +122,40 @@ export interface TaskTemplate {
   steps: Omit<TaskStep, 'id' | 'status' | 'result' | 'error'>[]
 }
 
+function normalizeSession(payload: unknown): BrowserSession {
+  const raw = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const monitorKind = raw.monitor_kind === 'text' ? 'text' : 'image'
+  const engine =
+    typeof raw.engine === 'string' && raw.engine.trim()
+      ? raw.engine
+      : monitorKind === 'text'
+        ? 'lightpanda'
+        : 'chromium_managed'
+  const engineDetail =
+    typeof raw.engine_detail === 'string' && raw.engine_detail.trim() ? raw.engine_detail : ''
+  const sessionLayer =
+    typeof raw.session_layer === 'string' && raw.session_layer.trim()
+      ? raw.session_layer
+      : monitorKind === 'text' || engine === 'lightpanda'
+        ? 'read'
+        : engineDetail === 'lightpanda_binary'
+          ? 'browser_lite'
+          : 'full_browser'
+
+  return {
+    id: typeof raw.id === 'string' ? raw.id : '',
+    status: raw.status === 'closed' ? 'closed' : raw.status === 'idle' ? 'idle' : 'active',
+    current_url: typeof raw.current_url === 'string' ? raw.current_url : '',
+    page_title: typeof raw.page_title === 'string' ? raw.page_title : '',
+    created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
+    last_activity: typeof raw.last_activity === 'string' ? raw.last_activity : '',
+    engine,
+    engine_detail: engineDetail,
+    session_layer: sessionLayer,
+    monitor_kind: monitorKind,
+  }
+}
+
 // API functions
 // Note: Browser routes are registered under /api/browser/* (without /v1)
 export async function getTasks(): Promise<BrowserTask[]> {
@@ -157,7 +193,7 @@ export async function deleteTask(taskId: string): Promise<void> {
 export async function getSessions(): Promise<BrowserSession[]> {
   try {
     const response = await api.get('/browser/sessions', { baseURL: '/api' })
-    return response.data
+    return Array.isArray(response.data) ? response.data.map(normalizeSession) : []
   } catch (e) {
     if (isNotFound(e)) return []
     throw e
@@ -166,12 +202,12 @@ export async function getSessions(): Promise<BrowserSession[]> {
 
 export async function getSession(sessionId: string): Promise<BrowserSession> {
   const response = await api.get(`/browser/sessions/${sessionId}`, { baseURL: '/api' })
-  return response.data
+  return normalizeSession(response.data)
 }
 
 export async function createSession(): Promise<BrowserSession> {
   const response = await api.post('/browser/sessions', null, { baseURL: '/api' })
-  return response.data
+  return normalizeSession(response.data)
 }
 
 export async function closeSession(sessionId: string): Promise<void> {

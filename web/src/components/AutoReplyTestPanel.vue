@@ -132,7 +132,7 @@ defineExpose({
         <div class="space-y-2 text-sm">
           <div>
             <span class="text-gray-500 dark:text-gray-400">{{ t('autoReply.rule') }}:</span>
-            <span class="text-gray-900 dark:text-white ml-2">{{ testResult.rule_name }}</span>
+            <span class="text-gray-900 dark:text-white ms-2">{{ testResult.rule_name }}</span>
           </div>
           <div>
             <span class="text-gray-500 dark:text-gray-400">{{ t('autoReply.response') }}:</span>

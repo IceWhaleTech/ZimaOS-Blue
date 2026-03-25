@@ -1756,7 +1756,7 @@ async function handleUninstall(skill: Skill) {
   color: var(--skills-detail-label);
   font-size: 11px;
   line-height: 1.4;
-  text-align: right;
+  text-align: end;
 }
 
 .param-columns {
@@ -1913,12 +1913,12 @@ async function handleUninstall(skill: Skill) {
 
 .skill-content :deep(ul) {
   margin: 0 0 10px;
-  padding-left: 18px;
+  padding-inline-start: 18px;
 }
 
 .skill-content :deep(ol) {
   margin: 0 0 10px;
-  padding-left: 20px;
+  padding-inline-start: 20px;
 }
 
 .skill-content :deep(li) {
@@ -1949,17 +1949,17 @@ async function handleUninstall(skill: Skill) {
 
 .skill-content :deep(th),
 .skill-content :deep(td) {
-  border-right: 1px solid var(--skills-detail-section-border);
+  border-inline-end: 1px solid var(--skills-detail-section-border);
   border-bottom: 1px solid var(--skills-detail-section-border);
   padding: 10px 12px;
-  text-align: left;
+  text-align: start;
   vertical-align: top;
   font-size: 12px;
   line-height: 1.55;
 }
 
 .skill-content :deep(tr > *:first-child) {
-  border-left: 1px solid var(--skills-detail-section-border);
+  border-inline-start: 1px solid var(--skills-detail-section-border);
 }
 
 .skill-content :deep(thead tr:first-child > *) {
@@ -2005,8 +2005,12 @@ async function handleUninstall(skill: Skill) {
 .skill-content :deep(blockquote) {
   margin: 14px 0;
   padding: 12px 16px;
-  border-left: 3px solid color-mix(in srgb, var(--skill-accent-a, var(--primary)) 44%, transparent);
-  border-radius: 0 16px 16px 0;
+  border-inline-start: 3px solid
+    color-mix(in srgb, var(--skill-accent-a, var(--primary)) 44%, transparent);
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  border-start-end-radius: 16px;
+  border-end-end-radius: 16px;
   background: color-mix(in srgb, var(--skills-detail-section-bg) 90%, transparent);
   color: var(--text-secondary);
 }
@@ -2181,7 +2185,7 @@ async function handleUninstall(skill: Skill) {
   }
 
   .detail-section__caption {
-    text-align: left;
+    text-align: start;
   }
 
   .detail-title-row {

@@ -575,7 +575,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
           result.push('<tr>')
           row.forEach((cell) => {
             result.push(
-              `<th class="border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold">${parseInline(cell, MARKDOWN_INLINE_OPTIONS)}</th>`
+              `<th class="border border-gray-300 dark:border-gray-600 px-4 py-2 text-start font-semibold">${parseInline(cell, MARKDOWN_INLINE_OPTIONS)}</th>`
             )
           })
           result.push('</tr>')
@@ -763,7 +763,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       flushTree()
       const text = parseInline(line.slice(1).trim(), MARKDOWN_INLINE_OPTIONS)
       result.push(
-        `<blockquote class="border-l-4 border-gray-500 pl-4 my-2 text-gray-400 italic">${text}</blockquote>`
+        `<blockquote class="border-s-4 border-gray-500 ps-4 my-2 text-gray-400 italic">${text}</blockquote>`
       )
       continue
     }
@@ -780,8 +780,8 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       if (cbMatch) {
         const checked = cbMatch[1] !== ' '
         const cbHtml = checked
-          ? '<input type="checkbox" checked disabled class="mr-1.5 accent-current opacity-60 pointer-events-none" />'
-          : '<input type="checkbox" disabled class="mr-1.5 opacity-60 pointer-events-none" />'
+          ? '<input type="checkbox" checked disabled class="me-1.5 accent-current opacity-60 pointer-events-none" />'
+          : '<input type="checkbox" disabled class="me-1.5 opacity-60 pointer-events-none" />'
         const textClass = checked ? 'line-through opacity-50' : ''
         listItems.push(
           `<li class="list-none">${cbHtml}<span class="${textClass}">${parseInline(cbMatch[2] ?? '', MARKDOWN_INLINE_OPTIONS)}</span></li>`

@@ -107,9 +107,9 @@ func (hc *HealthChecker) checkProvider(provider *Provider) {
 		req.Header.Set("Authorization", "Bearer "+provider.Config.APIKey)
 	}
 
-	client := hc.connPool.GetClient(provider.Config.Name)
+	client := hc.connPool.GetClient(provider.Config.Name, ConnectionProfileProbe)
 	if provider.Config.SkipTLSVerify {
-		client = hc.connPool.GetInsecureClient(provider.Config.Name)
+		client = hc.connPool.GetInsecureClient(provider.Config.Name, ConnectionProfileProbe)
 	}
 	start := time.Now()
 	resp, err := client.Do(req)

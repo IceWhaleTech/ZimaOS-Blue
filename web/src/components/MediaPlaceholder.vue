@@ -674,14 +674,14 @@ watch(
   font-variant-numeric: tabular-nums;
   color: #a78bfa;
   min-width: 2.5rem;
-  text-align: right;
+  text-align: end;
 }
 
 .mp-card-model {
   font-size: 0.6875rem;
   color: #94a3b8;
   margin-top: 2px;
-  padding-left: 1.75rem;
+  padding-inline-start: 1.75rem;
 }
 
 :root.dark .mp-card-model,
@@ -692,7 +692,7 @@ watch(
 .mp-card-hint {
   font-size: 0.6875rem;
   color: #94a3b8;
-  padding-left: 1.75rem;
+  padding-inline-start: 1.75rem;
   margin-top: 2px;
   animation: mp-fade-in 0.3s ease;
 }
@@ -770,7 +770,7 @@ watch(
 
 .mp-fallback {
   margin-top: 0.5rem;
-  margin-left: 1.75rem;
+  margin-inline-start: 1.75rem;
   padding: 0.5rem 0.625rem;
   border-radius: 0.75rem;
   background: rgba(15, 23, 42, 0.08);
@@ -778,7 +778,7 @@ watch(
 }
 
 .mp-fallback--result {
-  margin-left: 0;
+  margin-inline-start: 0;
   margin-bottom: 0.5rem;
 }
 
@@ -978,7 +978,7 @@ watch(
 .mp-viewer-toolbar {
   position: absolute;
   top: 16px;
-  right: 16px;
+  inset-inline-end: 16px;
   display: flex;
   gap: 8px;
   z-index: 10000;

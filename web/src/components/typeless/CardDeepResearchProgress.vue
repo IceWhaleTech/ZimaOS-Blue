@@ -3,9 +3,9 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardDeepResearchProgress } from '@/types/typeless'
 import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
-import { localizeDeepResearchMode } from '@/utils/deepResearchText'
+import { localizeDeepResearchGap, localizeDeepResearchMode } from '@/utils/deepResearchText'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const deepResearchJobs = useDeepResearchJobsStore()
 
 const props = defineProps<{
@@ -25,6 +25,10 @@ const effectiveCard = computed<TypelessCardDeepResearchProgress>(() => ({
   type: 'deep-research-progress',
 }))
 
+function tr(key: string, fallback: string): string {
+  return te(key) ? String(t(key)) : fallback
+}
+
 const progress = computed(() => {
   const value = Number(effectiveCard.value.progress)
   if (!Number.isFinite(value)) return 0
@@ -32,11 +36,17 @@ const progress = computed(() => {
 })
 const stage = computed(() => effectiveCard.value.stage || 'running')
 const iteration = computed(() => effectiveCard.value.iteration || 0)
-const latestGap = computed(() => effectiveCard.value.latest_gap || '')
+const latestGap = computed(() => {
+  return (
+    localizeDeepResearchGap(effectiveCard.value.latest_gap, tr) ||
+    effectiveCard.value.latest_gap ||
+    ''
+  )
+})
 const latestAction = computed(() => effectiveCard.value.latest_action || '')
 const query = computed(() => effectiveCard.value.query || '')
 const modeLabel = computed(() =>
-  localizeDeepResearchMode(effectiveCard.value.mode || 'standard', t)
+  localizeDeepResearchMode(effectiveCard.value.mode || 'standard', tr)
 )
 const conversationId = computed(() => effectiveCard.value.conversation_id || '')
 const jobId = computed(() => effectiveCard.value.job_id || '')

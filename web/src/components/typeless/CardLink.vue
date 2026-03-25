@@ -130,7 +130,7 @@ onMounted(() => {
       </div>
 
       <!-- Arrow icon -->
-      <div class="flex-shrink-0 flex items-center pr-4">
+      <div class="flex-shrink-0 flex items-center pe-4">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           class="h-5 w-5 text-gray-400"

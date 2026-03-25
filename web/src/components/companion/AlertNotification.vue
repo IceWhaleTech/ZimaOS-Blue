@@ -23,10 +23,10 @@ let timer: ReturnType<typeof setInterval> | null = null
 let closeTimer: ReturnType<typeof setTimeout> | null = null
 
 const severityColors: Record<string, string> = {
-  critical: 'border-l-red-500 bg-red-50 dark:bg-red-900/30',
-  high: 'border-l-orange-500 bg-orange-50 dark:bg-orange-900/30',
-  warning: 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/30',
-  info: 'border-l-gray-900 dark:border-l-gray-400 bg-gray-700 dark:bg-gray-500/30',
+  critical: 'alert-notification--critical bg-red-50 dark:bg-red-900/30',
+  high: 'alert-notification--high bg-orange-50 dark:bg-orange-900/30',
+  warning: 'alert-notification--warning bg-yellow-50 dark:bg-yellow-900/30',
+  info: 'alert-notification--info bg-gray-700 dark:bg-gray-500/30',
 }
 
 const severityIcons: Record<string, string> = {
@@ -129,24 +129,24 @@ onUnmounted(() => {
 
 <template>
   <Transition
-    enter-active-class="transition-all duration-300 ease-out"
-    enter-from-class="translate-x-full opacity-0"
-    enter-to-class="translate-x-0 opacity-100"
-    leave-active-class="transition-all duration-300 ease-in"
-    leave-from-class="translate-x-0 opacity-100"
-    leave-to-class="translate-x-full opacity-0"
+    enter-active-class="alert-notification-transition-active alert-notification-transition-enter"
+    enter-from-class="alert-notification-transition-from opacity-0"
+    enter-to-class="alert-notification-transition-to opacity-100"
+    leave-active-class="alert-notification-transition-active alert-notification-transition-leave"
+    leave-from-class="alert-notification-transition-to opacity-100"
+    leave-to-class="alert-notification-transition-from opacity-0"
   >
     <div
       v-if="visible"
       :class="[
-        'fixed top-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] rounded-lg shadow-lg border-l-4 overflow-hidden',
+        'alert-notification fixed top-4 z-50 w-96 max-w-[calc(100vw-2rem)] rounded-lg shadow-lg overflow-hidden',
         severityColors[alert.severity] || severityColors.info,
       ]"
       @mouseenter="stopTimer"
       @mouseleave="startTimer"
     >
       <!-- Progress bar -->
-      <div class="absolute top-0 left-0 right-0 h-1 bg-gray-700 dark:bg-gray-500">
+      <div class="alert-notification__progress absolute top-0 h-1 bg-gray-700 dark:bg-gray-500">
         <div
           class="h-full bg-gray-700 dark:bg-gray-500 transition-all duration-50"
           :style="{ width: `${progress}%` }"
@@ -226,3 +226,61 @@ onUnmounted(() => {
     </div>
   </Transition>
 </template>
+
+<style scoped>
+.alert-notification {
+  inset-inline-end: 1rem;
+  border-inline-start: 4px solid var(--alert-notification-accent, rgb(17 24 39));
+}
+
+.alert-notification--critical {
+  --alert-notification-accent: rgb(239 68 68);
+}
+
+.alert-notification--high {
+  --alert-notification-accent: rgb(249 115 22);
+}
+
+.alert-notification--warning {
+  --alert-notification-accent: rgb(234 179 8);
+}
+
+.alert-notification--info {
+  --alert-notification-accent: rgb(17 24 39);
+}
+
+.alert-notification__progress {
+  inset-inline: 0;
+}
+
+.alert-notification-transition-active {
+  transition-property: transform, opacity;
+  transition-duration: 300ms;
+}
+
+.alert-notification-transition-enter {
+  transition-timing-function: ease-out;
+}
+
+.alert-notification-transition-leave {
+  transition-timing-function: ease-in;
+}
+
+.alert-notification-transition-from {
+  transform: translateX(100%);
+}
+
+.alert-notification-transition-to {
+  transform: translateX(0);
+}
+
+html[dir='rtl'] .alert-notification-transition-from {
+  transform: translateX(-100%);
+}
+
+:root.dark .alert-notification--info,
+[data-theme='dark'] .alert-notification--info,
+html.dark .alert-notification--info {
+  --alert-notification-accent: rgb(156 163 175);
+}
+</style>

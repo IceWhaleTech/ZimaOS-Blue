@@ -543,6 +543,7 @@ type RoutesDeps struct {
 	LazyBrowserSvc            func() *browser.RodService // for UI reviewer lazy adapter
 	AcquireBrowserSvc         func() (*browser.RodService, func(), error)
 	AcquireFallbackBrowserSvc func() (*browser.RodService, func(), error)
+	LightpandaShimSvc         *browser.LightpandaService
 	BrowserBackend            tools.BrowserBackend // for browser tool + IPC
 
 	// Closers collects io.Closers started during route registration.
@@ -679,6 +680,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	dataDir := cfg.DataDir
 	workspaceDir := ResolveWorkspaceDir(cfg.DataDir, deps.Config)
 	workspaceAllowedPaths := ResolveBuiltinToolAllowedPaths(deps.Config, cfg.DataDir)
+	runtimeLLM := newRuntimeLLMProviderRef()
 	kv := deps.ConfigKV // shared kvstore for settings, VAPID keys, toggles, etc.
 	flagEvaluator := deps.FlagEvaluator
 	if flagEvaluator == nil && deps.Config != nil {
@@ -1763,6 +1765,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			webExtractTool.SetBrowser(deps.BrowserBackend)
 		}
 	}
+	if deps.LightpandaShimSvc != nil {
+		if webTool := tools.GetWebTool(s.ToolRegistry); webTool != nil {
+			webTool.SetLightpandaShim(deps.LightpandaShimSvc)
+		}
+		if webFetchTool := tools.GetWebFetchTool(s.ToolRegistry); webFetchTool != nil {
+			webFetchTool.SetLightpandaShim(deps.LightpandaShimSvc)
+		}
+		if webReadTool := tools.GetWebReadTool(s.ToolRegistry); webReadTool != nil {
+			webReadTool.SetLightpandaShim(deps.LightpandaShimSvc)
+		}
+		if webExtractTool := tools.GetWebExtractTool(s.ToolRegistry); webExtractTool != nil {
+			webExtractTool.SetLightpandaShim(deps.LightpandaShimSvc)
+		}
+	}
 	if deps.STTService != nil {
 		tools.AttachSTTServiceToWebTools(s.ToolRegistry, deps.STTService)
 	}
@@ -2302,21 +2318,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
 			Config: hbCfg,
-			ChatFn: func() heartbeat.ChatFunc {
-				pc := server.NewProxyClient(cfg.Port)
-				if deps.APIKeyService != nil {
-					if info, err := deps.APIKeyService.CreateKey(context.Background(), &auth.CreateKeyRequest{
-						Name:   "heartbeat-internal",
-						Scopes: []string{"chat", "proxy", "route:auto"},
-					}); err == nil {
-						pc.SetAPIKey(info.Key)
-					}
-				}
-				return func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
-					req.Model = resolveDefaultModelForCCCLI(req.Model, deps.ClaudeCodeHandler, deps.ProviderPool)
-					return pc.Chat(ctx, req)
-				}
-			}(),
+			ChatFn: func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+				return runtimeLLM.Chat(ctx, req)
+			},
 			Logger: logger,
 		})
 		go hbRunner.Run(deps.Ctx)
@@ -2985,24 +2989,29 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.MetricsWriter != nil {
 			bridge.SetMetricsRecorder(deps.MetricsWriter)
 		}
-		proxyCaller := &proxyBridgeLLMCaller{
-			bridge:            bridge,
-			claudeCodeHandler: deps.ClaudeCodeHandler,
-			providerPool:      deps.ProviderPool,
-		}
-		auxiliaryLLM.SetFallback(proxyCaller)
-		agentLLMCaller = proxyCaller
+		proxyProvider := newProxyBridgeProvider(bridge, deps.ClaudeCodeHandler, deps.ProviderPool)
+		claudeCodeFactory := newClaudeCodeRuntimeFactory(
+			deps.ClaudeCodeHandler,
+			deps.Config,
+			cfg.Port,
+			s.ToolRegistry,
+			workspaceDir,
+			deps.APIKeyService,
+			logger,
+		)
+		dispatchProvider := newRuntimeDispatchProvider(proxyProvider, deps.ClaudeCodeHandler, claudeCodeFactory)
+		runtimeLLM.SetProvider(dispatchProvider)
+		auxiliaryLLM.SetFallback(runtimeLLM)
+		agentLLMCaller = runtimeLLM
+		deps.ChatHandler.SetRuntimeProvider(runtimeLLM)
 		deps.ChatHandler.SetProxyBridge(bridge)
 		// Leave IM model empty so ChatHandler can dynamically resolve defaults:
 		// prefer codex-spark when available, otherwise fall back to auto routing.
 		deps.ChatHandler.SetIMModel("")
 
-		// Wire LLM calls for voice mode through the same proxy pipeline
+		// Wire LLM calls for voice mode through the unified runtime pipeline.
 		if deps.VoiceHandler != nil {
-			deps.VoiceHandler.Service().SetChatFunc(func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
-				req.Model = resolveDefaultModelForCCCLI(req.Model, deps.ClaudeCodeHandler, deps.ProviderPool)
-				return bridge.Chat(ctx, req)
-			})
+			deps.VoiceHandler.Service().SetChatFunc(runtimeLLM.Chat)
 		}
 
 		// Wire VLM bridge into UI reviewer tool (for IPC-based SKILL)

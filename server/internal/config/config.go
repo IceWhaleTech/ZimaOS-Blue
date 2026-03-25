@@ -785,7 +785,7 @@ func defaults() Config {
 			Connection: proxy.ConnectionConfig{
 				MaxIdleConns: 100, MaxIdleConnsPerHost: 10, MaxConnsPerHost: 100, IdleConnTimeout: 90 * time.Second,
 				KeepAlive: true, KeepAliveInterval: 30 * time.Second, DialTimeout: 30 * time.Second,
-				TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 10 * time.Minute, ForceHTTP2: true,
+				TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 10 * time.Minute, ForceHTTP2: false,
 			},
 			HealthCheck:  proxy.HealthCheckConfig{Enabled: true, Interval: 30 * time.Second, Timeout: 10 * time.Second},
 			ModelRouter:  &proxy.ModelRouterConfig{Enabled: false, DefaultFamily: "claude-3"},

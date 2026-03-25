@@ -75,7 +75,7 @@ function isOpen(index: number): boolean {
     <div v-if="card.items.length === 1 && firstItem" class="accordion-single">
       <!-- Header -->
       <button
-        class="w-full px-3 py-2 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+        class="w-full px-3 py-2 flex items-center justify-between text-start hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
         @click="toggleItem(0)"
       >
         <div class="flex items-center gap-2">
@@ -125,7 +125,7 @@ function isOpen(index: number): boolean {
       <div v-for="(item, index) in card.items" :key="index">
         <!-- Header -->
         <button
-          class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+          class="w-full px-4 py-3 flex items-center justify-between text-start hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
           @click="toggleItem(index)"
         >
           <div class="flex items-center gap-3">

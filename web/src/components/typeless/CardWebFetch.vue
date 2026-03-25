@@ -153,7 +153,7 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
     :class="toneClasses.border"
   >
     <button
-      class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+      class="web-fetch-toggle flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
       :aria-expanded="expanded ? 'true' : 'false'"
       @click="toggleExpanded"
     >
@@ -290,7 +290,7 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
               >
                 <span
                   v-if="isActionActive(useBrowserAction.id)"
-                  class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+                  class="web-fetch-action-gap web-fetch-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current align-[-2px]"
                 />
                 {{ actionButtonLabel(useBrowserAction) }}
               </button>
@@ -386,5 +386,17 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
   max-height: 960px;
   opacity: 1;
   transform: translateY(0);
+}
+
+.web-fetch-toggle {
+  text-align: start;
+}
+
+.web-fetch-action-gap {
+  margin-inline-end: 0.25rem;
+}
+
+.web-fetch-spinner {
+  border-inline-end-color: transparent;
 }
 </style>

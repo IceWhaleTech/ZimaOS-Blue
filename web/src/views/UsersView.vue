@@ -274,32 +274,32 @@ onMounted(() => {
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+              class="px-6 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
             >
               {{ t('users.username') }}
             </th>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+              class="px-6 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
             >
               {{ t('users.role') }}
             </th>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+              class="px-6 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
             >
               {{ t('users.status') }}
             </th>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+              class="px-6 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
             >
               {{ t('users.lastLogin') }}
             </th>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+              class="px-6 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
             >
               {{ t('users.createdAt') }}
             </th>
             <th
-              class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+              class="px-6 py-3 text-end text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
             >
               {{ t('users.actions') }}
             </th>
@@ -320,7 +320,7 @@ onMounted(() => {
                     user.username.charAt(0).toUpperCase()
                   }}</span>
                 </div>
-                <div class="ml-4">
+                <div class="users-inline-start-gap">
                   <div class="text-sm font-medium text-gray-900 dark:text-white">
                     {{ user.username }}
                   </div>
@@ -352,7 +352,7 @@ onMounted(() => {
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
               {{ formatDate(user.created_at) }}
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+            <td class="px-6 py-4 whitespace-nowrap text-end text-sm font-medium">
               <div class="flex items-center justify-end gap-2">
                 <button
                   class="p-2 text-gray-500 hover:text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -515,3 +515,9 @@ onMounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.users-inline-start-gap {
+  margin-inline-start: 1rem;
+}
+</style>

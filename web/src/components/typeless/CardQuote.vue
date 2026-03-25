@@ -6,17 +6,14 @@ defineProps<{
 }>()
 
 const variantClasses = {
-  default: 'border-l-gray-900 dark:border-l-gray-400 bg-gray-700 dark:bg-gray-500/20',
-  highlight: 'border-l-amber-500 bg-amber-50 dark:bg-amber-900/20',
-  warning: 'border-l-red-500 bg-red-50 dark:bg-red-900/20',
+  default: 'quote-card--default bg-gray-700 dark:bg-gray-500/20',
+  highlight: 'quote-card--highlight bg-amber-50 dark:bg-amber-900/20',
+  warning: 'quote-card--warning bg-red-50 dark:bg-red-900/20',
 }
 </script>
 
 <template>
-  <div
-    class="quote-card rounded-lg border-l-4 p-4"
-    :class="variantClasses[card.variant || 'default']"
-  >
+  <div class="quote-card rounded-lg p-4" :class="variantClasses[card.variant || 'default']">
     <!-- Quote icon -->
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -47,3 +44,28 @@ const variantClasses = {
     </div>
   </div>
 </template>
+
+<style scoped>
+.quote-card {
+  border-inline-start-width: 4px;
+  border-inline-start-style: solid;
+}
+
+.quote-card--default {
+  border-inline-start-color: rgb(17 24 39);
+}
+
+:root.dark .quote-card--default,
+[data-theme='dark'] .quote-card--default,
+html.dark .quote-card--default {
+  border-inline-start-color: rgb(156 163 175);
+}
+
+.quote-card--highlight {
+  border-inline-start-color: rgb(245 158 11);
+}
+
+.quote-card--warning {
+  border-inline-start-color: rgb(239 68 68);
+}
+</style>

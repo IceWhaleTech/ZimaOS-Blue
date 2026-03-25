@@ -45,19 +45,13 @@ func (m *LightpandaBinaryManager) Ensure(ctx context.Context) (string, error) {
 	if m == nil || m.config == nil {
 		return "", nil
 	}
-	if binaryPath := strings.TrimSpace(m.config.Lightpanda.BinaryPath); binaryPath != "" {
-		if _, err := os.Stat(binaryPath); err != nil {
-			return "", err
-		}
-		return binaryPath, nil
+	if readyPath, ok, err := m.ReadyPath(); err != nil || ok {
+		return readyPath, err
 	}
 
 	targetPath, archiveName, err := m.pathsForCurrentPlatform()
 	if err != nil {
 		return "", err
-	}
-	if info, statErr := os.Stat(targetPath); statErr == nil && !info.IsDir() {
-		return targetPath, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		return "", err
@@ -86,6 +80,37 @@ func (m *LightpandaBinaryManager) Ensure(ctx context.Context) (string, error) {
 		lastErr = fmt.Errorf("lightpanda download sources are unavailable")
 	}
 	return "", lastErr
+}
+
+// ReadyPath returns a usable Lightpanda binary path when one is already present
+// locally, without attempting any network downloads.
+func (m *LightpandaBinaryManager) ReadyPath() (string, bool, error) {
+	if m == nil || m.config == nil {
+		return "", false, nil
+	}
+	if binaryPath := strings.TrimSpace(m.config.Lightpanda.BinaryPath); binaryPath != "" {
+		info, err := os.Stat(binaryPath)
+		if err == nil && !info.IsDir() {
+			return binaryPath, true, nil
+		}
+		if err != nil && os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+
+	targetPath, _, err := m.pathsForCurrentPlatform()
+	if err != nil {
+		return "", false, err
+	}
+	info, err := os.Stat(targetPath)
+	if err == nil && !info.IsDir() {
+		return targetPath, true, nil
+	}
+	if err != nil && os.IsNotExist(err) {
+		return "", false, nil
+	}
+	return "", false, err
 }
 
 func (m *LightpandaBinaryManager) downloadSources() []string {

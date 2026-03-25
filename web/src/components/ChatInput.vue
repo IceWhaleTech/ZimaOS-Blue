@@ -117,6 +117,13 @@ const MAX_TEXTAREA_HEIGHT = 200
 const COMPACT_TEXTAREA_MIN_HEIGHT = 40
 const DESKTOP_TEXTAREA_MIN_HEIGHT = 43
 const sendIconPath = 'M12 18.5V5.5m0 0L6.75 10.75M12 5.5l5.25 5.25'
+const mobileClearButtonStyle = { insetInlineEnd: '0.5rem' }
+const mobileMenuDropdownStyle = { insetInlineEnd: '0' }
+const attachmentRemoveButtonStyle = { insetInlineEnd: '-0.25rem' }
+
+const mobileDictationButtonStyle = computed(() => ({
+  insetInlineEnd: isDictating.value || message.value.length > 0 ? '2rem' : '0.5rem',
+}))
 
 const draftStorageScope = computed(() => {
   const conversationId = props.conversationId?.trim()
@@ -1391,7 +1398,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
           <!-- Remove button -->
           <button
-            class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 cursor-pointer"
+            class="absolute -top-1 w-5 h-5 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 cursor-pointer"
+            :style="attachmentRemoveButtonStyle"
             @click="removeAttachment(attachment.id)"
           >
             <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1814,7 +1822,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               :placeholder="placeholder"
               :wrap="isCompact ? 'soft' : 'off'"
               enterkeyhint="send"
-              class="chat-textarea w-full glass-input text-gray-900 dark:text-white px-3 pr-14 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+              class="chat-textarea w-full glass-input text-gray-900 dark:text-white resize-none disabled:opacity-50 disabled:cursor-not-allowed"
               rows="1"
               @keydown="handleKeydown"
               @input="handleInput"
@@ -1824,11 +1832,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
             <button
               v-if="!isTranscribing"
               class="absolute top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full transition-all duration-200 cursor-pointer"
+              :style="mobileDictationButtonStyle"
               :class="
                 isDictating
-                  ? 'right-8 text-green-500 dictation-glow'
-                  : (message.length > 0 ? 'right-8' : 'right-2') +
-                    ' text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+                  ? 'text-green-500 dictation-glow'
+                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
               "
               :title="isDictating ? t('chat.stopDictation') : t('chat.startDictation')"
               @click="toggleDictation"
@@ -1850,7 +1858,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
             </button>
             <button
               v-if="message.length > 0"
-              class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-600/50 transition-colors cursor-pointer"
+              class="absolute top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-600/50 transition-colors cursor-pointer"
+              :style="mobileClearButtonStyle"
               title="Clear"
               @click="clearMessage"
             >
@@ -1947,7 +1956,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
             >
               <div
                 v-if="showMobileMenu"
-                class="absolute bottom-full right-0 mb-2 w-48 glass-card rounded-xl shadow-lg border border-white/10 overflow-hidden z-50"
+                class="absolute bottom-full mb-2 w-48 glass-card rounded-xl shadow-lg border border-white/10 overflow-hidden z-50"
+                :style="mobileMenuDropdownStyle"
               >
                 <button
                   :disabled="disabled || streaming"
@@ -2658,7 +2668,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
   gap: 0.38rem;
   min-height: 1.72rem;
   padding: 0 0.72rem;
-  margin-left: 0.16rem;
+  margin-inline-start: 0.16rem;
   border-radius: 999px;
   border: 1px solid rgba(248, 113, 113, 0.22);
   background: rgba(254, 242, 242, 0.94);
@@ -2691,7 +2701,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
 .mode-info-card {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   bottom: calc(100% + 0.82rem);
   width: min(22rem, calc(100vw - 3rem));
   padding: 0.88rem;
@@ -2718,11 +2728,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 .mode-info-card::after {
   content: '';
   position: absolute;
-  right: 1.2rem;
+  inset-inline-end: 1.2rem;
   bottom: -0.4rem;
   width: 0.82rem;
   height: 0.82rem;
-  border-right: 1px solid rgba(203, 213, 225, 0.84);
+  border-inline-end: 1px solid rgba(203, 213, 225, 0.84);
   border-bottom: 1px solid rgba(203, 213, 225, 0.84);
   background: rgba(255, 255, 255, 0.98);
   transform: rotate(45deg);
@@ -2780,7 +2790,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
 .mode-info-card__hero::before {
   top: -1.4rem;
-  right: -0.6rem;
+  inset-inline-end: -0.6rem;
   width: 5rem;
   height: 5rem;
   background: rgba(var(--mode-card-accent-rgb), 0.16);
@@ -2788,7 +2798,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 }
 
 .mode-info-card__hero::after {
-  left: 0.9rem;
+  inset-inline-start: 0.9rem;
   bottom: -1.7rem;
   width: 6.6rem;
   height: 3.2rem;
@@ -2918,9 +2928,13 @@ html.dark .mode-info-card {
 :root.dark .mode-info-card::after,
 [data-theme='dark'] .mode-info-card::after,
 html.dark .mode-info-card::after {
-  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  border-inline-end: 1px solid rgba(148, 163, 184, 0.2);
   border-bottom: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(15, 23, 42, 0.98);
+}
+
+html[dir='rtl'] .mode-info-card {
+  transform-origin: bottom left;
 }
 
 :root.dark .mode-info-card__hero,
@@ -3285,7 +3299,7 @@ html.dark .mode-info-card__chip {
 .mode-chip__status-dot {
   position: absolute;
   top: 0.24rem;
-  right: 0.3rem;
+  inset-inline-end: 0.3rem;
   width: 0.34rem;
   height: 0.34rem;
   border-radius: 999px;
@@ -3540,8 +3554,9 @@ html.dark .mode-info-card__chip {
   border-radius: inherit;
   background: transparent;
   box-shadow: none;
-  padding: 0.5rem 0.92rem 0.46rem;
-  padding-right: 4.15rem;
+  padding-block: 0.5rem 0.46rem;
+  padding-inline: 0.92rem;
+  padding-inline-end: 4.15rem;
   font-size: 0.84rem;
   line-height: 1.24;
   overflow-y: hidden;
@@ -3556,7 +3571,7 @@ html.dark .mode-info-card__chip {
 
 .desktop-textarea-actions {
   position: absolute;
-  right: 0.58rem;
+  inset-inline-end: 0.58rem;
   top: 50%;
   bottom: auto;
   transform: translateY(-50%);
@@ -4119,6 +4134,8 @@ textarea {
   min-height: 40px;
   padding-top: 9px;
   padding-bottom: 9px;
+  padding-inline: 0.75rem;
+  padding-inline-end: 3.5rem;
   line-height: 20px;
   overflow-y: auto;
   margin: 0;

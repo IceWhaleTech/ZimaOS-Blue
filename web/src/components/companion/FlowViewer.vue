@@ -247,7 +247,7 @@ const nodeTypes = {
     </VueFlow>
 
     <!-- Zoom controls (custom) -->
-    <div class="absolute bottom-4 left-4 flex gap-2 z-10">
+    <div class="absolute bottom-4 start-4 flex gap-2 z-10">
       <button
         class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomIn')"
@@ -308,7 +308,7 @@ const nodeTypes = {
     </div>
 
     <!-- Legend -->
-    <div class="absolute top-4 left-4 bg-white dark:bg-gray-700 rounded-lg shadow-md p-3 z-10">
+    <div class="absolute top-4 start-4 bg-white dark:bg-gray-700 rounded-lg shadow-md p-3 z-10">
       <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
         {{ t('companion.flow.legend') }}
       </div>

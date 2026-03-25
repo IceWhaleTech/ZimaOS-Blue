@@ -434,7 +434,7 @@ onMounted(() => {
 .save-status {
   position: fixed;
   top: 20px;
-  right: 20px;
+  inset-inline-end: 20px;
   background: var(--success-color, #10b981);
   color: white;
   padding: 12px 24px;
@@ -701,10 +701,7 @@ onMounted(() => {
 /* Dialog */
 .dialog-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;

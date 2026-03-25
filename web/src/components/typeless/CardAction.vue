@@ -65,11 +65,21 @@ function handleClick(actionId: string, disabled = false) {
       >
         <span
           v-if="isActionActive(action.id)"
-          class="mr-1.5 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+          class="card-action-icon-gap card-action-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current align-[-2px]"
         />
-        <span v-else-if="action.icon" class="mr-1.5">{{ action.icon }}</span>
+        <span v-else-if="action.icon" class="card-action-icon-gap">{{ action.icon }}</span>
         {{ actionButtonLabel(action) }}
       </button>
     </div>
   </div>
 </template>
+
+<style scoped>
+.card-action-icon-gap {
+  margin-inline-end: 0.375rem;
+}
+
+.card-action-spinner {
+  border-inline-end-color: transparent;
+}
+</style>

@@ -398,7 +398,22 @@ func (ph *ProxyHandler) probeWithRetry(
 			return nil, err
 		}
 		lastErr = err
+		if ph.connPool != nil && shouldResetIdleConnectionsOnError(err) {
+			ph.connPool.CloseIdleConnectionsForProfile(ConnectionProfileLong)
+		}
 	}
+}
+
+func shouldResetIdleConnectionsOnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "http2: timeout awaiting response headers") ||
+		strings.Contains(msg, "server closed idle connection") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "unexpected eof")
 }
 
 const (
@@ -469,6 +484,9 @@ func proxyFailureStatusCode(err error) int {
 	}
 	if IsContextWindowExceededMessage(errMsg) {
 		return http.StatusBadRequest
+	}
+	if authErr, ok := asAuthExhaustedError(err); ok && authErr.LastStatusCode >= http.StatusBadRequest {
+		return authErr.LastStatusCode
 	}
 	if statusCode := classifyRateLimitLikeErrorText(errMsg); statusCode != 0 {
 		return statusCode
@@ -1229,9 +1247,9 @@ func (ph *ProxyHandler) warmAuthStrategies() {
 
 			var client *http.Client
 			if p.SkipTLSVerify {
-				client = ph.connPool.GetInsecureClient(p.Name)
+				client = ph.connPool.GetInsecureClient(p.Name, ConnectionProfileProbe)
 			} else {
-				client = ph.connPool.GetClient(p.Name)
+				client = ph.connPool.GetClient(p.Name, ConnectionProfileProbe)
 			}
 
 			resp, err := client.Do(req)
@@ -1318,9 +1336,9 @@ func (ph *ProxyHandler) warmToolCallSupport(providers []*providerpool.Provider) 
 
 		var client *http.Client
 		if p.SkipTLSVerify {
-			client = ph.connPool.GetInsecureClient(p.Name)
+			client = ph.connPool.GetInsecureClient(p.Name, ConnectionProfileProbe)
 		} else {
-			client = ph.connPool.GetClient(p.Name)
+			client = ph.connPool.GetClient(p.Name, ConnectionProfileProbe)
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -2245,9 +2263,9 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 			},
 			func(req *http.Request) (*http.Response, error) {
 				if result.Provider.SkipTLSVerify {
-					return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+					return ph.connPool.GetInsecureClient(result.Provider.Name, ConnectionProfileLong).Do(req)
 				}
-				return ph.connPool.GetClient(result.Provider.Name).Do(req)
+				return ph.connPool.GetClient(result.Provider.Name, ConnectionProfileLong).Do(req)
 			},
 		)
 		if probeErr != nil {
@@ -2566,9 +2584,9 @@ func (ph *ProxyHandler) tryEndpointFallback(
 					},
 					func(req *http.Request) (*http.Response, error) {
 						if provider.SkipTLSVerify {
-							return ph.connPool.GetInsecureClient(provider.Name).Do(req)
+							return ph.connPool.GetInsecureClient(provider.Name, ConnectionProfileLong).Do(req)
 						}
-						return ph.connPool.GetClient(provider.Name).Do(req)
+						return ph.connPool.GetClient(provider.Name, ConnectionProfileLong).Do(req)
 					},
 				)
 
@@ -2757,9 +2775,9 @@ func (ph *ProxyHandler) tryOnProvider(
 				},
 				func(req *http.Request) (*http.Response, error) {
 					if result.Provider.SkipTLSVerify {
-						return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+						return ph.connPool.GetInsecureClient(result.Provider.Name, ConnectionProfileLong).Do(req)
 					}
-					return ph.connPool.GetClient(result.Provider.Name).Do(req)
+					return ph.connPool.GetClient(result.Provider.Name, ConnectionProfileLong).Do(req)
 				},
 			)
 			if probeErr != nil {
@@ -2972,9 +2990,9 @@ func (ph *ProxyHandler) tryOnProvider(
 					},
 					func(req *http.Request) (*http.Response, error) {
 						if result.Provider.SkipTLSVerify {
-							return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+							return ph.connPool.GetInsecureClient(result.Provider.Name, ConnectionProfileLong).Do(req)
 						}
-						return ph.connPool.GetClient(result.Provider.Name).Do(req)
+						return ph.connPool.GetClient(result.Provider.Name, ConnectionProfileLong).Do(req)
 					},
 				)
 				if probeErr != nil {
@@ -3043,6 +3061,10 @@ func (ph *ProxyHandler) tryOnProvider(
 						return resp, fmt, mdl, nil
 					}
 					slog.Info("[proxy] endpoint fallback failed", "provider", pid, "error", err)
+				}
+
+				if _, ok := asAuthExhaustedError(probeErr); ok {
+					return nil, "", "", probeErr
 				}
 
 				continue
@@ -3600,9 +3622,9 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 	req.Host = targetURL.Host
 
 	if provider.SkipTLSVerify {
-		return ph.connPool.GetInsecureClient(provider.Name).Do(req)
+		return ph.connPool.GetInsecureClient(provider.Name, ConnectionProfileLong).Do(req)
 	}
-	return ph.connPool.GetClient(provider.Name).Do(req)
+	return ph.connPool.GetClient(provider.Name, ConnectionProfileLong).Do(req)
 }
 
 // handleModels handles GET /v1/models

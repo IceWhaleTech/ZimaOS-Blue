@@ -492,29 +492,31 @@ function getSourceLabel(source: string): string {
           <div class="space-y-1 text-sm text-gray-500 dark:text-gray-400 mb-4">
             <p v-if="config.has_oauth && config.oauth_email">
               <span class="font-medium">{{ t('ideDiscovery.oauthAccount') }}:</span>
-              <span class="ml-1">{{ config.oauth_email }}</span>
+              <span class="ide-discovery-inline-gap">{{ config.oauth_email }}</span>
             </p>
             <p v-if="config.has_oauth && config.oauth_type">
               <span class="font-medium">{{ t('ideDiscovery.oauthType') }}:</span>
-              <span class="ml-1">{{ config.oauth_type }}</span>
+              <span class="ide-discovery-inline-gap">{{ config.oauth_type }}</span>
             </p>
             <p v-if="config.api_key">
               <span class="font-medium">{{ t('ideDiscovery.apiKey') }}:</span>
-              <code class="ml-1 px-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">{{
-                config.api_key
-              }}</code>
+              <code
+                class="ide-discovery-inline-gap px-1 bg-gray-100 dark:bg-gray-700 rounded text-xs"
+                >{{ config.api_key }}</code
+              >
             </p>
             <p v-if="config.base_url">
               <span class="font-medium">{{ t('ideDiscovery.baseUrl') }}:</span>
-              <span class="ml-1">{{ config.base_url }}</span>
+              <span class="ide-discovery-inline-gap">{{ config.base_url }}</span>
             </p>
             <!-- Extension config env vars -->
             <template v-if="config.extension_config?.env_vars?.length">
               <p v-for="ev in config.extension_config.env_vars" :key="ev.name">
                 <span class="font-medium">{{ ev.name }}:</span>
-                <code class="ml-1 px-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">{{
-                  ev.value
-                }}</code>
+                <code
+                  class="ide-discovery-inline-gap px-1 bg-gray-100 dark:bg-gray-700 rounded text-xs"
+                  >{{ ev.value }}</code
+                >
               </p>
             </template>
           </div>
@@ -608,7 +610,7 @@ function getSourceLabel(source: string): string {
           <div class="space-y-1 text-sm text-gray-500 dark:text-gray-400 mb-4">
             <p v-if="config.oauth_email">
               <span class="font-medium">{{ t('ideDiscovery.oauthAccount') }}:</span>
-              <span class="ml-1">{{ config.oauth_email }}</span>
+              <span class="ide-discovery-inline-gap">{{ config.oauth_email }}</span>
             </p>
             <p class="text-orange-600 dark:text-orange-400">
               {{ t('ideDiscovery.reimportHint') }}
@@ -761,5 +763,9 @@ function getSourceLabel(source: string): string {
 <style scoped>
 .ide-discovery {
   padding: 1.5rem;
+}
+
+.ide-discovery-inline-gap {
+  margin-inline-start: 0.25rem;
 }
 </style>

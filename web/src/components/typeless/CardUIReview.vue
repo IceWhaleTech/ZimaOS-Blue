@@ -155,7 +155,7 @@ function handleAction(actionId: string, disabled = false) {
         >
           <span
             v-if="isActionActive(action.id)"
-            class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+            class="ui-review-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current align-[-2px]"
           />
           {{ actionLabel(action) }}
         </button>
@@ -166,7 +166,7 @@ function handleAction(actionId: string, disabled = false) {
     <template v-else>
       <!-- Header (always visible) -->
       <button
-        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors text-left"
+        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors text-start"
         @click="expanded = !expanded"
       >
         <!-- Eye icon -->
@@ -284,7 +284,7 @@ function handleAction(actionId: string, disabled = false) {
                 />
               </div>
               <span
-                class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-right"
+                class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-end"
                 >{{ card.visual.score.toFixed(0) }}</span
               >
             </div>
@@ -300,7 +300,7 @@ function handleAction(actionId: string, disabled = false) {
                 />
               </div>
               <span
-                class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-right"
+                class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-end"
                 >{{ card.functional.score.toFixed(0) }}</span
               >
             </div>
@@ -316,7 +316,7 @@ function handleAction(actionId: string, disabled = false) {
                 />
               </div>
               <span
-                class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-right"
+                class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-end"
                 >{{ card.accessibility.score.toFixed(0) }}</span
               >
             </div>
@@ -416,7 +416,7 @@ function handleAction(actionId: string, disabled = false) {
             >
               <span
                 v-if="isActionActive(action.id)"
-                class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+                class="ui-review-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current align-[-2px]"
               />
               {{ actionLabel(action) }}
             </button>
@@ -428,6 +428,11 @@ function handleAction(actionId: string, disabled = false) {
 </template>
 
 <style scoped>
+.ui-review-spinner {
+  margin-inline-end: 0.25rem;
+  border-inline-end-color: transparent;
+}
+
 .expand-enter-active,
 .expand-leave-active {
   transition: all 0.2s ease;

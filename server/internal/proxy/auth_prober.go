@@ -1,9 +1,11 @@
 package proxy
 
 import (
-	"io"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	ecache2 "github.com/orca-zhang/ecache2"
@@ -93,8 +95,8 @@ var (
 	strategiesOllama    = []AuthStrategy{AuthNone, AuthBearer}
 	strategiesDefault   = []AuthStrategy{AuthBearer, AuthXAPIKey, AuthNone}
 	// Cached-winner fast paths — single strategy, zero alloc
-	strategiesCachedBearer   = []AuthStrategy{AuthBearer}
-	strategiesCachedXAPIKey  = []AuthStrategy{AuthXAPIKey}
+	strategiesCachedBearer    = []AuthStrategy{AuthBearer}
+	strategiesCachedXAPIKey   = []AuthStrategy{AuthXAPIKey}
 	strategiesCachedAnthropic = []AuthStrategy{AuthAnthropic}
 )
 
@@ -188,6 +190,8 @@ func (ap *AuthProber) ProbeAndForward(
 	doRequest func(*http.Request) (*http.Response, error),
 ) (*http.Response, error) {
 	strategies := ap.Strategies(provider, apiKey, effectiveFormat)
+	lastStatusCode := 0
+	lastBody := ""
 
 	for i, strat := range strategies {
 		req, err := buildRequest()
@@ -211,8 +215,10 @@ func (ap *AuthProber) ProbeAndForward(
 			return resp, nil
 		}
 
-		// Auth failed — drain body and try next strategy
-		io.Copy(io.Discard, resp.Body)
+		// Auth failed — remember the last rejection so callers can surface the
+		// real upstream cause instead of falling through to unrelated model errors.
+		lastStatusCode = resp.StatusCode
+		lastBody = strings.TrimSpace(string(readErrorBody(resp.Body)))
 		resp.Body.Close()
 
 		slog.Warn("[proxy] auth strategy failed",
@@ -227,14 +233,37 @@ func (ap *AuthProber) ProbeAndForward(
 	// All strategies exhausted — evict stale cache entry
 	// Use effective base URL to evict the correct endpoint's cache
 	ap.Forget(provider.ID, provider.EffectiveBaseURL())
-	return nil, &AuthExhaustedError{ProviderID: provider.ID}
+	return nil, &AuthExhaustedError{
+		ProviderID:     provider.ID,
+		LastStatusCode: lastStatusCode,
+		LastBody:       lastBody,
+	}
 }
 
 // AuthExhaustedError indicates all auth strategies failed for a provider.
 type AuthExhaustedError struct {
-	ProviderID string
+	ProviderID     string
+	LastStatusCode int
+	LastBody       string
 }
 
 func (e *AuthExhaustedError) Error() string {
+	if e == nil {
+		return "all auth strategies exhausted"
+	}
+	if e.LastStatusCode >= http.StatusBadRequest {
+		if body := strings.TrimSpace(e.LastBody); body != "" {
+			return fmt.Sprintf("provider %s auth error (%d): %s", e.ProviderID, e.LastStatusCode, body)
+		}
+		return fmt.Sprintf("provider %s auth error (%d)", e.ProviderID, e.LastStatusCode)
+	}
 	return "all auth strategies exhausted for provider " + e.ProviderID
+}
+
+func asAuthExhaustedError(err error) (*AuthExhaustedError, bool) {
+	var authErr *AuthExhaustedError
+	if errors.As(err, &authErr) {
+		return authErr, true
+	}
+	return nil, false
 }

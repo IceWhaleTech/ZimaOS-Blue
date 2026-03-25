@@ -159,7 +159,7 @@ const summaryBadge = computed(() => {
     class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
   >
     <button
-      class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+      class="browser-progress-toggle flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
       :aria-expanded="expanded ? 'true' : 'false'"
       @click="toggleExpanded"
     >
@@ -230,9 +230,9 @@ const summaryBadge = computed(() => {
             }}</span>
             <span
               v-if="isRunning"
-              class="ml-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0"
+              class="ms-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0"
             />
-            <span v-else class="ml-auto text-xs text-gray-400 tabular-nums"
+            <span v-else class="ms-auto text-xs text-gray-400 tabular-nums"
               >{{ progressPercent }}%</span
             >
           </div>
@@ -309,5 +309,9 @@ const summaryBadge = computed(() => {
   max-height: 960px;
   opacity: 1;
   transform: translateY(0);
+}
+
+.browser-progress-toggle {
+  text-align: start;
 }
 </style>

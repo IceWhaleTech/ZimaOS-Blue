@@ -1,9 +1,11 @@
 package proxy
 
 import (
-	"fmt"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
@@ -171,17 +173,31 @@ func TestAuthProber_ProbeAndForward_AllExhausted(t *testing.T) {
 			return httptest.NewRequest("POST", "/v1/chat/completions", nil), nil
 		},
 		func(req *http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 401, Body: http.NoBody}, nil
+			return &http.Response{
+				StatusCode: 403,
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"banned"}}`)),
+			}, nil
 		},
 	)
 	if err == nil {
 		t.Fatal("expected error when all strategies exhausted")
 	}
 	var authErr *AuthExhaustedError
-	if !isAuthExhaustedError(err) {
+	if !errors.As(err, &authErr) {
 		t.Errorf("expected AuthExhaustedError, got %T: %v", err, err)
 	}
-	_ = authErr
+	if authErr == nil {
+		t.Fatal("expected auth error details")
+	}
+	if authErr.LastStatusCode != 403 {
+		t.Fatalf("expected last auth status 403, got %d", authErr.LastStatusCode)
+	}
+	if !strings.Contains(authErr.LastBody, "banned") {
+		t.Fatalf("expected auth error body to be preserved, got %q", authErr.LastBody)
+	}
+	if got := authErr.Error(); !strings.Contains(got, "auth error (403)") {
+		t.Fatalf("expected auth error string to include status, got %q", got)
+	}
 }
 
 func TestAuthProber_CustomHeaders(t *testing.T) {
@@ -201,12 +217,4 @@ func TestAuthProber_CustomHeaders(t *testing.T) {
 	if got := req.Header.Get("Authorization"); got != "Bearer sk-test" {
 		t.Errorf("bearer not applied alongside custom: got %q", got)
 	}
-}
-
-func isAuthExhaustedError(err error) bool {
-	_, ok := err.(*AuthExhaustedError)
-	if ok {
-		return true
-	}
-	return fmt.Sprintf("%T", err) == "*proxy.AuthExhaustedError"
 }

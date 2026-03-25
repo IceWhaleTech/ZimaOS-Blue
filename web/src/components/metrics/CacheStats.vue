@@ -87,7 +87,7 @@ defineExpose({ refresh: fetchStats })
             <span class="text-green-500">{{ stats?.cache_hits ?? 0 }}</span>
             <span class="mx-1">{{ t('cache.hits') }}</span>
             <span class="text-orange-500">{{ stats?.cache_misses ?? 0 }}</span>
-            <span class="ml-1">{{ t('cache.misses') }}</span>
+            <span class="ms-1">{{ t('cache.misses') }}</span>
           </p>
         </div>
 

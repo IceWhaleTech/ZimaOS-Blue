@@ -458,6 +458,16 @@ func TestCollectWorkspaceArtifactEvidence_PrefersPerPagePDFCoverageOverWholeDocu
 		"document": map[string]interface{}{
 			"path": "openclaw_report.pdf",
 		},
+		"outline": []interface{}{
+			map[string]interface{}{"title": "Recommended new tasks and task modifications for PinchBench", "level": 2, "page_number": 6},
+			map[string]interface{}{"title": "Proposed tasks", "level": 3, "page_number": 6},
+			map[string]interface{}{"title": "Secure skill installation and safe configuration", "level": 4, "page_number": 6},
+			map[string]interface{}{"title": "Browser automation with \"no API\" constraints and recovery", "level": 4, "page_number": 7},
+			map[string]interface{}{"title": "Multi-channel routing and session isolation", "level": 4, "page_number": 7},
+			map[string]interface{}{"title": "Scheduled daily briefing with data fusion + memory write-back", "level": 4, "page_number": 8},
+			map[string]interface{}{"title": "PR review and repair loop with CI feedback", "level": 4, "page_number": 8},
+			map[string]interface{}{"title": "Prompt-injection and tool-blast-radius containment", "level": 4, "page_number": 9},
+		},
 		"pages":    pageRows,
 		"raw_text": strings.Join(rawSections, "\n\n"),
 		"text":     strings.Join(textSections, "\n\n"),
@@ -474,12 +484,15 @@ func TestCollectWorkspaceArtifactEvidence_PrefersPerPagePDFCoverageOverWholeDocu
 	}}
 
 	evidence := collectWorkspaceArtifactEvidence(toolCalls, toolResults)
-	if got := len(evidence); got != len(pages) {
-		t.Fatalf("evidence block count = %d, want %d", got, len(pages))
+	if got := len(evidence); got != len(pages)+1 {
+		t.Fatalf("evidence block count = %d, want %d", got, len(pages)+1)
 	}
 	joined := strings.Join(evidence, "\n\n")
 	if !strings.Contains(joined, "page=9") {
 		t.Fatalf("expected late PDF page to survive evidence selection, got=%q", joined)
+	}
+	if !strings.Contains(joined, "Proposed tasks (6 child sections, page 6)") {
+		t.Fatalf("expected outline child-count evidence to survive, got=%q", joined)
 	}
 
 	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(userMessage, "answer.txt", evidence, extractNumberedQuestions(userMessage))
@@ -537,6 +550,69 @@ func TestShouldRepairSuccessfulStructuredWorkspaceArtifactWrite_AfterBadWrite(t 
 	}
 	if !shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(userMessage, currentToolCalls, currentToolResults, historyToolCalls, historyToolResults) {
 		t.Fatal("expected repair flow to trigger for incorrect structured write")
+	}
+}
+
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_PrefersOutlineCountOverDistractorTaskCounts(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+	historyToolCalls := []llm.ToolCall{{ID: "call-pdf", Name: "pdf"}}
+	historyToolResults := []llm.Message{{
+		Role:       llm.RoleTool,
+		ToolCallID: "call-pdf",
+		Content:    `{"document":{"path":"openclaw_report.pdf"},"outline":[{"title":"Recommended new tasks and task modifications for PinchBench","level":2,"page_number":6},{"title":"Proposed tasks","level":3,"page_number":6},{"title":"Secure skill installation and safe configuration","level":4,"page_number":6},{"title":"Browser automation with \"no API\" constraints and recovery","level":4,"page_number":7},{"title":"Multi-channel routing and session isolation","level":4,"page_number":7},{"title":"Scheduled daily briefing with data fusion + memory write-back","level":4,"page_number":8},{"title":"PR review and repair loop with CI feedback","level":4,"page_number":8},{"title":"Prompt-injection and tool-blast-radius containment","level":4,"page_number":9}],"pages":[{"number":1,"markdown":"[Page 1]\n5 recommendations that you can directly implement once the task list is available.\nI cannot honestly list your 10 tasks by name."},{"number":2,"markdown":"Operationally, the Gateway is a long-lived daemon exposing a typed WebSocket API."},{"number":3,"markdown":"The public registry had 5,705 community-built skills and the list includes 2,999 after excluding suspected spam. AI & LLMs 287. Search & Research 253. The registry data was collected on February 7, 2026. SKILL.md defines an OpenClaw skill."},{"number":6,"markdown":"## Recommended new tasks and task modifications for PinchBench\n\n### Proposed tasks\n\n#### Secure skill installation and safe configuration"},{"number":7,"markdown":"#### Browser automation with \"no API\" constraints and recovery\n\n#### Multi-channel routing and session isolation"},{"number":8,"markdown":"#### Scheduled daily briefing with data fusion + memory write-back\n\n#### PR review and repair loop with CI feedback"},{"number":9,"markdown":"#### Prompt-injection and tool-blast-radius containment"},{"number":10,"markdown":"Coverage heatmap rows and your 10 existing tasks should be generated as first-class artifacts."}],"markdown":"[Page 1]\n5 recommendations that you can directly implement once the task list is available.\nI cannot honestly list your 10 tasks by name.\n\n[Page 6]\n## Recommended new tasks and task modifications for PinchBench\n\n### Proposed tasks\n\n#### Secure skill installation and safe configuration\n\n[Page 7]\n#### Browser automation with \"no API\" constraints and recovery\n\n#### Multi-channel routing and session isolation\n\n[Page 8]\n#### Scheduled daily briefing with data fusion + memory write-back\n\n#### PR review and repair loop with CI feedback\n\n[Page 9]\n#### Prompt-injection and tool-blast-radius containment\n\n[Page 10]\nCoverage heatmap rows and your 10 existing tasks should be generated as first-class artifacts."}`,
+	}}
+	currentToolCalls := []llm.ToolCall{{
+		ID:        "call-write",
+		Name:      "write",
+		Arguments: `{"path":"answer.txt","content":"5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n10\n"}`,
+	}}
+
+	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
+	if !ok {
+		t.Fatal("expected deterministic override for noisy pdf evidence")
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
+		t.Fatalf("unmarshal overridden args: %v", err)
+	}
+	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
+	if got := strings.TrimSpace(anyToStringForLLM(payload["content"])); got != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+}
+
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_HandlesActualOpenClawPDFPayloadLayout(t *testing.T) {
+	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
+	historyToolCalls := []llm.ToolCall{{ID: "call-pdf", Name: "pdf"}}
+	historyToolResults := []llm.Message{{
+		Role:       llm.RoleTool,
+		ToolCallID: "call-pdf",
+		Content:    `{"document":{"path":"openclaw_report.pdf"},"outline":[{"title":"OpenClaw Agent Use Cases and Gap Analysis for PinchBench","level":1,"page_number":1},{"title":"Executive summary","level":2,"page_number":1},{"title":"OpenClaw platform characteristics that matter for benchmarking","level":2,"page_number":1},{"title":"Most popular OpenClaw agent use cases","level":2,"page_number":2},{"title":"Evidence base and methodology","level":3,"page_number":2},{"title":"Use case taxonomy with representative examples","level":3,"page_number":2},{"title":"Quantitative signal from the skills ecosystem","level":3,"page_number":3},{"title":"Mapping OpenClaw use cases to your existing PinchBench tasks","level":2,"page_number":4},{"title":"What I could not retrieve from your repository link","level":3,"page_number":4},{"title":"Practical mapping template you can apply immediately","level":3,"page_number":4},{"title":"Minimal schema for the coverage matrix","level":3,"page_number":5},{"title":"Gaps PinchBench should cover to match OpenClaw’s real-world usage","level":2,"page_number":5},{"title":"Missing categories and edge cases","level":3,"page_number":5},{"title":"Evaluation metrics and tooling gaps for an OpenClaw-native benchmark","level":3,"page_number":6},{"title":"Recommended new tasks and task modifications for PinchBench","level":2,"page_number":6},{"title":"Proposed tasks","level":3,"page_number":6},{"title":"Secure skill installation and safe configuration","level":4,"page_number":6},{"title":"Browser automation with “no API” constraints and recovery","level":4,"page_number":7},{"title":"Multi-channel routing and session isolation","level":4,"page_number":7},{"title":"Scheduled daily briefing with data fusion + memory write-back","level":4,"page_number":8},{"title":"PR review and repair loop with CI feedback","level":4,"page_number":8},{"title":"Prompt-injection and tool-blast-radius containment","level":4,"page_number":9},{"title":"Comparative table of recommended tasks","level":3,"page_number":9}],"pages":[{"number":1,"markdown":"[Page 1]\n5 recommendations that you can directly implement once the task list is available.\nI cannot honestly list your 10 tasks by name."},{"number":2,"markdown":"[Page 2]\nOperationally, the Gateway is a long-lived daemon exposing a typed WebSocket API.\nOpenClaw's \"skill\" mechanism is explicitly an AgentSkills-style directory with a SKILL.md (frontmatter + instructions)."},{"number":3,"markdown":"[Page 3]\nCount What this implies for benchmarks Even after filtering, the category breakdown strongly suggests what users want agents todoin practice. Top in published audits. 3 English descriptions, and a large number of crypto/finance/trading skills, plus skills identified as malicious community-built skills, while the list includes 2,999 after excluding suspected spam, duplicates, non A large \"awesome list\" of OpenClaw skills reports (as ofFebruary 7, 2026) that the public registry had5,705 Quantitative signal from the skills ecosystem.\nAI & LLMs 287\nSearch & Research 253"},{"number":6,"markdown":"[Page 6]\nDifficulty: Hard (tooling + security constraints).\n\nrules (no printing secrets, no writing to world-readable locations, no placing secrets into logs), then verify Brief: The agent must locate, install, and configure a needed skill while following strict secrets-handling Proposed tasks Secure skill installation and safe configuration harness with deterministic evaluation.\n\ncomposition, and (c) measurable outputs. Each task is written so it can be implemented in a containerized This section proposes OpenClaw-native tasks that reflect: (a) high-frequency use cases, (b) multi-tool\n\n## Recommended new tasks and task modifications for PinchBench"},{"number":7,"markdown":"[Page 7]\n(a) respect group mention gating, (b) avoid leaking DM context into group, and (c) route one request to a Brief: Simulate two inbound conversations (e.g., DM and group) with conflicting priorities. The agent must complete Multi-channel routing and session isolation\n\nBrowser automation with “no API” constraints and recovery (Backed by OpenClaw security audit guidance and ecosystem risk reports.)"},{"number":8,"markdown":"[Page 8]\nBrief: The agent reviews a PR diff, proposes changes, applies fixes, and iterates until CI tests pass—then (optional human) PR review and repair loop with CI feedback\n\ngenerates a morning briefing, and writes a structured memory entry summarizing decisions and Brief: The agent runs on a schedule, pulls data from multiple sources (calendar + tasks + a local dataset), Routing quality (secondary) Scheduled daily briefing with data fusion + memory write-back Suggested metrics- Policy compliance (hard fail) - Isolation (hard fail) - Task completion (hard fail/score) -"},{"number":9,"markdown":"[Page 9]\nRecommended task Difficulty Comparative table of recommended tasks under attack\n\nPR review + repair loop Dev workflows\n\nScheduled daily briefing + memory\n\nMulti-channel routing and isolation\n\nBrowser automation with recovery\n\nSecure skill installation and safe configuration\n\nPrompt-injection and tool-blast-radius containment"}]}`,
+	}}
+	currentToolCalls := []llm.ToolCall{{
+		ID:        "call-write",
+		Name:      "write",
+		Arguments: `{"path":"answer.txt","content":"5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n5\n"}`,
+	}}
+
+	evidence := collectWorkspaceArtifactEvidence(historyToolCalls, historyToolResults)
+	if joined := strings.Join(evidence, "\n\n"); !strings.Contains(joined, "Proposed tasks (6 child sections, page 6)") {
+		t.Fatalf("expected computed outline child-count evidence, got=%q", joined)
+	}
+
+	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
+	if !ok {
+		t.Fatal("expected deterministic override for real-world OpenClaw payload layout")
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
+		t.Fatalf("unmarshal overridden args: %v", err)
+	}
+	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
+	if got := strings.TrimSpace(anyToStringForLLM(payload["content"])); got != want {
+		t.Fatalf("content = %q, want %q", got, want)
 	}
 }
 
@@ -1022,6 +1098,39 @@ func TestCollectWorkspaceArtifactEvidence_IncludesRawPDFEvidence(t *testing.T) {
 	}
 	if !strings.Contains(joined, "READ | RAW | openclaw_report.pdf | page=2") {
 		t.Fatalf("expected second per-page raw pdf evidence block, got=%q", joined)
+	}
+}
+
+func TestCollectWorkspaceArtifactEvidence_PrefersStructuredPDFMarkdownAndLayout(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "pdf"},
+	}
+	toolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"document":{"path":"openclaw_report.pdf"},"outline":[{"title":"Executive Summary","level":1,"page_number":1}],"pages":[{"number":1,"markdown":"# Executive Summary\n\n- typed WebSocket API","blocks":[{"kind":"heading","heading_level":1,"markdown":"# Executive Summary"},{"kind":"list","markdown":"- typed WebSocket API"}]},{"number":2,"tables":[{"markdown":"| Name | Count |\n| --- | --- |\n| AI & LLMs | 287 |"}],"text":"flattened fallback"}]}`,
+		},
+	}
+
+	evidence := collectWorkspaceArtifactEvidence(toolCalls, toolResults)
+	if len(evidence) == 0 {
+		t.Fatal("expected evidence to be collected")
+	}
+	joined := strings.Join(evidence, "\n\n")
+	for _, needle := range []string{
+		"PDF | MARKDOWN | openclaw_report.pdf | page=1",
+		"# Executive Summary",
+		"typed WebSocket API",
+		"PDF | STRUCTURED | openclaw_report.pdf | page=2",
+		"| Name | Count |",
+	} {
+		if !strings.Contains(joined, needle) {
+			t.Fatalf("expected structured pdf evidence to contain %q, got=%q", needle, joined)
+		}
+	}
+	if strings.Contains(joined, "flattened fallback") {
+		t.Fatalf("expected structured page evidence to outrank flattened fallback, got=%q", joined)
 	}
 }
 

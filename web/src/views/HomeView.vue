@@ -665,12 +665,12 @@ onUnmounted(() => {
 }
 
 .dashboard-stage::before {
-  right: 18%;
+  inset-inline-end: 18%;
   top: 10.5rem;
 }
 
 .dashboard-stage::after {
-  left: 24%;
+  inset-inline-start: 24%;
   bottom: -1.6rem;
 }
 
@@ -685,7 +685,7 @@ onUnmounted(() => {
 .dashboard-control-rail {
   position: absolute;
   top: 0;
-  right: 0;
+  inset-inline-end: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -1330,12 +1330,12 @@ html.dark .dashboard-stage::after {
   }
 
   .dashboard-stage::before {
-    right: 0.2rem;
+    inset-inline-end: 0.2rem;
     top: 10rem;
   }
 
   .dashboard-stage::after {
-    left: 0;
+    inset-inline-start: 0;
     bottom: 0.4rem;
   }
 

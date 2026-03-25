@@ -48,7 +48,7 @@ function renderContent(content: string): string {
         <div class="flex-1">
           <span v-html="renderContent(item.content)" />
           <!-- Sub-items -->
-          <ul v-if="item.subItems?.length" class="mt-2 ml-4 space-y-1">
+          <ul v-if="item.subItems?.length" class="list-subitems mt-2 space-y-1">
             <li
               v-for="(subItem, subIndex) in item.subItems"
               :key="subIndex"
@@ -107,18 +107,20 @@ function renderContent(content: string): string {
     <div v-else-if="card.variant === 'timeline'" class="p-4">
       <div class="relative">
         <!-- Timeline line -->
-        <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-700 dark:bg-gray-500" />
+        <div
+          class="list-timeline-line absolute top-2 bottom-2 w-0.5 bg-gray-700 dark:bg-gray-500"
+        />
 
         <!-- Timeline items -->
         <div class="space-y-4">
           <div
             v-for="(item, index) in card.items"
             :key="index"
-            class="relative flex items-start gap-4 pl-6"
+            class="list-timeline-item relative flex items-start gap-4"
           >
             <!-- Timeline dot -->
             <div
-              class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700"
+              class="list-timeline-dot absolute w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700"
               :class="
                 index === 0
                   ? 'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500'
@@ -137,3 +139,21 @@ function renderContent(content: string): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.list-subitems {
+  margin-inline-start: 1rem;
+}
+
+.list-timeline-line {
+  inset-inline-start: 0.5rem;
+}
+
+.list-timeline-item {
+  padding-inline-start: 1.5rem;
+}
+
+.list-timeline-dot {
+  inset-inline-start: 0;
+}
+</style>

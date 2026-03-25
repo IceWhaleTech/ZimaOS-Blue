@@ -1738,6 +1738,82 @@ func TestTryOnProvider_5xxSkipsEntireProvider(t *testing.T) {
 	}
 }
 
+func TestTryOnProvider_AuthExhaustedSkipsModelFallback(t *testing.T) {
+	var requestCount atomic.Int32
+	var (
+		mu         sync.Mutex
+		seenModels []string
+	)
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+
+		var body map[string]interface{}
+		_ = stdjson.NewDecoder(r.Body).Decode(&body)
+		if model, _ := body["model"].(string); model != "" {
+			mu.Lock()
+			seenModels = append(seenModels, model)
+			mu.Unlock()
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"message":"用户已被封禁"}}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "auth-failing-provider",
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+		Model:  &providerpool.Model{ID: "claude-sonnet-4-5-20250929"},
+	}
+
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":"hi"}]}`),
+		model: "claude-3-5-sonnet-20241022",
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp, _, _, err := ph.tryOnProvider(r, result, pr)
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	if err == nil {
+		t.Fatal("expected auth exhaustion error")
+	}
+
+	var authErr *AuthExhaustedError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("expected AuthExhaustedError, got %T: %v", err, err)
+	}
+	if authErr.LastStatusCode != http.StatusForbidden {
+		t.Fatalf("expected forbidden auth status, got %d", authErr.LastStatusCode)
+	}
+	if !strings.Contains(authErr.LastBody, "封禁") {
+		t.Fatalf("expected upstream auth body to be preserved, got %q", authErr.LastBody)
+	}
+
+	if count := requestCount.Load(); count != 4 {
+		t.Fatalf("expected exactly 4 auth strategy attempts for the routed model, got %d", count)
+	}
+
+	mu.Lock()
+	gotModels := append([]string(nil), seenModels...)
+	mu.Unlock()
+	for _, model := range gotModels {
+		if model != "claude-sonnet-4-5-20250929" {
+			t.Fatalf("expected auth failure to stop model fallback, saw models %v", gotModels)
+		}
+	}
+}
+
 func TestTryOnProvider_RequestConversionUnsupportedSkipsAliases(t *testing.T) {
 	var requestCount atomic.Int32
 	var seenModels []string
@@ -2695,7 +2771,7 @@ func TestWarmToolCallSupport_Probe422(t *testing.T) {
 	// Send the probe request manually to verify the detection logic.
 	probeURL := upstream.URL + "/v1/chat/completions"
 	req, _ := http.NewRequest(http.MethodPost, probeURL, nil)
-	client := ph.connPool.GetClient(provider.Name)
+	client := ph.connPool.GetClient(provider.Name, ConnectionProfileProbe)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)

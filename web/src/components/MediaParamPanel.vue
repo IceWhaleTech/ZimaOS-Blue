@@ -272,7 +272,7 @@ function modelLabel(model: MediaModelInfo): string {
 .mpp-close {
   position: absolute;
   top: 10px;
-  right: 10px;
+  inset-inline-end: 10px;
   background: none;
   border: none;
   color: var(--color-text-tertiary, #9ca3af);
@@ -300,7 +300,7 @@ function modelLabel(model: MediaModelInfo): string {
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
-  padding-right: 24px;
+  padding-inline-end: 24px;
 }
 
 .mpp-icon {
@@ -409,9 +409,7 @@ function modelLabel(model: MediaModelInfo): string {
   padding: 0 10px;
   border-radius: 999px;
   border: 1px solid #dbe4f0;
-  background:
-    linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(236, 246, 255, 0.98)),
-    #fff;
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(236, 246, 255, 0.98)), #fff;
   color: #27405a;
   font-size: 11px;
   font-weight: 700;
@@ -421,17 +419,14 @@ function modelLabel(model: MediaModelInfo): string {
 
 .mpp-meta--nanoslides .mpp-meta-pill {
   border-color: #b6c8de;
-  background:
-    linear-gradient(135deg, rgba(236, 245, 255, 0.98), rgba(224, 235, 246, 0.98)),
-    #fff;
+  background: linear-gradient(135deg, rgba(236, 245, 255, 0.98), rgba(224, 235, 246, 0.98)), #fff;
   color: #17334d;
 }
 
 .mpp-meta--bananaslides .mpp-meta-pill {
   border-color: #e7c17a;
   background:
-    linear-gradient(135deg, rgba(255, 245, 214, 0.98), rgba(255, 236, 180, 0.98)),
-    #fff8e1;
+    linear-gradient(135deg, rgba(255, 245, 214, 0.98), rgba(255, 236, 180, 0.98)), #fff8e1;
   color: #714d02;
 }
 

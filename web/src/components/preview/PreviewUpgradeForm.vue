@@ -217,14 +217,14 @@ async function handleSubmit() {
                 <input
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
-                  class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                  class="w-full px-3 py-2 pe-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                   :placeholder="passwordPlaceholder"
                   required
                   :minlength="policy.min_length"
                 />
                 <button
                   type="button"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  class="absolute end-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                   @click="showPassword = !showPassword"
                 >
                   <svg

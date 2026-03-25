@@ -102,7 +102,8 @@ const detailRiskLabel = computed(() => {
 })
 const catalogCount = computed(() => totalSkills.value || skills.value.length)
 const isInitialCatalogLoad = computed(
-  () => discoverRunning.value && catalogCount.value === 0 && !hasCompletedDiscover(discoverStatus.value)
+  () =>
+    discoverRunning.value && catalogCount.value === 0 && !hasCompletedDiscover(discoverStatus.value)
 )
 
 const resultSubtitle = computed(() => {
@@ -147,10 +148,7 @@ const discoverProgressLabel = computed(() =>
 )
 const discoverProgressMeta = computed(() => {
   if (isInitialCatalogLoad.value) {
-    return skillStoreText(
-      'status.initializingFirstLoad',
-      'First-time loading can take a while'
-    )
+    return skillStoreText('status.initializingFirstLoad', 'First-time loading can take a while')
   }
   const total = discoverStatus.value?.total_sources || 0
   const processed = discoverStatus.value?.processed_sources || 0
@@ -186,11 +184,97 @@ const discoverProgressDescription = computed(() => {
   }
   return skillStoreText('status.initializingDesc', 'Fetching skill data, this may take a moment...')
 })
-const discoverActivityFeed = computed(() => discoverActivity.value.slice(-6))
+const discoverActivityFeed = computed(() => discoverActivity.value.slice(-4))
 const showResultsLoading = computed(
   () =>
     (loading.value && !skills.value.length) ||
     (initializingMarketplace.value && !skills.value.length)
+)
+const discoverSourceProgressLabel = computed(() => discoverSourceProgress(discoverStatus.value))
+const discoverPhaseTone = computed<'initializing' | 'running' | 'completed' | 'error' | 'idle'>(
+  () => {
+    if (discoverStatus.value?.last_error || discoverStatus.value?.phase === 'error') return 'error'
+    if (discoverStatus.value?.phase === 'completed' || hasCompletedDiscover(discoverStatus.value)) {
+      return 'completed'
+    }
+    if (initializingMarketplace.value || isInitialCatalogLoad.value) return 'initializing'
+    if (refreshing.value || discoverRunning.value) return 'running'
+    return 'idle'
+  }
+)
+const discoverPhaseLabel = computed(() => {
+  switch (discoverPhaseTone.value) {
+    case 'error':
+      return marketplaceText('progress.phaseAttention', 'Attention needed')
+    case 'completed':
+      return marketplaceText('progress.phaseCompleted', 'Completed')
+    case 'initializing':
+      return marketplaceText('progress.phaseInitializing', 'Initializing')
+    case 'running':
+      return marketplaceText('progress.phaseSyncing', 'Syncing now')
+    default:
+      return marketplaceText('progress.phaseStandby', 'Standby')
+  }
+})
+const discoverCurrentSourceLabel = computed(() => {
+  const sourceName = discoverStatus.value?.current_source_name?.trim()
+  if (sourceName) return sourceName
+  if (discoverPhaseTone.value === 'completed') {
+    return marketplaceText('progress.allSourcesProcessed', 'All sources processed')
+  }
+  if (discoverRunning.value || refreshing.value || initializingMarketplace.value) {
+    return marketplaceText('progress.preparingSourceQueue', 'Preparing source queue')
+  }
+  return marketplaceText('progress.waitingToStart', 'Waiting to start')
+})
+const discoverProgressFootnote = computed(() => {
+  const status = discoverStatus.value
+  return (
+    discoverTotalsSummary(status) ||
+    discoverBatchSummary(status) ||
+    status?.message?.trim() ||
+    marketplaceText('progress.collectingSignals', 'Collecting update signals...')
+  )
+})
+const discoverActivityHeading = computed(() =>
+  discoverRunning.value
+    ? marketplaceText('progress.liveActivity', 'Live activity')
+    : marketplaceText('progress.recentActivity', 'Recent activity')
+)
+const latestDiscoverEntry = computed(() => {
+  const feed = discoverActivityFeed.value
+  return feed.length ? feed[feed.length - 1]! : null
+})
+const previousDiscoverEntries = computed(() => {
+  const feed = discoverActivityFeed.value
+  if (feed.length <= 1) return []
+  return feed.slice(0, -1)
+})
+const discoverActivityToggleLabel = computed(() =>
+  marketplaceText('progress.moreEvents', 'Show {count} earlier updates', {
+    count: previousDiscoverEntries.value.length,
+  })
+)
+const discoverSummaryInline = computed(() => {
+  const status = discoverStatus.value
+  const result = !status?.running ? status?.result : undefined
+  const processed = status?.processed_sources ?? result?.sources_processed ?? 0
+  const total = status?.total_sources || 0
+  const inserted = result ? result.discovered || 0 : status?.batch_inserted || 0
+  const updated = result ? result.updated || 0 : status?.batch_updated || 0
+  const failed = result ? result.failed || 0 : status?.batch_failed || 0
+
+  return joinDiscoverParts([
+    `${marketplaceText('progress.sourcesLabel', 'Sources')} ${
+      total > 0 ? `${processed}/${total}` : formatWholeNumber(processed)
+    }`,
+    `${marketplaceText('progress.newSkillsLabel', 'New')} ${formatWholeNumber(inserted)}`,
+    `${marketplaceText('progress.updatedSkillsLabel', 'Updated')} ${formatWholeNumber(updated)}`,
+    `${marketplaceText('progress.failedSkillsLabel', 'Failed')} ${formatWholeNumber(failed)}`,
+  ])
+})
+const discoverProgressCaption = computed(() =>
+  joinDiscoverParts([discoverSourceProgressLabel.value, discoverProgressFootnote.value])
 )
 const sortPillOptions = computed(() => [
   { value: 'featured' as const, label: sortModeLabel('featured') },
@@ -343,7 +427,7 @@ watch(selectedSkillId, (id) => {
 function interpolateFallback(fallback: string, params?: Record<string, unknown>): string {
   if (!params) return fallback
   return Object.entries(params).reduce((text, [name, value]) => {
-    return text.replaceAll(`{${name}}`, String(value ?? ''))
+    return text.split(`{${name}}`).join(String(value ?? ''))
   }, fallback)
 }
 
@@ -520,6 +604,10 @@ function formatNumber(value?: number): string {
   }).format(value)
 }
 
+function formatWholeNumber(value?: number): string {
+  return new Intl.NumberFormat(locale.value || undefined).format(value || 0)
+}
+
 function formatDate(value?: string): string {
   if (!value) return '-'
   const date = new Date(value)
@@ -616,7 +704,9 @@ function discoverBatchSummary(status?: DiscoverStatusResponse | null): string {
   if (!status) return ''
   const parts: string[] = []
   if (status.batch_inserted) {
-    parts.push(marketplaceText('progress.batchInserted', '+{count} new', { count: status.batch_inserted }))
+    parts.push(
+      marketplaceText('progress.batchInserted', '+{count} new', { count: status.batch_inserted })
+    )
   }
   if (status.batch_updated) {
     parts.push(
@@ -624,7 +714,9 @@ function discoverBatchSummary(status?: DiscoverStatusResponse | null): string {
     )
   }
   if (status.batch_failed) {
-    parts.push(marketplaceText('progress.batchFailed', '{count} failed', { count: status.batch_failed }))
+    parts.push(
+      marketplaceText('progress.batchFailed', '{count} failed', { count: status.batch_failed })
+    )
   }
   return parts.join(' · ')
 }
@@ -634,10 +726,14 @@ function discoverTotalsSummary(status?: DiscoverStatusResponse | null): string {
   if (!result) return ''
   const parts: string[] = []
   if (result.discovered) {
-    parts.push(marketplaceText('progress.batchInserted', '+{count} new', { count: result.discovered }))
+    parts.push(
+      marketplaceText('progress.batchInserted', '+{count} new', { count: result.discovered })
+    )
   }
   if (result.updated) {
-    parts.push(marketplaceText('progress.batchUpdated', '{count} updated', { count: result.updated }))
+    parts.push(
+      marketplaceText('progress.batchUpdated', '{count} updated', { count: result.updated })
+    )
   }
   if (result.failed) {
     parts.push(marketplaceText('progress.batchFailed', '{count} failed', { count: result.failed }))
@@ -654,8 +750,7 @@ function recordDiscoverActivity(
     phaseOverride ||
     ((status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') ??
       (status.running ? 'status' : 'completed'))
-  const sourceName =
-    status.current_source_name || marketplaceText('progress.catalog', 'catalog')
+  const sourceName = status.current_source_name || marketplaceText('progress.catalog', 'catalog')
   const progressLabel = discoverSourceProgress(status)
   const batchSummary = discoverBatchSummary(status)
   const totalSummary = discoverTotalsSummary(status)
@@ -670,7 +765,9 @@ function recordDiscoverActivity(
       marketplaceText('progress.waitingFirstBatch', 'Waiting for the first batch...'),
     ])
   } else if (phase === 'batch') {
-    title = marketplaceText('progress.processingSource', 'Processing {source}', { source: sourceName })
+    title = marketplaceText('progress.processingSource', 'Processing {source}', {
+      source: sourceName,
+    })
     detail = joinDiscoverParts([progressLabel, batchSummary, totalSummary])
   } else if (phase === 'source_complete') {
     title = marketplaceText('progress.completedSource', 'Finished {source}', { source: sourceName })
@@ -682,7 +779,9 @@ function recordDiscoverActivity(
     title = marketplaceText('progress.failed', 'Catalog refresh failed')
     detail = joinDiscoverParts([progressLabel, status.last_error])
   } else if (phase === 'status') {
-    title = marketplaceText('progress.processingSource', 'Processing {source}', { source: sourceName })
+    title = marketplaceText('progress.processingSource', 'Processing {source}', {
+      source: sourceName,
+    })
     detail =
       joinDiscoverParts([progressLabel, batchSummary || totalSummary]) ||
       marketplaceText('progress.waitingNextStep', 'Waiting for the next update...')
@@ -862,7 +961,10 @@ async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null
   let status = initial ?? null
   const deadline = Date.now() + 10 * 60 * 1000
   if (status) {
-    recordDiscoverActivity(status, (status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') || 'status')
+    recordDiscoverActivity(
+      status,
+      (status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') || 'status'
+    )
   }
   while (Date.now() < deadline) {
     if (shouldStopDiscoverPolling(requestId)) return null
@@ -872,7 +974,11 @@ async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null
       status = response.data
     }
     applyDiscoverStatus(status)
-    recordDiscoverActivity(status, (status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') || (status.running ? 'status' : 'completed'))
+    recordDiscoverActivity(
+      status,
+      (status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') ||
+        (status.running ? 'status' : 'completed')
+    )
     maybeScheduleVisibleResultsRefresh(status)
     if (!status.running) {
       if (status.last_error) {
@@ -903,7 +1009,11 @@ async function continueMarketplaceDiscover(initial?: DiscoverStatusResponse | nu
       if (componentDisposed) return
       status = refreshResponse.data
       applyDiscoverStatus(status)
-      recordDiscoverActivity(status, (status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') || 'started')
+      recordDiscoverActivity(
+        status,
+        (status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') ||
+          'started'
+      )
     }
     await waitForDiscoverCompletion(status)
     if (componentDisposed) return
@@ -1390,11 +1500,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="toolbar-controls">
-        <div
-          class="sort-pills"
-          role="tablist"
-          :aria-label="topTabAriaLabel"
-        >
+        <div class="sort-pills" role="tablist" :aria-label="topTabAriaLabel">
           <button
             v-for="option in sortPillOptions"
             :key="option.value"
@@ -1468,50 +1574,96 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="showDiscoverProgress" class="discover-progress dashboard-card-subsurface">
-        <div class="discover-progress__copy">
-          <span class="section-label">{{ discoverProgressLabel }}</span>
-          <strong>{{ discoverProgressMeta }}</strong>
-          <p>{{ discoverProgressDescription }}</p>
+        <div class="discover-progress__header">
+          <div class="discover-progress__copy">
+            <span class="section-label">{{ discoverProgressLabel }}</span>
+            <strong>{{ discoverCurrentSourceLabel }}</strong>
+            <p>{{ discoverProgressMeta }}</p>
+          </div>
+          <div class="discover-progress__percent">
+            <strong>{{ discoverProgressPercent }}%</strong>
+            <span>{{ discoverPhaseLabel }}</span>
+          </div>
         </div>
-        <div
-          class="discover-progress__track"
-          role="progressbar"
-          :aria-label="discoverProgressLabel"
-          :aria-valuenow="discoverProgressPercent"
-          aria-valuemin="0"
-          aria-valuemax="100"
-        >
+
+        <div class="discover-progress__meta">
+          <span
+            :class="[
+              'discover-progress__status-pill',
+              `discover-progress__status-pill--${discoverPhaseTone}`,
+            ]"
+          >
+            {{ discoverPhaseLabel }}
+          </span>
+          <span v-if="discoverSummaryInline" class="discover-progress__summary">
+            {{ discoverSummaryInline }}
+          </span>
+          <span v-if="showResultsRefreshing" class="discover-progress__summary">
+            {{ marketplaceText('progress.refreshingVisible', 'Refreshing visible results') }}
+          </span>
+        </div>
+
+        <div class="discover-progress__track-wrap">
           <div
-            class="discover-progress__fill"
-            :style="{ width: `${discoverProgressPercent}%` }"
-          ></div>
+            class="discover-progress__track"
+            role="progressbar"
+            :aria-label="discoverProgressLabel"
+            :aria-valuenow="discoverProgressPercent"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <div
+              class="discover-progress__fill"
+              :style="{ width: `${discoverProgressPercent}%` }"
+            ></div>
+          </div>
+          <p class="discover-progress__caption">{{ discoverProgressCaption }}</p>
         </div>
+
         <div class="discover-activity">
           <div class="discover-activity__header">
-            <span class="section-label">{{
-              marketplaceText('progress.liveActivity', 'Live activity')
-            }}</span>
-            <span v-if="showResultsRefreshing" class="summary-pill summary-pill-active">
-              {{ marketplaceText('progress.refreshingVisible', 'Refreshing visible results') }}
-            </span>
+            <span class="section-label">{{ discoverActivityHeading }}</span>
           </div>
-          <div ref="discoverActivityViewport" class="discover-activity__stream">
-            <article
-              v-for="entry in discoverActivityFeed"
-              :key="entry.id"
-              :class="['discover-activity__item', `discover-activity__item--${entry.phase}`]"
-            >
-              <span class="discover-activity__dot" aria-hidden="true"></span>
-              <div class="discover-activity__body">
-                <strong>{{ entry.title }}</strong>
-                <p>{{ entry.detail }}</p>
-              </div>
-              <time>{{ formatClockTime(entry.timestamp) }}</time>
-            </article>
-            <div v-if="showDiscoverProgress" class="discover-activity__tail">
-              <span class="discover-activity__tail-dot" aria-hidden="true"></span>
-              <span>{{ discoverProgressDescription }}</span>
+          <article
+            v-if="latestDiscoverEntry"
+            :class="[
+              'discover-activity__item',
+              'discover-activity__item--latest',
+              `discover-activity__item--${latestDiscoverEntry.phase}`,
+            ]"
+          >
+            <span class="discover-activity__dot" aria-hidden="true"></span>
+            <div class="discover-activity__body">
+              <strong>{{ latestDiscoverEntry.title }}</strong>
+              <p>{{ latestDiscoverEntry.detail }}</p>
             </div>
+            <time>{{ formatClockTime(latestDiscoverEntry.timestamp) }}</time>
+          </article>
+          <details v-if="previousDiscoverEntries.length" class="discover-activity__details">
+            <summary class="discover-activity__toggle">
+              {{ discoverActivityToggleLabel }}
+            </summary>
+            <div ref="discoverActivityViewport" class="discover-activity__stream">
+              <article
+                v-for="entry in previousDiscoverEntries"
+                :key="entry.id"
+                :class="['discover-activity__item', `discover-activity__item--${entry.phase}`]"
+              >
+                <span class="discover-activity__dot" aria-hidden="true"></span>
+                <div class="discover-activity__body">
+                  <strong>{{ entry.title }}</strong>
+                  <p>{{ entry.detail }}</p>
+                </div>
+                <time>{{ formatClockTime(entry.timestamp) }}</time>
+              </article>
+            </div>
+          </details>
+          <div
+            v-else-if="!latestDiscoverEntry && showDiscoverProgress"
+            class="discover-activity__tail"
+          >
+            <span class="discover-activity__tail-dot" aria-hidden="true"></span>
+            <span>{{ discoverProgressDescription }}</span>
           </div>
         </div>
       </div>
@@ -2448,13 +2600,19 @@ onBeforeUnmount(() => {
 
 .discover-progress {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-top: 8px;
-  padding: 10px;
-  border: 1px solid rgba(59, 130, 246, 0.18);
+  padding: 12px;
+  border: 1px solid var(--border);
   border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.03)), var(--panel-bg);
+  background: color-mix(in srgb, var(--panel-bg) 94%, rgba(59, 130, 246, 0.06));
+}
+
+.discover-progress__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
 }
 
 .discover-progress__copy {
@@ -2471,8 +2629,81 @@ onBeforeUnmount(() => {
 .discover-progress__copy p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 9.5px;
   line-height: 1.4;
+}
+
+.discover-progress__percent {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  text-align: end;
+}
+
+.discover-progress__percent strong {
+  color: var(--text-primary);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.discover-progress__percent span {
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.discover-progress__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+}
+
+.discover-progress__status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.discover-progress__status-pill--initializing,
+.discover-progress__status-pill--running {
+  border-color: rgba(59, 130, 246, 0.18);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--text-primary);
+}
+
+.discover-progress__status-pill--completed {
+  border-color: rgba(34, 197, 94, 0.18);
+  background: rgba(34, 197, 94, 0.08);
+  color: var(--text-primary);
+}
+
+.discover-progress__status-pill--error {
+  border-color: rgba(239, 68, 68, 0.18);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--text-primary);
+}
+
+.discover-progress__status-pill--idle {
+  color: var(--text-secondary);
+}
+
+.discover-progress__summary {
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.discover-progress__track-wrap {
+  display: grid;
+  gap: 6px;
 }
 
 .discover-progress__track {
@@ -2481,38 +2712,57 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 8px;
   border-radius: 999px;
-  border: 1px solid rgba(59, 130, 246, 0.12);
-  background: rgba(148, 163, 184, 0.16);
+  background: rgba(148, 163, 184, 0.14);
 }
 
 .discover-progress__fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #3b82f6 0%, #38bdf8 100%);
-  box-shadow: 0 0 18px rgba(59, 130, 246, 0.28);
-  transition: width 0.45s ease;
+  background: #3b82f6;
+  transition: width 0.25s ease;
+}
+
+.discover-progress__caption {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 8.5px;
+  line-height: 1.4;
 }
 
 .discover-activity {
   display: grid;
-  gap: 8px;
+  gap: 4px;
 }
 
 .discover-activity__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+}
+
+.discover-activity__details {
+  display: grid;
+  gap: 4px;
+}
+
+.discover-activity__toggle {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 1.4;
+  list-style: none;
+}
+
+.discover-activity__toggle::-webkit-details-marker {
+  display: none;
 }
 
 .discover-activity__stream {
   display: grid;
-  gap: 6px;
-  max-height: 176px;
-  padding-right: 4px;
+  gap: 4px;
+  max-height: 132px;
   overflow-y: auto;
-  scroll-behavior: smooth;
-  mask-image: linear-gradient(180deg, transparent 0, rgba(0, 0, 0, 1) 12px, rgba(0, 0, 0, 1) calc(100% - 18px), transparent 100%);
+  padding-inline-end: 2px;
 }
 
 .discover-activity__item,
@@ -2520,12 +2770,20 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 9px;
-  border-radius: 12px;
-  border: 1px solid rgba(59, 130, 246, 0.12);
-  background: rgba(15, 23, 42, 0.18);
-  animation: discover-activity-appear 0.28s ease;
+  gap: 7px;
+  padding: 6px 2px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+}
+
+.discover-activity__item--latest {
+  padding-top: 2px;
+}
+
+.discover-activity__body {
+  display: grid;
+  gap: 2px;
 }
 
 .discover-activity__item strong,
@@ -2551,12 +2809,11 @@ onBeforeUnmount(() => {
 
 .discover-activity__dot,
 .discover-activity__tail-dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 4px;
+  width: 5px;
+  height: 5px;
+  margin-top: 6px;
   border-radius: 999px;
   background: #38bdf8;
-  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.16);
 }
 
 .discover-activity__tail {
@@ -2564,41 +2821,28 @@ onBeforeUnmount(() => {
   font-size: 9.5px;
 }
 
-.discover-activity__tail-dot {
-  animation: discover-activity-pulse 1.15s ease-in-out infinite;
+.discover-activity__item--batch {
+  color: inherit;
+}
+
+.discover-activity__item--source_complete {
+  color: inherit;
 }
 
 .discover-activity__item--completed .discover-activity__dot {
   background: #22c55e;
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
+.discover-activity__item--completed {
+  color: inherit;
 }
 
 .discover-activity__item--error .discover-activity__dot {
   background: #ef4444;
-  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
 }
 
-@keyframes discover-activity-appear {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes discover-activity-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.8;
-  }
-  50% {
-    transform: scale(1.22);
-    opacity: 1;
-  }
+.discover-activity__item--error {
+  color: inherit;
 }
 
 .chip-button {
@@ -3438,7 +3682,7 @@ onBeforeUnmount(() => {
 .risk-modal__close {
   position: absolute;
   top: 16px;
-  right: 16px;
+  inset-inline-end: 16px;
   z-index: 1;
   width: 34px;
   height: 34px;
@@ -3469,7 +3713,7 @@ onBeforeUnmount(() => {
 }
 
 .risk-modal__header {
-  padding-right: 42px;
+  padding-inline-end: 42px;
 }
 
 .risk-modal__hero {
@@ -3683,6 +3927,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 980px) {
+  .discover-progress__header {
+    align-items: flex-start;
+  }
+
   .detail-meta {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3720,6 +3968,9 @@ onBeforeUnmount(() => {
   .hero-headline,
   .toolbar-search-row,
   .toolbar-controls,
+  .discover-progress__header,
+  .discover-progress__meta,
+  .discover-activity__header,
   .panel-header,
   .detail-header,
   .card-topline,
@@ -3728,6 +3979,20 @@ onBeforeUnmount(() => {
   .section-heading {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .discover-progress__percent {
+    justify-items: start;
+    text-align: start;
+  }
+
+  .discover-activity__item,
+  .discover-activity__tail {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .discover-activity__item time {
+    grid-column: 2;
   }
 
   .card-hero-main,
@@ -3783,7 +4048,7 @@ onBeforeUnmount(() => {
   }
 
   .risk-modal__header {
-    padding-right: 34px;
+    padding-inline-end: 34px;
   }
 
   .risk-modal__summary {

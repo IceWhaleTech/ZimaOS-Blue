@@ -161,6 +161,26 @@ func TestIsContextCanceledError(t *testing.T) {
 	}
 }
 
+func TestShouldResetIdleConnectionsOnError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "http2 response header timeout", err: errors.New("Post \"https://example.com\": http2: timeout awaiting response headers"), want: true},
+		{name: "server closed idle connection", err: errors.New("Get \"https://example.com\": server closed idle connection"), want: true},
+		{name: "connection reset", err: errors.New("read tcp: connection reset by peer"), want: true},
+		{name: "other timeout", err: errors.New("context deadline exceeded"), want: false},
+	}
+
+	for _, tc := range tests {
+		if got := shouldResetIdleConnectionsOnError(tc.err); got != tc.want {
+			t.Fatalf("%s: shouldResetIdleConnectionsOnError(%v) = %v, want %v", tc.name, tc.err, got, tc.want)
+		}
+	}
+}
+
 func TestIsResponsesContinuationRejectedError(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -213,6 +233,15 @@ func TestProxyFailureStatusCode(t *testing.T) {
 			name: "wrapped upstream 404 preserved",
 			err:  errors.New(`upstream 404: {"error":{"message":"Model not found"}}`),
 			want: http.StatusNotFound,
+		},
+		{
+			name: "auth exhausted preserves upstream auth status",
+			err: &AuthExhaustedError{
+				ProviderID:     "p1",
+				LastStatusCode: http.StatusForbidden,
+				LastBody:       `{"error":{"message":"banned"}}`,
+			},
+			want: http.StatusForbidden,
 		},
 		{
 			name: "relay wrapped context window full maps to 400",

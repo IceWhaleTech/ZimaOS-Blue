@@ -38,7 +38,7 @@ const costLevel = computed(() => {
           {{ t('stats.costDisclaimer') }}
         </p>
       </div>
-      <div class="text-right">
+      <div class="text-end">
         <p
           :class="[
             'text-2xl font-semibold',

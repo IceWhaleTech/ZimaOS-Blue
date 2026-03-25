@@ -320,20 +320,412 @@ func TestCompactToolResultContentForLLM_PDFKeepsAllCompactPagesWhenAvailable(t *
 	}
 }
 
-func TestContentForChatToolHistory_PrefersRawPDFAuditPayload(t *testing.T) {
-	compact := `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":1,"text":"sample"}]}`
-	raw := `{"document":{"path":"openclaw_report.pdf"},"raw_text":"[Page 1]\nfull raw text"}`
-	if got := contentForChatToolHistory("pdf", compact, raw); got != raw {
-		t.Fatalf("contentForChatToolHistory() = %q, want raw audit payload", got)
+func TestCompactToolResultContentForLLM_PDFSynthesizesPagesFromMarkdownWhenPagesMissing(t *testing.T) {
+	payload := map[string]interface{}{
+		"document": map[string]interface{}{
+			"path":       "/tmp/workspace/openclaw_report.pdf",
+			"file_name":  "openclaw_report.pdf",
+			"page_count": 11,
+		},
+		"outline": []interface{}{
+			map[string]interface{}{"title": "Recommended new tasks and task modifications for PinchBench", "level": 2, "page_number": 6},
+			map[string]interface{}{"title": "Proposed tasks", "level": 3, "page_number": 6},
+			map[string]interface{}{"title": "Secure skill installation and safe configuration", "level": 4, "page_number": 6},
+			map[string]interface{}{"title": "Browser automation with \"no API\" constraints and recovery", "level": 4, "page_number": 7},
+			map[string]interface{}{"title": "Scheduled daily briefing with data fusion + memory write-back", "level": 4, "page_number": 8},
+			map[string]interface{}{"title": "Prompt-injection and tool-blast-radius containment", "level": 4, "page_number": 9},
+		},
+		"markdown": strings.Join([]string{
+			"[Page 1]\nThe report mentions your 10 existing benchmark tasks and an execution summary.",
+			"[Page 2]\nRegistry methodology and filtering notes.",
+			"[Page 3]\nLargest category is AI & LLMs: 287.",
+			"[Page 4]\nSecond category is Search & Research: 253.",
+			"[Page 5]\nThe OpenClaw gateway exposes a typed WebSocket API.",
+			"[Page 6]\n## Proposed tasks\n\n#### Secure skill installation and safe configuration",
+			"[Page 7]\n#### Browser automation with \"no API\" constraints and recovery\n\n#### Multi-channel routing and session isolation",
+			"[Page 8]\n#### Scheduled daily briefing with data fusion + memory write-back\n\n#### PR review and repair loop with CI feedback",
+			"[Page 9]\n#### Prompt-injection and tool-blast-radius containment",
+			"[Page 10]\nPrioritized roadmap and visualization requests.",
+			"[Page 11]\nReferences and source links.",
+		}, "\n\n"),
+		"raw_text": strings.Join([]string{
+			"[Page 1]\nnoisy raw text that should not crowd out structured pages",
+			"[Page 2]\nmore noisy raw text",
+		}, "\n\n"),
+	}
+	contentBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pdf payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("pdf", string(contentBytes))
+	if len(compacted) > maxLLMToolOutputBytes {
+		t.Fatalf("compacted pdf output too large: %d", len(compacted))
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted pdf payload: %v", err)
+	}
+	if _, exists := out["raw_text"]; exists {
+		t.Fatalf("expected raw_text omitted once structured/synthetic page samples are present: %#v", out)
+	}
+
+	pages, ok := out["pages"].([]interface{})
+	if !ok || len(pages) != 11 {
+		t.Fatalf("pages = %#v, want 11 entries", out["pages"])
+	}
+	pageSnippets := map[int]string{}
+	for _, item := range pages {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("page item = %#v", item)
+		}
+		pageNumber := int(row["number"].(float64))
+		pageSnippets[pageNumber] = anyToStringForLLM(row["markdown"])
+	}
+	for pageNumber, needle := range map[int]string{
+		6: "## Proposed tasks",
+		7: "Browser automation with \"no API\" constraints and recovery",
+		8: "Scheduled daily briefing with data fusion + memory write-back",
+		9: "Prompt-injection and tool-blast-radius containment",
+	} {
+		if !strings.Contains(pageSnippets[pageNumber], needle) {
+			t.Fatalf("page %d markdown = %q, want to contain %q", pageNumber, pageSnippets[pageNumber], needle)
+		}
 	}
 }
 
-func TestContentForChatToolHistory_PrefersRawFileReadAuditPayloadForPDF(t *testing.T) {
-	compact := `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":1,"text":"sample"}]}`
-	raw := `{"document":{"path":"openclaw_report.pdf"},"raw_text":"[Page 1]\nfull raw text"}`
-	if got := contentForChatToolHistory("read", compact, raw); got != raw {
-		t.Fatalf("contentForChatToolHistory() = %q, want raw audit payload for PDF-like file_read results", got)
+func TestCompactToolResultContentForLLM_PDFKeepsStructuredMarkdownOutlineBlocksAndTables(t *testing.T) {
+	payload := map[string]interface{}{
+		"document": map[string]interface{}{
+			"path":       "/tmp/workspace/structured_report.pdf",
+			"file_name":  "structured_report.pdf",
+			"page_count": 2,
+		},
+		"selected_pages": []interface{}{1, 2},
+		"markdown":       "[Page 1]\n\n# Executive Summary\n\n- First finding\n\n[Page 2]\n\n## Metrics\n\n| Name | Count |\n| --- | --- |\n| AI & LLMs | 287 |",
+		"outline": []interface{}{
+			map[string]interface{}{"title": "Executive Summary", "level": 1, "page_number": 1},
+			map[string]interface{}{"title": "Metrics", "level": 2, "page_number": 2},
+		},
+		"pages": []interface{}{
+			map[string]interface{}{
+				"number":   1,
+				"markdown": "# Executive Summary\n\n- First finding",
+				"blocks": []interface{}{
+					map[string]interface{}{"kind": "heading", "heading_level": 1, "markdown": "# Executive Summary"},
+					map[string]interface{}{"kind": "list", "markdown": "- First finding", "children": []interface{}{map[string]interface{}{"kind": "list_item", "text": "First finding"}}},
+				},
+			},
+			map[string]interface{}{
+				"number":   2,
+				"markdown": "## Metrics\n\n| Name | Count |\n| --- | --- |\n| AI & LLMs | 287 |",
+				"tables": []interface{}{
+					map[string]interface{}{
+						"number_of_rows":    2,
+						"number_of_columns": 2,
+						"markdown":          "| Name | Count |\n| --- | --- |\n| AI & LLMs | 287 |",
+					},
+				},
+			},
+		},
 	}
+	contentBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pdf payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("pdf", string(contentBytes))
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted pdf payload: %v", err)
+	}
+	if markdown := anyToStringForLLM(out["markdown"]); !strings.Contains(markdown, "Executive Summary") {
+		t.Fatalf("expected compacted markdown to survive, got=%q", markdown)
+	}
+	outline, ok := out["outline"].([]interface{})
+	if !ok || len(outline) != 2 {
+		t.Fatalf("outline = %#v, want 2 entries", out["outline"])
+	}
+	pages, ok := out["pages"].([]interface{})
+	if !ok || len(pages) != 2 {
+		t.Fatalf("pages = %#v, want 2 entries", out["pages"])
+	}
+	firstPage, ok := pages[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("first page = %#v", pages[0])
+	}
+	if _, ok := firstPage["blocks"].([]interface{}); !ok {
+		t.Fatalf("expected compacted blocks on first page, got=%#v", firstPage)
+	}
+	secondPage, ok := pages[1].(map[string]interface{})
+	if !ok {
+		t.Fatalf("second page = %#v", pages[1])
+	}
+	if _, ok := secondPage["tables"].([]interface{}); !ok {
+		t.Fatalf("expected compacted tables on second page, got=%#v", secondPage)
+	}
+}
+
+func TestContentForChatToolHistory_CompactsPDFAuditPayloadForLLM(t *testing.T) {
+	compact := `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":1,"text":"sample"}]}`
+	raw := `{"document":{"path":"openclaw_report.pdf"},"outline":[{"title":"Executive Summary","level":1,"page_number":1}],"markdown":"[Page 1]\nfull raw text","pages":[{"number":1,"text":"sample"}],"raw_text":"[Page 1]\nfull raw text"}`
+	want := compactToolResultContentForLLM("pdf", raw)
+	if got := contentForChatToolHistory("pdf", compact, raw); got != want {
+		t.Fatalf("contentForChatToolHistory() = %q, want compacted payload %q", got, want)
+	}
+}
+
+func TestContentForChatToolHistory_CompactsFileReadAuditPayloadForPDF(t *testing.T) {
+	compact := `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":1,"text":"sample"}]}`
+	raw := `{"document":{"path":"openclaw_report.pdf"},"outline":[{"title":"Executive Summary","level":1,"page_number":1}],"markdown":"[Page 1]\nfull raw text","pages":[{"number":1,"text":"sample"}],"raw_text":"[Page 1]\nfull raw text"}`
+	want := compactToolResultContentForLLM("read", raw)
+	if got := contentForChatToolHistory("read", compact, raw); got != want {
+		t.Fatalf("contentForChatToolHistory() = %q, want compacted payload %q", got, want)
+	}
+}
+
+func TestCompactToolResultContentForLLM_PDFOrdersOutlineAndPagesBeforeMarkdown(t *testing.T) {
+	payload := map[string]interface{}{
+		"document": map[string]interface{}{
+			"path":       "/tmp/workspace/openclaw_report.pdf",
+			"file_name":  "openclaw_report.pdf",
+			"page_count": 10,
+		},
+		"outline": []interface{}{
+			map[string]interface{}{"title": "Proposed tasks", "level": 2, "page_number": 6},
+			map[string]interface{}{"title": "Prompt-injection and tool-blast-radius containment", "level": 4, "page_number": 9},
+		},
+		"pages": []interface{}{
+			map[string]interface{}{"number": 6, "markdown": "## Proposed tasks"},
+			map[string]interface{}{"number": 9, "markdown": "#### Prompt-injection and tool-blast-radius containment"},
+		},
+		"markdown": "[Page 6]\n\n## Proposed tasks\n\nnoisy body " + strings.Repeat("alpha ", 120),
+	}
+	contentBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pdf payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("pdf", string(contentBytes))
+	if outlineHierarchyIdx := strings.Index(compacted, `"outline_hierarchy"`); outlineHierarchyIdx < 0 {
+		t.Fatalf("expected outline_hierarchy in compacted payload: %q", compacted)
+	} else if outlineIdx := strings.Index(compacted, `"outline"`); outlineIdx < 0 {
+		t.Fatalf("expected outline in compacted payload: %q", compacted)
+	} else if pagesIdx := strings.Index(compacted, `"pages"`); pagesIdx < 0 {
+		t.Fatalf("expected pages in compacted payload: %q", compacted)
+	} else if markdownIdx := strings.Index(compacted, `"markdown"`); markdownIdx < 0 {
+		t.Fatalf("expected markdown in compacted payload: %q", compacted)
+	} else {
+		if outlineHierarchyIdx > markdownIdx {
+			t.Fatalf("expected outline_hierarchy before markdown, got=%q", compacted)
+		}
+		if outlineIdx > markdownIdx {
+			t.Fatalf("expected outline before markdown, got=%q", compacted)
+		}
+		if pagesIdx > markdownIdx {
+			t.Fatalf("expected pages before markdown, got=%q", compacted)
+		}
+	}
+}
+
+func TestCompactToolResultContentForLLM_PDFKeepsAllProposedTaskOutlineEntries(t *testing.T) {
+	outline := make([]interface{}, 0, 27)
+	for i := 1; i <= 20; i++ {
+		outline = append(outline, map[string]interface{}{
+			"title":       fmt.Sprintf("Section %02d", i),
+			"level":       2,
+			"page_number": i,
+		})
+	}
+	outline = append(outline, map[string]interface{}{
+		"title":       "Proposed tasks",
+		"level":       3,
+		"page_number": 6,
+	})
+	for _, title := range []string{
+		"Secure skill installation and safe configuration",
+		"Browser automation with \"no API\" constraints and recovery",
+		"Multi-channel routing and session isolation",
+		"Scheduled daily briefing with data fusion + memory write-back",
+		"PR review and repair loop with CI feedback",
+		"Prompt-injection and tool-blast-radius containment",
+	} {
+		outline = append(outline, map[string]interface{}{
+			"title":       title,
+			"level":       4,
+			"page_number": 6,
+		})
+	}
+
+	payload := map[string]interface{}{
+		"document": map[string]interface{}{
+			"path":       "/tmp/workspace/openclaw_report.pdf",
+			"file_name":  "openclaw_report.pdf",
+			"page_count": 11,
+		},
+		"outline": outline,
+	}
+	contentBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pdf payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("pdf", string(contentBytes))
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted pdf payload: %v", err)
+	}
+	rows, ok := out["outline"].([]interface{})
+	if !ok {
+		t.Fatalf("outline = %#v", out["outline"])
+	}
+	hierarchyRows, ok := out["outline_hierarchy"].([]interface{})
+	if !ok || len(hierarchyRows) == 0 {
+		t.Fatalf("outline_hierarchy = %#v", out["outline_hierarchy"])
+	}
+	found := 0
+	parentFound := false
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		title, _ := row["title"].(string)
+		if title == "Proposed tasks" {
+			parentFound = true
+			if got := anyToIntForLLM(row["child_count"]); got != 6 {
+				t.Fatalf("Proposed tasks child_count = %d, want 6; compacted=%q", got, compacted)
+			}
+		}
+		switch title {
+		case "Secure skill installation and safe configuration",
+			"Browser automation with \"no API\" constraints and recovery",
+			"Multi-channel routing and session isolation",
+			"Scheduled daily briefing with data fusion + memory write-back",
+			"PR review and repair loop with CI feedback",
+			"Prompt-injection and tool-blast-radius containment":
+			found++
+		}
+	}
+	if !parentFound {
+		t.Fatalf("expected Proposed tasks parent entry in compacted outline; compacted=%q", compacted)
+	}
+	if found != 6 {
+		t.Fatalf("found %d proposed task outline entries, want 6; compacted=%q", found, compacted)
+	}
+	for _, item := range hierarchyRows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if title, _ := row["title"].(string); title == "Proposed tasks" {
+			if got := anyToIntForLLM(row["child_count"]); got != 6 {
+				t.Fatalf("outline_hierarchy Proposed tasks child_count = %d, want 6; compacted=%q", got, compacted)
+			}
+			childTitles, ok := row["child_titles"].([]interface{})
+			if !ok || len(childTitles) != 6 {
+				t.Fatalf("outline_hierarchy Proposed tasks child_titles = %#v, want 6 entries; compacted=%q", row["child_titles"], compacted)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected Proposed tasks in outline_hierarchy; compacted=%q", compacted)
+}
+
+func TestCompactToolResultContentForLLM_PDFKeepsOutlineParentsWhenSampling(t *testing.T) {
+	outline := make([]interface{}, 0, 60)
+	for i := 1; i <= 53; i++ {
+		outline = append(outline, map[string]interface{}{
+			"title":       fmt.Sprintf("Section %02d", i),
+			"level":       2,
+			"page_number": i,
+		})
+	}
+	outline = append(outline, map[string]interface{}{
+		"title":       "Proposed tasks",
+		"level":       3,
+		"page_number": 54,
+	})
+	for i, title := range []string{
+		"Secure skill installation and safe configuration",
+		"Browser automation with \"no API\" constraints and recovery",
+		"Multi-channel routing and session isolation",
+		"Scheduled daily briefing with data fusion + memory write-back",
+		"PR review and repair loop with CI feedback",
+		"Prompt-injection and tool-blast-radius containment",
+	} {
+		outline = append(outline, map[string]interface{}{
+			"title":       title,
+			"level":       4,
+			"page_number": 54 + i/2,
+		})
+	}
+
+	payload := map[string]interface{}{
+		"document": map[string]interface{}{
+			"path":       "/tmp/workspace/openclaw_report.pdf",
+			"file_name":  "openclaw_report.pdf",
+			"page_count": 11,
+		},
+		"outline": outline,
+	}
+	contentBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pdf payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("pdf", string(contentBytes))
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted pdf payload: %v", err)
+	}
+	rows, ok := out["outline"].([]interface{})
+	if !ok {
+		t.Fatalf("outline = %#v", out["outline"])
+	}
+	if len(rows) != 40 {
+		t.Fatalf("outline length = %d, want 40; compacted=%q", len(rows), compacted)
+	}
+	hierarchyRows, ok := out["outline_hierarchy"].([]interface{})
+	if !ok || len(hierarchyRows) == 0 {
+		t.Fatalf("outline_hierarchy = %#v", out["outline_hierarchy"])
+	}
+
+	parentInOutline := false
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if title, _ := row["title"].(string); title == "Proposed tasks" {
+			parentInOutline = true
+			if got := anyToIntForLLM(row["child_count"]); got != 6 {
+				t.Fatalf("Proposed tasks child_count = %d, want 6; compacted=%q", got, compacted)
+			}
+		}
+	}
+	if !parentInOutline {
+		t.Fatalf("expected Proposed tasks parent entry in sampled outline; compacted=%q", compacted)
+	}
+	for _, item := range hierarchyRows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if title, _ := row["title"].(string); title == "Proposed tasks" {
+			if got := anyToIntForLLM(row["child_count"]); got != 6 {
+				t.Fatalf("outline_hierarchy Proposed tasks child_count = %d, want 6; compacted=%q", got, compacted)
+			}
+			childTitles, ok := row["child_titles"].([]interface{})
+			if !ok || len(childTitles) != 6 {
+				t.Fatalf("outline_hierarchy Proposed tasks child_titles = %#v, want 6 entries; compacted=%q", row["child_titles"], compacted)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected Proposed tasks in sampled outline_hierarchy; compacted=%q", compacted)
 }
 
 func TestCompactToolResultsForLLM_BoundsResponsesBodySize(t *testing.T) {

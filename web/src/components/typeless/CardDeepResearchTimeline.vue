@@ -7,7 +7,11 @@ import type {
   DeepResearchTimelineStep,
   TypelessCardDeepResearchTimeline,
 } from '@/types/typeless'
-import { localizeDeepResearchMode, localizeDeepResearchStatus } from '@/utils/deepResearchText'
+import {
+  localizeDeepResearchGap,
+  localizeDeepResearchMode,
+  localizeDeepResearchStatus,
+} from '@/utils/deepResearchText'
 
 const { t, te } = useI18n()
 
@@ -61,9 +65,10 @@ const modeLabel = computed(() =>
   )
 )
 const latestGap = computed(() => {
-  return String(
+  const raw = String(
     props.card.latest_gap || latestStep.value?.gap || latestStep.value?.latest_gap || ''
   ).trim()
+  return localizeDeepResearchGap(raw, resolveLabel) || raw
 })
 const latestAction = computed(() => {
   return String(props.card.latest_action || latestStep.value?.latest_action || '').trim()
@@ -315,14 +320,14 @@ const emptyStateLabel = computed(() => {
         <div
           v-for="(step, index) in steps"
           :key="step.id || `deep-research-step-${index}`"
-          class="relative pl-6"
+          class="deep-research-timeline-step relative"
         >
           <div
-            class="absolute left-2 top-3 bottom-0 w-px bg-slate-200 dark:bg-slate-700"
+            class="deep-research-timeline-connector absolute top-3 bottom-0 w-px bg-slate-200 dark:bg-slate-700"
             :class="{ hidden: index === steps.length - 1 }"
           />
           <div
-            class="absolute left-0 top-2.5 h-4 w-4 rounded-full ring-4 ring-white dark:ring-slate-900"
+            class="deep-research-timeline-dot absolute top-2.5 h-4 w-4 rounded-full ring-4 ring-white dark:ring-slate-900"
             :class="stepDotClass(step)"
           />
 
@@ -405,7 +410,9 @@ const emptyStateLabel = computed(() => {
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchMustVerify', 'Must verify') }}
                   </div>
-                  <ul class="mt-2 list-disc space-y-1 pl-4 text-slate-600 dark:text-slate-300">
+                  <ul
+                    class="deep-research-timeline-list mt-2 list-disc space-y-1 text-slate-600 dark:text-slate-300"
+                  >
                     <li v-for="claim in step.brief.must_verify_claims" :key="claim">{{ claim }}</li>
                   </ul>
                 </div>
@@ -426,7 +433,9 @@ const emptyStateLabel = computed(() => {
                     <div class="font-medium text-amber-700 dark:text-amber-200">
                       {{ resolveLabel('chat.deepResearchRetryQueries', 'Recovery queries') }}
                     </div>
-                    <ul class="mt-2 list-disc space-y-1 pl-4 text-amber-700/90 dark:text-amber-100">
+                    <ul
+                      class="deep-research-timeline-list mt-2 list-disc space-y-1 text-amber-700/90 dark:text-amber-100"
+                    >
                       <li v-for="query in step.brief.retry_queries" :key="query">{{ query }}</li>
                     </ul>
                   </div>
@@ -559,7 +568,9 @@ const emptyStateLabel = computed(() => {
                   <div class="font-medium">
                     {{ resolveLabel('chat.deepResearchLatestGap', 'Research gap') }}
                   </div>
-                  <div class="mt-1 break-words">{{ step.gap }}</div>
+                  <div class="mt-1 break-words">
+                    {{ localizeDeepResearchGap(step.gap, resolveLabel) }}
+                  </div>
                 </div>
                 <div
                   v-if="step.focus"
@@ -598,6 +609,22 @@ const emptyStateLabel = computed(() => {
 </template>
 
 <style scoped>
+.deep-research-timeline-step {
+  padding-inline-start: 1.5rem;
+}
+
+.deep-research-timeline-connector {
+  inset-inline-start: 0.5rem;
+}
+
+.deep-research-timeline-dot {
+  inset-inline-start: 0;
+}
+
+.deep-research-timeline-list {
+  padding-inline-start: 1rem;
+}
+
 details[open] > summary .details-chevron {
   transform: rotate(180deg);
 }

@@ -86,16 +86,16 @@ func TestConnectionPool(t *testing.T) {
 		}
 	})
 
-	t.Run("default transport keeps http2 enabled", func(t *testing.T) {
+	t.Run("default transport does not force http2", func(t *testing.T) {
 		transport := pool.GetTransport()
 		if transport.DisableKeepAlives {
 			t.Error("default transport should keep keep-alives enabled")
 		}
-		if !transport.ForceAttemptHTTP2 {
-			t.Error("default transport should still attempt HTTP/2")
+		if transport.ForceAttemptHTTP2 {
+			t.Error("default transport should not force HTTP/2 by default")
 		}
-		if !pool.config.ForceHTTP2 {
-			t.Error("default effective config should keep HTTP/2 enabled")
+		if pool.config.ForceHTTP2 {
+			t.Error("default effective config should keep HTTP/2 disabled")
 		}
 	})
 
@@ -119,6 +119,44 @@ func TestConnectionPool(t *testing.T) {
 		}
 		if noKeepAlivePool.config.ForceHTTP2 {
 			t.Error("effective config should disable HTTP/2 when keep-alives are disabled")
+		}
+	})
+
+	t.Run("explicit force http2 remains available", func(t *testing.T) {
+		http2Config := DefaultConnectionConfig()
+		http2Config.ForceHTTP2 = true
+
+		http2Pool := NewConnectionPool(http2Config)
+		defer http2Pool.Close()
+
+		if !http2Pool.GetTransport().ForceAttemptHTTP2 {
+			t.Error("transport should attempt HTTP/2 when explicitly enabled")
+		}
+		if !http2Pool.config.ForceHTTP2 {
+			t.Error("effective config should preserve explicit HTTP/2 enablement")
+		}
+	})
+
+	t.Run("probe profile uses separate client and shorter timeout budget", func(t *testing.T) {
+		longClient := pool.GetClient("provider1", ConnectionProfileLong)
+		probeClient := pool.GetClient("provider1", ConnectionProfileProbe)
+		if longClient == probeClient {
+			t.Error("probe and long profiles should not reuse the same client")
+		}
+
+		longTransport := pool.GetTransportForProfile(ConnectionProfileLong)
+		probeTransport := pool.GetTransportForProfile(ConnectionProfileProbe)
+		if longTransport == probeTransport {
+			t.Error("probe and long profiles should not share the same transport")
+		}
+		if probeTransport.ResponseHeaderTimeout >= longTransport.ResponseHeaderTimeout {
+			t.Error("probe profile should use a shorter response header timeout than long profile")
+		}
+		if longClient.Timeout != 0 {
+			t.Errorf("long client timeout = %s, want 0", longClient.Timeout)
+		}
+		if probeClient.Timeout <= 0 {
+			t.Error("probe client should enforce a finite timeout")
 		}
 	})
 }

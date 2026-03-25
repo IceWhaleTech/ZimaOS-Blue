@@ -164,7 +164,9 @@ function getProviderIconSvg(type: ProviderType): string {
               {{ t('auth.username') }}
             </label>
             <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <div
+                class="login-view-field-icon absolute inset-y-0 flex items-center pointer-events-none"
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   class="h-5 w-5 text-gray-400 dark:text-gray-500"
@@ -186,7 +188,7 @@ function getProviderIconSvg(type: ProviderType): string {
                 type="text"
                 autocomplete="username"
                 required
-                class="block w-full pl-10 pr-3 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                class="login-view-input login-view-input-with-leading-icon block w-full py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('auth.enterUsername')"
               />
             </div>
@@ -201,7 +203,9 @@ function getProviderIconSvg(type: ProviderType): string {
               {{ t('auth.password') }}
             </label>
             <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <div
+                class="login-view-field-icon absolute inset-y-0 flex items-center pointer-events-none"
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   class="h-5 w-5 text-gray-400 dark:text-gray-500"
@@ -223,12 +227,12 @@ function getProviderIconSvg(type: ProviderType): string {
                 :type="showPassword ? 'text' : 'password'"
                 autocomplete="current-password"
                 required
-                class="block w-full pl-10 pr-10 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+                class="login-view-input login-view-input-with-leading-icon login-view-input-with-trailing-action block w-full py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('auth.enterPassword')"
               />
               <button
                 type="button"
-                class="absolute inset-y-0 right-0 pr-3 flex items-center"
+                class="login-view-trailing-action absolute inset-y-0 flex items-center"
                 @click="toggleShowPassword"
               >
                 <svg
@@ -279,7 +283,7 @@ function getProviderIconSvg(type: ProviderType): string {
                 type="checkbox"
                 class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-white dark:focus:ring-offset-gray-800"
               />
-              <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{{
+              <span class="login-view-inline-start-gap text-sm text-gray-700 dark:text-gray-300">{{
                 t('auth.rememberMe')
               }}</span>
             </label>
@@ -293,7 +297,7 @@ function getProviderIconSvg(type: ProviderType): string {
           >
             <svg
               v-if="authStore.loading"
-              class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+              class="login-view-button-spinner animate-spin h-5 w-5 text-white"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -410,3 +414,36 @@ function getProviderIconSvg(type: ProviderType): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.login-view-input {
+  padding-inline: 0.75rem;
+}
+
+.login-view-input-with-leading-icon {
+  padding-inline-start: 2.5rem;
+}
+
+.login-view-input-with-trailing-action {
+  padding-inline-end: 2.5rem;
+}
+
+.login-view-field-icon {
+  inset-inline-start: 0;
+  padding-inline-start: 0.75rem;
+}
+
+.login-view-trailing-action {
+  inset-inline-end: 0;
+  padding-inline-end: 0.75rem;
+}
+
+.login-view-inline-start-gap {
+  margin-inline-start: 0.5rem;
+}
+
+.login-view-button-spinner {
+  margin-inline-start: -0.25rem;
+  margin-inline-end: 0.75rem;
+}
+</style>

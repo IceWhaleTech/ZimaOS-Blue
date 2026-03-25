@@ -146,6 +146,7 @@ type webRetrievalAdapterEntry struct {
 
 type webFetchHTTPFetcher struct{}
 type webFetchSessionFetcher struct{}
+type webFetchLightpandaShimFetcher struct{}
 type webFetchBrowserFetcher struct{}
 type webFetchProxyFetcherImpl struct{}
 
@@ -157,11 +158,12 @@ func newFetchOrchestrator(tool *WebFetchTool) *FetchOrchestrator {
 		tool:   tool,
 		memory: newWebRetrievalMemory(),
 		fetchers: map[string]Fetcher{
-			webAccessLaneHTTP:         webFetchHTTPFetcher{},
-			webAccessLaneHTTPNative:   webFetchHTTPFetcher{},
-			webFetchStrategySession:   webFetchSessionFetcher{},
-			webAccessLaneBrowser:      webFetchBrowserFetcher{},
-			webAccessLaneProxyFetcher: webFetchProxyFetcherImpl{},
+			webAccessLaneHTTP:           webFetchHTTPFetcher{},
+			webAccessLaneHTTPNative:     webFetchHTTPFetcher{},
+			webFetchStrategySession:     webFetchSessionFetcher{},
+			webAccessLaneLightpandaShim: webFetchLightpandaShimFetcher{},
+			webAccessLaneBrowser:        webFetchBrowserFetcher{},
+			webAccessLaneProxyFetcher:   webFetchProxyFetcherImpl{},
 		},
 	}
 	return o
@@ -449,6 +451,8 @@ func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBro
 			appendLane(webFetchStrategySession)
 		}
 		appendLane(webAccessLaneHTTP)
+	case webAccessLaneLightpandaShim:
+		appendLane(webAccessLaneLightpandaShim)
 	case webAccessLaneBrowser:
 		appendLane(webAccessLaneBrowser)
 	case webAccessLaneProxyFetcher:
@@ -460,6 +464,8 @@ func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBro
 
 	if autoAllowed && hasAdapter {
 		switch strings.TrimSpace(adapter.PreferredLane) {
+		case webAccessLaneLightpandaShim:
+			appendLane(webAccessLaneLightpandaShim)
 		case webAccessLaneBrowser:
 			appendLane(webAccessLaneBrowser)
 		case webAccessLaneProxyFetcher:
@@ -474,7 +480,7 @@ func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBro
 	}
 	if autoAllowed && hasStrategy {
 		switch strings.TrimSpace(strategy.PreferredLane) {
-		case webAccessLaneBrowser, webAccessLaneProxyFetcher, webAccessLaneHTTPNative, webAccessLaneHTTP:
+		case webAccessLaneBrowser, webAccessLaneProxyFetcher, webAccessLaneHTTPNative, webAccessLaneHTTP, webAccessLaneLightpandaShim:
 			appendLane(strategy.PreferredLane)
 		case webFetchStrategySession:
 			if req.AllowSession && hasBrowserTarget {
@@ -487,6 +493,7 @@ func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBro
 	}
 	appendLane(webAccessLaneHTTP)
 	appendLane(webAccessLaneHTTPNative)
+	appendLane(webAccessLaneLightpandaShim)
 	if req.AllowProxy {
 		appendLane(webAccessLaneProxyFetcher)
 	}
@@ -636,6 +643,21 @@ func (webFetchSessionFetcher) Fetch(ctx context.Context, o *FetchOrchestrator, r
 	}, nil
 }
 
+func (webFetchLightpandaShimFetcher) Name() string { return webAccessLaneLightpandaShim }
+
+func (webFetchLightpandaShimFetcher) Fetch(ctx context.Context, o *FetchOrchestrator, req FetchRequest) (FetchResult, error) {
+	payload, err := o.tool.fetchViaLightpandaShim(ctx, req.URL, req.Mode)
+	if err != nil {
+		return FetchResult{}, err
+	}
+	payload.StrategyUsed = webAccessLaneLightpandaShim
+	return FetchResult{
+		Payload:        payload,
+		StrategyUsed:   webAccessLaneLightpandaShim,
+		ChallengeState: classifyWebFetchChallengeState(payload.WarningCode, payload.Warning, payload.Content),
+	}, nil
+}
+
 func (webFetchBrowserFetcher) Name() string { return webAccessLaneBrowser }
 
 func (webFetchBrowserFetcher) Fetch(ctx context.Context, o *FetchOrchestrator, req FetchRequest) (FetchResult, error) {
@@ -758,6 +780,8 @@ func normalizeFetchStrategyLane(strategy string) string {
 		return webAccessLaneProxyFetcher
 	case webAccessLaneHTTPNative:
 		return webAccessLaneHTTPNative
+	case webAccessLaneLightpandaShim:
+		return webAccessLaneLightpandaShim
 	default:
 		return webAccessLaneHTTP
 	}
@@ -772,6 +796,8 @@ func confidenceForFetchResult(result FetchResult) float64 {
 		return 0.9
 	case webFetchStrategySession:
 		return 0.88
+	case webAccessLaneLightpandaShim:
+		return 0.74
 	case webFetchStrategyProxy:
 		return 0.8
 	default:
@@ -796,6 +822,8 @@ func scoreFetchResult(result FetchResult) int {
 		score += 200
 	case webFetchStrategySession:
 		score += 160
+	case webAccessLaneLightpandaShim:
+		score += 110
 	case webFetchStrategyProxy:
 		score += 120
 	}

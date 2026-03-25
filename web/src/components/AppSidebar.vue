@@ -13,6 +13,7 @@ import { PagePermissions } from '@/constants/pagePermissions'
 import { storeToRefs } from 'pinia'
 import { useTauri } from '@/composables/useTauri'
 import { getPreferredNetworkAddress, useNetwork } from '@/composables/useNetwork'
+import { getLocaleDirection } from '@/i18n'
 import { isLocalAbsolutePath } from '@/utils/localPath'
 import { resetPreviewModeStatus } from '@/router'
 import { extractLocalPathCandidatesFromCard } from '@/utils/workspaceGeneratedFiles'
@@ -125,7 +126,7 @@ const coreWorkspaceFileInfo: Record<string, CoreWorkspaceFileInfo> = {
 const coreWorkspaceFileNames = new Set(Object.keys(coreWorkspaceFileInfo))
 const GITHUB_REPO_URL = 'https://github.com/IceWhaleTech/ZimaOS-Blue'
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const systemStore = useSystemStore()
@@ -147,6 +148,7 @@ const { isPreviewMode } = storeToRefs(previewStore)
 const isOpen = ref(false)
 const externalBrowserOpening = ref(false)
 const networkAddressesRequested = ref(false)
+const isRtl = computed(() => getLocaleDirection(locale.value) === 'rtl')
 
 // Collapsed state (desktop only)
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
@@ -1209,9 +1211,14 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
 
   <!-- Sidebar -->
   <aside
-    class="app-sidebar h-full flex flex-col fixed inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out lg:transform-none"
+    class="app-sidebar h-full flex flex-col fixed inset-y-0 z-50 transform transition-all duration-300 ease-in-out lg:transform-none"
+    :style="{ insetInlineStart: '0' }"
     :class="[
-      isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+      isOpen
+        ? 'translate-x-0'
+        : isRtl
+          ? 'translate-x-full lg:translate-x-0'
+          : '-translate-x-full lg:translate-x-0',
       isCollapsed ? 'w-[4.125rem]' : 'w-[13rem]',
     ]"
   >
@@ -1295,7 +1302,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             v-for="item in primaryNavItems"
             :key="item.id"
             type="button"
-            class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-left"
+            class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-start"
             :class="[
               isNavItemActive(item) ? 'sidebar-nav-item-active' : 'sidebar-nav-item-inactive',
               isCollapsed ? 'justify-center' : 'gap-2.5',
@@ -1327,7 +1334,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             <button
               v-if="!isCollapsed"
               type="button"
-              class="sidebar-section-trigger flex w-full items-center justify-between gap-2.5 px-2 py-1.5 text-left"
+              class="sidebar-section-trigger flex w-full items-center justify-between gap-2.5 px-2 py-1.5 text-start"
               data-testid="sidebar-section-configuration"
               :title="
                 isConfigurationGroupExpanded
@@ -1369,7 +1376,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                 v-for="item in configurationNavItems"
                 :key="item.id"
                 type="button"
-                class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-left"
+                class="sidebar-nav-item w-full flex items-center px-3 py-[0.6rem] rounded-[1.1rem] transition-all duration-200 cursor-pointer group text-start"
                 :class="[
                   isNavItemActive(item) ? 'sidebar-nav-item-active' : 'sidebar-nav-item-inactive',
                   isCollapsed ? 'justify-center' : 'gap-2.5',
@@ -2038,7 +2045,7 @@ html[data-blue-macos-glass='true'] .app-sidebar {
     linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(15, 23, 42, 0.76));
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
-  border-right: 1px solid rgba(148, 163, 184, 0.26);
+  border-inline-end: 1px solid rgba(148, 163, 184, 0.26);
   box-shadow: 18px 0 36px -28px rgba(2, 6, 23, 0.9);
 }
 
@@ -2048,7 +2055,7 @@ html[data-blue-macos-glass='true'] .sidebar-card {
     linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.58));
   backdrop-filter: blur(30px) saturate(1.16);
   -webkit-backdrop-filter: blur(30px) saturate(1.16);
-  border-right-color: rgba(148, 163, 184, 0.22);
+  border-inline-end-color: rgba(148, 163, 184, 0.22);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     18px 0 36px -28px rgba(2, 6, 23, 0.54);
@@ -2075,8 +2082,8 @@ html[data-blue-macos-glass='true'] .sidebar-card {
 .sidebar-brand-shell::after {
   content: '';
   position: absolute;
-  left: 1.25rem;
-  right: 1.25rem;
+  inset-inline-start: 1.25rem;
+  inset-inline-end: 1.25rem;
   bottom: 0;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(209, 213, 219, 0.72), transparent);
@@ -2262,9 +2269,8 @@ html[data-blue-macos-glass='true'] .sidebar-card {
 
 .sidebar-footer-preview {
   padding-top: 0.45rem;
-  padding-right: 0.55rem;
+  padding-inline: 0.55rem;
   padding-bottom: 0.6rem;
-  padding-left: 0.55rem;
   border-top-color: transparent !important;
 }
 
@@ -2326,7 +2332,7 @@ html[data-blue-macos-glass='true'] .sidebar-card {
 }
 
 .sidebar-utility-row-preview {
-  margin-left: auto;
+  margin-inline-start: auto;
   flex-shrink: 0;
   justify-content: flex-end;
   gap: 0.22rem;
@@ -2493,7 +2499,7 @@ html[data-blue-macos-glass='true'] .sidebar-card {
 :root.light .sidebar-card,
 [data-theme='light'] .sidebar-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 249, 251, 0.98));
-  border-right-color: rgba(209, 213, 219, 0.9);
+  border-inline-end-color: rgba(209, 213, 219, 0.9);
   box-shadow: 12px 0 26px -24px rgba(15, 23, 42, 0.1);
 }
 
@@ -2507,10 +2513,32 @@ html[data-theme='light'][data-blue-macos-glass='true'] .sidebar-card {
   background:
     radial-gradient(circle at 50% 0%, rgba(96, 165, 250, 0.18), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 249, 0.72));
-  border-right-color: rgba(186, 203, 223, 0.68);
+  border-inline-end-color: rgba(186, 203, 223, 0.68);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.76),
     12px 0 26px -24px rgba(148, 163, 184, 0.24);
+}
+
+html[dir='rtl'] .sidebar-card {
+  box-shadow: -18px 0 36px -28px rgba(2, 6, 23, 0.9);
+}
+
+html[data-blue-macos-glass='true'][dir='rtl'] .sidebar-card {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    -18px 0 36px -28px rgba(2, 6, 23, 0.54);
+}
+
+:root.light[dir='rtl'] .sidebar-card,
+html[data-theme='light'][dir='rtl'] .sidebar-card {
+  box-shadow: -12px 0 26px -24px rgba(15, 23, 42, 0.1);
+}
+
+html.light[data-blue-macos-glass='true'][dir='rtl'] .sidebar-card,
+html[data-theme='light'][data-blue-macos-glass='true'][dir='rtl'] .sidebar-card {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.76),
+    -12px 0 26px -24px rgba(148, 163, 184, 0.24);
 }
 
 :root.light .sidebar-brand,
@@ -2788,8 +2816,11 @@ html[data-theme='light'][data-blue-macos-glass='true'] .sidebar-card {
   width: min(28rem, calc(100vw - 0.75rem));
   max-width: 100%;
   height: 100%;
-  margin-left: auto;
-  border-radius: 1.5rem 0 0 1.5rem;
+  margin-inline-start: auto;
+  border-start-start-radius: 1.5rem;
+  border-end-start-radius: 1.5rem;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
 }
 
 .workspace-panel-enter-active,
@@ -2815,12 +2846,16 @@ html[data-theme='light'][data-blue-macos-glass='true'] .sidebar-card {
   transform: translateX(24px);
 }
 
+html[dir='rtl'] .workspace-panel-enter-from .workspace-panel-shell,
+html[dir='rtl'] .workspace-panel-leave-to .workspace-panel-shell {
+  transform: translateX(-24px);
+}
+
 @media (min-width: 1024px) {
   .workspace-panel-layer {
-    top: 0.9rem;
-    right: 0.9rem;
-    bottom: 0.9rem;
-    left: auto;
+    inset-block: 0.9rem;
+    inset-inline-end: 0.9rem;
+    inset-inline-start: auto;
     width: var(--workspace-dock-width, 28rem);
     padding: 0;
     align-items: stretch;

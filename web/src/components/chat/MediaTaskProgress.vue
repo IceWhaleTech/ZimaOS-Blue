@@ -161,7 +161,7 @@ onUnmounted(() => {
             <!-- Dot orbiting -->
             <div class="absolute inset-0 orbit-dot">
               <div
-                class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-0.5 w-2 h-2 rounded-full"
+                class="media-task-orbit-anchor absolute top-0 -translate-x-1/2 -translate-y-0.5 w-2 h-2 rounded-full"
                 :class="type === 'image' ? 'bg-blue-400' : 'bg-purple-400'"
               />
             </div>
@@ -248,7 +248,7 @@ onUnmounted(() => {
           <a
             :href="url"
             :download="`generated-${type}-${i + 1}`"
-            class="absolute bottom-2 right-2 p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
+            class="media-task-download absolute bottom-2 p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
             @click.stop
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -319,7 +319,7 @@ onUnmounted(() => {
           @click="closeLightbox"
         >
           <button
-            class="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-full transition-colors z-10"
+            class="media-task-lightbox-close absolute top-4 p-2 text-white hover:bg-white/10 rounded-full transition-colors z-10"
             @click.stop="closeLightbox"
           >
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -342,7 +342,7 @@ onUnmounted(() => {
           <a
             :href="lightboxUrl"
             download="generated-media"
-            class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors text-sm"
+            class="media-task-lightbox-download absolute bottom-6 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors text-sm"
             @click.stop
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -404,6 +404,10 @@ onUnmounted(() => {
   animation: orbit-spin 3s linear infinite;
 }
 
+.media-task-orbit-anchor {
+  inset-inline-start: 50%;
+}
+
 /* Progress bar glow */
 .progress-bar {
   box-shadow: 0 0 6px rgba(59, 130, 246, 0.3);
@@ -412,6 +416,18 @@ onUnmounted(() => {
 /* Result image entrance */
 .result-image {
   animation: result-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.media-task-download {
+  inset-inline-end: 0.5rem;
+}
+
+.media-task-lightbox-close {
+  inset-inline-end: 1rem;
+}
+
+.media-task-lightbox-download {
+  inset-inline-start: 50%;
 }
 
 @keyframes result-enter {

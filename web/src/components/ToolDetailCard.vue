@@ -298,7 +298,7 @@ const statusToneClass = computed(() => {
 /* Toggle button */
 .tool-detail-card__toggle {
   position: absolute;
-  right: 8px;
+  inset-inline-end: 8px;
   bottom: 8px;
   padding: 2px;
   border-radius: 2px;

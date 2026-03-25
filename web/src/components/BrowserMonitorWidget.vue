@@ -115,6 +115,47 @@ function trp(key: string, fallback: string, params: Record<string, string | numb
   return te(key) ? String(t(key, params)) : interpolateTemplate(fallback, params)
 }
 
+function humanizeLabel(value: string | undefined): string {
+  return String(value || '')
+    .trim()
+    .replace(/_/g, ' ')
+}
+
+function sessionLayerValue(session: BrowserSession | null | undefined): string {
+  const explicit = String(session?.session_layer || '')
+    .trim()
+    .toLowerCase()
+  if (explicit) return explicit
+  if (session?.monitor_kind === 'text' || session?.engine === 'lightpanda') return 'read'
+  if (session?.engine_detail === 'lightpanda_binary') return 'browser_lite'
+  return 'full_browser'
+}
+
+function sessionLayerLabel(session: BrowserSession | null | undefined): string {
+  switch (sessionLayerValue(session)) {
+    case 'read':
+      return tr('browserMonitor.sessionKindRead', 'Read session')
+    case 'browser_lite':
+      return tr('browserMonitor.sessionKindBrowserLite', 'Browser-lite session')
+    default:
+      return tr('browserMonitor.sessionKindFullBrowser', 'Full browser session')
+  }
+}
+
+function sessionEngineLabel(session: BrowserSession | null | undefined): string {
+  const detail = humanizeLabel(session?.engine_detail)
+  if (detail) return detail
+  return humanizeLabel(session?.engine)
+}
+
+function sessionDescriptorLabel(session: BrowserSession | null | undefined): string {
+  const layer = sessionLayerLabel(session)
+  const engine = sessionEngineLabel(session)
+  if (!engine) return layer
+  if (engine.toLowerCase() === layer.toLowerCase()) return layer
+  return `${layer} · ${engine}`
+}
+
 function loadStoredString(key: string): string {
   try {
     return localStorage.getItem(key) || ''
@@ -998,8 +1039,8 @@ const previewMeta = computed(() => {
         })
       )
     }
-    if (selectedSession.value?.engine) {
-      items.push(selectedSession.value.engine.replace(/_/g, ' '))
+    if (selectedSession.value) {
+      items.push(sessionDescriptorLabel(selectedSession.value))
     }
     return items.filter((item) => item.trim().length > 0)
   }
@@ -1527,7 +1568,7 @@ onUnmounted(() => {
                 }}</pre>
               </div>
               <div class="browser-monitor__text-stats">
-                <span>{{ selectedSession?.engine?.replace(/_/g, ' ') }}</span>
+                <span>{{ sessionDescriptorLabel(selectedSession) }}</span>
                 <span>{{
                   trp('browserMonitor.textInteractiveCount', '{count} interactive elements', {
                     count: activeTextMonitor.interactiveCount,
@@ -1592,7 +1633,10 @@ onUnmounted(() => {
                 <strong>{{
                   session.page_title || tr('browserMonitor.untitledTab', 'Untitled tab')
                 }}</strong>
-                <span>{{ session.current_url || session.id }}</span>
+                <span class="browser-monitor__tab-meta">{{
+                  session.current_url || session.id
+                }}</span>
+                <span class="browser-monitor__tab-kind">{{ sessionLayerLabel(session) }}</span>
               </span>
             </button>
           </div>
@@ -1624,7 +1668,7 @@ onUnmounted(() => {
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
   backdrop-filter: blur(18px);
   cursor: grab;
-  text-align: left;
+  text-align: start;
   user-select: none;
   touch-action: none;
 }
@@ -1802,7 +1846,7 @@ onUnmounted(() => {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(241, 245, 249, 0.92)),
     rgba(255, 255, 255, 0.82);
-  border-right: 1px solid rgba(148, 163, 184, 0.18);
+  border-inline-end: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .browser-monitor__panel {
@@ -1854,7 +1898,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 0.15rem;
+  padding-inline-end: 0.15rem;
 }
 
 .browser-monitor__filter-chip {
@@ -1948,7 +1992,7 @@ onUnmounted(() => {
   border-radius: 0.92rem;
   border: 1px solid rgba(226, 232, 240, 0.86);
   background: rgba(248, 250, 252, 0.85);
-  text-align: left;
+  text-align: start;
 }
 
 .browser-monitor__task.is-clickable {
@@ -2274,10 +2318,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  gap: 0.16rem;
 }
 
 .browser-monitor__tab-copy strong,
-.browser-monitor__tab-copy span {
+.browser-monitor__tab-meta {
   display: block;
   max-width: 100%;
   white-space: nowrap;
@@ -2289,10 +2334,22 @@ onUnmounted(() => {
   font-size: 0.72rem;
 }
 
-.browser-monitor__tab-copy span {
-  margin-top: 0.14rem;
+.browser-monitor__tab-meta {
   font-size: 0.64rem;
   color: rgba(226, 232, 240, 0.68);
+}
+
+.browser-monitor__tab-kind {
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0.14rem 0.42rem;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.12);
+  color: #dbeafe;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .browser-monitor__empty,
@@ -2349,7 +2406,7 @@ onUnmounted(() => {
 
 .browser-monitor__resize-grip {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   bottom: 0;
   width: 1.1rem;
   height: 1.1rem;
@@ -2374,7 +2431,7 @@ onUnmounted(() => {
   }
 
   .browser-monitor__sidebar {
-    border-right: 0;
+    border-inline-end: 0;
     border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   }
 }

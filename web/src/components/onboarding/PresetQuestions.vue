@@ -48,7 +48,9 @@ const interestOptions = computed(() =>
     id: interest,
     label: t(
       PRESET_FEED_INTEREST_I18N_KEYS[interest],
-      isChineseLocale.value ? interestFallbackLabels[interest].zh : interestFallbackLabels[interest].en
+      isChineseLocale.value
+        ? interestFallbackLabels[interest].zh
+        : interestFallbackLabels[interest].en
     ),
   }))
 )
@@ -236,7 +238,7 @@ watch(
         <h3 class="flex-shrink-0 text-[13px] font-medium text-gray-500 dark:text-gray-400">
           {{ t('chat.presetQuestions.title') }}
         </h3>
-        <div class="preset-questions-interest-row flex flex-1 gap-1.5 overflow-x-auto pr-1">
+        <div class="preset-questions-interest-row flex flex-1 gap-1.5 overflow-x-auto pe-1">
           <button
             v-for="interest in interestOptions"
             :key="interest.id"
@@ -258,23 +260,17 @@ watch(
 
     <div
       ref="scrollContainerRef"
-      class="preset-questions-scroll mt-2 overflow-y-auto pr-1"
+      class="preset-questions-scroll mt-2 overflow-y-auto pe-1"
       data-testid="preset-questions-scroll"
     >
-      <div
-        v-if="loading"
-        class="preset-questions-list flex flex-col"
-      >
+      <div v-if="loading" class="preset-questions-list flex flex-col">
         <div
           v-for="i in 4"
           :key="i"
           class="h-[var(--preset-question-row-height)] animate-pulse rounded-[1.25rem] bg-gray-100 dark:bg-gray-800"
         />
       </div>
-      <div
-        v-else
-        class="preset-questions-list flex flex-col"
-      >
+      <div v-else class="preset-questions-list flex flex-col">
         <PresetQuestionCard
           v-for="question in visibleQuestions"
           :key="question.id"

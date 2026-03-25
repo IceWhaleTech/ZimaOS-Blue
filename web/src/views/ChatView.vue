@@ -18,6 +18,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useTaskProjectionsStore } from '@/stores/taskProjections'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
+import { getLocaleDirection } from '@/i18n'
 import type { FileAttachment } from '@/components/ChatInput.vue'
 import type ChatInputComponent from '@/components/ChatInput.vue'
 import type VirtualScrollComponent from '@/components/VirtualScroll.vue'
@@ -243,7 +244,11 @@ const mobileAnimationEnabled = ref(false) // Only animate after user interaction
 const showTopbarMenu = ref(false)
 const enhancedModeCardVisible = ref(false)
 const enhancedModeCardEnabled = ref(false)
-const enhancedModeCardStyle = ref<{ top: string; right: string }>({ top: '0px', right: '0px' })
+const isRtl = computed(() => getLocaleDirection(locale.value) === 'rtl')
+const enhancedModeCardStyle = ref<{ top: string; insetInlineEnd: string }>({
+  top: '0px',
+  insetInlineEnd: '0px',
+})
 
 const enhancedModeCardTitle = computed(() =>
   enhancedModeCardEnabled.value ? t('chat.enhancedMode') : t('chat.enableEnhancedMode')
@@ -964,7 +969,10 @@ const fixedModelOptions = computed(() => {
 
 const fixedModelLabel = computed(() => {
   if (chatStore.modelPreference === 'auto') return t('chat.routingMode.highAvailability')
-  return chatStore.splitModelPreference(chatStore.modelPreference).selected_model_id || chatStore.modelPreference
+  return (
+    chatStore.splitModelPreference(chatStore.modelPreference).selected_model_id ||
+    chatStore.modelPreference
+  )
 })
 
 const routingButtonTitle = computed(
@@ -1129,7 +1137,9 @@ function showEnhancedModeCard(event: MouseEvent | FocusEvent, enabled: boolean) 
   enhancedModeCardEnabled.value = enabled
   enhancedModeCardStyle.value = {
     top: `${Math.round(rect.bottom + 10)}px`,
-    right: `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`,
+    insetInlineEnd: isRtl.value
+      ? `${Math.max(8, Math.round(rect.left))}px`
+      : `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`,
   }
   enhancedModeCardVisible.value = true
 }
@@ -2156,11 +2166,13 @@ onUnmounted(() => {
         <aside
           v-show="isMobile ? showListPage : showSidebar"
           class="conversation-sidebar chat-sidebar-shell flex-shrink-0 transition-transform duration-300"
+          :style="!isMobile && isNarrowScreen ? { insetInlineStart: '0' } : undefined"
           :class="{
             'w-[16.75rem]': !isMobile,
             'z-40': !isMobile,
-            'absolute inset-y-0 left-0': !isMobile && isNarrowScreen,
-            '-translate-x-full': !isMobile && isNarrowScreen && !showSidebar,
+            'absolute inset-y-0': !isMobile && isNarrowScreen,
+            '-translate-x-full': !isMobile && isNarrowScreen && !showSidebar && !isRtl,
+            'translate-x-full': !isMobile && isNarrowScreen && !showSidebar && isRtl,
             'mobile-list-page': isMobile && showListPage,
             'chat-sidebar-mobile': isMobile,
           }"
@@ -2399,7 +2411,11 @@ onUnmounted(() => {
                 v-if="showRoutingMenu && !isMobile"
                 ref="routingMenuFloatingRef"
                 class="routing-menu-floating fixed w-80 rounded-2xl shadow-2xl border overflow-hidden z-[20000] bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-500"
-                :style="{ left: `${routingMenuPosition.x}px`, top: `${routingMenuPosition.y}px` }"
+                :style="{
+                  /* rtl-audit-ignore-next-line: positioned from viewport coordinates */
+                  left: `${routingMenuPosition.x}px`,
+                  top: `${routingMenuPosition.y}px`,
+                }"
               >
                 <div class="px-3 py-2 border-b border-gray-200 dark:border-slate-700">
                   <div class="text-xs font-medium text-gray-700 dark:text-slate-300">
@@ -2583,7 +2599,12 @@ onUnmounted(() => {
                         :class="{ 'is-selected': chatStore.modelPreference === option.value }"
                         @click="selectFixedModel(option.value)"
                       >
-                        <span class="truncate pr-3" :title="option.value">{{ option.label }}</span>
+                        <span
+                          class="truncate"
+                          style="padding-inline-end: 0.75rem"
+                          :title="option.value"
+                          >{{ option.label }}</span
+                        >
                         <svg
                           v-if="chatStore.modelPreference === option.value"
                           class="w-4 h-4 text-emerald-500 flex-shrink-0"
@@ -2821,10 +2842,15 @@ onUnmounted(() => {
                           v-for="option in fixedModelOptions"
                           :key="option.value"
                           class="routing-model-row w-full"
-                        :class="{ 'is-selected': chatStore.modelPreference === option.value }"
-                        @click="selectFixedModel(option.value)"
+                          :class="{ 'is-selected': chatStore.modelPreference === option.value }"
+                          @click="selectFixedModel(option.value)"
                         >
-                          <span class="truncate pr-3" :title="option.value">{{ option.label }}</span>
+                          <span
+                            class="truncate"
+                            style="padding-inline-end: 0.75rem"
+                            :title="option.value"
+                            >{{ option.label }}</span
+                          >
                           <svg
                             v-if="chatStore.modelPreference === option.value"
                             class="w-4 h-4 text-emerald-500 flex-shrink-0"
@@ -3333,7 +3359,7 @@ onUnmounted(() => {
                 <div
                   v-if="needsProviderAttention"
                   data-testid="chat-provider-guidance-card"
-                  class="w-full max-w-xl mb-8 rounded-3xl border border-slate-200 bg-white/92 p-5 text-left shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/78"
+                  class="w-full max-w-xl mb-8 rounded-3xl border border-slate-200 bg-white/92 p-5 text-start shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/78"
                 >
                   <div class="flex items-start gap-4">
                     <div
@@ -3473,7 +3499,9 @@ onUnmounted(() => {
                       >Enter</span
                     >
                     {{ t('chat.sendMessage') }}
-                    <span class="ml-4 px-2 py-1 glass rounded text-gray-600 dark:text-slate-300"
+                    <span
+                      class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300"
+                      style="margin-inline-start: 1rem"
                       >Shift+Enter</span
                     >
                     {{ t('chat.newLine') }}
@@ -3664,32 +3692,33 @@ onUnmounted(() => {
                           ? t('chat.streamError')
                           : chatStore.streamError === 'contextWindowExceeded'
                             ? t('chat.contextWindowExceeded')
-                          : chatStore.streamError === 'providerNoResponse'
-                            ? t('chat.providerNoResponse')
-                            : chatStore.streamError === 'providerReturnedEmpty'
-                              ? t('chat.providerReturnedEmpty')
-                              : chatStore.streamError === 'noResponseBody'
-                                ? t('chat.noResponseBody')
-                                : chatStore.streamError === 'trial_service_busy'
-                                  ? t('chat.trialServiceBusy')
-                                  : chatStore.streamError === 'provider_tool_unsupported'
-                                    ? t('chat.providerToolUnsupported')
-                                    : chatStore.streamError === 'provider_unavailable'
-                                      ? t('chat.providerUnavailable')
-                                      : chatStore.streamError === 'provider_auth_error'
-                                        ? t('chat.providerAuthError')
-                                        : chatStore.streamError === 'provider_rate_limited'
-                                          ? t('chat.providerRateLimited')
-                                          : chatStore.streamError ===
-                                              'provider_openrouter_privacy_policy'
-                                            ? t('chat.providerOpenRouterPrivacyPolicy')
+                            : chatStore.streamError === 'providerNoResponse'
+                              ? t('chat.providerNoResponse')
+                              : chatStore.streamError === 'providerReturnedEmpty'
+                                ? t('chat.providerReturnedEmpty')
+                                : chatStore.streamError === 'noResponseBody'
+                                  ? t('chat.noResponseBody')
+                                  : chatStore.streamError === 'trial_service_busy'
+                                    ? t('chat.trialServiceBusy')
+                                    : chatStore.streamError === 'provider_tool_unsupported'
+                                      ? t('chat.providerToolUnsupported')
+                                      : chatStore.streamError === 'provider_unavailable'
+                                        ? t('chat.providerUnavailable')
+                                        : chatStore.streamError === 'provider_auth_error'
+                                          ? t('chat.providerAuthError')
+                                          : chatStore.streamError === 'provider_rate_limited'
+                                            ? t('chat.providerRateLimited')
                                             : chatStore.streamError ===
-                                                'execDirectoryApprovalTimeout'
-                                              ? t('chat.execDirectoryApprovalTimeout')
-                                              : chatStore.streamError
+                                                'provider_openrouter_privacy_policy'
+                                              ? t('chat.providerOpenRouterPrivacyPolicy')
+                                              : chatStore.streamError ===
+                                                  'execDirectoryApprovalTimeout'
+                                                ? t('chat.execDirectoryApprovalTimeout')
+                                                : chatStore.streamError
                     }}</span>
                     <button
-                      class="ml-1 px-2 py-0.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 cursor-pointer transition-colors text-xs"
+                      class="px-2 py-0.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 cursor-pointer transition-colors text-xs"
+                      style="margin-inline-start: 0.25rem"
                       @click="handleStreamRetry"
                     >
                       {{ t('common.retry') }}
@@ -3803,10 +3832,14 @@ onUnmounted(() => {
               <div
                 v-if="showContextMenu && !isMobile"
                 class="context-menu fixed z-[100] glass-card shadow-xl py-1 min-w-[160px]"
-                :style="{ left: `${contextMenuPosition.x}px`, top: `${contextMenuPosition.y}px` }"
+                :style="{
+                  /* rtl-audit-ignore-next-line: positioned from pointer coordinates */
+                  left: `${contextMenuPosition.x}px`,
+                  top: `${contextMenuPosition.y}px`,
+                }"
               >
                 <button
-                  class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                  class="w-full px-4 py-2 text-start text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
                   @click="handleContextCopy"
                 >
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3820,7 +3853,7 @@ onUnmounted(() => {
                   {{ t('chat.copyMessage') }}
                 </button>
                 <button
-                  class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                  class="w-full px-4 py-2 text-start text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
                   @click="handleSelectMessage"
                 >
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3837,7 +3870,7 @@ onUnmounted(() => {
                 <template v-if="isContextMenuLastAssistant && !chatStore.streaming">
                   <div class="border-t border-white/10 my-1" />
                   <button
-                    class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                    class="w-full px-4 py-2 text-start text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
                     @click="handleContextContinue"
                   >
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3857,7 +3890,7 @@ onUnmounted(() => {
                     {{ t('chat.continueGenerating') }}
                   </button>
                   <button
-                    class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                    class="w-full px-4 py-2 text-start text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
                     @click="handleContextRegenerate"
                   >
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3878,7 +3911,7 @@ onUnmounted(() => {
             <Transition name="slide-up">
               <div
                 v-if="chatStore.isMultiSelectMode"
-                class="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 glass-card shadow-xl px-4 py-3 flex items-center gap-4"
+                class="absolute bottom-20 start-1/2 -translate-x-1/2 z-20 glass-card shadow-xl px-4 py-3 flex items-center gap-4"
               >
                 <span class="text-sm text-gray-600 dark:text-gray-300">
                   {{ chatStore.selectedMessageIds.size }} {{ t('chat.messagesSelected') }}
@@ -4344,14 +4377,15 @@ header,
 }
 
 .chat-desktop-shell .chat-sidebar-shell {
-  border-right: 1px solid rgba(226, 232, 240, 0.92);
+  border-inline-end: 1px solid rgba(226, 232, 240, 0.92);
   background: transparent;
 }
 
 .chat-page-header {
   position: relative;
   z-index: 3;
-  padding: 0 0.9rem 0 0.96rem;
+  padding-block: 0;
+  padding-inline: 0.96rem 0.9rem;
   border-bottom: none;
   background: transparent;
 }
@@ -4407,11 +4441,12 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
 }
 
 html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-sidebar-shell {
-  border-right-color: rgba(186, 203, 223, 0.48);
+  border-inline-end-color: rgba(186, 203, 223, 0.48);
 }
 
 html[data-blue-macos-glass='true'] .chat-page-header {
-  padding: 0 0.82rem 0 0.88rem;
+  padding-block: 0;
+  padding-inline: 0.88rem 0.82rem;
 }
 
 html[data-blue-macos-glass='true'] .chat-page-header-inner {
@@ -4545,7 +4580,7 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
 }
 
 .chat-thread-routing-btn {
-  margin-left: 0.12rem;
+  margin-inline-start: 0.12rem;
   position: relative;
 }
 
@@ -4586,8 +4621,7 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
 .chat-topbar::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   bottom: 0;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.3), transparent);
@@ -4665,12 +4699,12 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
 }
 
 .chat-tools {
-  margin-left: auto;
+  margin-inline-start: auto;
   justify-content: flex-end;
   align-self: stretch;
-  padding-left: 0.95rem;
-  margin-left: 0.95rem;
-  border-left: 1px solid rgba(148, 163, 184, 0.16);
+  padding-inline-start: 0.95rem;
+  margin-inline-start: 0.95rem;
+  border-inline-start: 1px solid rgba(148, 163, 184, 0.16);
   gap: 0.55rem;
 }
 
@@ -4730,7 +4764,7 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
   pointer-events: none;
   position: fixed;
   top: 0;
-  right: 0;
+  inset-inline-end: 0;
   width: min(24rem, calc(100vw - 1rem));
   border-radius: 1.2rem;
   border: 1px solid rgba(203, 213, 225, 0.9);
@@ -4739,7 +4773,7 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
   padding: 0.88rem;
   color: rgb(15, 23, 42);
-  text-align: left;
+  text-align: start;
   box-shadow:
     0 24px 46px -32px rgba(15, 23, 42, 0.24),
     0 16px 28px -24px rgba(59, 130, 246, 0.18);
@@ -4771,14 +4805,14 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
 
 .enhanced-mode-hover-card__hero::before {
   top: -1.6rem;
-  right: -0.8rem;
+  inset-inline-end: -0.8rem;
   width: 5.4rem;
   height: 5.4rem;
   background: rgba(59, 130, 246, 0.12);
 }
 
 .enhanced-mode-hover-card__hero::after {
-  left: 1rem;
+  inset-inline-start: 1rem;
   bottom: -1.8rem;
   width: 6.8rem;
   height: 3.4rem;
@@ -5048,8 +5082,7 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
 
 .active-todo-panel {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   bottom: 0;
   overflow: hidden;
   border: 1px solid rgba(214, 219, 227, 0.96);
@@ -5086,7 +5119,7 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
   padding: 0;
   border: none;
   background: transparent;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: opacity 0.16s ease;
 }
@@ -5656,7 +5689,7 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
   background: rgba(255, 255, 255, 0.92);
   border-radius: 0.9rem;
   padding: 0.75rem;
-  text-align: left;
+  text-align: start;
   transition:
     transform 0.18s ease,
     border-color 0.18s ease,
@@ -6140,9 +6173,9 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
   }
 
   .chat-tools {
-    margin-left: 0;
-    padding-left: 0.1rem;
-    border-left: none;
+    margin-inline-start: 0;
+    padding-inline-start: 0.1rem;
+    border-inline-start: none;
   }
 
   .chat-topbar::after {

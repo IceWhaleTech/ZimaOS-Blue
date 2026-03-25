@@ -13,6 +13,7 @@ import type {
   DeepResearchTakeawayCandidate,
 } from '@/types/typeless'
 import {
+  localizeDeepResearchGap,
   localizeDeepResearchMode,
   localizeDeepResearchSegment,
   localizeDeepResearchStatus,
@@ -180,7 +181,11 @@ function stopReasonLabel(reason?: string): string {
 }
 
 function verificationTitle(item: DeepResearchVerificationItem): string {
-  return item.focus || item.gap || t('chat.deepResearchVerificationSummary', 'Verification')
+  return (
+    item.focus ||
+    localizeDeepResearchGap(item.gap, tr) ||
+    t('chat.deepResearchVerificationSummary', 'Verification')
+  )
 }
 
 function workflowPhaseStatusLabel(status?: string): string {
@@ -259,7 +264,7 @@ function conflictRiskLabel(risk?: string): string {
     <button
       type="button"
       data-testid="deep-research-summary-toggle"
-      class="w-full text-left"
+      class="deep-research-summary-button w-full"
       :aria-expanded="expanded ? 'true' : 'false'"
       :aria-label="disclosureLabel"
       :title="disclosureLabel"
@@ -623,7 +628,7 @@ function conflictRiskLabel(risk?: string): string {
                 </div>
                 <ul
                   v-if="item.questions?.length"
-                  class="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500 dark:text-slate-400"
+                  class="deep-research-list mt-2 list-disc space-y-1 text-xs text-slate-500 dark:text-slate-400"
                 >
                   <li v-for="question in item.questions.slice(0, 3)" :key="question">
                     {{ question }}
@@ -685,7 +690,7 @@ function conflictRiskLabel(risk?: string): string {
                   v-if="item.gap && item.gap !== item.focus"
                   class="mt-1 text-xs text-amber-700 dark:text-amber-200 break-words"
                 >
-                  {{ item.gap }}
+                  {{ localizeDeepResearchGap(item.gap, tr) }}
                 </div>
               </div>
             </div>
@@ -709,7 +714,7 @@ function conflictRiskLabel(risk?: string): string {
                 </div>
                 <ul
                   v-if="section.highlights?.length"
-                  class="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500 dark:text-slate-400"
+                  class="deep-research-list mt-2 list-disc space-y-1 text-xs text-slate-500 dark:text-slate-400"
                 >
                   <li v-for="(item, itemIndex) in section.highlights" :key="itemIndex">
                     {{ item }}
@@ -727,7 +732,7 @@ function conflictRiskLabel(risk?: string): string {
             </div>
             <ul
               v-if="openQuestions.length"
-              class="mt-3 list-disc space-y-1 pl-4 text-sm text-slate-600 dark:text-slate-300"
+              class="deep-research-list mt-3 list-disc space-y-1 text-sm text-slate-600 dark:text-slate-300"
             >
               <li v-for="question in openQuestions" :key="question">{{ question }}</li>
             </ul>
@@ -823,7 +828,9 @@ function conflictRiskLabel(risk?: string): string {
             <div class="text-sm font-medium text-amber-700 dark:text-amber-200">
               {{ t('chat.deepResearchStageErrors', 'Stage warnings') }}
             </div>
-            <ul class="mt-2 list-disc space-y-1 pl-4 text-sm text-amber-700 dark:text-amber-200">
+            <ul
+              class="deep-research-list mt-2 list-disc space-y-1 text-sm text-amber-700 dark:text-amber-200"
+            >
               <li v-for="warning in stageErrors" :key="warning">{{ warning }}</li>
             </ul>
           </div>
@@ -855,7 +862,7 @@ function conflictRiskLabel(risk?: string): string {
               v-if="entry.gap"
               class="mt-1 text-xs text-amber-700 dark:text-amber-200 break-words"
             >
-              {{ entry.gap }}
+              {{ localizeDeepResearchGap(entry.gap, tr) }}
             </div>
             <div
               v-if="entry.follow_up_query"
@@ -875,3 +882,13 @@ function conflictRiskLabel(risk?: string): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.deep-research-summary-button {
+  text-align: start;
+}
+
+.deep-research-list {
+  padding-inline-start: 1rem;
+}
+</style>

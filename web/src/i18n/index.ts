@@ -39,8 +39,11 @@ export type LocaleKey =
   | 'zh-CN'
   | 'zh-TW'
 
+export type LocaleDirection = 'ltr' | 'rtl'
+
 const LOCALE_KEY = 'zimaos-blue-locale'
 const LOCALE_ENHANCEMENTS_START_DELAY_MS = 2500
+const RTL_LANGUAGE_CODES = new Set(['ar', 'ckb', 'fa', 'he', 'ps', 'ur'])
 
 // Map browser language codes to our locale keys
 const browserLocaleMap: Record<string, LocaleKey> = {
@@ -107,6 +110,12 @@ export const localeOptions = [
   { value: 'zh-CN', label: '简体中文' },
   { value: 'zh-TW', label: '繁體中文' },
 ] as const
+
+export function getLocaleDirection(locale: string): LocaleDirection {
+  const normalized = locale.trim().toLowerCase()
+  const languageCode = normalized.split(/[-_]/)[0]
+  return languageCode && RTL_LANGUAGE_CODES.has(languageCode) ? 'rtl' : 'ltr'
+}
 
 function getDefaultLocale(): LocaleKey {
   const saved = localStorage.getItem(LOCALE_KEY)
@@ -222,9 +231,12 @@ const loadedLocaleEnhancements = new Set<LocaleKey>()
 const loadingLocaleEnhancements = new Map<LocaleKey, Promise<void>>()
 
 function applyLocaleState(locale: LocaleKey): void {
+  const direction = getLocaleDirection(locale)
   ;(i18n.global as unknown as LocaleComposerBridge).locale.value = locale
   localStorage.setItem(LOCALE_KEY, locale)
   document.documentElement.lang = locale
+  document.documentElement.dir = direction
+  document.documentElement.dataset.localeDirection = direction
 
   if (window.__TAURI_INTERNALS__?.invoke) {
     window.__TAURI_INTERNALS__.invoke('set_tray_locale', { locale }).catch(() => {})

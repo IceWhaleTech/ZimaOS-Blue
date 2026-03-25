@@ -126,6 +126,23 @@ type Handler struct {
 	cache          *MemoryCache
 }
 
+// ConfigSnapshot returns a thread-safe copy of the current Claude Code config.
+func (h *Handler) ConfigSnapshot() ClaudeCodePersistentConfig {
+	if h == nil {
+		return ClaudeCodePersistentConfig{}
+	}
+	h.configMu.RLock()
+	defer h.configMu.RUnlock()
+	if h.config == nil {
+		return ClaudeCodePersistentConfig{}
+	}
+	snapshot := *h.config
+	if len(h.config.DirectoryWhitelist) > 0 {
+		snapshot.DirectoryWhitelist = append([]DirectoryWhitelistEntry{}, h.config.DirectoryWhitelist...)
+	}
+	return snapshot
+}
+
 // DirectoryWhitelistSnapshot returns a thread-safe copy of whitelist settings.
 func (h *Handler) DirectoryWhitelistSnapshot() (enabled bool, entries []DirectoryWhitelistEntry) {
 	h.configMu.RLock()

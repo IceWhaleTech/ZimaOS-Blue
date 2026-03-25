@@ -262,7 +262,7 @@ function getLanguageDisplay(): string {
       />
       <div
         v-if="shouldCollapse && !expanded"
-        class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-gray-800 to-transparent pointer-events-none"
+        class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white dark:from-gray-800 to-transparent pointer-events-none"
       />
     </div>
 
@@ -273,7 +273,7 @@ function getLanguageDisplay(): string {
           class="p-4 text-sm leading-relaxed"
         ><code class="text-gray-800 dark:text-gray-100"><template v-for="(line, index) in displayedLines" :key="index"><span class="inline-block w-full"><span
               v-if="card.showLineNumbers !== false"
-              class="inline-block w-8 text-right mr-4 text-gray-400 dark:text-gray-600 select-none"
+              class="card-collapsible-code-line-number inline-block w-8 text-gray-400 dark:text-gray-600 select-none"
             >{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
       </div>
@@ -281,7 +281,7 @@ function getLanguageDisplay(): string {
       <!-- Collapsed overlay -->
       <div
         v-if="shouldCollapse && !expanded"
-        class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-gray-50 dark:from-gray-900 to-transparent pointer-events-none"
+        class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-gray-50 dark:from-gray-900 to-transparent pointer-events-none"
       />
     </div>
 
@@ -331,5 +331,10 @@ function getLanguageDisplay(): string {
 pre {
   margin: 0;
   font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+}
+
+.card-collapsible-code-line-number {
+  text-align: end;
+  margin-inline-end: 1rem;
 }
 </style>

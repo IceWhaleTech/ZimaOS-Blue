@@ -143,7 +143,7 @@ const currentPreview = computed(() => {
     class="search-card rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm relative"
   >
     <button
-      class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
+      class="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
       :aria-expanded="expanded ? 'true' : 'false'"
       @click="toggleExpanded"
     >
@@ -300,7 +300,11 @@ const currentPreview = computed(() => {
         <div
           v-if="activePreview && currentPreview && !currentPreview.error"
           class="fixed z-[9999] w-72 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden pointer-events-none"
-          :style="{ left: previewPosition.x + 'px', top: previewPosition.y + 'px' }"
+          :style="{
+            /* rtl-audit-ignore-next-line: positioned from pointer coordinates */
+            left: previewPosition.x + 'px',
+            top: previewPosition.y + 'px',
+          }"
         >
           <!-- Loading state -->
           <template v-if="currentPreview.loading">

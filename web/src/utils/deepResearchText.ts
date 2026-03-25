@@ -51,6 +51,27 @@ const DEEP_RESEARCH_AUX_STATUS_KEYS: Record<string, [key: string, fallback: stri
   error: ['common.error', 'Error'],
 }
 
+const DEEP_RESEARCH_GAP_KEYS: Record<string, [key: string, fallback: string]> = {
+  need_evidence_coverage: ['chat.deepResearchGapNeedEvidenceCoverage', 'Need evidence coverage'],
+  need_primary_or_official_sources: [
+    'chat.deepResearchGapNeedPrimaryOrOfficialSources',
+    'Need primary or official sources',
+  ],
+  need_broader_evidence_coverage: [
+    'chat.deepResearchGapNeedBroaderEvidenceCoverage',
+    'Need broader evidence coverage',
+  ],
+  need_broader_source_diversity: [
+    'chat.deepResearchGapNeedBroaderSourceDiversity',
+    'Need broader source diversity',
+  ],
+  need_fresher_sources: ['chat.deepResearchGapNeedFresherSources', 'Need fresher sources'],
+  resolve_conflicting_claims: [
+    'chat.deepResearchGapResolveConflictingClaims',
+    'Resolve conflicting claims',
+  ],
+}
+
 function humanizeDeepResearchToken(value: string | null | undefined): string {
   const trimmed = String(value || '').trim()
   if (!trimmed) return ''
@@ -135,6 +156,16 @@ export function localizeDeepResearchSegment(
     translateKnownToken(token, DEEP_RESEARCH_STATUS_KEYS, translate) ||
     humanizeDeepResearchToken(trimmed)
   )
+}
+
+export function localizeDeepResearchGap(
+  value: string | null | undefined,
+  translate: Translate
+): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  const token = normalizeDeepResearchToken(trimmed)
+  return translateKnownToken(token, DEEP_RESEARCH_GAP_KEYS, translate) || trimmed
 }
 
 export function splitDeepResearchSegments(value: string | null | undefined): string[] {

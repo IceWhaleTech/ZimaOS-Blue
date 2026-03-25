@@ -92,7 +92,7 @@ function handleUpgradeSuccess() {
     <!-- Dropdown menu -->
     <div
       v-if="showDropdown"
-      class="absolute right-0 mt-2 w-56 rounded-lg bg-white dark:bg-gray-700 shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
+      class="absolute end-0 mt-2 w-56 rounded-lg bg-white dark:bg-gray-700 shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
     >
       <button
         class="w-full flex items-center space-x-3 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"

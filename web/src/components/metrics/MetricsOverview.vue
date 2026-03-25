@@ -73,7 +73,7 @@ function formatLatency(ms: number | undefined | null): string {
         >
           {{ stats ? (stats.successRate ?? 0).toFixed(1) : '-' }}%
         </span>
-        <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('metrics.successRate') }}</span>
+        <span class="ms-1 text-gray-500 dark:text-gray-400">{{ t('metrics.successRate') }}</span>
       </div>
     </div>
 
@@ -104,7 +104,7 @@ function formatLatency(ms: number | undefined | null): string {
       </div>
       <div class="mt-2 flex items-center text-sm">
         <span class="text-green-500">{{ stats ? formatCost(stats.estimatedCost) : '-' }}</span>
-        <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('metrics.estimatedCost') }}</span>
+        <span class="ms-1 text-gray-500 dark:text-gray-400">{{ t('metrics.estimatedCost') }}</span>
       </div>
     </div>
 

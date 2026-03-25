@@ -292,10 +292,10 @@ onUnmounted(() => {
 .voicewake-banner-shell {
   position: fixed;
   top: 0.9rem;
-  left: 50%;
+  inset-inline: 0;
+  margin-inline: auto;
   z-index: 40;
   width: min(calc(100vw - 1.25rem), 34rem);
-  transform: translateX(-50%);
   pointer-events: none;
 }
 
@@ -493,7 +493,7 @@ html.dark .voicewake-banner__action:hover {
   }
 
   .voicewake-banner__action {
-    margin-left: 1.55rem;
+    margin-inline-start: 1.55rem;
   }
 }
 </style>

@@ -189,7 +189,7 @@ onUnmounted(() => {
           </div>
           <div
             v-if="image.caption"
-            class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
+            class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
           >
             <p class="text-xs text-white truncate">{{ image.caption }}</p>
           </div>
@@ -205,7 +205,7 @@ onUnmounted(() => {
         @click="closeLightbox"
       >
         <button
-          class="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+          class="absolute top-4 end-4 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
           @click.stop="closeLightbox"
         >
           <svg

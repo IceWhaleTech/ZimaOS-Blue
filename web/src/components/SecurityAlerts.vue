@@ -188,7 +188,7 @@ onUnmounted(() => {
           <span class="text-gray-500 dark:text-gray-400">{{ t('common.status') }}:</span>
           <span
             :class="guardStats.enabled ? 'text-green-600' : 'text-red-600'"
-            class="ml-2 font-medium"
+            class="security-alerts-inline-value font-medium"
           >
             {{ guardStats.enabled ? t('common.enabled') : t('common.disabled') }}
           </span>
@@ -197,7 +197,7 @@ onUnmounted(() => {
           <span class="text-gray-500 dark:text-gray-400"
             >{{ t('securityAlerts.labels.patterns') }}:</span
           >
-          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{
+          <span class="security-alerts-inline-value font-medium text-gray-900 dark:text-white">{{
             guardStats.pattern_count
           }}</span>
         </div>
@@ -205,13 +205,17 @@ onUnmounted(() => {
           <span class="text-gray-500 dark:text-gray-400"
             >{{ t('securityAlerts.labels.detections') }}:</span
           >
-          <span class="ml-2 font-medium text-yellow-600">{{ guardStats.detection_count }}</span>
+          <span class="security-alerts-inline-value font-medium text-yellow-600">{{
+            guardStats.detection_count
+          }}</span>
         </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400"
             >{{ t('securityAlerts.labels.blocked') }}:</span
           >
-          <span class="ml-2 font-medium text-red-600">{{ guardStats.blocked_count }}</span>
+          <span class="security-alerts-inline-value font-medium text-red-600">{{
+            guardStats.blocked_count
+          }}</span>
         </div>
       </div>
     </div>
@@ -230,7 +234,7 @@ onUnmounted(() => {
           >
           <span
             :class="authStats.auth_enabled ? 'text-green-600' : 'text-gray-600'"
-            class="ml-2 font-medium"
+            class="security-alerts-inline-value font-medium"
           >
             {{ authStats.auth_enabled ? t('common.enabled') : t('common.disabled') }}
           </span>
@@ -239,7 +243,7 @@ onUnmounted(() => {
           <span class="text-gray-500 dark:text-gray-400"
             >{{ t('securityAlerts.labels.apiKeys') }}:</span
           >
-          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{
+          <span class="security-alerts-inline-value font-medium text-gray-900 dark:text-white">{{
             authStats.api_key_count
           }}</span>
         </div>
@@ -249,7 +253,7 @@ onUnmounted(() => {
           >
           <span
             :class="authStats.auth_failures > 0 ? 'text-red-600' : 'text-green-600'"
-            class="ml-2 font-medium"
+            class="security-alerts-inline-value font-medium"
           >
             {{ authStats.auth_failures }}
           </span>
@@ -260,7 +264,7 @@ onUnmounted(() => {
           >
           <span
             :class="authStats.rate_limit_hits > 0 ? 'text-yellow-600' : 'text-green-600'"
-            class="ml-2 font-medium"
+            class="security-alerts-inline-value font-medium"
           >
             {{ authStats.rate_limit_hits }}
           </span>
@@ -311,6 +315,12 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.security-alerts-inline-value {
+  margin-inline-start: 0.5rem;
+}
+</style>
 
 <style scoped>
 .security-alerts {

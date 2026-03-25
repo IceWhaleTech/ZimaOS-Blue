@@ -116,14 +116,7 @@ const DEFAULT_CODE_COLLAPSE_LINES = 24
 const CODE_LINE_HEIGHT_PX = 24
 
 // Card types that can be rendered functionally (simple, no interactivity beyond copy)
-export const FUNCTIONAL_CARD_TYPES = new Set([
-  'table',
-  'code',
-  'list',
-  'info',
-  'quote',
-  'alert',
-])
+export const FUNCTIONAL_CARD_TYPES = new Set(['table', 'code', 'list', 'info', 'quote', 'alert'])
 
 // Card types that require Vue components (complex interactivity, async loading, etc.)
 export const COMPONENT_CARD_TYPES = new Set([
@@ -239,7 +232,7 @@ function renderTable(card: TypelessCardTable): string {
     card.headers.length > 0
       ? `<thead>
         <tr class="bg-gray-50 dark:bg-gray-700/50">
-          ${card.headers.map((h) => `<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">${parseTypelessInline(String(h))}</th>`).join('')}
+          ${card.headers.map((h) => `<th class="px-4 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">${parseTypelessInline(String(h))}</th>`).join('')}
         </tr>
       </thead>`
       : ''
@@ -334,7 +327,7 @@ function renderCode(card: TypelessCardCode): string {
       const lineNum = index + 1
       const highlighted = highlightLines.has(lineNum) ? ' bg-yellow-500/20' : ''
       const lineNumHtml = showLineNumbers
-        ? `<span class="inline-block w-8 text-right mr-4 text-gray-500 select-none">${lineNum}</span>`
+        ? `<span class="inline-block w-8 text-gray-500 select-none" style="text-align: end; margin-inline-end: 1rem;">${lineNum}</span>`
         : ''
       // Add newline at the end for proper copying
       const lineContent = index < highlightedLines.length - 1 ? `${line}\n` : line
@@ -408,7 +401,7 @@ function renderCode(card: TypelessCardCode): string {
       ${shouldCollapse ? `data-collapsed="true" style="max-height: ${collapsedMaxHeightPx}px; overflow-y: hidden;"` : ''}
     >
       <pre class="p-4 text-sm leading-relaxed" style="margin: 0; font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;"><code id="${codeId}" class="text-gray-800 dark:text-gray-100">${linesHtml}</code></pre>
-      ${shouldCollapse ? `<div id="${codeFadeId}" class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-gray-700 to-transparent pointer-events-none"></div>` : ''}
+      ${shouldCollapse ? `<div id="${codeFadeId}" class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white dark:from-gray-700 to-transparent pointer-events-none"></div>` : ''}
     </div>
     ${
       shouldCollapse
@@ -452,7 +445,7 @@ function renderList(card: TypelessCardList): string {
       : `<span class="flex-shrink-0 ${bulletClass}"></span>`
 
     const subItemsHtml = item.subItems?.length
-      ? `<ul class="mt-2 ml-4 space-y-1">
+      ? `<ul class="mt-2 space-y-1" style="margin-inline-start: 1rem;">
           ${item.subItems.map((sub) => renderListItem(sub, true)).join('')}
         </ul>`
       : ''
@@ -553,8 +546,8 @@ function renderList(card: TypelessCardList): string {
           : ''
 
         return `<div class="relative flex items-start gap-4 pb-4 last:pb-0">
-        <div class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700 ${dotClass}"></div>
-        <div class="flex-1 min-w-0 ml-6">
+        <div class="absolute w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700 ${dotClass}" style="inset-inline-start: 0;"></div>
+        <div class="flex-1 min-w-0" style="margin-inline-start: 1.5rem;">
           <p class="text-gray-700 dark:text-gray-300">${parseTypelessInline(item.content)}</p>
           ${timestampHtml}
         </div>
@@ -566,7 +559,7 @@ function renderList(card: TypelessCardList): string {
       ${titleHtml}
       <div class="p-4">
         <div class="relative">
-          <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
+          <div class="absolute top-2 bottom-2 w-0.5 bg-gray-200 dark:bg-gray-700" style="inset-inline-start: 0.5rem;"></div>
           ${itemsHtml}
         </div>
       </div>
@@ -639,7 +632,7 @@ function renderQuote(card: TypelessCardQuote): string {
     : ''
 
   return `<div class="quote-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
-    <blockquote class="p-4 border-l-4 border-gray-900 dark:border-white">
+    <blockquote class="p-4 border-gray-900 dark:border-white" style="border-inline-start-width: 4px;">
       <p class="text-gray-700 dark:text-gray-300 italic">${parseTypelessInline(card.content)}</p>
       ${authorHtml}
     </blockquote>

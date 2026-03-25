@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	"golang.org/x/net/html"
 )
 
@@ -20,16 +21,18 @@ const (
 	webReadFormatMarkdown = "markdown"
 	webReadFormatText     = "text"
 
-	webAccessLaneAuto         = "auto"
-	webAccessLaneHTTP         = "http"
-	webAccessLaneHTTPNative   = "http_native"
-	webAccessLaneBrowser      = "browser"
-	webAccessLaneProxyFetcher = "proxy_fetcher"
+	webAccessLaneAuto           = "auto"
+	webAccessLaneHTTP           = "http"
+	webAccessLaneHTTPNative     = "http_native"
+	webAccessLaneLightpandaShim = "lightpanda_shim"
+	webAccessLaneBrowser        = "browser"
+	webAccessLaneProxyFetcher   = "proxy_fetcher"
 
-	webAccessSourceHTTP         = "http"
-	webAccessSourceHTTPNative   = "http_native"
-	webAccessSourceBrowser      = "browser"
-	webAccessSourceProxyFetcher = "proxy_fetcher"
+	webAccessSourceHTTP           = "http"
+	webAccessSourceHTTPNative     = "http_native"
+	webAccessSourceLightpandaShim = "lightpanda_shim"
+	webAccessSourceBrowser        = "browser"
+	webAccessSourceProxyFetcher   = "proxy_fetcher"
 
 	webExtractModeText      = "text"
 	webExtractModeHTML      = "html"
@@ -262,6 +265,13 @@ func (r *webAccessRuntime) SetBrowser(browser BrowserBackend) {
 	r.base.SetBrowser(browser)
 }
 
+func (r *webAccessRuntime) SetLightpandaShim(service *browser.LightpandaService) {
+	if r == nil || r.base == nil {
+		return
+	}
+	r.base.SetLightpandaShim(service)
+}
+
 func (r *webAccessRuntime) SetPDFService(service PDFService) {
 	if r == nil || r.base == nil {
 		return
@@ -288,6 +298,13 @@ func (t *WebReadTool) SetBrowser(browser BrowserBackend) {
 	t.runtime.SetBrowser(browser)
 }
 
+func (t *WebReadTool) SetLightpandaShim(service *browser.LightpandaService) {
+	if t == nil || t.runtime == nil {
+		return
+	}
+	t.runtime.SetLightpandaShim(service)
+}
+
 func (t *WebReadTool) SetPDFService(service PDFService) {
 	if t == nil || t.runtime == nil {
 		return
@@ -307,6 +324,13 @@ func (t *WebExtractTool) SetBrowser(browser BrowserBackend) {
 		return
 	}
 	t.runtime.SetBrowser(browser)
+}
+
+func (t *WebExtractTool) SetLightpandaShim(service *browser.LightpandaService) {
+	if t == nil || t.runtime == nil {
+		return
+	}
+	t.runtime.SetLightpandaShim(service)
 }
 
 func (t *WebExtractTool) SetPDFService(service PDFService) {
@@ -334,7 +358,7 @@ func (t *WebReadTool) Definition() ToolDefinition {
 				"url":               map[string]interface{}{"type": "string", "description": "HTTP or HTTPS URL to read."},
 				"format":            map[string]interface{}{"type": "string", "description": "Output format: markdown (default) or text.", "enum": []string{webReadFormatMarkdown, webReadFormatText}, "default": webReadFormatMarkdown},
 				"max_chars":         map[string]interface{}{"type": "integer", "description": "Maximum characters in returned content.", "minimum": 100},
-				"lane":              map[string]interface{}{"type": "string", "description": "Fetch lane preference: auto (default), http, browser, proxy_fetcher.", "enum": []string{webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneBrowser, webAccessLaneProxyFetcher}, "default": webAccessLaneAuto},
+				"lane":              map[string]interface{}{"type": "string", "description": "Fetch lane preference: auto (default), http, http_native, lightpanda_shim, browser, proxy_fetcher.", "enum": []string{webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneHTTPNative, webAccessLaneLightpandaShim, webAccessLaneBrowser, webAccessLaneProxyFetcher}, "default": webAccessLaneAuto},
 				"headers":           map[string]interface{}{"type": "object", "description": "Optional request headers.", "additionalProperties": map[string]interface{}{"type": "string"}},
 				"cookies":           map[string]interface{}{"type": "string", "description": "Optional Cookie header value."},
 				"authorization":     map[string]interface{}{"type": "string", "description": "Optional Authorization header value."},
@@ -441,7 +465,7 @@ func (t *WebExtractTool) Execute(ctx context.Context, args map[string]interface{
 		if err != nil {
 			return nil, err
 		}
-		if lane == webAccessLaneBrowser || lane == webAccessLaneProxyFetcher {
+		if lane == webAccessLaneBrowser || lane == webAccessLaneProxyFetcher || lane == webAccessLaneLightpandaShim {
 			return nil, errors.New("web_extract currently requires an HTML-capable lane; use auto/http or pass html directly")
 		}
 		reqOpts, err := parseWebFetchRequestOptions(args)
@@ -536,7 +560,7 @@ func (t *WebCrawlTool) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return nil, err
 	}
-	if lane == webAccessLaneBrowser || lane == webAccessLaneProxyFetcher {
+	if lane == webAccessLaneBrowser || lane == webAccessLaneProxyFetcher || lane == webAccessLaneLightpandaShim {
 		return nil, errors.New("web_crawl currently requires an HTML-capable lane; use auto/http")
 	}
 	reqOpts, err := parseWebFetchRequestOptions(args)
@@ -851,6 +875,12 @@ func (r *webAccessRuntime) fetch(ctx context.Context, rawURL string, opts webAcc
 		}
 		return r.fetchViaBrowser(ctx, normalizedURL, format, opts.request.browserTargetID, opts.browserReasonCode, opts.browserReason, opts.maxChars)
 	}
+	if lane == webAccessLaneLightpandaShim {
+		if opts.wantRawHTML {
+			return webAccessDocument{}, errors.New("lightpanda_shim lane is not supported when raw HTML is required")
+		}
+		return r.fetchViaLightpandaShim(ctx, normalizedURL, format, opts.maxChars)
+	}
 	if lane == webAccessLaneProxyFetcher {
 		if opts.wantRawHTML {
 			return webAccessDocument{}, errors.New("proxy_fetcher lane is not supported when raw HTML is required")
@@ -1012,6 +1042,34 @@ func (r *webAccessRuntime) fetchViaBrowser(ctx context.Context, normalizedURL, f
 	return doc, nil
 }
 
+func (r *webAccessRuntime) fetchViaLightpandaShim(ctx context.Context, normalizedURL, format string, maxChars int) (webAccessDocument, error) {
+	payload, err := r.base.fetchViaLightpandaShim(ctx, normalizedURL, format)
+	if err != nil {
+		return webAccessDocument{}, err
+	}
+	content, truncated := truncateWebFetchContent(payload.Content, maxChars)
+	doc := webAccessDocument{
+		URL:          normalizedURL,
+		FinalURL:     payload.URL,
+		Title:        payload.Title,
+		Format:       format,
+		Content:      content,
+		Source:       webAccessSourceLightpandaShim,
+		Truncated:    truncated,
+		ContentType:  payload.ContentType,
+		Extractor:    payload.Extractor,
+		StrategyUsed: webAccessLaneLightpandaShim,
+	}
+	if strings.TrimSpace(payload.Warning) != "" {
+		doc.Warnings = append(doc.Warnings, webAccessWarning{Code: payload.WarningCode, Message: payload.Warning})
+	}
+	doc.ChallengeState = classifyWebFetchChallengeState(payload.WarningCode, payload.Warning, payload.Content)
+	if doc.ChallengeState != nil {
+		doc.InteractiveRequired = doc.ChallengeState.RequiresBrowser
+	}
+	return doc, nil
+}
+
 func (r *webAccessRuntime) fetchViaProxy(ctx context.Context, normalizedURL, format string, maxChars int) (webAccessDocument, error) {
 	payload, err := r.base.tryProxyFetchFamily(ctx, normalizedURL, format)
 	if err != nil {
@@ -1043,6 +1101,8 @@ func strategySourceForFetchResult(result FetchResult) string {
 		return webAccessSourceProxyFetcher
 	case webAccessLaneHTTPNative:
 		return webAccessSourceHTTPNative
+	case webAccessLaneLightpandaShim:
+		return webAccessSourceLightpandaShim
 	default:
 		if strings.TrimSpace(result.Payload.Source) != "" {
 			return result.Payload.Source
@@ -1086,10 +1146,10 @@ func parseWebAccessLane(args map[string]interface{}) (string, error) {
 		return webAccessLaneAuto, nil
 	}
 	switch lane {
-	case webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneHTTPNative, webAccessLaneBrowser, webAccessLaneProxyFetcher, webFetchStrategySession:
+	case webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneHTTPNative, webAccessLaneLightpandaShim, webAccessLaneBrowser, webAccessLaneProxyFetcher, webFetchStrategySession:
 		return lane, nil
 	default:
-		return "", fmt.Errorf("lane must be one of: %s, %s, %s, %s", webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneBrowser, webAccessLaneProxyFetcher)
+		return "", fmt.Errorf("lane must be one of: %s, %s, %s, %s, %s, %s", webAccessLaneAuto, webAccessLaneHTTP, webAccessLaneHTTPNative, webAccessLaneLightpandaShim, webAccessLaneBrowser, webAccessLaneProxyFetcher)
 	}
 }
 

@@ -97,17 +97,18 @@ function getEventIcon(type: string): string {
 
 function getEventColor(type: string): string {
   const colors: Record<string, string> = {
-    session_start: 'border-l-green-500',
-    session_end: 'border-l-gray-500',
-    message_received: 'border-l-gray-900 dark:border-l-gray-400',
-    message_sent: 'border-l-indigo-500',
-    tool_call: 'border-l-purple-500',
-    llm_request: 'border-l-orange-500',
-    security_threat: 'border-l-red-500',
-    error: 'border-l-red-600',
-    custom: 'border-l-gray-400',
+    session_start: '[border-inline-start-color:#22c55e]',
+    session_end: '[border-inline-start-color:#6b7280]',
+    message_received:
+      '[border-inline-start-color:#111827] dark:[border-inline-start-color:#9ca3af]',
+    message_sent: '[border-inline-start-color:#6366f1]',
+    tool_call: '[border-inline-start-color:#a855f7]',
+    llm_request: '[border-inline-start-color:#f97316]',
+    security_threat: '[border-inline-start-color:#ef4444]',
+    error: '[border-inline-start-color:#dc2626]',
+    custom: '[border-inline-start-color:#9ca3af]',
   }
-  return colors[type] || 'border-l-gray-400'
+  return colors[type] || '[border-inline-start-color:#9ca3af]'
 }
 
 function formatDate(dateStr: string): string {
@@ -269,7 +270,7 @@ function formatStatus(status?: string): string {
             @click="viewMode = 'flow'"
           >
             <svg
-              class="w-4 h-4 inline-block mr-1"
+              class="session-detail-inline-end-gap w-4 h-4 inline-block"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -293,7 +294,7 @@ function formatStatus(status?: string): string {
             @click="viewMode = 'timeline'"
           >
             <svg
-              class="w-4 h-4 inline-block mr-1"
+              class="session-detail-inline-end-gap w-4 h-4 inline-block"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -347,7 +348,7 @@ function formatStatus(status?: string): string {
             v-for="event in events"
             :key="event.id"
             :class="[
-              'p-3 bg-gray-50 dark:bg-slate-700/40 rounded-lg border-l-4 border border-gray-200/80 dark:border-slate-600/70 hover:bg-gray-100/70 dark:hover:bg-slate-700/60 transition-colors',
+              'p-3 bg-gray-50 dark:bg-slate-700/40 rounded-lg border border-gray-200/80 dark:border-slate-600/70 [border-inline-start-width:4px] hover:bg-gray-100/70 dark:hover:bg-slate-700/60 transition-colors',
               getEventColor(event.event_type),
             ]"
           >
@@ -363,14 +364,17 @@ function formatStatus(status?: string): string {
                 {{ formatStatus(event.status) }}
               </span>
               <span
-                class="ml-auto text-xs px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
+                class="session-detail-inline-start-auto text-xs px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
               >
                 {{ formatTime(event.timestamp) }}
               </span>
             </div>
 
             <!-- Message Event -->
-            <div v-if="event.message" class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6">
+            <div
+              v-if="event.message"
+              class="session-detail-inline-start-pad text-sm text-gray-600 dark:text-slate-300 mt-2"
+            >
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span
                   class="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 rounded font-medium"
@@ -388,7 +392,10 @@ function formatStatus(status?: string): string {
             </div>
 
             <!-- Tool Call Event -->
-            <div v-if="event.tool_call" class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6">
+            <div
+              v-if="event.tool_call"
+              class="session-detail-inline-start-pad text-sm text-gray-600 dark:text-slate-300 mt-2"
+            >
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span
                   class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70"
@@ -428,7 +435,7 @@ function formatStatus(status?: string): string {
             <!-- LLM Request Event -->
             <div
               v-if="event.llm_request"
-              class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6"
+              class="session-detail-inline-start-pad text-sm text-gray-600 dark:text-slate-300 mt-2"
             >
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span
@@ -469,7 +476,7 @@ function formatStatus(status?: string): string {
             </div>
 
             <!-- Security Event -->
-            <div v-if="event.security" class="text-sm mt-2 pl-6">
+            <div v-if="event.security" class="session-detail-inline-start-pad text-sm mt-2">
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span
                   :class="[
@@ -508,7 +515,7 @@ function formatStatus(status?: string): string {
             <!-- Error Event -->
             <div
               v-if="event.error"
-              class="text-sm text-red-600 dark:text-red-400 mt-2 pl-6 break-words"
+              class="session-detail-inline-start-pad text-sm text-red-600 dark:text-red-400 mt-2 break-words"
             >
               {{ event.error }}
             </div>
@@ -527,3 +534,17 @@ function formatStatus(status?: string): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.session-detail-inline-end-gap {
+  margin-inline-end: 0.25rem;
+}
+
+.session-detail-inline-start-auto {
+  margin-inline-start: auto;
+}
+
+.session-detail-inline-start-pad {
+  padding-inline-start: 1.5rem;
+}
+</style>

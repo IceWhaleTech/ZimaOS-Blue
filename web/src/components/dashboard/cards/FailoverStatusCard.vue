@@ -116,7 +116,7 @@ onUnmounted(() => {
           <p class="dashboard-card-label">Failover</p>
           <p class="dashboard-card-subtitle mt-2">
             {{ t('settings.failover.successRate', 'Success Rate') }}
-            <span class="ml-1" :class="successRateColor">{{ loading ? '-' : statusText }}</span>
+            <span class="ms-1" :class="successRateColor">{{ loading ? '-' : statusText }}</span>
           </p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2 text-xs">

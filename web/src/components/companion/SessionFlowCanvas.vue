@@ -585,7 +585,7 @@ function resetView() {
     </div>
 
     <!-- Controls -->
-    <div class="absolute bottom-4 left-4 flex gap-2 z-10">
+    <div class="absolute bottom-4 start-4 flex gap-2 z-10">
       <button
         class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomIn')"
@@ -646,7 +646,7 @@ function resetView() {
     </div>
 
     <!-- Legend - moved to bottom right to avoid blocking content -->
-    <div class="absolute bottom-4 right-4 bg-white dark:bg-gray-700 rounded-lg shadow-md p-3 z-10">
+    <div class="absolute bottom-4 end-4 bg-white dark:bg-gray-700 rounded-lg shadow-md p-3 z-10">
       <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
         {{ t('companion.flow.legend') }}
       </div>
@@ -694,7 +694,7 @@ function resetView() {
     <div
       v-if="hoveredNode"
       class="absolute bg-white dark:bg-gray-700 rounded-lg shadow-lg p-3 z-20 pointer-events-none max-w-xs"
-      :style="{ top: '50%', right: '16px', transform: 'translateY(-50%)' }"
+      :style="{ top: '50%', insetInlineEnd: '16px', transform: 'translateY(-50%)' }"
     >
       <div class="text-sm font-medium text-gray-900 dark:text-white mb-1">
         {{ getNodeLabel(hoveredNode) }}

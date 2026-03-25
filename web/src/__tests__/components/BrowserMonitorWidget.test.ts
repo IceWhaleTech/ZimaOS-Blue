@@ -390,6 +390,8 @@ describe('BrowserMonitorWidget', () => {
         created_at: '2026-03-23T00:00:00.000Z',
         last_activity: '2026-03-23T00:00:00.000Z',
         engine: 'lightpanda',
+        engine_detail: 'lightpanda_shim',
+        session_layer: 'read',
         monitor_kind: 'text',
       },
     ])
@@ -424,6 +426,7 @@ describe('BrowserMonitorWidget', () => {
     expect(wrapper.text()).toContain('树预览')
     expect(wrapper.text()).toContain('[heading1] "Hybrid routing"')
     expect(wrapper.text()).toContain('3 个交互元素')
+    expect(wrapper.text()).toContain('Read session')
     expect(wrapper.find('.browser-monitor__image').exists()).toBe(false)
   })
 

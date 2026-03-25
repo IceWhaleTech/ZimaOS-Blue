@@ -2488,7 +2488,7 @@ onUnmounted(() => {
   border-radius: 1rem;
   background: #ffffff;
   color: #0f172a;
-  text-align: left;
+  text-align: start;
   box-shadow: none;
   transition:
     border-color 0.22s ease,
@@ -2935,7 +2935,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 1rem;
   background: transparent;
-  text-align: left;
+  text-align: start;
   transition: background-color 0.18s ease;
 }
 
@@ -3099,7 +3099,7 @@ onUnmounted(() => {
   justify-content: flex-end;
   gap: 0.45rem;
   flex-wrap: wrap;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .security-scan-status-pill,
@@ -3178,7 +3178,8 @@ onUnmounted(() => {
 }
 
 .security-scan-item-details {
-  padding: 0 1rem 1rem 4.3rem;
+  padding-block: 0 1rem;
+  padding-inline: 4.3rem 1rem;
 }
 
 .security-scan-detail-grid {
@@ -3698,11 +3699,11 @@ html.dark .security-scan-inline-note {
   .security-scan-item-meta {
     width: 100%;
     justify-content: flex-start;
-    margin-left: 0;
+    margin-inline-start: 0;
   }
 
   .security-scan-item-details {
-    padding-left: 1rem;
+    padding-inline-start: 1rem;
   }
 
   .security-scan-detail-grid {
@@ -3728,12 +3729,12 @@ html.dark .security-scan-inline-note {
   }
 
   .security-stage::before {
-    right: 0.2rem;
+    inset-inline-end: 0.2rem;
     top: 9.5rem;
   }
 
   .security-stage::after {
-    left: 0;
+    inset-inline-start: 0;
     bottom: 0.5rem;
   }
 

@@ -6,10 +6,10 @@ import { createPinia } from 'pinia'
 import CardDeepResearch from '@/components/typeless/CardDeepResearch.vue'
 import CardDeepResearchProgress from '@/components/typeless/CardDeepResearchProgress.vue'
 
-function createTestI18n() {
+function createTestI18n(locale = 'en-US') {
   return createI18n({
     legacy: false,
-    locale: 'en-US',
+    locale,
     fallbackLocale: 'en-US',
     messages: {
       'en-US': {
@@ -38,6 +38,12 @@ function createTestI18n() {
           deepResearchVerificationResolved: 'Resolved',
           deepResearchVerificationConflicted: 'Conflicted',
           deepResearchVerificationInsufficient: 'Insufficient',
+          deepResearchGapNeedEvidenceCoverage: 'Need evidence coverage',
+          deepResearchGapNeedPrimaryOrOfficialSources: 'Need primary or official sources',
+          deepResearchGapNeedBroaderEvidenceCoverage: 'Need broader evidence coverage',
+          deepResearchGapNeedBroaderSourceDiversity: 'Need broader source diversity',
+          deepResearchGapNeedFresherSources: 'Need fresher sources',
+          deepResearchGapResolveConflictingClaims: 'Resolve conflicting claims',
           deepResearchStopReasonCoverage: 'Coverage target reached',
           deepResearchStopReasonNoNewEvidence: 'No new canonical evidence found',
           deepResearchStopReasonBudget: 'Research budget exhausted',
@@ -80,6 +86,16 @@ function createTestI18n() {
           deepResearchViewTask: 'View task',
           deepResearchCancelTask: 'Cancel',
           deepResearchRunningElsewhere: 'Track active deep research jobs across conversations.',
+        },
+      },
+      'zh-CN': {
+        chat: {
+          deepResearchGapNeedEvidenceCoverage: '需要补充证据',
+          deepResearchGapNeedPrimaryOrOfficialSources: '需要一手或官方来源',
+          deepResearchGapNeedBroaderEvidenceCoverage: '需要更广泛的证据覆盖',
+          deepResearchGapNeedBroaderSourceDiversity: '需要更广泛的来源多样性',
+          deepResearchGapNeedFresherSources: '需要更新的来源',
+          deepResearchGapResolveConflictingClaims: '需要解决冲突说法',
         },
       },
     },
@@ -148,7 +164,9 @@ describe('Deep research cards', () => {
     })
 
     expect(wrapper.text()).toContain('Deep Research')
-    expect(wrapper.get('[data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(
+      wrapper.get('[data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')
+    ).toBe('false')
     expect(wrapper.text()).toContain('Answer')
     expect(wrapper.text()).not.toContain('Official filing')
     expect(wrapper.text()).not.toContain('Research details')
@@ -232,7 +250,9 @@ describe('Deep research cards', () => {
       },
     })
 
-    expect(wrapper.get('[data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(
+      wrapper.get('[data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')
+    ).toBe('false')
     expect(wrapper.text()).not.toContain('Workflow phases')
 
     await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
@@ -246,6 +266,49 @@ describe('Deep research cards', () => {
     expect(wrapper.text()).toContain('Overview')
     expect(wrapper.text()).toContain('Official docs')
     expect(wrapper.text()).toContain('scope · Completed')
+  })
+
+  it('localizes known gap text for zh-CN cards', async () => {
+    const wrapper = mount(CardDeepResearch, {
+      props: {
+        uiStateKey: 'deep-research:test-zh-gap',
+        card: {
+          type: 'deep-research',
+          query: 'topic zh gap',
+          mode: 'standard',
+          answer: 'Answer',
+          status: 'completed',
+          verification_summary: {
+            resolved_count: 0,
+            conflicted_count: 0,
+            insufficient_count: 1,
+            items: [
+              {
+                focus: '概览',
+                gap: 'Need evidence coverage',
+                status: 'insufficient',
+              },
+            ],
+          },
+          research_trace: [
+            {
+              iteration: 1,
+              focus: '概览',
+              gap: 'Need evidence coverage',
+              verification_outcome: 'insufficient',
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('需要补充证据')
+    expect(wrapper.text()).not.toContain('Need evidence coverage')
   })
 
   it('renders verify-stage progress with buttons', () => {

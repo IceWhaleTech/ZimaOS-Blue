@@ -208,7 +208,7 @@ watch(searchQuery, (query) => {
           />
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+            class="search-input-icon absolute top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -222,7 +222,7 @@ watch(searchQuery, (query) => {
           </svg>
           <button
             v-if="searchQuery"
-            class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-white hover:bg-gray-200/70 dark:hover:bg-slate-600/70 transition-colors"
+            class="search-clear-btn absolute top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-white hover:bg-gray-200/70 dark:hover:bg-slate-600/70 transition-colors"
             :title="t('common.clear')"
             @click="searchQuery = ''"
           >
@@ -312,7 +312,7 @@ watch(searchQuery, (query) => {
           :style="{ '--item-index': String(index) }"
         >
           <button
-            class="convo-main-btn w-full text-left transition-all duration-200"
+            class="convo-main-btn w-full transition-all duration-200"
             @click="handleSelect(conversation.id)"
             @mousedown="startLongPress(conversation.id)"
             @mouseup="cancelLongPress"
@@ -385,7 +385,9 @@ watch(searchQuery, (query) => {
               <!-- Pin button -->
               <button
                 class="action-btn p-1.5 text-gray-400 hover:text-yellow-500 transition-colors"
-                :title="conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation')"
+                :title="
+                  conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation')
+                "
                 @click.stop="handlePin(conversation.id, conversation.pinned || false)"
               >
                 <svg
@@ -676,9 +678,19 @@ watch(searchQuery, (query) => {
   outline: none;
   appearance: none;
   -webkit-appearance: none;
-  padding: 0.46rem 1.92rem 0.46rem 2.18rem;
+  padding-block: 0.46rem;
+  padding-inline-start: 2.18rem;
+  padding-inline-end: 1.92rem;
   font-size: 0.82rem;
   line-height: 1.15;
+}
+
+.search-input-icon {
+  inset-inline-start: 0.625rem;
+}
+
+.search-clear-btn {
+  inset-inline-end: 0.5rem;
 }
 
 .search-input:focus,
@@ -741,6 +753,7 @@ watch(searchQuery, (query) => {
   border: none;
   border-radius: 0;
   background: transparent;
+  text-align: start;
   transition: background-color 0.18s ease;
 }
 
@@ -755,7 +768,7 @@ watch(searchQuery, (query) => {
 .conversation-item::before {
   content: '';
   position: absolute;
-  left: 0;
+  inset-inline-start: 0;
   top: 0.58rem;
   bottom: 0.58rem;
   width: 3px;
@@ -827,7 +840,7 @@ watch(searchQuery, (query) => {
   font-size: 0.68rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: end;
   white-space: nowrap;
   color: rgb(156, 163, 175);
 }
@@ -848,7 +861,7 @@ watch(searchQuery, (query) => {
 }
 
 .convo-actions {
-  right: 0.72rem;
+  inset-inline-end: 0.72rem;
   bottom: 0.56rem;
   gap: 0.22rem;
   opacity: 0;
@@ -1016,7 +1029,7 @@ watch(searchQuery, (query) => {
   }
 
   .convo-actions {
-    right: 0.7rem;
+    inset-inline-end: 0.7rem;
     bottom: 0.5rem;
   }
 }

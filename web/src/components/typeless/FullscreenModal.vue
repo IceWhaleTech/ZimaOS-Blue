@@ -356,7 +356,7 @@ const languageDisplay = computed(() => {
           </div>
           <div
             v-if="viewMode === 'split'"
-            class="flex-1 px-6 py-2 bg-green-900/20 text-green-300 font-medium border-l border-slate-700/60"
+            class="fullscreen-modal-border-start flex-1 px-6 py-2 bg-green-900/20 text-green-300 font-medium"
           >
             {{ fullscreenContent.newLabel || t('diffCard.modified', 'Modified') }}
           </div>
@@ -370,7 +370,7 @@ const languageDisplay = computed(() => {
           >
             <pre
               class="p-6 text-sm leading-relaxed min-h-full"
-            ><code class="text-slate-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-slate-700/40"><span class="inline-block w-12 text-right mr-6 text-slate-500 select-none">{{ index + 1 }}</span>{{ line }}
+            ><code class="text-slate-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-slate-700/40"><span class="fullscreen-modal-line-number fullscreen-modal-line-number-gap inline-block w-12 text-slate-500 select-none">{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
           </template>
 
@@ -381,7 +381,7 @@ const languageDisplay = computed(() => {
             ><code><template v-for="(line, index) in diffLines" :key="index"><div
                   class="flex hover:bg-slate-700/35"
                   :class="getLineClass(line.type)"
-                ><span class="w-16 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="w-16 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line.newLineNum || '' }}</span><span
+                ><span class="fullscreen-modal-gutter w-16 px-4 text-slate-500 select-none flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="fullscreen-modal-gutter w-16 px-4 text-slate-500 select-none flex-shrink-0">{{ line.newLineNum || '' }}</span><span
                     class="w-8 text-center flex-shrink-0"
                     :class="{
                       'text-green-400': line.type === 'added',
@@ -395,13 +395,13 @@ const languageDisplay = computed(() => {
           <template v-else-if="fullscreenContent.type === 'diff' && viewMode === 'split'">
             <div class="flex min-h-full">
               <!-- Left (old) -->
-              <div class="flex-1 border-r border-slate-700/60">
+              <div class="fullscreen-modal-border-end flex-1">
                 <pre
                   class="text-sm"
                 ><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
                       class="flex hover:bg-slate-700/35"
                       :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
-                    ><span class="w-14 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
+                    ><span class="fullscreen-modal-gutter w-14 px-4 text-slate-500 select-none flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
                         v-if="line"
                         class="w-8 text-center flex-shrink-0"
                         :class="line.type === 'removed' ? 'text-red-400' : 'text-slate-500'"
@@ -414,7 +414,7 @@ const languageDisplay = computed(() => {
                 ><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
                       class="flex hover:bg-slate-700/35"
                       :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
-                    ><span class="w-14 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
+                    ><span class="fullscreen-modal-gutter w-14 px-4 text-slate-500 select-none flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
                         v-if="line"
                         class="w-8 text-center flex-shrink-0"
                         :class="line.type === 'added' ? 'text-green-400' : 'text-slate-500'"
@@ -448,6 +448,27 @@ const languageDisplay = computed(() => {
 pre {
   margin: 0;
   font-family: 'Fira Code', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+}
+
+.fullscreen-modal-line-number {
+  text-align: end;
+}
+
+.fullscreen-modal-line-number-gap {
+  margin-inline-end: 1.5rem;
+}
+
+.fullscreen-modal-gutter {
+  text-align: end;
+  border-inline-end: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.fullscreen-modal-border-start {
+  border-inline-start: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.fullscreen-modal-border-end {
+  border-inline-end: 1px solid rgba(51, 65, 85, 0.6);
 }
 
 .fullscreen-enter-active,

@@ -207,7 +207,7 @@ onUnmounted(() => {
       <div class="p-4 border-b border-gray-200 dark:border-slate-700">
         <h3 class="font-medium text-gray-900 dark:text-white">
           {{ t('connections.activeConnections') }}
-          <span class="text-sm text-gray-500 dark:text-slate-400 ml-2">
+          <span class="text-sm text-gray-500 dark:text-slate-400 ms-2">
             ({{ filteredConnections.length }})
           </span>
         </h3>

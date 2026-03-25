@@ -73,7 +73,7 @@ function handleRetry() {
         {{ resolvedMessage }}
       </p>
 
-      <details v-if="errorMessage" class="text-left mb-4">
+      <details v-if="errorMessage" class="text-start mb-4">
         <summary
           class="cursor-pointer text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
         >

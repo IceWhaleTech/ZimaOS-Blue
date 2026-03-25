@@ -6,9 +6,9 @@ import type {
   DeepResearchPlannedTask,
   DeepResearchLiveSource,
 } from '@/types/typeless'
-import { localizeDeepResearchStatus } from '@/utils/deepResearchText'
+import { localizeDeepResearchGap, localizeDeepResearchStatus } from '@/utils/deepResearchText'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardDeepResearchEvent
@@ -26,6 +26,10 @@ const verification = computed(() => props.card.verification || null)
 const hasRetryGuidance = computed(() => {
   return !!brief.value?.retry_context || !!brief.value?.retry_queries?.length
 })
+
+function resolveLabel(key: string, fallback: string): string {
+  return te(key) ? String(t(key)) : fallback
+}
 
 const statusClass = computed(() => {
   switch (props.card.status) {
@@ -68,7 +72,10 @@ const hasDetailSections = computed(() => {
 })
 
 const statusLabel = computed(
-  () => localizeDeepResearchStatus(props.card.status || 'info', t) || props.card.status || 'info'
+  () =>
+    localizeDeepResearchStatus(props.card.status || 'info', resolveLabel) ||
+    props.card.status ||
+    'info'
 )
 
 function domainOf(source: DeepResearchLiveSource): string {
@@ -207,7 +214,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
               <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
                 {{ t('chat.deepResearchMustVerify', 'Must verify') }}
               </div>
-              <ul class="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-600 dark:text-slate-300">
+              <ul class="mt-2 list-disc space-y-1 ps-4 text-xs text-slate-600 dark:text-slate-300">
                 <li v-for="claim in brief.must_verify_claims" :key="claim">{{ claim }}</li>
               </ul>
             </div>
@@ -229,7 +236,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
                   {{ t('chat.deepResearchRetryQueries', 'Recovery queries') }}
                 </div>
                 <ul
-                  class="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-700/90 dark:text-amber-100"
+                  class="mt-2 list-disc space-y-1 ps-4 text-xs text-amber-700/90 dark:text-amber-100"
                 >
                   <li v-for="query in brief.retry_queries" :key="query">{{ query }}</li>
                 </ul>
@@ -311,7 +318,9 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
               {{ t('chat.deepResearchStageErrors', 'Stage warnings') }}
             </div>
             <div v-if="card.focus" class="mt-2 text-sm break-words">{{ card.focus }}</div>
-            <div v-if="card.gap" class="mt-1 text-sm break-words">{{ card.gap }}</div>
+            <div v-if="card.gap" class="mt-1 text-sm break-words">
+              {{ localizeDeepResearchGap(card.gap, resolveLabel) }}
+            </div>
             <div
               v-if="card.search_query"
               class="mt-1 text-xs text-amber-700/80 dark:text-amber-200/80"

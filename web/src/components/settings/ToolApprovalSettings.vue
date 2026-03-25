@@ -155,7 +155,7 @@ function getToolPolicy(toolName: string): Policy {
             :key="tool.name"
             class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50"
           >
-            <div class="flex-1 min-w-0 mr-3">
+            <div class="flex-1 min-w-0 me-3">
               <span class="text-sm text-gray-800 dark:text-gray-200 truncate">{{
                 getToolLabel(tool.name)
               }}</span>

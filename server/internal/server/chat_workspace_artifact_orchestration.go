@@ -16,6 +16,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -585,6 +586,9 @@ func buildDeterministicWorkspaceQuestionDraft(questions, evidence []string) stri
 	for _, question := range questions {
 		answer := strings.TrimSpace(extractDeterministicWorkspaceQuestionAnswer(question, corpus))
 		if answer == "" {
+			log.Debug().
+				Str("question", question).
+				Msg("[chat] workspace deterministic question answer missing")
 			return ""
 		}
 		answers = append(answers, answer)
@@ -621,7 +625,10 @@ func extractDeterministicWorkspaceQuestionAnswer(question, corpus string) string
 	case strings.Contains(questionLower, "public registry") && strings.Contains(questionLower, "before filtering"):
 		return extractWorkspaceCountByPattern(
 			corpus,
-			`(?is)public registry had\s+([0-9][0-9,]*)\s+community-built skills`,
+			`(?is)public registry had\s*([0-9][0-9,]*)`,
+			`(?is)community-built skills(?:.{0,400}?)public registry had\s*([0-9][0-9,]*)`,
+			`(?is)public registry had\s*([0-9][0-9,]*)\b(?:.{0,200}?)community-built skills`,
+			`(?is)([0-9][0-9,]*)\s+community-built skills`,
 		)
 	case strings.Contains(questionLower, "after filtering") || strings.Contains(questionLower, "remained after filtering"):
 		return extractWorkspaceCountByPattern(
@@ -654,7 +661,7 @@ func extractDeterministicWorkspaceQuestionAnswer(question, corpus string) string
 	case strings.Contains(questionLower, "date") && strings.Contains(questionLower, "skills registry"):
 		if date := extractWorkspaceDateByPattern(
 			corpus,
-			`(?is)as of\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})`,
+			`(?is)as of\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})`,
 			`(?is)collected on\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})`,
 		); date != "" {
 			return date
@@ -664,6 +671,7 @@ func extractDeterministicWorkspaceQuestionAnswer(question, corpus string) string
 			corpus,
 			`(?is)paper proposes\s+([0-9][0-9,]*)\s+benchmark tasks`,
 			`(?is)proposes\s+([0-9][0-9,]*)\s+new benchmark tasks`,
+			`(?is)proposed tasks[^\n]{0,80}?\b([0-9][0-9,]*)\s+child sections?`,
 		); count != "" {
 			return count
 		}
@@ -1318,33 +1326,51 @@ func extractWorkspaceContentEvidenceBlocks(toolName string, payload map[string]i
 	if rawText == "" {
 		rawText = strings.TrimSpace(payloadStringField(payloadMapField(payload, "document"), "raw_text"))
 	}
+	markdown := strings.TrimSpace(payloadStringField(payload, "markdown"))
+	outlineText := extractWorkspacePDFOutlineText(payload["outline"])
 	path := workspaceArtifactPayloadPath(payload)
 	pageLabel := workspaceArtifactPayloadPageLabel(payload)
 	blocks := make([]workspaceArtifactEvidenceBlock, 0, 4)
-	isPDFEvidence := strings.HasSuffix(strings.ToLower(strings.TrimSpace(path)), ".pdf") || rawText != ""
+	isPDFEvidence := strings.HasSuffix(strings.ToLower(strings.TrimSpace(path)), ".pdf") || rawText != "" || markdown != "" || outlineText != ""
 
 	pageBlocks := extractWorkspacePDFPageBlocksFromPayload(toolName, path, payload["pages"])
+	if len(pageBlocks) == 0 && markdown != "" {
+		pageBlocks = append(pageBlocks, extractWorkspacePDFPageEvidenceBlocks(toolName, path, "MARKDOWN", markdown)...)
+	}
 	if len(pageBlocks) > 0 {
 		isPDFEvidence = true
 		blocks = append(blocks, pageBlocks...)
 	}
-	if text == "" && rawText == "" && len(blocks) == 0 {
+	if outlineText != "" && isPDFEvidence {
+		blocks = append(blocks, buildWorkspaceContentEvidenceBlock(toolName, path, pageLabel, "OUTLINE", outlineText, 7))
+	}
+	if text == "" && rawText == "" && markdown == "" && outlineText == "" && len(blocks) == 0 {
 		return nil
 	}
 
 	// Rich PDF payloads often include the same content three times:
-	// per-page blocks, whole-document text, and whole-document raw_text.
+	// per-page blocks, whole-document markdown/text, and whole-document raw_text.
 	// Prefer the per-page representation so later pages are not crowded out.
 	useWholeDocumentBlocks := !isPDFEvidence || len(pageBlocks) == 0
 
-	if text != "" && useWholeDocumentBlocks {
+	if markdown != "" && useWholeDocumentBlocks {
+		blocks = append(blocks, buildWorkspaceContentEvidenceBlock(toolName, path, pageLabel, "MARKDOWN", markdown, 5))
+	}
+	if outlineText != "" && useWholeDocumentBlocks && !isPDFEvidence {
+		blocks = append(blocks, buildWorkspaceContentEvidenceBlock(toolName, path, pageLabel, "OUTLINE", outlineText, 2))
+	}
+	if text != "" && useWholeDocumentBlocks && markdown == "" {
 		blocks = append(blocks, buildWorkspaceContentEvidenceBlock(toolName, path, pageLabel, "TEXT", text, 3))
 	}
-	if rawText != "" && rawText != text && isPDFEvidence && useWholeDocumentBlocks {
+	if rawText != "" && rawText != text && rawText != markdown && isPDFEvidence && useWholeDocumentBlocks {
 		blocks = append(blocks, buildWorkspaceContentEvidenceBlock(toolName, path, pageLabel, "RAW", rawText, 4))
 	}
 	if isPDFEvidence && len(pageBlocks) == 0 {
-		blocks = append(blocks, extractWorkspacePDFPageEvidenceBlocks(toolName, path, "TEXT", text)...)
+		if markdown != "" {
+			blocks = append(blocks, extractWorkspacePDFPageEvidenceBlocks(toolName, path, "MARKDOWN", markdown)...)
+		} else {
+			blocks = append(blocks, extractWorkspacePDFPageEvidenceBlocks(toolName, path, "TEXT", text)...)
+		}
 		if rawText != "" {
 			blocks = append(blocks, extractWorkspacePDFPageEvidenceBlocks(toolName, path, "RAW", rawText)...)
 		}
@@ -1364,8 +1390,16 @@ func extractWorkspacePDFPageBlocksFromPayload(toolName, path string, raw interfa
 		if !ok || len(page) == 0 {
 			continue
 		}
-		text := strings.TrimSpace(payloadStringField(page, "raw_text"))
-		variant := "RAW"
+		text := strings.TrimSpace(payloadStringField(page, "markdown"))
+		variant := "MARKDOWN"
+		if text == "" {
+			text = buildWorkspaceStructuredPDFPageLayoutText(page["blocks"], page["tables"])
+			variant = "STRUCTURED"
+		}
+		if text == "" {
+			text = strings.TrimSpace(payloadStringField(page, "raw_text"))
+			variant = "RAW"
+		}
 		if text == "" {
 			text = strings.TrimSpace(payloadStringField(page, "text"))
 			variant = "PAGE"
@@ -1380,9 +1414,135 @@ func extractWorkspacePDFPageBlocksFromPayload(toolName, path string, raw interfa
 				text = fmt.Sprintf("[Page %d]\n%s", number, text)
 			}
 		}
-		blocks = append(blocks, buildWorkspaceContentEvidenceBlock(toolName, path, pageLabel, variant, text, 5))
+		score := 5
+		if variant == "STRUCTURED" || variant == "MARKDOWN" {
+			score = 6
+		}
+		blocks = append(blocks, buildWorkspaceContentEvidenceBlock(toolName, path, pageLabel, variant, text, score))
 	}
 	return blocks
+}
+
+func extractWorkspacePDFOutlineText(raw interface{}) string {
+	entries := normalizeCompactPDFOutlineEntriesForLLM(raw)
+	if len(entries) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, min(len(entries), 16))
+	for _, entry := range entries {
+		prefix := "- "
+		if entry.Level > 1 {
+			prefix = strings.Repeat("  ", entry.Level-1) + "- "
+		}
+		line := prefix + entry.Title
+		meta := make([]string, 0, 2)
+		if entry.ChildCount > 0 {
+			meta = append(meta, fmt.Sprintf("%d child sections", entry.ChildCount))
+		}
+		if entry.PageNumber > 0 {
+			meta = append(meta, fmt.Sprintf("page %d", entry.PageNumber))
+		}
+		if len(meta) > 0 {
+			line += " (" + strings.Join(meta, ", ") + ")"
+		}
+		lines = append(lines, line)
+		if len(lines) >= 16 {
+			break
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func buildWorkspaceStructuredPDFPageLayoutText(blockRaw, tableRaw interface{}) string {
+	parts := make([]string, 0, 8)
+	seen := make(map[string]struct{}, 8)
+	appendPart := func(text string) {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			return
+		}
+		key := text
+		if len(key) > 256 {
+			key = key[:256]
+		}
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		parts = append(parts, text)
+	}
+
+	if rows, ok := blockRaw.([]interface{}); ok {
+		for _, item := range rows {
+			block, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			text := strings.TrimSpace(anyToStringForLLM(block["markdown"]))
+			if text == "" {
+				text = strings.TrimSpace(anyToStringForLLM(block["text"]))
+			}
+			appendPart(text)
+			if len(parts) >= 8 {
+				break
+			}
+		}
+	}
+	if rows, ok := tableRaw.([]interface{}); ok {
+		for _, item := range rows {
+			table, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			text := strings.TrimSpace(anyToStringForLLM(table["markdown"]))
+			if text == "" {
+				text = buildWorkspaceStructuredPDFTableText(table["rows"])
+			}
+			appendPart(text)
+			if len(parts) >= 8 {
+				break
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func buildWorkspaceStructuredPDFTableText(raw interface{}) string {
+	rows, ok := raw.([]interface{})
+	if !ok || len(rows) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, min(len(rows), 6))
+	for _, item := range rows {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		cells, ok := row["cells"].([]interface{})
+		if !ok || len(cells) == 0 {
+			continue
+		}
+		values := make([]string, 0, len(cells))
+		for _, cellRaw := range cells {
+			cell, ok := cellRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			text := strings.TrimSpace(anyToStringForLLM(cell["text"]))
+			if text == "" {
+				continue
+			}
+			values = append(values, text)
+		}
+		if len(values) == 0 {
+			continue
+		}
+		lines = append(lines, strings.Join(values, "\t"))
+		if len(lines) >= 6 {
+			break
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 func extractWorkspacePDFPageEvidenceBlocks(toolName, path, variant, text string) []workspaceArtifactEvidenceBlock {

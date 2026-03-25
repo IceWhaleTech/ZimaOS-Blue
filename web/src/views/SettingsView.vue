@@ -88,8 +88,7 @@ const themeIcons: Record<Theme, string> = {
 }
 
 const closeBehaviorIcons: Record<CloseBehavior, string> = {
-  quit:
-    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.5 5.25H8.25A2.25 2.25 0 006 7.5v9a2.25 2.25 0 002.25 2.25h5.25"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.25 8.25L18 12m0 0l-3.75 3.75M18 12H9.75"/>',
+  quit: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.5 5.25H8.25A2.25 2.25 0 006 7.5v9a2.25 2.25 0 002.25 2.25h5.25"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.25 8.25L18 12m0 0l-3.75 3.75M18 12H9.75"/>',
   minimize:
     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5.25 17.25h13.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.25 10.5L12 14.25l3.75-3.75"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 5.25v9"/>',
 }
@@ -1374,7 +1373,7 @@ onUnmounted(() => {
                     {{ t('settings.smallModel.userGuideTitle', 'What this does') }}
                   </h4>
                   <ul
-                    class="mt-1.5 list-disc pl-4 space-y-1 text-xs text-gray-600 dark:text-gray-300"
+                    class="settings-inline-list mt-1.5 list-disc space-y-1 text-xs text-gray-600 dark:text-gray-300"
                   >
                     <li>
                       {{
@@ -1674,14 +1673,13 @@ onUnmounted(() => {
                       }}
                     </div>
                   </div>
-
                 </div>
 
                 <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
                   <button
                     data-testid="small-model-stats-toggle"
                     type="button"
-                    class="w-full flex items-center justify-between gap-2 text-left"
+                    class="w-full flex items-center justify-between gap-2 text-start"
                     @click="smallModelStatsExpanded = !smallModelStatsExpanded"
                   >
                     <h4 class="text-sm text-gray-800 dark:text-gray-100">
@@ -2028,7 +2026,7 @@ onUnmounted(() => {
                     {{ settingsStore.smallModelStatus.error }}
                   </p>
                   <button
-                    class="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white ml-2 flex-shrink-0"
+                    class="settings-inline-gap-sm text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white flex-shrink-0"
                     @click="startSmallModelDownload"
                   >
                     {{ t('common.retry') }}
@@ -2289,7 +2287,7 @@ input[type='range']::-moz-range-thumb {
   padding: 10px 12px;
   border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 1rem;
-  text-align: left;
+  text-align: start;
   background: #ffffff;
   color: #0f172a;
   box-shadow: none;
@@ -2549,7 +2547,7 @@ input[type='range']::-moz-range-thumb {
   font-size: 0.85rem;
   font-weight: 700;
   line-height: 1.35;
-  text-align: left;
+  text-align: start;
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -2826,7 +2824,7 @@ html.dark .settings-tab-button--active .settings-tab-button__state {
 .settings-toast {
   position: fixed;
   top: 5rem;
-  right: 1rem;
+  inset-inline-end: 1rem;
   z-index: 9999;
   display: inline-flex;
   align-items: center;
@@ -2872,6 +2870,18 @@ html.dark .settings-tab-button--active .settings-tab-button__state {
   transform: translateX(100px);
 }
 
+.settings-inline-list {
+  padding-inline-start: 1rem;
+}
+
+.settings-inline-gap-sm {
+  margin-inline-start: 0.5rem;
+}
+
+:global(html[dir='rtl']) .settings-view [role='switch'] .translate-x-5 {
+  transform: translateX(-1.25rem);
+}
+
 @media (max-width: 1100px) {
   .settings-tab-nav {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2910,8 +2920,7 @@ html.dark .settings-tab-button--active .settings-tab-button__state {
   }
 
   .settings-toast {
-    left: 0.75rem;
-    right: 0.75rem;
+    inset-inline: 0.75rem;
     top: 4.5rem;
     width: auto;
   }

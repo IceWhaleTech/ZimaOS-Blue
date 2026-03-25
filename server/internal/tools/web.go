@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
 
@@ -1115,7 +1116,7 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 	}
 
 	allowedProxy := lane == webAccessLaneHTTP || lane == webAccessLaneAuto || lane == webAccessLaneProxyFetcher
-	allowedBrowser := lane == webAccessLaneHTTP || lane == webAccessLaneAuto || lane == webAccessLaneProxyFetcher || lane == webAccessLaneBrowser
+	allowedBrowser := lane == webAccessLaneHTTP || lane == webAccessLaneAuto || lane == webAccessLaneLightpandaShim || lane == webAccessLaneProxyFetcher || lane == webAccessLaneBrowser
 
 	bestScore := math.Inf(-1)
 	lastErrs := []error{}
@@ -1149,7 +1150,7 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 		return analyzeWebQueryReadResponse(outcome.Resp)
 	}
 
-	if lane == webFetchStrategySession || lane == webAccessLaneHTTPNative {
+	if lane == webFetchStrategySession || lane == webAccessLaneHTTPNative || lane == webAccessLaneLightpandaShim {
 		resp, readErr := t.executeReadLane(ctx, args, targetURL, lane, format, maxChars)
 		needsBrowser, strong := applyOutcome(webQueryReadOutcome{Lane: lane, Resp: resp, Err: readErr})
 		if needsBrowser && allowedBrowser && lane != webAccessLaneBrowser {
@@ -1287,6 +1288,8 @@ func webQueryReadAttemptMode(requestedLane, source string) string {
 	switch strings.TrimSpace(source) {
 	case webAccessSourceHTTPNative:
 		return webAccessLaneHTTPNative
+	case webAccessSourceLightpandaShim:
+		return webAccessLaneLightpandaShim
 	case webAccessSourceBrowser:
 		return webAccessLaneBrowser
 	case webAccessSourceProxyFetcher:
@@ -1301,6 +1304,16 @@ func (t *WebTool) SetBrowser(browser BrowserBackend) {
 	for _, candidate := range []Tool{t.fetch, t.read, t.extract} {
 		if setter, ok := candidate.(interface{ SetBrowser(BrowserBackend) }); ok {
 			setter.SetBrowser(browser)
+		}
+	}
+}
+
+func (t *WebTool) SetLightpandaShim(service *browser.LightpandaService) {
+	for _, candidate := range []Tool{t.fetch, t.read, t.extract} {
+		if setter, ok := candidate.(interface {
+			SetLightpandaShim(*browser.LightpandaService)
+		}); ok {
+			setter.SetLightpandaShim(service)
 		}
 	}
 }
@@ -1608,6 +1621,8 @@ func applyResolvedReadToEnvelope(envelope webQueryEnvelope, readResult webQueryR
 			strategyUsed = webFetchStrategyProxy
 		case webAccessSourceHTTPNative:
 			strategyUsed = webAccessLaneHTTPNative
+		case webAccessSourceLightpandaShim:
+			strategyUsed = webAccessLaneLightpandaShim
 		default:
 			strategyUsed = webFetchStrategyHTTP
 		}
@@ -1817,7 +1832,7 @@ func (t *WebTool) extractWebQueryMediaCandidates(ctx context.Context, args map[s
 	extractArgs["url"] = targetURL
 	lane := strings.ToLower(strings.TrimSpace(asString(extractArgs["lane"])))
 	switch lane {
-	case "", webAccessLaneBrowser, webAccessLaneProxyFetcher:
+	case "", webAccessLaneBrowser, webAccessLaneProxyFetcher, webAccessLaneLightpandaShim:
 		extractArgs["lane"] = webAccessLaneHTTP
 	}
 	extractArgs["fields"] = map[string]interface{}{
@@ -2308,6 +2323,8 @@ func scoreWebQueryReadResponse(resp webReadResponse) float64 {
 		score += 35
 	case webAccessSourceProxyFetcher:
 		score += 20
+	case webAccessSourceLightpandaShim:
+		score += 16
 	case webAccessSourceHTTP:
 		score += 10
 	}

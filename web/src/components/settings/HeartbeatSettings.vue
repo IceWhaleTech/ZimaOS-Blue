@@ -182,7 +182,7 @@ onMounted(() => {
       <div class="flex items-center gap-3">
         <span class="w-2.5 h-2.5 rounded-full" :class="indicatorClass" />
         <span class="text-sm font-medium text-gray-900 dark:text-white">{{ statusLabel }}</span>
-        <span v-if="status.interval" class="ml-auto text-xs text-gray-500 dark:text-gray-400">
+        <span v-if="status.interval" class="ms-auto text-xs text-gray-500 dark:text-gray-400">
           {{ t('heartbeat.interval') }}: {{ status.interval }}
         </span>
       </div>

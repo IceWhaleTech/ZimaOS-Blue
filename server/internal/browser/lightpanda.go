@@ -67,6 +67,7 @@ type lightpandaSession struct {
 type lightpandaDocument struct {
 	url              string
 	title            string
+	content          string
 	summary          string
 	treePreview      string
 	a11yTree         string
@@ -80,7 +81,7 @@ type lightpandaNodeDescriptor struct {
 	line  string
 }
 
-// LightpandaService provides Blue's read-only Lightpanda v1 session model.
+// LightpandaService provides Blue's read-layer Lightpanda shim session model.
 type LightpandaService struct {
 	config        *Config
 	security      *SecurityChecker
@@ -92,7 +93,7 @@ type LightpandaService struct {
 	nextID   atomic.Uint64
 }
 
-// NewLightpandaService creates a Lightpanda read-only session service.
+// NewLightpandaService creates a Lightpanda read-layer session service.
 func NewLightpandaService(config *Config) *LightpandaService {
 	cfg := config.Clone()
 	return &LightpandaService{
@@ -103,7 +104,7 @@ func NewLightpandaService(config *Config) *LightpandaService {
 	}
 }
 
-// Start starts the Lightpanda service. The v1 runtime is HTTP/DOM based, so
+// Start starts the Lightpanda service. The shim runtime is HTTP/DOM based, so
 // startup is intentionally lightweight.
 func (s *LightpandaService) Start(ctx context.Context) error {
 	if s == nil {
@@ -113,6 +114,57 @@ func (s *LightpandaService) Start(ctx context.Context) error {
 	s.started = true
 	s.mu.Unlock()
 	return nil
+}
+
+// EnsureBinary resolves or downloads the configured upstream Lightpanda binary.
+func (s *LightpandaService) EnsureBinary(ctx context.Context) (string, error) {
+	if s == nil || s.binaryManager == nil {
+		return "", ErrBrowserNotAvailable
+	}
+	return s.binaryManager.Ensure(ctx)
+}
+
+// BinaryAvailable reports whether a usable upstream Lightpanda binary already
+// exists locally without triggering a download attempt.
+func (s *LightpandaService) BinaryAvailable() bool {
+	if s == nil || s.binaryManager == nil {
+		return false
+	}
+	_, ok, err := s.binaryManager.ReadyPath()
+	return err == nil && ok
+}
+
+// ReadDocument fetches a page through the Lightpanda shim without persisting a
+// browser session. This is used by fetch/read-layer routing.
+func (s *LightpandaService) ReadDocument(ctx context.Context, rawURL string, timeoutMS int) (*LightpandaReadDocument, error) {
+	if s == nil {
+		return nil, ErrBrowserNotAvailable
+	}
+	if err := s.Start(ctx); err != nil {
+		return nil, err
+	}
+	urlString, err := s.security.NormalizeAndCheckURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.newHTTPClient()
+	if err != nil {
+		return nil, err
+	}
+	doc, err := s.fetchDocument(ctx, &lightpandaSession{client: client}, urlString, timeoutMS)
+	if err != nil {
+		return nil, err
+	}
+	return &LightpandaReadDocument{
+		URL:               doc.url,
+		Title:             doc.title,
+		Content:           doc.content,
+		Summary:           doc.summary,
+		TreePreview:       doc.treePreview,
+		AccessibilityTree: doc.a11yTree,
+		InteractiveTree:   doc.interactiveTree,
+		InteractiveCount:  doc.interactiveCount,
+	}, nil
 }
 
 // HasSession reports whether targetID belongs to a Lightpanda session.
@@ -459,6 +511,8 @@ func lightpandaSessionInfo(session *lightpandaSession) SessionInfo {
 			CreatedAt:    now,
 			LastActivity: now,
 			Engine:       SessionEngineLightpanda,
+			EngineDetail: SessionEngineDetailLightpandaShim,
+			SessionLayer: SessionLayerRead,
 			MonitorKind:  SessionMonitorKindText,
 		}
 	}
@@ -470,6 +524,8 @@ func lightpandaSessionInfo(session *lightpandaSession) SessionInfo {
 		CreatedAt:    session.createdAt.UTC().Format(time.RFC3339),
 		LastActivity: session.lastActivity.UTC().Format(time.RFC3339),
 		Engine:       SessionEngineLightpanda,
+		EngineDetail: SessionEngineDetailLightpandaShim,
+		SessionLayer: SessionLayerRead,
 		MonitorKind:  SessionMonitorKindText,
 	}
 }
@@ -528,10 +584,15 @@ func analyzeLightpandaDocument(doc *html.Node, rawURL string) *lightpandaDocumen
 
 	jsRequired := looksLikeJSRequired(doc, summaryText, len(interactiveNodes), len(a11yNodes))
 	summary := truncateText(summaryText, lightpandaDefaultSummaryLen)
+	content := summaryText
+	if strings.TrimSpace(content) == "" {
+		content = a11yTree
+	}
 
 	return &lightpandaDocument{
 		url:              rawURL,
 		title:            title,
+		content:          content,
 		summary:          summary,
 		treePreview:      treePreview,
 		a11yTree:         a11yTree,

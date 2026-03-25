@@ -64,7 +64,7 @@ function scrollRight() {
       <!-- Scroll buttons -->
       <button
         v-if="card.images.length > 2"
-        class="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+        class="gallery-inline-start-btn absolute top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
         @click="scrollLeft"
       >
         <svg
@@ -84,7 +84,7 @@ function scrollRight() {
       </button>
       <button
         v-if="card.images.length > 2"
-        class="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+        class="gallery-inline-end-btn absolute top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
         @click="scrollRight"
       >
         <svg
@@ -138,7 +138,7 @@ function scrollRight() {
           <!-- Caption -->
           <div
             v-if="image.caption"
-            class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
+            class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
           >
             <p class="text-xs text-white truncate">{{ image.caption }}</p>
           </div>
@@ -181,7 +181,7 @@ function scrollRight() {
         <!-- Caption -->
         <div
           v-if="image.caption"
-          class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
+          class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
         >
           <p class="text-xs text-white truncate">{{ image.caption }}</p>
         </div>
@@ -196,7 +196,7 @@ function scrollRight() {
         @click="closeLightbox"
       >
         <button
-          class="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+          class="gallery-lightbox-close absolute top-4 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
           @click.stop="closeLightbox"
         >
           <svg
@@ -230,6 +230,18 @@ function scrollRight() {
 </template>
 
 <style scoped>
+.gallery-inline-start-btn {
+  inset-inline-start: 0.5rem;
+}
+
+.gallery-inline-end-btn {
+  inset-inline-end: 0.5rem;
+}
+
+.gallery-lightbox-close {
+  inset-inline-end: 1rem;
+}
+
 /* Custom scrollbar for horizontal scroll */
 .scrollbar-thin {
   scrollbar-width: thin;

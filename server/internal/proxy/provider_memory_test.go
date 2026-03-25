@@ -173,4 +173,12 @@ func TestModelAliases(t *testing.T) {
 	if !found {
 		t.Fatal("expected claude-haiku-4-5 in aliases")
 	}
+
+	sonnetAliases, ok := ModelAliases["claude-3-5-sonnet-20241022"]
+	if !ok || len(sonnetAliases) == 0 {
+		t.Fatal("expected aliases for claude-3-5-sonnet-20241022")
+	}
+	if sonnetAliases[0] != "claude-sonnet-4-5-20250929" {
+		t.Fatalf("expected first sonnet alias to prefer dated 4.5 model, got %q", sonnetAliases[0])
+	}
 }

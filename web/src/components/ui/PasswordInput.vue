@@ -54,7 +54,7 @@ function handleInput(event: Event) {
       :disabled="disabled"
       :name="name || undefined"
       :class="[
-        'w-full pr-10',
+        'w-full pe-10',
         props.class ||
           'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400',
       ]"
@@ -62,7 +62,7 @@ function handleInput(event: Event) {
     />
     <button
       type="button"
-      class="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
+      class="absolute end-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
       :title="
         showPassword ? $t('formFiller.widget.hidePassword') : $t('formFiller.widget.showPassword')
       "

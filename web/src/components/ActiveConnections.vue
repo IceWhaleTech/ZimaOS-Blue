@@ -141,31 +141,31 @@ function toggleSort(field: typeof sortBy.value) {
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              class="active-connections-heading px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
             >
               {{ t('common.type') }}
             </th>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              class="active-connections-heading px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
             >
               {{ t('common.clientIp') }}
             </th>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
+              class="active-connections-heading px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
               @click="toggleSort('connectedAt')"
             >
               {{ t('common.connected') }}
               <span v-if="sortBy === 'connectedAt'">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
             </th>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
+              class="active-connections-heading px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
               @click="toggleSort('lastActivity')"
             >
               {{ t('common.lastActivity') }}
               <span v-if="sortBy === 'lastActivity'">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
             </th>
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
+              class="active-connections-heading px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
               @click="toggleSort('requestCount')"
             >
               {{ t('common.requests') }}
@@ -205,3 +205,9 @@ function toggleSort(field: typeof sortBy.value) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.active-connections-heading {
+  text-align: start;
+}
+</style>

@@ -877,6 +877,7 @@ func runServer() {
 	var lazyBrowserSvc func() *browser.RodService
 	var acquireBrowserSvc func() (*browser.RodService, func(), error)
 	var acquireFallbackBrowserSvc func() (*browser.RodService, func(), error)
+	var lightpandaShimSvc *browser.LightpandaService
 	var relayInfoProvider func() browser.RelayInfo
 	var syncBrowserMonitorRetention func(time.Duration)
 	var cleanupBrowserMonitorFrames func()
@@ -1057,13 +1058,39 @@ func runServer() {
 		acquireBrowserSvc = defaultRuntime.acquire
 		acquireFallbackBrowserSvc = managedRuntime.acquire
 		relayPreferredSites := cfg.Browser.ExpandedRelayPreferredSites()
+		lightpandaSvc := browser.NewLightpandaService(&cfg.Browser)
+		lightpandaShimSvc = lightpandaSvc
+		if cfg.Browser.Lightpanda.Enabled {
+			go func() {
+				path, err := lightpandaSvc.EnsureBinary(context.Background())
+				if err != nil {
+					logger.Warn().Err(err).Msg("Lightpanda browser-lite binary is not ready; Blue will keep using the read-layer shim and Chromium fallback until it becomes available")
+					return
+				}
+				logger.Info().Str("binary_path", path).Msg("Lightpanda browser-lite binary is ready")
+			}()
+		}
 		browserBackend = tools.NewHybridCapabilityBrowserBackend(
 			&cfg.Browser,
-			browser.NewLightpandaService(&cfg.Browser),
+			lightpandaSvc,
 			managedRuntime.rodBackend,
 			relayRuntime.rodBackend,
 			func(rawURL string) bool {
 				return browser.MatchSitePatternList(rawURL, relayPreferredSites)
+			},
+			func(ctx context.Context) bool {
+				if ctx == nil {
+					ctx = context.Background()
+				}
+				if strings.TrimSpace(cfg.Browser.CDPURL) != "" {
+					probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+					defer cancel()
+					return browser.ProbeCDPURL(probeCtx, cfg.Browser.CDPURL) == nil
+				}
+				if cfg.Browser.RelayEnabled {
+					return relayInfoProvider().ExtensionConnected
+				}
+				return false
 			},
 		)
 		if provider, ok := browserBackend.(browser.SessionRouteProvider); ok {
@@ -1236,7 +1263,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, configKV, configStore)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, lightpandaShimSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -1354,7 +1381,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), configKV kvstore.Store, configStore *config.ConfigStore) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), lightpandaShimSvc *browser.LightpandaService, configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -1683,6 +1710,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		LazyBrowserSvc:            lazyBrowserSvc,
 		AcquireBrowserSvc:         acquireBrowserSvc,
 		AcquireFallbackBrowserSvc: acquireFallbackBrowserSvc,
+		LightpandaShimSvc:         lightpandaShimSvc,
 		BrowserBackend:            browserBackend,
 	}
 

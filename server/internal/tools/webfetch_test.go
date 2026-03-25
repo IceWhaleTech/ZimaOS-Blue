@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 )
@@ -686,6 +687,55 @@ func TestWebFetchToolExecute_ClassifiesHardChallengeWithoutAutoSolve(t *testing.
 	}
 	if state["resume_action"] != "browser" {
 		t.Fatalf("challenge_state.resume_action = %v, want browser", state["resume_action"])
+	}
+}
+
+func TestFetchOrchestratorTracksLightpandaShimAsReadLayer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<!doctype html><html><head><title>Shim Article</title></head><body><main><h1>Shim Article</h1><p>This read-layer page is intentionally long enough to count as a strong fetch result for the layered retrieval scorer. It contains enough concrete prose to avoid falling back to Chromium, demonstrates that the lightpanda shim can act as a successful structured reader, and should be remembered as a non-browser lane by the domain strategy memory.</p></main></body></html>`))
+	}))
+	defer srv.Close()
+
+	cfg := browser.DefaultConfig()
+	shim := browser.NewLightpandaService(cfg)
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		AllowPrivateHosts:     true,
+		LayeredFetchEnabled:   true,
+		DomainStrategyEnabled: true,
+	})
+	tool.SetLightpandaShim(shim)
+
+	result, err := tool.orchestrator.Fetch(context.Background(), FetchRequest{
+		URL:               srv.URL,
+		Mode:              webFetchExtractText,
+		PreferredLane:     webAccessLaneLightpandaShim,
+		AllowAutoFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if result.StrategyUsed != webAccessLaneLightpandaShim {
+		t.Fatalf("strategy_used = %q, want %q", result.StrategyUsed, webAccessLaneLightpandaShim)
+	}
+	if result.Payload.Source != webAccessSourceLightpandaShim {
+		t.Fatalf("source = %q, want %q", result.Payload.Source, webAccessSourceLightpandaShim)
+	}
+	if !strings.Contains(result.Payload.Content, "read-layer page is intentionally long enough") {
+		t.Fatalf("content = %q, want extracted shim text", result.Payload.Content)
+	}
+
+	host := webFetchHostForURL(srv.URL)
+	strategy, ok := tool.orchestrator.memory.loadDomain(host)
+	if !ok {
+		t.Fatal("expected domain strategy memory to record lightpanda_shim result")
+	}
+	if strategy.PreferredLane != webAccessLaneLightpandaShim {
+		t.Fatalf("PreferredLane = %q, want %q", strategy.PreferredLane, webAccessLaneLightpandaShim)
+	}
+	if strategy.NeedsRealBrowser {
+		t.Fatal("expected lightpanda_shim success to keep NeedsRealBrowser=false")
 	}
 }
 

@@ -31,8 +31,8 @@ func TestServiceInfoAndExtractTextPDF(t *testing.T) {
 	if info.PageCount != 1 {
 		t.Fatalf("page count = %d, want 1", info.PageCount)
 	}
-	if info.Engine != nativePDFEngineName() {
-		t.Fatalf("engine = %q, want %q", info.Engine, nativePDFEngineName())
+	if info.Engine != engineName {
+		t.Fatalf("engine = %q, want %q", info.Engine, engineName)
 	}
 
 	result, err := svc.Extract(context.Background(), ExtractRequest{Path: path, IncludePages: true})

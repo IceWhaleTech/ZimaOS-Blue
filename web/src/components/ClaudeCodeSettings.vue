@@ -1317,7 +1317,7 @@ function formatDate(dateStr?: string) {
                 <!-- Parent directory -->
                 <button
                   v-if="browserParent"
-                  class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-left"
+                  class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-start"
                   @click="browseTo(browserParent)"
                 >
                   <svg
@@ -1340,7 +1340,7 @@ function formatDate(dateStr?: string) {
                 <button
                   v-for="dir in browserDirs"
                   :key="dir.path"
-                  class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-left"
+                  class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-start"
                   @click="browseTo(dir.path)"
                 >
                   <svg
@@ -1373,7 +1373,7 @@ function formatDate(dateStr?: string) {
             <div
               class="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50"
             >
-              <span class="text-xs text-gray-500 dark:text-slate-400 truncate mr-2 font-mono">{{
+              <span class="text-xs text-gray-500 dark:text-slate-400 truncate me-2 font-mono">{{
                 browserCurrent
               }}</span>
               <button

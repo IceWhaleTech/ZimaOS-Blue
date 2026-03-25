@@ -485,8 +485,8 @@ const summaryGridStyle = computed(() => ({
   content: '';
   position: absolute;
   top: 0;
-  left: 0;
-  right: 40%;
+  inset-inline-start: 0;
+  inset-inline-end: 40%;
   height: 1px;
   background: linear-gradient(90deg, var(--resource-chart-soft-border) 0%, transparent 100%);
 }
@@ -566,7 +566,7 @@ const summaryGridStyle = computed(() => ({
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  text-align: left;
+  text-align: start;
 }
 
 .resource-chart-stat::before {

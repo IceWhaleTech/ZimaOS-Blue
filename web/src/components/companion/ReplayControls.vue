@@ -80,11 +80,11 @@ watch(showSpeedMenu, (isOpen) => {
     >
       <div
         class="absolute h-full bg-gray-700 dark:bg-gray-500 rounded-full transition-all"
-        :style="{ width: `${progress}%` }"
+        :style="{ width: `${progress}%`, insetInlineStart: '0' }"
       />
       <div
         class="absolute w-4 h-4 bg-gray-700 dark:bg-gray-500 rounded-full -top-1 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-        :style="{ left: `${progress}%` }"
+        :style="{ insetInlineStart: `${progress}%` }"
       />
     </div>
 
@@ -171,13 +171,13 @@ watch(showSpeedMenu, (isOpen) => {
           >
             <div
               v-if="showSpeedMenu"
-              class="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[80px]"
+              class="absolute bottom-full end-0 mb-2 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[80px]"
             >
               <button
                 v-for="s in speeds"
                 :key="s"
                 :class="[
-                  'w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
+                  'w-full px-3 py-1.5 text-sm text-start hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
                   s === speed
                     ? 'text-gray-900 dark:text-gray-300 font-medium'
                     : 'text-gray-700 dark:text-gray-300',

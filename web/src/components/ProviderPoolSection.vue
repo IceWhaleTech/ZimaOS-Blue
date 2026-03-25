@@ -8,13 +8,15 @@ import { useNotificationStore } from '@/stores/notification'
 import ProviderIcon from '@/components/ProviderIcon.vue'
 import type { Provider, Model, ProviderVerificationResult, APIFormat } from '@/api/providerPool'
 import { providerPoolApi } from '@/api/providerPool'
+import { getLocaleDirection } from '@/i18n'
 import { formatTokens } from '@/utils/format'
 import { getLocalizedMediaModelName } from '@/utils/mediaModelLocalization'
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
 const route = useRoute()
 const store = useProviderPoolStore()
 const notification = useNotificationStore()
+const isRtl = computed(() => getLocaleDirection(locale.value) === 'rtl')
 
 // Local state
 const showAddModal = ref(false)
@@ -1288,14 +1290,17 @@ function capabilityTip(caps: string[]): string {
 // Tooltip state for capability hover
 const capTipVisible = ref(false)
 const capTipText = ref('')
-const capTipStyle = ref({ top: '0px', left: '0px' })
+const capTipStyle = ref<Record<string, string>>({ top: '0px', insetInlineStart: '0px' })
 
 function showCapTip(ev: MouseEvent, caps: string[]) {
   const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+  const inlineStartOffset = isRtl.value
+    ? `${window.innerWidth - rect.x + 8}px`
+    : `${rect.x + rect.width + 8}px`
   capTipText.value = capabilityTip(caps)
   capTipStyle.value = {
     top: `${rect.top + rect.height / 2}px`,
-    left: `${rect.right + 8}px`,
+    insetInlineStart: inlineStartOffset,
   }
   capTipVisible.value = true
 }
@@ -1590,7 +1595,7 @@ onMounted(() => {
         @click="activeTab = tab"
       >
         {{ getTabLabel(tab) }}
-        <span class="ml-1 text-xs opacity-70"> ({{ getTabCount(tab) }}) </span>
+        <span class="provider-inline-start-1 text-xs opacity-70"> ({{ getTabCount(tab) }}) </span>
       </button>
     </div>
 
@@ -1649,7 +1654,7 @@ onMounted(() => {
           </div>
         </div>
         <div
-          class="text-right text-xs"
+          class="provider-text-end text-xs"
           :class="
             store.trialQuota.is_exhausted
               ? 'text-red-500 dark:text-red-400'
@@ -1852,7 +1857,7 @@ onMounted(() => {
                   @change="toggleProvider(provider)"
                 />
                 <div
-                  class="w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
+                  class="provider-switch-track w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
                 ></div>
               </label>
             </div>
@@ -2076,7 +2081,7 @@ onMounted(() => {
                 <span class="text-gray-500 dark:text-gray-400"
                   >{{ t('providerPool.temperature') }}:</span
                 >
-                <span class="text-gray-900 dark:text-white ml-1">
+                <span class="text-gray-900 dark:text-white provider-inline-start-1">
                   {{ displayProvider!.model_params?.temperature ?? t('providerPool.default') }}
                 </span>
               </div>
@@ -2086,25 +2091,25 @@ onMounted(() => {
                 >
                 <span
                   v-if="displayProvider!.model_params?.max_tokens"
-                  class="text-gray-900 dark:text-white ml-1"
+                  class="text-gray-900 dark:text-white provider-inline-start-1"
                 >
                   {{ displayProvider!.model_params.max_tokens }}
                 </span>
                 <span
                   v-else-if="displayProvider!.model_params?.detected_max_tokens"
-                  class="text-gray-900 dark:text-gray-300 ml-1"
+                  class="text-gray-900 dark:text-gray-300 provider-inline-start-1"
                   :title="t('providerPool.detectedMax')"
                 >
                   {{ displayProvider!.model_params.detected_max_tokens }}
                   <span class="text-gray-400 text-[10px]">({{ t('providerPool.detected') }})</span>
                 </span>
-                <span v-else class="text-gray-900 dark:text-white ml-1">
+                <span v-else class="text-gray-900 dark:text-white provider-inline-start-1">
                   {{ t('providerPool.default') }}
                 </span>
               </div>
               <div v-if="displayProvider!.model_params?.top_p != null">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.topP') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-1">{{
+                <span class="text-gray-900 dark:text-white provider-inline-start-1">{{
                   displayProvider!.model_params.top_p
                 }}</span>
               </div>
@@ -2514,7 +2519,9 @@ onMounted(() => {
                         :style="{ width: mq.remaining_percent + '%' }"
                       />
                     </div>
-                    <span class="text-gray-500 w-8 text-right">{{ mq.remaining_percent }}%</span>
+                    <span class="provider-text-end text-gray-500 w-8"
+                      >{{ mq.remaining_percent }}%</span
+                    >
                   </div>
                 </div>
               </template>
@@ -2569,7 +2576,9 @@ onMounted(() => {
               >
                 <div>
                   <span class="text-gray-700 dark:text-white font-mono">••••••••••••••••</span>
-                  <span class="ml-2 text-gray-500">({{ t('providerPool.trial.name') }})</span>
+                  <span class="provider-inline-start-2 text-gray-500"
+                    >({{ t('providerPool.trial.name') }})</span
+                  >
                 </div>
               </div>
               <!-- Non-trial provider: show actual keys -->
@@ -2806,7 +2815,7 @@ onMounted(() => {
             </div>
             <div
               v-if="providerUsage.total_estimated_cost > 0"
-              class="mt-2 text-xs text-gray-500 dark:text-gray-400 text-right"
+              class="provider-text-end mt-2 text-xs text-gray-500 dark:text-gray-400"
             >
               {{ t('providerPool.usage.estimatedCost') }}: ${{
                 providerUsage.total_estimated_cost.toFixed(4)
@@ -2822,7 +2831,7 @@ onMounted(() => {
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.models') }}
-                <span class="text-gray-500 text-xs ml-1"
+                <span class="text-gray-500 text-xs provider-inline-start-1"
                   >({{
                     (selectedKeyId && displayProvider!.type !== 'trial'
                       ? selectedKeyModels
@@ -2832,7 +2841,7 @@ onMounted(() => {
                 >
                 <span
                   v-if="displayProvider?.allowed_models?.length"
-                  class="text-gray-900 dark:text-gray-300 text-xs ml-1"
+                  class="text-gray-900 dark:text-gray-300 text-xs provider-inline-start-1"
                   :title="t('providerPool.filteredModels')"
                 >
                   ({{ t('providerPool.filtered') }})
@@ -2876,12 +2885,14 @@ onMounted(() => {
                     }}</span>
                     <span
                       v-if="model.capabilities?.length"
-                      class="text-[10px] leading-none text-gray-400 ml-0.5"
+                      class="text-[10px] leading-none text-gray-400 provider-inline-start-0_5"
                       >✦</span
                     >
-                    <span class="text-gray-500 ml-1 truncate">{{ model.id }}</span>
+                    <span class="text-gray-500 provider-inline-start-1 truncate">{{
+                      model.id
+                    }}</span>
                   </div>
-                  <div class="flex items-center gap-2 ml-2">
+                  <div class="flex items-center gap-2 provider-inline-start-2">
                     <span v-if="model.context_window" class="text-gray-500 whitespace-nowrap">
                       {{ (model.context_window / 1000).toFixed(0) }}K
                     </span>
@@ -3084,12 +3095,12 @@ onMounted(() => {
                   :type="showNewProviderApiKey ? 'text' : 'password'"
                   :disabled="addingProvider"
                   placeholder="sk-..."
-                  class="w-full px-3 py-2 pr-10 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                  class="provider-input-with-action w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
                 />
                 <button
                   type="button"
                   :disabled="addingProvider"
-                  class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50"
+                  class="provider-input-action absolute inset-y-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50"
                   :title="showNewProviderApiKey ? 'Hide API Key' : 'Show API Key'"
                   @click="showNewProviderApiKey = !showNewProviderApiKey"
                 >
@@ -3246,11 +3257,11 @@ onMounted(() => {
                   :type="showNewKeyApiKey ? 'text' : 'password'"
                   required
                   placeholder="sk-..."
-                  class="w-full px-3 py-2 pr-10 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  class="provider-input-with-action w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
                 />
                 <button
                   type="button"
-                  class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  class="provider-input-action absolute inset-y-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                   :title="showNewKeyApiKey ? 'Hide API Key' : 'Show API Key'"
                   @click="showNewKeyApiKey = !showNewKeyApiKey"
                 >
@@ -3581,7 +3592,9 @@ onMounted(() => {
               >
                 {{ t('providerPool.clearAll') }}
               </button>
-              <span class="text-xs text-gray-500 dark:text-gray-400 ml-auto self-center">
+              <span
+                class="provider-inline-start-auto text-xs text-gray-500 dark:text-gray-400 self-center"
+              >
                 {{ t('providerPool.selectedCount', { count: allowedModelsForm.length }) }}
               </span>
             </div>
@@ -3609,10 +3622,10 @@ onMounted(() => {
                   }}</span>
                   <span
                     v-if="model.capabilities?.length"
-                    class="text-[10px] leading-none text-gray-400 ml-0.5"
+                    class="text-[10px] leading-none text-gray-400 provider-inline-start-0_5"
                     >✦</span
                   >
-                  <span class="text-xs text-gray-500 ml-1">{{ model.id }}</span>
+                  <span class="text-xs text-gray-500 provider-inline-start-1">{{ model.id }}</span>
                 </div>
                 <span v-if="model.context_window" class="text-xs text-gray-400">
                   {{ (model.context_window / 1000).toFixed(0) }}K
@@ -3659,6 +3672,58 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.provider-inline-start-0_5 {
+  margin-inline-start: 0.125rem;
+}
+
+.provider-inline-start-1 {
+  margin-inline-start: 0.25rem;
+}
+
+.provider-inline-start-2 {
+  margin-inline-start: 0.5rem;
+}
+
+.provider-inline-start-auto {
+  margin-inline-start: auto;
+}
+
+.provider-text-end {
+  text-align: end;
+}
+
+.provider-input-with-action {
+  padding-inline-end: 2.5rem;
+}
+
+.provider-input-action {
+  inset-inline-end: 0;
+}
+
+.provider-switch-track {
+  position: relative;
+}
+
+.provider-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 9999px;
+  background: #fff;
+  transition: transform 150ms ease-in-out;
+}
+
+.peer:checked + .provider-switch-track::after {
+  transform: translateX(100%);
+}
+
+:global(html[dir='rtl']) .peer:checked + .provider-switch-track::after {
+  transform: translateX(-100%);
+}
+
 .cap-tooltip {
   position: fixed;
   z-index: 99999;
