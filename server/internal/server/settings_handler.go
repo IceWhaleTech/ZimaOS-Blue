@@ -6,14 +6,17 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voicewake"
@@ -22,6 +25,7 @@ import (
 
 const settingsKVKey = "config:settings"
 const defaultIMHistoryLimit = 3
+const defaultDirectoryWhitelistPath = "/tmp"
 
 var removedSettingsKeys = map[string]struct{}{
 	"smart_tool_selection":                    {},
@@ -33,62 +37,70 @@ type SettingsHandler struct {
 	mu                        sync.RWMutex
 	kv                        kvstore.Store
 	settings                  *Settings
-	skillRerankerModelManager *claudecode.SkillRerankerModelManager
+	skillRerankerModelManager *agentcore.SkillRerankerModelManager
 	smallModelManager         *smallmodel.Manager
 	chatHandler               *ChatHandler
 	voiceWakeManager          *voicewake.Manager
+	skillAdvisor              *skilladvisor.Service
+}
+
+type DirectoryWhitelistEntry struct {
+	Path  string `json:"path"`
+	Alias string `json:"alias,omitempty"`
 }
 
 // Settings represents user preferences stored on backend
 type Settings struct {
-	Locale                              string   `json:"locale,omitempty"`                                    // User's preferred locale (e.g., "zh-CN", "en-US")
-	Timezone                            string   `json:"timezone,omitempty"`                                  // User's timezone
-	SmartSkillSelection                 *bool    `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default false)
-	SkillSelectorMode                   string   `json:"skill_selector_mode,omitempty"`                       // hybrid|ir_only|llm_only
-	SkillRerankEnabled                  *bool    `json:"skill_rerank_enabled,omitempty"`                      // Enable stage-2 rerank (nil = default false)
-	SkillRerankModel                    string   `json:"skill_rerank_model,omitempty"`                        // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
-	SkillRerankONNXEnabled              *bool    `json:"skill_rerank_onnx_enabled,omitempty"`                 // Enable ONNX reranker path (nil = default false)
-	SkillRerankONNXAutoDownload         *bool    `json:"skill_rerank_onnx_auto_download,omitempty"`           // Allow ONNX model auto-download (nil = default false)
-	SkillSelectorConfidenceThreshold    *float64 `json:"skill_selector_confidence_threshold,omitempty"`       // default 0.78
-	PromptPolicyVersion                 string   `json:"prompt_policy_version,omitempty"`                     // prompt policy version marker
-	PromptPolicyProfile                 string   `json:"prompt_policy_profile,omitempty"`                     // prompt policy profile
-	MemoryRecallMode                    string   `json:"memory_recall_mode,omitempty"`                        // Memory recall strategy: aggressive|balanced|quality
-	IMHistoryLimit                      *int     `json:"im_history_limit,omitempty"`                          // IM no-history tier keeps recent rounds (default 3, 0 disables)
-	AgentMode                           *bool    `json:"agent_mode,omitempty"`                                // Autonomous agent mode (nil = default false)
-	AgentAutoReflect                    *bool    `json:"agent_auto_reflect,omitempty"`                        // Run post-task reflection in agent mode (nil = default true)
-	AgentAutoConfirm                    *bool    `json:"agent_auto_confirm,omitempty"`                        // Skip confirmation in agent mode (nil = default false)
-	AgentAskTimeoutSeconds              *int     `json:"agent_ask_timeout_seconds,omitempty"`                 // Ask timeout in seconds (default 120, range 15-1800)
-	AgentAskTimeoutAction               string   `json:"agent_ask_timeout_action,omitempty"`                  // default|error
-	AgentLoopPolicyMaxToolRounds        *int     `json:"agent_loop_policy_max_tool_rounds,omitempty"`         // default maxToolRoundsAgent
-	AgentLoopPolicyMaxAutoContinue      *int     `json:"agent_loop_policy_max_auto_continue,omitempty"`       // default maxAutoContinueAgent
-	AgentLoopPolicyPseudoToolCallBudget *int     `json:"agent_loop_policy_pseudo_tool_call_budget,omitempty"` // default maxPseudoToolCallAutoContinueAgent
-	AgentLoopPolicyActionPledgeBudget   *int     `json:"agent_loop_policy_action_pledge_budget,omitempty"`    // default maxActionPledgeAutoContinueAgent
-	AgentLoopPolicyMissingTodoBudget    *int     `json:"agent_loop_policy_missing_todo_budget,omitempty"`     // default maxMissingTodoAutoContinueAgent
-	AgentLoopPolicyPendingTodoBudget    *int     `json:"agent_loop_policy_pending_todo_budget,omitempty"`     // default maxPendingTodoAutoContinueAgent
-	SmallModelEnabled                   *bool    `json:"small_model_enabled,omitempty"`                       // default false
-	SmallModelRuntime                   string   `json:"small_model_runtime,omitempty"`                       // fixed: llama.cpp
-	SmallModelID                        string   `json:"small_model_id,omitempty"`                            // fixed: qwen3.5-0.8b-gguf-q4km
-	SmallModelAutoDownload              *bool    `json:"small_model_auto_download,omitempty"`                 // default true
-	SmallModelSummaryEnabled            *bool    `json:"small_model_summary_enabled,omitempty"`               // default false
-	ContextCompressionMode              string   `json:"context_compression_mode,omitempty"`                  // offline|small_model|auto (legacy "off" coerces to auto)
-	SmallModelContextCompressEnabled    *bool    `json:"small_model_context_compress_enabled,omitempty"`      // default false
-	SmallModelDocExtractEnabled         *bool    `json:"small_model_doc_extract_enabled,omitempty"`           // default false
-	SmallModelRerankEnabled             *bool    `json:"small_model_rerank_enabled,omitempty"`                // default false
-	SmallModelContextPruneEnabled       *bool    `json:"small_model_context_prune_enabled,omitempty"`         // default false
-	SmallModelContextPruneToolAllow     []string `json:"small_model_context_prune_tool_allow,omitempty"`      // glob allow list for prunable tools
-	SmallModelContextPruneToolDeny      []string `json:"small_model_context_prune_tool_deny,omitempty"`       // glob deny list for prunable tools
-	SmallModelMediaIntentEnabled        *bool    `json:"small_model_media_intent_enabled,omitempty"`          // default false
-	OfflineIRFallbackEnabled            *bool    `json:"offline_ir_fallback_enabled,omitempty"`               // default false
-	FeatureIntentIREnabled              *bool    `json:"feature_intent_ir_enabled,omitempty"`                 // default false
-	DeepResearchV2Enabled               *bool    `json:"deep_research_v2_enabled,omitempty"`                  // default false
-	SmallModelRouteImageQAEnabled       *bool    `json:"small_model_route_image_qa_enabled,omitempty"`        // default inherits short-qa
-	SmallModelRouteShortQAEnabled       *bool    `json:"small_model_route_short_qa_enabled,omitempty"`        // default false
-	NoLLMDegradeMode                    string   `json:"no_llm_degrade_mode,omitempty"`                       // fixed default deepresearch
-	SmallModelUnavailablePolicy         string   `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
-	VoiceWakeEnabled                    *bool    `json:"voice_wake_enabled,omitempty"`                        // default false
-	VoiceWakeTriggers                   []string `json:"voice_wake_triggers,omitempty"`                       // default ["Hey Blue"]
-	VoiceWakeLocale                     string   `json:"voice_wake_locale,omitempty"`                         // optional locale override
-	VoiceWakeTargetConversationID       string   `json:"voice_wake_target_conversation_id,omitempty"`         // fixed background target conversation
+	Locale                              string                    `json:"locale,omitempty"`                                    // User's preferred locale (e.g., "zh-CN", "en-US")
+	Timezone                            string                    `json:"timezone,omitempty"`                                  // User's timezone
+	SmartSkillSelection                 *bool                     `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default false)
+	SkillSelectorMode                   string                    `json:"skill_selector_mode,omitempty"`                       // hybrid|ir_only|llm_only
+	SkillRerankEnabled                  *bool                     `json:"skill_rerank_enabled,omitempty"`                      // Enable stage-2 rerank (nil = default false)
+	SkillRerankModel                    string                    `json:"skill_rerank_model,omitempty"`                        // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
+	SkillRerankONNXEnabled              *bool                     `json:"skill_rerank_onnx_enabled,omitempty"`                 // Enable ONNX reranker path (nil = default false)
+	SkillRerankONNXAutoDownload         *bool                     `json:"skill_rerank_onnx_auto_download,omitempty"`           // Allow ONNX model auto-download (nil = default false)
+	SkillSelectorConfidenceThreshold    *float64                  `json:"skill_selector_confidence_threshold,omitempty"`       // default 0.78
+	PromptPolicyVersion                 string                    `json:"prompt_policy_version,omitempty"`                     // prompt policy version marker
+	PromptPolicyProfile                 string                    `json:"prompt_policy_profile,omitempty"`                     // prompt policy profile
+	MemoryRecallMode                    string                    `json:"memory_recall_mode,omitempty"`                        // Memory recall strategy: aggressive|balanced|quality
+	IMHistoryLimit                      *int                      `json:"im_history_limit,omitempty"`                          // IM no-history tier keeps recent rounds (default 3, 0 disables)
+	AgentMode                           *bool                     `json:"agent_mode,omitempty"`                                // Autonomous agent mode (nil = default false)
+	AgentAutoReflect                    *bool                     `json:"agent_auto_reflect,omitempty"`                        // Run post-task reflection in agent mode (nil = default true)
+	AgentAutoConfirm                    *bool                     `json:"agent_auto_confirm,omitempty"`                        // Skip confirmation in agent mode (nil = default false)
+	AgentAskTimeoutSeconds              *int                      `json:"agent_ask_timeout_seconds,omitempty"`                 // Ask timeout in seconds (default 120, range 15-1800)
+	AgentAskTimeoutAction               string                    `json:"agent_ask_timeout_action,omitempty"`                  // default|error
+	AgentLoopPolicyMaxToolRounds        *int                      `json:"agent_loop_policy_max_tool_rounds,omitempty"`         // default maxToolRoundsAgent
+	AgentLoopPolicyMaxAutoContinue      *int                      `json:"agent_loop_policy_max_auto_continue,omitempty"`       // default maxAutoContinueAgent
+	AgentLoopPolicyPseudoToolCallBudget *int                      `json:"agent_loop_policy_pseudo_tool_call_budget,omitempty"` // default maxPseudoToolCallAutoContinueAgent
+	AgentLoopPolicyActionPledgeBudget   *int                      `json:"agent_loop_policy_action_pledge_budget,omitempty"`    // default maxActionPledgeAutoContinueAgent
+	AgentLoopPolicyMissingTodoBudget    *int                      `json:"agent_loop_policy_missing_todo_budget,omitempty"`     // default maxMissingTodoAutoContinueAgent
+	AgentLoopPolicyPendingTodoBudget    *int                      `json:"agent_loop_policy_pending_todo_budget,omitempty"`     // default maxPendingTodoAutoContinueAgent
+	SmallModelEnabled                   *bool                     `json:"small_model_enabled,omitempty"`                       // default false
+	SmallModelRuntime                   string                    `json:"small_model_runtime,omitempty"`                       // fixed: llama.cpp
+	SmallModelID                        string                    `json:"small_model_id,omitempty"`                            // fixed: qwen3.5-0.8b-gguf-q4km
+	SmallModelAutoDownload              *bool                     `json:"small_model_auto_download,omitempty"`                 // default true
+	SmallModelSummaryEnabled            *bool                     `json:"small_model_summary_enabled,omitempty"`               // default false
+	ContextCompressionMode              string                    `json:"context_compression_mode,omitempty"`                  // offline|small_model|auto (legacy "off" coerces to auto)
+	SmallModelContextCompressEnabled    *bool                     `json:"small_model_context_compress_enabled,omitempty"`      // default false
+	SmallModelDocExtractEnabled         *bool                     `json:"small_model_doc_extract_enabled,omitempty"`           // default false
+	SmallModelRerankEnabled             *bool                     `json:"small_model_rerank_enabled,omitempty"`                // default false
+	SmallModelContextPruneEnabled       *bool                     `json:"small_model_context_prune_enabled,omitempty"`         // default false
+	SmallModelContextPruneToolAllow     []string                  `json:"small_model_context_prune_tool_allow,omitempty"`      // glob allow list for prunable tools
+	SmallModelContextPruneToolDeny      []string                  `json:"small_model_context_prune_tool_deny,omitempty"`       // glob deny list for prunable tools
+	SmallModelMediaIntentEnabled        *bool                     `json:"small_model_media_intent_enabled,omitempty"`          // default false
+	OfflineIRFallbackEnabled            *bool                     `json:"offline_ir_fallback_enabled,omitempty"`               // default false
+	FeatureIntentIREnabled              *bool                     `json:"feature_intent_ir_enabled,omitempty"`                 // default false
+	DeepResearchV2Enabled               *bool                     `json:"deep_research_v2_enabled,omitempty"`                  // default false
+	SmallModelRouteImageQAEnabled       *bool                     `json:"small_model_route_image_qa_enabled,omitempty"`        // default inherits short-qa
+	SmallModelRouteShortQAEnabled       *bool                     `json:"small_model_route_short_qa_enabled,omitempty"`        // default false
+	NoLLMDegradeMode                    string                    `json:"no_llm_degrade_mode,omitempty"`                       // fixed default deepresearch
+	SmallModelUnavailablePolicy         string                    `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
+	DirectoryWhitelistEnabled           *bool                     `json:"directory_whitelist_enabled,omitempty"`               // default true with /tmp on non-Windows when unset
+	DirectoryWhitelist                  []DirectoryWhitelistEntry `json:"directory_whitelist,omitempty"`                       // optional extra tool roots outside workspace; defaults to [/tmp] on non-Windows when unset
+	VoiceWakeEnabled                    *bool                     `json:"voice_wake_enabled,omitempty"`                        // default false
+	VoiceWakeTriggers                   []string                  `json:"voice_wake_triggers,omitempty"`                       // default ["Hey Blue"]
+	VoiceWakeLocale                     string                    `json:"voice_wake_locale,omitempty"`                         // optional locale override
+	VoiceWakeTargetConversationID       string                    `json:"voice_wake_target_conversation_id,omitempty"`         // fixed background target conversation
 }
 
 var allowedMemoryRecallModes = map[string]struct{}{
@@ -123,7 +135,7 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 }
 
 // SetSkillRerankerModelManager wires ONNX skill-reranker model manager for UI download APIs.
-func (h *SettingsHandler) SetSkillRerankerModelManager(mgr *claudecode.SkillRerankerModelManager) {
+func (h *SettingsHandler) SetSkillRerankerModelManager(mgr *agentcore.SkillRerankerModelManager) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.skillRerankerModelManager = mgr
@@ -141,6 +153,13 @@ func (h *SettingsHandler) SetChatHandler(ch *ChatHandler) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.chatHandler = ch
+}
+
+// SetSkillAdvisor wires the optional skill advisor used by selector dry-run.
+func (h *SettingsHandler) SetSkillAdvisor(advisor *skilladvisor.Service) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.skillAdvisor = advisor
 }
 
 // SetVoiceWakeManager wires the VoiceWake manager so settings changes can refresh runtime state.
@@ -225,7 +244,7 @@ func (h *SettingsHandler) GetSkillRerankerModelStatus(c echo.Context) error {
 	mgr := h.skillRerankerModelManager
 	h.mu.RUnlock()
 	if mgr == nil {
-		return c.JSON(http.StatusOK, claudecode.SkillRerankerModelStatus{Ready: false})
+		return c.JSON(http.StatusOK, agentcore.SkillRerankerModelStatus{Ready: false})
 	}
 	return c.JSON(http.StatusOK, mgr.GetStatus())
 }
@@ -321,6 +340,7 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 
 	h.mu.RLock()
 	chatHandler := h.chatHandler
+	advisor := h.skillAdvisor
 	h.mu.RUnlock()
 	if chatHandler == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "chat handler not configured"})
@@ -342,8 +362,9 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 		"selected_tools":        toolNames,
 	}
 
+	var selectedDecision *agentcore.Decision
 	if chatHandler.skillSelector != nil && h.GetSmartSkillSelection() {
-		opts := claudecode.SelectOptions{
+		opts := agentcore.SelectOptions{
 			Mode:                h.GetSkillSelectorMode(),
 			EnableRerank:        h.GetEffectiveSkillRerankEnabled(),
 			ConfidenceThreshold: h.GetSkillSelectorConfidenceThreshold(),
@@ -352,8 +373,18 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 		if err != nil {
 			response["skill_selector_error"] = err.Error()
 		} else {
+			copied := decision
+			selectedDecision = &copied
 			response["skill_decision"] = decision
 			response["skill_prompt_hint"] = decision.PromptHint(3)
+		}
+	}
+	if advisor != nil {
+		advice, err := advisor.Advise(c.Request().Context(), req.Query, selectedDecision)
+		if err != nil {
+			response["skill_advice_error"] = err.Error()
+		} else if advice != nil {
+			response["skill_advice"] = advice
 		}
 	}
 
@@ -468,9 +499,11 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 	}
 	newSettings.SmallModelContextPruneToolAllow = sanitizeStringList(newSettings.SmallModelContextPruneToolAllow, 32, 128)
 	newSettings.SmallModelContextPruneToolDeny = sanitizeStringList(newSettings.SmallModelContextPruneToolDeny, 32, 128)
+	newSettings.DirectoryWhitelist = sanitizeDirectoryWhitelistEntries(newSettings.DirectoryWhitelist, 32)
 	newSettings.VoiceWakeTriggers = sanitizeStringList(newSettings.VoiceWakeTriggers, 8, 64)
 	newSettings.VoiceWakeLocale = strings.TrimSpace(newSettings.VoiceWakeLocale)
 	newSettings.VoiceWakeTargetConversationID = strings.TrimSpace(newSettings.VoiceWakeTargetConversationID)
+	applyDefaultDirectoryWhitelist(&newSettings)
 
 	h.mu.Lock()
 	h.settings = &newSettings
@@ -741,6 +774,18 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			h.settings.SmallModelUnavailablePolicy = policy
 		}
 	}
+	if v, ok := updates["directory_whitelist_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.DirectoryWhitelistEnabled = &b
+		}
+	}
+	if v, ok := updates["directory_whitelist"]; ok {
+		if v == nil {
+			h.settings.DirectoryWhitelist = nil
+		} else if entries, ok := directoryWhitelistEntriesFromAny(v); ok {
+			h.settings.DirectoryWhitelist = sanitizeDirectoryWhitelistEntries(entries, 32)
+		}
+	}
 	if v, ok := updates["voice_wake_enabled"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.VoiceWakeEnabled = &b
@@ -759,6 +804,7 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	if target, ok := updates["voice_wake_target_conversation_id"].(string); ok {
 		h.settings.VoiceWakeTargetConversationID = strings.TrimSpace(target)
 	}
+	applyDefaultDirectoryWhitelist(h.settings)
 	voiceWakeManager := h.voiceWakeManager
 	h.mu.Unlock()
 
@@ -787,6 +833,21 @@ func (h *SettingsHandler) GetVoiceWakeEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.settings.VoiceWakeEnabled != nil && *h.settings.VoiceWakeEnabled
+}
+
+func (h *SettingsHandler) DirectoryWhitelistSnapshot() (bool, []DirectoryWhitelistEntry) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	enabled := h.settings.DirectoryWhitelistEnabled != nil && *h.settings.DirectoryWhitelistEnabled
+	entries := sanitizeDirectoryWhitelistEntries(h.settings.DirectoryWhitelist, 32)
+	if len(entries) == 0 {
+		return enabled, nil
+	}
+
+	out := make([]DirectoryWhitelistEntry, len(entries))
+	copy(out, entries)
+	return enabled, out
 }
 
 // GetVoiceWakeTriggers returns configured VoiceWake triggers with defaults applied.
@@ -1478,6 +1539,32 @@ func stringSliceFromAny(v interface{}) ([]string, bool) {
 	}
 }
 
+func directoryWhitelistEntriesFromAny(v interface{}) ([]DirectoryWhitelistEntry, bool) {
+	switch vv := v.(type) {
+	case []DirectoryWhitelistEntry:
+		return vv, true
+	case []interface{}:
+		out := make([]DirectoryWhitelistEntry, 0, len(vv))
+		for _, item := range vv {
+			obj, ok := item.(map[string]interface{})
+			if !ok {
+				return nil, false
+			}
+			entry := DirectoryWhitelistEntry{}
+			if path, ok := obj["path"].(string); ok {
+				entry.Path = path
+			}
+			if alias, ok := obj["alias"].(string); ok {
+				entry.Alias = alias
+			}
+			out = append(out, entry)
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
 func sanitizeStringList(values []string, maxItems, maxLen int) []string {
 	if len(values) == 0 || maxItems <= 0 || maxLen <= 0 {
 		return nil
@@ -1508,6 +1595,103 @@ func sanitizeStringList(values []string, maxItems, maxLen int) []string {
 	return out
 }
 
+func sanitizeDirectoryWhitelistEntries(entries []DirectoryWhitelistEntry, maxItems int) []DirectoryWhitelistEntry {
+	if len(entries) == 0 || maxItems <= 0 {
+		return nil
+	}
+
+	out := make([]DirectoryWhitelistEntry, 0, len(entries))
+	seenPaths := make(map[string]struct{}, len(entries))
+	seenAliases := make(map[string]struct{}, len(entries))
+
+	for _, entry := range entries {
+		path := strings.TrimSpace(entry.Path)
+		if path == "" {
+			continue
+		}
+
+		cleanPath := filepath.Clean(path)
+		if cleanPath == "." || !filepath.IsAbs(cleanPath) || len([]rune(cleanPath)) > 1024 {
+			continue
+		}
+
+		pathKey := strings.ToLower(cleanPath)
+		if _, ok := seenPaths[pathKey]; ok {
+			continue
+		}
+
+		alias := sanitizeDirectoryWhitelistAlias(entry.Alias)
+		if alias != "" {
+			aliasKey := strings.ToLower(alias)
+			if _, ok := seenAliases[aliasKey]; ok {
+				alias = ""
+			} else {
+				seenAliases[aliasKey] = struct{}{}
+			}
+		}
+
+		seenPaths[pathKey] = struct{}{}
+		out = append(out, DirectoryWhitelistEntry{Path: cleanPath, Alias: alias})
+		if len(out) >= maxItems {
+			break
+		}
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func sanitizeDirectoryWhitelistAlias(alias string) string {
+	s := strings.TrimSpace(alias)
+	if s == "" || len([]rune(s)) > 64 {
+		return ""
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '_' || r == '-':
+		default:
+			return ""
+		}
+	}
+	return s
+}
+
+func defaultDirectoryWhitelistEntries() []DirectoryWhitelistEntry {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return []DirectoryWhitelistEntry{{Path: defaultDirectoryWhitelistPath}}
+}
+
+func applyDefaultDirectoryWhitelist(settings *Settings) {
+	if settings == nil {
+		return
+	}
+
+	settings.DirectoryWhitelist = sanitizeDirectoryWhitelistEntries(settings.DirectoryWhitelist, 32)
+	if settings.DirectoryWhitelistEnabled != nil {
+		return
+	}
+
+	enabled := true
+	if len(settings.DirectoryWhitelist) > 0 {
+		settings.DirectoryWhitelistEnabled = &enabled
+		return
+	}
+
+	defaults := sanitizeDirectoryWhitelistEntries(defaultDirectoryWhitelistEntries(), 32)
+	if len(defaults) == 0 {
+		return
+	}
+	settings.DirectoryWhitelistEnabled = &enabled
+	settings.DirectoryWhitelist = defaults
+}
+
 func isWithinIntRange(v, min, max int) bool {
 	return v >= min && v <= max
 }
@@ -1528,6 +1712,7 @@ func (h *SettingsHandler) load() {
 		// Key not found or error — use defaults
 		h.settings = &Settings{}
 	}
+	applyDefaultDirectoryWhitelist(h.settings)
 }
 
 // save writes settings to kvstore

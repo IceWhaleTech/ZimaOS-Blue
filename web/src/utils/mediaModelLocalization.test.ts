@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import mediaFallbackOverrides from '@/i18n/media-fallback-overrides'
-import type { LocaleMessages } from '@/i18n/merge'
+import zhCNMessages from '@/i18n/locales/zh-CN'
 import {
   getLocalizedMediaFallbackDisclosure,
   getLocalizedMediaFallbackLabel,
@@ -9,6 +8,8 @@ import {
   getMediaFallbackStyleLabel,
   getLocalizedMediaModelName,
 } from './mediaModelLocalization'
+
+type LocaleMessages = Record<string, unknown>
 
 function getByPath(source: LocaleMessages, path: string): unknown {
   return path.split('.').reduce<unknown>((value, part) => {
@@ -19,14 +20,12 @@ function getByPath(source: LocaleMessages, path: string): unknown {
   }, source)
 }
 
-const zhCNMessages = (mediaFallbackOverrides as Record<string, LocaleMessages>)['zh-CN'] || {}
-
 function t(key: string): string {
-  return String(getByPath(zhCNMessages, key) ?? '')
+  return String(getByPath(zhCNMessages as LocaleMessages, key) ?? '')
 }
 
 function te(key: string): boolean {
-  const value = getByPath(zhCNMessages, key)
+  const value = getByPath(zhCNMessages as LocaleMessages, key)
   return typeof value === 'string' && value.trim().length > 0
 }
 

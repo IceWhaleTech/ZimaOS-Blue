@@ -2,91 +2,70 @@ package logger
 
 import (
 	"bytes"
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
-func TestInit_DefaultLevel(t *testing.T) {
+func TestInitWithMirrorWritesBothTargets(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	primary := filepath.Join(dir, "primary.log")
+	mirror := filepath.Join(dir, "mirror.log")
+
 	cfg := &config.LogConfig{
 		Level:  "info",
 		Format: "json",
-		Output: "stdout",
+		Output: primary,
+	}
+	if err := InitWithMirror(cfg, mirror); err != nil {
+		t.Fatalf("InitWithMirror() error = %v", err)
 	}
 
-	err := Init(cfg)
+	Info().Str("scope", "test").Msg("mirror writes")
+
+	primaryData, err := os.ReadFile(primary)
 	if err != nil {
-		t.Fatalf("Init() error = %v", err)
+		t.Fatalf("ReadFile(primary) error = %v", err)
+	}
+	if !bytes.Contains(primaryData, []byte("mirror writes")) {
+		t.Fatalf("primary log missing message: %s", string(primaryData))
 	}
 
-	if zerolog.GlobalLevel() != zerolog.InfoLevel {
-		t.Errorf("GlobalLevel() = %v, want %v", zerolog.GlobalLevel(), zerolog.InfoLevel)
-	}
-}
-
-func TestInit_DebugLevel(t *testing.T) {
-	cfg := &config.LogConfig{
-		Level:  "debug",
-		Format: "json",
-		Output: "stdout",
-	}
-
-	err := Init(cfg)
+	mirrorData, err := os.ReadFile(mirror)
 	if err != nil {
-		t.Fatalf("Init() error = %v", err)
+		t.Fatalf("ReadFile(mirror) error = %v", err)
 	}
-
-	if zerolog.GlobalLevel() != zerolog.DebugLevel {
-		t.Errorf("GlobalLevel() = %v, want %v", zerolog.GlobalLevel(), zerolog.DebugLevel)
-	}
-}
-
-func TestInit_InvalidLevel(t *testing.T) {
-	cfg := &config.LogConfig{
-		Level:  "invalid",
-		Format: "json",
-		Output: "stdout",
-	}
-
-	err := Init(cfg)
-	if err != nil {
-		t.Fatalf("Init() error = %v", err)
-	}
-
-	// Should default to info level
-	if zerolog.GlobalLevel() != zerolog.InfoLevel {
-		t.Errorf("GlobalLevel() = %v, want %v", zerolog.GlobalLevel(), zerolog.InfoLevel)
+	if !bytes.Contains(mirrorData, []byte("mirror writes")) {
+		t.Fatalf("mirror log missing message: %s", string(mirrorData))
 	}
 }
 
-func TestLogOutput(t *testing.T) {
-	var buf bytes.Buffer
+func TestInitWithMirrorSkipsDuplicateTarget(t *testing.T) {
+	t.Parallel()
 
-	log = zerolog.New(&buf).With().Timestamp().Logger()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "blue.log")
 
-	Info().Str("key", "value").Msg("test message")
-
-	output := buf.String()
-	if !strings.Contains(output, "test message") {
-		t.Errorf("Log output does not contain message: %s", output)
-	}
-	if !strings.Contains(output, `"key":"value"`) {
-		t.Errorf("Log output does not contain key-value: %s", output)
-	}
-}
-
-func TestGet(t *testing.T) {
 	cfg := &config.LogConfig{
 		Level:  "info",
 		Format: "json",
-		Output: "stdout",
+		Output: path,
 	}
-	Init(cfg)
+	if err := InitWithMirror(cfg, path); err != nil {
+		t.Fatalf("InitWithMirror() error = %v", err)
+	}
 
-	logger := Get()
-	if logger == nil {
-		t.Error("Get() returned nil")
+	Info().Msg("single write")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if bytes.Count(data, []byte("single write")) != 1 {
+		t.Fatalf("expected exactly one copy of log entry, got %d in %s", bytes.Count(data, []byte("single write")), string(data))
 	}
 }

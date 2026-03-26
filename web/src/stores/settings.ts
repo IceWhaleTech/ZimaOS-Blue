@@ -12,16 +12,16 @@ import type {
   SmallModelStats,
   SmallModelUnavailablePolicy,
 } from '@/api/settings'
+import { sortItemsByModelPreference } from '@/utils/modelPreference'
+import { filterProvidersVisibleInUI } from '@/utils/providerVisibility'
 
 type ChatApiModule = typeof import('@/api/chat')
 type ProviderPoolApiModule = typeof import('@/api/providerPool')
 type SettingsApiModule = typeof import('@/api/settings')
-type ClaudeCodeApiModule = typeof import('@/api/claudecode')
 
 let chatApiModulePromise: Promise<ChatApiModule> | null = null
 let providerPoolApiModulePromise: Promise<ProviderPoolApiModule> | null = null
 let settingsApiModulePromise: Promise<SettingsApiModule> | null = null
-let claudeCodeApiModulePromise: Promise<ClaudeCodeApiModule> | null = null
 
 function loadChatApiModule(): Promise<ChatApiModule> {
   if (!chatApiModulePromise) {
@@ -42,13 +42,6 @@ function loadSettingsApiModule(): Promise<SettingsApiModule> {
     settingsApiModulePromise = import('@/api/settings')
   }
   return settingsApiModulePromise
-}
-
-function loadClaudeCodeApiModule(): Promise<ClaudeCodeApiModule> {
-  if (!claudeCodeApiModulePromise) {
-    claudeCodeApiModulePromise = import('@/api/claudecode')
-  }
-  return claudeCodeApiModulePromise
 }
 
 const STORAGE_KEY = 'zimaos-blue-settings'
@@ -217,7 +210,11 @@ export const useSettingsStore = defineStore('settings', () => {
         })
       }
     }
-    return options
+    return sortItemsByModelPreference(
+      options,
+      (option) => option.modelId,
+      (left, right) => left.providerId.localeCompare(right.providerId)
+    )
   })
 
   // Computed: Parse selected provider and model from combined value
@@ -277,8 +274,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   /** Shared logic: convert raw Provider[] → ChatProviderInfo[] and set default selection. */
   function applyPoolProviders(poolProviders: Provider[]) {
-    // Filter enabled providers and convert to ChatProviderInfo
-    const enabledProviders = poolProviders.filter((p: Provider) => p.enabled)
+    // Keep OAuth-backed providers in backend data, but hide them from chat UI for now.
+    const enabledProviders = filterProvidersVisibleInUI(poolProviders).filter(
+      (p: Provider) => p.enabled
+    )
 
     // Use inlined models from provider list response (no extra requests)
     const providerInfos: ChatProviderInfo[] = enabledProviders.map((provider: Provider) => ({
@@ -464,28 +463,6 @@ export const useSettingsStore = defineStore('settings', () => {
       console.error('Failed to update backend settings:', e)
       throw e
     }
-  }
-
-  // Claude Code CLI enhanced mode
-  const claudeCodeEnabled = ref(false)
-  const claudeCodeEnabledLoaded = ref(false)
-
-  async function fetchClaudeCodeEnabled() {
-    try {
-      claudeCodeEnabledLoaded.value = false
-      const { claudeCodeApi } = await loadClaudeCodeApiModule()
-      const response = await claudeCodeApi.getConfig()
-      claudeCodeEnabled.value = response.data.enabled
-    } catch {
-      claudeCodeEnabled.value = false
-    } finally {
-      claudeCodeEnabledLoaded.value = true
-    }
-  }
-
-  function setClaudeCodeEnabled(enabled: boolean) {
-    claudeCodeEnabled.value = enabled
-    claudeCodeEnabledLoaded.value = true
   }
 
   // Agent mode (from backend settings)
@@ -818,8 +795,6 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelStats,
     smallModelStatsLoading,
     smallModelStatsError,
-    claudeCodeEnabled,
-    claudeCodeEnabledLoaded,
     agentMode,
     agentAutoReflect,
     agentAutoConfirm,
@@ -881,8 +856,6 @@ export const useSettingsStore = defineStore('settings', () => {
     resetToDefaults,
     fetchBackendSettings,
     updateBackendSettings,
-    fetchClaudeCodeEnabled,
-    setClaudeCodeEnabled,
     setAgentMode,
     setAgentAutoReflect,
     setAgentAutoConfirm,

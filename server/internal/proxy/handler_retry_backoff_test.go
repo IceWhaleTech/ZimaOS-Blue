@@ -130,6 +130,15 @@ func TestShouldRetryTransientUpstream5xx(t *testing.T) {
 			attempt:       2,
 			want:          false,
 		},
+		{
+			name:          "wrapped 503 model_not_found does not retry",
+			single:        true,
+			routingSingle: true,
+			status:        503,
+			body:          `{"error":{"code":"model_not_found","message":"分组 default 下模型 360gpt2-pro 无可用渠道（distributor）","type":"new_api_error"}}`,
+			attempt:       0,
+			want:          false,
+		},
 	}
 
 	for _, tc := range tests {

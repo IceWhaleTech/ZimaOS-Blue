@@ -176,8 +176,8 @@ func TestTryLLMWorkspaceArtifactOrchestration_WritesRecoveredArtifactFromLocalEv
 		if !strings.Contains(req.Messages[1].Content, "Return exactly 8 non-empty lines") {
 			t.Fatalf("expected numbered-question prompt to enforce exact line count, got=%v", req.Messages[1].Content)
 		}
-		if !strings.Contains(req.Messages[1].Content, "count the distinct items across that full bounded set") {
-			t.Fatalf("expected numbered-question prompt to include bounded-list counting guidance, got=%v", req.Messages[1].Content)
+		if !strings.Contains(req.Messages[1].Content, "If a fact is distributed across multiple snippets, reconcile those snippets carefully before answering.") {
+			t.Fatalf("expected numbered-question prompt to include generic multi-snippet reconciliation guidance, got=%v", req.Messages[1].Content)
 		}
 	}
 }
@@ -239,38 +239,7 @@ func TestShouldUseImmediateWorkspaceArtifactOrchestration_UsesCompactPDFPages(t 
 	}
 }
 
-func TestBuildDeterministicWorkspaceArtifactOrchestrationDraft_ExtractsOpenClawAnswers(t *testing.T) {
-	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
-	evidence := []string{
-		`PDF | RAW | openclaw_report.pdf | page=2
-Operationally, the Gateway is a long-lived daemon exposing a typed WebSocket API.
-OpenClaw's "skill" mechanism is explicitly an AgentSkills-style directory with a SKILL.md (frontmatter + instructions).`,
-		`PDF | RAW | openclaw_report.pdf | page=3
-A large "awesome list" of OpenClaw skills reports (as of February 7, 2026) that the public registry had 5,705 community-built skills, while the list includes 2,999 after excluding suspected spam, duplicates, non-English descriptions, and a large number of crypto/finance/trading skills, plus skills identified as malicious in published audits.
-Even after filtering, the category breakdown strongly suggests what users want agents to do in practice. Top categories by listed count include:
-AI & LLMs 287
-Search & Research 253`,
-		`PDF | RAW | openclaw_report.pdf | page=9
-Comparative table of recommended tasks
-Secure skill installation and safe configuration
-Browser automation with recovery
-Multi-channel routing and isolation
-Scheduled daily briefing + memory
-PR review + repair loop
-Prompt-injection containment`,
-	}
-
-	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(userMessage, "answer.txt", evidence, extractNumberedQuestions(userMessage))
-	if !ok {
-		t.Fatal("expected deterministic numbered-question draft to be built")
-	}
-	expected := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
-	if draft != expected {
-		t.Fatalf("draft = %q, want %q", draft, expected)
-	}
-}
-
-func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_ReplacesIncorrectAssistantWrite(t *testing.T) {
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_SkipsPreemptiveOverrideForNumberedQuestions(t *testing.T) {
 	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
 	historyToolCalls := []llm.ToolCall{
 		{ID: "call-pdf", Name: "pdf"},
@@ -291,29 +260,14 @@ func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_ReplacesIncor
 	}
 
 	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
-	if !ok {
-		t.Fatal("expected deterministic draft override")
+	if ok {
+		t.Fatal("expected numbered-question write to avoid preemptive deterministic override")
 	}
 	if len(overridden) != 1 {
 		t.Fatalf("expected one tool call, got %d", len(overridden))
 	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
-		t.Fatalf("unmarshal overridden args: %v", err)
-	}
-	if got := anyToStringForLLM(payload["path"]); got != "answer.txt" {
-		t.Fatalf("path = %q, want answer.txt", got)
-	}
-	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
-	if got := strings.TrimSpace(anyToStringForLLM(payload["content"])); got != want {
-		t.Fatalf("content = %q, want %q", got, want)
-	}
-	if appendValue, ok := payload["append"].(bool); !ok || appendValue {
-		t.Fatalf("append = %#v, want false", payload["append"])
-	}
-	if createDirs, ok := payload["create_dirs"].(bool); !ok || !createDirs {
-		t.Fatalf("create_dirs = %#v, want true", payload["create_dirs"])
+	if overridden[0].Arguments != currentToolCalls[0].Arguments {
+		t.Fatalf("arguments changed unexpectedly: got %q want %q", overridden[0].Arguments, currentToolCalls[0].Arguments)
 	}
 }
 
@@ -363,32 +317,75 @@ February 7, 2026
 	}}
 
 	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
-	if !ok {
-		t.Fatal("expected multiline JSON arguments to be normalized and overridden")
+	if ok {
+		t.Fatal("expected numbered-question multiline write args to avoid preemptive override")
 	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
-		t.Fatalf("unmarshal overridden args: %v", err)
-	}
-	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
-	if got := strings.TrimSpace(anyToStringForLLM(payload["content"])); got != want {
-		t.Fatalf("content = %q, want %q", got, want)
+	if overridden[0].Arguments != currentToolCalls[0].Arguments {
+		t.Fatalf("arguments changed unexpectedly: got %q want %q", overridden[0].Arguments, currentToolCalls[0].Arguments)
 	}
 }
 
-func TestCountDistinctWorkspaceProposedTasks_AcceptsPDFTitleVariants(t *testing.T) {
-	text := strings.Join([]string{
-		"Secure skill installation + secrets safety",
-		"Browser automation with \"no API\" constraints and recovery",
-		"Multi‑channel routing + session isolation",
-		"Scheduled daily briefing + memory write-back",
-		"PR review and repair loop with CI feedback",
-		"Prompt‑injection containment + blast‑radius enforcement",
-	}, "\n")
+func TestBuildWorkspaceQuestionArtifactOrchestrationMessages_UsesRelevantEvidence(t *testing.T) {
+	questions := []string{
+		"How many community connectors were listed in the public index before review?",
+		"How many remained after review?",
+		"What is the largest category by count?",
+		"What is the second-largest category by count?",
+		"What file defines a connector package?",
+		"What kind of API does the gateway expose?",
+		"What date was the index snapshot collected?",
+		"How many new evaluation tracks does the paper propose?",
+	}
+	evidence := []string{
+		"PDF | RAW | system_report.pdf | page=2\nThe public index listed 1,204 community connectors before review. After review, 842 remained. Productivity 91. Operations 77. Each connector package is defined by manifest.yaml. The gateway exposes a streaming REST API. The index snapshot was collected on March 2, 2026.",
+		"PDF | OUTLINE | system_report.pdf\n- Proposed evaluation tracks (4 child sections, page 5)",
+	}
 
-	if got := countDistinctWorkspaceProposedTasks(text); got != "6" {
-		t.Fatalf("countDistinctWorkspaceProposedTasks() = %q, want 6", got)
+	msgs := buildWorkspaceQuestionArtifactOrchestrationMessages("answers.txt", evidence, questions)
+	if len(msgs) != 2 {
+		t.Fatalf("message count = %d, want 2", len(msgs))
+	}
+	body := msgs[1].Content
+	for _, needle := range []string{
+		"Return exactly 8 non-empty lines",
+		"Relevant local evidence",
+		"1,204",
+		"842",
+		"manifest.yaml",
+		"streaming REST API",
+		"March 2, 2026",
+		"4 child sections",
+	} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("expected prompt body to contain %q, got=%q", needle, body)
+		}
+	}
+}
+
+func TestBuildWorkspaceQuestionArtifactOrchestrationMessages_PreservesPollutedAndCleanEvidenceForLLM(t *testing.T) {
+	questions := []string{
+		"What is the largest skill category by count?",
+		"What is the second-largest skill category by count?",
+		"What is the name of the file that defines an OpenClaw skill?",
+	}
+	evidence := []string{
+		"PDF | MARKDOWN | openclaw_report.pdf | page=1\nOpenClaw is documented as a self-hosted gateway that bridges chat apps (e.g., WhatsApp, Telegram, Discord, iMessage) to an agent runtime.\nAcross the community skills ecosystem, the biggest skill categories include AI & LLM meta-tools (287), Search & Research (253), DevOps & Cloud (212), and Coding includeAI & LLM meta-tools (287).",
+		"PDF | MARKDOWN | openclaw_report.pdf | page=2\nOperationally, the Gateway is a long-lived daemon exposing a typed WebSocket API.\nOpenClaw's \"skill\" mechanism is explicitly an AgentSkills-style directory with a SKILL.md (frontmatter + instructions).",
+		"PDF | MARKDOWN | openclaw_report.pdf | page=3\nTop skill categories by listed count include:\nAI & LLMs 287\nSearch & Research 253",
+	}
+
+	msgs := buildWorkspaceQuestionArtifactOrchestrationMessages("answer.txt", evidence, questions)
+	body := msgs[1].Content
+	for _, needle := range []string{
+		"e.g., WhatsApp, Telegram, Discord, iMessage",
+		"Coding includeAI & LLM meta-tools (287)",
+		"AI & LLMs 287",
+		"Search & Research 253",
+		"SKILL.md",
+	} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("expected prompt body to preserve %q for LLM disambiguation, got=%q", needle, body)
+		}
 	}
 }
 
@@ -494,15 +491,6 @@ func TestCollectWorkspaceArtifactEvidence_PrefersPerPagePDFCoverageOverWholeDocu
 	if !strings.Contains(joined, "Proposed tasks (6 child sections, page 6)") {
 		t.Fatalf("expected outline child-count evidence to survive, got=%q", joined)
 	}
-
-	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(userMessage, "answer.txt", evidence, extractNumberedQuestions(userMessage))
-	if !ok {
-		t.Fatal("expected deterministic draft from rich PDF payload")
-	}
-	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
-	if draft != want {
-		t.Fatalf("draft = %q, want %q", draft, want)
-	}
 	if !shouldUseImmediateWorkspaceArtifactOrchestration(userMessage, toolCalls, toolResults, toolCalls, toolResults) {
 		t.Fatal("expected rich per-page PDF payload to trigger immediate orchestration")
 	}
@@ -545,15 +533,15 @@ func TestShouldRepairSuccessfulStructuredWorkspaceArtifactWrite_AfterBadWrite(t 
 		},
 	}
 
-	if hasSatisfiedRequestedArtifactWrite(userMessage, currentToolCalls, currentToolResults) {
-		t.Fatal("expected incorrect structured write to remain unsatisfied")
+	if !hasSatisfiedRequestedArtifactWrite(userMessage, currentToolCalls, currentToolResults) {
+		t.Fatal("expected generic validation to accept any non-empty answer-line write")
 	}
-	if !shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(userMessage, currentToolCalls, currentToolResults, historyToolCalls, historyToolResults) {
-		t.Fatal("expected repair flow to trigger for incorrect structured write")
+	if shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(userMessage, currentToolCalls, currentToolResults, historyToolCalls, historyToolResults) {
+		t.Fatal("expected repair flow to stay disabled without special answer-validation logic")
 	}
 }
 
-func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_PrefersOutlineCountOverDistractorTaskCounts(t *testing.T) {
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_SkipsOutlineBasedPreemptiveOverrideForNumberedQuestions(t *testing.T) {
 	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
 	historyToolCalls := []llm.ToolCall{{ID: "call-pdf", Name: "pdf"}}
 	historyToolResults := []llm.Message{{
@@ -568,21 +556,15 @@ func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_PrefersOutlin
 	}}
 
 	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
-	if !ok {
-		t.Fatal("expected deterministic override for noisy pdf evidence")
+	if ok {
+		t.Fatal("expected numbered-question write to avoid preemptive override even with strong outline evidence")
 	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
-		t.Fatalf("unmarshal overridden args: %v", err)
-	}
-	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
-	if got := strings.TrimSpace(anyToStringForLLM(payload["content"])); got != want {
-		t.Fatalf("content = %q, want %q", got, want)
+	if overridden[0].Arguments != currentToolCalls[0].Arguments {
+		t.Fatalf("arguments changed unexpectedly: got %q want %q", overridden[0].Arguments, currentToolCalls[0].Arguments)
 	}
 }
 
-func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_HandlesActualOpenClawPDFPayloadLayout(t *testing.T) {
+func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_SkipsPreemptiveOverrideForActualOpenClawPDFLayout(t *testing.T) {
 	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
 	historyToolCalls := []llm.ToolCall{{ID: "call-pdf", Name: "pdf"}}
 	historyToolResults := []llm.Message{{
@@ -602,17 +584,11 @@ func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_HandlesActual
 	}
 
 	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage, currentToolCalls, historyToolCalls, historyToolResults)
-	if !ok {
-		t.Fatal("expected deterministic override for real-world OpenClaw payload layout")
+	if ok {
+		t.Fatal("expected numbered-question write to avoid preemptive override for real-world OpenClaw payload layout")
 	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
-		t.Fatalf("unmarshal overridden args: %v", err)
-	}
-	want := "5705\n2999\nAI & LLMs: 287\nSearch & Research: 253\nSKILL.md\ntyped WebSocket API\nFebruary 7, 2026\n6"
-	if got := strings.TrimSpace(anyToStringForLLM(payload["content"])); got != want {
-		t.Fatalf("content = %q, want %q", got, want)
+	if overridden[0].Arguments != currentToolCalls[0].Arguments {
+		t.Fatalf("arguments changed unexpectedly: got %q want %q", overridden[0].Arguments, currentToolCalls[0].Arguments)
 	}
 }
 
@@ -647,11 +623,11 @@ February 7, 2026
 		},
 	}
 
-	if hasSatisfiedRequestedArtifactWrite(userMessage, currentToolCalls, currentToolResults) {
-		t.Fatal("expected multiline write args to be normalized and recognized as incorrect content")
+	if !hasSatisfiedRequestedArtifactWrite(userMessage, currentToolCalls, currentToolResults) {
+		t.Fatal("expected multiline write args to be normalized and accepted when the answer-line shape is valid")
 	}
-	if !shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(userMessage, currentToolCalls, currentToolResults, nil, nil) {
-		t.Fatal("expected repair flow to trigger for multiline write args")
+	if shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(userMessage, currentToolCalls, currentToolResults, nil, nil) {
+		t.Fatal("expected no repair when generic validation is already satisfied")
 	}
 }
 
@@ -766,12 +742,12 @@ func TestShouldUseLLMWorkspaceArtifactOrchestration_AllowsRepairWhenStructuredWr
 		},
 	}
 
-	if !shouldUseLLMWorkspaceArtifactOrchestration(
+	if shouldUseLLMWorkspaceArtifactOrchestration(
 		"You have access to a collection of emails in the emails/ folder in your workspace. Save the summary to alpha_summary.md with the following sections:\n1. **Project Overview**: What is Project Alpha?\n2. **Timeline**: Original timeline and any changes\n3. **Key Risks and Issues**: Budget concerns and security findings\n4. **Client/Business Impact**: Pipeline and revenue projections\n5. **Current Status**: Latest status",
 		toolCalls,
 		toolResults,
 	) {
-		t.Fatal("expected orchestration repair to remain allowed when the saved artifact misses the requested section structure")
+		t.Fatal("expected no special repair path for already-written non-empty artifacts")
 	}
 }
 
@@ -825,203 +801,17 @@ func TestBuildWorkspaceArtifactOrchestrationMessages_PreservesSectionTitlesAndCo
 		"Requested section titles (preserve exactly in this order)",
 		"1. Project Overview",
 		"5. Current Status",
-		"Reproduce any explicitly requested section titles exactly and in order",
-		"Preserve concrete named entities, exact numbers, exact dates, exact money figures, exact technology names",
-		"show both versions explicitly and make the cause of the change clear",
-		"original-versus-updated budget and timeline values side by side",
+		"Follow the user's requested structure and formatting.",
+		"Use only the recovered evidence.",
+		"Preserve concrete names, numbers, dates, filenames, API labels, and other source wording",
+		"If the evidence contains updates or conflicting statements, make that clear instead of silently flattening them.",
 	} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("expected prompt to contain %q, got=%q", needle, body)
 		}
 	}
-	if !strings.Contains(msgs[0].Content, "requested structure and the source evidence's concrete names, numbers, dates, and labels") {
-		t.Fatalf("expected system prompt to reinforce structure and evidence fidelity, got=%q", msgs[0].Content)
-	}
-}
-
-func TestBuildDeterministicWorkspaceArtifactOrchestrationDraft_ForProjectStatusSummaryTask(t *testing.T) {
-	evidence := []string{
-		"FILE_READ | emails/2026-01-15_project_alpha_kickoff.txt\nFrom: sarah.chen@mycompany.com\nSubject: Project Alpha - Kickoff and Timeline\nThis is our new customer-facing analytics dashboard that will replace the legacy reporting system.\n- We're going with PostgreSQL + TimescaleDB\n- API will be built with FastAPI\n- Frontend will use React with Recharts\nBudget has been approved for $340K total.\n- Beta Launch: Apr 21\n- GA Release: May 12",
-		"FILE_READ | emails/2026-01-22_alpha_data_pipeline.txt\nSubject: Re: Project Alpha - Data Pipeline Architecture Proposal\n- Apache Kafka for real-time event streaming\n- Apache Flink for stream processing\n- dbt for batch transformations\n- Redis for caching",
-		"FILE_READ | emails/2026-02-03_alpha_budget_concern.txt\nSubject: Re: Project Alpha - Budget Overrun Risk\nThis would push us from $340K to potentially $432K.",
-		"FILE_READ | emails/2026-02-10_alpha_security_review.txt\nSubject: Project Alpha - Mandatory Security Review Findings\ncross-tenant data access if metric_id is guessable\nWebSocket connections must implement per-message authentication tokens\nRate limiting should be per-tenant AND per-user\nSSRF\nAudit logging is missing",
-		"FILE_READ | emails/2026-02-12_alpha_phase1_complete.txt\nSubject: Project Alpha - Phase 1 Complete! Data Pipeline Live\nAfter the meeting with Linda, we got approval for the expanded budget ($410K)\n- Kafka cluster (6 brokers)\n- Flink stream processing\n- TimescaleDB populated\n- dbt models running",
-		"FILE_READ | emails/2026-02-14_alpha_client_feedback.txt\nSubject: Project Alpha - Early Client Feedback from Beta Waitlist\nAcme Corp ($500K ARR potential)\nGlobalTech ($350K ARR)\nTotal pipeline from these 5 alone: $1.85M ARR. Combined with existing prospects, we're tracking toward $2.8M ARR - ahead of our $2.1M projection.",
-		"FILE_READ | emails/2026-02-18_alpha_timeline_slip.txt\nSubject: Project Alpha - Updated Timeline (Phase 2 delay)\nSecurity critical items add ~1.5 weeks\nWebSocket gateway service adds ~2 weeks\n- Beta Launch: May 6\n- GA Release: May 27",
-		"FILE_READ | emails/2026-02-25_alpha_frontend_progress.txt\nSubject: Project Alpha - Frontend Early Progress Update\n- Chart components using Recharts\n- Live metric widgets need the WebSocket API endpoint\n- Custom metric builder needs the metric definition API",
-	}
-
-	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(
-		"You have access to a collection of emails in the emails/ folder in your workspace. Save the summary to alpha_summary.md with the following sections:\n1. **Project Overview**: What is Project Alpha, what technology is being used, and what is the budget?\n2. **Timeline**: Original timeline and any changes, including current expected dates\n3. **Key Risks and Issues**: Budget concerns, security findings, technical challenges\n4. **Client/Business Impact**: Sales pipeline, client feedback, and revenue projections\n5. **Current Status**: Where the project stands right now based on the most recent updates",
-		"alpha_summary.md",
-		evidence,
-		nil,
-	)
-	if !ok {
-		t.Fatal("expected deterministic workspace orchestration draft")
-	}
-	for _, needle := range []string{
-		"## Project Overview",
-		"## Timeline",
-		"## Key Risks and Issues",
-		"## Client/Business Impact",
-		"## Current Status",
-		"PostgreSQL",
-		"TimescaleDB",
-		"FastAPI",
-		"React",
-		"Kafka",
-		"Flink",
-		"dbt",
-		"Redis",
-		"$340K",
-		"$410K",
-		"$432K",
-		"Apr 21",
-		"May 6",
-		"May 27",
-		"cross-tenant",
-		"SSRF",
-		"audit logging",
-		"$1.85M",
-		"$2.8M",
-	} {
-		if !strings.Contains(draft, needle) {
-			t.Fatalf("expected deterministic draft to contain %q, got=%q", needle, draft)
-		}
-	}
-}
-
-func TestBuildDeterministicWorkspaceArtifactOrchestrationDraft_ForHumanizerTask(t *testing.T) {
-	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(
-		humanizerTaskPrompt(),
-		"humanized_blog.txt",
-		humanizerSourceEvidence(),
-		nil,
-	)
-	if !ok {
-		t.Fatal("expected deterministic draft for humanizer task")
-	}
-	for _, needle := range []string{
-		"# 7 Productivity Habits That Actually Help You Get More Done",
-		"## 7. Protect Your Work-Life Balance",
-		"Pomodoro-style rhythm",
-		"SMART framework",
-		"Project management software",
-	} {
-		if !strings.Contains(draft, needle) {
-			t.Fatalf("expected deterministic humanizer draft to contain %q, got=%q", needle, draft)
-		}
-	}
-	if strings.Contains(strings.ToLower(draft), "furthermore,") {
-		t.Fatalf("expected deterministic humanizer draft to remove robotic transitions, got=%q", draft)
-	}
-}
-
-func TestShouldUseImmediateWorkspaceArtifactOrchestration_ForHumanizerTask(t *testing.T) {
-	currentToolCalls := []llm.ToolCall{
-		{ID: "call-read", Name: "file_read"},
-	}
-	currentToolResults := []llm.Message{
-		{
-			Role:       llm.RoleTool,
-			ToolCallID: "call-read",
-			Content:    fmt.Sprintf(`{"path":"ai_blog.txt","content":%q}`, strings.TrimPrefix(humanizerSourceEvidence()[0], "FILE_READ | ai_blog.txt\n")),
-		},
-	}
-
-	if !shouldUseImmediateWorkspaceArtifactOrchestration(
-		humanizerTaskPrompt(),
-		currentToolCalls,
-		currentToolResults,
-		currentToolCalls,
-		currentToolResults,
-	) {
-		t.Fatal("expected immediate orchestration to support humanizer workspace task")
-	}
-}
-
-func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_ForHumanizerTask(t *testing.T) {
-	historyToolCalls := []llm.ToolCall{
-		{ID: "call-read", Name: "file_read"},
-	}
-	historyToolResults := []llm.Message{
-		{
-			Role:       llm.RoleTool,
-			ToolCallID: "call-read",
-			Content:    fmt.Sprintf(`{"path":"ai_blog.txt","content":%q}`, strings.TrimPrefix(humanizerSourceEvidence()[0], "FILE_READ | ai_blog.txt\n")),
-		},
-	}
-	currentToolCalls := []llm.ToolCall{
-		{
-			ID:        "call-write",
-			Name:      "write",
-			Arguments: `{"path":"humanized_blog.txt","content":"# Partial rewrite\n\n## 1. Start With the Work That Matters Most\n\nThis version stops too early.\n\n## 5. Let Technology Help You\n"}`,
-		},
-	}
-
-	overridden, ok := maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(
-		humanizerTaskPrompt(),
-		currentToolCalls,
-		historyToolCalls,
-		historyToolResults,
-	)
-	if !ok {
-		t.Fatal("expected deterministic override for humanizer write")
-	}
-	if len(overridden) != 1 {
-		t.Fatalf("overridden tool calls = %d, want 1", len(overridden))
-	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(overridden[0].Arguments), &payload); err != nil {
-		t.Fatalf("decode overridden write args: %v", err)
-	}
-	content, _ := payload["content"].(string)
-	if !strings.Contains(content, "## 7. Protect Your Work-Life Balance") {
-		t.Fatalf("expected overridden humanizer content to include the later sections, got=%q", content)
-	}
-	if strings.Contains(content, "This version stops too early.") {
-		t.Fatalf("expected partial content to be replaced, got=%q", content)
-	}
-}
-
-func TestShouldRepairSuccessfulStructuredWorkspaceArtifactWrite_AfterIncompleteHumanizerWrite(t *testing.T) {
-	historyToolCalls := []llm.ToolCall{
-		{ID: "call-read", Name: "file_read"},
-	}
-	historyToolResults := []llm.Message{
-		{
-			Role:       llm.RoleTool,
-			ToolCallID: "call-read",
-			Content:    fmt.Sprintf(`{"path":"ai_blog.txt","content":%q}`, strings.TrimPrefix(humanizerSourceEvidence()[0], "FILE_READ | ai_blog.txt\n")),
-		},
-	}
-	currentToolCalls := []llm.ToolCall{
-		{
-			ID:        "call-write",
-			Name:      "write",
-			Arguments: `{"path":"humanized_blog.txt","content":"# 7 Practical Ways to Be More Productive and Actually Reach Your Goals\n\n## 1. Start by Prioritizing What Actually Matters\n\nNot every task deserves the same amount of attention.\n\n## 5. Let Technology Help You\n"}`,
-		},
-	}
-	currentToolResults := []llm.Message{
-		{
-			Role:       llm.RoleTool,
-			ToolCallID: "call-write",
-			Content:    `{"path":"humanized_blog.txt","success":true}`,
-		},
-	}
-
-	if hasSatisfiedRequestedArtifactWrite(humanizerTaskPrompt(), currentToolCalls, currentToolResults) {
-		t.Fatal("expected incomplete humanizer write to remain unsatisfied")
-	}
-	if !shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(
-		humanizerTaskPrompt(),
-		currentToolCalls,
-		currentToolResults,
-		historyToolCalls,
-		historyToolResults,
-	) {
-		t.Fatal("expected repair flow to trigger for incomplete humanizer write")
+	if !strings.Contains(msgs[0].Content, "Write the final artifact directly from the recovered evidence and the user's request.") {
+		t.Fatalf("expected system prompt to reinforce direct evidence-driven writing, got=%q", msgs[0].Content)
 	}
 }
 

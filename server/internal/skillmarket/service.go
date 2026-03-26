@@ -12,10 +12,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -24,7 +26,6 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
@@ -61,7 +62,10 @@ type Service struct {
 	stopOnce            sync.Once
 	stopCh              chan struct{}
 	discoverMu          sync.Mutex
+	embeddingBackfillMu sync.Mutex
+	embeddingStatusMu   sync.Mutex
 	discoverStatus      DiscoverStatus
+	embeddingStatus     EmbeddingStatus
 	ownsDB              bool
 }
 
@@ -70,14 +74,28 @@ func NewService(db *sql.DB, opts Options) (*Service, error) {
 }
 
 func NewServiceWithDBPath(dbPath string, opts Options) (*Service, error) {
-	db, err := dbutil.OpenSQLiteSimple(dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open skillmarket db: %w", err)
+	}
+	// Legacy databases may still contain FTS5 objects from an earlier build.
+	// If the current binary lacks FTS5 support, PRAGMA setup can fail before
+	// NewStore gets a chance to disable legacy triggers, so retry after init.
+	configureErr := configureSkillMarketSQLiteDB(db)
+	if configureErr != nil && !isMissingFTS5ModuleError(configureErr) {
+		_ = db.Close()
+		return nil, fmt.Errorf("configure skillmarket db: %w", configureErr)
 	}
 	svc, err := newService(db, opts, true)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
+	}
+	if configureErr != nil {
+		if err := configureSkillMarketSQLiteDB(db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("reconfigure skillmarket db after legacy FTS cleanup: %w", err)
+		}
 	}
 	return svc, nil
 }
@@ -124,11 +142,58 @@ func newService(db *sql.DB, opts Options, ownsDB bool) (*Service, error) {
 	return svc, nil
 }
 
+func configureSkillMarketSQLiteDB(db *sql.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(time.Hour)
+	db.SetConnMaxIdleTime(30 * time.Minute)
+
+	pragmas := []string{
+		"PRAGMA busy_timeout=5000",
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA cache_size=-2000",
+		"PRAGMA synchronous=FULL",
+		"PRAGMA foreign_keys=ON",
+		"PRAGMA wal_autocheckpoint=1000",
+	}
+	if runtime.GOOS == "darwin" {
+		pragmas = append(pragmas,
+			"PRAGMA fullfsync=ON",
+			"PRAGMA checkpoint_fullfsync=ON",
+		)
+	}
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			return fmt.Errorf("exec %q: %w", pragma, err)
+		}
+	}
+	return nil
+}
+
+func isMissingFTS5ModuleError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such module") && strings.Contains(msg, "fts5")
+}
+
 func (s *Service) Store() *Store {
 	return s.store
 }
 
 func (s *Service) Start(ctx context.Context) {
+	if s.embeddingProvider != nil {
+		go func() {
+			if err := s.backfillSkillEmbeddings(ctx, SearchQuery{}); err != nil && s.logger != nil {
+				s.logger.Warn("skillmarket embedding backfill failed", zap.Error(err))
+			}
+		}()
+	}
 	go func() {
 		if err := s.syncCurations(ctx); err != nil && s.logger != nil {
 			s.logger.Warn("skillmarket curation sync failed", zap.Error(err))
@@ -215,6 +280,12 @@ func (s *Service) GetDiscoverStatus() DiscoverStatus {
 	return cloneDiscoverStatus(s.discoverStatus)
 }
 
+func (s *Service) GetEmbeddingStatus() EmbeddingStatus {
+	s.embeddingStatusMu.Lock()
+	defer s.embeddingStatusMu.Unlock()
+	return cloneEmbeddingStatus(s.embeddingStatus)
+}
+
 func (s *Service) emitDiscoverEvent(phase string, batchInserted, batchUpdated, batchFailed int) {
 	if s.discoverBroadcaster == nil {
 		return
@@ -237,6 +308,28 @@ func (s *Service) emitDiscoverEvent(phase string, batchInserted, batchUpdated, b
 		BatchUpdated:      batchUpdated,
 		BatchFailed:       batchFailed,
 		Phase:             phase,
+	})
+}
+
+func (s *Service) emitEmbeddingEvent() {
+	if s.discoverBroadcaster == nil {
+		return
+	}
+	s.embeddingStatusMu.Lock()
+	status := cloneEmbeddingStatus(s.embeddingStatus)
+	s.embeddingStatusMu.Unlock()
+	s.discoverBroadcaster("skill.market.embedding.progress", EmbeddingProgressEvent{
+		Running:          status.Running,
+		StartedAt:        status.StartedAt,
+		FinishedAt:       status.FinishedAt,
+		LastError:        status.LastError,
+		TotalSkills:      status.TotalSkills,
+		ProcessedSkills:  status.ProcessedSkills,
+		EmbeddedSkills:   status.EmbeddedSkills,
+		FailedSkills:     status.FailedSkills,
+		CurrentSkillID:   status.CurrentSkillID,
+		CurrentSkillName: status.CurrentSkillName,
+		Phase:            status.Phase,
 	})
 }
 
@@ -264,19 +357,33 @@ func (s *Service) StartDiscoverAsync() (DiscoverStatus, bool) {
 }
 
 func (s *Service) Search(ctx context.Context, query SearchQuery) (*SearchResponse, error) {
-	response, err := s.store.Search(ctx, query)
+	if !query.Semantic || s.embeddingProvider == nil || strings.TrimSpace(query.Query) == "" {
+		return s.store.Search(ctx, query)
+	}
+
+	queryVector, err := s.embeddingProvider.Embed(ctx, query.Query)
+	if err != nil || len(queryVector) == 0 {
+		return s.store.Search(ctx, query)
+	}
+
+	candidates, err := s.store.ListFilteredSkills(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	if !query.Semantic || s.embeddingProvider == nil || len(response.Skills) == 0 {
-		return response, nil
+	if len(candidates) == 0 {
+		return emptySearchResponse(query), nil
 	}
-	queryVector, err := s.embeddingProvider.Embed(ctx, query.Query)
-	if err != nil || len(queryVector) == 0 {
-		return response, nil
+
+	candidates, backfillErr := s.ensureSkillEmbeddings(ctx, candidates)
+	if backfillErr != nil && s.logger != nil {
+		s.logger.Warn("skillmarket semantic search embedding backfill partially failed", zap.Error(backfillErr))
 	}
-	response.Skills = s.store.RerankSemantic(queryVector, response.Skills)
-	return response, nil
+
+	keywordResults, err := s.store.SearchKeywordCandidates(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	return s.combineSemanticResults(query, queryVector, candidates, keywordResults), nil
 }
 
 func (s *Service) Trending(ctx context.Context, category string, limit int) ([]SkillDocument, error) {
@@ -623,6 +730,64 @@ func cloneDiscoverStatus(status DiscoverStatus) DiscoverStatus {
 	status.Result = cloneDiscoverResult(status.Result)
 	status.SourceResults = cloneSourceResults(status.SourceResults)
 	return status
+}
+
+func cloneEmbeddingStatus(status EmbeddingStatus) EmbeddingStatus {
+	return status
+}
+
+func (s *Service) startEmbeddingProgress(total int) {
+	s.embeddingStatusMu.Lock()
+	s.embeddingStatus = EmbeddingStatus{
+		Running:     true,
+		StartedAt:   timeutil.NowTime(),
+		TotalSkills: total,
+		Phase:       "started",
+	}
+	s.embeddingStatusMu.Unlock()
+	s.emitEmbeddingEvent()
+}
+
+func (s *Service) advanceEmbeddingProgress(doc SkillDocument, embedded bool, err error) {
+	s.embeddingStatusMu.Lock()
+	if !s.embeddingStatus.Running {
+		s.embeddingStatusMu.Unlock()
+		return
+	}
+	s.embeddingStatus.ProcessedSkills++
+	s.embeddingStatus.CurrentSkillID = doc.ID
+	s.embeddingStatus.CurrentSkillName = firstNonBlank(doc.Name, doc.ID)
+	s.embeddingStatus.Phase = "progress"
+	if embedded {
+		s.embeddingStatus.EmbeddedSkills++
+	}
+	if err != nil {
+		s.embeddingStatus.FailedSkills++
+		s.embeddingStatus.LastError = err.Error()
+	}
+	s.embeddingStatusMu.Unlock()
+	s.emitEmbeddingEvent()
+}
+
+func (s *Service) finishEmbeddingProgress(err error) {
+	s.embeddingStatusMu.Lock()
+	if !s.embeddingStatus.Running {
+		s.embeddingStatusMu.Unlock()
+		return
+	}
+	s.embeddingStatus.Running = false
+	s.embeddingStatus.FinishedAt = timeutil.NowTime()
+	s.embeddingStatus.CurrentSkillID = ""
+	s.embeddingStatus.CurrentSkillName = ""
+	if err != nil {
+		s.embeddingStatus.LastError = err.Error()
+		s.embeddingStatus.Phase = "error"
+	} else {
+		s.embeddingStatus.LastError = ""
+		s.embeddingStatus.Phase = "completed"
+	}
+	s.embeddingStatusMu.Unlock()
+	s.emitEmbeddingEvent()
 }
 
 func cloneDiscoverResult(result *DiscoverResult) *DiscoverResult {
@@ -1849,6 +2014,266 @@ func firstNonBlank(values ...string) string {
 	return ""
 }
 
+func emptySearchResponse(query SearchQuery) *SearchResponse {
+	page := query.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := query.PageSize
+	if pageSize <= 0 || pageSize > DefaultSearchLimit {
+		pageSize = DefaultPageSize
+	}
+	return &SearchResponse{
+		Skills:     nil,
+		Total:      0,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: 0,
+	}
+}
+
+func buildSkillSearchDoc(doc *SkillDocument) string {
+	if doc == nil {
+		return ""
+	}
+
+	name := strings.TrimSpace(doc.Name)
+	description := strings.TrimSpace(doc.Description)
+	author := strings.TrimSpace(doc.Author)
+	category := strings.TrimSpace(doc.Category)
+	tags := append([]string(nil), doc.Tags...)
+	content := strings.TrimSpace(doc.SkillContent)
+
+	if parsed, err := parseSkillMarkdown(content, firstNonBlank(doc.ID, doc.Slug)); err == nil && parsed != nil {
+		content = strings.TrimSpace(parsed.Content)
+		if name == "" {
+			name = strings.TrimSpace(parsed.Manifest.Name)
+		}
+		if description == "" {
+			description = strings.TrimSpace(parsed.Manifest.Description)
+		}
+		if author == "" {
+			author = strings.TrimSpace(parsed.Manifest.Author)
+		}
+		if category == "" {
+			category = strings.TrimSpace(parsed.Manifest.Category)
+		}
+		if len(tags) == 0 {
+			tags = append(tags, parsed.Manifest.Tags...)
+		}
+	}
+
+	return strings.TrimSpace(strings.Join([]string{
+		name,
+		description,
+		author,
+		category,
+		strings.Join(tags, " "),
+		content,
+	}, "\n"))
+}
+
+func skillEmbeddingNeedsRefresh(doc SkillDocument, currentModel string) bool {
+	if strings.TrimSpace(doc.EmbeddingJSON) == "" {
+		return true
+	}
+	currentModel = strings.TrimSpace(currentModel)
+	if currentModel == "" {
+		return false
+	}
+	return strings.TrimSpace(doc.EmbeddingModel) != currentModel
+}
+
+func (s *Service) ensureSkillEmbeddings(ctx context.Context, docs []SkillDocument) ([]SkillDocument, error) {
+	if s.embeddingProvider == nil || len(docs) == 0 {
+		return docs, nil
+	}
+
+	s.embeddingBackfillMu.Lock()
+	defer s.embeddingBackfillMu.Unlock()
+
+	currentModel := strings.TrimSpace(s.embeddingProvider.Model())
+	type pendingEmbedding struct {
+		index     int
+		searchDoc string
+	}
+	pending := make([]pendingEmbedding, 0, len(docs))
+	for i := range docs {
+		if !skillEmbeddingNeedsRefresh(docs[i], currentModel) {
+			continue
+		}
+		searchDoc := buildSkillSearchDoc(&docs[i])
+		if strings.TrimSpace(searchDoc) == "" {
+			continue
+		}
+		pending = append(pending, pendingEmbedding{index: i, searchDoc: searchDoc})
+	}
+	if len(pending) == 0 {
+		return docs, nil
+	}
+
+	s.startEmbeddingProgress(len(pending))
+	var firstErr error
+
+	for _, item := range pending {
+		doc := &docs[item.index]
+		vec, err := s.embeddingProvider.Embed(ctx, item.searchDoc)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			s.advanceEmbeddingProgress(*doc, false, err)
+			continue
+		}
+		if len(vec) == 0 {
+			err := fmt.Errorf("embedding provider returned empty vector for %s", firstNonBlank(doc.Name, doc.ID))
+			if firstErr == nil {
+				firstErr = err
+			}
+			s.advanceEmbeddingProgress(*doc, false, err)
+			continue
+		}
+		data, err := json.Marshal(vec)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			s.advanceEmbeddingProgress(*doc, false, err)
+			continue
+		}
+		doc.EmbeddingJSON = string(data)
+		doc.EmbeddingModel = currentModel
+		if err := s.store.UpdateSkillEmbedding(ctx, doc.ID, doc.EmbeddingJSON, doc.EmbeddingModel); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			s.advanceEmbeddingProgress(*doc, false, err)
+			continue
+		}
+		s.advanceEmbeddingProgress(*doc, true, nil)
+	}
+
+	s.finishEmbeddingProgress(firstErr)
+	return docs, firstErr
+}
+
+func (s *Service) backfillSkillEmbeddings(ctx context.Context, query SearchQuery) error {
+	candidates, err := s.store.ListFilteredSkills(ctx, query)
+	if err != nil {
+		return err
+	}
+	_, err = s.ensureSkillEmbeddings(ctx, candidates)
+	return err
+}
+
+func (s *Service) combineSemanticResults(query SearchQuery, queryVector []float32, candidates []SkillDocument, keywordResults []SearchResult) *SearchResponse {
+	page := query.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := query.PageSize
+	if pageSize <= 0 || pageSize > DefaultSearchLimit {
+		pageSize = DefaultPageSize
+	}
+
+	semanticRatio := s.cfg.SemanticRatio
+	if semanticRatio <= 0 || semanticRatio >= 1 {
+		semanticRatio = 0.35
+	}
+	keywordWeight := 1 - semanticRatio
+
+	merged := make(map[string]SearchResult, len(keywordResults)+len(candidates))
+	for _, result := range keywordResults {
+		merged[result.Skill.ID] = result
+	}
+
+	for _, doc := range candidates {
+		if strings.TrimSpace(doc.EmbeddingJSON) == "" {
+			continue
+		}
+		var candidate []float32
+		if err := json.Unmarshal([]byte(doc.EmbeddingJSON), &candidate); err != nil || len(candidate) == 0 {
+			continue
+		}
+		score, err := embedding.CosineSimilarity(queryVector, candidate)
+		if err != nil || score <= 0 {
+			continue
+		}
+
+		result, exists := merged[doc.ID]
+		if !exists {
+			result = SearchResult{
+				Skill:       doc,
+				Score:       float64(score) * 100,
+				MatchSource: "semantic",
+			}
+		} else {
+			result.Skill = doc
+		}
+
+		result.SemanticScore = float64(score)
+		semanticScore := float64(score) * 100
+		if exists {
+			result.Score = (result.KeywordScore * keywordWeight) + (semanticScore * semanticRatio)
+			result.MatchSource = "hybrid"
+		} else {
+			result.Score = semanticScore
+		}
+		merged[doc.ID] = result
+	}
+
+	results := make([]SearchResult, 0, len(merged))
+	for _, result := range merged {
+		results = append(results, result)
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].Score == results[j].Score {
+			leftRank := results[i].Skill.CuratedRank
+			rightRank := results[j].Skill.CuratedRank
+			if leftRank != rightRank {
+				if leftRank == 0 {
+					return false
+				}
+				if rightRank == 0 {
+					return true
+				}
+				return leftRank < rightRank
+			}
+			leftTrend := results[i].Skill.TrendingScore + results[i].Skill.CuratedBoost
+			rightTrend := results[j].Skill.TrendingScore + results[j].Skill.CuratedBoost
+			if leftTrend != rightTrend {
+				return leftTrend > rightTrend
+			}
+			return results[i].Skill.Name < results[j].Skill.Name
+		}
+		return results[i].Score > results[j].Score
+	})
+
+	total := len(results)
+	start := (page - 1) * pageSize
+	if start >= total {
+		return &SearchResponse{
+			Skills:     []SearchResult{},
+			Total:      total,
+			Page:       page,
+			PageSize:   pageSize,
+			TotalPages: int(math.Ceil(float64(total) / float64(pageSize))),
+		}
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	return &SearchResponse{
+		Skills:     results[start:end],
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int(math.Ceil(float64(total) / float64(pageSize))),
+	}
+}
+
 func (s *Service) discoverFromSeedPage(ctx context.Context, source Source, processedSources int, total *DiscoverResult, run *CrawlRun) error {
 	job, err := buildDiscoverJob(s, source, run)
 	if err != nil {
@@ -1974,7 +2399,7 @@ func (s *Service) prepareIngestRecord(ctx context.Context, req ingestRequest) (*
 		LastCrawledAt:       timeutil.NowTime(),
 	}
 	if s.embeddingProvider != nil {
-		vec, err := s.embeddingProvider.Embed(ctx, parsed.SearchDoc)
+		vec, err := s.embeddingProvider.Embed(ctx, buildSkillSearchDoc(doc))
 		if err == nil && len(vec) > 0 {
 			data, _ := json.Marshal(vec)
 			doc.EmbeddingJSON = string(data)

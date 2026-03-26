@@ -116,6 +116,39 @@ func (b *scriptedWebQueryBrowserBackend) ListRecipes(_ context.Context) []Browse
 	return nil
 }
 
+func TestNormalizeWebQueryArgs_FlattensMediaAndRequestObjects(t *testing.T) {
+	args := normalizeWebQueryArgs(map[string]interface{}{
+		"media": map[string]interface{}{
+			"mode":      "ocr",
+			"max_items": 2,
+		},
+		"request": map[string]interface{}{
+			"auth_bearer":       "tok",
+			"browser_target_id": "tab-7",
+			"headers":           map[string]interface{}{"X-Test": "1"},
+		},
+	})
+	if got := asString(args["media_mode"]); got != "ocr" {
+		t.Fatalf("media_mode = %q, want ocr", got)
+	}
+	if got := args["include_media"]; got != true {
+		t.Fatalf("include_media = %#v, want true", got)
+	}
+	if got := args["max_media"]; got != 2 {
+		t.Fatalf("max_media = %#v, want 2", got)
+	}
+	if got := asString(args["auth_bearer"]); got != "tok" {
+		t.Fatalf("auth_bearer = %q, want tok", got)
+	}
+	if got := asString(args["browser_target_id"]); got != "tab-7" {
+		t.Fatalf("browser_target_id = %q, want tab-7", got)
+	}
+	headers, ok := args["headers"].(map[string]interface{})
+	if !ok || headers["X-Test"] != "1" {
+		t.Fatalf("headers = %#v, want X-Test=1", args["headers"])
+	}
+}
+
 func TestWebQueryToolAutoRoutesSearchAndReturnsEnvelope(t *testing.T) {
 	searchTool := &scriptedWebTool{
 		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},

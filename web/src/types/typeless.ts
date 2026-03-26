@@ -116,6 +116,7 @@ export interface ResultDetail {
   copyable?: boolean
   suffix?: string
   multiline?: boolean
+  reveal_path?: string
 }
 
 // Detection Card - Display image with object detection boxes

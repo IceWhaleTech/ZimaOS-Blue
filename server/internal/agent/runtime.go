@@ -754,11 +754,26 @@ func groundedEvidenceForTask(task *Task) string {
 
 func hasFailedOrSkippedSteps(plan []PlanStep) bool {
 	for _, step := range plan {
+		if isRuntimeMetaStep(step.Description) {
+			continue
+		}
 		if step.Status == StepStatusFailed || step.Status == StepStatusSkipped {
 			return true
 		}
 	}
 	return false
+}
+
+func isRuntimeMetaStep(description string) bool {
+	description = strings.ToLower(strings.TrimSpace(description))
+	switch {
+	case strings.HasPrefix(description, "verify "),
+		strings.HasPrefix(description, "recovery:"),
+		strings.HasPrefix(description, "reflect "):
+		return true
+	default:
+		return false
+	}
 }
 
 func buildGroundedTaskReport(task *Task) string {

@@ -385,6 +385,10 @@ func materializeEvalGroupSpec(evalSpec *EvalSpec, dataset *Dataset, version *Dat
 	if groupMetadata == nil {
 		groupMetadata = map[string]interface{}{}
 	}
+	groupContract := DecodeHarnessContract(evalSpec.RuntimePolicy, manifest.Defaults.RuntimePolicy, runSpec.Metadata)
+	if contractMeta := HarnessContractMetadata(groupContract); len(contractMeta) > 0 {
+		groupMetadata["harness_contract"] = contractMeta
+	}
 	groupMetadata["eval_spec_id"] = evalSpec.ID
 	groupMetadata["dataset_id"] = dataset.ID
 	groupMetadata["dataset_version_id"] = version.ID
@@ -400,6 +404,16 @@ func materializeEvalGroupSpec(evalSpec *EvalSpec, dataset *Dataset, version *Dat
 		if metadata == nil {
 			metadata = map[string]interface{}{}
 		}
+		itemContract := DecodeHarnessContract(HarnessContractMetadata(groupContract), item.Input, item.Expected, item.Metadata)
+		if contractMeta := HarnessContractMetadata(itemContract); len(contractMeta) > 0 {
+			metadata["harness_contract"] = contractMeta
+		}
+		if criteria := HarnessContractSuccessCriteria(itemContract); len(criteria) > 0 {
+			metadata["task_success_criteria"] = append([]string(nil), criteria...)
+		}
+		if fallback := HarnessContractFallbackPlan(itemContract); len(fallback) > 0 {
+			metadata["task_fallback_plan"] = append([]string(nil), fallback...)
+		}
 		if caseID := strings.TrimSpace(item.ID); caseID != "" {
 			metadata["dataset_case_id"] = caseID
 		}
@@ -407,7 +421,7 @@ func materializeEvalGroupSpec(evalSpec *EvalSpec, dataset *Dataset, version *Dat
 			RunKind:  runKind,
 			Profile:  firstNonEmpty(item.Profile, manifest.Defaults.Profile, evalSpec.Profile, dataset.DefaultProfile),
 			Input:    cloneMetadataMap(item.Input),
-			Expected: cloneMetadataMap(item.Expected),
+			Expected: ApplyHarnessContractToExpected(item.Expected, itemContract),
 			Metadata: metadata,
 		})
 	}

@@ -3,7 +3,9 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { securityApi, type PromptFirewallConfig, type PromptFirewallRule } from '@/api/security'
+import { settingsApi, type DirectoryWhitelistEntry } from '@/api/settings'
 import { systemApi } from '@/api/index'
+import { sandboxApi, type SandboxInfo } from '@/api/sandbox'
 import {
   approvalApi,
   type ApprovedBrowserSiteEntry,
@@ -252,6 +254,118 @@ const revokingApprovedDirId = ref<string | null>(null)
 const approvedBrowserSites = ref<ApprovedBrowserSiteEntry[]>([])
 const loadingApprovedBrowserSites = ref(false)
 const revokingApprovedBrowserSiteId = ref<string | null>(null)
+const directoryWhitelistEnabled = ref(false)
+const directoryWhitelistEntries = ref<DirectoryWhitelistEntry[]>([])
+const loadingDirectoryWhitelist = ref(false)
+const savingDirectoryWhitelist = ref(false)
+const directoryWhitelistDirty = ref(false)
+const newWhitelistPath = ref('')
+const newWhitelistAlias = ref('')
+const sandboxRuntimeInfo = ref<SandboxInfo | null>(null)
+const loadingSandboxRuntimeInfo = ref(false)
+const sandboxRuntimeInfoError = ref('')
+const savingSandboxNetwork = ref(false)
+const sandboxNetworkSaveError = ref('')
+
+function normalizeDirectoryWhitelistEntries(
+  entries: DirectoryWhitelistEntry[]
+): DirectoryWhitelistEntry[] {
+  const result: DirectoryWhitelistEntry[] = []
+  const seenPaths = new Set<string>()
+  const seenAliases = new Set<string>()
+
+  for (const entry of entries) {
+    const path = String(entry.path || '').trim()
+    if (!path) continue
+
+    const pathKey = path.toLowerCase()
+    if (seenPaths.has(pathKey)) continue
+    seenPaths.add(pathKey)
+
+    let alias = String(entry.alias || '').trim()
+    if (alias) {
+      const aliasKey = alias.toLowerCase()
+      if (seenAliases.has(aliasKey)) {
+        alias = ''
+      } else {
+        seenAliases.add(aliasKey)
+      }
+    }
+
+    result.push(alias ? { path, alias } : { path })
+  }
+
+  return result
+}
+
+async function loadDirectoryWhitelist() {
+  try {
+    loadingDirectoryWhitelist.value = true
+    const response = await settingsApi.get()
+    directoryWhitelistEnabled.value = Boolean(response.data.directory_whitelist_enabled)
+    directoryWhitelistEntries.value = normalizeDirectoryWhitelistEntries(
+      Array.isArray(response.data.directory_whitelist) ? response.data.directory_whitelist : []
+    )
+    directoryWhitelistDirty.value = false
+  } catch (error) {
+    console.error('Failed to load directory whitelist:', error)
+    directoryWhitelistEnabled.value = false
+    directoryWhitelistEntries.value = []
+    directoryWhitelistDirty.value = false
+  } finally {
+    loadingDirectoryWhitelist.value = false
+  }
+}
+
+async function saveDirectoryWhitelist() {
+  try {
+    savingDirectoryWhitelist.value = true
+    const response = await settingsApi.patch({
+      directory_whitelist_enabled: directoryWhitelistEnabled.value,
+      directory_whitelist: normalizeDirectoryWhitelistEntries(directoryWhitelistEntries.value),
+    })
+    directoryWhitelistEnabled.value = Boolean(response.data.directory_whitelist_enabled)
+    directoryWhitelistEntries.value = normalizeDirectoryWhitelistEntries(
+      Array.isArray(response.data.directory_whitelist) ? response.data.directory_whitelist : []
+    )
+    directoryWhitelistDirty.value = false
+  } catch (error) {
+    console.error('Failed to save directory whitelist:', error)
+  } finally {
+    savingDirectoryWhitelist.value = false
+  }
+}
+
+function markDirectoryWhitelistDirty() {
+  directoryWhitelistDirty.value = true
+}
+
+function toggleDirectoryWhitelist() {
+  directoryWhitelistEnabled.value = !directoryWhitelistEnabled.value
+  directoryWhitelistDirty.value = true
+  void saveDirectoryWhitelist()
+}
+
+function addDirectoryWhitelistEntry() {
+  const path = newWhitelistPath.value.trim()
+  if (!path) return
+
+  const alias = newWhitelistAlias.value.trim()
+  directoryWhitelistEntries.value = normalizeDirectoryWhitelistEntries([
+    ...directoryWhitelistEntries.value,
+    alias ? { path, alias } : { path },
+  ])
+  newWhitelistPath.value = ''
+  newWhitelistAlias.value = ''
+  directoryWhitelistDirty.value = true
+  void saveDirectoryWhitelist()
+}
+
+function removeDirectoryWhitelistEntry(index: number) {
+  directoryWhitelistEntries.value = directoryWhitelistEntries.value.filter((_, i) => i !== index)
+  directoryWhitelistDirty.value = true
+  void saveDirectoryWhitelist()
+}
 
 async function loadApprovedDirectories() {
   try {
@@ -301,6 +415,41 @@ async function revokeApprovedBrowserSite(id: string) {
   } finally {
     revokingApprovedBrowserSiteId.value = null
   }
+}
+
+async function loadSandboxRuntimeInfo() {
+  try {
+    loadingSandboxRuntimeInfo.value = true
+    sandboxRuntimeInfoError.value = ''
+    sandboxNetworkSaveError.value = ''
+    const response = await sandboxApi.getInfo()
+    sandboxRuntimeInfo.value = response.data
+  } catch (error) {
+    console.error('Failed to load sandbox runtime info:', error)
+    sandboxRuntimeInfo.value = null
+    sandboxRuntimeInfoError.value = t('sandbox.errors.fetchInfo')
+  } finally {
+    loadingSandboxRuntimeInfo.value = false
+  }
+}
+
+async function updateSandboxNetworkEnabled(enabled: boolean) {
+  try {
+    savingSandboxNetwork.value = true
+    sandboxNetworkSaveError.value = ''
+    const response = await sandboxApi.updateConfig({ network_enabled: enabled })
+    sandboxRuntimeInfo.value = response.data
+  } catch (error) {
+    console.error('Failed to update sandbox network access:', error)
+    sandboxNetworkSaveError.value = t('common.saveFailed')
+  } finally {
+    savingSandboxNetwork.value = false
+  }
+}
+
+function toggleSandboxNetwork() {
+  if (!sandboxRuntimeInfo.value || savingSandboxNetwork.value) return
+  void updateSandboxNetworkEnabled(!sandboxRuntimeInfo.value.network_enabled)
 }
 
 function formatDate(dateStr?: string) {
@@ -891,6 +1040,207 @@ const securityStatusDescription = computed(() => {
     : t('security.scanInProgress')
 })
 
+type SandboxSectionState = 'enabled' | 'disabled' | 'checking' | 'unknown'
+type SandboxDisplayTone = 'neutral' | 'success' | 'warning' | 'danger'
+
+interface SandboxRuntimeCard {
+  id: string
+  label: string
+  value: string
+}
+
+const sandboxEnabledScanItem = computed(
+  () => scanResults.value.find((item) => item.id === 'sandbox_enabled') ?? null
+)
+
+const sandboxSectionState = computed<SandboxSectionState>(() => {
+  const item = sandboxEnabledScanItem.value
+  if (!item) return isScanning.value ? 'checking' : 'unknown'
+
+  switch (item.status) {
+    case 'passed':
+      return 'enabled'
+    case 'failed':
+    case 'warning':
+      return 'disabled'
+    case 'pending':
+    case 'scanning':
+      return 'checking'
+    default:
+      return 'unknown'
+  }
+})
+
+const sandboxSectionStatusLabel = computed(() => {
+  switch (sandboxSectionState.value) {
+    case 'enabled':
+      return t('security.sandboxStatus.enabled')
+    case 'disabled':
+      return t('security.sandboxStatus.disabled')
+    case 'checking':
+      return t('security.sandboxStatus.checking')
+    default:
+      return t('security.sandboxStatus.unknown')
+  }
+})
+
+const sandboxSectionStatusClass = computed(() => {
+  switch (sandboxSectionState.value) {
+    case 'enabled':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+    case 'disabled':
+      return 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300'
+    case 'checking':
+      return 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-200'
+    default:
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300'
+  }
+})
+
+const sandboxSectionDescription = computed(() => {
+  const item = sandboxEnabledScanItem.value
+  if (item) {
+    return getItemDetails(item) || getScanItemDescription(item)
+  }
+  if (isScanning.value || loadingSandboxRuntimeInfo.value) {
+    return t('security.scan.checking')
+  }
+  if (sandboxRuntimeInfoError.value) {
+    return sandboxRuntimeInfoError.value
+  }
+  if (sandboxRuntimeInfo.value?.supported === false) {
+    return t('sandbox.notSupportedDesc')
+  }
+  return t('security.sandboxStatus.description')
+})
+
+const sandboxRuntimeStatusLabel = computed(() => {
+  if (loadingSandboxRuntimeInfo.value) {
+    return t('common.loading')
+  }
+  if (sandboxRuntimeInfoError.value) {
+    return t('security.sandboxStatus.runtimeUnavailable')
+  }
+  if (!sandboxRuntimeInfo.value) {
+    return '-'
+  }
+  return sandboxRuntimeInfo.value.supported
+    ? t('security.sandboxStatus.runtimeAvailable')
+    : t('security.sandboxStatus.runtimeUnavailable')
+})
+
+const sandboxRuntimeTone = computed<SandboxDisplayTone>(() => {
+  if (loadingSandboxRuntimeInfo.value) return 'neutral'
+  if (sandboxRuntimeInfoError.value) return 'danger'
+  if (!sandboxRuntimeInfo.value) return 'neutral'
+  return sandboxRuntimeInfo.value.supported ? 'success' : 'danger'
+})
+
+const sandboxNetworkSwitchDisabled = computed(() => {
+  if (loadingSandboxRuntimeInfo.value || savingSandboxNetwork.value) return true
+  if (sandboxRuntimeInfoError.value) return true
+  if (!sandboxRuntimeInfo.value) return true
+  return !sandboxRuntimeInfo.value.supported
+})
+
+const sandboxNetworkStatusLabel = computed(() => {
+  if (loadingSandboxRuntimeInfo.value || savingSandboxNetwork.value) {
+    return t(savingSandboxNetwork.value ? 'common.saving' : 'common.loading')
+  }
+  if (!sandboxRuntimeInfo.value) {
+    return '-'
+  }
+  return sandboxRuntimeInfo.value.network_enabled
+    ? tr('common.enabled', 'Enabled')
+    : tr('common.disabled', 'Disabled')
+})
+
+const sandboxNetworkTone = computed<SandboxDisplayTone>(() => {
+  if (sandboxNetworkSaveError.value) {
+    return 'danger'
+  }
+  if (loadingSandboxRuntimeInfo.value || !sandboxRuntimeInfo.value) {
+    return 'neutral'
+  }
+  if (!sandboxRuntimeInfo.value.supported) {
+    return 'warning'
+  }
+  return sandboxRuntimeInfo.value.network_enabled ? 'warning' : 'success'
+})
+
+const sandboxNetworkDescription = computed(() => {
+  if (sandboxNetworkSaveError.value) {
+    return sandboxNetworkSaveError.value
+  }
+  if (sandboxRuntimeInfoError.value) {
+    return sandboxRuntimeInfoError.value
+  }
+  if (loadingSandboxRuntimeInfo.value || !sandboxRuntimeInfo.value) {
+    return ''
+  }
+  if (!sandboxRuntimeInfo.value.supported) {
+    return sandboxRuntimeInfo.value.support_reason || t('sandbox.notSupportedDesc')
+  }
+  return ''
+})
+
+const sandboxRuntimeCards = computed<SandboxRuntimeCard[]>(() => [
+  {
+    id: 'default-timeout',
+    label: t('sandbox.config.defaultTimeout'),
+    value: loadingSandboxRuntimeInfo.value
+      ? t('common.loading')
+      : sandboxRuntimeInfo.value?.default_timeout || '-',
+  },
+  {
+    id: 'max-timeout',
+    label: t('sandbox.config.maxTimeout'),
+    value: loadingSandboxRuntimeInfo.value
+      ? t('common.loading')
+      : sandboxRuntimeInfo.value?.max_timeout || '-',
+  },
+  {
+    id: 'memory-limit',
+    label: t('sandbox.config.memoryLimit'),
+    value: loadingSandboxRuntimeInfo.value
+      ? t('common.loading')
+      : sandboxRuntimeInfo.value
+        ? formatBytes(sandboxRuntimeInfo.value.memory_limit || 0)
+        : '-',
+  },
+  {
+    id: 'cpu-limit',
+    label: t('sandbox.config.cpuLimit'),
+    value: loadingSandboxRuntimeInfo.value
+      ? t('common.loading')
+      : sandboxRuntimeInfo.value
+        ? String(sandboxRuntimeInfo.value.cpu_limit)
+        : '-',
+  },
+  {
+    id: 'process-limit',
+    label: t('sandbox.config.processLimit'),
+    value: loadingSandboxRuntimeInfo.value
+      ? t('common.loading')
+      : sandboxRuntimeInfo.value
+        ? String(sandboxRuntimeInfo.value.process_limit)
+        : '-',
+  },
+])
+
+function sandboxToneClass(tone: SandboxDisplayTone): string {
+  switch (tone) {
+    case 'success':
+      return 'sandbox-tone-success'
+    case 'warning':
+      return 'sandbox-tone-warning'
+    case 'danger':
+      return 'sandbox-tone-danger'
+    default:
+      return 'sandbox-tone-neutral'
+  }
+}
+
 // Companion monitoring state
 const companionSessions = ref<CompanionSession[]>([])
 const companionStats = ref<CompanionStats | null>(null)
@@ -989,8 +1339,10 @@ onMounted(async () => {
   }
 
   loadPromptFirewall()
+  loadDirectoryWhitelist()
   loadApprovedDirectories()
   loadApprovedBrowserSites()
+  loadSandboxRuntimeInfo()
 
   // Load cached results first
   loadCachedScanResults()
@@ -1669,8 +2021,152 @@ onUnmounted(() => {
             v-show="activeTab === 'controls'"
             class="security-section-stack security-embedded-stack"
           >
-            <section class="security-panel dashboard-card-surface">
-              <div class="flex items-center justify-between mb-2 gap-3">
+            <section
+              class="security-panel dashboard-card-surface"
+              data-testid="sandbox-status-section"
+            >
+              <div class="sandbox-overview">
+                <div class="sandbox-overview-copy">
+                  <div class="sandbox-overview-header">
+                    <div
+                      class="sandbox-overview-icon inline-flex shrink-0 items-center justify-center bg-gray-100 text-gray-700 dark:bg-slate-700/70 dark:text-slate-200"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 3l7 4v5c0 4.5-2.7 8.7-7 10-4.3-1.3-7-5.5-7-10V7l7-4z"
+                        />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M10 12l1.5 1.5L14.5 10.5"
+                        />
+                      </svg>
+                    </div>
+
+                    <div class="sandbox-overview-body min-w-0">
+                      <div class="sandbox-overview-title-row">
+                        <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                          {{ t('security.sandboxStatus.title') }}
+                        </h3>
+                        <span
+                          :class="[
+                            'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium',
+                            sandboxSectionStatusClass,
+                          ]"
+                        >
+                          {{ sandboxSectionStatusLabel }}
+                        </span>
+                      </div>
+                      <p class="sandbox-overview-description">
+                        {{ sandboxSectionDescription }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="sandbox-overview-actions">
+                  <button
+                    :disabled="loadingSandboxRuntimeInfo"
+                    class="sandbox-refresh-button px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-500 rounded text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 disabled:opacity-50"
+                    @click="loadSandboxRuntimeInfo"
+                  >
+                    {{
+                      loadingSandboxRuntimeInfo
+                        ? tr('common.refreshing', 'Refreshing')
+                        : tr('common.refresh', 'Refresh')
+                    }}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                v-if="sandboxRuntimeInfoError"
+                class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+              >
+                {{ sandboxRuntimeInfoError }}
+              </div>
+
+              <div
+                v-else-if="sandboxNetworkDescription"
+                :class="['sandbox-inline-note mt-3', sandboxToneClass(sandboxNetworkTone)]"
+              >
+                {{ sandboxNetworkDescription }}
+              </div>
+
+              <div class="sandbox-card-grid">
+                <div class="sandbox-mini-card">
+                  <div class="sandbox-mini-card-label">
+                    {{ t('security.sandboxStatus.runtimeTitle') }}
+                  </div>
+                  <span :class="['sandbox-mini-card-value', sandboxToneClass(sandboxRuntimeTone)]">
+                    {{ sandboxRuntimeStatusLabel }}
+                  </span>
+                </div>
+
+                <div class="sandbox-mini-card sandbox-mini-card-network">
+                  <div class="sandbox-mini-card-label">
+                    {{ t('sandbox.config.network') }}
+                  </div>
+                  <div class="sandbox-mini-card-inline">
+                    <span
+                      :class="['sandbox-mini-card-value', sandboxToneClass(sandboxNetworkTone)]"
+                    >
+                      {{ sandboxNetworkStatusLabel }}
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      data-testid="sandbox-network-switch"
+                      :aria-label="t('sandbox.config.network')"
+                      :aria-checked="Boolean(sandboxRuntimeInfo?.network_enabled)"
+                      :disabled="sandboxNetworkSwitchDisabled"
+                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      :class="
+                        sandboxRuntimeInfo?.network_enabled
+                          ? 'bg-green-600 dark:bg-green-500'
+                          : 'bg-gray-300 dark:bg-gray-600'
+                      "
+                      @click="toggleSandboxNetwork"
+                    >
+                      <span
+                        class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                        :class="
+                          sandboxRuntimeInfo?.network_enabled ? 'translate-x-5' : 'translate-x-0'
+                        "
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div v-for="card in sandboxRuntimeCards" :key="card.id" class="sandbox-mini-card">
+                  <div class="sandbox-mini-card-label">
+                    {{ card.label }}
+                  </div>
+                  <div class="sandbox-mini-card-metric">
+                    <span class="sandbox-mini-card-metric-value">
+                      {{ card.value }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="directory-whitelist-settings"
+              class="security-panel dashboard-card-surface"
+              data-testid="authorized-directories-panel"
+            >
+              <div class="mb-4">
                 <div>
                   <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
                     {{ tr('security.approvedDirectories', 'Authorized Directories') }}
@@ -1678,63 +2174,237 @@ onUnmounted(() => {
                   <p class="text-sm text-gray-500 dark:text-slate-400">
                     {{
                       tr(
-                        'security.approvedDirectoriesDesc',
-                        'Directories authorized via Allow Always for exec/convert.'
+                        'security.authorizedDirectoriesOverviewDesc',
+                        'Manage workspace-external access and always-allowed exec/convert directories.'
                       )
                     }}
                   </p>
                 </div>
-                <button
-                  :disabled="loadingApprovedDirs"
-                  class="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-500 rounded text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 disabled:opacity-50"
-                  @click="loadApprovedDirectories"
-                >
-                  {{
-                    loadingApprovedDirs
-                      ? tr('common.refreshing', 'Refreshing')
-                      : tr('common.refresh', 'Refresh')
-                  }}
-                </button>
               </div>
 
-              <div
-                v-if="loadingApprovedDirs"
-                class="text-sm text-gray-500 dark:text-slate-400 py-3"
-              >
-                {{ t('common.loading') }}
-              </div>
-              <div
-                v-else-if="!approvedDirs.length"
-                class="text-sm text-gray-500 dark:text-slate-400 py-3"
-              >
-                {{ tr('security.noApprovedDirectories', 'No authorized directories') }}
-              </div>
-              <div v-else class="space-y-2">
+              <div class="space-y-6">
                 <div
-                  v-for="entry in approvedDirs"
-                  :key="entry.id"
-                  class="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50"
+                  data-testid="directory-whitelist-section"
+                  class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-slate-600 dark:bg-slate-700/30"
                 >
-                  <div class="min-w-0">
-                    <p class="text-sm font-mono text-gray-800 dark:text-slate-200 break-all">
-                      {{ entry.path }}
-                    </p>
-                    <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                      {{ tr('claudecode.lastUsed', 'Last used') }}:
-                      {{ formatDate(entry.last_used) }}
-                    </p>
+                  <div class="flex items-start justify-between mb-4 gap-3">
+                    <div>
+                      <h4 class="text-base font-semibold text-gray-900 dark:text-white">
+                        {{ tr('security.directoryWhitelistTitle', 'Whitelist') }}
+                      </h4>
+                      <p class="text-sm text-gray-500 dark:text-slate-400">
+                        {{
+                          tr(
+                            'security.directoryWhitelistDesc',
+                            'Allow file tools to access specific directories outside the workspace root.'
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <button
+                        :disabled="
+                          loadingDirectoryWhitelist ||
+                          savingDirectoryWhitelist ||
+                          !directoryWhitelistDirty
+                        "
+                        class="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-500 rounded text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 disabled:opacity-50"
+                        @click="saveDirectoryWhitelist"
+                      >
+                        {{
+                          savingDirectoryWhitelist
+                            ? tr('common.processing', 'Processing')
+                            : tr('common.save', 'Save')
+                        }}
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="loadingDirectoryWhitelist || savingDirectoryWhitelist"
+                        :class="[
+                          'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                          directoryWhitelistEnabled
+                            ? 'bg-emerald-600 dark:bg-emerald-500'
+                            : 'bg-gray-300 dark:bg-gray-600',
+                          loadingDirectoryWhitelist || savingDirectoryWhitelist
+                            ? 'opacity-50 cursor-not-allowed'
+                            : 'cursor-pointer',
+                        ]"
+                        @click="toggleDirectoryWhitelist"
+                      >
+                        <span
+                          :class="[
+                            'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                            directoryWhitelistEnabled ? 'translate-x-6' : 'translate-x-1',
+                          ]"
+                        />
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    :disabled="revokingApprovedDirId === entry.id"
-                    class="px-2.5 py-1 text-xs border border-red-300 dark:border-red-700 rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
-                    @click="revokeApprovedDirectory(entry.id)"
+
+                  <div
+                    v-if="loadingDirectoryWhitelist"
+                    class="text-sm text-gray-500 dark:text-slate-400 py-3"
                   >
-                    {{
-                      revokingApprovedDirId === entry.id
-                        ? tr('common.processing', 'Processing')
-                        : tr('common.revoke', 'Revoke')
-                    }}
-                  </button>
+                    {{ t('common.loading') }}
+                  </div>
+                  <template v-else>
+                    <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
+                      <input
+                        v-model="newWhitelistPath"
+                        type="text"
+                        class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none ring-0 focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                        :placeholder="
+                          tr(
+                            'security.directoryWhitelistPathPlaceholder',
+                            'Absolute path, for example /Users/orca/Documents'
+                          )
+                        "
+                      />
+                      <input
+                        v-model="newWhitelistAlias"
+                        type="text"
+                        class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none ring-0 focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                        :placeholder="
+                          tr('security.directoryWhitelistAliasPlaceholder', 'Alias (optional)')
+                        "
+                      />
+                      <button
+                        class="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-slate-500 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50"
+                        :disabled="savingDirectoryWhitelist || !newWhitelistPath.trim()"
+                        @click="addDirectoryWhitelistEntry"
+                      >
+                        {{ tr('common.add', 'Add') }}
+                      </button>
+                    </div>
+
+                    <p class="mt-3 text-xs text-gray-500 dark:text-slate-400">
+                      {{
+                        tr(
+                          'security.directoryWhitelistHint',
+                          'Use aliases like @docs/... in tool calls. Paths must be absolute; aliases may contain letters, numbers, "-" and "_".'
+                        )
+                      }}
+                    </p>
+
+                    <div
+                      v-if="!directoryWhitelistEntries.length"
+                      class="text-sm text-gray-500 dark:text-slate-400 py-3"
+                    >
+                      {{
+                        tr(
+                          'security.noDirectoryWhitelistEntries',
+                          'No whitelisted directories configured'
+                        )
+                      }}
+                    </div>
+                    <div v-else class="space-y-2 mt-4">
+                      <div
+                        v-for="(entry, index) in directoryWhitelistEntries"
+                        :key="entry.path"
+                        class="grid gap-3 rounded-lg border border-gray-200 dark:border-slate-600 bg-white p-3 dark:bg-slate-700/50 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-center"
+                      >
+                        <div class="min-w-0 flex-1">
+                          <p class="text-sm font-mono text-gray-800 dark:text-slate-200 break-all">
+                            {{ entry.path }}
+                          </p>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1 lg:w-56">
+                          <span class="text-xs text-gray-500 dark:text-slate-400">
+                            {{ tr('security.directoryWhitelistAlias', 'Alias') }}
+                          </span>
+                          <input
+                            v-model="entry.alias"
+                            type="text"
+                            class="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none ring-0 focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                            :placeholder="
+                              tr('security.directoryWhitelistAliasPlaceholder', 'Alias (optional)')
+                            "
+                            @input="markDirectoryWhitelistDirty"
+                          />
+                        </div>
+                        <button
+                          class="px-2.5 py-1 text-xs border border-red-300 dark:border-red-700 rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                          :disabled="savingDirectoryWhitelist"
+                          @click="removeDirectoryWhitelistEntry(index)"
+                        >
+                          {{ tr('common.revoke', 'Revoke') }}
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+
+                <div
+                  data-testid="approved-directories-section"
+                  class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-slate-600 dark:bg-slate-700/30"
+                >
+                  <div class="flex items-center justify-between mb-2 gap-3">
+                    <div>
+                      <h4 class="text-base font-semibold text-gray-900 dark:text-white">
+                        {{ tr('security.alwaysAllowedDirectoriesTitle', 'Always Allowed') }}
+                      </h4>
+                      <p class="text-sm text-gray-500 dark:text-slate-400">
+                        {{
+                          tr(
+                            'security.approvedDirectoriesDesc',
+                            'Directories authorized via Allow Always for exec/convert.'
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <button
+                      :disabled="loadingApprovedDirs"
+                      class="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-500 rounded text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 disabled:opacity-50"
+                      @click="loadApprovedDirectories"
+                    >
+                      {{
+                        loadingApprovedDirs
+                          ? tr('common.refreshing', 'Refreshing')
+                          : tr('common.refresh', 'Refresh')
+                      }}
+                    </button>
+                  </div>
+
+                  <div
+                    v-if="loadingApprovedDirs"
+                    class="text-sm text-gray-500 dark:text-slate-400 py-3"
+                  >
+                    {{ t('common.loading') }}
+                  </div>
+                  <div
+                    v-else-if="!approvedDirs.length"
+                    class="text-sm text-gray-500 dark:text-slate-400 py-3"
+                  >
+                    {{ tr('security.noApprovedDirectories', 'No authorized directories') }}
+                  </div>
+                  <div v-else class="space-y-2">
+                    <div
+                      v-for="entry in approvedDirs"
+                      :key="entry.id"
+                      class="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700/50"
+                    >
+                      <div class="min-w-0">
+                        <p class="text-sm font-mono text-gray-800 dark:text-slate-200 break-all">
+                          {{ entry.path }}
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                          {{ tr('security.lastUsed', 'Last used') }}:
+                          {{ formatDate(entry.last_used) }}
+                        </p>
+                      </div>
+                      <button
+                        :disabled="revokingApprovedDirId === entry.id"
+                        class="px-2.5 py-1 text-xs border border-red-300 dark:border-red-700 rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                        @click="revokeApprovedDirectory(entry.id)"
+                      >
+                        {{
+                          revokingApprovedDirId === entry.id
+                            ? tr('common.processing', 'Processing')
+                            : tr('common.revoke', 'Revoke')
+                        }}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -1790,7 +2460,7 @@ onUnmounted(() => {
                       {{ entry.origin }}
                     </p>
                     <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                      {{ tr('claudecode.lastUsed', 'Last used') }}:
+                      {{ tr('security.lastUsed', 'Last used') }}:
                       {{ formatDate(entry.last_used) }}
                     </p>
                   </div>
@@ -3228,6 +3898,163 @@ onUnmounted(() => {
   line-height: 1.6;
 }
 
+.sandbox-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.08), transparent 42%),
+    rgba(248, 250, 252, 0.96);
+}
+
+.sandbox-overview-copy {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.sandbox-overview-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.sandbox-overview-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.95rem;
+}
+
+.sandbox-overview-body {
+  min-width: 0;
+}
+
+.sandbox-overview-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sandbox-overview-description {
+  margin: 0.22rem 0 0;
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.sandbox-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.sandbox-mini-card-label {
+  color: #94a3b8;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sandbox-refresh-button {
+  flex-shrink: 0;
+}
+
+.sandbox-inline-note {
+  padding: 0.72rem 0.85rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 1rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.sandbox-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+}
+
+.sandbox-mini-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.94);
+}
+
+.sandbox-mini-card-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sandbox-mini-card-value {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  max-width: 100%;
+  padding: 0.32rem 0.62rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sandbox-mini-card-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.sandbox-mini-card-metric-value {
+  color: #111827;
+  font-size: 0.94rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+
+.sandbox-tone-neutral {
+  border-color: rgba(148, 163, 184, 0.26);
+  background: rgba(241, 245, 249, 0.94);
+  color: #475569;
+}
+
+.sandbox-tone-success {
+  border-color: rgba(110, 231, 183, 0.34);
+  background: rgba(236, 253, 245, 0.94);
+  color: #047857;
+}
+
+.sandbox-tone-warning {
+  border-color: rgba(253, 224, 71, 0.3);
+  background: rgba(254, 252, 232, 0.94);
+  color: #a16207;
+}
+
+.sandbox-tone-danger {
+  border-color: rgba(252, 165, 165, 0.34);
+  background: rgba(254, 242, 242, 0.94);
+  color: #b91c1c;
+}
+
 .security-embedded-stack :deep(.glass-card),
 .security-panel :deep(.glass-card) {
   border: 1px solid rgba(255, 255, 255, 0.92);
@@ -3297,6 +4124,72 @@ html.dark .security-panel :deep(.glass-card) {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 24px 38px -34px rgba(2, 6, 23, 0.64);
+}
+
+:root.dark .sandbox-overview,
+[data-theme='dark'] .sandbox-overview,
+html.dark .sandbox-overview {
+  border-color: rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(56, 189, 248, 0.14), transparent 40%),
+    rgba(15, 23, 42, 0.42);
+}
+
+:root.dark .sandbox-overview-description,
+[data-theme='dark'] .sandbox-overview-description,
+html.dark .sandbox-overview-description,
+:root.dark .sandbox-inline-note,
+[data-theme='dark'] .sandbox-inline-note,
+html.dark .sandbox-inline-note {
+  color: rgb(148 163 184);
+}
+
+:root.dark .sandbox-mini-card,
+[data-theme='dark'] .sandbox-mini-card,
+html.dark .sandbox-mini-card,
+:root.dark .sandbox-inline-note,
+[data-theme='dark'] .sandbox-inline-note,
+html.dark .sandbox-inline-note {
+  border-color: rgba(71, 85, 105, 0.52);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+:root.dark .sandbox-mini-card-metric-value,
+[data-theme='dark'] .sandbox-mini-card-metric-value,
+html.dark .sandbox-mini-card-metric-value {
+  color: rgb(241 245 249);
+}
+
+:root.dark .sandbox-tone-neutral,
+[data-theme='dark'] .sandbox-tone-neutral,
+html.dark .sandbox-tone-neutral {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(51, 65, 85, 0.5);
+  color: rgb(226 232 240);
+}
+
+:root.dark .sandbox-tone-success,
+[data-theme='dark'] .sandbox-tone-success,
+html.dark .sandbox-tone-success {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(6, 78, 59, 0.32);
+  color: rgb(167 243 208);
+}
+
+:root.dark .sandbox-tone-warning,
+[data-theme='dark'] .sandbox-tone-warning,
+html.dark .sandbox-tone-warning {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(120, 53, 15, 0.3);
+  color: rgb(253 230 138);
+}
+
+:root.dark .sandbox-tone-danger,
+[data-theme='dark'] .sandbox-tone-danger,
+html.dark .sandbox-tone-danger {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(127, 29, 29, 0.32);
+  color: rgb(254 202 202);
 }
 
 :root.dark .security-embedded-stack :deep(.security-outlined-card),
@@ -3688,6 +4581,19 @@ html.dark .security-scan-inline-note {
     align-items: stretch;
   }
 
+  .sandbox-overview {
+    align-items: stretch;
+  }
+
+  .sandbox-overview-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .sandbox-card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(8.75rem, 1fr));
+  }
+
   .security-status-metrics {
     width: 100%;
   }
@@ -3760,6 +4666,28 @@ html.dark .security-scan-inline-note {
   .security-tab-button {
     grid-template-columns: auto minmax(0, 1fr) auto;
     padding: 14px 16px;
+  }
+
+  .sandbox-overview {
+    padding: 0.8rem 0.85rem;
+    border-radius: 1rem;
+  }
+
+  .sandbox-overview-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .sandbox-refresh-button {
+    width: 100%;
+  }
+
+  .sandbox-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sandbox-mini-card {
+    border-radius: 0.95rem;
   }
 
   .security-scan-actions {

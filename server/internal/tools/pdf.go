@@ -63,34 +63,41 @@ func (t *PDFTool) SetHTTPClient(client *http.Client) {
 func (t *PDFTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "pdf",
-		Description: "Read PDF metadata and extract text from one or more local or remote PDF files. Supports page selection, OCR fallback, vision fallback, deduped multi-PDF input, size caps, and output limits.",
+		Description: "Read PDF metadata or extract text from local/remote PDFs with page selection, output limits, and fallback control.",
 		Icon:        "pdf",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{"info", "read", "extract"},
+					"enum":        []string{"info", "read"},
 					"description": "Operation to perform. Defaults to read.",
 				},
-				"path":                    map[string]interface{}{"type": "string", "description": "Path or URL to one PDF file."},
-				"pdf":                     map[string]interface{}{"type": "string", "description": "Alias for path; accepts local path, file:// URL, or http(s) URL."},
-				"pdfs":                    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple PDF paths or URLs. Inputs are deduped and capped at 10."},
-				"file":                    map[string]interface{}{"type": "string", "description": "Alias for path."},
-				"page":                    map[string]interface{}{"type": "integer", "description": "Single 1-based page number to extract."},
-				"pages":                   map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
-				"max_pages":               map[string]interface{}{"type": "integer", "description": "Maximum pages to extract. Defaults to 20."},
-				"max_chars":               map[string]interface{}{"type": "integer", "description": "Maximum characters to return. Defaults to 50000."},
-				"max_bytes_mb":            map[string]interface{}{"type": "integer", "description": "Maximum size per PDF in MB. Defaults to 10."},
-				"include_pages":           map[string]interface{}{"type": "boolean", "description": "Include per-page extracted text alongside the merged text."},
-				"include_markdown":        map[string]interface{}{"type": "boolean", "description": "Include layout-aware Markdown output. Defaults to true."},
-				"include_outline":         map[string]interface{}{"type": "boolean", "description": "Include document outline/bookmarks when available. Defaults to true."},
-				"include_layout":          map[string]interface{}{"type": "boolean", "description": "Include per-page semantic blocks and tables. Defaults to false."},
-				"include_headers_footers": map[string]interface{}{"type": "boolean", "description": "Keep repeated headers and footers in derived markdown/layout output. Defaults to false."},
-				"ocr":                     map[string]interface{}{"type": "boolean", "description": "Enable OCR fallback for scanned or image-only PDF pages. Defaults to true."},
-				"disable_ocr":             map[string]interface{}{"type": "boolean", "description": "Disable OCR fallback even when available."},
-				"vision":                  map[string]interface{}{"type": "boolean", "description": "Enable LLM vision fallback after OCR for hard pages. Defaults to true when configured."},
-				"disable_vision":          map[string]interface{}{"type": "boolean", "description": "Disable LLM vision fallback even when available."},
+				"path":      map[string]interface{}{"type": "string", "description": "Path or URL to a single PDF."},
+				"paths":     map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple PDF paths or URLs. Deduped and capped at 10."},
+				"pages":     map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
+				"max_pages": map[string]interface{}{"type": "integer", "description": "Maximum pages to extract."},
+				"max_chars": map[string]interface{}{"type": "integer", "description": "Maximum characters to return."},
+				"max_bytes_mb": map[string]interface{}{
+					"type":        "integer",
+					"description": "Maximum size per PDF in MB.",
+				},
+				"include": map[string]interface{}{
+					"type":        "object",
+					"description": "Optional output sections to include.",
+					"properties": map[string]interface{}{
+						"pages":           map[string]interface{}{"type": "boolean", "description": "Include per-page extracted text."},
+						"markdown":        map[string]interface{}{"type": "boolean", "description": "Include layout-aware Markdown output."},
+						"outline":         map[string]interface{}{"type": "boolean", "description": "Include document outline/bookmarks."},
+						"layout":          map[string]interface{}{"type": "boolean", "description": "Include semantic blocks and tables."},
+						"headers_footers": map[string]interface{}{"type": "boolean", "description": "Keep repeated headers and footers in markdown/layout output."},
+					},
+				},
+				"fallback_mode": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{"auto", "ocr_only", "vision_only", "text_only"},
+					"description": "Fallback strategy for scanned or hard pages.",
+				},
 			},
 		},
 	}
@@ -101,6 +108,7 @@ func (t *PDFTool) Execute(ctx context.Context, args map[string]interface{}) (int
 	if t == nil || t.service == nil {
 		return nil, errors.New("pdf service not available")
 	}
+	args = normalizePDFArgs(args)
 	refs, err := collectPDFInputs(args)
 	if err != nil {
 		return nil, err
@@ -153,20 +161,7 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 		return nil, err
 	}
 	includePages, _ := compatBoolArg(args, "include_pages", "includePages")
-	disableOCR := false
-	if enabled, ok := compatBoolArg(args, "ocr"); ok && !enabled {
-		disableOCR = true
-	}
-	if disabled, ok := compatBoolArg(args, "disable_ocr", "disableOcr"); ok && disabled {
-		disableOCR = true
-	}
-	disableVision := false
-	if enabled, ok := compatBoolArg(args, "vision"); ok && !enabled {
-		disableVision = true
-	}
-	if disabled, ok := compatBoolArg(args, "disable_vision", "disableVision"); ok && disabled {
-		disableVision = true
-	}
+	disableOCR, disableVision := parsePDFFallbackFlags(args)
 	includeMarkdown := true
 	if enabled, ok := compatBoolArg(args, "include_markdown", "includeMarkdown"); ok {
 		includeMarkdown = enabled
@@ -268,6 +263,51 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 		}
 	}
 	return response, nil
+}
+
+func normalizePDFArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+8)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if _, ok := normalized["pdfs"]; !ok {
+		if value, ok := compatArgValue(normalized, "paths", "inputs"); ok {
+			normalized["pdfs"] = value
+		}
+	}
+
+	include, ok := coerceCompatMap(normalized["include"])
+	if !ok || len(include) == 0 {
+		return normalized
+	}
+	if _, ok := normalized["include_pages"]; !ok {
+		if value, ok := compatArgValue(include, "pages", "include_pages", "includePages"); ok {
+			normalized["include_pages"] = value
+		}
+	}
+	if _, ok := normalized["include_markdown"]; !ok {
+		if value, ok := compatArgValue(include, "markdown", "include_markdown", "includeMarkdown"); ok {
+			normalized["include_markdown"] = value
+		}
+	}
+	if _, ok := normalized["include_outline"]; !ok {
+		if value, ok := compatArgValue(include, "outline", "include_outline", "includeOutline"); ok {
+			normalized["include_outline"] = value
+		}
+	}
+	if _, ok := normalized["include_layout"]; !ok {
+		if value, ok := compatArgValue(include, "layout", "include_layout", "includeLayout"); ok {
+			normalized["include_layout"] = value
+		}
+	}
+	if _, ok := normalized["include_headers_footers"]; !ok {
+		if value, ok := compatArgValue(include, "headers_footers", "headersFooters", "include_headers_footers", "includeHeadersFooters"); ok {
+			normalized["include_headers_footers"] = value
+		}
+	}
+
+	return normalized
 }
 
 func (t *PDFTool) resolvePDFInputs(ctx context.Context, refs []string, maxBytes int64) ([]resolvedPDFInput, func(), error) {
@@ -577,6 +617,33 @@ func pdfAction(args map[string]interface{}) string {
 	default:
 		return action
 	}
+}
+
+func parsePDFFallbackFlags(args map[string]interface{}) (disableOCR bool, disableVision bool) {
+	switch strings.ToLower(strings.TrimSpace(compatStringArg(args, "fallback_mode", "fallbackMode"))) {
+	case "", "auto":
+		// Use compatibility toggles below.
+	case "ocr", "ocr_only":
+		return false, true
+	case "vision", "vision_only":
+		return true, false
+	case "text", "text_only", "none", "off", "disabled":
+		return true, true
+	}
+
+	if enabled, ok := compatBoolArg(args, "ocr"); ok && !enabled {
+		disableOCR = true
+	}
+	if disabled, ok := compatBoolArg(args, "disable_ocr", "disableOcr"); ok && disabled {
+		disableOCR = true
+	}
+	if enabled, ok := compatBoolArg(args, "vision"); ok && !enabled {
+		disableVision = true
+	}
+	if disabled, ok := compatBoolArg(args, "disable_vision", "disableVision"); ok && disabled {
+		disableVision = true
+	}
+	return disableOCR, disableVision
 }
 
 func compatInt(args map[string]interface{}, keys ...string) int {

@@ -6,7 +6,6 @@ import { useSettingsStore } from '@/stores/settings'
 import { i18n } from '@/i18n'
 import { settingsApi } from '@/api/settings'
 import { providerPoolApi } from '@/api/providerPool'
-import { claudeCodeApi } from '@/api/claudecode'
 import { backupApi } from '@/api/index'
 import { proxyCacheApi } from '@/api/proxyCache'
 import { serviceApi } from '@/api/service'
@@ -29,10 +28,6 @@ vi.mock('vue-router', async (importOriginal) => {
     useRouter: () => ({ replace: routerReplace }),
   }
 })
-
-vi.mock('@/components/ClaudeCodeSettings.vue', () => ({
-  default: { name: 'ClaudeCodeSettings', template: '<div />' },
-}))
 
 vi.mock('@/components/ProviderPoolSection.vue', () => ({
   default: { name: 'ProviderPoolSection', template: '<div />' },
@@ -62,6 +57,10 @@ vi.mock('@/components/settings/ApiProxySettings.vue', () => ({
   default: { name: 'ApiProxySettings', template: '<div />' },
 }))
 
+vi.mock('@/components/settings/ExternalAgentsSection.vue', () => ({
+  default: { name: 'ExternalAgentsSection', template: '<div />' },
+}))
+
 vi.mock('@/components/MemoryManager.vue', () => ({
   default: { name: 'MemoryManager', template: '<div />' },
 }))
@@ -80,12 +79,6 @@ vi.mock('@/api/providerPool', () => ({
   providerPoolApi: {
     listProviders: vi.fn(),
     fetchProviderModels: vi.fn(),
-  },
-}))
-
-vi.mock('@/api/claudecode', () => ({
-  claudeCodeApi: {
-    getConfig: vi.fn(),
   },
 }))
 
@@ -164,9 +157,6 @@ vi.stubGlobal('localStorage', localStorageMock)
 function primeApiMocks() {
   vi.mocked(providerPoolApi.listProviders).mockResolvedValue({
     data: { providers: [] },
-  } as never)
-  vi.mocked(claudeCodeApi.getConfig).mockResolvedValue({
-    data: { enabled: false },
   } as never)
   vi.mocked(settingsApi.get).mockResolvedValue({
     data: {
@@ -480,6 +470,7 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
 
     expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'ExternalAgentsSection' }).exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -497,6 +488,7 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
 
     expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'ExternalAgentsSection' }).exists()).toBe(true)
     expect(routerReplace).toHaveBeenCalledWith({ query: { tab: 'llm' } })
 
     wrapper.unmount()

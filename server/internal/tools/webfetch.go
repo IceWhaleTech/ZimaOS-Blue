@@ -1015,6 +1015,9 @@ func (w *WebFetchTool) fetchViaLightpandaShim(ctx context.Context, targetURL, mo
 	if w == nil || w.lightpandaShim == nil {
 		return webFetchPayload{}, errors.New("lightpanda shim is not available")
 	}
+	if host := webFetchHostForURL(targetURL); host != "" && !webFetchSupportsLightpandaHost(host) {
+		return webFetchPayload{}, fmt.Errorf("lightpanda shim is not supported for %s; use browser or browser_target_id", host)
+	}
 	doc, err := w.lightpandaShim.ReadDocument(ctx, targetURL, 0)
 	if err != nil {
 		return webFetchPayload{}, err
@@ -1483,14 +1486,15 @@ func parseWebFetchMaxChars(args map[string]interface{}, fallback, cap int) int {
 }
 
 func parseWebFetchRequestOptions(args map[string]interface{}) (webFetchRequestOptions, error) {
+	normalized := normalizeWebFetchCompatArgs("", args)
 	opts := webFetchRequestOptions{
 		extraHeaders:    make(map[string]string),
-		browserTargetID: strings.TrimSpace(firstCompatString(args, "browser_target_id", "browserTargetId")),
+		browserTargetID: strings.TrimSpace(firstCompatString(normalized, "browser_target_id", "browserTargetId")),
 		cacheable:       true,
 	}
 
 	for _, key := range []string{"headers", "request_headers", "requestHeaders"} {
-		raw, ok := compatArgValue(args, key)
+		raw, ok := compatArgValue(normalized, key)
 		if !ok || raw == nil {
 			continue
 		}
@@ -1499,9 +1503,9 @@ func parseWebFetchRequestOptions(args map[string]interface{}) (webFetchRequestOp
 		}
 	}
 
-	authorization := firstCompatString(args, "authorization", "Authorization")
-	bearer := firstCompatString(args, "auth_bearer", "authBearer", "bearer_token")
-	cookies := firstCompatString(args, "cookies", "cookie", "Cookie")
+	authorization := firstCompatString(normalized, "authorization", "Authorization")
+	bearer := firstCompatString(normalized, "auth_bearer", "authBearer", "bearer_token")
+	cookies := firstCompatString(normalized, "cookies", "cookie", "Cookie")
 
 	if strings.TrimSpace(bearer) != "" {
 		normalized := strings.TrimSpace(bearer)
@@ -2327,6 +2331,33 @@ func normalizeWebFetchCompatArgs(_ string, args map[string]interface{}) map[stri
 	normalized := make(map[string]interface{}, len(args)+6)
 	for k, v := range args {
 		normalized[k] = v
+	}
+	if request, ok := coerceCompatMap(normalized["request"]); ok {
+		if _, exists := normalized["headers"]; !exists {
+			if headers, ok := firstCompatValueDeep(request, "headers", "request_headers", "requestHeaders"); ok {
+				normalized["headers"] = headers
+			}
+		}
+		if strings.TrimSpace(asString(normalized["authorization"])) == "" {
+			if v := firstCompatStringDeep(request, "authorization", "Authorization"); v != "" {
+				normalized["authorization"] = v
+			}
+		}
+		if strings.TrimSpace(asString(normalized["auth_bearer"])) == "" {
+			if v := firstCompatStringDeep(request, "auth_bearer", "authBearer", "bearer_token"); v != "" {
+				normalized["auth_bearer"] = v
+			}
+		}
+		if strings.TrimSpace(asString(normalized["cookies"])) == "" {
+			if v := firstCompatStringDeep(request, "cookies", "cookie", "Cookie"); v != "" {
+				normalized["cookies"] = v
+			}
+		}
+		if strings.TrimSpace(asString(normalized["browser_target_id"])) == "" {
+			if v := firstCompatStringDeep(request, "browser_target_id", "browserTargetId", "target_id", "targetId"); v != "" {
+				normalized["browser_target_id"] = v
+			}
+		}
 	}
 
 	if strings.TrimSpace(asString(normalized["url"])) == "" {

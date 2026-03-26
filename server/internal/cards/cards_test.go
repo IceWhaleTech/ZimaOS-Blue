@@ -178,6 +178,35 @@ func TestFormatTypeless_MoreCallsThanResults(t *testing.T) {
 	}
 }
 
+func TestFileWriteCardPrefersOriginalPathAndCarriesRevealPath(t *testing.T) {
+	card := ToCard("file_write", `{"path":"reports/final.md","original_path":"@docs/final.md","absolute_path":"/tmp/workspace/reports/final.md","success":true}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+
+	details, ok := card["details"].([]map[string]interface{})
+	if !ok || len(details) != 1 {
+		t.Fatalf("details=%T %v, want one detail", card["details"], card["details"])
+	}
+	if got := details[0]["value"]; got != "@docs/final.md" {
+		t.Fatalf("detail value=%v, want original path", got)
+	}
+	if got := details[0]["reveal_path"]; got != "/tmp/workspace/reports/final.md" {
+		t.Fatalf("detail reveal_path=%v, want absolute path", got)
+	}
+
+	artifacts, ok := card["artifacts"].([]map[string]interface{})
+	if !ok || len(artifacts) != 1 {
+		t.Fatalf("artifacts=%T %v, want one artifact", card["artifacts"], card["artifacts"])
+	}
+	if got := artifacts[0]["path"]; got != "reports/final.md" {
+		t.Fatalf("artifact path=%v, want resolved path", got)
+	}
+	if got := artifacts[0]["local_path"]; got != "/tmp/workspace/reports/final.md" {
+		t.Fatalf("artifact local_path=%v, want absolute path", got)
+	}
+}
+
 func TestDeepResearchCard_FieldsPreserved(t *testing.T) {
 	content := `{"job_id":"job-1","query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.87,"evidence_count":3,"citations":[{"title":"Doc","url":"https://example.com"}],"open_questions":["q1"],"support_count":2,"conflict_count":1,"has_conflict":true,"citation_coverage":0.92,"entity_disambiguation":{"enabled":true,"threshold":0.75},"stage_errors":["warn"],"timeline_sections":[{"label":"Recent","highlights":["h1"]}],"time_windows":["30d"],"report_style":"timeline","strict_entity":true,"status":"completed"}`
 	card := ToCard("deep_research", content)

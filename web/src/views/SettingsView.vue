@@ -10,13 +10,13 @@ import { backupApi } from '@/api/index'
 import type { ContextCompressionMode } from '@/api/settings'
 import type { LocaleKey } from '@/i18n'
 import type { BackupInfo } from '@/api/index'
-import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
+import ExternalAgentsSection from '@/components/settings/ExternalAgentsSection.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
 import { proxyCacheApi, type PrunerConfig } from '@/api/proxyCache'
@@ -906,6 +906,22 @@ onUnmounted(() => {
             <div class="settings-module__header">
               <div>
                 <span class="settings-module__eyebrow">{{
+                  t('settings.externalAgents.eyebrow', 'ACP / A2A')
+                }}</span>
+                <h2 class="settings-module__title">
+                  {{ t('settings.externalAgents.title', 'External Agents') }}
+                </h2>
+              </div>
+            </div>
+            <div class="dashboard-card-subsurface settings-field-card settings-field-card--flush">
+              <ExternalAgentsSection />
+            </div>
+          </section>
+
+          <section class="settings-module">
+            <div class="settings-module__header">
+              <div>
+                <span class="settings-module__eyebrow">{{
                   t('settings.codingRuntime', '编码能力')
                 }}</span>
                 <h2 class="settings-module__title">{{ t('chat.taskLoop') }}</h2>
@@ -967,20 +983,6 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </section>
-
-          <section class="settings-module">
-            <div class="settings-module__header">
-              <div>
-                <span class="settings-module__eyebrow">{{
-                  t('settings.codingRuntime', '编码能力')
-                }}</span>
-                <h2 class="settings-module__title">
-                  {{ t('settings.advancedCodingTools', '高级编码工具') }}
-                </h2>
-              </div>
-            </div>
-            <ClaudeCodeSettings @status-change="showSaveStatus" />
           </section>
         </div>
 

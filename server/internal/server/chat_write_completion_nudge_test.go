@@ -97,11 +97,11 @@ func TestBuildPostWorkspaceArtifactContinuationNudge_NumberedQuestionsPreserveEx
 	if nudge == "" {
 		t.Fatal("expected continuation nudge for numbered local QA task")
 	}
-	if want := `Preserve important qualifiers`; !containsSubstring(nudge, want) {
-		t.Fatalf("expected numbered-question precision hint, got=%q", nudge)
+	if want := `answer.txt`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected continuation nudge to mention the target artifact, got=%q", nudge)
 	}
-	if want := `"typed"`; !containsSubstring(nudge, want) {
-		t.Fatalf("expected precision hint to mention exact typed qualifier, got=%q", nudge)
+	if want := `Continue from the evidence you already gathered`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected continuation nudge to stay generic and evidence-driven, got=%q", nudge)
 	}
 }
 
@@ -130,11 +130,11 @@ func TestBuildPostWorkspaceArtifactWriteRetryNudge_NumberedQuestionsPreserveExac
 	if nudge == "" {
 		t.Fatal("expected retry nudge for numbered local QA task")
 	}
-	if want := `exact phrase or value`; !containsSubstring(nudge, want) {
-		t.Fatalf("expected retry nudge to reinforce exact evidence usage, got=%q", nudge)
+	if want := `answer.txt`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected retry nudge to mention the target artifact, got=%q", nudge)
 	}
-	if want := `narrower late-file subset`; !containsSubstring(nudge, want) {
-		t.Fatalf("expected retry nudge to block late-file narrowing, got=%q", nudge)
+	if want := `evidence already gathered in the conversation`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected retry nudge to stay generic and evidence-driven, got=%q", nudge)
 	}
 }
 
@@ -142,11 +142,11 @@ func TestWorkspaceArtifactWriteRecoveryThreshold_NumberedQuestionsRecoverEarlier
 	if got := workspaceArtifactWriteRecoveryThreshold("Write a summary to output.txt."); got != 3 {
 		t.Fatalf("threshold for ordinary artifact = %d, want 3", got)
 	}
-	if got := workspaceArtifactWriteRecoveryThreshold("1. What is the date?\n2. What is the API type?\nWrite the answers to answer.txt."); got != 2 {
-		t.Fatalf("threshold for numbered question artifact = %d, want 2", got)
+	if got := workspaceArtifactWriteRecoveryThreshold("1. What is the date?\n2. What is the API type?\nWrite the answers to answer.txt."); got != 3 {
+		t.Fatalf("threshold for numbered question artifact = %d, want 3", got)
 	}
-	if got := workspaceArtifactWriteRecoveryThreshold("Review all files in the emails/ folder and write a summary to alpha_summary.md."); got != 1 {
-		t.Fatalf("threshold for exhaustive collection artifact = %d, want 1", got)
+	if got := workspaceArtifactWriteRecoveryThreshold("Review all files in the emails/ folder and write a summary to alpha_summary.md."); got != 3 {
+		t.Fatalf("threshold for exhaustive collection artifact = %d, want 3", got)
 	}
 }
 
@@ -491,8 +491,11 @@ func TestBuildPostWorkspaceArtifactContinuationTools_DropsFileDeleteDuringWriteF
 	if containsLLMToolName(reduced, "file_delete") {
 		t.Fatalf("expected continuation tools to drop file_delete once evidence is sufficient, got=%v", reduced)
 	}
+	if !containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected continuation tools to keep the write path available, got=%v", reduced)
+	}
 	if containsLLMToolName(reduced, "pdf") || containsLLMToolName(reduced, "file_read") {
-		t.Fatalf("expected structured local artifact continuation to converge directly to write tools, got=%v", reduced)
+		t.Fatalf("expected continuation tools to avoid reopening evidence tools once write completion mode begins, got=%v", reduced)
 	}
 }
 

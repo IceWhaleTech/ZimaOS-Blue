@@ -464,6 +464,34 @@ type DiscoverProgressEvent struct {
 	Phase             string                 `json:"phase,omitempty"`
 }
 
+type EmbeddingStatus struct {
+	Running          bool      `json:"running"`
+	StartedAt        time.Time `json:"started_at,omitempty"`
+	FinishedAt       time.Time `json:"finished_at,omitempty"`
+	LastError        string    `json:"last_error,omitempty"`
+	TotalSkills      int       `json:"total_skills,omitempty"`
+	ProcessedSkills  int       `json:"processed_skills,omitempty"`
+	EmbeddedSkills   int       `json:"embedded_skills,omitempty"`
+	FailedSkills     int       `json:"failed_skills,omitempty"`
+	CurrentSkillID   string    `json:"current_skill_id,omitempty"`
+	CurrentSkillName string    `json:"current_skill_name,omitempty"`
+	Phase            string    `json:"phase,omitempty"`
+}
+
+type EmbeddingProgressEvent struct {
+	Running          bool      `json:"running"`
+	StartedAt        time.Time `json:"started_at,omitempty"`
+	FinishedAt       time.Time `json:"finished_at,omitempty"`
+	LastError        string    `json:"last_error,omitempty"`
+	TotalSkills      int       `json:"total_skills,omitempty"`
+	ProcessedSkills  int       `json:"processed_skills,omitempty"`
+	EmbeddedSkills   int       `json:"embedded_skills,omitempty"`
+	FailedSkills     int       `json:"failed_skills,omitempty"`
+	CurrentSkillID   string    `json:"current_skill_id,omitempty"`
+	CurrentSkillName string    `json:"current_skill_name,omitempty"`
+	Phase            string    `json:"phase,omitempty"`
+}
+
 type CurationEntry struct {
 	SkillID string  `yaml:"skill_id" json:"skill_id"`
 	Rank    int     `yaml:"rank" json:"rank,omitempty"`

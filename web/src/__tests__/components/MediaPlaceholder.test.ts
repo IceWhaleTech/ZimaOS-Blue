@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { i18n } from '@/i18n'
-import mediaFallbackOverrides from '@/i18n/media-fallback-overrides'
+import zhCNMessages from '@/i18n/locales/zh-CN'
 import MediaPlaceholder from '@/components/MediaPlaceholder.vue'
 
 const getTaskMock = vi.fn()
@@ -259,15 +259,7 @@ describe('MediaPlaceholder', () => {
   })
 
   it('localizes fallback template and link labels using the active UI locale', async () => {
-    i18n.global.setLocaleMessage('zh-CN', {
-      media: {
-        pending: '等待中',
-        processing: '处理中',
-        succeeded: '已完成',
-        processingHint: '仍在处理中，请稍候',
-        ...(mediaFallbackOverrides as Record<string, any>)['zh-CN']?.media,
-      },
-    } as never)
+    i18n.global.setLocaleMessage('zh-CN', zhCNMessages as never)
     ;(i18n.global as { locale: { value: string } }).locale.value = 'zh-CN'
 
     getTaskMock.mockResolvedValueOnce({
@@ -308,14 +300,7 @@ describe('MediaPlaceholder', () => {
   })
 
   it('localizes fallback disclosure copy using the active UI locale', async () => {
-    i18n.global.setLocaleMessage('zh-CN', {
-      media: {
-        pending: '等待中',
-        processing: '处理中',
-        processingHint: '仍在处理中，请稍候',
-        ...(mediaFallbackOverrides as Record<string, any>)['zh-CN']?.media,
-      },
-    } as never)
+    i18n.global.setLocaleMessage('zh-CN', zhCNMessages as never)
     ;(i18n.global as { locale: { value: string } }).locale.value = 'zh-CN'
 
     getTaskMock.mockResolvedValueOnce({

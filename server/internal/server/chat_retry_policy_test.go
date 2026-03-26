@@ -69,12 +69,12 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "wrapped overloaded build failure 502 keeps retry",
+			name: "wrapped overloaded build failure 502 skips retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       `upstream 500: {"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`,
 			},
-			want: false,
+			want: true,
 		},
 		{
 			name: "provider no response keeps retry",
@@ -89,6 +89,14 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       `{"error":{"message":"Context window is full. Reduce conversation history, system prompt, or tools."}}`,
+			},
+			want: true,
+		},
+		{
+			name: "wrapped upstream model unavailable skips retry",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       `upstream 503: {"error":{"code":"model_not_found","message":"分组 default 下模型 embedding-bert-512-v1 无可用渠道（distributor）","type":"new_api_error"}}`,
 			},
 			want: true,
 		},
@@ -344,6 +352,14 @@ func TestMapStreamErrorCode(t *testing.T) {
 			want: "context_window_exceeded",
 		},
 		{
+			name: "proxy wrapped model unavailable",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       `upstream 503: {"error":{"code":"model_not_found","message":"分组 default 下模型 embedding-bert-512-v1 无可用渠道（distributor）","type":"new_api_error"}}`,
+			},
+			want: "provider_unavailable",
+		},
+		{
 			name: "plain no response",
 			err:  errors.New("provider prov_x returned no response"),
 			want: "PROVIDER_NO_RESPONSE",
@@ -364,7 +380,15 @@ func TestMapStreamErrorCode(t *testing.T) {
 				StatusCode: 502,
 				Body:       `upstream 500: {"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`,
 			},
-			want: "STREAM_ERROR",
+			want: "request_build_failed",
+		},
+		{
+			name: "proxy wrapped request too large",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       `upstream 500: {"error":{"message":"构建请求失败，内容超长或者工具参数错误","code":"improperly_formed_request"}}`,
+			},
+			want: "request_too_large",
 		},
 		{
 			name: "plain auth",
@@ -445,5 +469,15 @@ func TestMapStreamErrorCode_OpenRouterFreeModelPublication(t *testing.T) {
 	}
 	if got := mapStreamErrorCode(err, ""); got != "provider_openrouter_privacy_policy" {
 		t.Fatalf("mapStreamErrorCode() = %q, want %q", got, "provider_openrouter_privacy_policy")
+	}
+}
+
+func TestIsNoProviderError_WrappedModelUnavailable(t *testing.T) {
+	err := &proxybridge.ProxyError{
+		StatusCode: 502,
+		Body:       `upstream 503: {"error":{"code":"model_not_found","message":"分组 default 下模型 embedding-bert-512-v1 无可用渠道（distributor）","type":"new_api_error"}}`,
+	}
+	if !isNoProviderError(err) {
+		t.Fatal("isNoProviderError() = false, want true")
 	}
 }

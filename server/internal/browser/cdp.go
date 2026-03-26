@@ -87,8 +87,20 @@ func resolveCDPWebSocketURL(ctx context.Context, raw string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse resolved websocket url: %w", err)
 	}
+	if shouldRewriteResolvedCDPHost(wsURL.Hostname()) && strings.TrimSpace(parsed.Host) != "" {
+		wsURL.Host = parsed.Host
+	}
 	if wsURL.RawQuery == "" && parsed.RawQuery != "" {
 		wsURL.RawQuery = parsed.RawQuery
 	}
 	return wsURL.String(), nil
+}
+
+func shouldRewriteResolvedCDPHost(host string) bool {
+	switch strings.ToLower(strings.TrimSpace(host)) {
+	case "", "0.0.0.0", "::":
+		return true
+	default:
+		return false
+	}
 }

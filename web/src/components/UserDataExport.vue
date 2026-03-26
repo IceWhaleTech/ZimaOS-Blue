@@ -407,48 +407,46 @@ function closeDataModal() {
 </script>
 
 <template>
-  <div class="w-full">
-    <div
-      class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden"
-    >
-      <div class="px-5 py-4">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
-              {{ t('userdata.chatDataTitle', 'Chat Data') }}
-            </h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {{
-                t(
-                  'userdata.chatDataDescription',
-                  'Import, export, and cleanup chat history and related data from one place.'
-                )
-              }}
-            </p>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <button
-              data-testid="userdata-open-export"
-              class="px-3.5 py-1.5 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
-              @click="openDataModal('export')"
-            >
-              {{ t('userdata.tabs.export') }}
-            </button>
-            <button
-              data-testid="userdata-open-import"
-              class="px-3.5 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
-              @click="openDataModal('import')"
-            >
-              {{ t('userdata.tabs.import') }}
-            </button>
-            <button
-              data-testid="userdata-open-cleanup"
-              class="px-3.5 py-1.5 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 text-sm font-medium rounded-lg transition-colors"
-              @click="openDataModal('cleanup')"
-            >
-              {{ t('userdata.tabs.cleanup') }}
-            </button>
-          </div>
+  <div
+    class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden"
+  >
+    <div class="px-5 py-4">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+            {{ t('userdata.chatDataTitle', 'Chat Data') }}
+          </h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {{
+              t(
+                'userdata.chatDataDescription',
+                'Import, export, and cleanup chat history and related data from one place.'
+              )
+            }}
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            data-testid="userdata-open-export"
+            class="px-3.5 py-1.5 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+            @click="openDataModal('export')"
+          >
+            {{ t('userdata.tabs.export') }}
+          </button>
+          <button
+            data-testid="userdata-open-import"
+            class="px-3.5 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
+            @click="openDataModal('import')"
+          >
+            {{ t('userdata.tabs.import') }}
+          </button>
+          <button
+            data-testid="userdata-open-cleanup"
+            class="px-3.5 py-1.5 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 text-sm font-medium rounded-lg transition-colors"
+            @click="openDataModal('cleanup')"
+          >
+            {{ t('userdata.tabs.cleanup') }}
+          </button>
         </div>
       </div>
     </div>
@@ -1081,17 +1079,3 @@ function closeDataModal() {
     </Teleport>
   </div>
 </template>
-
-<style scoped>
-.glass-card {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(8px);
-  border-radius: 0.75rem;
-  border: 1px solid rgb(229, 231, 235);
-}
-
-:root.dark .glass-card {
-  background: rgba(30, 41, 59, 0.8);
-  border-color: rgb(51, 65, 85);
-}
-</style>

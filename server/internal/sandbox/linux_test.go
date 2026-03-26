@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+func skipIfSandboxUnsupported(t *testing.T, executor Executor) {
+	t.Helper()
+	if executor == nil || !executor.IsSupported() {
+		t.Skip("sandbox is not supported in this Linux test environment")
+	}
+}
+
 func TestLinuxExecutor_NewPlatformExecutor(t *testing.T) {
 	config := DefaultConfig()
 	executor, err := newPlatformExecutor(config)
@@ -27,6 +34,7 @@ func TestLinuxExecutor_Execute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
 	}
+	skipIfSandboxUnsupported(t, executor)
 
 	req := NewExecutionRequest("echo", "hello")
 	req.Timeout = 5 * time.Second
@@ -53,6 +61,7 @@ func TestLinuxExecutor_Execute_WithResourceLimits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
 	}
+	skipIfSandboxUnsupported(t, executor)
 
 	req := NewExecutionRequest("echo", "hello")
 	req.Timeout = 5 * time.Second
@@ -77,6 +86,7 @@ func TestLinuxExecutor_Execute_ResourceUsage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
 	}
+	skipIfSandboxUnsupported(t, executor)
 
 	req := NewExecutionRequest("echo", "hello")
 	req.Timeout = 5 * time.Second

@@ -25,6 +25,7 @@ type writeSession struct {
 	OwnerID      string
 	TargetPath   string
 	RelativePath string
+	OriginalPath string
 	TempPath     string
 	BytesWritten int64
 	CreatedAt    time.Time
@@ -49,7 +50,7 @@ func NewWriteSessionManager(maxFileSize int64) *WriteSessionManager {
 	}
 }
 
-func (m *WriteSessionManager) Begin(absPath, relPath, ownerID string, createDirs bool) (*writeSession, error) {
+func (m *WriteSessionManager) Begin(absPath, relPath, originalPath, ownerID string, createDirs bool) (*writeSession, error) {
 	if m == nil {
 		return nil, errors.New("write session manager is not configured")
 	}
@@ -92,6 +93,7 @@ func (m *WriteSessionManager) Begin(absPath, relPath, ownerID string, createDirs
 		OwnerID:      strings.TrimSpace(ownerID),
 		TargetPath:   absPath,
 		RelativePath: relPath,
+		OriginalPath: strings.TrimSpace(originalPath),
 		TempPath:     tempPath,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -412,7 +414,7 @@ func (t *FileWriteBeginTool) Execute(ctx context.Context, args map[string]interf
 		return nil, err
 	}
 
-	session, err := t.sessions.Begin(absPath, relPath, GetUserID(ctx), createDirs)
+	session, err := t.sessions.Begin(absPath, relPath, path, GetUserID(ctx), createDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -420,6 +422,8 @@ func (t *FileWriteBeginTool) Execute(ctx context.Context, args map[string]interf
 	result, _ := json.Marshal(map[string]interface{}{
 		"session_id":      session.ID,
 		"path":            session.RelativePath,
+		"absolute_path":   session.TargetPath,
+		"original_path":   session.OriginalPath,
 		"success":         true,
 		"max_chunk_bytes": maxFileWriteChunkBytes,
 		"max_total_bytes": t.sessions.maxFileSize,
@@ -562,6 +566,8 @@ func (t *FileWriteCommitTool) Execute(ctx context.Context, args map[string]inter
 	result, _ := json.Marshal(map[string]interface{}{
 		"session_id":    session.ID,
 		"path":          session.RelativePath,
+		"absolute_path": session.TargetPath,
+		"original_path": session.OriginalPath,
 		"success":       true,
 		"size":          session.BytesWritten,
 		"sha256":        actualSHA256,
@@ -608,10 +614,12 @@ func (t *FileWriteAbortTool) Execute(ctx context.Context, args map[string]interf
 	}
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"session_id": session.ID,
-		"path":       session.RelativePath,
-		"success":    true,
-		"aborted":    true,
+		"session_id":    session.ID,
+		"path":          session.RelativePath,
+		"absolute_path": session.TargetPath,
+		"original_path": session.OriginalPath,
+		"success":       true,
+		"aborted":       true,
 	})
 	return string(result), nil
 }

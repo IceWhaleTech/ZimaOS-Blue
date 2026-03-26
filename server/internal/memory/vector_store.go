@@ -102,7 +102,6 @@ CREATE TABLE IF NOT EXISTS memory_chunks (
     content TEXT NOT NULL,
     tags TEXT,
     metadata TEXT,
-    embedding_model TEXT,
     importance REAL DEFAULT 0.5,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
@@ -333,7 +332,7 @@ func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 }
 
 // Store stores a memory chunk with its embedding.
-func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, metadata map[string]string, embModel string) (*MemoryChunk, error) {
+func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, metadata map[string]string) (*MemoryChunk, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -354,9 +353,9 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 
 	// Insert into memory_chunks (FTS trigger fires automatically)
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO memory_chunks (chunk_id, content, tags, metadata, embedding_model, importance, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 0.5, ?, ?)`,
-		chunkID, content, tagsText, string(metaJSON), embModel, now, now,
+		`INSERT INTO memory_chunks (chunk_id, content, tags, metadata, importance, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, 0.5, ?, ?)`,
+		chunkID, content, tagsText, string(metaJSON), now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert chunk: %w", err)

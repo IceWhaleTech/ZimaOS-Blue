@@ -9,18 +9,28 @@ func TestShouldSkipStartupSTTAuthorization(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "gateway run with config skips stt",
+			name: "gateway run with config does not skip stt",
 			args: []string{"--config", "/tmp/test.yaml", "gateway", "run", "--bind", "127.0.0.1"},
-			want: true,
+			want: false,
 		},
 		{
-			name: "gateway run with no-intercept skips stt",
+			name: "gateway run with no-intercept does not skip stt",
 			args: []string{"--no-intercept", "gateway", "run"},
+			want: false,
+		},
+		{
+			name: "gateway run without config does not skip stt",
+			args: []string{"gateway", "run"},
+			want: false,
+		},
+		{
+			name: "gateway status skips stt",
+			args: []string{"gateway", "status"},
 			want: true,
 		},
 		{
-			name: "gateway run without config skips stt",
-			args: []string{"gateway", "run"},
+			name: "gateway root skips stt",
+			args: []string{"gateway"},
 			want: true,
 		},
 		{

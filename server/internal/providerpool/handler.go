@@ -206,6 +206,7 @@ func (p *Pool) Start(ctx context.Context) {
 
 		// Fix provider types for non-builtin providers that were incorrectly marked as builtin
 		p.fixProviderTypes()
+		p.fixProviderLocations()
 
 		// Deduplicate providers (merge duplicates from historical data)
 		p.deduplicateProviders()
@@ -307,6 +308,18 @@ func (p *Pool) fixProviderTypes() {
 			provider.Type = et
 			p.Registry.Update(provider)
 		}
+	}
+}
+
+func (p *Pool) fixProviderLocations() {
+	existing := p.Registry.List()
+	for _, provider := range existing {
+		expectedLocation := effectiveProviderLocation(provider)
+		if provider.Location == expectedLocation {
+			continue
+		}
+		provider.Location = expectedLocation
+		p.Registry.Update(provider)
 	}
 }
 
@@ -847,6 +860,20 @@ func capabilitiesToStrings(c ModelCapabilities) []string {
 	return caps
 }
 
+func canEditProviderLocation(provider *Provider) bool {
+	return provider != nil && (provider.Type == ProviderTypeCustom || provider.ID == "ollama")
+}
+
+func effectiveProviderLocation(provider *Provider) ProviderLocation {
+	if provider == nil || !canEditProviderLocation(provider) {
+		return ProviderLocationCloud
+	}
+	if provider.Location == ProviderLocationLocal {
+		return ProviderLocationLocal
+	}
+	return ProviderLocationCloud
+}
+
 func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLookup MediaPricingLookup) *providerResponse {
 	mr := make([]*modelResponse, len(models))
 	for i, m := range models {
@@ -885,7 +912,7 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 		ID:            p.ID,
 		Name:          p.Name,
 		Type:          p.Type,
-		Location:      p.Location,
+		Location:      effectiveProviderLocation(p),
 		Enabled:       p.Enabled,
 		Status:        p.Status,
 		BaseURL:       p.BaseURL,
@@ -1217,7 +1244,13 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 		if updates.Location != ProviderLocationCloud && updates.Location != ProviderLocationLocal {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "location must be 'cloud' or 'local'"})
 		}
+		if !canEditProviderLocation(existing) && updates.Location != ProviderLocationCloud {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "location can only be changed for custom providers and ollama"})
+		}
 		candidate.Location = updates.Location
+	}
+	if !canEditProviderLocation(&candidate) {
+		candidate.Location = ProviderLocationCloud
 	}
 	if baseURLChanged {
 		candidate.ResetParsedURL()
@@ -1732,6 +1765,10 @@ func (h *Handler) DeleteProviderIcon(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	if provider.Type != ProviderTypeCustom {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "custom icon only allowed for custom providers"})
+	}
+
 	provider.CustomIcon = ""
 	provider.UpdatedAt = timeutil.NowTime()
 
@@ -1849,6 +1886,7 @@ func (h *Handler) ListAllModels(c echo.Context) error {
 				allModels = append(allModels, builtinModels...)
 			}
 		}
+		allModels = sortModelsByPreference(allModels)
 
 		resp := toModelResponses(allModels, nil, h.mediaPricingLookup)
 		return c.JSON(http.StatusOK, map[string]interface{}{
@@ -2718,10 +2756,11 @@ func (h *Handler) GetLocationStats(c echo.Context) error {
 	var cloudProviders, localProviders []string
 
 	for _, p := range providers {
-		if p.Location == ProviderLocationCloud {
+		switch effectiveProviderLocation(p) {
+		case ProviderLocationCloud:
 			cloudCount++
 			cloudProviders = append(cloudProviders, p.ID)
-		} else if p.Location == ProviderLocationLocal {
+		case ProviderLocationLocal:
 			localCount++
 			localProviders = append(localProviders, p.ID)
 		}

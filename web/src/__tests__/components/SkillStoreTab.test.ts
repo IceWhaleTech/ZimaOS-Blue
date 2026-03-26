@@ -7,6 +7,7 @@ import { skillApi } from '@/api/skill'
 const { sseState } = vi.hoisted(() => ({
   sseState: {
     handler: null as null | ((data: Record<string, unknown>) => void),
+    embeddingHandler: null as null | ((data: Record<string, unknown>) => void),
   },
 }))
 
@@ -14,8 +15,10 @@ vi.mock('@/api/skill', () => ({
   skillApi: {
     discoverStatus: vi.fn(),
     discoverRefresh: vi.fn(),
+    embeddingStatus: vi.fn(),
     filtersMarket: vi.fn(),
     searchMarket: vi.fn(),
+    adviseMarket: vi.fn(),
     getMarketplaceSkill: vi.fn(),
     installMarket: vi.fn(),
   },
@@ -26,10 +29,16 @@ vi.mock('@/composables/useEventStream', () => ({
     if (event === 'skill.market.discover.progress') {
       sseState.handler = handler
     }
+    if (event === 'skill.market.embedding.progress') {
+      sseState.embeddingHandler = handler
+    }
   }),
   offSSEEvent: vi.fn((event: string, handler: (data: Record<string, unknown>) => void) => {
     if (event === 'skill.market.discover.progress' && sseState.handler === handler) {
       sseState.handler = null
+    }
+    if (event === 'skill.market.embedding.progress' && sseState.embeddingHandler === handler) {
+      sseState.embeddingHandler = null
     }
   }),
 }))
@@ -129,8 +138,9 @@ function makeDetailResponse(skill: Record<string, unknown>) {
   }
 }
 
-async function mountSkillStore() {
+async function mountSkillStore(props: Record<string, unknown> = {}) {
   const wrapper = mount(SkillStoreTab, {
+    props,
     global: {
       plugins: [i18n],
     },
@@ -144,6 +154,7 @@ describe('SkillStoreTab', () => {
     vi.clearAllMocks()
     vi.useRealTimers()
     sseState.handler = null
+    sseState.embeddingHandler = null
     i18n.global.locale.value = 'en-US'
 
     const skill = makeSkill()
@@ -157,8 +168,17 @@ describe('SkillStoreTab', () => {
     vi.mocked(skillApi.discoverRefresh).mockResolvedValue({
       data: { running: true },
     } as never)
+    vi.mocked(skillApi.embeddingStatus).mockResolvedValue({
+      data: { running: false },
+    } as never)
     vi.mocked(skillApi.filtersMarket).mockResolvedValue(makeFiltersResponse() as never)
     vi.mocked(skillApi.searchMarket).mockResolvedValue(makeSearchResponse([skill]) as never)
+    vi.mocked(skillApi.adviseMarket).mockResolvedValue({
+      data: {
+        query: '',
+        need_store_search: false,
+      },
+    } as never)
     vi.mocked(skillApi.getMarketplaceSkill).mockImplementation(async (id: string) => {
       return makeDetailResponse(makeSkill({ id })) as never
     })
@@ -168,6 +188,7 @@ describe('SkillStoreTab', () => {
   afterEach(() => {
     vi.useRealTimers()
     sseState.handler = null
+    sseState.embeddingHandler = null
   })
 
   it('keeps the toolbar free of curated/installable quick tags', async () => {
@@ -194,7 +215,7 @@ describe('SkillStoreTab', () => {
 
     const progress = wrapper.get('.discover-progress')
     expect(progress.text()).toContain('First-time loading')
-    expect(progress.text()).toContain('come back later')
+    expect(progress.text()).toContain('Initializing')
     expect(wrapper.findAll('.hero-summary-row .summary-pill')).toHaveLength(0)
     expect(wrapper.find('.panel-header p').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('0 skills')
@@ -232,6 +253,12 @@ describe('SkillStoreTab', () => {
     const wrapper = await mountSkillStore()
 
     expect(wrapper.findAll('.skill-card')).toHaveLength(1)
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).toMatchObject({
+      sort: 'featured',
+      page: 1,
+      page_size: 20,
+    })
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).not.toHaveProperty('curated')
     expect(wrapper.get('.discover-progress').text()).toContain('Tencent SkillHub')
 
     await vi.advanceTimersByTimeAsync(2100)
@@ -295,12 +322,18 @@ describe('SkillStoreTab', () => {
     await flushPromises()
 
     expect(skillApi.searchMarket).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(skillApi.searchMarket).mock.calls[1]?.[0]).toMatchObject({
-      curated: true,
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).toMatchObject({
       sort: 'featured',
       page: 1,
       page_size: 20,
     })
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).not.toHaveProperty('curated')
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[1]?.[0]).toMatchObject({
+      sort: 'featured',
+      page: 1,
+      page_size: 20,
+    })
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[1]?.[0]).not.toHaveProperty('curated')
     expect(wrapper.findAll('.skill-card')).toHaveLength(2)
     expect(wrapper.get('.panel-header').text()).toContain('2 skills')
 
@@ -335,12 +368,12 @@ describe('SkillStoreTab', () => {
       categories: 'development_tools',
       sources: 'skillhub',
       risk_badges: 'green',
-      curated: true,
       sort: 'featured',
       semantic: true,
       page: 1,
       page_size: 1,
     })
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).not.toHaveProperty('curated')
     expect((selects[0]!.element as HTMLSelectElement).value).toBe('development_tools')
     expect((selects[1]!.element as HTMLSelectElement).value).toBe('skillhub')
     expect((selects[2]!.element as HTMLSelectElement).value).toBe('green')
@@ -374,11 +407,80 @@ describe('SkillStoreTab', () => {
     })
     await flushPromises()
 
-    const feed = wrapper.get('.discover-activity__stream')
+    const feed = wrapper.get('.discover-activity')
     expect(feed.text()).toContain('Started refreshing sources')
     expect(feed.text()).toContain('Processing Tencent SkillHub')
     expect(feed.text()).toContain('+3 new')
     expect(scrollTo).toHaveBeenCalled()
+  })
+
+  it('shows embedding progress updates from SSE events', async () => {
+    const wrapper = await mountSkillStore()
+
+    expect(sseState.embeddingHandler).toBeTypeOf('function')
+    sseState.embeddingHandler?.({
+      running: true,
+      phase: 'progress',
+      total_skills: 12,
+      processed_skills: 3,
+      embedded_skills: 2,
+      failed_skills: 1,
+      current_skill_name: 'Git Expert',
+    })
+    await flushPromises()
+
+    const progressCard = wrapper.get('.discover-progress')
+    expect(progressCard.text()).toContain('Embedding skill search index')
+    expect(progressCard.text()).toContain('Git Expert')
+    expect(progressCard.text()).toContain('Processed 3/12 skills')
+    expect(progressCard.text()).toContain('Embedded 2')
+  })
+
+  it('merges embedding progress into the active source-sync card', async () => {
+    const wrapper = await mountSkillStore()
+
+    sseState.handler?.({
+      running: true,
+      phase: 'batch',
+      total_sources: 3,
+      processed_sources: 1,
+      current_source_name: 'Tencent SkillHub',
+    })
+    sseState.embeddingHandler?.({
+      running: true,
+      phase: 'progress',
+      total_skills: 12,
+      processed_skills: 3,
+      embedded_skills: 2,
+      failed_skills: 1,
+      current_skill_name: 'Git Expert',
+    })
+    await flushPromises()
+
+    const progressCards = wrapper.findAll('.discover-progress')
+    expect(progressCards).toHaveLength(1)
+    expect(progressCards[0]!.text()).toContain('Tencent SkillHub')
+    expect(progressCards[0]!.text()).toContain('Embedding skill search index')
+    expect(progressCards[0]!.findAll('.discover-progress__segment')).toHaveLength(2)
+  })
+
+  it('hides completed embedding progress when there was no queued work', async () => {
+    vi.mocked(skillApi.embeddingStatus).mockResolvedValue({
+      data: {
+        running: false,
+        phase: 'completed',
+        finished_at: '2026-03-22T00:00:00Z',
+        total_skills: 0,
+        processed_skills: 0,
+        embedded_skills: 0,
+        failed_skills: 0,
+      },
+    } as never)
+
+    const wrapper = await mountSkillStore()
+
+    expect(wrapper.find('.discover-progress').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Embedding skill search index')
   })
 
   it('treats the top pills as collection filters and only curates the featured tab', async () => {
@@ -396,5 +498,91 @@ describe('SkillStoreTab', () => {
       page_size: 20,
     })
     expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).not.toHaveProperty('curated')
+  })
+
+  it('shows advisor suggestions for natural language search and lets users reuse them', async () => {
+    vi.mocked(skillApi.adviseMarket).mockResolvedValue({
+      data: {
+        query: 'github actions release automation',
+        need_store_search: true,
+        search_queries: [
+          'github actions release automation',
+          'release automation changelog',
+          'github actions workflow automation',
+        ],
+        capability_tags: ['github-actions', 'release', 'changelog'],
+        recommended_ids: ['gh-release-bot'],
+        results: [
+          {
+            score: 21,
+            skill: makeSkill({
+              id: 'gh-release-bot',
+              name: 'GitHub Release Bot',
+              description: 'Automates release notes and changelog publishing.',
+              tags: ['github-actions', 'release', 'changelog'],
+            }),
+          },
+        ],
+      },
+    } as never)
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('[data-testid="search-input"]').setValue('github actions release automation')
+    wrapper.findComponent({ name: 'SemanticSearchField' }).vm.$emit('submit-shortcut')
+    await flushPromises()
+
+    expect(skillApi.adviseMarket).toHaveBeenCalledWith({
+      query: 'github actions release automation',
+    })
+
+    const advisor = wrapper.get('.advisor-panel')
+    expect(advisor.text()).toContain('Recommended skills for this task')
+    expect(advisor.text()).toContain('release automation changelog')
+    expect(advisor.text()).toContain('github-actions')
+    expect(advisor.text()).toContain('GitHub Release Bot')
+
+    vi.mocked(skillApi.searchMarket).mockClear()
+
+    await wrapper.get('.advisor-chip-button').trigger('click')
+    await flushPromises()
+
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).toMatchObject({
+      q: 'release automation changelog',
+      curated: true,
+      sort: 'featured',
+      page: 1,
+      page_size: 20,
+      semantic: true,
+    })
+    expect((wrapper.get('[data-testid="search-input"]').element as HTMLInputElement).value).toBe(
+      'release automation changelog'
+    )
+  })
+
+  it('prefills routed marketplace searches and fetches advisor guidance on mount', async () => {
+    vi.mocked(skillApi.adviseMarket).mockResolvedValue({
+      data: {
+        query: 'release automation changelog',
+        need_store_search: true,
+        search_queries: ['release automation changelog'],
+      },
+    } as never)
+
+    const wrapper = await mountSkillStore({
+      initialSearchQuery: 'release automation changelog',
+    })
+
+    expect((wrapper.get('[data-testid="search-input"]').element as HTMLInputElement).value).toBe(
+      'release automation changelog'
+    )
+    expect(skillApi.searchMarket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: 'release automation changelog',
+      })
+    )
+    expect(skillApi.adviseMarket).toHaveBeenCalledWith({
+      query: 'release automation changelog',
+    })
   })
 })

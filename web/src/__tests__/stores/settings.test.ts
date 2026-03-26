@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useSettingsStore } from '@/stores/settings'
+import { providerPoolApi } from '@/api/providerPool'
 import { settingsApi } from '@/api/settings'
 
 vi.mock('@/api/chat', () => ({
@@ -13,12 +14,6 @@ vi.mock('@/api/providerPool', () => ({
   providerPoolApi: {
     listProviders: vi.fn(),
     fetchProviderModels: vi.fn(),
-  },
-}))
-
-vi.mock('@/api/claudecode', () => ({
-  claudeCodeApi: {
-    getConfig: vi.fn(),
   },
 }))
 
@@ -140,6 +135,66 @@ describe('settings store - small model integration', () => {
     const store = useSettingsStore()
 
     expect(store.closeBehavior).toBe('minimize')
+  })
+
+  it('prioritizes claude and gpt models in provider-model options', async () => {
+    const store = useSettingsStore()
+    const models = [
+      { id: 'o3-mini', enabled: true },
+      { id: 'gemini-2.5-pro', enabled: true },
+      { id: 'gpt-4o-mini', enabled: true },
+      { id: 'claude-haiku-4-5', enabled: true },
+    ]
+    for (let index = 0; index < 100; index += 1) {
+      models.push({ id: `misc-${index.toString().padStart(3, '0')}`, enabled: true })
+    }
+    vi.mocked(providerPoolApi.listProviders).mockResolvedValue({
+      data: {
+        providers: [
+          {
+            id: 'relay',
+            name: 'Relay',
+            enabled: true,
+            models,
+          },
+        ],
+      },
+    } as never)
+
+    await store.fetchProviders()
+
+    expect(store.providerModelOptions.slice(0, 2).map((option) => option.modelId)).toEqual([
+      'claude-haiku-4-5',
+      'gpt-4o-mini',
+    ])
+  })
+
+  it('hides oauth-backed providers from chat provider options', async () => {
+    const store = useSettingsStore()
+    vi.mocked(providerPoolApi.listProviders).mockResolvedValue({
+      data: {
+        providers: [
+          {
+            id: 'google-antigravity',
+            name: 'Google Cloud Code Assist (Antigravity)',
+            enabled: true,
+            oauth: { connected: false },
+            models: [{ id: 'claude-sonnet-4-5', enabled: true }],
+          },
+          {
+            id: 'anthropic',
+            name: 'Anthropic',
+            enabled: true,
+            models: [{ id: 'claude-sonnet-4-5', enabled: true }],
+          },
+        ],
+      },
+    } as never)
+
+    await store.fetchProviders()
+
+    expect(store.providers.map((provider) => provider.id)).toEqual(['anthropic'])
+    expect(store.providerModelOptions.map((option) => option.providerId)).toEqual(['anthropic'])
   })
 
   it('updates small-model route toggles in backend settings', async () => {

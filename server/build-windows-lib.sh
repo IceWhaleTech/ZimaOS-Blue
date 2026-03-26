@@ -11,7 +11,7 @@ export GOOS=windows
 export GOARCH=amd64
 
 # Build as C archive (static library)
-go build -buildmode=c-archive -o ../tauri-app/src-tauri/lib/libblue.lib ./cmd/bluelib
+go build -buildmode=c-archive -tags 'fts5 espeak kokoro' -o ../tauri-app/src-tauri/lib/libblue.lib ./cmd/bluelib
 
 echo "✓ Built libblue.lib"
 ls -lh ../tauri-app/src-tauri/lib/libblue.lib

@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -160,30 +160,41 @@ func inlinePNGBase64ForChatTest() string {
 	return "ZGF0YQ=="
 }
 
-func TestBuildDirectoryWhitelistPromptHintPrefersRelativePaths(t *testing.T) {
-	ccHandler := claudecode.NewHandler(nil)
+func TestBuildDirectoryWhitelistPromptHintUsesSecuritySettings(t *testing.T) {
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	e := echo.New()
-
-	body := `{"whitelist_enabled":true,"directory_whitelist":[{"path":"/tmp/project","alias":"proj"}]}`
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/claudecode/config", strings.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/settings",
+		strings.NewReader(`{"directory_whitelist_enabled":true,"directory_whitelist":[{"path":"/tmp/project","alias":"proj"}]}`),
+	)
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
-	ctx := e.NewContext(req, rec)
 
-	if err := ccHandler.SetConfig(ctx); err != nil {
-		t.Fatalf("SetConfig() error = %v", err)
+	if err := settings.Patch(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("settings Patch() error = %v", err)
 	}
 	if rec.Code != http.StatusOK {
-		t.Fatalf("SetConfig() status = %d, want %d", rec.Code, http.StatusOK)
+		t.Fatalf("settings Patch() status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	handler := &ChatHandler{claudeCodeHandler: ccHandler}
+	handler := &ChatHandler{}
+	handler.SetSettingsHandler(settings)
+
 	hint := handler.buildDirectoryWhitelistPromptHint()
+	if !strings.Contains(hint, "@proj => /tmp/project") {
+		t.Fatalf("hint = %q, want alias mapping", hint)
+	}
 	if !strings.Contains(hint, "Prefer relative paths for files in the current workspace.") {
 		t.Fatalf("hint = %q, want relative path guidance", hint)
 	}
-	if !strings.Contains(hint, "@alias/... when available, or absolute paths if needed") {
-		t.Fatalf("hint = %q, want alias/absolute fallback guidance", hint)
+
+	roots, aliases := handler.directoryWhitelistScope()
+	if len(roots) != 1 || roots[0] != "/tmp/project" {
+		t.Fatalf("directoryWhitelistScope() roots = %v, want [/tmp/project]", roots)
+	}
+	if got := aliases["proj"]; got != "/tmp/project" {
+		t.Fatalf("directoryWhitelistScope() alias proj = %q, want /tmp/project", got)
 	}
 }
 
@@ -815,25 +826,16 @@ func TestNewChatHandler(t *testing.T) {
 	}
 }
 
-func TestDefaultModelForCCCLI(t *testing.T) {
+func TestDefaultModelForRuntime(t *testing.T) {
 	h := &ChatHandler{}
-	if got := h.defaultModelForCCCLI(""); got != "auto" {
-		t.Fatalf("default model without cc cli = %q, want %q", got, "auto")
+	if got := h.defaultModelForRuntime(""); got != defaultRuntimeModel {
+		t.Fatalf("default model without routing metadata = %q, want %q", got, defaultRuntimeModel)
 	}
-	if got := h.defaultModelForCCCLI("auto"); got != "auto" {
-		t.Fatalf("auto model without cc cli = %q, want %q", got, "auto")
+	if got := h.defaultModelForRuntime("auto"); got != "auto" {
+		t.Fatalf("auto model without routing metadata = %q, want %q", got, "auto")
 	}
-
-	cc := claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore())
-	h.SetClaudeCodeHandler(cc)
-	if got := h.defaultModelForCCCLI(""); got != defaultCCCLIModel {
-		t.Fatalf("empty model with cc cli = %q, want %q", got, defaultCCCLIModel)
-	}
-	if got := h.defaultModelForCCCLI("auto"); got != "auto" {
-		t.Fatalf("auto model with cc cli = %q, want %q", got, "auto")
-	}
-	if got := h.defaultModelForCCCLI("gpt-4o"); got != "gpt-4o" {
-		t.Fatalf("explicit model with cc cli = %q, want %q", got, "gpt-4o")
+	if got := h.defaultModelForRuntime("gpt-4o"); got != "gpt-4o" {
+		t.Fatalf("explicit model = %q, want %q", got, "gpt-4o")
 	}
 
 	newPoolWithModel := func(t *testing.T, providerEnabled, modelEnabled bool) *providerpool.Pool {
@@ -865,8 +867,8 @@ func TestDefaultModelForCCCLI(t *testing.T) {
 		}
 		if err := storage.SaveModels(provider.ID, []*providerpool.Model{
 			{
-				ID:         defaultCCCLIModel,
-				Name:       defaultCCCLIModel,
+				ID:         defaultRuntimeModel,
+				Name:       defaultRuntimeModel,
 				ProviderID: provider.ID,
 				Enabled:    modelEnabled,
 			},
@@ -883,27 +885,27 @@ func TestDefaultModelForCCCLI(t *testing.T) {
 
 	t.Run("fallbacks to auto when default model provider is disabled", func(t *testing.T) {
 		h2 := &ChatHandler{}
-		h2.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore()))
 		h2.SetProviderPool(newPoolWithModel(t, false, true))
-		if got := h2.defaultModelForCCCLI("auto"); got != "auto" {
-			t.Fatalf("auto model with disabled provider = %q, want auto", got)
+		if got := h2.defaultModelForRuntime(""); got != "auto" {
+			t.Fatalf("empty model with disabled provider = %q, want auto", got)
 		}
 	})
 
 	t.Run("fallbacks to auto when default model probe marked unavailable", func(t *testing.T) {
 		h2 := &ChatHandler{}
-		h2.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore()))
 		h2.SetProviderPool(newPoolWithModel(t, true, false))
-		if got := h2.defaultModelForCCCLI("auto"); got != "auto" {
-			t.Fatalf("auto model with disabled default model = %q, want auto", got)
+		if got := h2.defaultModelForRuntime(""); got != "auto" {
+			t.Fatalf("empty model with disabled default model = %q, want auto", got)
 		}
 	})
 
-	t.Run("keeps explicit auto when provider and model are available", func(t *testing.T) {
+	t.Run("uses default model when provider and model are available", func(t *testing.T) {
 		h2 := &ChatHandler{}
-		h2.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore()))
 		h2.SetProviderPool(newPoolWithModel(t, true, true))
-		if got := h2.defaultModelForCCCLI("auto"); got != "auto" {
+		if got := h2.defaultModelForRuntime(""); got != defaultRuntimeModel {
+			t.Fatalf("empty model with available default model = %q, want %q", got, defaultRuntimeModel)
+		}
+		if got := h2.defaultModelForRuntime("auto"); got != "auto" {
 			t.Fatalf("auto model with available default model = %q, want auto", got)
 		}
 	})
@@ -1041,10 +1043,9 @@ func TestProcessChannelMessage_DefaultModel502RollsBackToAuto(t *testing.T) {
 	registry := llm.NewProviderRegistry()
 	registry.Register(&scriptedChatProvider{
 		name:   "model-catalog",
-		models: []string{defaultCCCLIModel},
+		models: []string{defaultRuntimeModel},
 	})
 	handler := NewChatHandler(store, registry, tools.NewRegistry())
-	handler.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore()))
 
 	var requestModels []string
 	bridge := proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1078,11 +1079,113 @@ func TestProcessChannelMessage_DefaultModel502RollsBackToAuto(t *testing.T) {
 	if len(requestModels) != 2 {
 		t.Fatalf("proxy calls = %d, want 2; models=%v", len(requestModels), requestModels)
 	}
-	if requestModels[0] != defaultCCCLIModel {
-		t.Fatalf("first request model = %q, want %q", requestModels[0], defaultCCCLIModel)
+	if requestModels[0] != defaultRuntimeModel {
+		t.Fatalf("first request model = %q, want %q", requestModels[0], defaultRuntimeModel)
 	}
 	if requestModels[1] != "auto" {
 		t.Fatalf("second request model = %q, want auto", requestModels[1])
+	}
+}
+
+func TestChatHandlerSendMessage_WriteToWhitelistAliasE2E(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Whitelist Alias Write E2E")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	workspaceRoot := t.TempDir()
+	whitelistRoot := t.TempDir()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "write-whitelist-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_write_whitelist_1",
+							Name:      "write",
+							Arguments: `{"path":"@docs/notes/e2e.txt","content":"hello whitelist alias"}`,
+						},
+					},
+				},
+				Usage: llm.Usage{PromptTokens: 80, CompletionTokens: 18, TotalTokens: 98},
+			},
+			{
+				ID:    "write-whitelist-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已完成写入。",
+				},
+				Usage: llm.Usage{PromptTokens: 92, CompletionTokens: 12, TotalTokens: 104},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewFileWriteTool([]string{workspaceRoot}, 0))
+
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	e := echo.New()
+	settingsReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/settings",
+		strings.NewReader(fmt.Sprintf(`{"directory_whitelist_enabled":true,"directory_whitelist":[{"path":%q,"alias":"docs"}]}`, whitelistRoot)),
+	)
+	settingsReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	settingsRec := httptest.NewRecorder()
+	if err := settings.Patch(e.NewContext(settingsReq, settingsRec)); err != nil {
+		t.Fatalf("settings Patch() error = %v", err)
+	}
+	if settingsRec.Code != http.StatusOK {
+		t.Fatalf("settings Patch() status = %d, want 200", settingsRec.Code)
+	}
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(settings)
+
+	reqBody := `{"message":"请写入白名单目录文件","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (tool + final), got %d", scripted.CallCount())
+	}
+
+	target := filepath.Join(whitelistRoot, "notes", "e2e.txt")
+	data, readErr := os.ReadFile(target)
+	if readErr != nil {
+		t.Fatalf("expected whitelist file to be written, read error: %v", readErr)
+	}
+	if string(data) != "hello whitelist alias" {
+		t.Fatalf("unexpected whitelist file content: %q", string(data))
+	}
+
+	workspaceTarget := filepath.Join(workspaceRoot, "notes", "e2e.txt")
+	if _, statErr := os.Stat(workspaceTarget); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no mirrored file in workspace root, got stat=%v", statErr)
 	}
 }
 
@@ -1811,14 +1914,14 @@ func TestProcessChannelMessage_CheckpointResumeRetriesEmptyReplyAfterToolRound(t
 func TestShouldRollbackIMDefaultModelToAuto(t *testing.T) {
 	t.Run("returns true for default model on 5xx", func(t *testing.T) {
 		err := &proxybridge.ProxyError{StatusCode: http.StatusBadGateway, Body: "upstream 502"}
-		if !shouldRollbackIMDefaultModelToAuto(defaultCCCLIModel, err) {
+		if !shouldRollbackIMDefaultModelToAuto(defaultRuntimeModel, err) {
 			t.Fatalf("shouldRollbackIMDefaultModelToAuto() = false, want true")
 		}
 	})
 
 	t.Run("returns true for default model on overload", func(t *testing.T) {
 		err := &proxybridge.ProxyError{StatusCode: http.StatusTooManyRequests, Body: "rate limit"}
-		if !shouldRollbackIMDefaultModelToAuto(defaultCCCLIModel, err) {
+		if !shouldRollbackIMDefaultModelToAuto(defaultRuntimeModel, err) {
 			t.Fatalf("shouldRollbackIMDefaultModelToAuto() = false, want true")
 		}
 	})
@@ -1832,7 +1935,7 @@ func TestShouldRollbackIMDefaultModelToAuto(t *testing.T) {
 
 	t.Run("returns true for default model on no-provider error", func(t *testing.T) {
 		err := &proxybridge.ProxyError{StatusCode: http.StatusServiceUnavailable, Body: "no available provider"}
-		if !shouldRollbackIMDefaultModelToAuto(defaultCCCLIModel, err) {
+		if !shouldRollbackIMDefaultModelToAuto(defaultRuntimeModel, err) {
 			t.Fatalf("shouldRollbackIMDefaultModelToAuto() = false, want true")
 		}
 	})
@@ -3335,6 +3438,60 @@ func TestChatHandlerSendMessage(t *testing.T) {
 	}
 }
 
+func TestChatHandlerSendMessage_PropagatesProxyStatus(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Proxy Error Conv")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:      "unused-response",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "unused"},
+			},
+		},
+		callErrors: []error{
+			&proxybridge.ProxyError{
+				StatusCode: http.StatusForbidden,
+				Body:       `provider prov_4959c73f638d5562 auth error (403): {"error":{"message":"用户额度不足","code":"insufficient_user_quota"}}`,
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+
+	e := echo.New()
+	reqBody := `{"message":"Hello!","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	err := handler.SendMessage(c)
+	if err == nil {
+		t.Fatal("expected proxy error")
+	}
+
+	e.DefaultHTTPErrorHandler(err, c)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "proxy returned 403") {
+		t.Fatalf("body = %s, want proxy status detail", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "insufficient_user_quota") {
+		t.Fatalf("body = %s, want quota detail", rec.Body.String())
+	}
+}
+
 func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -4185,108 +4342,6 @@ func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testin
 	}
 }
 
-func TestChatHandlerSendMessage_WriteToWhitelistAliasE2E(t *testing.T) {
-	store, err := memory.NewStore(":memory:")
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-	defer store.Close()
-
-	conv, err := store.CreateConversation(context.Background(), "Whitelist Alias Write E2E")
-	if err != nil {
-		t.Fatalf("failed to create conversation: %v", err)
-	}
-
-	workspaceRoot := t.TempDir()
-	whitelistRoot := t.TempDir()
-
-	registry := llm.NewProviderRegistry()
-	scripted := &scriptedChatProvider{
-		name: "scripted",
-		responses: []llm.ChatResponse{
-			{
-				ID:    "write-whitelist-round-1",
-				Model: "gpt-5.3-codex-spark",
-				Message: llm.Message{
-					Role: llm.RoleAssistant,
-					ToolCalls: []llm.ToolCall{
-						{
-							ID:        "call_write_whitelist_1",
-							Name:      "write",
-							Arguments: `{"path":"@docs/notes/e2e.txt","content":"hello whitelist alias"}`,
-						},
-					},
-				},
-				Usage: llm.Usage{PromptTokens: 80, CompletionTokens: 18, TotalTokens: 98},
-			},
-			{
-				ID:    "write-whitelist-round-2",
-				Model: "gpt-5.3-codex-spark",
-				Message: llm.Message{
-					Role:    llm.RoleAssistant,
-					Content: "已完成写入。",
-				},
-				Usage: llm.Usage{PromptTokens: 92, CompletionTokens: 12, TotalTokens: 104},
-			},
-		},
-	}
-	registry.Register(scripted)
-
-	toolRegistry := tools.NewRegistry()
-	toolRegistry.Register(tools.NewFileWriteTool([]string{workspaceRoot}, 0))
-
-	handler := NewChatHandler(store, registry, toolRegistry)
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-
-	ccKV := kvstore.NewMemoryStore()
-	if err := ccKV.SetJSON(context.Background(), "config:claudecode", &claudecode.ClaudeCodePersistentConfig{
-		Enabled:          true,
-		DefaultModel:     "sonnet",
-		SandboxEnabled:   true,
-		NetworkEnabled:   true,
-		WhitelistEnabled: true,
-		DirectoryWhitelist: []claudecode.DirectoryWhitelistEntry{
-			{Path: whitelistRoot, Alias: "docs"},
-		},
-	}, 0); err != nil {
-		t.Fatalf("failed to seed claudecode config: %v", err)
-	}
-	handler.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", ccKV))
-
-	e := echo.New()
-	reqBody := `{"message":"请写入白名单目录文件","provider":"scripted","model":"gpt-5.3-codex-spark"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues(conv.ID)
-
-	if err := handler.SendMessage(c); err != nil {
-		t.Fatalf("handler error: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	if scripted.CallCount() != 2 {
-		t.Fatalf("expected 2 LLM rounds (tool + final), got %d", scripted.CallCount())
-	}
-
-	target := filepath.Join(whitelistRoot, "notes", "e2e.txt")
-	data, readErr := os.ReadFile(target)
-	if readErr != nil {
-		t.Fatalf("expected whitelist file to be written, read error: %v", readErr)
-	}
-	if string(data) != "hello whitelist alias" {
-		t.Fatalf("unexpected whitelist file content: %q", string(data))
-	}
-
-	workspaceTarget := filepath.Join(workspaceRoot, "notes", "e2e.txt")
-	if _, statErr := os.Stat(workspaceTarget); !os.IsNotExist(statErr) {
-		t.Fatalf("expected no mirrored file in workspace root, got stat=%v", statErr)
-	}
-}
-
 func TestChatHandlerSendMessage_AutoContinuesRecoveryRedirectAfterRepeatedOverwriteLoop(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -4533,7 +4588,7 @@ func TestChatHandlerSendMessageInjectsConversationAnchor(t *testing.T) {
 
 	toolRegistry := tools.NewRegistry()
 	handler := NewChatHandler(store, registry, toolRegistry)
-	handler.SetSystemPromptBuilder(claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{}))
+	handler.SetSystemPromptBuilder(agentcore.NewSystemPromptBuilder(&agentcore.Config{}))
 
 	e := echo.New()
 	reqBody := `{"message":"B","provider":"capture","model":"capture-model"}`

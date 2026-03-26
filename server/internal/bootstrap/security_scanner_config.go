@@ -23,9 +23,10 @@ var securityScannerEnvironmentVars = []string{
 	"GIN_MODE",
 }
 
-func buildSecurityScannerConfig(cfg *config.Config) *security.ScannerConfig {
+func buildSecurityScannerConfig(cfg *config.Config, sandboxAvailable bool) *security.ScannerConfig {
 	scannerCfg := security.DefaultScannerConfig()
 	if cfg == nil {
+		scannerCfg.SandboxEnabled = sandboxAvailable
 		return scannerCfg
 	}
 
@@ -36,7 +37,7 @@ func buildSecurityScannerConfig(cfg *config.Config) *security.ScannerConfig {
 	scannerCfg.TLSMinVersion = tls.VersionTLS12
 	scannerCfg.RateLimitEnabled = true
 	scannerCfg.RateLimitRPS = ratelimit.DefaultConfig().Rate
-	scannerCfg.SandboxEnabled = cfg.Security.Sandbox.Enabled
+	scannerCfg.SandboxEnabled = cfg.Security.Sandbox.Enabled && sandboxAvailable
 	scannerCfg.SandboxMemoryLimitMB = parseScannerMemoryLimitMB(cfg.Security.Sandbox.MemoryLimit)
 	scannerCfg.SandboxCPULimitCores = cfg.Security.Sandbox.CPULimit
 	scannerCfg.SandboxTimeoutSeconds = scannerDurationSeconds(cfg.Security.Sandbox.DefaultTimeout)

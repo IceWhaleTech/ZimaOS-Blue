@@ -343,6 +343,9 @@ func TestShouldEnforceDeepSearchMinRounds(t *testing.T) {
 	if !shouldEnforceDeepSearchMinRounds("BlueAgent latest updates with sources and citations") {
 		t.Fatal("expected hard deep-search gate for freshness + source requirement")
 	}
+	if shouldEnforceDeepSearchMinRounds("I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. Please answer the numbered questions and write them to `answer.txt`.") {
+		t.Fatal("expected local workspace artifact QA task to bypass deep-search minimum-round enforcement")
+	}
 	if shouldEnforceDeepSearchMinRounds("blueagent news") {
 		t.Fatal("expected no hard deep-search gate for lightweight news lookup")
 	}
@@ -2375,7 +2378,7 @@ func TestBuildPostWorkspaceArtifactContinuationTools_PrioritizesWritingAfterRead
 	}
 }
 
-func TestBuildPostWorkspaceArtifactContinuationTools_StructuredTasksDropEditAfterContentEvidence(t *testing.T) {
+func TestBuildPostWorkspaceArtifactContinuationTools_PreservesGenericWriteWorkflowAfterContentEvidence(t *testing.T) {
 	reduced := buildPostWorkspaceArtifactContinuationTools([]llm.Tool{
 		{Name: "file_write"},
 		{Name: "edit"},
@@ -2391,13 +2394,15 @@ func TestBuildPostWorkspaceArtifactContinuationTools_StructuredTasksDropEditAfte
 	})
 
 	if len(reduced) == 0 || !containsLLMToolName(reduced, "file_write") {
-		t.Fatalf("expected structured continuation tools to preserve file_write, got=%v", reduced)
+		t.Fatalf("expected continuation tools to preserve file_write, got=%v", reduced)
 	}
-	if containsLLMToolName(reduced, "edit") {
-		t.Fatalf("expected structured continuation tools to exclude edit after content evidence, got=%v", reduced)
+	for _, required := range []string{"write_begin", "write_chunk", "write_commit"} {
+		if !containsLLMToolName(reduced, required) {
+			t.Fatalf("expected continuation tools to preserve chunked write path %s, got=%v", required, reduced)
+		}
 	}
-	if containsLLMToolName(reduced, "pdf") || containsLLMToolName(reduced, "file_read") {
-		t.Fatalf("expected structured continuation tools to focus on writing once evidence exists, got=%v", reduced)
+	if containsLLMToolName(reduced, "file_delete") || containsLLMToolName(reduced, "pdf") || containsLLMToolName(reduced, "file_read") {
+		t.Fatalf("expected continuation tools to stay focused on finishing the write once evidence exists, got=%v", reduced)
 	}
 }
 
@@ -2609,17 +2614,17 @@ func TestBuildArtifactWorkflowExecutionHint_ForInboxTriageTask(t *testing.T) {
 	if hint == "" {
 		t.Fatal("expected non-empty artifact workflow hint for inbox triage task")
 	}
-	if !containsSubstring(hint, "P0 through P4") {
-		t.Fatalf("expected inbox triage hint to preserve canonical priority ordering, got=%q", hint)
+	if !containsSubstring(hint, `triage_report.md`) {
+		t.Fatalf("expected inbox triage hint to mention the target path, got=%q", hint)
 	}
-	if !containsSubstring(hint, "opening summary") {
-		t.Fatalf("expected inbox triage hint to label critical items in the summary, got=%q", hint)
+	if !containsSubstring(hint, "local file workflow") {
+		t.Fatalf("expected inbox triage hint to keep the generic local file workflow guidance, got=%q", hint)
 	}
-	if !containsSubstring(hint, "every email entry") {
-		t.Fatalf("expected inbox triage hint to keep explicit priority labels on each row, got=%q", hint)
+	if !containsSubstring(hint, "read the discovered relevant source set to completion") {
+		t.Fatalf("expected inbox triage hint to keep exhaustive coverage guidance, got=%q", hint)
 	}
-	if !containsSubstring(hint, "avoid later tables or headings that repeat P0-P4") {
-		t.Fatalf("expected inbox triage hint to discourage reintroducing later P-label headings, got=%q", hint)
+	if containsSubstring(hint, "P0 through P4") {
+		t.Fatalf("expected inbox triage hint to avoid task-specific formatting rules, got=%q", hint)
 	}
 }
 
@@ -2628,20 +2633,17 @@ func TestBuildArtifactWorkflowExecutionHint_ForExecutiveBriefingTask(t *testing.
 	if hint == "" {
 		t.Fatal("expected non-empty artifact workflow hint for executive briefing task")
 	}
-	if !containsSubstring(hint, "highest-impact named customer churn risk") {
-		t.Fatalf("expected executive briefing hint to preserve named customer risks, got=%q", hint)
+	if !containsSubstring(hint, `daily_briefing.md`) {
+		t.Fatalf("expected executive briefing hint to mention the target path, got=%q", hint)
 	}
-	if !containsSubstring(hint, "top priorities or action section") {
-		t.Fatalf("expected executive briefing hint to promote named risks or opportunities into the final briefing, got=%q", hint)
+	if !containsSubstring(hint, "local file workflow") {
+		t.Fatalf("expected executive briefing hint to keep the generic local file workflow guidance, got=%q", hint)
 	}
-	if !containsSubstring(hint, "Do not collapse named accounts") {
-		t.Fatalf("expected executive briefing hint to keep named entities concrete, got=%q", hint)
+	if !containsSubstring(hint, "read the discovered relevant source set to completion") {
+		t.Fatalf("expected executive briefing hint to keep exhaustive coverage guidance, got=%q", hint)
 	}
-	if !containsSubstring(hint, "word budget") {
-		t.Fatalf("expected executive briefing hint to keep the output concise, got=%q", hint)
-	}
-	if !containsSubstring(hint, "avoid playful styling") {
-		t.Fatalf("expected executive briefing hint to keep a formal tone, got=%q", hint)
+	if containsSubstring(hint, "highest-impact named customer churn risk") {
+		t.Fatalf("expected executive briefing hint to avoid task-specific named-entity rules, got=%q", hint)
 	}
 }
 
@@ -2650,26 +2652,17 @@ func TestBuildArtifactWorkflowExecutionHint_ForProjectStatusSummaryTask(t *testi
 	if hint == "" {
 		t.Fatal("expected non-empty artifact workflow hint for project status summary task")
 	}
-	if !containsSubstring(hint, "requested section titles exactly") {
-		t.Fatalf("expected project status hint to preserve the requested section titles, got=%q", hint)
+	if !containsSubstring(hint, `alpha_summary.md`) {
+		t.Fatalf("expected project status hint to mention the target path, got=%q", hint)
 	}
-	if !containsSubstring(hint, "Before writing, identify") {
-		t.Fatalf("expected project status hint to force explicit pre-write extraction, got=%q", hint)
+	if !containsSubstring(hint, "local file workflow") {
+		t.Fatalf("expected project status hint to keep the generic local file workflow guidance, got=%q", hint)
 	}
-	if !containsSubstring(hint, "original-versus-updated budget and timeline figures") {
-		t.Fatalf("expected project status hint to preserve exact budget and timeline deltas, got=%q", hint)
+	if !containsSubstring(hint, "Follow any explicit structure, paragraph, section, table, or line-by-line constraints from the user.") {
+		t.Fatalf("expected project status hint to defer to explicit user structure generically, got=%q", hint)
 	}
-	if !containsSubstring(hint, "causal cross-links") {
-		t.Fatalf("expected project status hint to require explicit cross-links, got=%q", hint)
-	}
-	if !containsSubstring(hint, "major backend, data, and frontend technologies") {
-		t.Fatalf("expected project status hint to require a sufficiently specific tech stack, got=%q", hint)
-	}
-	if !containsSubstring(hint, "Markdown headings") {
-		t.Fatalf("expected project status hint to preserve markdown heading structure when requested, got=%q", hint)
-	}
-	if !containsSubstring(hint, "Keep concrete technology names") {
-		t.Fatalf("expected project status hint to keep concrete values instead of generic paraphrases, got=%q", hint)
+	if containsSubstring(hint, "original-versus-updated budget and timeline figures") {
+		t.Fatalf("expected project status hint to avoid task-specific extraction rules, got=%q", hint)
 	}
 }
 
@@ -2830,6 +2823,9 @@ func TestResolveResponseSanitizeProfile_Deterministic(t *testing.T) {
 	}
 	if got := resolveResponseSanitizeProfile("openai", "openai", "gpt-5.3-codex-spark"); got != responseSanitizeProfileStrict {
 		t.Fatalf("expected codex model profile strict, got=%s", got)
+	}
+	if got := resolveResponseSanitizeProfile("agentcore", "agentcore", "custom-model"); got != responseSanitizeProfileStrict {
+		t.Fatalf("expected agentcore provider profile strict, got=%s", got)
 	}
 	if got := resolveResponseSanitizeProfile("", "custom_vendor", "custom-model"); got != responseSanitizeProfileBalanced {
 		t.Fatalf("expected unknown provider profile balanced, got=%s", got)

@@ -77,6 +77,25 @@ func dropFTSTriggers(db *sql.DB) error {
 	return nil
 }
 
+func dropLegacySkillTableFTSTriggers(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	for _, stmt := range []string{
+		`DROP TRIGGER IF EXISTS skills_ai`,
+		`DROP TRIGGER IF EXISTS skills_ad`,
+		`DROP TRIGGER IF EXISTS skills_au`,
+		`DROP TRIGGER IF EXISTS skillmarket_ai`,
+		`DROP TRIGGER IF EXISTS skillmarket_ad`,
+		`DROP TRIGGER IF EXISTS skillmarket_au`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ensureColumn(db *sql.DB, table, column, definition string) error {
 	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
@@ -275,6 +294,8 @@ func (s *Store) initSchema() error {
 		return fmt.Errorf("init skillmarket schema: %w", err)
 	}
 
+	ftsSupported := supportsFTS5(s.db)
+
 	columnDefs := map[string]map[string]string{
 		"skills": {
 			"slug":                  "TEXT DEFAULT ''",
@@ -342,6 +363,12 @@ func (s *Store) initSchema() error {
 		}
 	}
 
+	if !ftsSupported {
+		if err := dropLegacySkillTableFTSTriggers(s.db); err != nil {
+			return fmt.Errorf("drop legacy skill FTS triggers: %w", err)
+		}
+	}
+
 	if _, err := s.db.Exec(`UPDATE skills SET slug = id WHERE COALESCE(slug, '') = ''`); err != nil {
 		return err
 	}
@@ -365,13 +392,15 @@ func (s *Store) initSchema() error {
 		return fmt.Errorf("init skillmarket indexes: %w", err)
 	}
 
+	if !ftsSupported {
+		s.ftsEnabled = false
+		return nil
+	}
+
 	if err := dropFTSTriggers(s.db); err != nil {
 		return err
 	}
-	s.ftsEnabled = supportsFTS5(s.db)
-	if !s.ftsEnabled {
-		return nil
-	}
+	s.ftsEnabled = true
 	ftsStatements := []string{
 		`CREATE VIRTUAL TABLE IF NOT EXISTS skillmarket_fts USING fts5(
 			id UNINDEXED,
@@ -1433,6 +1462,101 @@ func (s *Store) Search(ctx context.Context, query SearchQuery) (*SearchResponse,
 		PageSize:   query.PageSize,
 		TotalPages: int(math.Ceil(float64(total) / float64(query.PageSize))),
 	}, nil
+}
+
+func (s *Store) SearchKeywordCandidates(ctx context.Context, query SearchQuery) ([]SearchResult, error) {
+	if strings.TrimSpace(query.Query) == "" {
+		return nil, nil
+	}
+
+	whereClause, args := buildSkillFilters("s", query)
+	sortBy := skillSortClause(query.Sort)
+	results := make([]SearchResult, 0, DefaultSearchLimit)
+
+	if !s.ftsEnabled {
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT `+skillSelectColumns("s")+`
+			FROM skills s`+whereClause+fallbackSearchFilter("s")+`
+			ORDER BY `+fallbackSearchOrder("s", true, sortBy),
+			fallbackSearchArgs(args, query.Query)...,
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			doc, err := scanSkillDocument(rows)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, SearchResult{
+				Skill:        *doc,
+				Score:        doc.TrendingScore,
+				KeywordScore: doc.TrendingScore,
+				MatchSource:  "rank",
+			})
+		}
+		return results, nil
+	}
+
+	ftsQuery := escapeFTSQuery(query.Query)
+	ftsArgs := []interface{}{ftsQuery}
+	ftsArgs = append(ftsArgs, args...)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+skillSelectColumns("s")+`,
+			-bm25(skillmarket_fts, 10.0, 6.0, 2.0, 1.0, 1.0, 1.0, 0.5) +
+			((s.trending_score + s.curated_boost) * 0.05) AS score
+		FROM skills s
+		JOIN skillmarket_fts ON skillmarket_fts.rowid = s.rowid
+		WHERE skillmarket_fts MATCH ?`+strings.TrimPrefix(whereClause, " WHERE s.published = 1")+`
+		ORDER BY score DESC`,
+		ftsArgs...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		doc, score, err := scanSkillDocumentWithScore(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, SearchResult{Skill: *doc, Score: score, KeywordScore: score, MatchSource: "fts5"})
+	}
+	return results, nil
+}
+
+func (s *Store) ListFilteredSkills(ctx context.Context, query SearchQuery) ([]SkillDocument, error) {
+	whereClause, args := buildSkillFilters("skills", query)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+skillSelectColumns("skills")+`
+		FROM skills`+whereClause+`
+		ORDER BY `+skillSortClause(query.Sort),
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]SkillDocument, 0, DefaultSearchLimit)
+	for rows.Next() {
+		doc, err := scanSkillDocument(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *doc)
+	}
+	return result, nil
+}
+
+func (s *Store) UpdateSkillEmbedding(ctx context.Context, skillID, embeddingJSON, embeddingModel string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE skills
+		SET embedding_json = ?, embedding_model = ?, updated_at = ?
+		WHERE id = ?
+	`, embeddingJSON, embeddingModel, timeutil.NowTime(), skillID)
+	return err
 }
 
 func buildSkillFilters(alias string, query SearchQuery) (string, []interface{}) {

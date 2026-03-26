@@ -400,6 +400,42 @@ export interface MarketplaceUpdatesResponse {
   count: number
 }
 
+export interface InstalledSkillDecision {
+  query: string
+  selected_skill: string
+  confidence: number
+  need_clarify: boolean
+  reason: string
+  stage: string
+  candidates?: Array<{
+    name: string
+    score: number
+    description?: string
+  }>
+  matched_signals?: string[]
+  conflict_flags?: string[]
+  confidence_reason?: string
+}
+
+export interface MarketplaceAdviceRequest {
+  query: string
+  installed_decision?: InstalledSkillDecision
+}
+
+export interface MarketplaceAdviceResponse {
+  query: string
+  installed_decision?: InstalledSkillDecision
+  need_store_search: boolean
+  reason?: string
+  search_queries?: string[]
+  capability_tags?: string[]
+  results?: MarketSearchResult[]
+  recommended_ids?: string[]
+  install_mode?: string
+  skill_selector_error?: string
+  search_error?: string
+}
+
 export interface DiscoverResponse {
   sources_processed?: number
   discovered?: number
@@ -425,6 +461,20 @@ export interface DiscoverStatusResponse {
   phase?: 'started' | 'batch' | 'source_complete' | 'completed' | 'error'
 }
 
+export interface EmbeddingStatusResponse {
+  running: boolean
+  started_at?: string
+  finished_at?: string
+  last_error?: string
+  total_skills?: number
+  processed_skills?: number
+  embedded_skills?: number
+  failed_skills?: number
+  current_skill_id?: string
+  current_skill_name?: string
+  phase?: 'started' | 'progress' | 'completed' | 'error'
+}
+
 export const skillApi = {
   list: () => api.get<Skill[]>('/skills'),
   get: (id: string) => api.get<Skill>(`/skills/${id}`),
@@ -438,6 +488,8 @@ export const skillApi = {
 
   searchMarket: (params?: MarketSearchParams) =>
     api.get<MarketSearchResponse>('/skills/search', { params }),
+  adviseMarket: (req: MarketplaceAdviceRequest) =>
+    api.post<MarketplaceAdviceResponse>('/skills/advise', req),
   featuredMarket: (params?: { category?: string; source?: string; limit?: number }) =>
     api.get<FeaturedSkillsResponse>('/skills/featured', { params }),
   filtersMarket: () => api.get<SkillFiltersResponse>('/skills/filters'),
@@ -457,6 +509,7 @@ export const skillApi = {
     }),
   discoverRefresh: () => api.post<DiscoverStatusResponse>('/skills/discover/refresh'),
   discoverStatus: () => api.get<DiscoverStatusResponse>('/skills/discover/status'),
+  embeddingStatus: () => api.get<EmbeddingStatusResponse>('/skills/embedding/status'),
   listMarketUpdates: () => api.get<MarketplaceUpdatesResponse>('/skills/updates'),
 
   listSources: () => api.get<SkillSource[]>('/skill-store/sources'),

@@ -138,6 +138,28 @@ type ArtifactRef struct {
 	MetadataJSON string `json:"metadata_json,omitempty"`
 }
 
+type RuntimeEvidenceEntry struct {
+	ID           string    `json:"id"`
+	RunID        string    `json:"run_id"`
+	StepIndex    int       `json:"step_index,omitempty"`
+	PlannerRound int       `json:"planner_round,omitempty"`
+	EventType    string    `json:"event_type"`
+	Summary      string    `json:"summary,omitempty"`
+	PayloadJSON  string    `json:"payload_json,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type RuntimeEvidenceProvider interface {
+	ListRuntimeEvidence(ctx context.Context, run *Run) ([]RuntimeEvidenceEntry, error)
+}
+
+type CheckpointArtifact struct {
+	RunID       string                 `json:"run_id"`
+	GroupItemID string                 `json:"group_item_id,omitempty"`
+	Artifact    ArtifactRef            `json:"artifact"`
+	Payload     map[string]interface{} `json:"payload,omitempty"`
+}
+
 type Manager interface {
 	Submit(ctx context.Context, spec RunSpec) (*Run, error)
 	Get(ctx context.Context, id string) (*Run, error)
@@ -316,16 +338,19 @@ type RunGroupFilter struct {
 }
 
 type RunGroupReport struct {
-	Group         *RunGroup                `json:"group"`
-	Items         []RunGroupItem           `json:"items,omitempty"`
-	VerdictCounts map[string]int           `json:"verdict_counts,omitempty"`
-	OverallScore  float64                  `json:"overall_score,omitempty"`
-	PassRate      float64                  `json:"pass_rate,omitempty"`
-	Breakdown     map[string]interface{}   `json:"breakdown,omitempty"`
-	FailedItems   []map[string]interface{} `json:"failed_items,omitempty"`
-	LinkedRuns    []Run                    `json:"linked_runs,omitempty"`
-	Artifacts     []ArtifactRef            `json:"artifacts,omitempty"`
-	Scorecards    []Scorecard              `json:"scorecards,omitempty"`
+	Group           *RunGroup                         `json:"group"`
+	Items           []RunGroupItem                    `json:"items,omitempty"`
+	VerdictCounts   map[string]int                    `json:"verdict_counts,omitempty"`
+	OverallScore    float64                           `json:"overall_score,omitempty"`
+	PassRate        float64                           `json:"pass_rate,omitempty"`
+	Breakdown       map[string]interface{}            `json:"breakdown,omitempty"`
+	FailedItems     []map[string]interface{}          `json:"failed_items,omitempty"`
+	LinkedRuns      []Run                             `json:"linked_runs,omitempty"`
+	Artifacts       []ArtifactRef                     `json:"artifacts,omitempty"`
+	Scorecards      []Scorecard                       `json:"scorecards,omitempty"`
+	RuntimeEvidence map[string][]RuntimeEvidenceEntry `json:"runtime_evidence,omitempty"`
+	ItemContracts   map[string]HarnessContract        `json:"item_contracts,omitempty"`
+	Checkpoints     []CheckpointArtifact              `json:"checkpoints,omitempty"`
 }
 
 func cloneMetadataMap(in map[string]interface{}) map[string]interface{} {

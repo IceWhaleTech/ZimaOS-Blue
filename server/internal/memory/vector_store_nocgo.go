@@ -65,7 +65,7 @@ func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 }
 
 // Store is unavailable in !cgo builds.
-func (s *VectorStore) Store(context.Context, string, []float32, map[string]string, string) (*MemoryChunk, error) {
+func (s *VectorStore) Store(context.Context, string, []float32, map[string]string) (*MemoryChunk, error) {
 	return nil, errVectorStoreNoCGO
 }
 

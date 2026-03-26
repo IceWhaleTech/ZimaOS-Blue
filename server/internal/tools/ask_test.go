@@ -6,6 +6,19 @@ import (
 	"testing"
 )
 
+func TestAskDefinition_ExposesCanonicalQuestionsOnly(t *testing.T) {
+	tool := NewAskTool(nil)
+	props := tool.Definition().Parameters["properties"].(map[string]interface{})
+	if _, ok := props["questions"]; !ok {
+		t.Fatal("expected questions property in ask schema")
+	}
+	for _, legacy := range []string{"q", "mq", "a", "detail"} {
+		if _, ok := props[legacy]; ok {
+			t.Fatalf("did not expect legacy %q in ask schema", legacy)
+		}
+	}
+}
+
 func TestParseQuestionOptions_ObjectOptions(t *testing.T) {
 	in := []interface{}{
 		map[string]interface{}{

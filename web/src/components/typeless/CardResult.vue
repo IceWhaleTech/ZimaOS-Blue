@@ -1291,13 +1291,24 @@ const visibleDetails = computed(() => {
       if ((lbl === 'result' || lbl === '结果') && props.card.message) return false
       return true
     })
-    .map((d) => ({
-      ...d,
-      parsedObject: tryParseObject(d.value),
-      isMultiline: d.multiline || (typeof d.value === 'string' && d.value.includes('\n')),
-      isLink: typeof d.value === 'string' && (isHttpUrl(d.value) || isApiPath(d.value)),
-      isLocalPath: typeof d.value === 'string' && isLocalAbsolutePath(d.value),
-    }))
+    .map((d) => {
+      const revealPath =
+        typeof d.reveal_path === 'string' && isLocalAbsolutePath(d.reveal_path)
+          ? d.reveal_path.trim()
+          : ''
+      const directPath =
+        typeof d.value === 'string' && isLocalAbsolutePath(d.value) ? d.value.trim() : ''
+      const localPathTarget = revealPath || directPath
+
+      return {
+        ...d,
+        parsedObject: tryParseObject(d.value),
+        isMultiline: d.multiline || (typeof d.value === 'string' && d.value.includes('\n')),
+        isLink: typeof d.value === 'string' && (isHttpUrl(d.value) || isApiPath(d.value)),
+        localPathTarget,
+        isLocalPath: localPathTarget !== '',
+      }
+    })
 })
 </script>
 
@@ -1588,10 +1599,14 @@ const visibleDetails = computed(() => {
                 >{{ t('resultCard.openLink', 'Open') }} ↗</a
               >
             </div>
-            <div v-else-if="detail.isLocalPath" class="flex items-center gap-1.5">
+            <div v-else-if="detail.isLocalPath" class="flex min-w-0 items-center gap-3">
+              <span class="min-w-0 flex-1 break-all text-gray-700 dark:text-gray-300 font-mono text-xs">
+                {{ tDetailValue(detail.label, detail.value)
+                }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template>
+              </span>
               <button
-                class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-                @click="handleRevealLocation(detail.value)"
+                class="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                @click="handleRevealLocation(detail.localPathTarget)"
               >
                 {{ t('common.openLocation', 'Open location') }}
               </button>

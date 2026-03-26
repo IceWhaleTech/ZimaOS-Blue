@@ -122,70 +122,10 @@ proxy:
       max_requests: 100
 
 # =============================================================================
-# Claude Code CLI Configuration
+# Local Coding Runtime Configuration
 # =============================================================================
-# IMPORTANT: This is NOT an LLM provider. Claude Code CLI is a separate tool
-# that enables advanced features like Skills, Tool Calling, File Operations, etc.
-#
-# In the Settings UI, this should appear as a separate section from LLM Providers.
-# =============================================================================
-claude_code_cli:
-  # Master switch - strongly recommended to keep enabled
-  # When disabled, the following features will be unavailable:
-  # - Skills
-  # - Tool Calling (via CLI adapter)
-  # - File Operations
-  # - Terminal Commands
-  # - MCP Integration
-  # - Agent Mode
-  # - Project Context
-  enabled: true  # Default: true (strongly recommended)
-
-  # Installation settings
-  install:
-    path: ""  # Empty = auto-detect or ~/.local/share/zimaos-blue/claude-code
-    auto_update: false
-    verify_checksum: true
-
-  # Download settings
-  download:
-    base_url: "https://storage.googleapis.com/anthropic-public/claude-code"
-    cache_dir: ""  # Empty = ~/.local/share/zimaos-blue/cache
-
-  # Feature toggles (only effective when enabled=true)
-  features:
-    skills: true
-    tool_calling: true
-    file_operations: true
-    terminal_commands: true
-    mcp_integration: true
-    agent_mode: true
-    project_context: true
-
-  # CLI backend settings (for advanced users)
-  backend:
-    command: "claude"
-    workspace_dir: "."
-    default_model: "sonnet"
-    timeout: "5m"
-    session_ttl: "24h"
-    args: ["-p", "--output-format", "text", "--dangerously-skip-permissions"]
-    resume_args: ["-p", "--output-format", "text", "--dangerously-skip-permissions", "--resume", "{sessionId}"]
-    output: "text"
-    resume_output: "text"
-    input: "arg"
-    max_prompt_arg_chars: 100000
-    model_arg: "--model"
-    model_aliases:
-      opus: "opus"
-      sonnet: "sonnet"
-      haiku: "haiku"
-    session_arg: "--session-id"
-    session_mode: "always"
-    system_prompt_arg: "--append-system-prompt"
-    system_prompt_mode: "append"
-    system_prompt_when: "first"
-    serialize: true
+agentcore:
+  workspace_dir: "."
 
 # =============================================================================
 # LLM Provider Configuration

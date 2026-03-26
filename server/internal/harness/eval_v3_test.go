@@ -262,6 +262,81 @@ func TestController_SubmitEvalRunMaterializesGroupAndReport(t *testing.T) {
 	}
 }
 
+func TestMaterializeEvalGroupSpec_NormalizesHarnessContract(t *testing.T) {
+	evalSpec := &EvalSpec{
+		ID:               "eval-spec-contract",
+		Name:             "Contract Eval",
+		RunKind:          RunKindAgentTask,
+		Profile:          "agent_task",
+		DatasetID:        "dataset-1",
+		DatasetVersionID: "version-1",
+		RuntimePolicy: map[string]interface{}{
+			"deliverables":   []interface{}{"ship the parser fix"},
+			"fallback_order": []interface{}{"inspect parser diff", "retry with narrower change"},
+			"browser_checks": []interface{}{
+				map[string]interface{}{
+					"name":                 "open preview",
+					"required_observation": "browser_used",
+					"require_screenshot":   true,
+				},
+			},
+		},
+	}
+	dataset := &Dataset{
+		ID:             "dataset-1",
+		Name:           "Dataset",
+		DefaultRunKind: RunKindAgentTask,
+		DefaultProfile: "agent_task",
+	}
+	version := &DatasetVersion{
+		ID:        "version-1",
+		DatasetID: dataset.ID,
+		Version:   "v1",
+		Manifest: map[string]interface{}{
+			"defaults": map[string]interface{}{
+				"run_kind": "agent_task",
+				"profile":  "agent_task",
+			},
+			"items": []interface{}{
+				map[string]interface{}{
+					"id": "case-1",
+					"input": map[string]interface{}{
+						"goal": "fix the parser",
+					},
+					"expected": map[string]interface{}{
+						"required_tool_calls": []interface{}{"write"},
+					},
+				},
+			},
+		},
+	}
+
+	groupSpec, err := materializeEvalGroupSpec(evalSpec, dataset, version, EvalRunSpec{})
+	if err != nil {
+		t.Fatalf("materializeEvalGroupSpec failed: %v", err)
+	}
+	if len(groupSpec.Items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(groupSpec.Items))
+	}
+	groupContract := nestedMetadataMap(groupSpec.Metadata, "harness_contract")
+	if len(groupContract) == 0 {
+		t.Fatalf("expected group metadata to include normalized harness_contract, got %#v", groupSpec.Metadata)
+	}
+	itemContract := nestedMetadataMap(groupSpec.Items[0].Metadata, "harness_contract")
+	if len(itemContract) == 0 {
+		t.Fatalf("expected item metadata to include normalized harness_contract, got %#v", groupSpec.Items[0].Metadata)
+	}
+	if got := decodeStringSlice(groupSpec.Items[0].Metadata["task_success_criteria"]); len(got) == 0 || got[0] != "ship the parser fix" {
+		t.Fatalf("task_success_criteria = %#v, want deliverables propagated", groupSpec.Items[0].Metadata["task_success_criteria"])
+	}
+	if got := decodeStringSlice(groupSpec.Items[0].Expected["required_tool_calls"]); len(got) != 1 || got[0] != "write" {
+		t.Fatalf("required_tool_calls = %#v, want [write]", groupSpec.Items[0].Expected["required_tool_calls"])
+	}
+	if got := groupSpec.Items[0].Expected["browser_checks"]; got == nil {
+		t.Fatalf("expected browser_checks to be projected into expected contract, got %#v", groupSpec.Items[0].Expected)
+	}
+}
+
 func TestController_PromoteGroupCreatesReusableEvalAssets(t *testing.T) {
 	controller := newTestController(t)
 	controller.RegisterDriver(&autoCompleteGroupDriver{

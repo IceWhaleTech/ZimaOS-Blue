@@ -202,6 +202,40 @@ func TestPDFToolReadExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 }
 
+func TestPDFToolReadExecuteSupportsGroupedIncludeAndFallbackMode(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello world", Document: pdfextract.DocumentInfo{FileName: "report.pdf"}}}
+	tool := NewPDFTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":          path,
+		"fallback_mode": "text_only",
+		"include": map[string]interface{}{
+			"pages":           true,
+			"layout":          true,
+			"headers_footers": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !svc.lastExtractReq.IncludePages {
+		t.Fatal("expected include pages to be true")
+	}
+	if !svc.lastExtractReq.IncludeLayout {
+		t.Fatal("expected include layout to be true")
+	}
+	if !svc.lastExtractReq.IncludeHeadersFooters {
+		t.Fatal("expected include headers/footers to be true")
+	}
+	if !svc.lastExtractReq.DisableOCR {
+		t.Fatal("expected disable OCR to be true for text_only mode")
+	}
+	if !svc.lastExtractReq.DisableVision {
+		t.Fatal("expected disable vision to be true for text_only mode")
+	}
+}
+
 func TestPDFToolReadExecuteParsesPages(t *testing.T) {
 	path := writeTestPDF(t, "report.pdf", 256)
 	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello", SelectedPages: []int{1, 3, 4}}}

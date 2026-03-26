@@ -82,6 +82,12 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Browser.Lightpanda.Enabled {
 		t.Errorf("Browser.Lightpanda.Enabled = %v, want false", cfg.Browser.Lightpanda.Enabled)
 	}
+	if !cfg.Browser.LightpandaAutoDownload() {
+		t.Errorf("Browser.LightpandaAutoDownload() = %v, want true", cfg.Browser.LightpandaAutoDownload())
+	}
+	if got := cfg.Browser.LightpandaDownloadTimeout(); got != 20*time.Minute {
+		t.Errorf("Browser.LightpandaDownloadTimeout() = %v, want %v", got, 20*time.Minute)
+	}
 	if !cfg.Browser.PreferLocalChrome() {
 		t.Errorf("Browser.PreferLocalChrome() = %v, want true", cfg.Browser.PreferLocalChrome())
 	}
@@ -151,6 +157,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Security.Password.MinLength != 8 {
 		t.Errorf("Security.Password.MinLength = %v, want %v", cfg.Security.Password.MinLength, 8)
 	}
+	if cfg.AgentCore.WorkspaceDir != "." {
+		t.Errorf("AgentCore.WorkspaceDir = %q, want %q", cfg.AgentCore.WorkspaceDir, ".")
+	}
 }
 
 func TestLoad_DefaultPasswordMinLength(t *testing.T) {
@@ -197,6 +206,8 @@ browser:
   lightpanda:
     enabled: true
     binary_path: "/tmp/lightpanda"
+    auto_download: false
+    download_timeout: "7m"
     args: ["--headless"]
   chromium:
     prefer_local_chrome: false
@@ -274,6 +285,12 @@ performance:
 	if cfg.Browser.Lightpanda.BinaryPath != "/tmp/lightpanda" {
 		t.Fatalf("Browser.Lightpanda.BinaryPath = %q, want /tmp/lightpanda", cfg.Browser.Lightpanda.BinaryPath)
 	}
+	if cfg.Browser.LightpandaAutoDownload() {
+		t.Fatalf("Browser.LightpandaAutoDownload() = true, want false")
+	}
+	if got := cfg.Browser.LightpandaDownloadTimeout(); got != 7*time.Minute {
+		t.Fatalf("Browser.LightpandaDownloadTimeout() = %v, want %v", got, 7*time.Minute)
+	}
 	if len(cfg.Browser.Lightpanda.Args) != 1 || cfg.Browser.Lightpanda.Args[0] != "--headless" {
 		t.Fatalf("Browser.Lightpanda.Args = %#v, want [--headless]", cfg.Browser.Lightpanda.Args)
 	}
@@ -288,6 +305,65 @@ performance:
 	}
 	if cfg.Performance.ResourceReclaim.STTIdleAfter != 3*time.Minute {
 		t.Errorf("Performance.ResourceReclaim.STTIdleAfter = %v, want %v", cfg.Performance.ResourceReclaim.STTIdleAfter, 3*time.Minute)
+	}
+}
+
+func TestLoad_LegacyWorkspaceDirMigratesToAgentCore(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name          string
+		configContent string
+		want          string
+	}{
+		{
+			name: "agentcore key wins",
+			configContent: `
+agentcore:
+  workspace_dir: "/tmp/agentcore-workspace"
+claude_code_cli:
+  backend:
+    workspace_dir: "/tmp/legacy-cli-workspace"
+claudecode:
+  workspace_dir: "/tmp/legacy-claudecode-workspace"
+`,
+			want: "/tmp/agentcore-workspace",
+		},
+		{
+			name: "legacy claude_code_cli key migrates",
+			configContent: `
+claude_code_cli:
+  backend:
+    workspace_dir: "/tmp/legacy-cli-workspace"
+`,
+			want: "/tmp/legacy-cli-workspace",
+		},
+		{
+			name: "legacy claudecode key migrates",
+			configContent: `
+claudecode:
+  workspace_dir: "/tmp/legacy-claudecode-workspace"
+`,
+			want: "/tmp/legacy-claudecode-workspace",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(tmpDir, strings.ReplaceAll(tt.name, " ", "_")+".yaml")
+			if err := os.WriteFile(configPath, []byte(strings.TrimSpace(tt.configContent)), 0644); err != nil {
+				t.Fatalf("write config file: %v", err)
+			}
+
+			cfg, err := Load(configPath)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+
+			if cfg.AgentCore.WorkspaceDir != tt.want {
+				t.Fatalf("AgentCore.WorkspaceDir = %q, want %q", cfg.AgentCore.WorkspaceDir, tt.want)
+			}
+		})
 	}
 }
 

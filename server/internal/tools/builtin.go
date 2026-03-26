@@ -450,6 +450,7 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		return nil, errors.New("line must be >= 1")
 	}
 
+	originalPath := path
 	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, "file_write", path, false)
 	if err != nil {
 		return nil, err
@@ -494,10 +495,12 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 			size = info.Size()
 		}
 		response := map[string]interface{}{
-			"path":    relPath,
-			"size":    size,
-			"success": true,
-			"line":    line,
+			"path":          relPath,
+			"absolute_path": absPath,
+			"original_path": originalPath,
+			"size":          size,
+			"success":       true,
+			"line":          line,
 		}
 		jsonResult, _ := json.Marshal(response)
 		return string(jsonResult), nil
@@ -527,10 +530,12 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 	}
 
 	response := map[string]interface{}{
-		"path":    relPath,
-		"size":    size,
-		"success": true,
-		"append":  appendMode,
+		"path":          relPath,
+		"absolute_path": absPath,
+		"original_path": originalPath,
+		"size":          size,
+		"success":       true,
+		"append":        appendMode,
 	}
 	jsonResult, _ := json.Marshal(response)
 	return string(jsonResult), nil

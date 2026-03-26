@@ -307,6 +307,152 @@ skill_market:
 	}
 }
 
+func TestBlueBinarySkillMarketStatusEndpointsMigrateLegacyFTSWithoutFTS5Module(t *testing.T) {
+	if defaultBuildSupportsFTS5(t) {
+		t.Skip("test requires the default sqlite build without FTS5 support")
+	}
+
+	homeDir := t.TempDir()
+	configPath := filepath.Join(homeDir, "config.yaml")
+	dbPath := filepath.Join(homeDir, ".zimaos-blue", "data", "blue.db")
+	sockPath := filepath.Join(os.TempDir(), fmt.Sprintf("blue-e2e-status-%d.sock", time.Now().UnixNano()))
+	_ = os.Remove(sockPath)
+	defer os.Remove(sockPath)
+	port := freeLocalPort(t)
+
+	createLegacySkillMarketFTSFixture(t, dbPath)
+
+	configYAML := fmt.Sprintf(`server:
+  host: "127.0.0.1"
+  port: %d
+  port_auto_fallback: false
+
+log:
+  level: "warn"
+  format: "console"
+  output: "stdout"
+
+proxy:
+  enabled: false
+
+update:
+  enabled: false
+
+companion:
+  enabled: false
+
+skill_market:
+  enabled: true
+  seed_urls: []
+  curated_config_path: "%s"
+  curated_config_urls: []
+`, port, filepath.Join(homeDir, "missing-curations.yaml"))
+
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	binPath := buildBlueBinary(t)
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	var logs bytes.Buffer
+	cmd := exec.CommandContext(ctx, binPath, "--config", configPath)
+	cmd.Dir = filepath.Dir(binPath)
+	cmd.Env = append(os.Environ(),
+		"HOME="+homeDir,
+		"BLUE_IPC_SOCKET="+sockPath,
+	)
+	cmd.Stdout = &logs
+	cmd.Stderr = &logs
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start blue binary: %v", err)
+	}
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+		if t.Failed() {
+			t.Logf("blue logs:\n%s", logs.String())
+		}
+	}()
+
+	waitForConditionOrFail(t, 30*time.Second, 200*time.Millisecond, logs.String, func() bool {
+		resp, err := http.Get(baseURL + "/api/v1/system/mode")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return false
+		}
+		var payload struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			return false
+		}
+		return payload.Mode == "preview"
+	}, "timed out waiting for blue preview mode")
+
+	token := fetchPreviewToken(t, baseURL)
+
+	discoverStatus := fetchMarketplaceStatus(t, baseURL, token, "/api/v1/skills/discover/status")
+	if discoverStatus.Running {
+		t.Fatalf("discover status unexpectedly running: %+v", discoverStatus)
+	}
+	if strings.TrimSpace(discoverStatus.LastError) != "" {
+		t.Fatalf("discover status last_error = %q, want empty", discoverStatus.LastError)
+	}
+
+	embeddingStatus := fetchMarketplaceStatus(t, baseURL, token, "/api/v1/skills/embedding/status")
+	if embeddingStatus.Running {
+		t.Fatalf("embedding status unexpectedly running: %+v", embeddingStatus)
+	}
+	if strings.TrimSpace(embeddingStatus.LastError) != "" {
+		t.Fatalf("embedding status last_error = %q, want empty", embeddingStatus.LastError)
+	}
+
+	searchReq, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/skills/search?q=legacy&page=1&page_size=20", nil)
+	if err != nil {
+		t.Fatalf("new search request: %v", err)
+	}
+	searchReq.Header.Set("Authorization", "Bearer "+token)
+	searchResp, err := http.DefaultClient.Do(searchReq)
+	if err != nil {
+		t.Fatalf("GET /skills/search error = %v", err)
+	}
+	defer searchResp.Body.Close()
+	body, _ := io.ReadAll(searchResp.Body)
+	if searchResp.StatusCode != http.StatusOK {
+		t.Fatalf("search status = %d, want 200, body=%s", searchResp.StatusCode, string(body))
+	}
+	if bytes.Contains(bytes.ToLower(body), []byte("no such module: fts5")) {
+		t.Fatalf("search response still references missing FTS5 module: %s", string(body))
+	}
+
+	var searchPayload struct {
+		Skills []struct {
+			Skill struct {
+				ID string `json:"id"`
+			} `json:"skill"`
+		} `json:"skills"`
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal(body, &searchPayload); err != nil {
+		t.Fatalf("decode search payload: %v", err)
+	}
+	if searchPayload.Total != 1 || len(searchPayload.Skills) != 1 {
+		t.Fatalf("unexpected search payload: %+v", searchPayload)
+	}
+	if searchPayload.Skills[0].Skill.ID != "legacy-skill" {
+		t.Fatalf("search returned skill id = %q, want legacy-skill", searchPayload.Skills[0].Skill.ID)
+	}
+}
+
 func buildBlueBinary(t *testing.T) string {
 	t.Helper()
 
@@ -323,6 +469,19 @@ func buildBlueBinary(t *testing.T) string {
 		t.Fatalf("build blue binary: %v\n%s", err, string(output))
 	}
 	return binPath
+}
+
+func defaultBuildSupportsFTS5(t *testing.T) bool {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "fts-probe.db"))
+	if err != nil {
+		t.Fatalf("open sqlite probe db: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE VIRTUAL TABLE fts_probe USING fts5(content)`)
+	return err == nil
 }
 
 func freeLocalPort(t *testing.T) int {
@@ -400,6 +559,92 @@ func configureSingleDiscoverSource(t *testing.T, dbPath, upstreamURL string) {
 	}, "timed out preparing single skill market source")
 }
 
+func createLegacySkillMarketFTSFixture(t *testing.T, dbPath string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatalf("create db directory: %v", err)
+	}
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skipf("sqlite3 CLI unavailable: %v", err)
+	}
+
+	cmd := exec.Command("sqlite3", dbPath)
+	cmd.Stdin = strings.NewReader(`
+	CREATE TABLE skills (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		version TEXT,
+		summary TEXT,
+		description TEXT,
+		author TEXT,
+		category TEXT,
+		tags TEXT,
+		source_id TEXT NOT NULL,
+		source_name TEXT,
+		homepage TEXT,
+		download_url TEXT,
+		stars INTEGER DEFAULT 0,
+		downloads INTEGER DEFAULT 0,
+		reviews INTEGER DEFAULT 0,
+		rating REAL DEFAULT 0.0,
+		versions INTEGER DEFAULT 0,
+		changelog TEXT,
+		readme TEXT,
+		readme_hash TEXT,
+		dedup_key TEXT,
+		installed INTEGER DEFAULT 0,
+		enabled INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		search_content TEXT,
+		skill_content TEXT
+	);
+	INSERT INTO skills (
+		id, name, version, summary, description, author, category, tags, source_id, source_name,
+		homepage, download_url, stars, downloads, reviews, rating, versions, changelog, readme,
+		readme_hash, dedup_key, installed, enabled, search_content, skill_content
+	) VALUES (
+		'legacy-skill', 'Legacy Skill', '1.0.0', 'legacy summary', 'legacy description', 'legacy-author',
+		'development', 'git,legacy', 'legacy-source', 'Legacy Source', 'https://example.com',
+		'https://example.com/archive.zip', 12, 34, 0, 0.0, 0, '', '# Legacy', '', '', 0, 0,
+		'legacy skill legacy description git legacy', '# Legacy'
+	);
+	CREATE VIRTUAL TABLE skills_fts USING fts5(
+		id, name, summary, description, author, category, tags, readme,
+		content='skills', content_rowid='rowid'
+	);
+	CREATE TRIGGER skills_au AFTER UPDATE ON skills BEGIN
+		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
+		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
+	END;
+	CREATE VIRTUAL TABLE skillmarket_fts USING fts5(
+		id UNINDEXED,
+		name,
+		description,
+		author,
+		category,
+		tags,
+		skill_content,
+		content='skills',
+		content_rowid='rowid'
+	);
+	CREATE TRIGGER skillmarket_au AFTER UPDATE ON skills BEGIN
+		INSERT INTO skillmarket_fts(skillmarket_fts, rowid, id, name, description, author, category, tags, skill_content)
+		VALUES ('delete', old.rowid, old.id, old.name, old.description, old.author, old.category, old.tags, old.skill_content);
+		INSERT INTO skillmarket_fts(rowid, id, name, description, author, category, tags, skill_content)
+		VALUES (new.rowid, new.id, new.name, new.description, new.author, new.category, new.tags, new.skill_content);
+	END;
+	`)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sqlite3 fixture setup failed: %v\n%s", err, output)
+	}
+}
+
 func fetchPreviewToken(t *testing.T, baseURL string) string {
 	t.Helper()
 
@@ -427,6 +672,41 @@ func fetchPreviewToken(t *testing.T, baseURL string) string {
 		t.Fatal("preview token is empty")
 	}
 	return payload.Token
+}
+
+func fetchMarketplaceStatus(t *testing.T, baseURL, token, path string) struct {
+	Running   bool   `json:"running"`
+	LastError string `json:"last_error"`
+} {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
+	if err != nil {
+		t.Fatalf("new %s request: %v", path, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s error = %v", path, err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("%s status = %d, want 200, body=%s", path, resp.StatusCode, string(body))
+	}
+	if bytes.Contains(bytes.ToLower(body), []byte("no such module: fts5")) {
+		t.Fatalf("%s still references missing FTS5 module: %s", path, string(body))
+	}
+
+	var payload struct {
+		Running   bool   `json:"running"`
+		LastError string `json:"last_error"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode %s payload: %v", path, err)
+	}
+	return payload
 }
 
 func primeMarketplaceService(t *testing.T, baseURL, token string) {

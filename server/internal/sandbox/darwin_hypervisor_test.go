@@ -50,6 +50,9 @@ func TestHypervisorExecutor_Execute(t *testing.T) {
 	if err != nil {
 		t.Skipf("Skipping test: %v", err)
 	}
+	if !executor.IsSupported() {
+		t.Skip("hypervisor sandbox is not supported in this environment")
+	}
 
 	req := NewExecutionRequest("echo", "hello from hypervisor")
 	req.Timeout = 10 * time.Second
@@ -80,6 +83,9 @@ func TestHypervisorExecutor_Execute_WithEnv(t *testing.T) {
 	if err != nil {
 		t.Skipf("Skipping test: %v", err)
 	}
+	if !executor.IsSupported() {
+		t.Skip("hypervisor sandbox is not supported in this environment")
+	}
 
 	req := NewExecutionRequest("printenv", "TEST_VAR")
 	req.Env = map[string]string{"TEST_VAR": "hypervisor_test_value"}
@@ -103,6 +109,9 @@ func TestHypervisorExecutor_Execute_Timeout(t *testing.T) {
 	executor, err := NewHypervisorExecutor(config, nil)
 	if err != nil {
 		t.Skipf("Skipping test: %v", err)
+	}
+	if !executor.IsSupported() {
+		t.Skip("hypervisor sandbox is not supported in this environment")
 	}
 
 	req := NewExecutionRequest("sleep", "10")

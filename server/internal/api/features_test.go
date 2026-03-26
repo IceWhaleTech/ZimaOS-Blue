@@ -144,9 +144,8 @@ func TestFeaturesHandler_GetCLIDependentFeatures(t *testing.T) {
 		t.Fatal("expected 'features' to be an array")
 	}
 
-	// Should have CLI-dependent features
-	if len(featuresArr) == 0 {
-		t.Error("expected at least one CLI-dependent feature")
+	if len(featuresArr) != 0 {
+		t.Errorf("expected no CLI-dependent features, got %d", len(featuresArr))
 	}
 }
 
@@ -210,36 +209,6 @@ func TestFeatureMiddleware_Enabled(t *testing.T) {
 
 func TestFeatureMiddleware_Disabled(t *testing.T) {
 	gate := features.NewFeatureGate()
-	// tool_calling requires CLI, which is not installed
-	middleware := FeatureMiddleware(gate, features.FeatureToolCalling)
-
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	handlerCalled := false
-	handler := func(c echo.Context) error {
-		handlerCalled = true
-		return c.String(http.StatusOK, "OK")
-	}
-
-	if err := middleware(handler)(c); err != nil {
-		t.Fatalf("middleware failed: %v", err)
-	}
-
-	if handlerCalled {
-		t.Error("expected handler NOT to be called")
-	}
-
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected status 403, got %d", rec.Code)
-	}
-}
-
-func TestFeatureMiddleware_EnabledWithCLI(t *testing.T) {
-	gate := features.NewFeatureGate()
-	gate.SetCLIInstalled(true)
 	middleware := FeatureMiddleware(gate, features.FeatureToolCalling)
 
 	e := echo.New()
@@ -258,6 +227,35 @@ func TestFeatureMiddleware_EnabledWithCLI(t *testing.T) {
 	}
 
 	if !handlerCalled {
-		t.Error("expected handler to be called when CLI is installed")
+		t.Error("expected handler to be called")
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+}
+
+func TestFeatureMiddleware_EnabledWithCLI(t *testing.T) {
+	gate := features.NewFeatureGate()
+	gate.SetCLIInstalled(false)
+	middleware := FeatureMiddleware(gate, features.FeatureToolCalling)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	handlerCalled := false
+	handler := func(c echo.Context) error {
+		handlerCalled = true
+		return c.String(http.StatusOK, "OK")
+	}
+
+	if err := middleware(handler)(c); err != nil {
+		t.Fatalf("middleware failed: %v", err)
+	}
+
+	if !handlerCalled {
+		t.Error("expected handler to be called even when legacy CLI flag is false")
 	}
 }

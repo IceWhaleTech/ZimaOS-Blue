@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { browserMonitorLocales } from '@/i18n/browser-monitor-locales'
-import type { LocaleMessages } from '@/i18n/merge'
+type LocaleMessages = Record<string, unknown>
 
 const requiredKeys = [
   'blockerFallback',
@@ -46,7 +45,6 @@ const requiredKeys = [
   'refresh',
   'refreshing',
   'screenshotError',
-  'showTooltip',
   'stageRunning',
   'subtitle',
   'tabsShort',
@@ -104,54 +102,11 @@ describe('browser monitor locale coverage', () => {
     expect(sources.size).toBe(27)
 
     for (const [fileName, source] of sources) {
-      expect(source, `${fileName} should declare browserMonitor`).toMatch(/\bbrowserMonitor:\s*/)
+      expect(source, `${fileName} should declare browserMonitor`).toMatch(/"browserMonitor"\s*:/)
     }
   })
 
-  it('ships browser monitor translations for all 27 locales', () => {
-    expect(Object.keys(browserMonitorLocales).sort()).toEqual([
-      'ca-ES',
-      'cs-CZ',
-      'da-DK',
-      'de-DE',
-      'el-GR',
-      'en-GB',
-      'en-US',
-      'es-ES',
-      'fr-FR',
-      'ga-IE',
-      'hr-HR',
-      'hu-HU',
-      'it-IT',
-      'ja-JP',
-      'ko-KR',
-      'ml-IN',
-      'nb-NO',
-      'nl-NL',
-      'pl-PL',
-      'pt-BR',
-      'pt-PT',
-      'ro-RO',
-      'ru-RU',
-      'sk-SK',
-      'sv-SE',
-      'zh-CN',
-      'zh-TW',
-    ])
-
-    for (const [locale, messages] of Object.entries(browserMonitorLocales)) {
-      for (const key of requiredKeys) {
-        const value = messages[key]
-        expect(typeof value, `${locale} should provide browserMonitor.${key}`).toBe('string')
-        expect(
-          value.trim().length,
-          `${locale} should not leave browserMonitor.${key} empty`
-        ).toBeGreaterThan(0)
-      }
-    }
-  })
-
-  it('exposes browserMonitor keys in every merged locale module', () => {
+  it('exposes browserMonitor keys in every final locale module', () => {
     const messagesByFile = new Map(
       Object.entries(localeModules).map(([modulePath, mod]) => [
         fileNameFromModulePath(modulePath),

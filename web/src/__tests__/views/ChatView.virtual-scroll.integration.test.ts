@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   settingsStore: {
     agentAutoConfirm: false,
     agentMode: false,
-    claudeCodeEnabled: false,
     showToolDetails: true,
     selectedProvider: 'openai',
     selectedModel: 'gpt-4o-mini',
@@ -433,6 +432,7 @@ async function mountIntegratedChatView() {
     routes: [
       { path: '/chat', component: { template: '<div />' } },
       { path: '/settings', component: { template: '<div />' } },
+      { path: '/security', component: { template: '<div />' } },
     ],
   })
   router.push('/chat')

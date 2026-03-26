@@ -19,71 +19,35 @@ import (
 )
 
 type Config struct {
-	Server        ServerConfig         `yaml:"server"`
-	Log           LogConfig            `yaml:"log"`
-	Worker        WorkerConfig         `yaml:"worker"`
-	Resources     ResourcesConfig      `yaml:"resources"`
-	Cgroup        CgroupConfig         `yaml:"cgroup"`
-	Channels      channelconfig.Config `yaml:"channels"`
-	Performance   PerformanceConfig    `yaml:"performance"`
-	Security      SecurityConfig       `yaml:"security"`
-	LLM           LLMConfig            `yaml:"llm"`
-	Session       SessionConfig        `yaml:"session"`
-	Embedding     EmbeddingConfig      `yaml:"embedding"`
-	Memory        MemoryConfig         `yaml:"memory"`
-	Grayscale     GrayscaleConfig      `yaml:"grayscale"`
-	Companion     CompanionConfig      `yaml:"companion"`
-	ClaudeCodeCLI ClaudeCodeCLIConfig  `yaml:"claude_code_cli"` // v0.10.3: Separated from LLM
-	FirstRun      FirstRunConfig       `yaml:"first_run"`       // v0.10.3
-	CCSwitch      CCSwitchConfig       `yaml:"cc_switch"`       // v0.10.3
-	Statistics    StatisticsConfig     `yaml:"statistics"`      // v0.10.3
-	ToolCalling   ToolCallingConfig    `yaml:"tool_calling"`    // v0.10.3
-	Media         MediaConfig          `yaml:"media"`
-	SkillMarket   SkillMarketConfig    `yaml:"skill_market"`
-	Browser       browser.Config       `yaml:"browser"`
-	Agents        AgentsConfig         `yaml:"agents"`    // v0.11.0
-	Research      ResearchConfig       `yaml:"research"`  // v0.11.x
-	Harness       HarnessConfig        `yaml:"harness"`   // v0.11.x
-	Proxy         *proxy.ProxyConfig   `yaml:"proxy"`     // v0.10.5.1: API Proxy
-	Pruner        *pruner.Config       `yaml:"pruner"`    // v0.10.27: Context Pruner
-	Update        UpdateConfig         `yaml:"update"`    // OTA Update
-	Heartbeat     HeartbeatConfig      `yaml:"heartbeat"` // Heartbeat agent polling
-
-	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
-	ClaudeCode ClaudeCodeConfig `yaml:"claudecode"`
-}
-
-// ClaudeCodeConfig holds Claude Code CLI integration configuration (v0.10).
-// Deprecated: Use ClaudeCodeCLIConfig instead.
-type ClaudeCodeConfig struct {
-	Enabled      bool                    `yaml:"enabled"`
-	Command      string                  `yaml:"command"`
-	WorkspaceDir string                  `yaml:"workspace_dir"`
-	DefaultModel string                  `yaml:"default_model"`
-	Timeout      time.Duration           `yaml:"timeout"`
-	SessionTTL   time.Duration           `yaml:"session_ttl"`
-	APIKey       string                  `yaml:"api_key"`
-	BaseURL      string                  `yaml:"base_url"`
-	Backend      ClaudeCodeBackendConfig `yaml:"backend"`
-}
-
-// ClaudeCodeBackendConfig holds CLI backend configuration.
-type ClaudeCodeBackendConfig struct {
-	Args              []string          `yaml:"args"`
-	ResumeArgs        []string          `yaml:"resume_args"`
-	Output            string            `yaml:"output"`
-	Input             string            `yaml:"input"`
-	MaxPromptArgChars int               `yaml:"max_prompt_arg_chars"`
-	Env               map[string]string `yaml:"env"`
-	ClearEnv          []string          `yaml:"clear_env"`
-	ModelArg          string            `yaml:"model_arg"`
-	ModelAliases      map[string]string `yaml:"model_aliases"`
-	SessionArg        string            `yaml:"session_arg"`
-	SessionMode       string            `yaml:"session_mode"`
-	SystemPromptArg   string            `yaml:"system_prompt_arg"`
-	SystemPromptMode  string            `yaml:"system_prompt_mode"`
-	SystemPromptWhen  string            `yaml:"system_prompt_when"`
-	Serialize         bool              `yaml:"serialize"`
+	Server      ServerConfig         `yaml:"server"`
+	Log         LogConfig            `yaml:"log"`
+	Worker      WorkerConfig         `yaml:"worker"`
+	Resources   ResourcesConfig      `yaml:"resources"`
+	Cgroup      CgroupConfig         `yaml:"cgroup"`
+	Channels    channelconfig.Config `yaml:"channels"`
+	Performance PerformanceConfig    `yaml:"performance"`
+	Security    SecurityConfig       `yaml:"security"`
+	LLM         LLMConfig            `yaml:"llm"`
+	Session     SessionConfig        `yaml:"session"`
+	Embedding   EmbeddingConfig      `yaml:"embedding"`
+	Memory      MemoryConfig         `yaml:"memory"`
+	Grayscale   GrayscaleConfig      `yaml:"grayscale"`
+	Companion   CompanionConfig      `yaml:"companion"`
+	AgentCore   AgentCoreConfig      `yaml:"agentcore"`
+	FirstRun    FirstRunConfig       `yaml:"first_run"`    // v0.10.3
+	CCSwitch    CCSwitchConfig       `yaml:"cc_switch"`    // v0.10.3
+	Statistics  StatisticsConfig     `yaml:"statistics"`   // v0.10.3
+	ToolCalling ToolCallingConfig    `yaml:"tool_calling"` // v0.10.3
+	Media       MediaConfig          `yaml:"media"`
+	SkillMarket SkillMarketConfig    `yaml:"skill_market"`
+	Browser     browser.Config       `yaml:"browser"`
+	Agents      AgentsConfig         `yaml:"agents"`    // v0.11.0
+	Research    ResearchConfig       `yaml:"research"`  // v0.11.x
+	Harness     HarnessConfig        `yaml:"harness"`   // v0.11.x
+	Proxy       *proxy.ProxyConfig   `yaml:"proxy"`     // v0.10.5.1: API Proxy
+	Pruner      *pruner.Config       `yaml:"pruner"`    // v0.10.27: Context Pruner
+	Update      UpdateConfig         `yaml:"update"`    // OTA Update
+	Heartbeat   HeartbeatConfig      `yaml:"heartbeat"` // Heartbeat agent polling
 }
 
 // CompanionConfig holds Echo Companion monitoring configuration (v0.9.1).
@@ -468,12 +432,47 @@ func Load(configPath string) (*Config, error) {
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
 			return nil, err
 		}
+		applyLegacyAgentCoreWorkspaceOverride(&cfg, data)
 	}
 
 	// Override from environment variables
 	applyEnvOverrides(&cfg)
 
 	return &cfg, nil
+}
+
+type legacyConfigWorkspace struct {
+	AgentCore struct {
+		WorkspaceDir string `yaml:"workspace_dir"`
+	} `yaml:"agentcore"`
+	ClaudeCodeCLI struct {
+		Backend struct {
+			WorkspaceDir string `yaml:"workspace_dir"`
+		} `yaml:"backend"`
+	} `yaml:"claude_code_cli"`
+	ClaudeCode struct {
+		WorkspaceDir string `yaml:"workspace_dir"`
+	} `yaml:"claudecode"`
+}
+
+func applyLegacyAgentCoreWorkspaceOverride(cfg *Config, raw []byte) {
+	if cfg == nil || len(raw) == 0 {
+		return
+	}
+
+	var legacy legacyConfigWorkspace
+	if err := yaml.Unmarshal(raw, &legacy); err != nil {
+		return
+	}
+
+	switch {
+	case strings.TrimSpace(legacy.AgentCore.WorkspaceDir) != "":
+		cfg.AgentCore.WorkspaceDir = legacy.AgentCore.WorkspaceDir
+	case strings.TrimSpace(legacy.ClaudeCodeCLI.Backend.WorkspaceDir) != "":
+		cfg.AgentCore.WorkspaceDir = legacy.ClaudeCodeCLI.Backend.WorkspaceDir
+	case strings.TrimSpace(legacy.ClaudeCode.WorkspaceDir) != "":
+		cfg.AgentCore.WorkspaceDir = legacy.ClaudeCode.WorkspaceDir
+	}
 }
 
 // applyEnvOverrides applies BLUE_* environment variable overrides to the config.
@@ -752,30 +751,17 @@ func defaults() Config {
 			Security:    CompanionSecurityConfig{PromptGuardIntegration: true, AuditLogIntegration: true, SandboxMonitor: true},
 			Performance: CompanionPerformanceConfig{MaxConcurrentSessions: 1000, EventBufferSize: 10000, BatchWriteInterval: time.Second},
 		},
-		ClaudeCode: ClaudeCodeConfig{
-			Command: "claude", WorkspaceDir: ".", DefaultModel: "sonnet", Timeout: 5 * time.Minute, SessionTTL: 24 * time.Hour,
-			Backend: ClaudeCodeBackendConfig{
-				Args:       []string{"-p", "--output-format", "json", "--dangerously-skip-permissions"},
-				ResumeArgs: []string{"-p", "--output-format", "json", "--dangerously-skip-permissions", "--resume", "{sessionId}"},
-				Output:     "json", Input: "arg", MaxPromptArgChars: 100000, ModelArg: "--model",
-				ModelAliases: map[string]string{"opus": "opus", "sonnet": "sonnet", "haiku": "haiku"},
-				SessionArg:   "--session-id", SessionMode: "always",
-				SystemPromptArg: "--append-system-prompt", SystemPromptMode: "append", SystemPromptWhen: "first",
-				ClearEnv: []string{"ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_OLD"}, Serialize: true,
-			},
-		},
-
-		ClaudeCodeCLI: *DefaultClaudeCodeCLIConfig(),
-		FirstRun:      *DefaultFirstRunConfig(),
-		CCSwitch:      *DefaultCCSwitchConfig(),
-		Statistics:    *DefaultStatisticsConfig(),
-		ToolCalling:   *DefaultToolCallingConfig(),
-		Media:         *DefaultMediaConfig(),
-		SkillMarket:   *DefaultSkillMarketConfig(),
-		Browser:       *browser.DefaultConfig(),
-		Agents:        *DefaultAgentsConfig(),
-		Research:      *DefaultResearchConfig(),
-		Harness:       *DefaultHarnessConfig(),
+		AgentCore:   *DefaultAgentCoreConfig(),
+		FirstRun:    *DefaultFirstRunConfig(),
+		CCSwitch:    *DefaultCCSwitchConfig(),
+		Statistics:  *DefaultStatisticsConfig(),
+		ToolCalling: *DefaultToolCallingConfig(),
+		Media:       *DefaultMediaConfig(),
+		SkillMarket: *DefaultSkillMarketConfig(),
+		Browser:     *browser.DefaultConfig(),
+		Agents:      *DefaultAgentsConfig(),
+		Research:    *DefaultResearchConfig(),
+		Harness:     *DefaultHarnessConfig(),
 
 		Proxy: &proxy.ProxyConfig{
 			Enabled: true,

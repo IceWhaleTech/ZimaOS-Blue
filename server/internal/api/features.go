@@ -89,6 +89,9 @@ func (h *FeaturesHandler) GetFeature(c echo.Context) error {
 // GetCLIDependentFeatures returns features that require CLI.
 func (h *FeaturesHandler) GetCLIDependentFeatures(c echo.Context) error {
 	cliFeatures := h.gate.GetCLIDependentFeatures()
+	if cliFeatures == nil {
+		cliFeatures = []features.FeatureInfo{}
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"cli_installed": h.gate.IsCLIInstalled(),
@@ -123,7 +126,7 @@ func FeatureMiddleware(gate *features.FeatureGate, feature features.Feature) ech
 					response["description"] = info.Description
 				}
 				if info != nil && info.RequiresCLI && !gate.IsCLIInstalled() {
-					response["message"] = "This feature requires Claude Code CLI to be installed"
+					response["message"] = "This feature requires additional runtime support"
 				}
 				return c.JSON(http.StatusForbidden, response)
 			}

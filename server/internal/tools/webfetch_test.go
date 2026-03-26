@@ -739,6 +739,68 @@ func TestFetchOrchestratorTracksLightpandaShimAsReadLayer(t *testing.T) {
 	}
 }
 
+func TestWebFetchToolRejectsLightpandaShimForGitHubHosts(t *testing.T) {
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:           5 * time.Second,
+		AllowPrivateHosts: true,
+	})
+	tool.SetLightpandaShim(browser.NewLightpandaService(browser.DefaultConfig()))
+
+	_, err := tool.fetchViaLightpandaShim(context.Background(), "https://github.com/search?q=openclaw&type=repositories", webFetchExtractText)
+	if err == nil {
+		t.Fatal("expected github.com to reject lightpanda shim")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("error = %v, want unsupported host guidance", err)
+	}
+}
+
+func TestFetchOrchestratorPrefersBrowserForGitHubHosts(t *testing.T) {
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		AllowPrivateHosts:     true,
+		CacheTTL:              -1,
+		LayeredFetchEnabled:   true,
+		DomainStrategyEnabled: true,
+	})
+	tool.httpClient.Transport = testRoundTripper(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("unexpected direct HTTP request for browser-first github host: %s", req.URL.String())
+		return nil, errors.New("unexpected direct HTTP request")
+	})
+	tool.SetBrowser(&mockBrowserBackend{
+		navResult: BrowserNavResult{
+			URL:      "https://github.com/search?q=openclaw&type=repositories",
+			Title:    "GitHub Search",
+			TargetID: "tab-github",
+		},
+		a11yResult: BrowserA11yTreeResult{
+			URL:      "https://github.com/search?q=openclaw&type=repositories",
+			Title:    "GitHub Search",
+			TargetID: "tab-github",
+			Tree:     "OpenClaw repositories search results with enough readable text to exceed the layered retrieval threshold, keep the browser lane as the winning strategy, and prove that github.com can be handled through a full browser session without touching the shim or direct HTTP lanes first.",
+		},
+	})
+
+	result, err := tool.orchestrator.Fetch(context.Background(), FetchRequest{
+		URL:               "https://github.com/search?q=openclaw&type=repositories",
+		Mode:              webFetchExtractText,
+		AllowBrowser:      true,
+		AllowAutoFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if result.StrategyUsed != webFetchStrategyBrowser {
+		t.Fatalf("strategy_used = %q, want %q", result.StrategyUsed, webFetchStrategyBrowser)
+	}
+	if result.Payload.Source != webAccessSourceBrowser {
+		t.Fatalf("source = %q, want %q", result.Payload.Source, webAccessSourceBrowser)
+	}
+	if !strings.Contains(result.Payload.Content, "OpenClaw repositories search results") {
+		t.Fatalf("content = %q, want browser accessibility text", result.Payload.Content)
+	}
+}
+
 func TestWebFetchToolExecute_PrefersHTTPNativeForConfiguredHosts(t *testing.T) {
 	native := &stubHTTPNativeClient{
 		available: true,
@@ -1204,5 +1266,28 @@ func TestParseWebFetchHelpersSupportNestedArgs(t *testing.T) {
 	}
 	if opts.cacheable {
 		t.Fatal("expected cacheable=false when auth/browser target is present")
+	}
+}
+
+func TestParseWebFetchRequestOptions_SupportsGroupedRequestObject(t *testing.T) {
+	args := map[string]interface{}{
+		"request": map[string]interface{}{
+			"headers":           map[string]interface{}{"X-Test": "1"},
+			"auth_bearer":       "tok",
+			"browser_target_id": "tab_2",
+		},
+	}
+	opts, err := parseWebFetchRequestOptions(args)
+	if err != nil {
+		t.Fatalf("parse request options failed: %v", err)
+	}
+	if got := opts.extraHeaders["X-Test"]; got != "1" {
+		t.Fatalf("X-Test = %q, want 1", got)
+	}
+	if got := opts.extraHeaders["Authorization"]; got != "Bearer tok" {
+		t.Fatalf("Authorization = %q, want Bearer tok", got)
+	}
+	if opts.browserTargetID != "tab_2" {
+		t.Fatalf("browserTargetID = %q, want tab_2", opts.browserTargetID)
 	}
 }

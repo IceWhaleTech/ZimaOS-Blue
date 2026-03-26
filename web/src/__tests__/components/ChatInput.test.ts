@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ChatInput from '@/components/ChatInput.vue'
+import { skillApi } from '@/api/skill'
 import { i18n } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
+
+const { routerPushMock } = vi.hoisted(() => ({
+  routerPushMock: vi.fn(),
+}))
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -50,6 +55,22 @@ vi.mock('@/composables/useFeatureIntent', () => ({
   classifyFeatureIntent: vi.fn(() => ({ deepResearch: false, agentMode: false })),
 }))
 
+vi.mock('@/api/skill', () => ({
+  skillApi: {
+    adviseMarket: vi.fn(),
+  },
+}))
+
+vi.mock('vue-router', async () => {
+  const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
+  return {
+    ...actual,
+    useRouter: () => ({
+      push: routerPushMock,
+    }),
+  }
+})
+
 async function settleComposer(wrapper: ReturnType<typeof mount>) {
   await wrapper.vm.$nextTick()
   await Promise.resolve()
@@ -87,6 +108,15 @@ describe('ChatInput cancel affordance', () => {
     Object.defineProperty(window.navigator, 'userAgent', { value: 'desktop', configurable: true })
     Object.defineProperty(window.navigator, 'maxTouchPoints', { value: 0, configurable: true })
     localStorageMock.clear()
+    vi.clearAllMocks()
+    vi.useRealTimers()
+    routerPushMock.mockReset()
+    vi.mocked(skillApi.adviseMarket).mockResolvedValue({
+      data: {
+        query: '',
+        need_store_search: false,
+      },
+    } as never)
     i18n.global.setLocaleMessage('en-US', {
       common: {
         enabled: 'Enabled',
@@ -474,6 +504,71 @@ describe('ChatInput cancel affordance', () => {
 
     expect((textarea.element as HTMLTextAreaElement).style.height).toBe('96px')
     expect((textarea.element as HTMLTextAreaElement).style.overflowY).toBe('hidden')
+  })
+
+  it('shows skill guidance for natural-language tasks and opens the skill store with the suggested query', async () => {
+    vi.useFakeTimers()
+    vi.mocked(skillApi.adviseMarket).mockResolvedValue({
+      data: {
+        query: 'need a github release workflow with changelog generation',
+        need_store_search: true,
+        search_queries: [
+          'github actions release automation',
+          'release changelog generator',
+        ],
+        capability_tags: ['github-actions', 'release-management'],
+        recommended_ids: ['release-bot'],
+        results: [
+          {
+            score: 0.97,
+            skill: {
+              id: 'release-bot',
+              name: 'Release Bot',
+            },
+          },
+        ],
+      },
+    } as never)
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(ChatInput, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          ImagePreview: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await wrapper
+      .find('textarea')
+      .setValue('need a github release workflow with changelog generation')
+    await vi.advanceTimersByTimeAsync(700)
+    await flushPromises()
+
+    expect(skillApi.adviseMarket).toHaveBeenCalledWith({
+      query: 'need a github release workflow with changelog generation',
+    })
+    expect(wrapper.find('.chat-skill-advice').exists()).toBe(true)
+    expect(wrapper.find('.chat-skill-advice').text()).toContain('github actions release automation')
+    expect(wrapper.find('.chat-skill-advice').text()).toContain('github-actions')
+    expect(wrapper.find('.chat-skill-advice').text()).toContain('Release Bot')
+
+    const queryChip = wrapper.findAll('.chat-skill-advice__query-chip')[0]
+    expect(queryChip?.exists()).toBe(true)
+    await queryChip!.trigger('click')
+
+    expect(routerPushMock).toHaveBeenCalledWith({
+      name: 'Plugins',
+      query: {
+        tab: 'store',
+        q: 'github actions release automation',
+      },
+    })
   })
 
   it('toggles Ralph Loop auto-confirm on context menu', async () => {

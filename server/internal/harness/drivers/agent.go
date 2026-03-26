@@ -50,13 +50,17 @@ func (d *AgentDriver) Start(ctx context.Context, run *harness.Run, _ harness.Run
 	if d == nil || d.runner == nil {
 		return fmt.Errorf("agent runtime is not available")
 	}
+	contract := harness.DecodeHarnessContract(run.Metadata)
 	task := &agentpkg.Task{
-		ID:             run.ID,
-		UserID:         run.UserID,
-		ConversationID: run.ConversationID,
-		Goal:           run.Goal,
-		Status:         agentpkg.TaskStatusPending,
-		WorkspaceRoot:  run.WorkspaceRoot,
+		ID:              run.ID,
+		UserID:          run.UserID,
+		ConversationID:  run.ConversationID,
+		Goal:            run.Goal,
+		Status:          agentpkg.TaskStatusPending,
+		WorkspaceRoot:   run.WorkspaceRoot,
+		SuccessCriteria: harness.HarnessContractSuccessCriteria(contract),
+		FallbackPlan:    harness.HarnessContractFallbackPlan(contract),
+		Metadata:        cloneMap(run.Metadata),
 	}
 	conversationCtx := composeConversationContext(run.Metadata)
 	_, err := d.runner.SubmitTask(ctx, task, conversationCtx)
@@ -89,6 +93,33 @@ func (d *AgentDriver) Sync(ctx context.Context, run *harness.Run) (*harness.Run,
 		return nil, err
 	}
 	return d.manager.GetStored(ctx, snapshot.ID)
+}
+
+func (d *AgentDriver) ListRuntimeEvidence(ctx context.Context, run *harness.Run) ([]harness.RuntimeEvidenceEntry, error) {
+	if d == nil || d.store == nil || run == nil {
+		return nil, nil
+	}
+	events, err := d.store.ListRuntimeEvents(ctx, run.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]harness.RuntimeEvidenceEntry, 0, len(events))
+	for _, event := range events {
+		out = append(out, harness.RuntimeEvidenceEntry{
+			ID:           event.ID,
+			RunID:        run.ID,
+			StepIndex:    event.StepIndex,
+			PlannerRound: event.PlannerRound,
+			EventType:    event.EventType,
+			Summary:      runtimeEvidenceSummary(event),
+			PayloadJSON:  event.PayloadJSON,
+			CreatedAt:    event.CreatedAt,
+		})
+	}
+	return out, nil
 }
 
 func (d *AgentDriver) HandleTaskEvent(event agentpkg.TaskEvent) {
@@ -243,16 +274,59 @@ func metadataString(meta map[string]interface{}, key string) string {
 }
 
 func composeConversationContext(meta map[string]interface{}) string {
-	base := metadataString(meta, "context")
-	retry := metadataString(meta, "retry_context")
-	switch {
-	case base == "":
-		return retry
-	case retry == "":
-		return base
-	default:
-		return strings.TrimSpace(base + "\n\n" + retry)
+	parts := make([]string, 0, 4)
+	if base := metadataString(meta, "context"); base != "" {
+		parts = append(parts, base)
 	}
+	if contractContext := harness.BuildHarnessContractContext(harness.DecodeHarnessContract(meta)); contractContext != "" {
+		parts = append(parts, contractContext)
+	}
+	if checkpointContext := harness.BuildHarnessCheckpointContext(metadataMap(meta["resume_checkpoint"])); checkpointContext != "" {
+		parts = append(parts, checkpointContext)
+	}
+	if retry := metadataString(meta, "retry_context"); retry != "" {
+		parts = append(parts, retry)
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func runtimeEvidenceSummary(event agentpkg.RuntimeEvent) string {
+	payload := decodePayloadJSON(event.PayloadJSON)
+	switch strings.TrimSpace(event.EventType) {
+	case "tool_call":
+		return firstNonEmpty(metadataString(payload, "tool"), metadataString(payload, "tool_name"), "tool call")
+	case "tool_result":
+		parts := []string{firstNonEmpty(metadataString(payload, "tool"), metadataString(payload, "tool_name"), "tool result")}
+		if exitCode := metadataString(payload, "exit_code"); exitCode != "" {
+			parts = append(parts, "exit "+exitCode)
+		}
+		return strings.TrimSpace(strings.Join(parts, " "))
+	case "state_update":
+		return firstNonEmpty(metadataString(payload, "kind"), "state update")
+	default:
+		return strings.TrimSpace(event.EventType)
+	}
+}
+
+func decodePayloadJSON(raw string) map[string]interface{} {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func cloneMap(in map[string]interface{}) map[string]interface{} {

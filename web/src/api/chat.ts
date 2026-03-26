@@ -93,6 +93,12 @@ export interface ConversationCommandStatePatch {
   deep_research_enabled?: boolean
 }
 
+export interface ConversationActiveStreamState {
+  conversation_id: string
+  active: boolean
+  stream_id?: string
+}
+
 export interface ToolDefinition {
   name: string
   description: string
@@ -228,6 +234,9 @@ export const messageApi = {
       `/conversations/${conversationId}/messages/cancel`,
       { stream_id: streamId }
     ),
+
+  getActiveStreamState: (conversationId: string) =>
+    api.get<ConversationActiveStreamState>(`/conversations/${conversationId}/messages/active-stream`),
 }
 
 // Warmup API - Pre-compute system prompt and context to reduce TTFT

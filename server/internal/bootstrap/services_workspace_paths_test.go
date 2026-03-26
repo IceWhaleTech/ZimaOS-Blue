@@ -9,14 +9,14 @@ import (
 
 func TestResolveBuiltinToolAllowedPathsPrefersConfiguredWorkspace(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.ClaudeCodeCLI.Backend.WorkspaceDir = filepath.Join(t.TempDir(), "bench-workspace")
+	cfg.AgentCore.WorkspaceDir = filepath.Join(t.TempDir(), "bench-workspace")
 
 	paths := resolveBuiltinToolAllowedPaths(cfg, filepath.Join(t.TempDir(), "data"))
 	if len(paths) == 0 {
 		t.Fatal("expected non-empty allowed paths")
 	}
 
-	want, err := filepath.Abs(cfg.ClaudeCodeCLI.Backend.WorkspaceDir)
+	want, err := filepath.Abs(cfg.AgentCore.WorkspaceDir)
 	if err != nil {
 		t.Fatalf("abs workspace dir: %v", err)
 	}
@@ -27,10 +27,10 @@ func TestResolveBuiltinToolAllowedPathsPrefersConfiguredWorkspace(t *testing.T) 
 
 func TestResolveWorkspaceDirPrefersConfiguredWorkspace(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.ClaudeCodeCLI.Backend.WorkspaceDir = filepath.Join(t.TempDir(), "bench-workspace")
+	cfg.AgentCore.WorkspaceDir = filepath.Join(t.TempDir(), "bench-workspace")
 
 	got := ResolveWorkspaceDir(filepath.Join(t.TempDir(), "data"), cfg)
-	want, err := filepath.Abs(cfg.ClaudeCodeCLI.Backend.WorkspaceDir)
+	want, err := filepath.Abs(cfg.AgentCore.WorkspaceDir)
 	if err != nil {
 		t.Fatalf("abs workspace dir: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestResolveWorkspaceDirPrefersConfiguredWorkspace(t *testing.T) {
 func TestResolveWorkspaceDirIgnoresDefaultDotWorkspace(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "data")
 	cfg := &config.Config{}
-	cfg.ClaudeCodeCLI.Backend.WorkspaceDir = "."
+	cfg.AgentCore.WorkspaceDir = "."
 
 	got := ResolveWorkspaceDir(dataDir, cfg)
 	want := filepath.Join(dataDir, "workspace")
@@ -53,7 +53,7 @@ func TestResolveWorkspaceDirIgnoresDefaultDotWorkspace(t *testing.T) {
 
 func TestResolveBuiltinToolAllowedPathsAddsTmpWhenWorkspaceIsTemporary(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.ClaudeCodeCLI.Backend.WorkspaceDir = filepath.Join("/tmp", "pinchbench-workspace")
+	cfg.AgentCore.WorkspaceDir = filepath.Join("/tmp", "pinchbench-workspace")
 
 	paths := resolveBuiltinToolAllowedPaths(cfg, filepath.Join(t.TempDir(), "data"))
 	if !containsCleanPath(paths, "/tmp") {

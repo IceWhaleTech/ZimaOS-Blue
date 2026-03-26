@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,6 +65,26 @@ func TestGetTimeout(t *testing.T) {
 			result := GetTimeout(tt.requested, config)
 			assert.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+func TestOpenedTabTargetIDPrefersUnderlyingPageTargetID(t *testing.T) {
+	page := &rod.Page{TargetID: proto.TargetTargetID("relay-target-1")}
+	if got := openedTabTargetID(page); got != "relay-target-1" {
+		t.Fatalf("openedTabTargetID() = %q, want %q", got, "relay-target-1")
+	}
+}
+
+func TestOpenedTabTargetIDFallsBackToSyntheticID(t *testing.T) {
+	got := openedTabTargetID(&rod.Page{})
+	if got == "" {
+		t.Fatal("openedTabTargetID() returned empty target id")
+	}
+	if got == "relay-target-1" {
+		t.Fatalf("openedTabTargetID() = %q, want synthetic fallback id", got)
+	}
+	if len(got) < len("tab-1") || got[:4] != "tab-" {
+		t.Fatalf("openedTabTargetID() = %q, want synthetic tab-* id", got)
 	}
 }
 

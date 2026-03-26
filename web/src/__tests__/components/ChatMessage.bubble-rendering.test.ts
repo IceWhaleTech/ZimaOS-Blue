@@ -14,12 +14,18 @@ const chatStore = reactive({
   messages: [] as Array<Record<string, unknown>>,
   selectedMessageIds: new Set<string>(),
   isMultiSelectMode: false,
+  streamUIState: { phase: 'idle' },
   toolExecuting: false,
   toolExecutingCommands: [] as string[],
   toolExecutingNames: [] as string[],
   toolExecutingStartTime: 0,
   toolResults: [] as unknown[],
   toolSandboxAvailable: false,
+  processTrace: [] as unknown[],
+  statusStartedAt: 0,
+  statusSummary: null as string | null,
+  streamProgress: null as string | null,
+  awaitingConfirmation: false,
   sendMessage: vi.fn(),
   getMessageMetadata: vi.fn(() => null),
   toggleMessageSelection: vi.fn(),
@@ -134,6 +140,18 @@ async function mountMessage(role: 'assistant' | 'user', content: string) {
 describe('ChatMessage bubble rendering', () => {
   beforeEach(() => {
     settingsStore.showToolDetails = true
+    chatStore.streamUIState = { phase: 'idle' }
+    chatStore.toolExecuting = false
+    chatStore.toolExecutingCommands = []
+    chatStore.toolExecutingNames = []
+    chatStore.toolExecutingStartTime = 0
+    chatStore.toolResults = []
+    chatStore.toolSandboxAvailable = false
+    chatStore.processTrace = []
+    chatStore.statusStartedAt = 0
+    chatStore.statusSummary = null
+    chatStore.streamProgress = null
+    chatStore.awaitingConfirmation = false
     chatStore.getMessageMetadata.mockReset().mockReturnValue(null)
     vi.mocked(hasTypelessCards).mockReturnValue(false)
     vi.mocked(parseTypelessContent).mockReturnValue(null)
@@ -151,6 +169,69 @@ describe('ChatMessage bubble rendering', () => {
     expect(bubble.classes()).toContain('px-4')
     expect(bubble.classes()).toContain('py-3')
     expect(wrapper.get('.prose-content').text()).toBe('Blue reply')
+  })
+
+  it('keeps the streaming caret visible during executing phases with assistant text', async () => {
+    chatStore.streamUIState = { phase: 'executing' }
+    chatStore.toolExecuting = true
+    chatStore.statusStartedAt = Date.now()
+    chatStore.statusSummary = 'Running tool'
+
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage('assistant', 'Blue reply'),
+        isStreaming: true,
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(true)
+    expect(wrapper.find('.assistant-status-bar').exists()).toBe(true)
+    expect(wrapper.find('.streaming-caret').exists()).toBe(true)
+  })
+
+  it('keeps the streaming caret visible when only the assistant status bubble is shown', async () => {
+    chatStore.streamUIState = { phase: 'executing' }
+    chatStore.toolExecuting = true
+    chatStore.statusStartedAt = Date.now()
+    chatStore.statusSummary = 'Running tool'
+
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage('assistant', ''),
+        isStreaming: true,
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(true)
+    expect(wrapper.findAll('.assistant-message-block')).toHaveLength(0)
+    expect(wrapper.find('.assistant-status-bar').exists()).toBe(true)
+    expect(wrapper.find('.streaming-caret').exists()).toBe(true)
   })
 
   it('keeps markdown sections inside a single assistant bubble instead of splitting them apart', async () => {

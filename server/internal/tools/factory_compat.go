@@ -154,12 +154,24 @@ func resolveFactoryAliasCommand(name string, args map[string]interface{}) (strin
 	case "tts":
 		return resolveFactoryTTSAliasCommand(name, args)
 	case "sessions_list":
+		if runtime := compatFactoryRuntime(args); runtime != "" {
+			path := "/api/v1/agent-sessions/sessions?runtime=" + url.QueryEscape(runtime)
+			return buildCompatHTTPCommand("GET", path), true, ""
+		}
 		cmd := "blue sessions list"
 		if active, ok := compatBoolArg(args, "active"); ok && active {
 			cmd += " --active"
 		}
 		return cmd, true, ""
 	case "sessions_history":
+		if runtime := compatFactoryRuntime(args); runtime != "" {
+			id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId")
+			if id == "" {
+				return "", true, invalidFactoryToolArgsResult(name, "id/session_id is required")
+			}
+			path := "/api/v1/agent-sessions/sessions/" + url.PathEscape(id) + "/history?runtime=" + url.QueryEscape(runtime)
+			return buildCompatHTTPCommand("GET", path), true, ""
+		}
 		id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/session_id is required")
@@ -170,6 +182,13 @@ func resolveFactoryAliasCommand(name string, args map[string]interface{}) (strin
 	case "sessions_spawn":
 		return resolveFactorySessionsSpawnAliasCommand(name, args)
 	case "session_status":
+		if runtime := compatFactoryRuntime(args); runtime != "" {
+			if id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId"); id != "" {
+				path := "/api/v1/agent-sessions/sessions/" + url.PathEscape(id) + "?runtime=" + url.QueryEscape(runtime)
+				return buildCompatHTTPCommand("GET", path), true, ""
+			}
+			return "", true, invalidFactoryToolArgsResult(name, "id/session_id is required for runtime-aware session_status")
+		}
 		if id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId"); id != "" {
 			return "blue sessions show " + quoteCompatShellArg(id), true, ""
 		}
@@ -198,6 +217,27 @@ func resolveFactoryAliasCommand(name string, args map[string]interface{}) (strin
 }
 
 func resolveFactorySessionsSpawnAliasCommand(name string, args map[string]interface{}) (string, bool, string) {
+	if runtime := compatFactoryRuntime(args); runtime != "" {
+		title := firstCompatString(args, "title", "name")
+		if title == "" {
+			title = trimCompatText(firstCompatString(args, "input", "prompt", "message", "content", "text"), 72)
+		}
+		payload := map[string]interface{}{
+			"profile_id": firstCompatString(args, "profile_id", "profileId", "provider", "provider_id", "providerId", "agent", "agent_id", "agentId"),
+			"name":       title,
+			"cwd":        firstCompatString(args, "cwd", "workdir", "work_dir", "working_dir"),
+		}
+		if payload["profile_id"] == "" && runtime == "a2a" {
+			payload["profile_id"] = "generic-a2a"
+		}
+		if strings.TrimSpace(asString(payload["profile_id"])) == "" {
+			return "", true, invalidFactoryToolArgsResult(name, "profile_id is required when runtime is acp or a2a")
+		}
+		if initial := firstCompatString(args, "initial_message", "initialMessage", "message", "content", "text", "prompt", "input"); initial != "" {
+			payload["initial_message"] = initial
+		}
+		return buildCompatHTTPJSONCommand("POST", "/api/v1/agent-sessions/sessions", payload), true, ""
+	}
 	title := firstCompatString(args, "title", "name")
 	if title == "" {
 		title = trimCompatText(firstCompatString(args, "input", "prompt", "message", "content", "text"), 72)
@@ -210,6 +250,21 @@ func resolveFactorySessionsSpawnAliasCommand(name string, args map[string]interf
 }
 
 func resolveFactorySessionsSendAliasCommand(name string, args map[string]interface{}) (string, bool, string) {
+	if runtime := compatFactoryRuntime(args); runtime != "" {
+		id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId")
+		if id == "" {
+			return "", true, invalidFactoryToolArgsResult(name, "id/session_id is required")
+		}
+		message := firstCompatString(args, "message", "content", "text", "input", "prompt")
+		if message == "" {
+			return "", true, invalidFactoryToolArgsResult(name, "message/content is required")
+		}
+		path := "/api/v1/agent-sessions/sessions/" + url.PathEscape(id) + "/messages"
+		return buildCompatHTTPJSONCommand("POST", path, map[string]interface{}{
+			"message": message,
+			"runtime": runtime,
+		}), true, ""
+	}
 	id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId")
 	if id == "" {
 		return "", true, invalidFactoryToolArgsResult(name, "id/session_id is required")
@@ -254,8 +309,8 @@ func resolveFactoryMemoryAliasCommand(name string, args map[string]interface{}) 
 		id := firstCompatString(args, "id", "path", "file", "memory_id", "memoryId", "key")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/path is required for memory_get")
-		}
-		return buildCompatHTTPCommand("GET", "/api/v1/memory/"+url.PathEscape(id)), true, ""
+	}
+	return buildCompatHTTPCommand("GET", "/api/v1/memory/"+url.PathEscape(id)), true, ""
 	case "memory_write":
 		content := firstCompatString(args, "content", "text", "input", "memory", "note", "message")
 		if content == "" {
@@ -278,6 +333,16 @@ func resolveFactoryMemoryAliasCommand(name string, args map[string]interface{}) 
 		return buildCompatHTTPCommand("DELETE", "/api/v1/memory/"+url.PathEscape(id)), true, ""
 	default:
 		return "", false, ""
+	}
+}
+
+func compatFactoryRuntime(args map[string]interface{}) string {
+	runtime := strings.ToLower(strings.TrimSpace(firstCompatString(args, "runtime")))
+	switch runtime {
+	case "acp", "a2a":
+		return runtime
+	default:
+		return ""
 	}
 }
 

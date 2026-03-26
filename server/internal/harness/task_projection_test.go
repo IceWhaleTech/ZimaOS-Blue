@@ -266,3 +266,212 @@ func TestUserTaskProjectionHandler_ListAndCancel(t *testing.T) {
 		t.Fatalf("driver cancel calls = %#v, want [%q]", driver.cancelled, run.ID)
 	}
 }
+
+func TestUserTaskProjectionService_ProjectsAutoHarnessGroups(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "Release candidate fix Smoke Auto Harness",
+		Subject:     "agent_task",
+		OwnerUserID: "user-1",
+		Metadata: map[string]interface{}{
+			"auto_harness":       true,
+			"conversation_id":    "conv-current",
+			"quick_eval_preset":  "smoke",
+			"conversation_title": "Release candidate fix",
+		},
+		Items: []RunGroupItemSpec{{
+			RunKind: RunKindAgentTask,
+			Profile: "smoke",
+			Input: map[string]interface{}{
+				"goal": "Finish and verify the fix",
+			},
+			Expected: map[string]interface{}{
+				"status": "completed",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+	items, err := controller.store.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListGroupItems failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("group items len = %d, want 1", len(items))
+	}
+	items[0].Status = RunGroupItemStatusRunning
+	items[0].AttemptCount = 1
+	if err := controller.store.UpdateGroupItem(ctx, &items[0]); err != nil {
+		t.Fatalf("UpdateGroupItem running failed: %v", err)
+	}
+	group.Status = RunGroupStatusRunning
+	group.Summary = map[string]interface{}{
+		"item_count": 1,
+		"counts": map[string]interface{}{
+			"running": 1,
+		},
+	}
+	if err := controller.store.UpdateGroup(ctx, group); err != nil {
+		t.Fatalf("UpdateGroup running failed: %v", err)
+	}
+
+	service := NewUserTaskProjectionService(controller, nil)
+	current, err := service.List(ctx, UserTaskProjectionFilter{
+		UserID:         "user-1",
+		ConversationID: "conv-current",
+		Scope:          "current",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatalf("List current failed: %v", err)
+	}
+	if len(current) != 1 {
+		t.Fatalf("current len = %d, want 1", len(current))
+	}
+	if current[0].ID != group.ID {
+		t.Fatalf("current[0].ID = %q, want %q", current[0].ID, group.ID)
+	}
+	if current[0].Stage != "verifying" || current[0].Status != "running" {
+		t.Fatalf("unexpected current projection: %#v", current[0])
+	}
+	if !current[0].Actions.CanCancel {
+		t.Fatalf("expected auto harness group to be cancellable while active")
+	}
+	if len(current[0].Artifacts) != 1 || current[0].Artifacts[0].URL != "/harness/"+group.ID {
+		t.Fatalf("artifacts = %#v, want harness report link", current[0].Artifacts)
+	}
+
+	items[0].Status = RunGroupItemStatusFailed
+	items[0].AttemptCount = 1
+	if err := controller.store.UpdateGroupItem(ctx, &items[0]); err != nil {
+		t.Fatalf("UpdateGroupItem failed: %v", err)
+	}
+
+	current, err = service.List(ctx, UserTaskProjectionFilter{
+		UserID:         "user-1",
+		ConversationID: "conv-current",
+		Scope:          "current",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatalf("List current terminal failed: %v", err)
+	}
+	if len(current) != 1 {
+		t.Fatalf("terminal current len = %d, want 1", len(current))
+	}
+	if current[0].Stage != "failed" || current[0].Status != "failed" {
+		t.Fatalf("unexpected failed projection: %#v", current[0])
+	}
+	if current[0].ErrorPreview == "" {
+		t.Fatalf("expected failed auto harness preview")
+	}
+}
+
+func TestUserTaskProjectionHandler_GetTaskRejectsOtherUsersAutoHarnessGroup(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "Private Auto Harness",
+		Subject:     "agent_task",
+		OwnerUserID: "user-1",
+		Metadata: map[string]interface{}{
+			"auto_harness":    true,
+			"conversation_id": "conv-private",
+		},
+		Items: []RunGroupItemSpec{{
+			RunKind: RunKindAgentTask,
+			Profile: "smoke",
+			Input: map[string]interface{}{
+				"goal": "Verify private task",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	handler := NewUserTaskProjectionHandler(controller, nil)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/tasks/"+group.ID+"?conversation_id=conv-private", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-2"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(group.ID)
+
+	if err := handler.GetTask(c); err != nil {
+		t.Fatalf("GetTask returned error: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("GetTask status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestUserTaskProjectionHandler_CancelsAutoHarnessGroup(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "Research Auto Harness",
+		Subject:     "research",
+		OwnerUserID: "user-1",
+		Metadata: map[string]interface{}{
+			"auto_harness":      true,
+			"conversation_id":   "conv-1",
+			"quick_eval_preset": "research",
+		},
+		Items: []RunGroupItemSpec{{
+			RunKind: RunKindResearch,
+			Profile: "research",
+			Input: map[string]interface{}{
+				"goal": "Investigate the regression",
+			},
+			Expected: map[string]interface{}{
+				"status": "completed",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+	group.Status = RunGroupStatusRunning
+	group.Summary = map[string]interface{}{
+		"item_count": 1,
+		"counts": map[string]interface{}{
+			"running": 1,
+		},
+	}
+	if err := controller.store.UpdateGroup(ctx, group); err != nil {
+		t.Fatalf("UpdateGroup failed: %v", err)
+	}
+
+	handler := NewUserTaskProjectionHandler(controller, nil)
+	e := echo.New()
+
+	cancelReq := httptest.NewRequest(http.MethodPost, "/tasks/"+group.ID+"/cancel?conversation_id=conv-1", nil)
+	cancelReq = cancelReq.WithContext(context.WithValue(cancelReq.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	cancelRec := httptest.NewRecorder()
+	cancelCtx := e.NewContext(cancelReq, cancelRec)
+	cancelCtx.SetParamNames("id")
+	cancelCtx.SetParamValues(group.ID)
+	if err := handler.CancelTask(cancelCtx); err != nil {
+		t.Fatalf("CancelTask returned error: %v", err)
+	}
+	if cancelRec.Code != http.StatusOK {
+		t.Fatalf("CancelTask status = %d, want %d", cancelRec.Code, http.StatusOK)
+	}
+	var cancelled UserTaskProjection
+	if err := json.Unmarshal(cancelRec.Body.Bytes(), &cancelled); err != nil {
+		t.Fatalf("unmarshal CancelTask response: %v", err)
+	}
+	if cancelled.ID != group.ID || cancelled.Status != "cancelled" || cancelled.Stage != "cancelled" {
+		t.Fatalf("unexpected cancelled projection: %#v", cancelled)
+	}
+}

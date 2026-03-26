@@ -181,6 +181,10 @@ type Manager struct {
 	executor Executor
 }
 
+type supportReasonProvider interface {
+	SupportReason() string
+}
+
 // NewManager creates a new sandbox manager.
 func NewManager(config *Config) (*Manager, error) {
 	if config == nil {
@@ -238,6 +242,17 @@ func (m *Manager) Cleanup() error {
 // IsSupported returns true if sandboxing is supported on this platform.
 func (m *Manager) IsSupported() bool {
 	return m.executor.IsSupported()
+}
+
+// SupportReason returns a human-readable reason when sandboxing is unavailable.
+func (m *Manager) SupportReason() string {
+	if m == nil || m.executor == nil || m.executor.IsSupported() {
+		return ""
+	}
+	if provider, ok := m.executor.(supportReasonProvider); ok {
+		return provider.SupportReason()
+	}
+	return ErrSandboxNotSupported.Error()
 }
 
 // GetConfig returns the sandbox configuration.

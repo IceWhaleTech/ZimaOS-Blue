@@ -23,12 +23,12 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/bootstrap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
@@ -111,6 +111,10 @@ func getDataDir() string {
 	// Linux
 	home := os.ExpandEnv("$HOME")
 	return filepath.Join(home, ".zimaos-blue")
+}
+
+func getLogsDir() string {
+	return filepath.Join(getDataDir(), "logs")
 }
 
 // registerCleanup registers a cleanup function to be called on shutdown
@@ -396,7 +400,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	trace.Mark("startup_integrity_ready", zap.Bool("previous_clean_shutdown", previousCleanShutdown))
 
 	// Initialize logger with ring buffer for log viewing
-	if err := logger.Init(&cfg.Log); err != nil {
+	if err := logger.InitWithMirror(&cfg.Log, filepath.Join(getLogsDir(), "blue.log")); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
@@ -621,10 +625,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	securityHandler := security.NewHandler(threatDetector)
 
 	// Initialize sandbox handler
-	sandboxManager, _ := sandbox.NewManager(nil)
 	var sandboxHandler *sandbox.Handler
-	if sandboxManager != nil {
+	sandboxManager, err := bootstrap.NewSandboxManagerFromConfig(cfg)
+	if err != nil {
+		zapLogger.Warn("Failed to initialize sandbox manager; sandbox features will be disabled", zap.Error(err))
+	} else if sandboxManager != nil && sandboxManager.IsSupported() {
 		sandboxHandler = sandbox.NewHandler(sandboxManager)
+	} else if sandboxManager != nil {
+		zapLogger.Warn("Sandbox manager initialized without a supported isolation backend; sandbox features will remain disabled", zap.String("reason", sandboxManager.SupportReason()))
+		sandboxManager = nil
 	}
 
 	// Initialize cron handler lazily so startup does not block on scheduler setup.
@@ -999,18 +1008,10 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	}
 	contextResolver := contextpack.NewResolver(contextRegistry, contextAnnotationStore, contextpack.ResolverConfig{MaxFiles: 3, MaxTokens: 1500, SearchLimit: 5})
 
-	// Initialize claudecode handler
-	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir, configKV)
 	workspaceHandler := workspace.NewHandler(workspaceMgr)
-	workspaceHandler.SetAllowedRootsProvider(func() []string {
-		if claudeCodeHandler == nil {
-			return nil
-		}
-		return claudeCodeHandler.DirectoryWhitelistRoots()
-	})
 
 	// Set up system prompt builder
-	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{
+	systemPromptBuilder := agentcore.NewSystemPromptBuilder(&agentcore.Config{
 		WorkspaceDir: workspaceMgr.Dir(),
 	})
 	systemPromptBuilder.SetToolRegistry(services.ToolRegistry)
@@ -1189,19 +1190,28 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	acquireBrowserSvc = defaultRuntime.acquire
 	relayPreferredSites := cfg.Browser.ExpandedRelayPreferredSites()
 	lightpandaSvc := browser.NewLightpandaService(&cfg.Browser)
+	var lightpandaBinaryBackend *tools.LightpandaBinaryBrowserBackend
 	if cfg.Browser.Lightpanda.Enabled {
+		lightpandaBinaryRuntime := browser.NewLightpandaBinaryRuntime(&cfg.Browser)
+		lightpandaBinaryBackend = tools.NewLightpandaBinaryBrowserBackend(lightpandaBinaryRuntime)
+		registerCleanup(func() error {
+			return lightpandaBinaryRuntime.Stop(context.Background())
+		})
 		go func() {
-			path, err := lightpandaSvc.EnsureBinary(context.Background())
+			path, err := lightpandaSvc.WarmBinary(context.Background())
 			if err != nil {
 				zapLogger.Warn("Lightpanda binary is not ready; hybrid routing will fall back to Chromium until it becomes available", zap.Error(err))
 				return
 			}
-			zapLogger.Info("Lightpanda binary is ready for hybrid browser routing", zap.String("binary_path", path))
+			if strings.TrimSpace(path) != "" {
+				zapLogger.Info("Lightpanda binary is ready for hybrid browser routing", zap.String("binary_path", path))
+			}
 		}()
 	}
 	var browserBackend tools.BrowserBackend = tools.NewHybridCapabilityBrowserBackend(
 		&cfg.Browser,
 		lightpandaSvc,
+		lightpandaBinaryBackend,
 		managedRuntime.rodBackend,
 		relayRuntime.rodBackend,
 		func(rawURL string) bool {
@@ -1398,7 +1408,6 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		STTService:         sttService,
 		NgrokTunnelMgr:     ngrokTunnelMgr,
 		NgrokConfigStore:   ngrokConfigStore,
-		ClaudeCodeHandler:  claudeCodeHandler,
 		ChannelConfigStore: channelConfigStore,
 		ConfigKV:           configKV,
 		ConfigStore:        cfgStore,

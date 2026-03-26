@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
@@ -124,15 +125,15 @@ func TestAllModelsForProvider_SkipsBlacklisted(t *testing.T) {
 	// Blacklist the original model
 	ph.providerMemory.BlacklistModel(pid, burl, "claude-3-5-haiku-20241022")
 
-	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "", false)
-	for i := 0; i < nModels; i++ {
-		if modelsBuf[i] == "claude-3-5-haiku-20241022" {
+	models := ph.allModelsForProvider(nil, pid, burl, "claude-3-5-haiku-20241022", "claude-3-5-haiku-20241022", "", false)
+	for _, model := range models {
+		if model == "claude-3-5-haiku-20241022" {
 			t.Fatal("blacklisted model should not appear in candidates")
 		}
 	}
 
 	// Should still have aliases available
-	if nModels == 0 {
+	if len(models) == 0 {
 		t.Fatal("expected at least one alias to be available")
 	}
 }
@@ -149,9 +150,9 @@ func TestAllModelsForProvider_AllBlacklisted(t *testing.T) {
 		ph.providerMemory.BlacklistModel(pid, burl, alias)
 	}
 
-	_, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "", false)
-	if nModels != 0 {
-		t.Fatalf("expected 0 models when all blacklisted, got %d", nModels)
+	models := ph.allModelsForProvider(nil, pid, burl, "claude-3-5-haiku-20241022", "claude-3-5-haiku-20241022", "", false)
+	if len(models) != 0 {
+		t.Fatalf("expected 0 models when all blacklisted, got %d", len(models))
 	}
 }
 
@@ -164,12 +165,12 @@ func TestAllModelsForProvider_RememberedAliasFirst(t *testing.T) {
 	// Remember that "claude-haiku-4-5" worked for "claude-3-5-haiku-20241022"
 	ph.providerMemory.RememberModelAlias(pid, burl, "claude-3-5-haiku-20241022", "claude-haiku-4-5")
 
-	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "", false)
-	if nModels == 0 {
+	models := ph.allModelsForProvider(nil, pid, burl, "claude-3-5-haiku-20241022", "claude-3-5-haiku-20241022", "", false)
+	if len(models) == 0 {
 		t.Fatal("expected at least one model")
 	}
-	if modelsBuf[0] != "claude-haiku-4-5" {
-		t.Errorf("expected remembered alias first, got %q", modelsBuf[0])
+	if models[0] != "claude-haiku-4-5" {
+		t.Errorf("expected remembered alias first, got %q", models[0])
 	}
 }
 
@@ -185,20 +186,607 @@ func TestAllModelsForProvider_IgnoreBlacklist(t *testing.T) {
 		ph.providerMemory.BlacklistModel(pid, burl, alias)
 	}
 
-	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, model, "", true)
-	if nModels == 0 {
+	models := ph.allModelsForProvider(nil, pid, burl, model, model, "", true)
+	if len(models) == 0 {
 		t.Fatal("expected models when ignoreBlacklist=true")
 	}
 
 	foundOriginal := false
-	for i := 0; i < nModels; i++ {
-		if modelsBuf[i] == model {
+	for _, candidate := range models {
+		if candidate == model {
 			foundOriginal = true
 			break
 		}
 	}
 	if !foundOriginal {
 		t.Fatalf("expected original model %q to be present when ignoreBlacklist=true", model)
+	}
+}
+
+func TestAllModelsForProvider_RoutingHintExpandsRelayModels(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-routing-hint-models-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+
+	provider := &providerpool.Provider{
+		ID:        "relay-provider",
+		Name:      "Relay Provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   "https://relay.example.com",
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Location:  providerpool.ProviderLocationCloud,
+		APIKeys:   []providerpool.APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*providerpool.Model{
+		{
+			ID:           "claude-sonnet-4-6",
+			ProviderID:   provider.ID,
+			Name:         "claude-sonnet-4-6",
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+		{
+			ID:           "claude-3-5-sonnet-20241022",
+			ProviderID:   provider.ID,
+			Name:         "claude-3-5-sonnet-20241022",
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+	}); err != nil {
+		t.Fatalf("save models: %v", err)
+	}
+
+	ph := NewProxyHandler(nil, nil, nil)
+	ph.providerPool = &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+	}
+
+	models := ph.allModelsForProvider(provider, provider.ID, provider.BaseURL, "auto", "", "claude-3-5-sonnet-20241022", true)
+	if len(models) < 2 {
+		t.Fatalf("expected routing hint to expand provider models, got %d", len(models))
+	}
+	if models[0] != "claude-3-5-sonnet-20241022" {
+		t.Fatalf("expected routed model first, got %q", models[0])
+	}
+	foundWorking := false
+	for _, model := range models {
+		if model == "claude-sonnet-4-6" {
+			foundWorking = true
+			break
+		}
+	}
+	if !foundWorking {
+		t.Fatalf("expected expanded candidates to include provider model claude-sonnet-4-6, got %v", models)
+	}
+}
+
+func TestAllModelsForProvider_RoutingHintSkipsEmbeddingLikeRelayModels(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-routing-hint-skip-embedding-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+
+	provider := &providerpool.Provider{
+		ID:        "relay-provider",
+		Name:      "Relay Provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   "https://relay.example.com",
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Location:  providerpool.ProviderLocationCloud,
+		APIKeys:   []providerpool.APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*providerpool.Model{
+		{
+			ID:           "embedding-bert-512-v1",
+			ProviderID:   provider.ID,
+			Name:         "embedding-bert-512-v1",
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+		{
+			ID:           "claude-sonnet-4-6",
+			ProviderID:   provider.ID,
+			Name:         "claude-sonnet-4-6",
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+	}); err != nil {
+		t.Fatalf("save models: %v", err)
+	}
+
+	ph := NewProxyHandler(nil, nil, nil)
+	ph.providerPool = &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+	}
+
+	models := ph.allModelsForProvider(provider, provider.ID, provider.BaseURL, "auto", "", "", true)
+	if len(models) != 1 {
+		t.Fatalf("expected only chat-capable candidate, got %v", models)
+	}
+	if models[0] != "claude-sonnet-4-6" {
+		t.Fatalf("expected embedding-like candidate to be skipped, got %q", models[0])
+	}
+}
+
+func TestTryOnProvider_RoutingHintFallsThroughToRelayModelAndRemembersAlias(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-routing-hint-fallback-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	failingModel := "claude-3-5-sonnet-20241022"
+	workingModel := "claude-sonnet-4-6"
+	var attempts []string
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := stdjson.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		model, _ := body["model"].(string)
+		attempts = append(attempts, model)
+		w.Header().Set("Content-Type", "application/json")
+		switch model {
+		case failingModel:
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"Model claude-3-5-sonnet-20241022 is not available","type":"invalid_request_error"}}`))
+		case workingModel:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"chatcmpl-1","object":"chat.completion","model":%q,"choices":[{"message":{"role":"assistant","content":"ok"}}]}`, workingModel)))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"error":{"message":"unexpected model %s","type":"invalid_request_error"}}`, model)))
+		}
+	}))
+	defer upstream.Close()
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	provider := &providerpool.Provider{
+		ID:        "relay-provider",
+		Name:      "Relay Provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Location:  providerpool.ProviderLocationCloud,
+		APIKeys:   []providerpool.APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*providerpool.Model{
+		{
+			ID:           workingModel,
+			ProviderID:   provider.ID,
+			Name:         workingModel,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+		{
+			ID:           failingModel,
+			ProviderID:   provider.ID,
+			Name:         failingModel,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+	}); err != nil {
+		t.Fatalf("save models: %v", err)
+	}
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.providerPool = &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+	}
+
+	result := &providerpool.RouteResult{
+		Provider: provider,
+		Model: &providerpool.Model{
+			ID:         failingModel,
+			ProviderID: provider.ID,
+			Name:       failingModel,
+			Enabled:    true,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:                  []byte(`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`),
+		requestedModel:        "auto",
+		singleProvider:        true,
+		routingSingleProvider: true,
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp, _, usedModel, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("first auto request failed: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if usedModel != workingModel {
+		t.Fatalf("first auto request used model %q, want %q", usedModel, workingModel)
+	}
+	if got, ok := ph.providerMemory.RecallModelAlias(provider.ID, upstream.URL, "auto"); !ok || got != workingModel {
+		t.Fatalf("remembered auto alias = %q (ok=%v), want %q", got, ok, workingModel)
+	}
+	if len(attempts) != 2 || attempts[0] != failingModel || attempts[1] != workingModel {
+		t.Fatalf("first request attempts = %v, want [%q %q]", attempts, failingModel, workingModel)
+	}
+
+	attempts = attempts[:0]
+	resp, _, usedModel, err = ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("second auto request failed: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if usedModel != workingModel {
+		t.Fatalf("second auto request used model %q, want %q", usedModel, workingModel)
+	}
+	if len(attempts) != 1 || attempts[0] != workingModel {
+		t.Fatalf("second request attempts = %v, want [%q]", attempts, workingModel)
+	}
+}
+
+func TestTryOnProvider_RoutingHintFallsThroughOnWrapped503ModelNotFound(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-routing-hint-wrapped-503-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	failingModel := "360gpt2-pro"
+	workingModel := "claude-sonnet-4-6"
+	var attempts []string
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := stdjson.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		model, _ := body["model"].(string)
+		attempts = append(attempts, model)
+		w.Header().Set("Content-Type", "application/json")
+		switch model {
+		case failingModel:
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"code":"model_not_found","message":"分组 default 下模型 360gpt2-pro 无可用渠道（distributor）","type":"new_api_error"}}`))
+		case workingModel:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"chatcmpl-1","object":"chat.completion","model":%q,"choices":[{"message":{"role":"assistant","content":"ok"}}]}`, workingModel)))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"error":{"message":"unexpected model %s","type":"invalid_request_error"}}`, model)))
+		}
+	}))
+	defer upstream.Close()
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	provider := &providerpool.Provider{
+		ID:        "relay-provider",
+		Name:      "Relay Provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Location:  providerpool.ProviderLocationCloud,
+		APIKeys:   []providerpool.APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*providerpool.Model{
+		{
+			ID:           workingModel,
+			ProviderID:   provider.ID,
+			Name:         workingModel,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+		{
+			ID:           failingModel,
+			ProviderID:   provider.ID,
+			Name:         failingModel,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+	}); err != nil {
+		t.Fatalf("save models: %v", err)
+	}
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.providerPool = &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+	}
+
+	result := &providerpool.RouteResult{
+		Provider: provider,
+		Model: &providerpool.Model{
+			ID:         failingModel,
+			ProviderID: provider.ID,
+			Name:       failingModel,
+			Enabled:    true,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:                  []byte(`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`),
+		requestedModel:        "auto",
+		singleProvider:        true,
+		routingSingleProvider: true,
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp, _, usedModel, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("auto request failed: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if usedModel != workingModel {
+		t.Fatalf("used model %q, want %q", usedModel, workingModel)
+	}
+	if len(attempts) != 2 || attempts[0] != failingModel || attempts[1] != workingModel {
+		t.Fatalf("attempts = %v, want [%q %q]", attempts, failingModel, workingModel)
+	}
+}
+
+func TestTryOnProvider_RoutingHintFallsThroughPastNinthCandidate(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-routing-hint-many-candidates-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	failingModels := []string{
+		"model-09",
+		"model-08",
+		"model-07",
+		"model-06",
+		"model-05",
+		"model-04",
+		"model-03",
+		"model-02",
+		"model-01",
+	}
+	workingModel := "model-00"
+	var attempts []string
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := stdjson.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		model, _ := body["model"].(string)
+		attempts = append(attempts, model)
+		w.Header().Set("Content-Type", "application/json")
+		if model == workingModel {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"chatcmpl-1","object":"chat.completion","model":%q,"choices":[{"message":{"role":"assistant","content":"ok"}}]}`, workingModel)))
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"error":{"code":"model_not_found","message":"分组 default 下模型 %s 无可用渠道（distributor）","type":"new_api_error"}}`, model)))
+	}))
+	defer upstream.Close()
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	provider := &providerpool.Provider{
+		ID:        "relay-provider",
+		Name:      "Relay Provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Location:  providerpool.ProviderLocationCloud,
+		APIKeys:   []providerpool.APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	models := make([]*providerpool.Model, 0, len(failingModels)+1)
+	for _, modelID := range append(append([]string(nil), failingModels...), workingModel) {
+		models = append(models, &providerpool.Model{
+			ID:           modelID,
+			ProviderID:   provider.ID,
+			Name:         modelID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		})
+	}
+	if err := storage.SaveModels(provider.ID, models); err != nil {
+		t.Fatalf("save models: %v", err)
+	}
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.providerPool = &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+	}
+
+	result := &providerpool.RouteResult{
+		Provider: provider,
+		Model: &providerpool.Model{
+			ID:         failingModels[0],
+			ProviderID: provider.ID,
+			Name:       failingModels[0],
+			Enabled:    true,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:                  []byte(`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`),
+		requestedModel:        "auto",
+		singleProvider:        true,
+		routingSingleProvider: true,
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp, _, usedModel, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("auto request failed: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if usedModel != workingModel {
+		t.Fatalf("used model %q, want %q", usedModel, workingModel)
+	}
+	if len(attempts) != len(failingModels)+1 {
+		t.Fatalf("expected %d attempts, got %d (%v)", len(failingModels)+1, len(attempts), attempts)
+	}
+	if attempts[len(attempts)-1] != workingModel {
+		t.Fatalf("expected last attempt to reach %q, got %v", workingModel, attempts)
+	}
+}
+
+func TestProxyServeHTTP_AutoRoutingUsesFreshSnapshotAfterFetchModels(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-auto-fetch-e2e-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	failingModel := "claude-3-5-sonnet-20241022"
+	workingModel := "claude-sonnet-4-6"
+	var attempts []string
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fmt.Sprintf(`{
+				"data": [
+					{"id": %q},
+					{"id": %q}
+				]
+			}`, workingModel, failingModel)))
+		case "/v1/chat/completions":
+			var body map[string]interface{}
+			if err := stdjson.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			model, _ := body["model"].(string)
+			attempts = append(attempts, model)
+			w.Header().Set("Content-Type", "application/json")
+			switch model {
+			case workingModel:
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"chatcmpl-1","object":"chat.completion","model":%q,"choices":[{"message":{"role":"assistant","content":"ok"}}]}`, workingModel)))
+			case failingModel:
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":{"message":"Model claude-3-5-sonnet-20241022 is not available","type":"invalid_request_error"}}`))
+			default:
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(fmt.Sprintf(`{"error":{"message":"unexpected model %s","type":"invalid_request_error"}}`, model)))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+
+	provider := &providerpool.Provider{
+		ID:        "relay-provider",
+		Name:      "Relay Provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Location:  providerpool.ProviderLocationCloud,
+		Priority:  100,
+		APIKeys:   []providerpool.APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*providerpool.Model{{
+		ID:           failingModel,
+		ProviderID:   provider.ID,
+		Name:         failingModel,
+		Enabled:      true,
+		Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+	}}); err != nil {
+		t.Fatalf("save stale models: %v", err)
+	}
+
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+	initial, err := router.Route(&providerpool.RouteRequest{Mode: providerpool.RoutingModeAuto})
+	if err != nil {
+		t.Fatalf("initial route failed: %v", err)
+	}
+	if initial.Model == nil || initial.Model.ID != failingModel {
+		t.Fatalf("initial routed model = %v, want %q", initial.Model, failingModel)
+	}
+
+	if _, err := discovery.FetchModels(context.Background(), provider.ID); err != nil {
+		t.Fatalf("FetchModels failed: %v", err)
+	}
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), NewFailoverHandler(&FailoverConfig{Enabled: false}, nil))
+	ph.providerPool = &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ph.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ServeHTTP status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Actual-Model"); got != workingModel {
+		t.Fatalf("X-Actual-Model = %q, want %q", got, workingModel)
+	}
+	if len(attempts) != 1 || attempts[0] != workingModel {
+		t.Fatalf("upstream attempts = %v, want [%q]", attempts, workingModel)
 	}
 }
 

@@ -1410,6 +1410,22 @@ func normalizeModelRoutingHint(model string) (normalizedModel string, hintedMode
 	}
 }
 
+func isRoutingHintModel(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case string(providerpool.RoutingModeAuto), string(providerpool.RoutingModeCloud), string(providerpool.RoutingModeLocal):
+		return true
+	default:
+		return false
+	}
+}
+
+func modelMemoryKey(normalizedModel, requestedModel string) string {
+	if model := strings.TrimSpace(normalizedModel); model != "" {
+		return model
+	}
+	return strings.ToLower(strings.TrimSpace(requestedModel))
+}
+
 // resolveRoutingMode combines API-key-scoped routing with model hints.
 // API key scopes (cloud/local) are authoritative; model hints apply only when
 // scoped mode is auto.
@@ -2518,12 +2534,13 @@ func (ph *ProxyHandler) tryEndpointFallback(
 	pr *parsedRequest,
 	formatsBuf [4]providerpool.APIFormat,
 	nFormats int,
-	modelsBuf [8]string,
-	nModels int,
+	models []string,
 	originalErr error,
 ) (*http.Response, providerpool.APIFormat, string, error) {
 	provider := result.Provider
 	pid := provider.ID
+	memoryKey := modelMemoryKey(pr.model, pr.requestedModel)
+	nModels := len(models)
 
 	// Check if provider has alternate URLs to try
 	if len(provider.AlternateBaseURLs) == 0 {
@@ -2560,7 +2577,7 @@ func (ph *ProxyHandler) tryEndpointFallback(
 
 		// Try the request with this endpoint
 		for mi := 0; mi < nModels; mi++ {
-			model := modelsBuf[mi]
+			model := models[mi]
 			for fi := 0; fi < nFormats; fi++ {
 				format := formatsBuf[fi]
 				slog.Info("[proxy] trying model/format combo", "provider", pid, "model", model, "format", format)
@@ -2601,7 +2618,7 @@ func (ph *ProxyHandler) tryEndpointFallback(
 					slog.Info("[proxy] alternate endpoint worked, persisting",
 						"provider", pid, "endpoint", altURL, "format", format, "model", model)
 					ph.persistDetectedEndpoint(provider, altURL)
-					ph.rememberSuccessfulFormat(provider, altURL, pr.model, model, format)
+					ph.rememberSuccessfulFormat(provider, altURL, memoryKey, model, format)
 					ph.persistDetectedFormat(provider, format)
 					return resp, format, model, nil
 				}
@@ -2622,43 +2639,47 @@ func (ph *ProxyHandler) tryEndpointFallback(
 
 // Remembered alias first, then original model, then ModelAliases.
 // Uses stack-allocated array for the common case (≤8 candidates).
-func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, routedModel string, ignoreBlacklist bool) ([8]string, int) {
-	var buf [8]string
-	n := 0
+func (ph *ProxyHandler) allModelsForProvider(provider *providerpool.Provider, pid, burl, memoryKey, originalModel string, routedModel string, ignoreBlacklist bool) []string {
+	buf := make([]string, 0, 16)
+	chatRoutingHint := isRoutingHintModel(memoryKey)
 
 	has := func(s string) bool {
-		for i := 0; i < n; i++ {
-			if buf[i] == s {
+		for _, existing := range buf {
+			if existing == s {
 				return true
 			}
 		}
 		return false
 	}
 
-	add := func(s string) {
-		if n < len(buf) {
-			buf[n] = s
-			n++
+	allow := func(modelID string) bool {
+		if !chatRoutingHint {
+			return true
 		}
+		return providerpool.SupportsChatCompletionsModelID(modelID)
+	}
+
+	add := func(s string) {
+		buf = append(buf, s)
 	}
 
 	// 1. Remembered alias (highest priority)
-	if alias, ok := ph.providerMemory.RecallModelAlias(pid, burl, originalModel); ok {
-		if ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
+	if alias, ok := ph.providerMemory.RecallModelAlias(pid, burl, memoryKey); ok {
+		if allow(alias) && (ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, alias)) {
 			add(alias)
 		}
 	}
 
 	// 2. Routed model (from provider pool)
 	if routedModel != "" && !has(routedModel) {
-		if ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, routedModel) {
+		if allow(routedModel) && (ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, routedModel)) {
 			add(routedModel)
 		}
 	}
 
 	// 3. Original model (skip empty — happens when "auto" is normalized to "")
 	if originalModel != "" && !has(originalModel) {
-		if ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, originalModel) {
+		if allow(originalModel) && (ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, originalModel)) {
 			add(originalModel)
 		}
 	}
@@ -2666,13 +2687,37 @@ func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, ro
 	// 4. ModelAliases
 	if aliases, ok := ModelAliases[originalModel]; ok {
 		for _, alias := range aliases {
-			if !has(alias) && (ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, alias)) {
+			if !has(alias) && allow(alias) && (ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, alias)) {
 				add(alias)
 			}
 		}
 	}
 
-	return buf, n
+	// Routing-hint requests ("auto"/"local"/"cloud") need a concrete model
+	// inside the selected provider. For custom relays, expand to additional
+	// preferred models so a stale or unavailable first choice can fall through
+	// to another advertised model on the same relay.
+	if isCustomRelayProvider(provider) && isRoutingHintModel(memoryKey) && ph != nil && ph.providerPool != nil && ph.providerPool.Discovery != nil {
+		if models, err := ph.providerPool.Discovery.GetFilteredModels(provider.ID); err == nil {
+			for _, model := range models {
+				if model == nil || !providerpool.SupportsChatCompletions(model) {
+					continue
+				}
+				modelID := strings.TrimSpace(model.ID)
+				if modelID == "" {
+					modelID = strings.TrimSpace(model.Name)
+				}
+				if modelID == "" || has(modelID) {
+					continue
+				}
+				if ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, modelID) {
+					add(modelID)
+				}
+			}
+		}
+	}
+
+	return buf
 }
 
 // tryOnProvider tries all Model × Format combinations on a single provider.
@@ -2692,6 +2737,7 @@ func (ph *ProxyHandler) tryOnProvider(
 	if result.Model != nil && result.Model.ID != pr.model {
 		routedModel = result.Model.ID
 	}
+	memoryKey := modelMemoryKey(pr.model, pr.requestedModel)
 
 	// Copilot special handling: get JWT token if provider uses OAuth
 	// The token needs to be fetched fresh for each request as it may expire
@@ -2720,8 +2766,8 @@ func (ph *ProxyHandler) tryOnProvider(
 		}
 	}
 
-	formatsBuf, nFormats, formatKnown := ph.allFormatsForProvider(pid, burl, pr.model, result.Provider)
-	formatPlan := ph.formatPlanForProvider(pid, burl, pr.model, result.Provider)
+	formatsBuf, nFormats, formatKnown := ph.allFormatsForProvider(pid, burl, memoryKey, result.Provider)
+	formatPlan := ph.formatPlanForProvider(pid, burl, memoryKey, result.Provider)
 	fullFormatsBuf := formatsBuf
 	selectedFormat := formatPlan.SelectedFormat
 	allFormats := nFormats // remember full count before truncation
@@ -2732,13 +2778,18 @@ func (ph *ProxyHandler) tryOnProvider(
 		allFormats = 1
 		formatKnown = true
 	}
-	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, pr.model, routedModel, pr.singleProvider)
+	models := ph.allModelsForProvider(result.Provider, pid, burl, memoryKey, pr.model, routedModel, pr.singleProvider)
+	nModels := len(models)
+	firstModel := ""
+	if nModels > 0 {
+		firstModel = models[0]
+	}
 
 	slog.Debug("[proxy] tryOnProvider setup",
 		"provider", pid, "nModels", nModels, "nFormats", nFormats,
 		"allFormats", allFormats, "formatKnown", formatKnown,
-		"format0", formatsBuf[0], "model0", modelsBuf[0],
-		"requestModel", pr.model)
+		"format0", formatsBuf[0], "model0", firstModel,
+		"requestModel", pr.model, "memoryKey", memoryKey)
 
 	if nModels == 0 {
 		return nil, "", "", fmt.Errorf("all models blacklisted on provider %s", pid)
@@ -2758,7 +2809,7 @@ func (ph *ProxyHandler) tryOnProvider(
 	// Fast path: single model + single format + model matches request (most common happy path).
 	// Avoids loop overhead, sjson.SetBytes, and slice iteration.
 	var fastPathTriedFormat providerpool.APIFormat // track what fast path already tried
-	if nModels == 1 && nFormats == 1 && modelsBuf[0] == pr.model {
+	if nModels == 1 && nFormats == 1 && models[0] == pr.model {
 		format := formatsBuf[0]
 		fastPathBody := pr.body
 		continuationResetTried := false
@@ -2792,7 +2843,7 @@ func (ph *ProxyHandler) tryOnProvider(
 					"hasKey", hasKey, "keyLen", len(result.APIKey.Key), "alternates", result.Provider.AlternateBaseURLs)
 				if len(result.Provider.AlternateBaseURLs) > 0 {
 					resp, fmt, mdl, err := ph.tryEndpointFallback(
-						r, result, pr, formatsBuf, nFormats, modelsBuf, nModels, probeErr,
+						r, result, pr, formatsBuf, nFormats, models, probeErr,
 					)
 					if err == nil {
 						slog.Info("[proxy] fast path endpoint fallback succeeded", "provider", pid)
@@ -2803,7 +2854,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				return nil, "", "", probeErr
 			}
 			if resp.StatusCode < 400 {
-				ph.rememberSuccessfulFormat(result.Provider, burl, pr.model, pr.model, format)
+				ph.rememberSuccessfulFormat(result.Provider, burl, memoryKey, pr.model, format)
 				ph.persistDetectedFormat(result.Provider, format)
 				return resp, format, pr.model, nil
 			}
@@ -2853,7 +2904,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				}
 				slog.Warn("[proxy] request conversion unsupported on fast path, expanding to all formats",
 					"provider", pid, "format", format, "model", pr.model, "status", statusCode, "body", errStr)
-				ph.forgetRememberedFormat(result.Provider, burl, pr.model)
+				ph.forgetRememberedFormat(result.Provider, burl, memoryKey)
 				ph.clearDetectedFormat(result.Provider)
 				formatsBuf = fullFormatsBuf
 				nFormats = allFormats
@@ -2868,7 +2919,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				}
 				slog.Warn("[proxy] format mismatch on fast path, expanding to all formats",
 					"provider", pid, "format", format, "model", pr.model)
-				ph.forgetRememberedFormat(result.Provider, burl, pr.model)
+				ph.forgetRememberedFormat(result.Provider, burl, memoryKey)
 				ph.clearDetectedFormat(result.Provider)
 				formatsBuf = fullFormatsBuf
 				nFormats = allFormats
@@ -2904,7 +2955,7 @@ func (ph *ProxyHandler) tryOnProvider(
 						slog.Warn("[proxy] request conversion unsupported on fast path, expanding to all formats",
 							"provider", pid, "format", format, "model", pr.model, "status", statusCode, "body", errStr)
 						if formatPlan.Mutable {
-							ph.forgetRememberedFormat(result.Provider, burl, pr.model)
+							ph.forgetRememberedFormat(result.Provider, burl, memoryKey)
 							ph.clearDetectedFormat(result.Provider)
 						}
 						formatsBuf = fullFormatsBuf
@@ -2913,6 +2964,12 @@ func (ph *ProxyHandler) tryOnProvider(
 						break
 					}
 					return nil, "", "", newRequestConversionUnsupportedError(pr.model, pid, errStr)
+				}
+				if isModelNotConfiguredError(statusCode, errBody) || known404ModelNotConfigured {
+					if !pr.singleProvider {
+						ph.providerMemory.BlacklistModel(pid, burl, pr.model)
+					}
+					return nil, "", "", fmt.Errorf("model %s not configured on provider %s: %s", pr.model, pid, errStr)
 				}
 				if statusCode >= 500 {
 					// 5xx: server error, skip entire provider
@@ -2930,12 +2987,6 @@ func (ph *ProxyHandler) tryOnProvider(
 				if isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
 					return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 				}
-				if isModelNotConfiguredError(statusCode, errBody) || known404ModelNotConfigured {
-					if !pr.singleProvider {
-						ph.providerMemory.BlacklistModel(pid, burl, pr.model)
-					}
-					return nil, "", "", fmt.Errorf("model %s not configured on provider %s: %s", pr.model, pid, errStr)
-				}
 				// Auth errors — don't blacklist model
 				if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden ||
 					(statusCode == http.StatusBadRequest && isAuthRelatedBody(errBody)) {
@@ -2952,7 +3003,7 @@ func (ph *ProxyHandler) tryOnProvider(
 	}
 
 	for mi := 0; mi < nModels; mi++ {
-		model := modelsBuf[mi]
+		model := models[mi]
 		// Build body with this model
 		forwardBody := pr.body
 		if model != pr.model {
@@ -3054,7 +3105,7 @@ func (ph *ProxyHandler) tryOnProvider(
 					"hasKey", hasKey, "keyLen", len(result.APIKey.Key), "alternates", result.Provider.AlternateBaseURLs)
 				if len(result.Provider.AlternateBaseURLs) > 0 {
 					resp, fmt, mdl, err := ph.tryEndpointFallback(
-						r, result, pr, formatsBuf, nFormats, modelsBuf, nModels, probeErr,
+						r, result, pr, formatsBuf, nFormats, models, probeErr,
 					)
 					if err == nil {
 						slog.Info("[proxy] endpoint fallback succeeded", "provider", pid)
@@ -3072,7 +3123,7 @@ func (ph *ProxyHandler) tryOnProvider(
 
 			if resp.StatusCode < 400 {
 				// Success — remember what worked
-				ph.rememberSuccessfulFormat(result.Provider, burl, pr.model, model, format)
+				ph.rememberSuccessfulFormat(result.Provider, burl, memoryKey, model, format)
 				// Persist detected format to provider (survives restarts)
 				ph.persistDetectedFormat(result.Provider, format)
 				return resp, format, model, nil
@@ -3120,7 +3171,7 @@ func (ph *ProxyHandler) tryOnProvider(
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				lastErr = newRequestConversionUnsupportedError(model, pid, errStr)
 				if fi == nFormats-1 && formatPlan.Mutable && allFormats > nFormats {
-					ph.forgetRememberedFormat(result.Provider, burl, pr.model)
+					ph.forgetRememberedFormat(result.Provider, burl, memoryKey)
 					ph.clearDetectedFormat(result.Provider)
 					formatsBuf = fullFormatsBuf
 					nFormats = allFormats
@@ -3128,18 +3179,17 @@ func (ph *ProxyHandler) tryOnProvider(
 				continue
 			}
 
-			if statusCode >= 500 {
-				// 5xx: server error, skip entire provider
-				errMsg := errStr
-				if len(errMsg) > 500 {
-					errMsg = errMsg[:500]
-				}
-				slog.Warn("[proxy] upstream 5xx error",
-					"provider", pid, "status", statusCode, "error", errMsg)
-				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
-			}
-
 			known404ModelNotConfigured := treatKnown404AsModelNotConfigured(result.Provider, formatKnown, statusCode)
+			if statusCode >= 500 && isModelNotConfiguredError(statusCode, errBody) {
+				slog.Warn("[proxy] wrapped upstream model-not-configured error, blacklisting and trying next",
+					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
+				if remembered, ok := ph.providerMemory.RecallModelAlias(pid, burl, memoryKey); ok && remembered == model {
+					ph.providerMemory.ForgetModelAlias(pid, burl, memoryKey)
+				}
+				lastErr = fmt.Errorf("model %s not configured on provider %s: %s", model, pid, errStr)
+				allFormatsMismatch = false
+				break
+			}
 
 			// Format mismatch: 422, or 404/400 with format-related error body.
 			// Check BEFORE isModelNotConfiguredError since both match 404/422.
@@ -3154,7 +3204,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 				// If we're on the last format and there are more available, expand
 				if fi == nFormats-1 && formatPlan.Mutable && allFormats > nFormats {
-					ph.forgetRememberedFormat(result.Provider, burl, pr.model)
+					ph.forgetRememberedFormat(result.Provider, burl, memoryKey)
 					ph.clearDetectedFormat(result.Provider)
 					formatsBuf = fullFormatsBuf
 					nFormats = allFormats
@@ -3170,6 +3220,9 @@ func (ph *ProxyHandler) tryOnProvider(
 			if isModelNotConfiguredError(statusCode, errBody) || known404ModelNotConfigured {
 				slog.Warn("[proxy] model not configured on provider, blacklisting and trying next",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
+				if remembered, ok := ph.providerMemory.RecallModelAlias(pid, burl, memoryKey); ok && remembered == model {
+					ph.providerMemory.ForgetModelAlias(pid, burl, memoryKey)
+				}
 				// Blacklist THIS model on THIS provider (per-provider scope) so we don't retry it
 				if !pr.singleProvider {
 					ph.providerMemory.BlacklistModel(pid, burl, model)
@@ -3179,6 +3232,16 @@ func (ph *ProxyHandler) tryOnProvider(
 				// Skip remaining formats for this model — if model isn't configured,
 				// trying a different format won't help
 				break
+			}
+			if statusCode >= 500 {
+				// 5xx: server error, skip entire provider
+				errMsg := errStr
+				if len(errMsg) > 500 {
+					errMsg = errMsg[:500]
+				}
+				slog.Warn("[proxy] upstream 5xx error",
+					"provider", pid, "status", statusCode, "error", errMsg)
+				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
 			}
 
 			// 400 invalid_request_error: the request body itself is malformed
@@ -3202,7 +3265,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				// This will try alternate base URLs if available
 				if len(result.Provider.AlternateBaseURLs) > 0 {
 					resp, fmt, mdl, err := ph.tryEndpointFallback(
-						r, result, pr, formatsBuf, nFormats, modelsBuf, nModels,
+						r, result, pr, formatsBuf, nFormats, models,
 						fmt.Errorf("provider %s auth error (%d): %s", pid, statusCode, errStr),
 					)
 					if err == nil {
@@ -3250,6 +3313,7 @@ var notConfiguredPatternsEN = [][]byte{
 	[]byte("model disabled"),
 	[]byte("model unavailable"),
 	[]byte("model not found"),
+	[]byte("model_not_found"),
 	[]byte("does not exist"),
 	[]byte("invalid model"),
 	[]byte("unknown model"),
@@ -3265,13 +3329,18 @@ var notConfiguredPatternsCN = [][]byte{
 	[]byte("模型不存在"), // model does not exist
 	[]byte("未找到"),   // not found
 	[]byte("无权限"),   // no permission
+	[]byte("无可用渠道"), // no available distributor/channel
 }
 
 // isModelNotConfiguredError checks if the error response indicates the model
-// is listed but not actually configured/available on this provider.
+// is listed but not actually configured/available on this provider. Some relays
+// wrap these upstream failures into 502/503 responses, so we treat those like
+// permanent model errors when the body matches the known patterns.
 // Uses bytes.Contains with pre-lowered patterns to avoid strings.ToLower allocation.
 func isModelNotConfiguredError(statusCode int, body []byte) bool {
-	if statusCode != 400 && statusCode != 403 && statusCode != 404 && statusCode != 422 {
+	switch statusCode {
+	case 400, 403, 404, 422, 502, 503:
+	default:
 		return false
 	}
 	return isModelNotConfiguredBody(body)

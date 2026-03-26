@@ -3,7 +3,10 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -210,6 +213,7 @@ func (d *GroupDispatcher) processClaimedItem(itemID string, groupID string) {
 		d.failAttempt(ctx, group, item, terminalRun, err, false)
 		return
 	}
+	_ = d.attachCheckpointArtifact(ctx, group, item, terminalRun, &verification, &scorecard)
 	d.finalizeAttempt(ctx, group, item, terminalRun, &scorecard)
 }
 
@@ -370,6 +374,9 @@ func (d *GroupDispatcher) buildGroupItemRunSpec(ctx context.Context, group *RunG
 	if len(retryFeedback) > 0 {
 		spec.Metadata["retry_feedback"] = retryFeedback
 	}
+	if checkpoint := d.resumeCheckpointForItem(ctx, item); len(checkpoint) > 0 {
+		spec.Metadata["resume_checkpoint"] = checkpoint
+	}
 	return spec, nil
 }
 
@@ -396,6 +403,73 @@ func (d *GroupDispatcher) retryFeedbackForItem(ctx context.Context, item *RunGro
 	return retryContext, retryFeedback
 }
 
+func (d *GroupDispatcher) resumeCheckpointForItem(ctx context.Context, item *RunGroupItem) map[string]interface{} {
+	if d == nil || d.manager == nil || d.manager.store == nil || item == nil || item.AttemptCount <= 0 {
+		return nil
+	}
+	runID := strings.TrimSpace(item.LatestRunID)
+	if runID == "" {
+		return nil
+	}
+	artifacts, err := d.manager.store.ListArtifacts(ctx, runID)
+	if err != nil {
+		return nil
+	}
+	for i := len(artifacts) - 1; i >= 0; i-- {
+		artifact := artifacts[i]
+		if strings.TrimSpace(artifact.Kind) != "checkpoint" {
+			continue
+		}
+		meta := unmarshalMetadata(artifact.MetadataJSON)
+		if len(meta) == 0 {
+			continue
+		}
+		meta["artifact_path"] = strings.TrimSpace(artifact.PathOrURL)
+		meta["artifact_label"] = strings.TrimSpace(artifact.Label)
+		return meta
+	}
+	return nil
+}
+
+func (d *GroupDispatcher) attachCheckpointArtifact(ctx context.Context, group *RunGroup, item *RunGroupItem, run *Run, verification *HarnessVerificationResult, scorecard *Scorecard) error {
+	if d == nil || d.manager == nil || d.manager.store == nil || run == nil || item == nil || group == nil {
+		return nil
+	}
+	if !checkpointsEnabled(run.Metadata) {
+		return nil
+	}
+	checkpoint := buildHarnessCheckpoint(group, item, run, verification, scorecard)
+	if checkpoint == nil {
+		return nil
+	}
+	raw, err := json.MarshalIndent(checkpoint, "", "  ")
+	if err != nil {
+		return err
+	}
+	target := strings.TrimSpace(run.ArtifactRoot)
+	if target == "" {
+		return nil
+	}
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return err
+	}
+	filePath := filepath.Join(target, fmt.Sprintf("checkpoint-attempt-%02d.json", max(item.AttemptCount, run.AttemptIndex)))
+	if err := os.WriteFile(filePath, raw, 0o644); err != nil {
+		return err
+	}
+	ref := ArtifactRef{
+		ID:           uuid.NewString(),
+		RunID:        run.ID,
+		Kind:         "checkpoint",
+		Label:        fmt.Sprintf("checkpoint-attempt-%d", max(item.AttemptCount, run.AttemptIndex)),
+		PathOrURL:    filePath,
+		MIMEType:     "application/json",
+		SizeBytes:    int64(len(raw)),
+		MetadataJSON: marshalMetadata(checkpointMetadata(checkpoint)),
+	}
+	return d.manager.AttachArtifact(ctx, ref)
+}
+
 func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error) {
 	if group == nil || item == nil {
 		return RunSpec{}, fmt.Errorf("group and item are required")
@@ -407,6 +481,20 @@ func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error)
 	metadata["group_profile"] = strings.TrimSpace(item.Profile)
 	metadata["group_input"] = cloneMetadataMap(item.Input)
 	metadata["group_expected"] = cloneMetadataMap(item.Expected)
+	contract := DecodeHarnessContract(metadata, item.Input, item.Expected)
+	if contractMeta := HarnessContractMetadata(contract); len(contractMeta) > 0 {
+		metadata["harness_contract"] = contractMeta
+	}
+	if _, ok := metadata["task_success_criteria"]; !ok {
+		if criteria := HarnessContractSuccessCriteria(contract); len(criteria) > 0 {
+			metadata["task_success_criteria"] = append([]string(nil), criteria...)
+		}
+	}
+	if _, ok := metadata["task_fallback_plan"]; !ok {
+		if fallback := HarnessContractFallbackPlan(contract); len(fallback) > 0 {
+			metadata["task_fallback_plan"] = append([]string(nil), fallback...)
+		}
+	}
 
 	goal := firstMapString(item.Input, "goal", "query", "prompt")
 	if goal == "" {
@@ -480,6 +568,26 @@ func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error)
 	); approval != "" {
 		spec.ApprovalMode = ApprovalMode(strings.TrimSpace(approval))
 	}
+	adaptivePolicy := DeriveHarnessAdaptivePolicy(spec.Model, item.RunKind, contract)
+	if policyMeta := HarnessAdaptivePolicyMetadata(adaptivePolicy); len(policyMeta) > 0 {
+		metadata["runtime_adaptation"] = policyMeta
+	}
+	if _, ok := metadata["enable_external_qa"]; !ok {
+		metadata["enable_external_qa"] = adaptivePolicy.EnableExternalQA
+	}
+	if _, ok := metadata["enable_browser_qa"]; !ok {
+		metadata["enable_browser_qa"] = adaptivePolicy.EnableBrowserQA
+	}
+	if _, ok := metadata["enable_checkpoints"]; !ok {
+		metadata["enable_checkpoints"] = adaptivePolicy.EnableCheckpoints
+	}
+	if _, ok := metadata["max_recovery_attempts"]; !ok {
+		metadata["max_recovery_attempts"] = adaptivePolicy.MaxRecoveryAttempts
+	}
+	if _, ok := metadata["checkpoint_interval"]; !ok {
+		metadata["checkpoint_interval"] = adaptivePolicy.CheckpointInterval
+	}
+	spec.Metadata = metadata
 	return spec, nil
 }
 
@@ -548,6 +656,177 @@ func buildRetryFeedback(card *Scorecard, previousRun *Run) (string, map[string]i
 		feedback["failed_artifacts"] = append([]string(nil), failedArtifacts...)
 	}
 	return retryContext, feedback
+}
+
+func buildHarnessCheckpoint(group *RunGroup, item *RunGroupItem, run *Run, verification *HarnessVerificationResult, scorecard *Scorecard) *HarnessCheckpoint {
+	if run == nil || item == nil || group == nil {
+		return nil
+	}
+	contract := DecodeHarnessContract(run.Metadata, item.Metadata, item.Expected)
+	checkpoint := &HarnessCheckpoint{
+		Version:      "v1",
+		RunID:        run.ID,
+		GroupID:      group.ID,
+		GroupItemID:  item.ID,
+		AttemptIndex: max(item.AttemptCount, run.AttemptIndex),
+		Goal:         strings.TrimSpace(run.Goal),
+		Summary: firstNonEmpty(
+			checkpointVerificationSummary(verification),
+			scorecardReasonText(scorecard),
+			strings.TrimSpace(run.Result),
+			strings.TrimSpace(run.Error),
+		),
+		VerifiedEvidence: checkpointEvidence(run, verification),
+		UnresolvedRisks:  checkpointRisks(run, verification),
+		FailureLabels:    checkpointFailureLabels(verification, scorecard),
+		NextContract:     contract,
+		CreatedAt:        timeutil.NowTime(),
+	}
+	checkpoint.EvaluatorInput = buildCheckpointEvaluatorInput(checkpoint)
+	checkpoint.RecommendedResume = buildCheckpointResume(checkpoint)
+	return checkpoint
+}
+
+func checkpointMetadata(checkpoint *HarnessCheckpoint) map[string]interface{} {
+	if checkpoint == nil {
+		return nil
+	}
+	raw, err := json.Marshal(checkpoint)
+	if err != nil {
+		return nil
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func checkpointEvidence(run *Run, verification *HarnessVerificationResult) []string {
+	evidence := make([]string, 0, 6)
+	if verification != nil {
+		if summary := strings.TrimSpace(verification.Summary); summary != "" && verification.Passed {
+			evidence = append(evidence, summary)
+		}
+		evidence = append(evidence, verification.Observations...)
+	}
+	if run != nil {
+		if result := strings.TrimSpace(run.Result); result != "" {
+			evidence = append(evidence, truncateCheckpointText(result))
+		}
+	}
+	return dedupeContractStrings(evidence)
+}
+
+func checkpointRisks(run *Run, verification *HarnessVerificationResult) []string {
+	risks := make([]string, 0, 6)
+	if verification != nil && !verification.Passed {
+		if label := strings.TrimSpace(verification.FailureLabel); label != "" {
+			risks = append(risks, label)
+		}
+		if summary := strings.TrimSpace(verification.Summary); summary != "" {
+			risks = append(risks, summary)
+		}
+	}
+	if run != nil && strings.TrimSpace(run.Error) != "" {
+		risks = append(risks, truncateCheckpointText(run.Error))
+	}
+	return dedupeContractStrings(risks)
+}
+
+func checkpointFailureLabels(verification *HarnessVerificationResult, scorecard *Scorecard) []string {
+	labels := make([]string, 0, 2)
+	if verification != nil && strings.TrimSpace(verification.FailureLabel) != "" {
+		labels = append(labels, strings.TrimSpace(verification.FailureLabel))
+	}
+	if scorecard != nil {
+		breakdown := decodeJSONMap(scorecard.BreakdownJSON)
+		if label := metadataString(breakdown, "failure_label"); label != "" {
+			labels = append(labels, label)
+		}
+	}
+	return dedupeContractStrings(labels)
+}
+
+func checkpointVerificationSummary(verification *HarnessVerificationResult) string {
+	if verification == nil {
+		return ""
+	}
+	if summary := strings.TrimSpace(verification.Summary); summary != "" {
+		return summary
+	}
+	if verification.Passed {
+		return "verification passed"
+	}
+	return ""
+}
+
+func scorecardReasonText(scorecard *Scorecard) string {
+	if scorecard == nil {
+		return ""
+	}
+	breakdown := decodeJSONMap(scorecard.BreakdownJSON)
+	if reason := metadataString(breakdown, "reason"); reason != "" {
+		return reason
+	}
+	trace := decodeJSONMap(scorecard.JudgeTraceJSON)
+	return metadataString(trace, "reason")
+}
+
+func buildCheckpointEvaluatorInput(checkpoint *HarnessCheckpoint) string {
+	if checkpoint == nil {
+		return ""
+	}
+	parts := make([]string, 0, 4)
+	if checkpoint.Summary != "" {
+		parts = append(parts, "Summary: "+checkpoint.Summary)
+	}
+	if len(checkpoint.VerifiedEvidence) > 0 {
+		parts = append(parts, "Verified evidence:\n- "+strings.Join(checkpoint.VerifiedEvidence, "\n- "))
+	}
+	if len(checkpoint.UnresolvedRisks) > 0 {
+		parts = append(parts, "Unresolved risks:\n- "+strings.Join(checkpoint.UnresolvedRisks, "\n- "))
+	}
+	if contractContext := BuildHarnessContractContext(checkpoint.NextContract); contractContext != "" {
+		parts = append(parts, contractContext)
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func buildCheckpointResume(checkpoint *HarnessCheckpoint) string {
+	if checkpoint == nil {
+		return ""
+	}
+	if len(checkpoint.UnresolvedRisks) > 0 {
+		return "Use the checkpoint risks to drive the next bounded recovery pass before declaring success."
+	}
+	if len(checkpoint.VerifiedEvidence) > 0 {
+		return "Resume from the verified evidence and continue only the unfinished contract edges."
+	}
+	return "Resume from the checkpoint summary and re-validate the remaining contract."
+}
+
+func checkpointsEnabled(meta map[string]interface{}) bool {
+	if len(meta) == 0 {
+		return false
+	}
+	if enabled, ok := meta["enable_checkpoints"].(bool); ok {
+		return enabled
+	}
+	if adaptation := nestedMetadataMap(meta, "runtime_adaptation"); len(adaptation) > 0 {
+		if enabled, ok := adaptation["enable_checkpoints"].(bool); ok {
+			return enabled
+		}
+	}
+	return false
+}
+
+func truncateCheckpointText(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= 240 {
+		return value
+	}
+	return value[:237] + "..."
 }
 
 func nestedMetadataMap(meta map[string]interface{}, key string) map[string]interface{} {

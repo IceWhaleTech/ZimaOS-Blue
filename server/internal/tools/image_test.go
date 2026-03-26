@@ -130,6 +130,197 @@ func (m *imageSmallModelMock) Ready() bool {
 	return m.ready
 }
 
+func TestImageDefinition_UsesGroupedWorkflowSchema(t *testing.T) {
+	tool := NewImageTool(nil, nil, nil)
+	def := tool.Definition()
+	props, ok := def.Parameters["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("properties = %#v, want object", def.Parameters["properties"])
+	}
+	for _, key := range []string{"task", "generate", "review", "slide"} {
+		if _, ok := props[key]; !ok {
+			t.Fatalf("expected grouped property %q", key)
+		}
+	}
+	for _, legacy := range []string{"task_id", "reference_image", "reference_base64", "url", "urls", "image", "images", "negative_prompt", "wait_timeout_sec"} {
+		if _, ok := props[legacy]; ok {
+			t.Fatalf("legacy top-level property %q should be hidden", legacy)
+		}
+	}
+}
+
+func TestNormalizeImageArgs_FlattensSlideOptionsAndLanguage(t *testing.T) {
+	args := normalizeImageArgs(map[string]interface{}{
+		"language": "zh-CN",
+		"slide": map[string]interface{}{
+			"reference_images":    []interface{}{"https://example.com/a.png"},
+			"layout_spec":         map[string]interface{}{"kind": "cover"},
+			"style_preset":        "bananaslides",
+			"quality_profile":     "ppt",
+			"review_threshold":    0.8,
+			"review_retry_budget": 2,
+			"theme":               "brand",
+		},
+	})
+	if got := asString(args["lang"]); got != "zh-CN" {
+		t.Fatalf("lang = %q, want zh-CN", got)
+	}
+	if got := asString(args["style_preset"]); got != "bananaslides" {
+		t.Fatalf("style_preset = %q, want bananaslides", got)
+	}
+	if got := asString(args["quality_profile"]); got != "ppt" {
+		t.Fatalf("quality_profile = %q, want ppt", got)
+	}
+	if got := asString(args["style_theme"]); got != "brand" {
+		t.Fatalf("style_theme = %q, want brand", got)
+	}
+	if got := args["review_retry_budget"]; got != 2 {
+		t.Fatalf("review_retry_budget = %#v, want 2", got)
+	}
+	if _, ok := args["reference_images"]; !ok {
+		t.Fatal("expected reference_images to be flattened")
+	}
+	if _, ok := args["layout_spec"]; !ok {
+		t.Fatal("expected layout_spec to be flattened")
+	}
+}
+
+func TestNormalizeImageArgs_FlattensGroupedWorkflowOptions(t *testing.T) {
+	args := normalizeImageArgs(map[string]interface{}{
+		"task": map[string]interface{}{
+			"id": "task-7",
+		},
+		"generate": map[string]interface{}{
+			"model": "demo-model",
+			"output": map[string]interface{}{
+				"path":  "art.png",
+				"count": 2,
+				"size":  "1024x1024",
+			},
+			"reference": map[string]interface{}{
+				"url":    "https://example.com/ref.png",
+				"base64": "abc123",
+			},
+			"wait": map[string]interface{}{
+				"enabled":     false,
+				"timeout_sec": 45,
+			},
+			"options": map[string]interface{}{
+				"negative":   "blurry",
+				"quality":    "high",
+				"style":      "illustration",
+				"mode":       "i2i",
+				"aspect":     "16:9",
+				"resolution": "hd",
+			},
+		},
+		"review": map[string]interface{}{
+			"inputs": map[string]interface{}{
+				"url":   "https://example.com/page",
+				"paths": []interface{}{"/tmp/a.png"},
+			},
+			"compare":    true,
+			"max_images": 3,
+			"mode":       "cheap",
+			"language":   "en-US",
+			"options": map[string]interface{}{
+				"device":    "mobile",
+				"wait_ms":   1200,
+				"threshold": 0.7,
+				"format":    "json",
+			},
+		},
+		"slide": map[string]interface{}{
+			"review": map[string]interface{}{
+				"threshold":    0.8,
+				"retry_budget": 2,
+			},
+		},
+	})
+
+	if got := asString(args["task_id"]); got != "task-7" {
+		t.Fatalf("task_id = %q, want task-7", got)
+	}
+	if got := asString(args["model"]); got != "demo-model" {
+		t.Fatalf("model = %q, want demo-model", got)
+	}
+	if got := asString(args["path"]); got != "art.png" {
+		t.Fatalf("path = %q, want art.png", got)
+	}
+	if got := compatInt(args, "count"); got != 2 {
+		t.Fatalf("count = %d, want 2", got)
+	}
+	if got := asString(args["size"]); got != "1024x1024" {
+		t.Fatalf("size = %q, want 1024x1024", got)
+	}
+	if got := asString(args["reference_image"]); got != "https://example.com/ref.png" {
+		t.Fatalf("reference_image = %q", got)
+	}
+	if got := asString(args["reference_base64"]); got != "abc123" {
+		t.Fatalf("reference_base64 = %q", got)
+	}
+	if got, ok := args["poll"].(bool); !ok || got {
+		t.Fatalf("poll = %#v, want false", args["poll"])
+	}
+	if got := compatInt(args, "wait_timeout_sec"); got != 45 {
+		t.Fatalf("wait_timeout_sec = %d, want 45", got)
+	}
+	if got := asString(args["negative_prompt"]); got != "blurry" {
+		t.Fatalf("negative_prompt = %q", got)
+	}
+	if got := asString(args["quality"]); got != "high" {
+		t.Fatalf("quality = %q", got)
+	}
+	if got := asString(args["style"]); got != "illustration" {
+		t.Fatalf("style = %q", got)
+	}
+	if got := asString(args["category"]); got != "i2i" {
+		t.Fatalf("category = %q", got)
+	}
+	if got := asString(args["aspect_ratio"]); got != "16:9" {
+		t.Fatalf("aspect_ratio = %q", got)
+	}
+	if got := asString(args["resolution"]); got != "hd" {
+		t.Fatalf("resolution = %q", got)
+	}
+	if got := asString(args["url"]); got != "https://example.com/page" {
+		t.Fatalf("url = %q", got)
+	}
+	if got := args["image_paths"]; got == nil {
+		t.Fatal("expected image_paths to be flattened")
+	}
+	if got, ok := args["compare"].(bool); !ok || !got {
+		t.Fatalf("compare = %#v, want true", args["compare"])
+	}
+	if got := compatInt(args, "max_images"); got != 3 {
+		t.Fatalf("max_images = %d, want 3", got)
+	}
+	if got := asString(args["analysis_mode"]); got != "cheap" {
+		t.Fatalf("analysis_mode = %q, want cheap", got)
+	}
+	if got := asString(args["lang"]); got != "en-US" {
+		t.Fatalf("lang = %q, want en-US", got)
+	}
+	if got := asString(args["device"]); got != "mobile" {
+		t.Fatalf("device = %q, want mobile", got)
+	}
+	if got := compatFloat64(args, "threshold"); got != 0.7 {
+		t.Fatalf("threshold = %v, want 0.7", got)
+	}
+	if got := asString(args["format"]); got != "json" {
+		t.Fatalf("format = %q, want json", got)
+	}
+	if got := compatInt(args, "wait_ms"); got != 1200 {
+		t.Fatalf("wait_ms = %d, want 1200", got)
+	}
+	if got := compatFloat64(args, "review_threshold"); got != 0.8 {
+		t.Fatalf("review_threshold = %v, want 0.8", got)
+	}
+	if got := compatInt(args, "review_retry_budget"); got != 2 {
+		t.Fatalf("review_retry_budget = %d, want 2", got)
+	}
+}
+
 func TestImageToolReviewFallsBackToOCR(t *testing.T) {
 	vision := &imageVisionMock{err: errors.New("vision unavailable")}
 	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "hello from ocr", Engine: "tesseract/wasm", Model: "eng"}}
@@ -1304,6 +1495,79 @@ func TestImageToolGenerateUsesLongerDefaultWaitTimeout(t *testing.T) {
 	}
 }
 
+func TestImageToolGenerateSupportsGroupedArgs(t *testing.T) {
+	var captured ImageGenerateRequest
+	tool := NewImageTool(nil, func(_ context.Context, req ImageGenerateRequest) (*ImageTaskResult, error) {
+		captured = req
+		return &ImageTaskResult{ID: "task-grouped-generate", Status: "processing"}, nil
+	}, nil)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"prompt": "make this image cleaner",
+		"generate": map[string]interface{}{
+			"model": "demo-model",
+			"path":  "grouped.png",
+			"count": 2,
+			"reference": map[string]interface{}{
+				"url": "https://example.com/input.png",
+			},
+			"wait": map[string]interface{}{
+				"enabled":     false,
+				"timeout_sec": 45,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("execute grouped generate failed: %v", err)
+	}
+
+	if captured.Model != "demo-model" {
+		t.Fatalf("model = %q, want demo-model", captured.Model)
+	}
+	if captured.OutputPath != "grouped.png" {
+		t.Fatalf("output path = %q, want grouped.png", captured.OutputPath)
+	}
+	if captured.Count != 2 {
+		t.Fatalf("count = %d, want 2", captured.Count)
+	}
+	if captured.ReferenceImageURL != "https://example.com/input.png" {
+		t.Fatalf("reference image url = %q", captured.ReferenceImageURL)
+	}
+	if captured.Wait {
+		t.Fatal("wait should be false")
+	}
+	if captured.WaitTimeout != 45*time.Second {
+		t.Fatalf("wait timeout = %v, want 45s", captured.WaitTimeout)
+	}
+}
+
+func TestImageToolReviewSupportsGroupedArgs(t *testing.T) {
+	vision := &imageVisionMock{resp: "grouped review ok"}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"prompt": "describe this image",
+		"review": map[string]interface{}{
+			"input":    inlinePNGBase64(t),
+			"mode":     "vision",
+			"language": "en-US",
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute grouped review failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "vision" {
+		t.Fatalf("mode = %v, want vision", payload["mode"])
+	}
+	if payload["analysis"] != "grouped review ok" {
+		t.Fatalf("analysis = %v", payload["analysis"])
+	}
+	if got := payload["prompt"]; got != "describe this image" {
+		t.Fatalf("prompt = %v, want describe this image", got)
+	}
+}
+
 func TestImageToolSupportsNestedCamelCaseReviewArgs(t *testing.T) {
 	vision := &imageVisionMock{responses: []string{"red chart dashboard", "blue chart dashboard"}}
 	tool := NewImageTool(nil, nil, nil)
@@ -1335,6 +1599,26 @@ func TestImageToolSupportsNestedCamelCaseReviewArgs(t *testing.T) {
 	}
 	if payload["count"] != 2 {
 		t.Fatalf("count = %v, want 2", payload["count"])
+	}
+}
+
+func TestImageToolStatusSupportsTaskObject(t *testing.T) {
+	tool := NewImageTool(nil, nil, func(_ context.Context, taskID string) (*ImageTaskResult, error) {
+		if taskID != "task-grouped-status" {
+			t.Fatalf("task id = %q, want task-grouped-status", taskID)
+		}
+		return &ImageTaskResult{ID: taskID, Status: "succeeded"}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"task": map[string]interface{}{"id": "task-grouped-status"},
+	})
+	if err != nil {
+		t.Fatalf("execute grouped status failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["task_id"] != "task-grouped-status" {
+		t.Fatalf("task_id = %v, want task-grouped-status", payload["task_id"])
 	}
 }
 

@@ -27,7 +27,10 @@ func skipIfSandboxExecUnavailable(t *testing.T, result *ExecutionResult, err err
 			msg.WriteString(result.Stderr)
 		}
 	}
-	if strings.Contains(msg.String(), "sandbox-exec: sandbox_apply: Operation not permitted") {
+	combined := msg.String()
+	if strings.Contains(combined, ErrSandboxNotSupported.Error()) ||
+		strings.Contains(combined, "sandbox-exec: sandbox_apply: Operation not permitted") ||
+		strings.Contains(combined, "executable file not found in $PATH") {
 		t.Skip("sandbox-exec unavailable in this environment")
 	}
 }

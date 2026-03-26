@@ -96,6 +96,18 @@ var (
 		RunStatusCancelled,
 		RunStatusAborted,
 	}
+	activeGroupStatuses = []RunGroupStatus{
+		RunGroupStatusPending,
+		RunGroupStatusQueued,
+		RunGroupStatusRunning,
+		RunGroupStatusScoring,
+	}
+	terminalGroupStatuses = []RunGroupStatus{
+		RunGroupStatusCompleted,
+		RunGroupStatusPartial,
+		RunGroupStatusFailed,
+		RunGroupStatusCancelled,
+	}
 )
 
 func (s *UserTaskProjectionService) List(ctx context.Context, filter UserTaskProjectionFilter) ([]UserTaskProjection, error) {
@@ -119,11 +131,25 @@ func (s *UserTaskProjectionService) Get(ctx context.Context, runID string, scope
 	if s == nil || s.manager == nil {
 		return nil, nil
 	}
-	run, err := s.manager.Get(ctx, strings.TrimSpace(runID))
-	if err != nil {
-		return nil, err
+	scope = normalizedProjectionScope(scope)
+	id := strings.TrimSpace(runID)
+	if id == "" {
+		return nil, nil
 	}
-	return s.projectionForRun(ctx, run, normalizedProjectionScope(scope))
+	run, err := s.manager.Get(ctx, id)
+	if err == nil {
+		if projection, projectErr := s.projectionForRun(ctx, run, scope); projectErr != nil || projection != nil {
+			return projection, projectErr
+		}
+	}
+	group, groupErr := s.manager.GetGroup(ctx, id)
+	if groupErr == nil {
+		return s.projectionForGroup(ctx, group, scope)
+	}
+	if err == nil || groupErr == nil {
+		return nil, nil
+	}
+	return nil, groupErr
 }
 
 func (s *UserTaskProjectionService) listCurrent(ctx context.Context, filter UserTaskProjectionFilter) ([]UserTaskProjection, error) {
@@ -141,7 +167,12 @@ func (s *UserTaskProjectionService) listCurrent(ctx context.Context, filter User
 	if err != nil {
 		return nil, err
 	}
-	active := s.projectRuns(ctx, activeRuns, "current")
+	activeRunsProjected := s.projectRuns(ctx, activeRuns, "current")
+	activeGroupsProjected, err := s.listVisibleGroups(ctx, strings.TrimSpace(filter.UserID), conversationID, "current", activeGroupStatuses, max(filter.Limit*3, 25))
+	if err != nil {
+		return nil, err
+	}
+	active := mergeProjectionSlices(activeRunsProjected, activeGroupsProjected)
 	if len(active) >= filter.Limit {
 		return active[:filter.Limit], nil
 	}
@@ -156,7 +187,12 @@ func (s *UserTaskProjectionService) listCurrent(ctx context.Context, filter User
 	if err != nil {
 		return nil, err
 	}
-	terminal := s.projectRuns(ctx, terminalRuns, "current")
+	terminalRunsProjected := s.projectRuns(ctx, terminalRuns, "current")
+	terminalGroupsProjected, err := s.listVisibleGroups(ctx, strings.TrimSpace(filter.UserID), conversationID, "current", terminalGroupStatuses, max(filter.Limit, 10))
+	if err != nil {
+		return nil, err
+	}
+	terminal := mergeProjectionSlices(terminalRunsProjected, terminalGroupsProjected)
 	return appendWithLimit(active, terminal, filter.Limit), nil
 }
 
@@ -178,7 +214,12 @@ func (s *UserTaskProjectionService) listBackground(ctx context.Context, filter U
 		}
 		filtered = append(filtered, run)
 	}
-	projected := s.projectRuns(ctx, filtered, "background")
+	projectedRuns := s.projectRuns(ctx, filtered, "background")
+	projectedGroups, err := s.listVisibleGroups(ctx, strings.TrimSpace(filter.UserID), currentConversationID, "background", activeGroupStatuses, max(filter.Limit*5, 25))
+	if err != nil {
+		return nil, err
+	}
+	projected := mergeProjectionSlices(projectedRuns, projectedGroups)
 	if len(projected) > filter.Limit {
 		projected = projected[:filter.Limit]
 	}
@@ -240,6 +281,48 @@ func (s *UserTaskProjectionService) projectRuns(ctx context.Context, runs []Run,
 	return projected
 }
 
+func (s *UserTaskProjectionService) listVisibleGroups(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+	scope string,
+	statuses []RunGroupStatus,
+	limit int,
+) ([]UserTaskProjection, error) {
+	if s == nil || s.manager == nil {
+		return nil, nil
+	}
+	groups, err := s.manager.ListGroups(ctx, RunGroupFilter{
+		OwnerUserID: strings.TrimSpace(userID),
+		Statuses:    statuses,
+		Limit:       limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	projected := make([]UserTaskProjection, 0, len(groups))
+	currentConversationID := strings.TrimSpace(conversationID)
+	for i := range groups {
+		groupConversationID := userTaskGroupConversationID(&groups[i])
+		if scope == "current" && groupConversationID != currentConversationID {
+			continue
+		}
+		if scope == "background" && currentConversationID != "" && groupConversationID == currentConversationID {
+			continue
+		}
+		projection, projectErr := s.projectionForGroup(ctx, &groups[i], scope)
+		if projectErr != nil || projection == nil {
+			continue
+		}
+		projected = append(projected, *projection)
+	}
+	sort.SliceStable(projected, func(i, j int) bool {
+		return projected[i].UpdatedAt.After(projected[j].UpdatedAt)
+	})
+	return projected, nil
+}
+
 func (s *UserTaskProjectionService) projectionForRun(ctx context.Context, run *Run, scope string) (*UserTaskProjection, error) {
 	if !isVisibleUserTaskRun(run) {
 		return nil, nil
@@ -282,6 +365,44 @@ func (s *UserTaskProjectionService) projectionForRun(ctx context.Context, run *R
 	return projection, nil
 }
 
+func (s *UserTaskProjectionService) projectionForGroup(ctx context.Context, group *RunGroup, scope string) (*UserTaskProjection, error) {
+	if !isVisibleUserTaskGroup(group) {
+		return nil, nil
+	}
+	items, err := s.manager.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		return nil, err
+	}
+	stage, status := userTaskGroupStatusParts(group)
+	kind := userTaskGroupKind(group, items)
+	title, subtitle := userTaskGroupTitleAndSubtitle(group)
+	resultPreview, errorPreview := userTaskGroupPreview(group)
+	conversationID := userTaskGroupConversationID(group)
+
+	projection := &UserTaskProjection{
+		ID:             group.ID,
+		Kind:           kind,
+		ConversationID: conversationID,
+		Scope:          scope,
+		Title:          title,
+		Subtitle:       subtitle,
+		Status:         status,
+		Stage:          stage,
+		Progress:       normalizedGroupProjectionProgress(group),
+		ResultPreview:  resultPreview,
+		ErrorPreview:   errorPreview,
+		Artifacts:      projectGroupArtifacts(group),
+		Actions: UserTaskActions{
+			CanCancel:     canCancelUserTaskGroup(group),
+			CanOpenChat:   scope == "background" && conversationID != "",
+			CanSendUpdate: false,
+		},
+		UpdatedAt:  group.UpdatedAt,
+		FinishedAt: group.FinishedAt,
+	}
+	return projection, nil
+}
+
 func isVisibleUserTaskRun(run *Run) bool {
 	if run == nil {
 		return false
@@ -296,6 +417,19 @@ func isVisibleUserTaskRun(run *Run) bool {
 		return false
 	}
 	return true
+}
+
+func isVisibleUserTaskGroup(group *RunGroup) bool {
+	if group == nil {
+		return false
+	}
+	if group.Kind != RunGroupKindEval {
+		return false
+	}
+	if ok, exists := mapBool(group.Metadata, "auto_harness"); !exists || !ok {
+		return false
+	}
+	return strings.TrimSpace(userTaskGroupConversationID(group)) != ""
 }
 
 func normalizedProjectionScope(scope string) string {
@@ -358,6 +492,21 @@ func userTaskStatusParts(run *Run, approvals []map[string]interface{}, questions
 	}
 }
 
+func userTaskGroupStatusParts(group *RunGroup) (string, string) {
+	switch group.Status {
+	case RunGroupStatusPending, RunGroupStatusQueued, RunGroupStatusRunning, RunGroupStatusScoring:
+		return "verifying", "running"
+	case RunGroupStatusCompleted:
+		return "completed", "completed"
+	case RunGroupStatusCancelled:
+		return "cancelled", "cancelled"
+	case RunGroupStatusFailed, RunGroupStatusPartial:
+		return "failed", "failed"
+	default:
+		return "verifying", "running"
+	}
+}
+
 func userTaskTitleAndSubtitle(run *Run) (string, string) {
 	title := strings.TrimSpace(run.Goal)
 	if title == "" {
@@ -394,6 +543,46 @@ func userTaskTitleAndSubtitle(run *Run) (string, string) {
 	}
 }
 
+func userTaskGroupKind(group *RunGroup, items []RunGroupItem) RunKind {
+	for _, item := range items {
+		switch item.RunKind {
+		case RunKindResearch:
+			return RunKindResearch
+		case RunKindAgentTask:
+			return RunKindAgentTask
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(group.Subject), string(RunKindResearch)) {
+		return RunKindResearch
+	}
+	return RunKindAgentTask
+}
+
+func userTaskGroupConversationID(group *RunGroup) string {
+	if group == nil {
+		return ""
+	}
+	return firstNonEmpty(
+		metadataString(group.Metadata, "conversation_id"),
+		metadataString(group.Metadata, "conversationId"),
+	)
+}
+
+func userTaskGroupTitleAndSubtitle(group *RunGroup) (string, string) {
+	if group == nil {
+		return "Auto harness", ""
+	}
+	title := trimmedPreview(strings.TrimSpace(group.Title), 120)
+	if title == "" {
+		title = "Auto harness"
+	}
+	preset := strings.TrimSpace(metadataString(group.Metadata, "quick_eval_preset"))
+	if preset == "" {
+		return title, "Auto harness"
+	}
+	return title, trimmedPreview(strings.ToLower(preset)+" auto harness", 120)
+}
+
 func normalizedProjectionProgress(run *Run) int {
 	if run == nil {
 		return 0
@@ -411,12 +600,54 @@ func normalizedProjectionProgress(run *Run) int {
 	return progress
 }
 
+func normalizedGroupProjectionProgress(group *RunGroup) int {
+	if group == nil {
+		return 0
+	}
+	switch group.Status {
+	case RunGroupStatusCompleted, RunGroupStatusPartial, RunGroupStatusFailed, RunGroupStatusCancelled:
+		return 100
+	}
+	itemCount := intMetadata(group.Summary["item_count"])
+	if itemCount <= 0 {
+		return 0
+	}
+	counts := metadataMapValue(group.Summary["counts"])
+	done := intMetadata(counts[string(RunGroupItemStatusPassed)]) +
+		intMetadata(counts[string(RunGroupItemStatusFailed)]) +
+		intMetadata(counts[string(RunGroupItemStatusError)]) +
+		intMetadata(counts[string(RunGroupItemStatusCancelled)])
+	if done <= 0 {
+		return 0
+	}
+	progress := int((float64(done) / float64(itemCount)) * 100)
+	if progress < 0 {
+		return 0
+	}
+	if progress > 100 {
+		return 100
+	}
+	return progress
+}
+
 func canCancelUserTask(run *Run) bool {
 	if run == nil {
 		return false
 	}
 	switch run.Status {
 	case RunStatusPending, RunStatusPlanning, RunStatusWaitingInput, RunStatusExecuting, RunStatusVerifying:
+		return true
+	default:
+		return false
+	}
+}
+
+func canCancelUserTaskGroup(group *RunGroup) bool {
+	if group == nil {
+		return false
+	}
+	switch group.Status {
+	case RunGroupStatusPending, RunGroupStatusQueued, RunGroupStatusRunning, RunGroupStatusScoring:
 		return true
 	default:
 		return false
@@ -435,6 +666,32 @@ func canSendUpdate(run *Run) bool {
 	}
 }
 
+func userTaskGroupPreview(group *RunGroup) (string, string) {
+	if group == nil {
+		return "", ""
+	}
+	passRate := floatMetadata(group.Summary["pass_rate"])
+	overallScore := floatMetadata(group.Summary["overall_score"])
+	summaryParts := make([]string, 0, 2)
+	if passRate > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("Pass rate %d%%", int(passRate*100+0.5)))
+	}
+	if overallScore > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("Score %.2f", overallScore))
+	}
+	summaryText := strings.Join(summaryParts, " • ")
+
+	if group.Status == RunGroupStatusCompleted {
+		return trimmedPreview(summaryText, 180), ""
+	}
+	if group.Status == RunGroupStatusPartial || group.Status == RunGroupStatusFailed {
+		labels := groupFailureLabelPreview(group.Summary)
+		errorPreview := firstNonEmpty(labels, summaryText, "Harness checks failed")
+		return "", trimmedPreview(errorPreview, 220)
+	}
+	return "", ""
+}
+
 func trimmedPreview(raw string, limit int) string {
 	value := strings.Join(strings.Fields(strings.TrimSpace(raw)), " ")
 	if value == "" || limit <= 0 || len(value) <= limit {
@@ -444,6 +701,17 @@ func trimmedPreview(raw string, limit int) string {
 		return value[:limit]
 	}
 	return strings.TrimSpace(value[:limit-1]) + "…"
+}
+
+func projectGroupArtifacts(group *RunGroup) []UserTaskArtifact {
+	if group == nil || strings.TrimSpace(group.ID) == "" {
+		return nil
+	}
+	return []UserTaskArtifact{{
+		Kind:  "report",
+		Label: "Harness report",
+		URL:   "/harness/" + strings.TrimSpace(group.ID),
+	}}
 }
 
 func projectUserArtifacts(artifacts []ArtifactRef) []UserTaskArtifact {
@@ -469,6 +737,30 @@ func projectUserArtifacts(artifacts []ArtifactRef) []UserTaskArtifact {
 		})
 	}
 	return out
+}
+
+func metadataMapValue(raw interface{}) map[string]interface{} {
+	switch value := raw.(type) {
+	case map[string]interface{}:
+		return value
+	default:
+		return nil
+	}
+}
+
+func intMetadata(raw interface{}) int {
+	switch value := raw.(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	case float32:
+		return int(value)
+	default:
+		return 0
+	}
 }
 
 func projectResearchSources(run *Run) []UserTaskResearchSource {
@@ -521,6 +813,42 @@ func projectResearchSources(run *Run) []UserTaskResearchSource {
 		out = append(out, source)
 	}
 	return out
+}
+
+func groupFailureLabelPreview(summary map[string]interface{}) string {
+	if len(summary) == 0 {
+		return ""
+	}
+	counts := metadataMapValue(summary["failure_label_counts"])
+	if len(counts) == 0 {
+		return ""
+	}
+	type labelCount struct {
+		label string
+		count int
+	}
+	labels := make([]labelCount, 0, len(counts))
+	for label, raw := range counts {
+		count := intMetadata(raw)
+		if strings.TrimSpace(label) == "" || count <= 0 {
+			continue
+		}
+		labels = append(labels, labelCount{label: strings.TrimSpace(label), count: count})
+	}
+	if len(labels) == 0 {
+		return ""
+	}
+	sort.SliceStable(labels, func(i, j int) bool {
+		if labels[i].count == labels[j].count {
+			return labels[i].label < labels[j].label
+		}
+		return labels[i].count > labels[j].count
+	})
+	parts := make([]string, 0, min(2, len(labels)))
+	for _, item := range labels[:min(2, len(labels))] {
+		parts = append(parts, fmt.Sprintf("%s (%d)", item.label, item.count))
+	}
+	return strings.Join(parts, " • ")
 }
 
 func metadataStringValue(record map[string]interface{}, key string) string {
@@ -628,6 +956,28 @@ func appendWithLimit(active []UserTaskProjection, terminal []UserTaskProjection,
 		}
 		out = append(out, item)
 	}
+	return out
+}
+
+func mergeProjectionSlices(slices ...[]UserTaskProjection) []UserTaskProjection {
+	total := 0
+	for _, slice := range slices {
+		total += len(slice)
+	}
+	out := make([]UserTaskProjection, 0, total)
+	seen := make(map[string]struct{}, total)
+	for _, slice := range slices {
+		for _, item := range slice {
+			if _, exists := seen[item.ID]; exists {
+				continue
+			}
+			seen[item.ID] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
 	return out
 }
 

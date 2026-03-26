@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/rs/zerolog"
 )
 
 var log zerolog.Logger
@@ -30,6 +31,10 @@ const (
 )
 
 func Init(cfg *config.LogConfig) error {
+	return InitWithMirror(cfg, "")
+}
+
+func InitWithMirror(cfg *config.LogConfig, mirrorPath string) error {
 	// Initialize the log buffer
 	InitBuffer(DefaultBufferSize)
 
@@ -53,6 +58,19 @@ func Init(cfg *config.LogConfig) error {
 			return err
 		}
 		output = f
+	}
+
+	mirrorPath = strings.TrimSpace(mirrorPath)
+	var mirrorOutput io.Writer
+	if mirrorPath != "" && !sameLogTarget(cfg.Output, mirrorPath) {
+		if err := os.MkdirAll(filepath.Dir(mirrorPath), 0750); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(mirrorPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return err
+		}
+		mirrorOutput = f
 	}
 
 	// For console format, wrap the output with ConsoleWriter
@@ -95,12 +113,36 @@ func Init(cfg *config.LogConfig) error {
 		}
 	}
 
-	// Create a multi-writer to write to both the output and the ring buffer
-	// Note: zerolog writes JSON to all writers, ConsoleWriter converts it for display
-	multiWriter := io.MultiWriter(output, GetBuffer())
+	// Write durable sinks first. If stdout/stderr becomes revoked after a detached
+	// launch, later sinks still capture the log entry before the terminal write fails.
+	// ConsoleWriter only affects the configured output; mirror files keep raw JSON
+	// for easier parsing after detached runs.
+	writers := []io.Writer{GetBuffer()}
+	if mirrorOutput != nil {
+		writers = append(writers, mirrorOutput)
+	}
+	writers = append(writers, output)
+	multiWriter := io.MultiWriter(writers...)
 
 	log = zerolog.New(multiWriter).With().Timestamp().Caller().Logger()
 	return nil
+}
+
+func sameLogTarget(configuredOutput, mirrorPath string) bool {
+	switch strings.TrimSpace(configuredOutput) {
+	case "", "stdout", "stderr":
+		return false
+	}
+
+	configuredAbs, err := filepath.Abs(configuredOutput)
+	if err != nil {
+		return false
+	}
+	mirrorAbs, err := filepath.Abs(mirrorPath)
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(configuredAbs) == filepath.Clean(mirrorAbs)
 }
 
 func Get() *zerolog.Logger {

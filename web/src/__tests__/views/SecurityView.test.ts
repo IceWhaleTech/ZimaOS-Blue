@@ -6,7 +6,9 @@ import { createPinia, setActivePinia } from 'pinia'
 import SecurityView from '@/views/SecurityView.vue'
 import { approvalApi } from '@/api/approval'
 import { securityApi } from '@/api/security'
+import { settingsApi } from '@/api/settings'
 import { systemApi } from '@/api/index'
+import { sandboxApi } from '@/api/sandbox'
 import { companionApi } from '@/api/companion'
 import { getActiveConnections, getConnectionStats } from '@/api/connections'
 import { useAuthStore } from '@/stores/auth'
@@ -33,9 +35,23 @@ vi.mock('@/api/security', () => ({
   },
 }))
 
+vi.mock('@/api/settings', () => ({
+  settingsApi: {
+    get: vi.fn(),
+    patch: vi.fn(),
+  },
+}))
+
 vi.mock('@/api/index', () => ({
   systemApi: {
     getLogs: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/sandbox', () => ({
+  sandboxApi: {
+    getInfo: vi.fn(),
+    updateConfig: vi.fn(),
   },
 }))
 
@@ -133,11 +149,50 @@ function createTestI18n() {
     fallbackWarn: false,
     messages: {
       en: {
+        common: {
+          loading: 'Loading',
+          saving: 'Saving',
+          refresh: 'Refresh',
+          refreshing: 'Refreshing',
+          enabled: 'Enabled',
+          disabled: 'Disabled',
+          saveFailed: 'Failed to save',
+        },
         nav: {
           configuration: 'Configuration',
         },
         security: {
           title: 'Security',
+          sandboxStatus: {
+            title: 'Sandbox Status',
+            description:
+              'Review whether sandbox execution is enabled and inspect the runtime limits currently applied.',
+            runtimeTitle: 'Runtime Configuration',
+            enabled: 'Enabled',
+            disabled: 'Disabled',
+            checking: 'Checking...',
+            unknown: 'Unknown',
+            runtimeAvailable: 'Available',
+            runtimeUnavailable: 'Unavailable',
+          },
+          scan: {
+            checking: 'Checking...',
+          },
+        },
+        sandbox: {
+          notSupportedDesc: 'Sandbox execution is not available on this platform or has not been configured.',
+          config: {
+            status: 'Status',
+            defaultTimeout: 'Default Timeout',
+            maxTimeout: 'Max Timeout',
+            memoryLimit: 'Memory Limit',
+            cpuLimit: 'CPU Limit',
+            processLimit: 'Process Limit',
+            network: 'Network Access',
+          },
+          errors: {
+            fetchInfo: 'Failed to fetch sandbox information',
+          },
         },
       },
     },
@@ -178,6 +233,13 @@ describe('SecurityView approved browser sites', () => {
     vi.mocked(securityApi.getPromptFirewall).mockResolvedValue({
       data: { enabled: true, rules: [], rule_count: 0 },
     } as never)
+    vi.mocked(settingsApi.get).mockResolvedValue({
+      data: {
+        directory_whitelist_enabled: false,
+        directory_whitelist: [],
+      },
+    } as never)
+    vi.mocked(settingsApi.patch).mockImplementation(async (payload: unknown) => ({ data: payload }) as never)
     vi.mocked(approvalApi.listApprovedDirectories).mockResolvedValue({
       data: { entries: [] },
     } as never)
@@ -197,6 +259,31 @@ describe('SecurityView approved browser sites', () => {
       data: { deleted: true },
     } as never)
     vi.mocked(systemApi.getLogs).mockResolvedValue({ data: { logs: [] } } as never)
+    vi.mocked(sandboxApi.getInfo).mockResolvedValue({
+      data: {
+        supported: true,
+        default_timeout: '5m0s',
+        max_timeout: '5m0s',
+        memory_limit: 268435456,
+        cpu_limit: 1,
+        process_limit: 10,
+        network_enabled: false,
+      },
+    } as never)
+    vi.mocked(sandboxApi.updateConfig).mockImplementation(async (payload: unknown) => {
+      const request = (payload || {}) as { network_enabled?: boolean }
+      return {
+        data: {
+          supported: true,
+          default_timeout: '5m0s',
+          max_timeout: '5m0s',
+          memory_limit: 268435456,
+          cpu_limit: 1,
+          process_limit: 10,
+          network_enabled: Boolean(request.network_enabled),
+        },
+      } as never
+    })
     vi.mocked(companionApi.listSessions).mockResolvedValue({
       data: { sessions: [] },
     } as never)
@@ -252,6 +339,138 @@ describe('SecurityView approved browser sites', () => {
     expect(approvalApi.revokeApprovedBrowserSite).toHaveBeenCalledTimes(1)
     expect(approvalApi.revokeApprovedBrowserSite).toHaveBeenCalledWith('site-1')
     expect(wrapper.text()).not.toContain('https://example.com')
+
+    wrapper.unmount()
+  })
+
+  it('renders the sandbox status section at the top of controls', async () => {
+    localStorageMock.setItem(
+      'security_last_scan_results',
+      JSON.stringify([
+        {
+          id: 'sandbox_enabled',
+          category: 'sandbox',
+          name: 'Sandbox Execution',
+          description: 'Check if code execution is sandboxed',
+          status: 'passed',
+          details: 'Sandbox execution is enabled',
+        },
+      ])
+    )
+
+    const wrapper = mountSecurityView()
+
+    await flushPromises()
+
+    const controlsTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.text().includes('Security Controls')
+    })
+    expect(controlsTab).toBeTruthy()
+
+    await controlsTab!.trigger('click')
+    await flushPromises()
+
+    expect(sandboxApi.getInfo).toHaveBeenCalledTimes(1)
+
+    const sandboxSection = wrapper.get('[data-testid="sandbox-status-section"]')
+    expect(sandboxSection.text()).toContain('Sandbox Status')
+    expect(sandboxSection.text()).toContain('Enabled')
+    expect(sandboxSection.text()).toContain('Sandbox execution is enabled')
+    expect(sandboxSection.text()).toContain('Runtime Configuration')
+    expect(sandboxSection.text()).toContain('Available')
+    expect(sandboxSection.text()).toContain('Network Access')
+    expect(sandboxSection.text()).toContain('Disabled')
+    expect(sandboxSection.text()).toContain('5m0s')
+    expect(sandboxSection.text()).toContain('256 MB')
+    expect(sandboxSection.text()).toContain('Process Limit')
+
+    wrapper.unmount()
+  })
+
+  it('toggles sandbox network access from the controls section', async () => {
+    localStorageMock.setItem(
+      'security_last_scan_results',
+      JSON.stringify([
+        {
+          id: 'sandbox_enabled',
+          category: 'sandbox',
+          name: 'Sandbox Execution',
+          description: 'Check if code execution is sandboxed',
+          status: 'passed',
+          details: 'Sandbox execution is enabled',
+        },
+      ])
+    )
+
+    const wrapper = mountSecurityView()
+
+    await flushPromises()
+
+    const controlsTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.text().includes('Security Controls')
+    })
+    expect(controlsTab).toBeTruthy()
+
+    await controlsTab!.trigger('click')
+    await flushPromises()
+
+    const networkSwitch = wrapper.get('[data-testid="sandbox-network-switch"]')
+    expect(networkSwitch.attributes('aria-checked')).toBe('false')
+
+    await networkSwitch.trigger('click')
+    await flushPromises()
+
+    expect(sandboxApi.updateConfig).toHaveBeenCalledTimes(1)
+    expect(sandboxApi.updateConfig).toHaveBeenCalledWith({ network_enabled: true })
+    expect(wrapper.get('[data-testid="sandbox-network-switch"]').attributes('aria-checked')).toBe(
+      'true'
+    )
+
+    wrapper.unmount()
+  })
+
+  it('renders directory whitelist inside the authorized directories panel', async () => {
+    vi.mocked(settingsApi.get).mockResolvedValueOnce({
+      data: {
+        directory_whitelist_enabled: true,
+        directory_whitelist: [{ path: '/tmp/external-docs', alias: 'docs' }],
+      },
+    } as never)
+    vi.mocked(approvalApi.listApprovedDirectories).mockResolvedValueOnce({
+      data: {
+        entries: [
+          {
+            id: 'dir-1',
+            path: '/tmp/always-allowed',
+            added_at: '2026-03-18T00:00:00Z',
+            last_used: '2026-03-19T00:00:00Z',
+          },
+        ],
+      },
+    } as never)
+
+    const wrapper = mountSecurityView()
+
+    await flushPromises()
+
+    const controlsTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.text().includes('Security Controls')
+    })
+    expect(controlsTab).toBeTruthy()
+
+    await controlsTab!.trigger('click')
+    await flushPromises()
+
+    const mergedPanel = wrapper.get('[data-testid="authorized-directories-panel"]')
+    expect(mergedPanel.text()).toContain('Authorized Directories')
+    expect(mergedPanel.text()).toContain('Whitelist')
+    expect(mergedPanel.text()).toContain('/tmp/external-docs')
+    expect(mergedPanel.text()).toContain('docs')
+    expect(mergedPanel.text()).toContain('/tmp/always-allowed')
+
+    const cardHeadings = wrapper.findAll('h3').map((node) => node.text())
+    expect(cardHeadings).toContain('Authorized Directories')
+    expect(cardHeadings).not.toContain('Whitelist')
 
     wrapper.unmount()
   })

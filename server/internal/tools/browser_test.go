@@ -99,6 +99,19 @@ func (b *browserCompatBackend) ExecuteRecipe(_ context.Context, recipe string, p
 }
 func (b *browserCompatBackend) ListRecipes(context.Context) []BrowserRecipeInfo { return nil }
 
+func TestBrowserDefinition_UsesCompactParamsEnvelope(t *testing.T) {
+	tool := NewBrowserTool()
+	props := tool.Definition().Parameters["properties"].(map[string]interface{})
+	if _, ok := props["params"]; !ok {
+		t.Fatal("expected params property in browser schema")
+	}
+	for _, legacy := range []string{"ref", "act_type", "value", "vision"} {
+		if _, ok := props[legacy]; ok {
+			t.Fatalf("did not expect legacy %q in browser schema", legacy)
+		}
+	}
+}
+
 func TestBrowserToolExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
 	backend := &browserCompatBackend{}
 	tool := NewBrowserTool()

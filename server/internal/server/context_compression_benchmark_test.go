@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -133,7 +133,7 @@ func renderOpenClawLegacyCompactionBaseline(fixture contextCompressionEvalFixtur
 		discoveryBullets = append(discoveryBullets, "- Preserve the durable facts from the older history.")
 	}
 
-	summary := strings.TrimSpace(claudecode.NormalizeStructuredSummary(
+	summary := strings.TrimSpace(agentcore.NormalizeStructuredSummary(
 		strings.Join([]string{
 			"Goal",
 			"- " + goal,
@@ -233,7 +233,7 @@ func buildComparisonCandidates(t *testing.T, fixture contextCompressionEvalFixtu
 	offlineHandler := benchmarkHandlerWithSettings(t, "", false, false, "offline")
 	offline := generateBenchmarkSummary(t, offlineHandler, "bench-offline", fixture)
 
-	summaryOnlyResp := strings.TrimSpace(claudecode.NormalizeStructuredSummary(
+	summaryOnlyResp := strings.TrimSpace(agentcore.NormalizeStructuredSummary(
 		"Goal\n- Debug the login retry regression\n\nDiscoveries\n- API key rotation on 2026-03-18 broke refresh handling in auth/middleware.go.\n\nAccomplished\n- [carry-over] Final explanation still needs one short summary",
 		"",
 		fixture.OlderMessages,
@@ -241,7 +241,7 @@ func buildComparisonCandidates(t *testing.T, fixture contextCompressionEvalFixtu
 	summaryOnlyHandler := benchmarkHandlerWithSettings(t, summaryOnlyResp, true, false, "small_model")
 	summaryOnly := generateBenchmarkSummary(t, summaryOnlyHandler, "bench-summary-only", fixture)
 
-	contextCompressResp := strings.TrimSpace(claudecode.NormalizeStructuredSummary(
+	contextCompressResp := strings.TrimSpace(agentcore.NormalizeStructuredSummary(
 		"Goal\n- Debug the login retry regression\n\nDiscoveries\n- API key rotation on 2026-03-18 broke refresh handling in auth/middleware.go.\n- request-id req_9F82B must remain exact.\n\nAccomplished\n- [carry-over] Final explanation still needs one short summary\n- I will inspect more logs later",
 		"",
 		append(cloneLLMMessages(fixture.OlderMessages), cloneLLMMessages(fixture.RecentMessages)...),

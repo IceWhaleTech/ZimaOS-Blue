@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a2ui"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentsessions"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
@@ -55,12 +56,9 @@ type Services struct {
 // Explicit non-default workspace settings win; otherwise we keep the
 // historical data-dir workspace to avoid surprising runtime behavior.
 func ResolveWorkspaceDir(dataDir string, appCfg *config.Config) string {
-	candidates := make([]string, 0, 3)
+	candidates := make([]string, 0, 2)
 	if appCfg != nil {
-		if v := normalizeExplicitWorkspaceDir(appCfg.ClaudeCodeCLI.Backend.WorkspaceDir); v != "" {
-			candidates = append(candidates, v)
-		}
-		if v := normalizeExplicitWorkspaceDir(appCfg.ClaudeCode.WorkspaceDir); v != "" {
+		if v := normalizeExplicitWorkspaceDir(appCfg.AgentCore.WorkspaceDir); v != "" {
 			candidates = append(candidates, v)
 		}
 	}
@@ -408,14 +406,7 @@ func registerLLMProviders(registry *llm.ProviderRegistry, cfg *config.Config) {
 	registry.Register(llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), ""))
 
 	claudeKey := os.Getenv("ANTHROPIC_API_KEY")
-	claudeBaseURL := ""
-	if cfg.ClaudeCode.APIKey != "" {
-		claudeKey = cfg.ClaudeCode.APIKey
-	}
-	if cfg.ClaudeCode.BaseURL != "" {
-		claudeBaseURL = cfg.ClaudeCode.BaseURL
-	}
-	registry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
+	registry.Register(llm.NewClaudeProvider(claudeKey, ""))
 
 	ollamaURL := strings.TrimSpace(os.Getenv("OLLAMA_URL"))
 	if ollamaURL != "" {
@@ -498,7 +489,8 @@ func LoadProvidersFromPool(pool *providerpool.Pool, llmRegistry *llm.ProviderReg
 }
 
 type sessionListAdapter struct {
-	store *memory.Store
+	store         *memory.Store
+	agentSessions *agentsessions.Service
 }
 
 func sessionScopedUserID(ctx context.Context, requestedUserID string) string {
@@ -506,6 +498,52 @@ func sessionScopedUserID(ctx context.Context, requestedUserID string) string {
 		return ctxUserID
 	}
 	return strings.TrimSpace(requestedUserID)
+}
+
+func runtimeCompatString(args map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if args == nil {
+			continue
+		}
+		value, ok := args[key]
+		if !ok {
+			continue
+		}
+		if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	return ""
+}
+
+func runtimeCompatInt(args map[string]interface{}, key string, fallback int) int {
+	if args == nil {
+		return fallback
+	}
+	raw, ok := args[key]
+	if !ok {
+		return fallback
+	}
+	switch typed := raw.(type) {
+	case int:
+		return typed
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return fallback
+	}
+}
+
+func runtimeCompatTitle(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) <= 72 {
+		return trimmed
+	}
+	return trimmed[:72]
 }
 
 func (a sessionListAdapter) ListSessions(ctx context.Context, limit, offset int, userID string) ([]tools.SessionSummary, error) {
@@ -649,4 +687,111 @@ func (a sessionListAdapter) AppendSessionMessage(ctx context.Context, sessionID 
 		Model:      created.Model,
 		CreatedAt:  created.CreatedAt,
 	}, nil
+}
+
+func (a sessionListAdapter) HandleRuntimeSessionAction(ctx context.Context, action string, args map[string]interface{}) (interface{}, error) {
+	if a.agentSessions == nil {
+		return nil, fmt.Errorf("runtime-aware sessions are not configured")
+	}
+	userID := sessionScopedUserID(ctx, runtimeCompatString(args, "user_id", "user", "owner_id", "ownerId"))
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "list":
+		limit := runtimeCompatInt(args, "limit", 20)
+		offset := runtimeCompatInt(args, "offset", 0)
+		var protocol agentsessions.ProtocolKind
+		if runtime := strings.ToLower(strings.TrimSpace(runtimeCompatString(args, "runtime"))); runtime != "" {
+			parsed, err := agentsessions.ParseProtocolKind(runtime)
+			if err != nil {
+				return nil, err
+			}
+			protocol = parsed
+		}
+		sessions, err := a.agentSessions.ListSessions(limit, offset, userID, protocol)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"sessions": sessions,
+			"count":    len(sessions),
+		}, nil
+	case "history":
+		sessionID := runtimeCompatString(args, "id", "session_id", "session", "conversation_id")
+		limit := runtimeCompatInt(args, "limit", 50)
+		history, err := a.agentSessions.GetSessionHistory(sessionID, limit)
+		if err != nil {
+			return nil, err
+		}
+		detail, err := a.agentSessions.GetSessionDetail(sessionID, limit)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"session": detail.Session,
+			"profile": detail.Profile,
+			"history": history,
+			"count":   len(history),
+		}, nil
+	case "status":
+		sessionID := runtimeCompatString(args, "id", "session_id", "session", "conversation_id")
+		detail, err := a.agentSessions.GetSessionDetail(sessionID, 20)
+		if err != nil {
+			return nil, err
+		}
+		return detail, nil
+	case "spawn":
+		profileID := strings.TrimSpace(runtimeCompatString(args, "profile_id", "profileId", "provider", "provider_id", "providerId"))
+		if profileID == "" {
+			switch strings.ToLower(strings.TrimSpace(runtimeCompatString(args, "runtime"))) {
+			case "a2a":
+				profileID = "generic-a2a"
+			default:
+				profileID = runtimeCompatString(args, "agent", "agent_id", "agentId")
+			}
+		}
+		if profileID == "" {
+			return nil, fmt.Errorf("profile_id is required for runtime-aware spawn")
+		}
+		title := runtimeCompatString(args, "title", "name")
+		if title == "" {
+			title = runtimeCompatTitle(runtimeCompatString(args, "input", "prompt", "message", "content", "text"))
+		}
+		detail, err := a.agentSessions.CreateSession(ctx, agentsessions.CreateSessionParams{
+			ProfileID:      profileID,
+			UserID:         userID,
+			Name:           title,
+			CWD:            runtimeCompatString(args, "cwd", "workdir", "work_dir", "working_dir"),
+			InitialMessage: runtimeCompatString(args, "initial_message", "initialMessage"),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"session": detail.Session,
+			"profile": detail.Profile,
+			"id":      detail.Session.ID,
+			"created": true,
+		}, nil
+	case "send":
+		sessionID := runtimeCompatString(args, "id", "session_id", "session", "conversation_id")
+		message := runtimeCompatString(args, "message", "content", "text", "input", "prompt")
+		run, err := a.agentSessions.SendMessage(ctx, agentsessions.SendMessageParams{
+			SessionID: sessionID,
+			Message:   message,
+		})
+		if err != nil {
+			return nil, err
+		}
+		detail, err := a.agentSessions.GetSessionDetail(sessionID, 10)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"session": detail.Session,
+			"profile": detail.Profile,
+			"run":     run,
+			"sent":    true,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown runtime-aware sessions action %q", action)
+	}
 }

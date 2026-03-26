@@ -121,7 +121,7 @@ func TestBuildSecurityScannerConfig(t *testing.T) {
 		},
 	}
 
-	scannerCfg := buildSecurityScannerConfig(cfg)
+	scannerCfg := buildSecurityScannerConfig(cfg, true)
 
 	if scannerCfg.Environment != "production" {
 		t.Fatalf("Environment = %q, want %q", scannerCfg.Environment, "production")
@@ -143,5 +143,25 @@ func TestBuildSecurityScannerConfig(t *testing.T) {
 	}
 	if !scannerCfg.DebugMode {
 		t.Fatalf("DebugMode = %v, want true", scannerCfg.DebugMode)
+	}
+}
+
+func TestBuildSecurityScannerConfig_DisablesSandboxWhenRuntimeUnavailable(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "0.0.0.0",
+		},
+		Security: config.SecurityConfig{
+			Sandbox: config.SandboxConfig{
+				Enabled:        true,
+				DefaultTimeout: 30 * time.Second,
+				MemoryLimit:    "256MB",
+			},
+		},
+	}
+
+	scannerCfg := buildSecurityScannerConfig(cfg, false)
+	if scannerCfg.SandboxEnabled {
+		t.Fatal("SandboxEnabled = true, want false when runtime sandbox is unavailable")
 	}
 }

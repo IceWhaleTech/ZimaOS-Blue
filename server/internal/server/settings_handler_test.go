@@ -11,9 +11,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
@@ -93,6 +95,61 @@ func TestGetSkillRerankEnabled_DefaultFalse(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
 	if h.GetSkillRerankEnabled() {
 		t.Fatalf("GetSkillRerankEnabled() = true, want false")
+	}
+}
+
+func TestDirectoryWhitelistSnapshot_DefaultTmpEnabled(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+
+	enabled, entries := h.DirectoryWhitelistSnapshot()
+	if runtime.GOOS == "windows" {
+		if enabled || len(entries) != 0 {
+			t.Fatalf("windows default directory whitelist = enabled:%v entries:%v, want disabled with no entries", enabled, entries)
+		}
+		return
+	}
+
+	if !enabled {
+		t.Fatal("expected default directory whitelist enabled")
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %v, want one default entry", entries)
+	}
+	if entries[0].Path != defaultDirectoryWhitelistPath || entries[0].Alias != "" {
+		t.Fatalf("entry[0] = %+v, want %s without alias", entries[0], defaultDirectoryWhitelistPath)
+	}
+}
+
+func TestGet_DefaultDirectoryWhitelistIncludedInResponse(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rec := httptest.NewRecorder()
+
+	if err := h.Get(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var settings Settings
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode settings response: %v", err)
+	}
+
+	if runtime.GOOS == "windows" {
+		if settings.DirectoryWhitelistEnabled != nil || len(settings.DirectoryWhitelist) != 0 {
+			t.Fatalf("windows settings response = %+v, want no default directory whitelist", settings)
+		}
+		return
+	}
+
+	if settings.DirectoryWhitelistEnabled == nil || !*settings.DirectoryWhitelistEnabled {
+		t.Fatalf("directory_whitelist_enabled = %v, want true", settings.DirectoryWhitelistEnabled)
+	}
+	if len(settings.DirectoryWhitelist) != 1 || settings.DirectoryWhitelist[0].Path != defaultDirectoryWhitelistPath {
+		t.Fatalf("directory_whitelist = %v, want [%s]", settings.DirectoryWhitelist, defaultDirectoryWhitelistPath)
 	}
 }
 
@@ -198,7 +255,7 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 			t.Fatalf("write skill: %v", err)
 		}
 	}
-	chatHandler.SetSkillSelector(claudecode.NewSkillSelector(workspaceDir, claudecode.NewHeuristicSkillReranker()))
+	chatHandler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
 	h.SetChatHandler(chatHandler)
 
 	e := echo.New()
@@ -254,6 +311,72 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 	}
 	if _, ok := skillDecision["matched_signals"].([]any); !ok {
 		t.Fatalf("expected matched_signals in skill decision, got=%v", skillDecision["matched_signals"])
+	}
+}
+
+func TestSelectorDryRunIncludesSkillAdvice(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	smartSkill := true
+	h.settings.SmartSkillSelection = &smartSkill
+
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
+	chatHandler := NewChatHandler(nil, nil, registry)
+	chatHandler.SetSettingsHandler(h)
+	chatHandler.SetToolSelector(tools.DefaultToolSelector())
+	chatHandler.SetToolRouter(tools.DefaultToolRouter())
+	h.SetChatHandler(chatHandler)
+	h.SetSkillAdvisor(skilladvisor.NewService(skilladvisor.SearchFunc(func(ctx context.Context, query skillmarket.SearchQuery) (*skillmarket.SearchResponse, error) {
+		return &skillmarket.SearchResponse{
+			Skills: []skillmarket.SearchResult{{
+				Skill: skillmarket.SkillDocument{
+					ID:            "gh-release-bot",
+					Name:          "GitHub Release Bot",
+					Description:   "Automate GitHub Actions releases and changelog generation.",
+					Installable:   true,
+					SecurityBadge: skillmarket.BadgeGreen,
+					RiskLevel:     skillmarket.RiskLow,
+					CuratedRank:   1,
+				},
+				Score: 42,
+			}},
+			Total: 1,
+		}, nil
+	})))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/selector/dry-run", strings.NewReader(`{"query":"帮我做 GitHub Actions 自动发版","model":"auto"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{
+		UserID:   "admin-1",
+		Username: "admin",
+		Role:     "admin",
+	}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.SelectorDryRun(c); err != nil {
+		t.Fatalf("SelectorDryRun error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	advice, ok := body["skill_advice"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected skill_advice payload, got=%T", body["skill_advice"])
+	}
+	if advice["need_store_search"] != true {
+		t.Fatalf("expected need_store_search=true, got=%v", advice["need_store_search"])
+	}
+	recommended, ok := advice["recommended_ids"].([]any)
+	if !ok || len(recommended) == 0 || recommended[0] != "gh-release-bot" {
+		t.Fatalf("expected recommended_ids with gh-release-bot, got=%v", advice["recommended_ids"])
 	}
 }
 
@@ -553,6 +676,98 @@ func TestPatchSmallModelContextPruneToolRules_Persisted(t *testing.T) {
 	}
 	if len(deny2) != 1 || deny2[0] != "web_search" {
 		t.Fatalf("persisted deny = %v, want [web_search]", deny2)
+	}
+}
+
+func TestPatchDirectoryWhitelist_PersistedAndSanitized(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	body := `{
+		"directory_whitelist_enabled": true,
+		"directory_whitelist": [
+			{"path":" /tmp/project-a ","alias":"docs"},
+			{"path":"/tmp/project-a","alias":"duplicate"},
+			{"path":"relative/path","alias":"bad"},
+			{"path":"/tmp/project-b","alias":"docs"},
+			{"path":"/tmp/project-c","alias":"reports"}
+		]
+	}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	enabled, entries := h.DirectoryWhitelistSnapshot()
+	if !enabled {
+		t.Fatal("expected directory whitelist enabled")
+	}
+	if len(entries) != 3 {
+		t.Fatalf("entries = %v, want 3 sanitized entries", entries)
+	}
+	if entries[0].Path != "/tmp/project-a" || entries[0].Alias != "docs" {
+		t.Fatalf("entry[0] = %+v, want /tmp/project-a docs", entries[0])
+	}
+	if entries[1].Path != "/tmp/project-b" || entries[1].Alias != "" {
+		t.Fatalf("entry[1] = %+v, want /tmp/project-b with duplicate alias cleared", entries[1])
+	}
+	if entries[2].Path != "/tmp/project-c" || entries[2].Alias != "reports" {
+		t.Fatalf("entry[2] = %+v, want /tmp/project-c reports", entries[2])
+	}
+
+	h2 := NewSettingsHandler(store)
+	enabled2, entries2 := h2.DirectoryWhitelistSnapshot()
+	if !enabled2 {
+		t.Fatal("expected persisted directory whitelist enabled")
+	}
+	if len(entries2) != 3 {
+		t.Fatalf("persisted entries = %v, want 3", entries2)
+	}
+}
+
+func TestPatchDirectoryWhitelist_DisableOverridesDefault(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/settings",
+		strings.NewReader(`{"directory_whitelist_enabled":false,"directory_whitelist":[]}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	if err := h.Patch(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	enabled, entries := h.DirectoryWhitelistSnapshot()
+	if enabled {
+		t.Fatal("expected directory whitelist disabled")
+	}
+	if len(entries) != 0 {
+		t.Fatalf("entries = %v, want no entries after disabling", entries)
+	}
+
+	h2 := NewSettingsHandler(store)
+	enabled2, entries2 := h2.DirectoryWhitelistSnapshot()
+	if enabled2 {
+		t.Fatal("expected persisted directory whitelist disabled")
+	}
+	if len(entries2) != 0 {
+		t.Fatalf("persisted entries = %v, want no entries", entries2)
 	}
 }
 

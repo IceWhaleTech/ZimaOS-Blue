@@ -96,7 +96,6 @@ func TestRegisterAllRoutes_EarlyReadyIncludesSettingsAndTunnelRoutes(t *testing.
 				{method: "GET", path: "/api/v1/events"},
 				{method: "POST", path: "/api/v1/approval/resolve"},
 				{method: "GET", path: "/api/v1/tunnel/providers"},
-				{method: "GET", path: "/api/v1/claudecode/config"},
 			}
 			for _, route := range expected {
 				if !slices.Contains(routes, route) {

@@ -18,10 +18,30 @@ import (
 	"github.com/labstack/echo/v4"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 )
+
+type stubInstalledSkillSelector struct {
+	decision agentcore.Decision
+	err      error
+	called   int
+	query    string
+	opts     agentcore.SelectOptions
+}
+
+func (s *stubInstalledSkillSelector) Select(_ context.Context, query string, opts agentcore.SelectOptions) (agentcore.Decision, error) {
+	s.called++
+	s.query = query
+	s.opts = opts
+	if s.err != nil {
+		return agentcore.Decision{}, s.err
+	}
+	return s.decision, nil
+}
 
 func testSkillMarketConfig(dataDir, activeDir string) skillmarket.Config {
 	cfg := skillmarket.DefaultConfig(dataDir, activeDir)
@@ -105,6 +125,150 @@ Git branch review and rebase helper.`
 	}
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestMarketAdviseSkillsUsesSelectorAndMarketplace(t *testing.T) {
+	handler := NewSkillHandler(skill.NewRegistry())
+	selector := &stubInstalledSkillSelector{
+		decision: agentcore.Decision{
+			Query:         "帮我做 GitHub Actions 自动发版",
+			SelectedSkill: "",
+			Confidence:    0.34,
+			NeedClarify:   true,
+			Reason:        "no_skill_docs",
+			Stage:         "ir",
+		},
+	}
+	handler.SetSkillSelector(selector)
+	handler.SetSkillSelectorOptionsProvider(func() agentcore.SelectOptions {
+		return agentcore.SelectOptions{
+			Mode:                agentcore.SkillSelectorModeHybrid,
+			EnableRerank:        true,
+			ConfidenceThreshold: 0.88,
+		}
+	})
+	handler.SetSkillAdvisor(skilladvisor.NewService(skilladvisor.SearchFunc(func(ctx context.Context, query skillmarket.SearchQuery) (*skillmarket.SearchResponse, error) {
+		return &skillmarket.SearchResponse{
+			Skills: []skillmarket.SearchResult{{
+				Skill: skillmarket.SkillDocument{
+					ID:            "gh-release-bot",
+					Name:          "GitHub Release Bot",
+					Description:   "Automate GitHub releases and changelog generation.",
+					Installable:   true,
+					SecurityBadge: skillmarket.BadgeGreen,
+					RiskLevel:     skillmarket.RiskLow,
+					Tags:          []string{"github-actions", "release", "changelog"},
+				},
+				Score: 24,
+			}},
+			Total: 1,
+		}, nil
+	})))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/advise", strings.NewReader(`{"query":"帮我做 GitHub Actions 自动发版"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.MarketAdviseSkills(c); err != nil {
+		t.Fatalf("MarketAdviseSkills error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if selector.called != 1 {
+		t.Fatalf("selector called %d times, want 1", selector.called)
+	}
+	if selector.query != "帮我做 GitHub Actions 自动发版" {
+		t.Fatalf("selector query = %q", selector.query)
+	}
+	if selector.opts.Mode != agentcore.SkillSelectorModeHybrid || !selector.opts.EnableRerank || selector.opts.ConfidenceThreshold != 0.88 {
+		t.Fatalf("unexpected selector opts: %+v", selector.opts)
+	}
+
+	var body struct {
+		Query             string              `json:"query"`
+		InstalledDecision *agentcore.Decision `json:"installed_decision"`
+		NeedStoreSearch   bool                `json:"need_store_search"`
+		RecommendedIDs    []string            `json:"recommended_ids"`
+		SearchQueries     []string            `json:"search_queries"`
+		SearchError       string              `json:"search_error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Query != "帮我做 GitHub Actions 自动发版" {
+		t.Fatalf("query = %q", body.Query)
+	}
+	if body.SearchError != "" {
+		t.Fatalf("unexpected search_error: %q", body.SearchError)
+	}
+	if body.InstalledDecision == nil || !body.InstalledDecision.NeedClarify {
+		t.Fatalf("expected installed decision from selector, got %+v", body.InstalledDecision)
+	}
+	if !body.NeedStoreSearch {
+		t.Fatalf("expected need_store_search=true, got false")
+	}
+	if len(body.RecommendedIDs) == 0 || body.RecommendedIDs[0] != "gh-release-bot" {
+		t.Fatalf("recommended_ids = %+v, want gh-release-bot", body.RecommendedIDs)
+	}
+	if len(body.SearchQueries) == 0 {
+		t.Fatalf("expected expanded search queries in response")
+	}
+}
+
+func TestMarketAdviseSkillsHonorsProvidedInstalledDecision(t *testing.T) {
+	searchCalls := 0
+	handler := NewSkillHandler(skill.NewRegistry())
+	handler.SetSkillAdvisor(skilladvisor.NewService(skilladvisor.SearchFunc(func(ctx context.Context, query skillmarket.SearchQuery) (*skillmarket.SearchResponse, error) {
+		searchCalls++
+		return &skillmarket.SearchResponse{}, nil
+	})))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/advise", strings.NewReader(`{
+		"query":"帮我搜索最新新闻",
+		"installed_decision":{
+			"query":"帮我搜索最新新闻",
+			"selected_skill":"web_search",
+			"confidence":0.93,
+			"need_clarify":false,
+			"reason":"strong_match",
+			"stage":"ir"
+		}
+	}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.MarketAdviseSkills(c); err != nil {
+		t.Fatalf("MarketAdviseSkills error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if searchCalls != 0 {
+		t.Fatalf("searchCalls = %d, want 0", searchCalls)
+	}
+
+	var body struct {
+		NeedStoreSearch   bool                `json:"need_store_search"`
+		Reason            string              `json:"reason"`
+		InstalledDecision *agentcore.Decision `json:"installed_decision"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.NeedStoreSearch {
+		t.Fatalf("expected need_store_search=false, got true")
+	}
+	if body.Reason != "installed_skill_is_sufficient" {
+		t.Fatalf("reason = %q, want installed_skill_is_sufficient", body.Reason)
+	}
+	if body.InstalledDecision == nil || body.InstalledDecision.SelectedSkill != "web_search" {
+		t.Fatalf("expected provided installed decision to round-trip, got %+v", body.InstalledDecision)
 	}
 }
 

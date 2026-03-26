@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -348,7 +348,7 @@ func (h *ChatHandler) buildOfflineConversationCompression(olderMessages, relevan
 	if len(selected) == 0 {
 		if fallback := fallbackGoalFromMessages(olderMessages); fallback != "" {
 			raw := "Goal\n- " + fallback
-			return sanitizeCompressedSummaryOutput(claudecode.NormalizeStructuredSummary(raw, "", relevantMessages))
+			return sanitizeCompressedSummaryOutput(agentcore.NormalizeStructuredSummary(raw, "", relevantMessages))
 		}
 		return ""
 	}
@@ -418,7 +418,7 @@ func (h *ChatHandler) buildOfflineConversationCompression(olderMessages, relevan
 	if len(blocks) == 0 {
 		return ""
 	}
-	return sanitizeCompressedSummaryOutput(claudecode.NormalizeStructuredSummary(strings.Join(blocks, "\n\n"), "", relevantMessages))
+	return sanitizeCompressedSummaryOutput(agentcore.NormalizeStructuredSummary(strings.Join(blocks, "\n\n"), "", relevantMessages))
 }
 
 func (h *ChatHandler) buildSmallModelConversationCompression(ctx context.Context, olderMessages, relevantMessages []llm.Message) string {
@@ -435,7 +435,7 @@ func (h *ChatHandler) buildSmallModelConversationCompression(ctx context.Context
 		return ""
 	}
 
-	prefix := claudecode.StructuredSummaryInstructions(summaryCustomFocus) +
+	prefix := agentcore.StructuredSummaryInstructions(summaryCustomFocus) +
 		"\nAdditional rules:" +
 		"\n- This is historical context compression, not current-turn intent arbitration." +
 		"\n- Treat the latest user message only as a relevance hint for what historical facts still matter." +
@@ -467,7 +467,7 @@ func (h *ChatHandler) buildSmallModelConversationCompression(ctx context.Context
 	if strings.HasPrefix(strings.ToLower(summary), "summary:") {
 		summary = strings.TrimSpace(summary[len("summary:"):])
 	}
-	summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
+	summary = agentcore.NormalizeStructuredSummary(summary, "", relevantMessages)
 	summary = sanitizeCompressedSummaryOutput(summary)
 	if summary == "" {
 		h.smallModelStats.RecordFallback(smallmodel.FallbackReasonLowConfidence)

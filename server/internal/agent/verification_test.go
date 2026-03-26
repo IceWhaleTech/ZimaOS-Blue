@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 func TestInferTaskKind(t *testing.T) {
@@ -168,6 +171,88 @@ func TestBuildRecoveryUserPrompt_UsesFallbackPlanOrder(t *testing.T) {
 		"Recent successful steps:",
 	}) {
 		t.Fatalf("expected recovery prompt to include verifier suggestion and recent successes, got %q", prompt)
+	}
+}
+
+func TestRunner_ExternalVerificationRecoveryFlow(t *testing.T) {
+	store := testStore(t)
+	llmStub := &externalRecoveryFlowLLM{}
+	runner := NewRunner(store, llmStub, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second})
+	t.Cleanup(func() { runner.Shutdown() })
+
+	task := &Task{
+		ID:     "external-qa-recovery",
+		UserID: "u1",
+		Goal:   "stabilize parser",
+		Metadata: map[string]interface{}{
+			"enable_external_qa":    true,
+			"max_recovery_attempts": 1,
+		},
+	}
+	if _, err := runner.SubmitTask(context.Background(), task, ""); err != nil {
+		t.Fatalf("SubmitTask failed: %v", err)
+	}
+
+	got := waitForTerminalTask(t, store, task.ID, 5*time.Second)
+	if got.Status != TaskStatusCompleted {
+		t.Fatalf("status = %q, want completed", got.Status)
+	}
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateVerify, RuntimeStateRecover) {
+		t.Fatal("expected runtime transition VERIFY -> RECOVER")
+	}
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateRecover, RuntimeStateVerify) {
+		t.Fatal("expected runtime transition RECOVER -> VERIFY")
+	}
+	if len(got.VerificationErrors) == 0 {
+		t.Fatal("expected first failed external verification to be retained in verification errors")
+	}
+
+	sawRecovery := false
+	sawRetryExternalVerify := false
+	for _, step := range got.Plan {
+		switch {
+		case strings.Contains(step.Description, "Recovery:"):
+			sawRecovery = true
+		case strings.Contains(step.Description, "[external QA]") && strings.Contains(step.Description, "bounded retry"):
+			sawRetryExternalVerify = true
+		}
+	}
+	if !sawRecovery {
+		t.Fatalf("expected recovery step in plan, got %#v", got.Plan)
+	}
+	if !sawRetryExternalVerify {
+		t.Fatalf("expected bounded retry external verification step in plan, got %#v", got.Plan)
+	}
+}
+
+type externalRecoveryFlowLLM struct {
+	verificationCalls int
+}
+
+func (m *externalRecoveryFlowLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	switch {
+	case len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "bounded recovery engine"):
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "Applied the narrower parser fix and refreshed the deliverable."},
+		}, nil
+	case isVerificationPrompt(req):
+		m.verificationCalls++
+		if m.verificationCalls == 1 {
+			return &llm.ChatResponse{
+				Message: llm.Message{Role: llm.RoleAssistant, Content: `{"status":"fail","summary":"External QA found that the parser fix is still incomplete.","criteria_results":[{"criterion":"parser fix is complete","status":"fail","evidence":"The deliverable still needs the narrower fix."}],"suggested_recovery":"apply the narrower parser fix","executed_checks":["review task record"]}`},
+			}, nil
+		}
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: `{"status":"pass","summary":"External QA passed after the recovery attempt.","criteria_results":[{"criterion":"parser fix is complete","status":"pass","evidence":"The narrowed fix was applied and the deliverable was refreshed."}],"executed_checks":["review task record"]}`},
+		}, nil
+	case len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "deterministic task planner"):
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: `{"goal":"stabilize parser","subtasks":[{"description":"apply parser fix"}],"success_criteria":["parser fix is complete"],"fallback_plan":["apply the narrower parser fix"]}`},
+		}, nil
+	default:
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: defaultResponseForRequest(req)},
+		}, nil
 	}
 }
 

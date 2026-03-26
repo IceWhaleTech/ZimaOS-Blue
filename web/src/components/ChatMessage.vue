@@ -352,9 +352,18 @@ watch(
 const renderSourceContent = computed(() =>
   trackStreamingState.value ? revealedStreamingContent.value : props.message.content
 )
-const showStreamingCaret = computed(
-  () => trackStreamingState.value && !chatStore.toolExecuting && !chatStore.awaitingConfirmation
-)
+const showStreamingCaret = computed(() => {
+  if (!trackStreamingState.value) return false
+  const phase = chatStore.streamUIState?.phase
+  if (!phase) return true
+  return (
+    phase === 'connecting' ||
+    phase === 'streaming' ||
+    phase === 'executing' ||
+    phase === 'recovering' ||
+    phase === 'awaiting_confirmation'
+  )
+})
 
 const STREAMING_TYPELESS_HINT_TAIL = 4
 const RE_STREAMING_ORDERED_LIST_HINT = /\d+\.\s/
@@ -1781,7 +1790,6 @@ type AssistantBlockItem =
 type AssistantRenderBlock = {
   key: string
   items: AssistantBlockItem[]
-  showCaret: boolean
 }
 
 function buildTextOnlyAssistantBlocks(html: string): AssistantRenderBlock[] {
@@ -1797,7 +1805,6 @@ function buildTextOnlyAssistantBlocks(html: string): AssistantRenderBlock[] {
           html,
         },
       ],
-      showCaret: false,
     },
   ]
 }
@@ -1823,7 +1830,6 @@ function buildSegmentedAssistantBlocks(segments: RenderedContentSegment[]): Assi
             html,
           },
         ],
-        showCaret: false,
       })
       continue
     }
@@ -1837,7 +1843,6 @@ function buildSegmentedAssistantBlocks(segments: RenderedContentSegment[]): Assi
           card: segment.content as TypelessCard,
         },
       ],
-      showCaret: false,
     })
   }
 
@@ -1847,22 +1852,11 @@ function buildSegmentedAssistantBlocks(segments: RenderedContentSegment[]): Assi
 const assistantRenderBlocks = computed<AssistantRenderBlock[]>(() => {
   if (!isAssistant.value || isContentEmpty.value || hasMediaTask.value) return []
 
-  const blocks =
+  return (
     effectiveHasCards.value && renderedContentSegments.value
       ? buildSegmentedAssistantBlocks(renderedContentSegments.value)
       : buildTextOnlyAssistantBlocks(assistantTextState.value.html)
-
-  if (blocks.length === 0) return blocks
-
-  const next: AssistantRenderBlock[] = blocks.map((block) => ({
-    ...block,
-    showCaret: false,
-  }))
-  if (showStreamingCaret.value) {
-    const lastIndex = next.length - 1
-    if (lastIndex >= 0) next[lastIndex]!.showCaret = true
-  }
-  return next
+  )
 })
 
 const showProcessOnlyAssistantBubble = computed(
@@ -3220,7 +3214,6 @@ async function handleMobileDelete() {
                     @select="handleCardSelect"
                   />
                 </template>
-                <span v-if="block.showCaret" class="streaming-caret" aria-hidden="true" />
               </div>
               <div v-if="showProcessDetailsToggle" class="assistant-process-toggle-row">
                 <button class="assistant-process-toggle" @click.stop="toggleProcessDetails">
@@ -3307,6 +3300,9 @@ async function handleMobileDelete() {
                     name
                   }}</span>
                 </div>
+              </div>
+              <div v-if="showStreamingCaret" class="assistant-message-caret-row" aria-hidden="true">
+                <span class="streaming-caret" />
               </div>
             </div>
           </div>
@@ -3773,6 +3769,13 @@ async function handleMobileDelete() {
 
 .assistant-message-block--card {
   min-width: 0;
+}
+
+.assistant-message-caret-row {
+  display: flex;
+  align-items: center;
+  min-height: 1rem;
+  margin-top: -0.22rem;
 }
 
 .assistant-message.assistant-message-indicator-only {

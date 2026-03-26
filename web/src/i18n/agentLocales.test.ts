@@ -44,9 +44,11 @@ describe('agent locale coverage', () => {
     for (const file of localeFiles) {
       const source = localeSourceByFile.get(file)
       expect(source, `${file} should be loadable as raw source`).toBeTruthy()
-      expect(source, `${file} should declare agent`).toMatch(/agent:\s*\{/)
+      expect(source, `${file} should declare agent`).toMatch(/"agent"\s*:\s*\{/)
       for (const key of requiredKeys) {
-        expect(source, `${file} should include agent.${key}`).toMatch(new RegExp(`\\b${key}:`))
+        expect(source, `${file} should include agent.${key}`).toMatch(
+          new RegExp(`"${key}"\\s*:`)
+        )
       }
     }
   })

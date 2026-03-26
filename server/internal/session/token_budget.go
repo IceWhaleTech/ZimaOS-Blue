@@ -1,6 +1,6 @@
 package session
 
-import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 
 const (
 	// LegacyDefaultContextTokenBudget was the historical session default before
@@ -8,7 +8,7 @@ const (
 	LegacyDefaultContextTokenBudget = 8000
 	// DefaultContextTokenBudget is the modern fallback when no explicit session
 	// budget override is configured.
-	DefaultContextTokenBudget = claudecode.DefaultContextTokens
+	DefaultContextTokenBudget = agentcore.DefaultContextTokens
 )
 
 // NormalizeTokenBudget converts config/session budget values into a realistic

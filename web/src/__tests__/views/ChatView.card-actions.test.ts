@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { reactive } from 'vue'
 import ChatView from '@/views/ChatView.vue'
-import { i18n, setLocale } from '@/i18n'
+import { i18n, localeKeys, setLocale } from '@/i18n'
 
 const mocks = vi.hoisted(() => ({
   chatStore: {
@@ -84,7 +84,6 @@ const mocks = vi.hoisted(() => ({
   settingsStore: {
     agentAutoConfirm: false,
     agentMode: false,
-    claudeCodeEnabled: false,
     showToolDetails: true,
     fetchTools: vi.fn(),
     updateFromPoolProviders: vi.fn(),
@@ -455,6 +454,7 @@ async function mountChatViewWithMessages(
     routes: [
       { path: '/chat', component: { template: '<div />' } },
       { path: '/settings', component: { template: '<div />' } },
+      { path: '/security', component: { template: '<div />' } },
     ],
   })
   router.push('/chat')
@@ -495,6 +495,15 @@ async function expandCardById(wrapper: ReturnType<typeof mount>, cardId: string)
 }
 
 describe('ChatView page-level card actions', () => {
+  beforeAll(async () => {
+    // Preload the locales used in this suite so the localization assertion
+    // does not spend its test timeout budget on dynamic locale imports.
+    for (const locale of localeKeys) {
+      await setLocale(locale)
+    }
+    await setLocale('en-US')
+  })
+
   beforeEach(() => {
     delete (globalThis as Record<string, unknown>).__zima_chat_card_disclosure_state_v1__
 
@@ -578,7 +587,6 @@ describe('ChatView page-level card actions', () => {
 
     mocks.settingsStore.agentAutoConfirm = false
     mocks.settingsStore.agentMode = false
-    mocks.settingsStore.claudeCodeEnabled = false
     mocks.settingsStore.showToolDetails = true
     mocks.settingsStore.fetchTools.mockReset().mockResolvedValue(undefined)
     mocks.settingsStore.updateFromPoolProviders.mockReset()
@@ -655,7 +663,7 @@ describe('ChatView page-level card actions', () => {
   })
 
   it('localizes the awaiting confirmation indicator', async () => {
-    await setLocale('zh-CN')
+    i18n.global.locale.value = 'zh-CN'
     mocks.chatStore.awaitingConfirmation = true
 
     const wrapper = await mountChatViewWithMessages([
@@ -666,6 +674,16 @@ describe('ChatView page-level card actions', () => {
     expect(wrapper.text()).not.toContain('Waiting for your confirmation to continue')
 
     i18n.global.locale.value = 'en-US'
+  }, 10000)
+
+  it('renders localized copy for request build failures', async () => {
+    mocks.chatStore.streamError = 'requestBuildFailed'
+
+    const wrapper = await mountChatView('Idle state')
+
+    expect(wrapper.text()).toContain(
+      'The upstream relay failed to build this request. This usually means the request shape or tool arguments were invalid.'
+    )
   })
 
   it('shows the work-details toggle near the input area and keeps it clickable', async () => {
@@ -675,15 +693,17 @@ describe('ChatView page-level card actions', () => {
       { id: 'msg-details', content: 'Need more detail' },
     ])
 
-    const toggle = findButtonByText(wrapper, 'Show work details')
-    expect(toggle?.exists()).toBe(true)
+    const toggle = wrapper.find(
+      '.chat-thread-actions button.chat-thread-detail-btn:not(.chat-thread-routing-btn)'
+    )
+    expect(toggle.exists()).toBe(true)
 
-    await toggle!.trigger('click')
+    await toggle.trigger('click')
 
     expect(mocks.settingsStore.setShowToolDetails).toHaveBeenCalledWith(true)
   })
 
-  it('shows the routing mode control beside enhanced mode and work details', async () => {
+  it('shows the routing mode control beside work details', async () => {
     const activeProvider = {
       id: 'openai',
       type: 'builtin',

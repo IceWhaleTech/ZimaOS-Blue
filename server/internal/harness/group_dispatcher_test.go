@@ -807,6 +807,113 @@ func TestGroupDispatcher_RetryInjectsVerificationFeedbackIntoNextAttempt(t *test
 	}
 }
 
+func TestGroupDispatcher_RetryInjectsCheckpointAndContractIntoNextAttempt(t *testing.T) {
+	controller := newTestController(t)
+	workspace := t.TempDir()
+	var secondAttemptCheckpoint map[string]interface{}
+	var secondAttemptContract map[string]interface{}
+	controller.RegisterDriver(&autoCompleteGroupDriver{
+		kind:   RunKindAgentTask,
+		status: RunStatusCompleted,
+		result: "artifact emitted successfully",
+		delay:  10 * time.Millisecond,
+		onStart: func(run *Run, _ RunEnv) error {
+			if run.AttemptIndex != 2 {
+				return nil
+			}
+			secondAttemptCheckpoint = nestedMetadataMap(run.Metadata, "resume_checkpoint")
+			secondAttemptContract = nestedMetadataMap(run.Metadata, "harness_contract")
+			if len(secondAttemptCheckpoint) == 0 {
+				return fmt.Errorf("resume_checkpoint was not injected into retry metadata")
+			}
+			if len(secondAttemptContract) == 0 {
+				return fmt.Errorf("harness_contract was not injected into retry metadata")
+			}
+			target := filepath.Join(run.WorkspaceRoot, "result.txt")
+			return os.WriteFile(target, []byte("artifact ready on retry"), 0o644)
+		},
+	})
+	dispatcher := NewGroupDispatcher(controller)
+	dispatcher.SetRunPollInterval(10 * time.Millisecond)
+
+	group, err := controller.SubmitGroup(context.Background(), RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "checkpoint retry loop",
+		OwnerUserID: "user-1",
+		SchedulerConfig: GroupSchedulerConfig{
+			MaxAttempts:  2,
+			RetryBackoff: 5 * time.Millisecond,
+		},
+		ScoringConfig: GroupScoringConfig{
+			Mode:          ScoringModeRule,
+			PassThreshold: 0.5,
+		},
+		Items: []RunGroupItemSpec{
+			{
+				RunKind: RunKindAgentTask,
+				Profile: "agent_task",
+				Input: map[string]interface{}{
+					"goal":           "write the result file",
+					"workspace_root": workspace,
+					"model":          "gpt-4.1-mini",
+				},
+				Expected: map[string]interface{}{
+					"expected_artifacts": []interface{}{"result.txt"},
+				},
+				Metadata: map[string]interface{}{
+					"harness_contract": map[string]interface{}{
+						"deliverables": []interface{}{"produce the result file"},
+						"fallback_order": []interface{}{
+							"inspect the missing artifact path",
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	dispatchCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go dispatcher.Start(dispatchCtx)
+
+	waitForCondition(t, "checkpoint retry terminal state", func() bool {
+		items, err := controller.ListGroupItems(context.Background(), group.ID)
+		if err != nil || len(items) != 1 {
+			return false
+		}
+		switch items[0].Status {
+		case RunGroupItemStatusPassed, RunGroupItemStatusFailed, RunGroupItemStatusError, RunGroupItemStatusCancelled:
+			return true
+		default:
+			return false
+		}
+	})
+
+	if len(secondAttemptCheckpoint) == 0 {
+		t.Fatal("expected resume checkpoint metadata on second attempt")
+	}
+	if summary := metadataString(secondAttemptCheckpoint, "summary"); summary == "" {
+		t.Fatalf("checkpoint summary = %q, want non-empty summary", summary)
+	}
+	if len(secondAttemptContract) == 0 {
+		t.Fatal("expected second attempt to receive normalized harness_contract metadata")
+	}
+
+	report, err := controller.GetGroupReport(context.Background(), group.ID)
+	if err != nil {
+		t.Fatalf("GetGroupReport failed: %v", err)
+	}
+	if len(report.Checkpoints) == 0 {
+		t.Fatalf("expected checkpoint artifacts in group report, got %#v", report.Checkpoints)
+	}
+	if len(report.ItemContracts) != 1 {
+		t.Fatalf("expected item contracts in group report, got %#v", report.ItemContracts)
+	}
+}
+
 func TestController_AnnotateResearchProposalSummary(t *testing.T) {
 	controller := newTestController(t)
 	reflector := &mockProposalReflector{result: &selfreflect.Result{

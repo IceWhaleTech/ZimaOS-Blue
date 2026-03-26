@@ -216,6 +216,7 @@ func (t *OfficeTool) Execute(ctx context.Context, args map[string]interface{}) (
 		return nil, err
 	}
 
+	originalPath := path
 	absPath, relPath, _, err := t.scope.resolvePathWithContext(ctx, "office", path, false)
 	if err != nil {
 		return nil, err
@@ -233,12 +234,14 @@ func (t *OfficeTool) Execute(ctx context.Context, args map[string]interface{}) (
 	}
 
 	response := map[string]interface{}{
-		"path":    relPath,
-		"format":  format,
-		"theme":   theme.Name,
-		"success": true,
-		"size":    len(data),
-		"message": fmt.Sprintf("Created styled %s artifact at %s", format, relPath),
+		"path":          relPath,
+		"absolute_path": absPath,
+		"original_path": originalPath,
+		"format":        format,
+		"theme":         theme.Name,
+		"success":       true,
+		"size":          len(data),
+		"message":       fmt.Sprintf("Created styled %s artifact at %s", format, relPath),
 	}
 	if info.SheetCount > 0 {
 		response["sheet_count"] = info.SheetCount

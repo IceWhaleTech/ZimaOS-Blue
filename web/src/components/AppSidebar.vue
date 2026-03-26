@@ -7,7 +7,6 @@ import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { useThemeStore } from '@/stores/theme'
 import type { WorkspaceFile, WorkspaceStats, WorkspaceTreeEntry } from '@/api/workspace'
-import type { DirectoryWhitelistEntry } from '@/api/claudecode'
 import type { Conversation, Message } from '@/api/chat'
 import { PagePermissions } from '@/constants/pagePermissions'
 import { storeToRefs } from 'pinia'
@@ -22,12 +21,10 @@ const PreviewUpgradeForm = defineAsyncComponent(
 )
 
 type WorkspaceApiModule = typeof import('@/api/workspace')
-type ClaudeCodeApiModule = typeof import('@/api/claudecode')
 type ChatApiModule = typeof import('@/api/chat')
 type TypelessUtilsModule = typeof import('@/utils/typeless')
 
 let workspaceApiModulePromise: Promise<WorkspaceApiModule> | null = null
-let claudeCodeApiModulePromise: Promise<ClaudeCodeApiModule> | null = null
 let chatApiModulePromise: Promise<ChatApiModule> | null = null
 let typelessUtilsModulePromise: Promise<TypelessUtilsModule> | null = null
 
@@ -36,13 +33,6 @@ async function loadWorkspaceApi() {
     workspaceApiModulePromise = import('@/api/workspace')
   }
   return (await workspaceApiModulePromise).workspaceApi
-}
-
-async function loadClaudeCodeApi() {
-  if (!claudeCodeApiModulePromise) {
-    claudeCodeApiModulePromise = import('@/api/claudecode')
-  }
-  return (await claudeCodeApiModulePromise).claudeCodeApi
 }
 
 async function loadConversationApi() {
@@ -96,11 +86,6 @@ interface GeneratedWorkspaceFile {
 interface WorkspaceTreeRow {
   entry: WorkspaceTreeEntry
   generatedRecord: GeneratedWorkspaceFile | null
-}
-
-interface WhitelistTreeTarget {
-  path: string
-  label: string
 }
 
 const GENERATED_SCAN_CONVERSATION_LIMIT = 20
@@ -338,114 +323,11 @@ function formatBytes(bytes: number | undefined): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[idx]}`
 }
 
-function sanitizeWhitelistLabel(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return 'whitelist'
-  const safe = trimmed.replace(/[\\/]+/g, '-').replace(/\s+/g, '_')
-  return safe || 'whitelist'
-}
-
-function buildWhitelistTreeTargets(
-  whitelist: DirectoryWhitelistEntry[] | undefined,
-  workspaceRootPath: string
-): WhitelistTreeTarget[] {
-  if (!Array.isArray(whitelist) || whitelist.length === 0) return []
-
-  const workspaceKey = toPathKey(workspaceRootPath)
-  const seenPaths = new Set<string>()
-  const usedLabels = new Set<string>()
-  const targets: WhitelistTreeTarget[] = []
-
-  for (const entry of whitelist) {
-    const path = String(entry?.path || '').trim()
-    if (!path) continue
-    const pathKey = toPathKey(path)
-    if (!pathKey || seenPaths.has(pathKey) || (workspaceKey && pathKey === workspaceKey)) continue
-    seenPaths.add(pathKey)
-
-    const rawLabel = entry.alias?.trim() || path.split(/[/\\]/).filter(Boolean).pop() || path
-    const baseLabel = sanitizeWhitelistLabel(rawLabel)
-    let label = baseLabel
-    let suffix = 2
-    while (usedLabels.has(label)) {
-      label = `${baseLabel}_${suffix}`
-      suffix++
-    }
-    usedLabels.add(label)
-    targets.push({ path, label })
-  }
-
-  return targets
-}
-
-function mapWhitelistTreeEntries(
-  label: string,
-  rootPath: string,
-  entries: WorkspaceTreeEntry[]
-): WorkspaceTreeEntry[] {
-  const prefix = `@${label}`
-  const mapped: WorkspaceTreeEntry[] = [
-    {
-      path: prefix,
-      abs_path: rootPath,
-      name: prefix,
-      type: 'dir',
-      depth: 1,
-    },
-  ]
-
-  for (const entry of entries) {
-    const relPath = String(entry.path || '').trim()
-    if (!relPath) continue
-    mapped.push({
-      ...entry,
-      path: `${prefix}/${relPath}`,
-      depth: Math.max(1, Number(entry.depth) || 1) + 1,
-    })
-  }
-  return mapped
-}
-
 async function loadWhitelistWorkspaceTreeEntries(
   workspaceRootPath: string
 ): Promise<WorkspaceTreeEntry[]> {
-  try {
-    const [claudeCodeApi, workspaceApi] = await Promise.all([
-      loadClaudeCodeApi(),
-      loadWorkspaceApi(),
-    ])
-    const cfgRes = await claudeCodeApi.getConfig()
-    const config = cfgRes.data
-    if (
-      !config?.whitelist_enabled ||
-      !Array.isArray(config.directory_whitelist) ||
-      config.directory_whitelist.length === 0
-    ) {
-      return []
-    }
-
-    const targets = buildWhitelistTreeTargets(config.directory_whitelist, workspaceRootPath)
-    if (targets.length === 0) return []
-
-    const treeChunks = await Promise.all(
-      targets.map(async (target) => {
-        try {
-          const treeRes = await workspaceApi.getTree({ max_depth: 16, root: target.path })
-          const root = String(treeRes.data?.root || '').trim() || target.path
-          const entries = Array.isArray(treeRes.data?.entries) ? treeRes.data.entries : []
-          return mapWhitelistTreeEntries(target.label, root, entries)
-        } catch (e) {
-          console.warn('Failed to load whitelist tree root:', target.path, e)
-          return [] as WorkspaceTreeEntry[]
-        }
-      })
-    )
-
-    return treeChunks.flat()
-  } catch (e) {
-    console.warn('Failed to load directory whitelist config:', e)
-    return []
-  }
+  void workspaceRootPath
+  return []
 }
 
 function buildGeneratedFileRecord(

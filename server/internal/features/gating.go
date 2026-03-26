@@ -1,4 +1,4 @@
-// Package features provides feature gating based on CLI installation status.
+// Package features provides lightweight feature metadata and runtime overrides.
 package features
 
 import (
@@ -14,7 +14,7 @@ const (
 	FeatureProviderConfig Feature = "provider_config"
 	FeatureModelSelection Feature = "model_selection"
 
-	// CLI-dependent features
+	// Runtime features
 	FeatureToolCalling    Feature = "tool_calling"
 	FeatureFileOperations Feature = "file_operations"
 	FeatureCodeExecution  Feature = "code_execution"
@@ -52,8 +52,9 @@ type FeatureGate struct {
 // NewFeatureGate creates a new feature gate.
 func NewFeatureGate() *FeatureGate {
 	fg := &FeatureGate{
-		overrides: make(map[Feature]bool),
-		features:  make(map[Feature]*FeatureInfo),
+		cliInstalled: true,
+		overrides:    make(map[Feature]bool),
+		features:     make(map[Feature]*FeatureInfo),
 	}
 
 	// Register all features
@@ -84,40 +85,40 @@ func (fg *FeatureGate) registerFeatures() {
 		Category:    "core",
 	}
 
-	// CLI-dependent features
+	// Runtime features
 	fg.features[FeatureToolCalling] = &FeatureInfo{
 		Name:        "Tool Calling",
-		Description: "Execute tools and functions through the LLM",
-		RequiresCLI: true,
+		Description: "Execute tools and functions through the runtime",
+		RequiresCLI: false,
 		Category:    "cli",
 	}
 	fg.features[FeatureFileOperations] = &FeatureInfo{
 		Name:        "File Operations",
 		Description: "Read, write, and edit files",
-		RequiresCLI: true,
+		RequiresCLI: false,
 		Category:    "cli",
 	}
 	fg.features[FeatureCodeExecution] = &FeatureInfo{
 		Name:        "Code Execution",
 		Description: "Execute code and shell commands",
-		RequiresCLI: true,
+		RequiresCLI: false,
 		Category:    "cli",
 	}
 	fg.features[FeatureAgentMode] = &FeatureInfo{
 		Name:        "Agent Mode",
-		Description: "Autonomous agent capabilities (native runner, no CLI required)",
+		Description: "Autonomous agent capabilities",
 		RequiresCLI: false,
 		Category:    "cli",
 	}
 	fg.features[FeatureProjectContext] = &FeatureInfo{
 		Name:        "Project Context",
 		Description: "Understand and work with project structure",
-		RequiresCLI: true,
+		RequiresCLI: false,
 		Category:    "cli",
 	}
 	fg.features[FeatureMCPIntegration] = &FeatureInfo{
 		Name:        "MCP Integration",
-		Description: "Model Context Protocol server integration (native, no CLI required)",
+		Description: "Model Context Protocol server integration",
 		RequiresCLI: false,
 		Category:    "cli",
 	}
@@ -157,14 +158,14 @@ func (fg *FeatureGate) registerFeatures() {
 	}
 }
 
-// SetCLIInstalled sets whether the CLI is installed.
+// SetCLIInstalled preserves a legacy compatibility flag for older APIs.
 func (fg *FeatureGate) SetCLIInstalled(installed bool) {
 	fg.mu.Lock()
 	defer fg.mu.Unlock()
 	fg.cliInstalled = installed
 }
 
-// IsCLIInstalled returns whether the CLI is installed.
+// IsCLIInstalled returns the legacy compatibility flag exposed by older APIs.
 func (fg *FeatureGate) IsCLIInstalled() bool {
 	fg.mu.RLock()
 	defer fg.mu.RUnlock()
@@ -187,7 +188,7 @@ func (fg *FeatureGate) IsEnabled(feature Feature) bool {
 		return false
 	}
 
-	// If feature requires CLI, check if CLI is installed
+	// Preserve legacy gating behavior for any feature still marked RequiresCLI.
 	if info.RequiresCLI && !fg.cliInstalled {
 		return false
 	}
@@ -299,7 +300,7 @@ func (fg *FeatureGate) GetFeaturesByCategory() map[string][]FeatureInfo {
 	return result
 }
 
-// GetCLIDependentFeatures returns features that require CLI.
+// GetCLIDependentFeatures returns legacy CLI-gated features.
 func (fg *FeatureGate) GetCLIDependentFeatures() []FeatureInfo {
 	fg.mu.RLock()
 	defer fg.mu.RUnlock()
@@ -347,7 +348,7 @@ func (fg *FeatureGate) GetStatus() *FeatureStatus {
 		} else {
 			status.DisabledCount++
 			if info.RequiresCLI && !fg.cliInstalled {
-				status.DisabledReasons[f] = "Requires Claude Code CLI"
+				status.DisabledReasons[f] = "Requires external runtime support"
 			}
 		}
 	}
@@ -362,7 +363,7 @@ func (fg *FeatureGate) RequireFeature(feature Feature) error {
 		if info != nil && info.RequiresCLI {
 			return &FeatureDisabledError{
 				Feature: feature,
-				Reason:  "This feature requires Claude Code CLI to be installed",
+				Reason:  "This feature requires external runtime support",
 			}
 		}
 		return &FeatureDisabledError{

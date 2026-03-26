@@ -300,59 +300,91 @@ func (t *ImageTool) SetPPTService(svc PPTGenerateService) {
 func (t *ImageTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "image",
-		Description: "Generate or edit images, recognize one or more inline/remote images with VLM plus local OCR fallback, or check generation status. Defaults to waiting for generation results to reduce duplicate retries.",
+		Description: "Generate images, review image or page inputs, check task status, or build PPT slide assets.",
 		Icon:        "image",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{"generate", "edit", "review", "analyze", "compare", "status", "get", "ppt"},
-					"description": "Action to perform. Auto-detected from task_id, prompt, and image/url inputs.",
+					"enum":        []string{"generate", "review", "status", "ppt"},
+					"description": "Action to perform. Usually omitted because prompt, task, and review inputs auto-route.",
 				},
-				"prompt":           map[string]interface{}{"type": "string", "description": "Prompt for image generation or editing."},
-				"negative_prompt":  map[string]interface{}{"type": "string", "description": "Optional negative prompt for generation."},
-				"model":            map[string]interface{}{"type": "string", "description": "Optional image model ID."},
-				"size":             map[string]interface{}{"type": "string", "description": "Requested output size, e.g. 1024x1024."},
-				"quality":          map[string]interface{}{"type": "string", "description": "Optional quality hint."},
-				"style":            map[string]interface{}{"type": "string", "description": "Optional style hint."},
-				"n":                map[string]interface{}{"type": "integer", "description": "Number of images to generate."},
-				"category":         map[string]interface{}{"type": "string", "description": "Generation category, e.g. t2i or i2i."},
-				"path":             map[string]interface{}{"type": "string", "description": "Optional output file path in the current workspace. When provided and generation succeeds, Blue saves the first generated asset there."},
-				"output_path":      map[string]interface{}{"type": "string", "description": "Alias for path."},
-				"filename":         map[string]interface{}{"type": "string", "description": "Alias for path when the user specified a target filename."},
-				"reference_image":  map[string]interface{}{"type": "string", "description": "Reference image URL for edit/i2i generation."},
-				"image_url":        map[string]interface{}{"type": "string", "description": "Alias for reference_image when generating edits."},
-				"reference_base64": map[string]interface{}{"type": "string", "description": "Base64 image content for edit/i2i generation."},
-				"task_id":          map[string]interface{}{"type": "string", "description": "Task ID for status/get."},
-				"poll":             map[string]interface{}{"type": "boolean", "description": "Wait for generation completion before returning. Defaults to true."},
-				"wait_timeout_sec": map[string]interface{}{"type": "integer", "description": "Generation wait timeout in seconds. Defaults to 300."},
-				"url":              map[string]interface{}{"type": "string", "description": "Target page/image URL for review."},
-				"urls":             map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple page/image URLs for review or recognition."},
-				"image_urls":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple direct or signed image URLs for review or recognition."},
-				"image":            map[string]interface{}{"type": "string", "description": "Base64 image data for review."},
-				"images":           map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple base64 image payloads for recognition in one call."},
-				"compare":          map[string]interface{}{"type": "boolean", "description": "When reviewing multiple images, emphasize shared themes and differences in a structured compare payload."},
-				"max_images":       map[string]interface{}{"type": "integer", "description": "Maximum number of unique images/URLs to review after dedupe. Defaults to 20."},
-				"analysis_mode": map[string]interface{}{
+				"prompt": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{imageAnalysisModeAuto, imageAnalysisModeCheapFirst, imageAnalysisModeOCRFirst, imageAnalysisModeOCROnly, imageAnalysisModeVisionOnly},
-					"description": "Recognition strategy for direct images. auto keeps the existing vision-first flow with OCR fallback; cheap_first prefers the local small multimodal model before full vision; ocr_first prefers OCR before escalating; ocr_only avoids vision; vision_only avoids OCR.",
+					"description": "Prompt for generation, review focus, or PPT slide assets.",
 				},
-				"lang":                map[string]interface{}{"type": "string", "description": "Output language for review."},
-				"device":              map[string]interface{}{"type": "string", "description": "desktop or mobile for URL review."},
-				"wait_ms":             map[string]interface{}{"type": "number", "description": "Extra page wait time for review_url."},
-				"threshold":           map[string]interface{}{"type": "number", "description": "Review threshold score."},
-				"format":              map[string]interface{}{"type": "string", "description": "Review output format: json or human."},
-				"aspect_ratio":        map[string]interface{}{"type": "string", "description": "Optional aspect ratio for supported generation models."},
-				"resolution":          map[string]interface{}{"type": "string", "description": "Optional resolution tier for supported generation models."},
-				"reference_images":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional reference images for bananaslides or nanoslides PPT slide-asset generation."},
-				"layout_spec":         map[string]interface{}{"type": "object", "description": "Optional structured PPT layout spec with canvas, background, and positioned text/image blocks for direct fallback rendering."},
-				"style_preset":        map[string]interface{}{"type": "string", "description": "Optional generation preset. Use bananaslides or nanoslides for PPT slide visuals."},
-				"quality_profile":     map[string]interface{}{"type": "string", "description": "Optional review profile. Use ppt to trigger PPT slide-asset generation."},
-				"review_threshold":    map[string]interface{}{"type": "number", "description": "Optional review threshold for PPT slide-asset generation."},
-				"review_retry_budget": map[string]interface{}{"type": "integer", "description": "Optional retry budget for PPT slide-asset generation."},
-				"style_theme":         map[string]interface{}{"type": "string", "description": "Optional theme or brand guidance for PPT slide-asset generation."},
+				"task": map[string]interface{}{
+					"type":        "object",
+					"description": "Task lookup for action=status.",
+					"properties": map[string]interface{}{
+						"id": map[string]interface{}{"type": "string", "description": "Task ID to inspect."},
+					},
+				},
+				"generate": map[string]interface{}{
+					"type":        "object",
+					"description": "Optional image-generation settings.",
+					"properties": map[string]interface{}{
+						"model": map[string]interface{}{"type": "string", "description": "Optional model ID."},
+						"size":  map[string]interface{}{"type": "string", "description": "Output size such as 1024x1024."},
+						"count": map[string]interface{}{"type": "integer", "description": "Number of images to generate."},
+						"path":  map[string]interface{}{"type": "string", "description": "Optional output path for the primary image."},
+						"reference": map[string]interface{}{
+							"type":        "object",
+							"description": "Optional edit or image-to-image source.",
+							"properties": map[string]interface{}{
+								"url":    map[string]interface{}{"type": "string", "description": "Remote image URL."},
+								"base64": map[string]interface{}{"type": "string", "description": "Inline base64 image content."},
+							},
+						},
+						"wait": map[string]interface{}{
+							"type":        "object",
+							"description": "Optional wait behavior for generation.",
+							"properties": map[string]interface{}{
+								"enabled":     map[string]interface{}{"type": "boolean", "description": "Wait for completion before returning."},
+								"timeout_sec": map[string]interface{}{"type": "integer", "description": "Maximum wait time in seconds."},
+							},
+						},
+					},
+				},
+				"review": map[string]interface{}{
+					"type":        "object",
+					"description": "Optional image/page review settings.",
+					"properties": map[string]interface{}{
+						"input":   map[string]interface{}{"type": "string", "description": "Single review input such as base64, URL, or local path."},
+						"inputs":  map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple review inputs. Each item may be base64, URL, or local path."},
+						"compare": map[string]interface{}{"type": "boolean", "description": "Emphasize similarities and differences across multiple inputs."},
+						"max_images": map[string]interface{}{
+							"type":        "integer",
+							"description": "Maximum unique inputs to review after dedupe.",
+						},
+						"mode": map[string]interface{}{
+							"type":        "string",
+							"enum":        []string{"auto", "cheap", "ocr_first", "ocr", "vision"},
+							"description": "Review strategy for direct images.",
+						},
+						"language": map[string]interface{}{"type": "string", "description": "Preferred output language."},
+					},
+				},
+				"slide": map[string]interface{}{
+					"type":        "object",
+					"description": "Optional PPT slide-asset options.",
+					"properties": map[string]interface{}{
+						"reference_images": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Reference images for PPT slide visuals."},
+						"layout_spec":      map[string]interface{}{"type": "object", "description": "Structured PPT layout spec."},
+						"style_preset":     map[string]interface{}{"type": "string", "description": "Preset such as bananaslides or nanoslides."},
+						"quality_profile":  map[string]interface{}{"type": "string", "description": "Quality profile. Use ppt to force slide-asset mode."},
+						"theme":            map[string]interface{}{"type": "string", "description": "Theme or brand guidance."},
+						"review": map[string]interface{}{
+							"type":        "object",
+							"description": "Optional PPT review controls.",
+							"properties": map[string]interface{}{
+								"threshold":    map[string]interface{}{"type": "number", "description": "Optional PPT review threshold."},
+								"retry_budget": map[string]interface{}{"type": "integer", "description": "Optional PPT retry budget."},
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -360,6 +392,7 @@ func (t *ImageTool) Definition() ToolDefinition {
 
 // Execute dispatches the requested image action.
 func (t *ImageTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	args = normalizeImageArgs(args)
 	switch imageAction(args) {
 	case "status":
 		return t.executeStatus(ctx, args)
@@ -1654,7 +1687,7 @@ func buildPPTRequest(args map[string]interface{}) (PPTRequest, error) {
 		ReviewThreshold:   compatFloat64(args, "review_threshold"),
 		ReviewRetryBudget: compatInt(args, "review_retry_budget", "reviewRetryBudget"),
 		QualityProfile:    firstCompatString(args, "quality_profile", "qualityProfile"),
-		Lang:              firstCompatString(args, "lang"),
+		Lang:              firstCompatString(args, "language", "lang"),
 	}, nil
 }
 
@@ -1757,6 +1790,362 @@ func compatValue(args map[string]interface{}, keys ...string) any {
 		}
 	}
 	return nil
+}
+
+func normalizeImageArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+8)
+	for k, v := range args {
+		normalized[k] = v
+	}
+	if strings.TrimSpace(asString(normalized["lang"])) == "" {
+		if language := firstCompatString(normalized, "language", "locale"); language != "" {
+			normalized["lang"] = language
+		}
+	}
+
+	flattenImageTaskArgs(normalized)
+	flattenImageGenerateArgs(normalized)
+	flattenImageReviewArgs(normalized)
+	flattenImageSlideArgs(normalized)
+	return normalized
+}
+
+func flattenImageTaskArgs(normalized map[string]interface{}) {
+	task, ok := coerceCompatMap(normalized["task"])
+	if !ok || len(task) == 0 {
+		return
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "task_id", "taskId", "id")) == "" {
+		if taskID := firstCompatString(task, "id", "task_id", "taskId"); taskID != "" {
+			normalized["task_id"] = taskID
+		}
+	}
+}
+
+func flattenImageGenerateArgs(normalized map[string]interface{}) {
+	generate, ok := coerceCompatMap(normalized["generate"])
+	if !ok || len(generate) == 0 {
+		return
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "prompt", "query", "input", "text", "message", "content")) == "" {
+		if prompt := firstCompatString(generate, "prompt", "query", "input", "text", "message", "content"); prompt != "" {
+			normalized["prompt"] = prompt
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "model")) == "" {
+		if value := firstCompatString(generate, "model"); value != "" {
+			normalized["model"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "size")) == "" {
+		if value := firstCompatString(generate, "size"); value != "" {
+			normalized["size"] = value
+		}
+	}
+	if compatInt(normalized, "n", "count", "num_images", "numImages") <= 0 {
+		if value, ok := compatArgValue(generate, "count", "n", "num_images", "numImages"); ok {
+			normalized["count"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatPathString(normalized)) == "" {
+		if value := firstCompatString(generate, "path", "output_path", "outputPath"); value != "" {
+			normalized["path"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "negative_prompt", "negativePrompt")) == "" {
+		if value := firstCompatString(generate, "negative_prompt", "negativePrompt", "negative"); value != "" {
+			normalized["negative_prompt"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "quality")) == "" {
+		if value := firstCompatString(generate, "quality"); value != "" {
+			normalized["quality"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "style")) == "" {
+		if value := firstCompatString(generate, "style"); value != "" {
+			normalized["style"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "category", "mode", "type")) == "" {
+		if value := firstCompatString(generate, "category", "mode", "type"); value != "" {
+			normalized["category"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "aspect_ratio", "aspectRatio")) == "" {
+		if value := firstCompatString(generate, "aspect_ratio", "aspectRatio", "aspect"); value != "" {
+			normalized["aspect_ratio"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "resolution")) == "" {
+		if value := firstCompatString(generate, "resolution"); value != "" {
+			normalized["resolution"] = value
+		}
+	}
+	if _, ok := compatArgValue(normalized, "poll", "wait", "sync"); !ok {
+		if value, ok := compatArgValue(generate, "poll"); ok {
+			normalized["poll"] = value
+		} else if rawWait, exists := generate["wait"]; exists {
+			if _, nested := coerceCompatMap(rawWait); !nested {
+				normalized["poll"] = rawWait
+			}
+		}
+	}
+	if compatInt(normalized, "wait_timeout_sec", "waitTimeoutSec", "timeout_sec", "timeoutSec", "timeout_seconds", "timeoutSeconds") <= 0 {
+		if value, ok := compatArgValue(generate, "wait_timeout_sec", "waitTimeoutSec", "timeout_sec", "timeoutSec", "timeout_seconds", "timeoutSeconds"); ok {
+			normalized["wait_timeout_sec"] = value
+		}
+	}
+
+	if output, ok := coerceCompatMap(generate["output"]); ok && len(output) > 0 {
+		if strings.TrimSpace(firstCompatPathString(normalized)) == "" {
+			if value := firstCompatString(output, "path", "output_path", "outputPath"); value != "" {
+				normalized["path"] = value
+			}
+		}
+		if strings.TrimSpace(firstCompatString(normalized, "size")) == "" {
+			if value := firstCompatString(output, "size"); value != "" {
+				normalized["size"] = value
+			}
+		}
+		if compatInt(normalized, "n", "count", "num_images", "numImages") <= 0 {
+			if value, ok := compatArgValue(output, "count", "n", "num_images", "numImages"); ok {
+				normalized["count"] = value
+			}
+		}
+	}
+
+	if reference, ok := coerceCompatMap(generate["reference"]); ok && len(reference) > 0 {
+		if strings.TrimSpace(firstCompatString(normalized, "reference_image", "referenceImage", "reference_url", "referenceUrl", "image_url", "imageUrl")) == "" {
+			if value := firstCompatString(reference, "url", "reference_image", "referenceImage", "reference_url", "referenceUrl", "image_url", "imageUrl"); value != "" {
+				normalized["reference_image"] = value
+			}
+		}
+		if strings.TrimSpace(firstCompatString(normalized, "reference_base64", "referenceBase64", "reference_image_base64", "referenceImageBase64")) == "" {
+			if value := firstCompatString(reference, "base64", "reference_base64", "referenceBase64", "reference_image_base64", "referenceImageBase64"); value != "" {
+				normalized["reference_base64"] = value
+			}
+		}
+	}
+
+	if wait, ok := coerceCompatMap(generate["wait"]); ok && len(wait) > 0 {
+		if _, ok := compatArgValue(normalized, "poll", "wait", "sync"); !ok {
+			if value, ok := compatArgValue(wait, "enabled", "poll", "wait"); ok {
+				normalized["poll"] = value
+			}
+		}
+		if compatInt(normalized, "wait_timeout_sec", "waitTimeoutSec", "timeout_sec", "timeoutSec", "timeout_seconds", "timeoutSeconds") <= 0 {
+			if value, ok := compatArgValue(wait, "timeout_sec", "timeoutSec", "wait_timeout_sec", "waitTimeoutSec"); ok {
+				normalized["wait_timeout_sec"] = value
+			}
+		}
+	}
+
+	if options, ok := coerceCompatMap(generate["options"]); ok && len(options) > 0 {
+		if strings.TrimSpace(firstCompatString(normalized, "negative_prompt", "negativePrompt")) == "" {
+			if value := firstCompatString(options, "negative_prompt", "negativePrompt", "negative"); value != "" {
+				normalized["negative_prompt"] = value
+			}
+		}
+		if strings.TrimSpace(firstCompatString(normalized, "quality")) == "" {
+			if value := firstCompatString(options, "quality"); value != "" {
+				normalized["quality"] = value
+			}
+		}
+		if strings.TrimSpace(firstCompatString(normalized, "style")) == "" {
+			if value := firstCompatString(options, "style"); value != "" {
+				normalized["style"] = value
+			}
+		}
+		if strings.TrimSpace(firstCompatString(normalized, "category", "mode", "type")) == "" {
+			if value := firstCompatString(options, "category", "mode", "type"); value != "" {
+				normalized["category"] = value
+			}
+		}
+		if strings.TrimSpace(firstCompatString(normalized, "aspect_ratio", "aspectRatio")) == "" {
+			if value := firstCompatString(options, "aspect_ratio", "aspectRatio", "aspect"); value != "" {
+				normalized["aspect_ratio"] = value
+			}
+		}
+		if strings.TrimSpace(firstCompatString(normalized, "resolution")) == "" {
+			if value := firstCompatString(options, "resolution"); value != "" {
+				normalized["resolution"] = value
+			}
+		}
+	}
+}
+
+func flattenImageReviewArgs(normalized map[string]interface{}) {
+	review, ok := coerceCompatMap(normalized["review"])
+	if !ok || len(review) == 0 {
+		return
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "prompt", "query", "input", "text", "message", "content")) == "" {
+		if prompt := firstCompatString(review, "prompt", "query", "text", "message", "content"); prompt != "" {
+			normalized["prompt"] = prompt
+		}
+	}
+	if _, ok := compatArgValue(normalized, "compare"); !ok {
+		if value, ok := compatArgValue(review, "compare"); ok {
+			normalized["compare"] = value
+		}
+	}
+	if compatInt(normalized, "max_images", "maxImages") <= 0 {
+		if value, ok := compatArgValue(review, "max_images", "maxImages", "limit"); ok {
+			normalized["max_images"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "analysis_mode", "analysisMode")) == "" {
+		if value := firstCompatString(review, "analysis_mode", "analysisMode", "mode"); value != "" {
+			normalized["analysis_mode"] = value
+		}
+	}
+	if strings.TrimSpace(asString(normalized["lang"])) == "" {
+		if language := firstCompatString(review, "language", "lang"); language != "" {
+			normalized["lang"] = language
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "device")) == "" {
+		if value := firstCompatString(review, "device"); value != "" {
+			normalized["device"] = value
+		}
+	}
+	if _, ok := compatArgValue(normalized, "wait_ms"); !ok {
+		if value, ok := compatArgValue(review, "wait_ms", "waitMs"); ok {
+			normalized["wait_ms"] = value
+		}
+	}
+	if compatFloat64(normalized, "threshold") == 0 {
+		if value, ok := compatArgValue(review, "threshold"); ok {
+			normalized["threshold"] = value
+		}
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "format")) == "" {
+		if value := firstCompatString(review, "format"); value != "" {
+			normalized["format"] = value
+		}
+	}
+
+	if inputs, ok := coerceCompatMap(review["inputs"]); ok && len(inputs) > 0 {
+		flattenImageReviewInputFields(normalized, inputs)
+	}
+	flattenImageReviewInputFields(normalized, review)
+
+	if options, ok := coerceCompatMap(review["options"]); ok && len(options) > 0 {
+		if strings.TrimSpace(firstCompatString(normalized, "device")) == "" {
+			if value := firstCompatString(options, "device"); value != "" {
+				normalized["device"] = value
+			}
+		}
+		if _, ok := compatArgValue(normalized, "wait_ms"); !ok {
+			if value, ok := compatArgValue(options, "wait_ms", "waitMs"); ok {
+				normalized["wait_ms"] = value
+			}
+		}
+		if compatFloat64(normalized, "threshold") == 0 {
+			if value, ok := compatArgValue(options, "threshold"); ok {
+				normalized["threshold"] = value
+			}
+		}
+		if strings.TrimSpace(firstCompatString(normalized, "format")) == "" {
+			if value := firstCompatString(options, "format"); value != "" {
+				normalized["format"] = value
+			}
+		}
+	}
+}
+
+func flattenImageReviewInputFields(normalized, source map[string]interface{}) {
+	if source == nil {
+		return
+	}
+	if strings.TrimSpace(firstCompatString(normalized, "image", "image_base64", "imageBase64", "base64", "url", "href", "link", "image_path", "imagePath")) == "" {
+		if value := firstCompatString(source, "image", "input"); value != "" {
+			normalized["image"] = value
+		}
+		if value := firstCompatString(source, "url"); value != "" && strings.TrimSpace(firstCompatString(normalized, "url", "href", "link")) == "" {
+			normalized["url"] = value
+		}
+		if value := firstCompatString(source, "path", "image_path", "imagePath", "file"); value != "" && strings.TrimSpace(firstCompatString(normalized, "image_path", "imagePath")) == "" {
+			normalized["image_path"] = value
+		}
+	}
+	if _, ok := compatArgValue(normalized, "images"); !ok {
+		if value, ok := compatArgValue(source, "images", "inputs"); ok {
+			if _, nested := coerceCompatMap(value); !nested {
+				normalized["images"] = value
+			}
+		}
+	}
+	if _, ok := compatArgValue(normalized, "urls"); !ok {
+		if value, ok := compatArgValue(source, "urls"); ok {
+			normalized["urls"] = value
+		}
+	}
+	if _, ok := compatArgValue(normalized, "image_paths", "imagePaths"); !ok {
+		if value, ok := compatArgValue(source, "paths", "image_paths", "imagePaths", "files"); ok {
+			normalized["image_paths"] = value
+		}
+	}
+}
+
+func flattenImageSlideArgs(normalized map[string]interface{}) {
+	slide, ok := coerceCompatMap(normalized["slide"])
+	if !ok || len(slide) == 0 {
+		return
+	}
+	if _, ok := normalized["reference_images"]; !ok {
+		if value, ok := compatArgValue(slide, "reference_images", "referenceImages", "reference_urls", "referenceUrls"); ok {
+			normalized["reference_images"] = value
+		}
+	}
+	if _, ok := normalized["layout_spec"]; !ok {
+		if value, ok := compatArgValue(slide, "layout_spec", "layoutSpec", "ppt_layout_spec", "slide_layout_spec"); ok {
+			normalized["layout_spec"] = value
+		}
+	}
+	if strings.TrimSpace(asString(normalized["style_preset"])) == "" {
+		if value := firstCompatString(slide, "style_preset", "stylePreset"); value != "" {
+			normalized["style_preset"] = value
+		}
+	}
+	if strings.TrimSpace(asString(normalized["quality_profile"])) == "" {
+		if value := firstCompatString(slide, "quality_profile", "qualityProfile"); value != "" {
+			normalized["quality_profile"] = value
+		}
+	}
+	if _, ok := normalized["review_threshold"]; !ok {
+		if value, ok := compatArgValue(slide, "review_threshold", "reviewThreshold"); ok {
+			normalized["review_threshold"] = value
+		}
+	}
+	if _, ok := normalized["review_retry_budget"]; !ok {
+		if value, ok := compatArgValue(slide, "review_retry_budget", "reviewRetryBudget"); ok {
+			normalized["review_retry_budget"] = value
+		}
+	}
+	if review, ok := coerceCompatMap(slide["review"]); ok && len(review) > 0 {
+		if _, ok := normalized["review_threshold"]; !ok {
+			if value, ok := compatArgValue(review, "threshold", "review_threshold", "reviewThreshold"); ok {
+				normalized["review_threshold"] = value
+			}
+		}
+		if _, ok := normalized["review_retry_budget"]; !ok {
+			if value, ok := compatArgValue(review, "retry_budget", "review_retry_budget", "reviewRetryBudget"); ok {
+				normalized["review_retry_budget"] = value
+			}
+		}
+	}
+	if strings.TrimSpace(asString(normalized["style_theme"])) == "" {
+		if value := firstCompatString(slide, "theme", "style_theme", "styleTheme", "brand_guidance", "brandGuidance"); value != "" {
+			normalized["style_theme"] = value
+		}
+	}
+	if strings.TrimSpace(asString(normalized["lang"])) == "" {
+		if language := firstCompatString(slide, "language", "lang"); language != "" {
+			normalized["lang"] = language
+		}
+	}
 }
 
 func imageAction(args map[string]interface{}) string {

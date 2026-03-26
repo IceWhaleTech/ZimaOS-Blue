@@ -5,7 +5,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import AppSidebar from '@/components/AppSidebar.vue'
 import { i18n } from '@/i18n'
 import { workspaceApi } from '@/api/workspace'
-import { claudeCodeApi } from '@/api/claudecode'
 import { conversationApi, messageApi } from '@/api/chat'
 import { refreshTauriDetection } from '@/composables/useTauri'
 import { useAuthStore } from '@/stores/auth'
@@ -18,14 +17,6 @@ vi.mock('@/api/workspace', () => ({
     getTree: vi.fn().mockResolvedValue({ data: { root: '/tmp/workspace', entries: [] } }),
     listFiles: vi.fn().mockResolvedValue({ data: { files: [] } }),
     getStats: vi.fn().mockResolvedValue({ data: { files: [], total_tokens: 0, total_bytes: 0 } }),
-  },
-}))
-
-vi.mock('@/api/claudecode', () => ({
-  claudeCodeApi: {
-    getConfig: vi.fn().mockResolvedValue({
-      data: { whitelist_enabled: false, directory_whitelist: [] },
-    }),
   },
 }))
 
@@ -182,9 +173,6 @@ describe('AppSidebar', () => {
     vi.mocked(workspaceApi.listFiles).mockResolvedValue({ data: { files: [] } } as never)
     vi.mocked(workspaceApi.getStats).mockResolvedValue({
       data: { files: [], total_tokens: 0, total_bytes: 0 },
-    } as never)
-    vi.mocked(claudeCodeApi.getConfig).mockResolvedValue({
-      data: { whitelist_enabled: false, directory_whitelist: [] },
     } as never)
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)

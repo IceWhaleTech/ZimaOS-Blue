@@ -20,7 +20,7 @@ case "$BUILD_MODE" in
     static)
         echo "[Static Mode] Building with embedded libraries..."
         cd server
-        go build -tags whisper -buildmode=c-archive \
+        go build -tags 'fts5 whisper' -buildmode=c-archive \
             -ldflags "$GO_LDFLAGS" \
             -o ../tauri-app/src-tauri/lib/libblue.a \
             ./cmd/bluelib
@@ -33,7 +33,7 @@ case "$BUILD_MODE" in
             ./scripts/build-libs.sh
         fi
         cd server
-        go build -ldflags "$GO_LDFLAGS" -o blue ./cmd/blue
+        go build -tags 'fts5' -ldflags "$GO_LDFLAGS" -o blue ./cmd/blue
         ;;
     *)
         echo "Unknown BUILD_MODE: $BUILD_MODE"

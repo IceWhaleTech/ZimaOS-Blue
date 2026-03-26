@@ -12,6 +12,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
@@ -20,6 +22,71 @@ import (
 func (h *SkillHandler) marketUnavailable(c echo.Context) error {
 	return c.JSON(http.StatusServiceUnavailable, map[string]string{
 		"error": "skill marketplace not initialized",
+	})
+}
+
+type marketAdviceRequest struct {
+	Query             string              `json:"query"`
+	InstalledDecision *agentcore.Decision `json:"installed_decision,omitempty"`
+}
+
+type marketAdviceResponse struct {
+	*skilladvisor.Advice
+	SkillSelectorError string `json:"skill_selector_error,omitempty"`
+	SearchError        string `json:"search_error,omitempty"`
+}
+
+func marketAdviceErrorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func (h *SkillHandler) MarketAdviseSkills(c echo.Context) error {
+	var req marketAdviceRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+	req.Query = strings.TrimSpace(req.Query)
+	if req.Query == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "query is required"})
+	}
+
+	h.mu.RLock()
+	advisor := h.skillAdvisor
+	selector := h.skillSelector
+	selectOptions := h.selectOptions
+	h.mu.RUnlock()
+	if advisor == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "skill advisor not initialized"})
+	}
+
+	var selectorErr string
+	selectedDecision := req.InstalledDecision
+	if selectedDecision == nil && selector != nil {
+		opts := agentcore.SelectOptions{}
+		if selectOptions != nil {
+			opts = selectOptions()
+		}
+		decision, err := selector.Select(c.Request().Context(), req.Query, opts)
+		if err != nil {
+			selectorErr = err.Error()
+		} else {
+			copied := decision
+			selectedDecision = &copied
+		}
+	}
+
+	advice, err := advisor.Advise(c.Request().Context(), req.Query, selectedDecision)
+	if advice == nil {
+		advice = &skilladvisor.Advice{Query: req.Query, InstalledDecision: selectedDecision}
+	}
+
+	return c.JSON(http.StatusOK, marketAdviceResponse{
+		Advice:             advice,
+		SkillSelectorError: selectorErr,
+		SearchError:        marketAdviceErrorString(err),
 	})
 }
 
@@ -323,6 +390,32 @@ func (h *SkillHandler) MarketDiscoverStatus(c echo.Context) error {
 		"current_source_name": status.CurrentSourceName,
 		"source_results":      status.SourceResults,
 		"result":              status.Result,
+	})
+}
+
+func (h *SkillHandler) MarketEmbeddingStatus(c echo.Context) error {
+	market, err := h.ensureMarketplace()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if market == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"running": false,
+		})
+	}
+	status := market.GetEmbeddingStatus()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"running":            status.Running,
+		"started_at":         status.StartedAt,
+		"finished_at":        status.FinishedAt,
+		"last_error":         status.LastError,
+		"total_skills":       status.TotalSkills,
+		"processed_skills":   status.ProcessedSkills,
+		"embedded_skills":    status.EmbeddedSkills,
+		"failed_skills":      status.FailedSkills,
+		"current_skill_id":   status.CurrentSkillID,
+		"current_skill_name": status.CurrentSkillName,
+		"phase":              status.Phase,
 	})
 }
 

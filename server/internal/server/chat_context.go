@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -1234,7 +1234,7 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 				contextWindowTokens = h.compactionConfig.MaxContextTokens
 			}
 			if contextWindowTokens <= 0 {
-				contextWindowTokens = claudecode.DefaultContextTokens
+				contextWindowTokens = agentcore.DefaultContextTokens
 			}
 			pruneSettings := trimPolicyDefaultPruneSettings
 			if h.settingsHandler != nil {
@@ -1335,7 +1335,7 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 	}
 
 	provider := &bridgeProvider{bridge: h.proxyBridge, model: "auto"}
-	compactor := claudecode.NewCompactor(claudecode.CompactionConfig{
+	compactor := agentcore.NewCompactor(agentcore.CompactionConfig{
 		MaxContextTokens:   4096,
 		MaxHistoryShare:    1.0,
 		ReserveTokens:      220,
@@ -1343,10 +1343,10 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 	}, provider)
 
 	summary, err := compactor.Summarize(ctx, olderMessages, "")
-	if err != nil || summary == claudecode.DefaultSummaryFallback {
+	if err != nil || summary == agentcore.DefaultSummaryFallback {
 		return ""
 	}
-	summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
+	summary = agentcore.NormalizeStructuredSummary(summary, "", relevantMessages)
 	summary = sanitizeCompressedSummaryOutput(summary)
 
 	// Cache it
@@ -1420,7 +1420,7 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 		}
 
 		provider := &bridgeProvider{bridge: h.proxyBridge, model: "auto"}
-		compactor := claudecode.NewCompactor(claudecode.CompactionConfig{
+		compactor := agentcore.NewCompactor(agentcore.CompactionConfig{
 			MaxContextTokens:   4096,
 			MaxHistoryShare:    1.0,
 			ReserveTokens:      220,
@@ -1428,10 +1428,10 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 		}, provider)
 
 		summary, err := compactor.Summarize(context.Background(), olderMessages, "")
-		if err != nil || summary == claudecode.DefaultSummaryFallback {
+		if err != nil || summary == agentcore.DefaultSummaryFallback {
 			return
 		}
-		summary = claudecode.NormalizeStructuredSummary(summary, "", relevantMessages)
+		summary = agentcore.NormalizeStructuredSummary(summary, "", relevantMessages)
 		summary = sanitizeCompressedSummaryOutput(summary)
 
 		h.summaryCache.Put(convID, &ConversationSummary{

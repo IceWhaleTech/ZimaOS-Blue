@@ -17,10 +17,12 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
@@ -151,6 +153,12 @@ type SkillEventPublisher interface {
 	Publish(userID string, eventType string, data any)
 }
 
+// InstalledSkillSelector allows the marketplace advisor to check whether an
+// already-installed skill is a good enough match before recommending store installs.
+type InstalledSkillSelector interface {
+	Select(ctx context.Context, query string, opts agentcore.SelectOptions) (agentcore.Decision, error)
+}
+
 // SkillHandler handles skill-related HTTP requests
 type SkillHandler struct {
 	registry            *skill.Registry
@@ -177,6 +185,9 @@ type SkillHandler struct {
 	browseCache     *cache.GenericCache[string]
 	statsCache      *cache.GenericCache[string]
 	categoriesCache *cache.GenericCache[string]
+	skillAdvisor    *skilladvisor.Service
+	skillSelector   InstalledSkillSelector
+	selectOptions   func() agentcore.SelectOptions
 }
 
 // NewSkillHandler creates a new skill handler
@@ -236,6 +247,28 @@ func (h *SkillHandler) SetMarketplaceFactory(factory func() (*skillmarket.Servic
 	h.marketFactory = factory
 }
 
+// SetSkillAdvisor wires the optional skill advisor used by the public skills API.
+func (h *SkillHandler) SetSkillAdvisor(advisor *skilladvisor.Service) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.skillAdvisor = advisor
+}
+
+// SetSkillSelector wires the optional installed-skill selector used before
+// falling back to marketplace recommendations.
+func (h *SkillHandler) SetSkillSelector(selector InstalledSkillSelector) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.skillSelector = selector
+}
+
+// SetSkillSelectorOptionsProvider provides runtime selector options for advice requests.
+func (h *SkillHandler) SetSkillSelectorOptionsProvider(provider func() agentcore.SelectOptions) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.selectOptions = provider
+}
+
 func (h *SkillHandler) ensureMarketplace() (*skillmarket.Service, error) {
 	h.marketMu.Lock()
 	defer h.marketMu.Unlock()
@@ -254,6 +287,19 @@ func (h *SkillHandler) currentMarketplace() *skillmarket.Service {
 	h.marketMu.Lock()
 	defer h.marketMu.Unlock()
 	return h.market
+}
+
+// SearchMarket searches the configured skill marketplace and lazily initializes
+// it if needed.
+func (h *SkillHandler) SearchMarket(ctx context.Context, query skillmarket.SearchQuery) (*skillmarket.SearchResponse, error) {
+	market, err := h.ensureMarketplace()
+	if err != nil {
+		return nil, err
+	}
+	if market == nil {
+		return nil, fmt.Errorf("skill marketplace not configured")
+	}
+	return market.Search(ctx, query)
 }
 
 func (h *SkillHandler) Close() error {
@@ -330,6 +376,7 @@ func (h *SkillHandler) SetUseFeaturedFallback(enabled bool) {
 func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	skills := g.Group("/skills")
 	skills.GET("", h.ListSkills)
+	skills.POST("/advise", h.MarketAdviseSkills)
 	skills.GET("/search", h.MarketSearchSkills)
 	skills.GET("/trending", h.MarketTrendingSkills)
 	skills.GET("/featured", h.MarketFeaturedSkills)
@@ -339,6 +386,7 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	skills.GET("/installed", h.MarketInstalledSkills)
 	skills.GET("/discover", h.MarketDiscoverSkills)
 	skills.GET("/discover/status", h.MarketDiscoverStatus)
+	skills.GET("/embedding/status", h.MarketEmbeddingStatus)
 	skills.POST("/discover/refresh", h.MarketDiscoverSkills)
 	skills.GET("/updates", h.MarketListUpdates)
 	skills.GET("/local", h.ListLocalSkills)       // New: List local skills

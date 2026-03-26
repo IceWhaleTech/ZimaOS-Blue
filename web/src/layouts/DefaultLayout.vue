@@ -13,15 +13,11 @@ const FormFillerWidget = defineAsyncComponent(
   () => import('@/components/formfiller/FormFillerWidget.vue')
 )
 import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
-import { usePreviewStore } from '@/stores/preview'
 import { refreshTauriDetection, useTauri } from '@/composables/useTauri'
 import { useSettingsStore } from '@/stores/settings'
 import { rafThrottle } from '@/utils/rafThrottle'
 
 const AppSidebar = defineAsyncComponent(() => import('@/components/AppSidebar.vue'))
-const PreviewOnboardingModal = defineAsyncComponent(
-  () => import('@/components/onboarding/PreviewOnboardingModal.vue')
-)
 const BrowserMonitorWidget = defineAsyncComponent(
   () => import('@/components/BrowserMonitorWidget.vue')
 )
@@ -31,9 +27,6 @@ const FullscreenModal = defineAsyncComponent(
 const GlobalVoiceWakeBanner = defineAsyncComponent(
   () => import('@/components/voicewake/GlobalVoiceWakeBanner.vue')
 )
-
-const previewStore = usePreviewStore()
-const isPreviewMode = computed(() => previewStore.isPreviewMode)
 
 const { isTauri, platform, setCloseBehavior, startWindowDragging } = useTauri()
 const settingsStore = useSettingsStore()
@@ -47,13 +40,6 @@ const hideLayout = computed(() => route.meta.hideLayout === true)
 const isChatRoute = computed(() => route.path.startsWith('/chat'))
 const isHomeRoute = computed(() => route.name === 'Home' || route.path === '/home')
 const showMacosWindowChrome = computed(() => isTauri.value && platform.value === 'macos')
-const showPreviewOnboarding = computed(
-  () =>
-    isPreviewMode.value &&
-    isChatRoute.value &&
-    settingsStore.claudeCodeEnabledLoaded &&
-    !settingsStore.claudeCodeEnabled
-)
 function detectHiddenSidebarViewport() {
   if (typeof window === 'undefined') return false
   return window.innerWidth < DESKTOP_SIDEBAR_BREAKPOINT
@@ -256,8 +242,6 @@ onUnmounted(() => {
     <FormFillerWidget v-if="!hideLayout && route.path !== '/chat'" />
     <BrowserMonitorWidget v-if="!hideLayout" />
     <GlobalVoiceWakeBanner v-if="!hideLayout" />
-    <!-- Preview mode onboarding tooltip -->
-    <PreviewOnboardingModal v-if="!hideLayout && showPreviewOnboarding" />
     <!-- Fullscreen modal for code/diff/terminal cards -->
     <FullscreenModal v-if="!hideLayout" />
   </div>

@@ -12,6 +12,7 @@ import {
 } from '@/api/billing'
 import ResourceChart from '@/components/ResourceChart.vue'
 import { providerPoolApi, type Provider } from '@/api/providerPool'
+import { filterProvidersVisibleInUI } from '@/utils/providerVisibility'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -275,7 +276,7 @@ function resetAnomalyState(clearCache: boolean) {
 async function loadProviders() {
   try {
     const response = await providerPoolApi.listProviders()
-    providers.value = response.data.providers ?? []
+    providers.value = filterProvidersVisibleInUI(response.data.providers ?? [])
   } catch {
     providers.value = []
   }

@@ -23,6 +23,8 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a2ui"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agent"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentsessions"
 	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
@@ -30,7 +32,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/billing"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/connection"
@@ -72,6 +73,7 @@ import (
 	serviceutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/service"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -163,54 +165,20 @@ func flattenToolResultMap(data map[string]interface{}) map[string]string {
 // routesStartTime records when the server started, used for uptime calculation
 var routesStartTime = timeutil.NowTime()
 
-const defaultCCCLIModel = "gpt-5.3-codex-spark"
-
-func shouldUseDefaultCCCLIModel(pool *providerpool.Pool, modelID string) bool {
-	modelID = strings.TrimSpace(modelID)
-	if modelID == "" {
-		return false
-	}
-	if pool == nil || pool.Discovery == nil {
-		// Keep legacy behavior when provider pool is unavailable.
-		return true
-	}
-	m, _, err := pool.Discovery.FindModel(modelID)
-	return err == nil && m != nil && m.Enabled
-}
-
-func resolveDefaultModelForCCCLI(model string, handler *claudecode.Handler, pool *providerpool.Pool) string {
-	normalized := strings.TrimSpace(model)
-	if normalized == "" {
-		if handler != nil && handler.IsEnabled() {
-			if shouldUseDefaultCCCLIModel(pool, defaultCCCLIModel) {
-				return defaultCCCLIModel
-			}
-			return "auto"
-		}
-		return "auto"
-	}
-	// Respect explicit auto selection from UI/API.
-	if strings.EqualFold(normalized, "auto") {
-		return "auto"
-	}
-	return model
-}
-
 func resolveMCPWorkspaceRoot(dataDir string, appCfg *config.Config) string {
 	return ResolveWorkspaceDir(dataDir, appCfg)
 }
 
 type proxyBridgeLLMCaller struct {
-	bridge            *proxybridge.Bridge
-	claudeCodeHandler *claudecode.Handler
-	providerPool      *providerpool.Pool
+	bridge       *proxybridge.Bridge
+	providerPool *providerpool.Pool
 }
 
 func (c *proxyBridgeLLMCaller) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	if c == nil || c.bridge == nil {
 		return nil, fmt.Errorf("proxy bridge is not configured")
 	}
-	req.Model = resolveDefaultModelForCCCLI(req.Model, c.claudeCodeHandler, c.providerPool)
+	req.Model = resolveDefaultRuntimeModel(req.Model, c.providerPool)
 	return c.bridge.Chat(ctx, req)
 }
 
@@ -399,6 +367,46 @@ func featureDisabled(feature string) echo.HandlerFunc {
 	}
 }
 
+func registerSandboxRoutes(
+	protected *echo.Group,
+	requirePagePermission func(string) echo.MiddlewareFunc,
+	deps *RoutesDeps,
+) {
+	if protected == nil || deps == nil {
+		return
+	}
+
+	groupMiddlewares := make([]echo.MiddlewareFunc, 0, 1)
+	if requirePagePermission != nil {
+		groupMiddlewares = append(groupMiddlewares, requirePagePermission(permission.PageTools))
+	}
+	sandboxGroup := protected.Group("/sandbox", groupMiddlewares...)
+
+	if deps.SandboxHandler != nil && deps.SandboxManager != nil && deps.SandboxManager.IsSupported() {
+		if deps.ConfigStore != nil {
+			deps.SandboxHandler.SetConfigStore(deps.ConfigStore)
+		}
+		deps.SandboxHandler.SetNetworkConfigHook(func(networkEnabled bool) {
+			if deps.Config != nil {
+				deps.Config.Security.Sandbox.NetworkEnabled = networkEnabled
+			}
+			if deps.SecurityHandler != nil && deps.Config != nil {
+				deps.SecurityHandler.SetScannerConfig(buildSecurityScannerConfig(
+					deps.Config,
+					deps.SandboxManager != nil && deps.SandboxManager.IsSupported(),
+				))
+			}
+		})
+		deps.SandboxHandler.RegisterRoutes(sandboxGroup)
+		return
+	}
+
+	stub := featureDisabled("sandbox")
+	sandboxGroup.PATCH("/config", stub)
+	sandboxGroup.GET("/info", stub)
+	sandboxGroup.Any("/*", stub)
+}
+
 // readLocaleFromKV reads the locale from kvstore settings without creating a full SettingsHandler.
 func readLocaleFromKV(kv kvstore.Store) string {
 	if kv == nil {
@@ -514,7 +522,6 @@ type RoutesDeps struct {
 	STTService         stt.Service
 	NgrokTunnelMgr     *ngrok.SDKTunnelManager
 	NgrokConfigStore   *ngrok.ConfigStore
-	ClaudeCodeHandler  *claudecode.Handler
 	MemoryHandler      *server.MemoryHandler
 	ChannelConfigStore *server.ChannelConfigStore
 	ConfigKV           kvstore.Store       // shared kvstore for config persistence
@@ -539,7 +546,7 @@ type RoutesDeps struct {
 	// Consolidated init deps (previously only in cmd/blue/main.go)
 	SkillEmbedFS              fs.FS            // embedded SKILL.md filesystem for ReleaseSkills
 	SandboxManager            *sandbox.Manager // for sandbox skill wiring
-	SystemPromptBuilder       *claudecode.SystemPromptBuilder
+	SystemPromptBuilder       *agentcore.SystemPromptBuilder
 	LazyBrowserSvc            func() *browser.RodService // for UI reviewer lazy adapter
 	AcquireBrowserSvc         func() (*browser.RodService, func(), error)
 	AcquireFallbackBrowserSvc func() (*browser.RodService, func(), error)
@@ -834,16 +841,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	tunnelHandler := networkapi.NewTunnelHandler(deps.NgrokConfigStore, cfg.Port)
 	tunnelHandler.SetJWTService(s.JWTService)
 	tunnelHandler.RegisterGroupRoutes(authPageV1Group(permission.PageChannels))
-
-	claudeCodeGroup := authPageV1Group(permission.PageChat).Group("/claudecode")
-	if deps.ClaudeCodeHandler != nil {
-		deps.ClaudeCodeHandler.RegisterRoutes(claudeCodeGroup)
-	} else {
-		stub := featureDisabled("claudecode")
-		claudeCodeGroup.GET("/version", stub)
-		claudeCodeGroup.GET("/config", stub)
-		claudeCodeGroup.Any("/*", stub)
-	}
 
 	// Signal that critical routes (health, system/mode) are ready.
 	// The caller can start the HTTP listener now while heavy subsystems init below.
@@ -1394,7 +1391,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			deps.SecurityHandler.SetPromptGuard(promptGuard)
 		}
 	}
-	var skillAutoReranker *claudecode.AutoSkillReranker
+	var skillAutoReranker *agentcore.AutoSkillReranker
 
 	// Always wire the selector so runtime settings can actually toggle it.
 	// Benchmark and web-chat flows rely on this being present even when the
@@ -1415,12 +1412,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	deps.ChatHandler.SetToolRouter(toolRouter)
 	// Smart skill selection (progressive: rule -> IR -> optional rerank)
 	if deps.Config.ToolCalling.SmartSkillSelection {
-		reranker := claudecode.NewAutoSkillReranker(cfg.DataDir, deps.Config.ToolCalling.SkillRerankModel, claudecode.AutoSkillRerankerOptions{
+		reranker := agentcore.NewAutoSkillReranker(cfg.DataDir, deps.Config.ToolCalling.SkillRerankModel, agentcore.AutoSkillRerankerOptions{
 			ONNXEnabled:  deps.Config.ToolCalling.SkillRerankEnabled && deps.Config.ToolCalling.SkillRerankONNXEnabled,
 			AutoDownload: deps.Config.ToolCalling.SkillRerankONNXAutoDownload,
 		})
 		skillAutoReranker = reranker
-		ss := claudecode.NewSkillSelector(workspaceDir, reranker)
+		ss := agentcore.NewSkillSelector(workspaceDir, reranker)
 		deps.ChatHandler.SetSkillSelector(ss)
 	}
 
@@ -1476,6 +1473,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 	deps.ChatHandler.SetDeepResearchService(deepResearchService)
+	if harnessController != nil && deps.ChatHandler != nil {
+		deps.ChatHandler.RegisterTurnHook(server.NewAutoHarnessTurnHook(deps.ChatHandler, newHarnessAutoHarnessSubmitter(harnessController)))
+	}
 	if harnessController != nil {
 		researchDriver := harnessdrivers.NewResearchDriver(deepResearchService, harnessController)
 		if deps.SSEBroker != nil {
@@ -1684,6 +1684,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			market.Start(deps.Ctx)
 			logger.Info("Skill marketplace initialized", zap.String("db_path", marketCfg.DBPath))
 			return market, nil
+		})
+		advisor := skilladvisor.NewService(skilladvisor.SearchFunc(skillHandler.SearchMarket))
+		settingsHandler.SetSkillAdvisor(advisor)
+		skillHandler.SetSkillAdvisor(advisor)
+		skillHandler.SetSkillSelector(deps.ChatHandler.GetSkillSelector())
+		skillHandler.SetSkillSelectorOptionsProvider(func() agentcore.SelectOptions {
+			return agentcore.SelectOptions{
+				Mode:                settingsHandler.GetSkillSelectorMode(),
+				EnableRerank:        settingsHandler.GetEffectiveSkillRerankEnabled(),
+				ConfidenceThreshold: settingsHandler.GetSkillSelectorConfidenceThreshold(),
+			}
 		})
 		deps.Closers = append(deps.Closers, skillHandler)
 		logger.Info("Skill marketplace registered for lazy initialization", zap.String("db_path", marketCfg.DBPath))
@@ -1914,10 +1925,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Exec tools (shell execution + process management)
+	var oauthManager *oauth.LazyManager
 	var convertHandler *convertsvc.Handler
 	var execApprovals *tools.ApprovalManager
+	var execDirStore *tools.DirAllowlistStore
+	var execAuditStore *tools.ExecAuditStore
+	execConfig := tools.DefaultExecConfig()
 	{
-		execConfig := tools.DefaultExecConfig()
 		execConfig.DataDir = cfg.DataDir
 		// Keep exec aligned with the runtime workspace so no-workdir commands
 		// default into the same root the prompt and file tools advertise.
@@ -1928,26 +1942,26 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				execApprovals.SetObserver(harnessRuntimeObserver)
 			}
 		}
-		var dirStore *tools.DirAllowlistStore
 		if deps.DB != nil {
 			var err error
-			dirStore, err = tools.NewDirAllowlistStore(deps.DB)
+			execDirStore, err = tools.NewDirAllowlistStore(deps.DB)
 			if err != nil {
 				slog.Warn("failed to create exec dir allowlist store", "error", err)
 			}
 		}
-		// Wrap sandbox.Manager as SandboxExecutor if available.
+		// Wrap sandbox.Manager as SandboxExecutor only when the runtime reports
+		// a real supported isolation backend.
 		var sbx tools.SandboxExecutor
-		if deps.SandboxManager != nil {
+		if deps.SandboxManager != nil && deps.SandboxManager.IsSupported() {
 			sbx = &sandboxExecAdapter{mgr: deps.SandboxManager}
 		}
-		tools.RegisterExecTools(s.ToolRegistry, execConfig, execApprovals, deps.SSEBroker, dirStore, sbx)
+		tools.RegisterExecTools(s.ToolRegistry, execConfig, execApprovals, deps.SSEBroker, execDirStore, sbx)
 		tools.RegisterApprovalAwareFileToolsWithRuntimeConfig(
 			s.ToolRegistry,
 			workspaceAllowedPaths,
 			0,
 			execApprovals,
-			dirStore,
+			execDirStore,
 			tools.BuiltinRuntimeConfig{
 				DataDir: cfg.DataDir,
 				Ripgrep: deps.Config.ToolCalling.Ripgrep,
@@ -1976,7 +1990,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				s.ToolRegistry,
 				convertService,
 				execApprovals,
-				dirStore,
+				execDirStore,
 				workspaceAllowedPaths,
 			)
 		}
@@ -1985,8 +1999,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.DB != nil {
 			if auditStore, err := tools.NewExecAuditStore(deps.DB); err != nil {
 				slog.Warn("failed to create exec audit store", "error", err)
-			} else if et := tools.GetExecTool(s.ToolRegistry); et != nil {
-				et.SetAuditStore(auditStore)
+			} else {
+				execAuditStore = auditStore
+				if et := tools.GetExecTool(s.ToolRegistry); et != nil {
+					et.SetAuditStore(auditStore)
+				}
 			}
 		}
 
@@ -1997,7 +2014,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			execTool.SetRegistry(s.ToolRegistry)
 			// Short-circuit pinned skills (e.g. "web_search query" → skill executor).
 			// This avoids registering skills as tools (which would consume extra prompt tokens).
-			execTool.SetPinnedSkills(claudecode.PinnedSkills())
+			execTool.SetPinnedSkills(agentcore.PinnedSkills())
 			// Short-circuit `blue <skill>` commands: call skill executor directly
 			// instead of spawning subprocess + IPC round-trip.
 			execTool.SetSkillExecutor(func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
@@ -2022,8 +2039,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				if selector == nil {
 					return tools.SkillSelectionDecision{}
 				}
-				opts := claudecode.SelectOptions{
-					Mode:                claudecode.SkillSelectorModeHybrid,
+				opts := agentcore.SelectOptions{
+					Mode:                agentcore.SkillSelectorModeHybrid,
 					EnableRerank:        true,
 					ConfidenceThreshold: 0.78,
 				}
@@ -2047,6 +2064,59 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				}
 				return out
 			})
+		}
+
+		if deps.DB != nil {
+			agentSessionStore, err := agentsessions.NewSQLiteStore(deps.DB)
+			if err != nil {
+				logger.Warn("Failed to initialize external agent session store", zap.Error(err))
+			} else {
+				authority := tools.NewACPAuthority(tools.ACPAuthorityConfig{
+					AllowedPaths: workspaceAllowedPaths,
+					MaxFileSize:  0,
+					ExecConfig:   execConfig,
+					Approvals:    execApprovals,
+					DirStore:     execDirStore,
+				})
+				if execAuditStore != nil {
+					authority.SetAuditStore(execAuditStore)
+				}
+				credentialResolver := agentsessions.NewProviderPoolCredentialResolver(
+					func() agentsessions.OAuthCredentialSource {
+						return oauthManager
+					},
+					func(providerID string) (string, error) {
+						if deps.ProviderPool == nil || deps.ProviderPool.Registry == nil {
+							return "", fmt.Errorf("provider pool registry is unavailable")
+						}
+						apiKey, err := deps.ProviderPool.Registry.GetAPIKey(providerID)
+						if err != nil || apiKey == nil {
+							return "", err
+						}
+						return apiKey.Key, nil
+					},
+					logger,
+				)
+				agentSessionsService, err := agentsessions.NewService(
+					agentSessionStore,
+					logger,
+					map[agentsessions.ProtocolKind]agentsessions.ProtocolRuntime{
+						agentsessions.ProtocolACP: agentsessions.NewACPRuntime(authority, logger, credentialResolver),
+						agentsessions.ProtocolA2A: agentsessions.NewA2ARuntime(logger),
+					},
+				)
+				if err != nil {
+					logger.Warn("Failed to initialize external agent sessions service", zap.Error(err))
+				} else {
+					agentSessionsHandler := agentsessions.NewHandler(agentSessionsService)
+					agentSessionsHandler.RegisterProfileRoutes(authPageV1Group(permission.PageSettings))
+					agentSessionsHandler.RegisterSessionRoutes(authPageV1Group(permission.PageChat))
+					tools.RegisterSessionTools(s.ToolRegistry, sessionListAdapter{
+						store:         s.MemoryStore,
+						agentSessions: agentSessionsService,
+					})
+				}
+			}
 		}
 
 		execGroup := v1.Group("/exec", deps.AuthMiddleware.Authenticate(), requirePagePermission(permission.PageChat))
@@ -2088,10 +2158,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 
 		// Persistent approved directories management.
-		if dirStore != nil {
+		if execDirStore != nil {
 			execGroup.GET("/approvals/directories", func(c echo.Context) error {
 				userID := resolveRequestUserID(c)
-				entries, err := dirStore.List()
+				entries, err := execDirStore.List()
 				if err != nil {
 					return c.JSON(500, map[string]string{"error": "failed to load approved directories"})
 				}
@@ -2130,7 +2200,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				}
 
 				userID := resolveRequestUserID(c)
-				entries, err := dirStore.List()
+				entries, err := execDirStore.List()
 				if err != nil {
 					return c.JSON(500, map[string]string{"error": "failed to load approved directories"})
 				}
@@ -2149,7 +2219,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				if !found {
 					return c.JSON(404, map[string]string{"error": "directory approval not found"})
 				}
-				if err := dirStore.Delete(id); err != nil {
+				if err := execDirStore.Delete(id); err != nil {
 					return c.JSON(500, map[string]string{"error": "failed to revoke directory approval"})
 				}
 				return c.JSON(200, map[string]bool{"deleted": true})
@@ -2249,7 +2319,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Security routes (protected)
 	if deps.SecurityHandler != nil {
 		if deps.Config != nil {
-			deps.SecurityHandler.SetScannerConfig(buildSecurityScannerConfig(deps.Config))
+			deps.SecurityHandler.SetScannerConfig(buildSecurityScannerConfig(
+				deps.Config,
+				deps.SandboxManager != nil && deps.SandboxManager.IsSupported(),
+			))
 		}
 		if deps.ConfigKV != nil {
 			deps.SecurityHandler.SetKVStore(deps.ConfigKV)
@@ -2274,15 +2347,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Sandbox routes (protected)
-	if deps.SandboxHandler != nil {
-		sandboxGroup := protected.Group("/sandbox", requirePagePermission(permission.PageTools))
-		deps.SandboxHandler.RegisterRoutes(sandboxGroup)
-	} else {
-		stub := featureDisabled("sandbox")
-		sandboxGroup := protected.Group("/sandbox", requirePagePermission(permission.PageTools))
-		sandboxGroup.GET("/info", stub)
-		sandboxGroup.Any("/*", stub)
-	}
+	registerSandboxRoutes(protected, requirePagePermission, deps)
 
 	// Cron routes (protected) - /api/cron/*
 	if deps.CronHandler != nil {
@@ -2446,7 +2511,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Provider pool routes (protected)
-	var oauthManager *oauth.LazyManager // hoisted for proxy handler wiring
 	if deps.ProviderPool != nil {
 		providerPoolHandler := providerpool.NewHandler(deps.ProviderPool)
 		trace.Mark("provider_pool_handler_created")
@@ -2989,18 +3053,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.MetricsWriter != nil {
 			bridge.SetMetricsRecorder(deps.MetricsWriter)
 		}
-		proxyProvider := newProxyBridgeProvider(bridge, deps.ClaudeCodeHandler, deps.ProviderPool)
-		claudeCodeFactory := newClaudeCodeRuntimeFactory(
-			deps.ClaudeCodeHandler,
-			deps.Config,
-			cfg.Port,
-			s.ToolRegistry,
-			workspaceDir,
-			deps.APIKeyService,
-			logger,
-		)
-		dispatchProvider := newRuntimeDispatchProvider(proxyProvider, deps.ClaudeCodeHandler, claudeCodeFactory)
-		runtimeLLM.SetProvider(dispatchProvider)
+		proxyProvider := newProxyBridgeProvider(bridge, deps.ProviderPool)
+		runtimeLLM.SetProvider(proxyProvider)
 		auxiliaryLLM.SetFallback(runtimeLLM)
 		agentLLMCaller = runtimeLLM
 		deps.ChatHandler.SetRuntimeProvider(runtimeLLM)
@@ -3180,11 +3234,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(deps.NgrokTunnelMgr, deps.NgrokConfigStore, cfg.Port)
 		remoteAccessHandler.SetJWTService(s.JWTService)
 		remoteAccessHandler.RegisterGroupRoutes(authPageV1Group(permission.PageChannels))
-	}
-
-	// Claude Code CLI routes (protected)
-	if deps.ClaudeCodeHandler != nil {
-		deps.ChatHandler.SetClaudeCodeHandler(deps.ClaudeCodeHandler)
 	}
 
 	// Memory routes
@@ -3421,7 +3470,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		// Keep download/status endpoints usable even when smart skill selection
 		// (and thus AutoSkillReranker) is not initialized.
 		settingsHandler.SetSkillRerankerModelManager(
-			claudecode.NewSkillRerankerModelManager(cfg.DataDir, deps.Config.ToolCalling.SkillRerankModel),
+			agentcore.NewSkillRerankerModelManager(cfg.DataDir, deps.Config.ToolCalling.SkillRerankModel),
 		)
 	}
 	if execTool := tools.GetExecTool(s.ToolRegistry); execTool != nil {

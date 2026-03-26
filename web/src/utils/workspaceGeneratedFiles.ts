@@ -8,12 +8,14 @@ import { isLocalAbsolutePath } from '@/utils/localPath'
 
 const pathLikeKeys = [
   'path',
+  'absolute_path',
   'file',
   'file_path',
   'output_path',
   'download_url',
   'local_path',
   'artifact_path',
+  'reveal_path',
   'url',
 ]
 
@@ -78,7 +80,15 @@ export function extractLocalPathCandidatesFromCard(
   if (card.type === 'result') {
     const resultCard = card as TypelessCardResult
     for (const detail of resultCard.details || []) {
-      collectPathCandidates(detail.value, workspaceRootPath, paths)
+      const detailRecord = detail as unknown as Record<string, unknown>
+      const hasExplicitLocation =
+        typeof detailRecord.reveal_path === 'string' ||
+        typeof detailRecord.local_path === 'string' ||
+        typeof detailRecord.absolute_path === 'string'
+      if (!hasExplicitLocation) {
+        collectPathCandidates(detail.value, workspaceRootPath, paths)
+      }
+      collectPathCandidates(detail as unknown, workspaceRootPath, paths)
     }
   }
 

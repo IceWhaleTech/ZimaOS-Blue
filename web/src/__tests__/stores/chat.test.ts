@@ -33,6 +33,7 @@ vi.mock('@/api/chat', () => ({
     send: vi.fn(),
     delete: vi.fn(),
     cancelStream: vi.fn(),
+    getActiveStreamState: vi.fn(),
   },
 }))
 
@@ -117,6 +118,9 @@ describe('Chat Store', () => {
     )
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
+      { data: { conversation_id: '', active: false } } as never
+    )
     vi.mocked(messageApi.delete).mockResolvedValue({ data: { success: true, deleted: 0 } } as never)
     vi.mocked(approvalApi.listPending).mockResolvedValue({ data: [] } as never)
     vi.mocked(conversationApi.getCommandState).mockResolvedValue({
@@ -902,6 +906,117 @@ describe('Chat Store', () => {
       await sendPromise
     })
 
+    it('hydrates an active server stream with persisted preview content after local state is gone', async () => {
+      const store = useChatStore()
+
+      vi.mocked(messageApi.list).mockResolvedValue(
+        {
+          data: [
+            {
+              id: 'msg-assistant-1',
+              conversation_id: 'conv-1',
+              role: 'assistant',
+              content: '- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。',
+              created_at: '2026-03-12T00:00:00.000Z',
+            },
+          ],
+        } as never
+      )
+      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
+        {
+          data: {
+            conversation_id: 'conv-1',
+            active: true,
+            stream_id: 'stream-preview-1',
+          },
+        } as never
+      )
+
+      await store.selectConversation('conv-1')
+
+      expect(store.currentConversationId).toBe('conv-1')
+      expect(store.streaming).toBe(true)
+      expect(store.sending).toBe(false)
+      expect(store.executingConversationIds).toEqual(['conv-1'])
+      expect(store.streamingContent).toContain('我继续执行第二步。')
+      expect(store.messages).toHaveLength(1)
+      expect(store.messages[0]?.id).toBe('msg-assistant-1')
+      expect(store.messages[0]?.content).toContain('我继续执行第二步。')
+    })
+
+    it('creates a placeholder when the server reports an active stream without persisted preview content', async () => {
+      const store = useChatStore()
+
+      vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
+        {
+          data: {
+            conversation_id: 'conv-1',
+            active: true,
+            stream_id: 'stream-live-1',
+          },
+        } as never
+      )
+
+      await store.selectConversation('conv-1')
+
+      expect(store.currentConversationId).toBe('conv-1')
+      expect(store.streaming).toBe(true)
+      expect(store.sending).toBe(false)
+      expect(store.toolExecuting).toBe(true)
+      expect(store.streamUIState.phase).toBe('executing')
+      expect(store.executingConversationIds).toEqual(['conv-1'])
+      expect(store.messages).toHaveLength(1)
+      expect(store.messages[0]?.role).toBe('assistant')
+      expect(store.messages[0]?.id.startsWith('streaming-')).toBe(true)
+    })
+
+    it('does not reuse the previous assistant reply as preview when the latest persisted message is user-only', async () => {
+      const store = useChatStore()
+
+      vi.mocked(messageApi.list).mockResolvedValue(
+        {
+          data: [
+            {
+              id: 'msg-assistant-prev',
+              conversation_id: 'conv-1',
+              role: 'assistant',
+              content: '上一轮已经完成的回复',
+              created_at: '2026-03-12T00:00:00.000Z',
+            },
+            {
+              id: 'msg-user-latest',
+              conversation_id: 'conv-1',
+              role: 'user',
+              content: '继续执行新的任务',
+              created_at: '2026-03-12T00:00:01.000Z',
+            },
+          ],
+        } as never
+      )
+      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
+        {
+          data: {
+            conversation_id: 'conv-1',
+            active: true,
+            stream_id: 'stream-live-2',
+          },
+        } as never
+      )
+
+      await store.selectConversation('conv-1')
+
+      expect(store.streaming).toBe(true)
+      expect(store.toolExecuting).toBe(true)
+      expect(store.streamUIState.phase).toBe('executing')
+      expect(store.streamingContent).toBe('')
+      expect(store.messages).toHaveLength(3)
+      expect(store.messages[0]?.content).toBe('上一轮已经完成的回复')
+      expect(store.messages[1]?.content).toBe('继续执行新的任务')
+      expect(store.messages[2]?.id.startsWith('streaming-')).toBe(true)
+      expect(store.messages[2]?.content).toBe('')
+    })
+
     it('shows recovering state after a network interrupt and completes after syncing persisted content', async () => {
       vi.useFakeTimers()
 
@@ -956,6 +1071,7 @@ describe('Chat Store', () => {
         streamOptions.onNetworkInterrupt?.()
         for (let i = 0; i < 12 && store.streamUIState.phase === 'recovering'; i++) {
           await flushMicrotasks()
+          await vi.advanceTimersByTimeAsync(0)
         }
 
         expect(store.streamUIState.phase).toBe('completed')

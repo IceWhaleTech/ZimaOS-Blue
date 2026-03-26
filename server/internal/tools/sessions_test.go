@@ -15,6 +15,9 @@ type stubSessionsService struct {
 	lastCreatePinned  bool
 	lastAppendSession string
 	lastAppendMessage SessionMessage
+	runtimeActions    []string
+	runtimeArgs       []map[string]interface{}
+	runtimeResult     interface{}
 }
 
 func (s *stubSessionsService) ListSessions(ctx context.Context, limit, offset int, userID string) ([]SessionSummary, error) {
@@ -107,6 +110,19 @@ func (s *stubSessionsService) AppendSessionMessage(ctx context.Context, sessionI
 		}
 	}
 	return nil, fmt.Errorf("session not found")
+}
+
+func (s *stubSessionsService) HandleRuntimeSessionAction(ctx context.Context, action string, args map[string]interface{}) (interface{}, error) {
+	_ = ctx
+	s.runtimeActions = append(s.runtimeActions, action)
+	s.runtimeArgs = append(s.runtimeArgs, args)
+	if s.runtimeResult != nil {
+		return s.runtimeResult, nil
+	}
+	return map[string]interface{}{
+		"runtime": action,
+		"args":    args,
+	}, nil
 }
 
 func TestSessionsListToolExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
@@ -260,6 +276,54 @@ func TestSessionsSpawnToolExecute(t *testing.T) {
 	initial := payload["initial_message"].(*SessionMessage)
 	if initial.Content != "seed" || initial.Role != "assistant" {
 		t.Fatalf("unexpected initial message: %#v", initial)
+	}
+}
+
+func TestSessionsSpawnToolExecuteRoutesExplicitRuntime(t *testing.T) {
+	svc := &stubSessionsService{
+		runtimeResult: map[string]interface{}{"ok": true},
+	}
+	tool := NewSessionsSpawnTool(svc)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"runtime":    "acp",
+		"profile_id": "codex",
+		"title":      "Codex Session",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if len(svc.runtimeActions) != 1 || svc.runtimeActions[0] != "spawn" {
+		t.Fatalf("runtime actions = %#v, want spawn", svc.runtimeActions)
+	}
+	if svc.lastCreateTitle != "" {
+		t.Fatalf("expected conversation create path to be skipped, got title=%q", svc.lastCreateTitle)
+	}
+	if result.(map[string]interface{})["ok"] != true {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestSessionsSendToolExecuteRoutesExplicitRuntime(t *testing.T) {
+	svc := &stubSessionsService{
+		runtimeResult: map[string]interface{}{"queued": true},
+	}
+	tool := NewSessionsSendTool(svc)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"runtime": "a2a",
+		"id":      "sess_123",
+		"message": "hello agent",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if len(svc.runtimeActions) != 1 || svc.runtimeActions[0] != "send" {
+		t.Fatalf("runtime actions = %#v, want send", svc.runtimeActions)
+	}
+	if svc.lastAppendSession != "" {
+		t.Fatalf("expected conversation append path to be skipped, got session=%q", svc.lastAppendSession)
+	}
+	if result.(map[string]interface{})["queued"] != true {
+		t.Fatalf("unexpected result: %#v", result)
 	}
 }
 

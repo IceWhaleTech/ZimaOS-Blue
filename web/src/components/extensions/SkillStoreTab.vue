@@ -2,7 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  type MarketplaceAdviceResponse,
   type DiscoverStatusResponse,
+  type EmbeddingStatusResponse,
   skillApi,
   type MarketSearchParams,
   type MarketplaceSkillDetail,
@@ -19,6 +21,10 @@ import {
 } from '@/components/extensions/skillStoreSort'
 import { offSSEEvent, onSSEEvent } from '@/composables/useEventStream'
 
+const props = defineProps<{
+  initialSearchQuery?: string
+}>()
+
 const { t, te, locale } = useI18n()
 
 const loading = ref(false)
@@ -29,16 +35,19 @@ const error = ref<string | null>(null)
 let latestSkillsRequestId = 0
 let latestDetailRequestId = 0
 let latestDiscoverPollId = 0
+let latestAdviceRequestId = 0
 let preferredSelectedSkillId: string | null = null
 let componentDisposed = false
 let refreshVisibleResultsTimer: ReturnType<typeof window.setTimeout> | null = null
 let discoverActivityId = 0
 let lastDiscoverActivitySignature = ''
 let lastVisibleResultsRefreshSignature = ''
+let marketplaceInitialized = false
 
 const skills = ref<RemoteSkill[]>([])
 const filters = ref<SkillFiltersResponse | null>(null)
 const discoverStatus = ref<DiscoverStatusResponse | null>(null)
+const embeddingStatus = ref<EmbeddingStatusResponse | null>(null)
 const discoverActivityViewport = ref<HTMLElement | null>(null)
 const discoverActivity = ref<
   Array<{
@@ -53,8 +62,10 @@ const selectedSkillId = ref<string | null>(null)
 const selectedDetail = ref<MarketplaceSkillDetail | null>(null)
 const detailLoading = ref(false)
 const showDetailModal = ref(false)
+const skillAdvice = ref<MarketplaceAdviceResponse | null>(null)
+const adviceLoading = ref(false)
 
-const searchQuery = ref('')
+const searchQuery = ref(normalizeSearchQuery(props.initialSearchQuery || ''))
 const selectedCategory = ref('all')
 const selectedSource = ref('all')
 const selectedRisk = ref('all')
@@ -126,8 +137,30 @@ const syncHint = computed(() =>
   )
 )
 const discoverRunning = computed(() => discoverStatus.value?.running ?? false)
+const embeddingRunning = computed(() => embeddingStatus.value?.running ?? false)
 const showDiscoverProgress = computed(
   () => initializingMarketplace.value || refreshing.value || discoverRunning.value
+)
+const embeddingHasVisibleWork = computed(() => {
+  const status = embeddingStatus.value
+  if (!status) return false
+  return (
+    !!status.current_skill_name?.trim() ||
+    !!status.current_skill_id?.trim() ||
+    !!status.last_error?.trim() ||
+    (status.total_skills || 0) > 0 ||
+    (status.processed_skills || 0) > 0 ||
+    (status.embedded_skills || 0) > 0 ||
+    (status.failed_skills || 0) > 0
+  )
+})
+const showEmbeddingProgress = computed(() => {
+  const status = embeddingStatus.value
+  if (!status) return false
+  return embeddingRunning.value || embeddingHasVisibleWork.value
+})
+const showEmbeddingOnlyProgress = computed(
+  () => !showDiscoverProgress.value && showEmbeddingProgress.value
 )
 const showResultsRefreshing = computed(() => loading.value && skills.value.length > 0)
 const discoverProgressPercent = computed(() => {
@@ -275,6 +308,91 @@ const discoverSummaryInline = computed(() => {
 })
 const discoverProgressCaption = computed(() =>
   joinDiscoverParts([discoverSourceProgressLabel.value, discoverProgressFootnote.value])
+)
+const embeddingProgressPercent = computed(() => {
+  if (!showEmbeddingProgress.value) return 0
+  const total = embeddingStatus.value?.total_skills || 0
+  const processed = embeddingStatus.value?.processed_skills || 0
+  if (total > 0) {
+    const rawPercent = Math.round((processed / total) * 100)
+    return Math.max(processed > 0 ? 10 : 6, Math.min(embeddingRunning.value ? 96 : 100, rawPercent))
+  }
+  return embeddingRunning.value ? 12 : 100
+})
+const embeddingProgressLabel = computed(() =>
+  marketplaceText('embedding.progressLabel', 'Embedding skill search index')
+)
+const embeddingProgressMeta = computed(() => {
+  const total = embeddingStatus.value?.total_skills || 0
+  const processed = embeddingStatus.value?.processed_skills || 0
+  if (total > 0) {
+    return marketplaceText('embedding.progressMeta', 'Processed {processed}/{total} skills', {
+      processed,
+      total,
+    })
+  }
+  return marketplaceText('embedding.progressIdle', 'Preparing queued skills for semantic search')
+})
+const embeddingPhaseTone = computed<'running' | 'completed' | 'error' | 'idle'>(() => {
+  if (embeddingStatus.value?.last_error || embeddingStatus.value?.phase === 'error') return 'error'
+  if (
+    embeddingStatus.value?.phase === 'completed' ||
+    (!!embeddingStatus.value?.finished_at && !embeddingRunning.value)
+  ) {
+    return 'completed'
+  }
+  if (embeddingRunning.value) return 'running'
+  return 'idle'
+})
+const embeddingPhaseLabel = computed(() => {
+  switch (embeddingPhaseTone.value) {
+    case 'error':
+      return marketplaceText('embedding.phaseAttention', 'Attention needed')
+    case 'completed':
+      return marketplaceText('embedding.phaseCompleted', 'Embedding complete')
+    case 'running':
+      return marketplaceText('embedding.phaseRunning', 'Embedding now')
+    default:
+      return marketplaceText('embedding.phaseStandby', 'Standby')
+  }
+})
+const embeddingCurrentSkillLabel = computed(() => {
+  const skillName = embeddingStatus.value?.current_skill_name?.trim()
+  if (skillName) return skillName
+  if (embeddingPhaseTone.value === 'completed') {
+    return marketplaceText('embedding.allProcessed', 'All queued skills embedded')
+  }
+  if (embeddingRunning.value) {
+    return marketplaceText('embedding.preparingQueue', 'Preparing embedding queue')
+  }
+  return marketplaceText('embedding.waiting', 'Waiting to embed')
+})
+const embeddingSummaryInline = computed(() => {
+  const total = embeddingStatus.value?.total_skills || 0
+  const processed = embeddingStatus.value?.processed_skills || 0
+  const embedded = embeddingStatus.value?.embedded_skills || 0
+  const failed = embeddingStatus.value?.failed_skills || 0
+
+  return joinDiscoverParts([
+    `${marketplaceText('embedding.totalLabel', 'Queued')} ${
+      total > 0 ? formatWholeNumber(total) : formatWholeNumber(processed)
+    }`,
+    `${marketplaceText('embedding.processedLabel', 'Processed')} ${
+      total > 0
+        ? `${formatWholeNumber(processed)}/${formatWholeNumber(total)}`
+        : formatWholeNumber(processed)
+    }`,
+    `${marketplaceText('embedding.embeddedLabel', 'Embedded')} ${formatWholeNumber(embedded)}`,
+    `${marketplaceText('embedding.failedLabel', 'Failed')} ${formatWholeNumber(failed)}`,
+  ])
+})
+const embeddingProgressCaption = computed(
+  () =>
+    joinDiscoverParts([
+      embeddingStatus.value?.current_skill_name || embeddingStatus.value?.current_skill_id,
+      embeddingStatus.value?.last_error,
+    ]) ||
+    marketplaceText('embedding.caption', 'Embeddings improve semantic search quality over time')
 )
 const sortPillOptions = computed(() => [
   { value: 'featured' as const, label: sortModeLabel('featured') },
@@ -476,6 +594,19 @@ function applyDiscoverStatus(status?: DiscoverStatusResponse | null) {
   discoverStatus.value = cloneDiscoverStatus(status)
 }
 
+function cloneEmbeddingStatus(
+  status?: EmbeddingStatusResponse | null
+): EmbeddingStatusResponse | null {
+  if (!status) return null
+  return {
+    ...status,
+  }
+}
+
+function applyEmbeddingStatus(status?: EmbeddingStatusResponse | null) {
+  embeddingStatus.value = cloneEmbeddingStatus(status)
+}
+
 function scrollDiscoverActivityToLatest() {
   const viewport = discoverActivityViewport.value
   if (!viewport) return
@@ -651,7 +782,7 @@ function openSkillSource(skill?: RemoteSkill | null) {
 
 function buildSearchParams(): MarketSearchParams {
   const params: MarketSearchParams = {
-    q: normalizeSearchQuery(searchQuery.value) || undefined,
+    q: currentSearchQuery.value || undefined,
     category: selectedCategory.value !== 'all' ? selectedCategory.value : undefined,
     categories: selectedCategory.value !== 'all' ? selectedCategory.value : undefined,
     sources: selectedSource.value !== 'all' ? selectedSource.value : undefined,
@@ -661,10 +792,54 @@ function buildSearchParams(): MarketSearchParams {
     semantic: true,
     risk_badges: selectedRisk.value !== 'all' ? selectedRisk.value : undefined,
   }
-  if (sortMode.value === 'featured') {
+  if (sortMode.value === 'featured' && !showDiscoverProgress.value) {
     params.curated = true
   }
   return params
+}
+
+function clearSkillAdvice() {
+  latestAdviceRequestId += 1
+  adviceLoading.value = false
+  skillAdvice.value = null
+}
+
+async function fetchSkillAdvice(options?: { force?: boolean }) {
+  const query = currentSearchQuery.value
+  if (!query) {
+    clearSkillAdvice()
+    return
+  }
+  if (
+    !options?.force &&
+    activeSkillAdvice.value &&
+    normalizeSearchQuery(activeSkillAdvice.value.query) === query
+  ) {
+    return
+  }
+
+  const requestId = ++latestAdviceRequestId
+  adviceLoading.value = true
+
+  try {
+    const response = await skillApi.adviseMarket({ query })
+    if (requestId !== latestAdviceRequestId) return
+    skillAdvice.value = response.data
+  } catch (err) {
+    if (requestId !== latestAdviceRequestId) return
+    skillAdvice.value = {
+      query,
+      need_store_search: false,
+      search_error:
+        err instanceof Error
+          ? err.message
+          : marketplaceText('advisor.fetchError', 'Failed to get skill suggestions'),
+    }
+  } finally {
+    if (requestId === latestAdviceRequestId) {
+      adviceLoading.value = false
+    }
+  }
 }
 
 function normalizeSkill(skill: RemoteSkill): RemoteSkill {
@@ -675,6 +850,128 @@ function normalizeSkill(skill: RemoteSkill): RemoteSkill {
     installed: !!skill.installed,
   }
 }
+
+const currentSearchQuery = computed(() => normalizeSearchQuery(searchQuery.value))
+
+const activeSkillAdvice = computed<MarketplaceAdviceResponse | null>(() => {
+  const advice = skillAdvice.value
+  if (!advice) return null
+  return normalizeSearchQuery(advice.query) === currentSearchQuery.value ? advice : null
+})
+
+const advisorSuggestedQueries = computed(() => {
+  const advice = activeSkillAdvice.value
+  const current = currentSearchQuery.value.toLowerCase()
+  const seen = new Set<string>()
+  return (advice?.search_queries || [])
+    .map((value) => normalizeSearchQuery(value))
+    .filter((value) => {
+      const normalized = value.toLowerCase()
+      if (!value || normalized === current || seen.has(normalized)) return false
+      seen.add(normalized)
+      return true
+    })
+    .slice(0, 4)
+})
+
+const advisorCapabilityTags = computed(() => {
+  const seen = new Set<string>()
+  return (activeSkillAdvice.value?.capability_tags || [])
+    .map((value) => value.trim())
+    .filter((value) => {
+      const normalized = value.toLowerCase()
+      if (!normalized || seen.has(normalized)) return false
+      seen.add(normalized)
+      return true
+    })
+    .slice(0, 6)
+})
+
+const advisorRecommendedSkills = computed<RemoteSkill[]>(() => {
+  const advice = activeSkillAdvice.value
+  const results = advice?.results || []
+  if (!results.length) return []
+
+  const normalized = results.map((item) => normalizeSkill(item.skill))
+  const byID = new Map(normalized.map((skill) => [skill.id, skill] as const))
+  const ordered: RemoteSkill[] = []
+
+  for (const id of advice?.recommended_ids || []) {
+    const skill = byID.get(id)
+    if (skill) ordered.push(skill)
+  }
+  for (const skill of normalized) {
+    if (!ordered.some((item) => item.id === skill.id)) {
+      ordered.push(skill)
+    }
+  }
+  return ordered.slice(0, 3)
+})
+
+const showSkillAdvice = computed(
+  () => !!currentSearchQuery.value && (adviceLoading.value || !!activeSkillAdvice.value)
+)
+
+const advisorInstalledSkill = computed(
+  () => activeSkillAdvice.value?.installed_decision?.selected_skill?.trim() || ''
+)
+
+const advisorFeedbackNote = computed(
+  () => activeSkillAdvice.value?.search_error || activeSkillAdvice.value?.skill_selector_error || ''
+)
+
+const advisorTitle = computed(() => {
+  if (adviceLoading.value && !activeSkillAdvice.value) {
+    return marketplaceText('advisor.loadingTitle', 'Analyzing this task')
+  }
+  if (advisorInstalledSkill.value && !activeSkillAdvice.value?.need_store_search) {
+    return marketplaceText('advisor.installedTitle', 'An installed skill may already fit')
+  }
+  if (advisorRecommendedSkills.value.length) {
+    return marketplaceText('advisor.recommendTitle', 'Recommended skills for this task')
+  }
+  if (advisorSuggestedQueries.value.length) {
+    return marketplaceText('advisor.queryTitle', 'Suggested search angles')
+  }
+  if (advisorCapabilityTags.value.length) {
+    return marketplaceText('advisor.capabilityTitle', 'Capability tags to look for')
+  }
+  return marketplaceText('advisor.emptyTitle', 'No suggestions yet')
+})
+
+const advisorDescription = computed(() => {
+  if (adviceLoading.value && !activeSkillAdvice.value) {
+    return marketplaceText('advisor.loadingBody', 'Generating keywords and hybrid search hints...')
+  }
+  if (advisorInstalledSkill.value && !activeSkillAdvice.value?.need_store_search) {
+    return marketplaceText(
+      'advisor.installedBody',
+      'The installed skill selector is confident enough, so store search is optional.'
+    )
+  }
+  if (advisorRecommendedSkills.value.length) {
+    return marketplaceText(
+      'advisor.recommendBody',
+      'These recommendations come from real marketplace entries, reranked from keyword and semantic matches.'
+    )
+  }
+  if (advisorSuggestedQueries.value.length) {
+    return marketplaceText(
+      'advisor.queryBody',
+      'Try these search phrases in the marketplace if the first query is too broad.'
+    )
+  }
+  if (advisorCapabilityTags.value.length) {
+    return marketplaceText(
+      'advisor.capabilityBody',
+      'Use these capability tags when you browse or install from the skill store.'
+    )
+  }
+  return marketplaceText(
+    'advisor.emptyBody',
+    'Keep refining your request and suggestions will appear here.'
+  )
+})
 
 function discoverSourceProgress(status?: DiscoverStatusResponse | null): string {
   const total = status?.total_sources || 0
@@ -956,6 +1253,10 @@ function maybeScheduleVisibleResultsRefresh(
   scheduleVisibleResultsRefresh()
 }
 
+function shouldProbeVisibleResults(status?: DiscoverStatusResponse | null): boolean {
+  return !!status?.running && skills.value.length === 0
+}
+
 async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null) {
   const requestId = ++latestDiscoverPollId
   let status = initial ?? null
@@ -980,6 +1281,9 @@ async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null
         (status.running ? 'status' : 'completed')
     )
     maybeScheduleVisibleResultsRefresh(status)
+    if (shouldProbeVisibleResults(status)) {
+      scheduleVisibleResultsRefresh()
+    }
     if (!status.running) {
       if (status.last_error) {
         throw new Error(status.last_error)
@@ -1034,11 +1338,15 @@ async function initializeMarketplaceView() {
   error.value = null
 
   try {
-    const response = await skillApi.discoverStatus()
+    const [discoverResponse, embeddingResponse] = await Promise.all([
+      skillApi.discoverStatus(),
+      skillApi.embeddingStatus(),
+    ])
     if (componentDisposed) return
 
-    const status = response.data
+    const status = discoverResponse.data
     applyDiscoverStatus(status)
+    applyEmbeddingStatus(embeddingResponse.data)
     await loadMarketplaceCatalog()
 
     if (componentDisposed) return
@@ -1124,6 +1432,9 @@ function handleDiscoverProgressEvent(data: Partial<DiscoverStatusResponse> & { p
     (data.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') ||
       ((data.running ?? false) ? 'status' : 'completed')
   )
+  if (shouldProbeVisibleResults(data as DiscoverStatusResponse)) {
+    scheduleVisibleResultsRefresh()
+  }
   if (data.phase === 'batch' || data.phase === 'source_complete' || data.phase === 'completed') {
     maybeScheduleVisibleResultsRefresh(data as DiscoverStatusResponse, {
       includeCompleted: data.phase === 'completed',
@@ -1134,13 +1445,37 @@ function handleDiscoverProgressEvent(data: Partial<DiscoverStatusResponse> & { p
   }
 }
 
-function handleSearch() {
+function handleEmbeddingProgressEvent(data: Partial<EmbeddingStatusResponse>) {
+  if (componentDisposed) return
+  applyEmbeddingStatus(data as EmbeddingStatusResponse)
+  if (data.phase === 'completed' && currentSearchQuery.value) {
+    scheduleVisibleResultsRefresh()
+  }
+}
+
+function handleSearch(payload?: Event | { forceAdvice?: boolean }) {
+  const forceAdvice = !!(
+    payload &&
+    typeof payload === 'object' &&
+    'forceAdvice' in payload &&
+    payload.forceAdvice
+  )
   void fetchSkills(true)
+  if (currentSearchQuery.value) {
+    void fetchSkillAdvice({ force: forceAdvice })
+    return
+  }
+  clearSkillAdvice()
 }
 
 function handleSortModeChange(value: SkillStoreSortMode) {
   sortMode.value = value
   handleSearch()
+}
+
+function applyAdvisorQuery(query: string) {
+  searchQuery.value = query
+  handleSearch({ forceAdvice: true })
 }
 
 function resetFilters() {
@@ -1149,11 +1484,13 @@ function resetFilters() {
   selectedSource.value = 'all'
   selectedRisk.value = 'all'
   sortMode.value = 'featured'
+  clearSkillAdvice()
   handleSearch()
 }
 
 function clearSearch() {
   searchQuery.value = ''
+  clearSkillAdvice()
   handleSearch()
 }
 
@@ -1402,15 +1739,36 @@ const hiddenSecurityEvidenceCount = computed(() => {
   return Math.max(0, total - visibleSecurityEvidence.value.length)
 })
 
+watch(
+  () => normalizeSearchQuery(props.initialSearchQuery || ''),
+  (query) => {
+    if (!marketplaceInitialized) {
+      searchQuery.value = query
+      return
+    }
+    if (query === currentSearchQuery.value) return
+    searchQuery.value = query
+    handleSearch({ forceAdvice: true })
+  }
+)
+
 onMounted(() => {
   onSSEEvent('skill.market.discover.progress', handleDiscoverProgressEvent)
-  void initializeMarketplaceView()
+  onSSEEvent('skill.market.embedding.progress', handleEmbeddingProgressEvent)
+  void initializeMarketplaceView().finally(() => {
+    if (componentDisposed) return
+    marketplaceInitialized = true
+    if (currentSearchQuery.value) {
+      void fetchSkillAdvice({ force: true })
+    }
+  })
 })
 
 onBeforeUnmount(() => {
   componentDisposed = true
   latestDiscoverPollId += 1
   offSSEEvent('skill.market.discover.progress', handleDiscoverProgressEvent)
+  offSSEEvent('skill.market.embedding.progress', handleEmbeddingProgressEvent)
   if (refreshVisibleResultsTimer) {
     window.clearTimeout(refreshVisibleResultsTimer)
     refreshVisibleResultsTimer = null
@@ -1482,7 +1840,7 @@ onBeforeUnmount(() => {
           "
           :clear-label="translate('common.clear', 'Clear')"
           @clear="clearSearch"
-          @submit-shortcut="handleSearch"
+          @submit-shortcut="handleSearch({ forceAdvice: true })"
         />
         <div class="hero-actions">
           <button
@@ -1573,99 +1931,277 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="showDiscoverProgress" class="discover-progress dashboard-card-subsurface">
-        <div class="discover-progress__header">
-          <div class="discover-progress__copy">
-            <span class="section-label">{{ discoverProgressLabel }}</span>
-            <strong>{{ discoverCurrentSourceLabel }}</strong>
-            <p>{{ discoverProgressMeta }}</p>
+      <div v-if="showSkillAdvice" class="advisor-panel dashboard-card-subsurface">
+        <div class="advisor-panel__header">
+          <div class="advisor-panel__copy">
+            <span class="section-label">{{
+              marketplaceText('advisor.kicker', 'Skill guidance')
+            }}</span>
+            <strong>{{ advisorTitle }}</strong>
+            <p>{{ advisorDescription }}</p>
           </div>
-          <div class="discover-progress__percent">
-            <strong>{{ discoverProgressPercent }}%</strong>
-            <span>{{ discoverPhaseLabel }}</span>
-          </div>
-        </div>
-
-        <div class="discover-progress__meta">
+          <span v-if="adviceLoading" class="summary-pill">
+            {{ commonText('loading', 'Loading') }}
+          </span>
           <span
-            :class="[
-              'discover-progress__status-pill',
-              `discover-progress__status-pill--${discoverPhaseTone}`,
-            ]"
+            v-else-if="
+              advisorInstalledSkill && activeSkillAdvice && !activeSkillAdvice.need_store_search
+            "
+            class="summary-pill summary-pill-active"
           >
-            {{ discoverPhaseLabel }}
-          </span>
-          <span v-if="discoverSummaryInline" class="discover-progress__summary">
-            {{ discoverSummaryInline }}
-          </span>
-          <span v-if="showResultsRefreshing" class="discover-progress__summary">
-            {{ marketplaceText('progress.refreshingVisible', 'Refreshing visible results') }}
+            {{ advisorInstalledSkill }}
           </span>
         </div>
 
-        <div class="discover-progress__track-wrap">
-          <div
-            class="discover-progress__track"
-            role="progressbar"
-            :aria-label="discoverProgressLabel"
-            :aria-valuenow="discoverProgressPercent"
-            aria-valuemin="0"
-            aria-valuemax="100"
-          >
-            <div
-              class="discover-progress__fill"
-              :style="{ width: `${discoverProgressPercent}%` }"
-            ></div>
+        <div v-if="advisorSuggestedQueries.length" class="advisor-section">
+          <span class="section-label">{{
+            marketplaceText('advisor.searchQueries', 'Suggested search phrases')
+          }}</span>
+          <div class="chip-row">
+            <button
+              v-for="query in advisorSuggestedQueries"
+              :key="query"
+              type="button"
+              class="advisor-chip-button"
+              @click="applyAdvisorQuery(query)"
+            >
+              {{ query }}
+            </button>
           </div>
-          <p class="discover-progress__caption">{{ discoverProgressCaption }}</p>
         </div>
 
-        <div class="discover-activity">
-          <div class="discover-activity__header">
-            <span class="section-label">{{ discoverActivityHeading }}</span>
+        <div v-if="advisorCapabilityTags.length" class="advisor-section">
+          <span class="section-label">{{
+            marketplaceText('advisor.capabilityTags', 'Capability tags')
+          }}</span>
+          <div class="chip-row">
+            <span v-for="tag in advisorCapabilityTags" :key="tag" class="meta-chip meta-chip-soft">
+              {{ tag }}
+            </span>
           </div>
-          <article
-            v-if="latestDiscoverEntry"
-            :class="[
-              'discover-activity__item',
-              'discover-activity__item--latest',
-              `discover-activity__item--${latestDiscoverEntry.phase}`,
-            ]"
-          >
-            <span class="discover-activity__dot" aria-hidden="true"></span>
-            <div class="discover-activity__body">
-              <strong>{{ latestDiscoverEntry.title }}</strong>
-              <p>{{ latestDiscoverEntry.detail }}</p>
-            </div>
-            <time>{{ formatClockTime(latestDiscoverEntry.timestamp) }}</time>
-          </article>
-          <details v-if="previousDiscoverEntries.length" class="discover-activity__details">
-            <summary class="discover-activity__toggle">
-              {{ discoverActivityToggleLabel }}
-            </summary>
-            <div ref="discoverActivityViewport" class="discover-activity__stream">
-              <article
-                v-for="entry in previousDiscoverEntries"
-                :key="entry.id"
-                :class="['discover-activity__item', `discover-activity__item--${entry.phase}`]"
-              >
-                <span class="discover-activity__dot" aria-hidden="true"></span>
-                <div class="discover-activity__body">
-                  <strong>{{ entry.title }}</strong>
-                  <p>{{ entry.detail }}</p>
+        </div>
+
+        <div v-if="advisorRecommendedSkills.length" class="advisor-section">
+          <span class="section-label">{{
+            marketplaceText('advisor.recommendedSkills', 'Recommended skills')
+          }}</span>
+          <div class="advisor-skill-grid">
+            <article
+              v-for="skill in advisorRecommendedSkills"
+              :key="`advisor-${skill.id}`"
+              class="advisor-skill-card dashboard-card-subsurface"
+              :style="skillAccentStyle(skill)"
+              tabindex="0"
+              role="button"
+              @click="selectSkill(skill)"
+              @keydown.enter.prevent="selectSkill(skill)"
+              @keydown.space.prevent="selectSkill(skill)"
+            >
+              <div class="advisor-skill-card__top">
+                <div class="advisor-skill-card__copy">
+                  <strong>{{ skill.name }}</strong>
+                  <p>{{ cardDescription(skill) }}</p>
                 </div>
-                <time>{{ formatClockTime(entry.timestamp) }}</time>
-              </article>
-            </div>
-          </details>
-          <div
-            v-else-if="!latestDiscoverEntry && showDiscoverProgress"
-            class="discover-activity__tail"
-          >
-            <span class="discover-activity__tail-dot" aria-hidden="true"></span>
-            <span>{{ discoverProgressDescription }}</span>
+                <span :class="['shield-chip', securityBadgeClass(skill)]">
+                  {{ badgeLabel(skill) }}
+                </span>
+              </div>
+
+              <div class="advisor-skill-card__meta">
+                <span class="meta-chip meta-chip-soft">{{ sourceLabel(skill) }}</span>
+                <span class="meta-chip meta-chip-soft">{{ categoryLabel(skill.category) }}</span>
+              </div>
+
+              <div class="advisor-skill-card__actions">
+                <button
+                  v-if="skill.installable"
+                  :class="[
+                    'install-button',
+                    `install-${skill.security_badge || 'yellow'}`,
+                    { busy: installingSkillId === skill.id },
+                  ]"
+                  :disabled="installingSkillId === skill.id || skill.security_badge === 'red'"
+                  @click.stop="installSkill(skill)"
+                >
+                  <span v-if="installingSkillId === skill.id">{{
+                    marketplaceText('actions.installing', 'Installing...')
+                  }}</span>
+                  <span v-else-if="skill.security_badge === 'red'">{{
+                    marketplaceText('actions.blocked', 'Blocked')
+                  }}</span>
+                  <span v-else-if="skill.installed">{{
+                    skillStoreText('installed', 'Installed')
+                  }}</span>
+                  <span v-else>{{ skillStoreText('install', 'Install') }}</span>
+                </button>
+                <button v-else class="source-button" @click.stop="openSkillSource(skill)">
+                  {{ marketplaceText('actions.viewSource', 'View source') }}
+                </button>
+                <button type="button" class="btn-text" @click.stop="applyAdvisorQuery(skill.name)">
+                  {{ marketplaceText('advisor.searchByName', 'Search by name') }}
+                </button>
+              </div>
+            </article>
           </div>
         </div>
+
+        <p v-if="advisorFeedbackNote" class="advisor-note">
+          {{ advisorFeedbackNote }}
+        </p>
+      </div>
+
+      <div
+        v-if="showDiscoverProgress || showEmbeddingProgress"
+        :class="[
+          'discover-progress',
+          'dashboard-card-subsurface',
+          {
+            'discover-progress--embedding': showEmbeddingOnlyProgress,
+          },
+        ]"
+      >
+        <section v-if="showDiscoverProgress" class="discover-progress__segment">
+          <div class="discover-progress__header">
+            <div class="discover-progress__copy">
+              <span class="section-label">{{ discoverProgressLabel }}</span>
+              <strong>{{ discoverCurrentSourceLabel }}</strong>
+              <p>{{ discoverProgressMeta }}</p>
+            </div>
+            <div class="discover-progress__percent">
+              <strong>{{ discoverProgressPercent }}%</strong>
+              <span>{{ discoverPhaseLabel }}</span>
+            </div>
+          </div>
+
+          <div class="discover-progress__meta">
+            <span
+              :class="[
+                'discover-progress__status-pill',
+                `discover-progress__status-pill--${discoverPhaseTone}`,
+              ]"
+            >
+              {{ discoverPhaseLabel }}
+            </span>
+            <span v-if="discoverSummaryInline" class="discover-progress__summary">
+              {{ discoverSummaryInline }}
+            </span>
+            <span v-if="showResultsRefreshing" class="discover-progress__summary">
+              {{ marketplaceText('progress.refreshingVisible', 'Refreshing visible results') }}
+            </span>
+          </div>
+
+          <div class="discover-progress__track-wrap">
+            <div
+              class="discover-progress__track"
+              role="progressbar"
+              :aria-label="discoverProgressLabel"
+              :aria-valuenow="discoverProgressPercent"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <div
+                class="discover-progress__fill"
+                :style="{ width: `${discoverProgressPercent}%` }"
+              ></div>
+            </div>
+            <p class="discover-progress__caption">{{ discoverProgressCaption }}</p>
+          </div>
+
+          <div class="discover-activity">
+            <div class="discover-activity__header">
+              <span class="section-label">{{ discoverActivityHeading }}</span>
+            </div>
+            <article
+              v-if="latestDiscoverEntry"
+              :class="[
+                'discover-activity__item',
+                'discover-activity__item--latest',
+                `discover-activity__item--${latestDiscoverEntry.phase}`,
+              ]"
+            >
+              <span class="discover-activity__dot" aria-hidden="true"></span>
+              <div class="discover-activity__body">
+                <strong>{{ latestDiscoverEntry.title }}</strong>
+                <p>{{ latestDiscoverEntry.detail }}</p>
+              </div>
+              <time>{{ formatClockTime(latestDiscoverEntry.timestamp) }}</time>
+            </article>
+            <details v-if="previousDiscoverEntries.length" class="discover-activity__details">
+              <summary class="discover-activity__toggle">
+                {{ discoverActivityToggleLabel }}
+              </summary>
+              <div ref="discoverActivityViewport" class="discover-activity__stream">
+                <article
+                  v-for="entry in previousDiscoverEntries"
+                  :key="entry.id"
+                  :class="['discover-activity__item', `discover-activity__item--${entry.phase}`]"
+                >
+                  <span class="discover-activity__dot" aria-hidden="true"></span>
+                  <div class="discover-activity__body">
+                    <strong>{{ entry.title }}</strong>
+                    <p>{{ entry.detail }}</p>
+                  </div>
+                  <time>{{ formatClockTime(entry.timestamp) }}</time>
+                </article>
+              </div>
+            </details>
+            <div
+              v-else-if="!latestDiscoverEntry && showDiscoverProgress"
+              class="discover-activity__tail"
+            >
+              <span class="discover-activity__tail-dot" aria-hidden="true"></span>
+              <span>{{ discoverProgressDescription }}</span>
+            </div>
+          </div>
+        </section>
+
+        <section
+          v-if="showEmbeddingProgress"
+          class="discover-progress__segment discover-progress__segment--embedding"
+        >
+          <div class="discover-progress__header">
+            <div class="discover-progress__copy">
+              <span class="section-label">{{ embeddingProgressLabel }}</span>
+              <strong>{{ embeddingCurrentSkillLabel }}</strong>
+              <p>{{ embeddingProgressMeta }}</p>
+            </div>
+            <div class="discover-progress__percent">
+              <strong>{{ embeddingProgressPercent }}%</strong>
+              <span>{{ embeddingPhaseLabel }}</span>
+            </div>
+          </div>
+
+          <div class="discover-progress__meta">
+            <span
+              :class="[
+                'discover-progress__status-pill',
+                `discover-progress__status-pill--${embeddingPhaseTone}`,
+              ]"
+            >
+              {{ embeddingPhaseLabel }}
+            </span>
+            <span v-if="embeddingSummaryInline" class="discover-progress__summary">
+              {{ embeddingSummaryInline }}
+            </span>
+          </div>
+
+          <div class="discover-progress__track-wrap">
+            <div
+              class="discover-progress__track"
+              role="progressbar"
+              :aria-label="embeddingProgressLabel"
+              :aria-valuenow="embeddingProgressPercent"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <div
+                class="discover-progress__fill"
+                :style="{ width: `${embeddingProgressPercent}%` }"
+              ></div>
+            </div>
+            <p class="discover-progress__caption">{{ embeddingProgressCaption }}</p>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -2496,6 +3032,130 @@ onBeforeUnmount(() => {
   margin-top: 10px;
 }
 
+.advisor-panel {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 12%, var(--panel-border));
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 42%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--panel-bg-strong) 92%, white 2%) 0%,
+      var(--panel-bg) 100%
+    );
+}
+
+.advisor-panel__header,
+.advisor-skill-card__top,
+.advisor-skill-card__actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.advisor-panel__copy,
+.advisor-section,
+.advisor-skill-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.advisor-panel__copy {
+  gap: 4px;
+}
+
+.advisor-panel__copy strong {
+  color: var(--text-primary);
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+
+.advisor-panel__copy p,
+.advisor-note,
+.advisor-skill-card__copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.advisor-section {
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.advisor-chip-button {
+  appearance: none;
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 9.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.advisor-chip-button:hover {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(59, 130, 246, 0.34);
+  transform: translateY(-1px);
+}
+
+.advisor-skill-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.advisor-skill-card {
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--market-accent, var(--primary)) 16%, var(--border));
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.advisor-skill-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--card-shadow);
+}
+
+.advisor-skill-card__copy {
+  min-width: 0;
+}
+
+.advisor-skill-card__copy strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+
+.advisor-skill-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.advisor-skill-card__actions {
+  align-items: center;
+}
+
+.advisor-note {
+  margin-top: 10px;
+}
+
 .hero-search-field {
   min-width: 0;
   flex: 1;
@@ -2600,12 +3260,27 @@ onBeforeUnmount(() => {
 
 .discover-progress {
   display: grid;
-  gap: 10px;
+  gap: 0;
   margin-top: 8px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: color-mix(in srgb, var(--panel-bg) 94%, rgba(59, 130, 246, 0.06));
+}
+
+.discover-progress__segment {
+  display: grid;
+  gap: 10px;
+}
+
+.discover-progress__segment + .discover-progress__segment {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 86%, rgba(14, 165, 233, 0.14));
+}
+
+.discover-progress--embedding {
+  background: color-mix(in srgb, var(--panel-bg) 94%, rgba(14, 165, 233, 0.08));
 }
 
 .discover-progress__header {
@@ -2720,6 +3395,10 @@ onBeforeUnmount(() => {
   border-radius: inherit;
   background: #3b82f6;
   transition: width 0.25s ease;
+}
+
+.discover-progress__segment--embedding .discover-progress__fill {
+  background: #0ea5e9;
 }
 
 .discover-progress__caption {
@@ -3921,6 +4600,10 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
+  .advisor-skill-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .security-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3942,6 +4625,10 @@ onBeforeUnmount(() => {
   .detail-install-panel {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .advisor-skill-grid {
+    grid-template-columns: 1fr;
   }
 
   .results-grid {
@@ -3968,6 +4655,9 @@ onBeforeUnmount(() => {
   .hero-headline,
   .toolbar-search-row,
   .toolbar-controls,
+  .advisor-panel__header,
+  .advisor-skill-card__top,
+  .advisor-skill-card__actions,
   .discover-progress__header,
   .discover-progress__meta,
   .discover-activity__header,

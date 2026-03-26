@@ -27,6 +27,9 @@ func TestDarwinExecutor_Execute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
 	}
+	if !executor.IsSupported() {
+		t.Skip("sandbox is not supported in this Darwin test environment")
+	}
 
 	req := NewExecutionRequest("echo", "hello")
 	req.Timeout = 5 * time.Second
@@ -54,6 +57,9 @@ func TestDarwinExecutor_Execute_WithEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
 	}
+	if !executor.IsSupported() {
+		t.Skip("sandbox is not supported in this Darwin test environment")
+	}
 
 	req := NewExecutionRequest("printenv", "TEST_VAR")
 	req.Env = map[string]string{"TEST_VAR": "test_value"}
@@ -78,6 +84,9 @@ func TestDarwinExecutor_Execute_Timeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
 	}
+	if !executor.IsSupported() {
+		t.Skip("sandbox is not supported in this Darwin test environment")
+	}
 
 	req := NewExecutionRequest("sleep", "10")
 	req.Timeout = 100 * time.Millisecond
@@ -101,6 +110,9 @@ func TestDarwinExecutor_Execute_Failed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
 	}
+	if !executor.IsSupported() {
+		t.Skip("sandbox is not supported in this Darwin test environment")
+	}
 
 	req := NewExecutionRequest("false")
 	req.Timeout = 5 * time.Second
@@ -123,6 +135,9 @@ func TestDarwinExecutor_Execute_ResourceUsage(t *testing.T) {
 	executor, err := newPlatformExecutor(config)
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
+	}
+	if !executor.IsSupported() {
+		t.Skip("sandbox is not supported in this Darwin test environment")
 	}
 
 	req := NewExecutionRequest("echo", "hello")
@@ -167,6 +182,9 @@ func TestDarwinExecutor_GetStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
 	}
+	if !executor.IsSupported() {
+		t.Skip("sandbox is not supported in this Darwin test environment")
+	}
 
 	req := NewExecutionRequest("echo", "hello")
 	req.Timeout = 5 * time.Second
@@ -190,6 +208,9 @@ func TestDarwinExecutor_Kill(t *testing.T) {
 	executor, err := newPlatformExecutor(config)
 	if err != nil {
 		t.Fatalf("newPlatformExecutor() error = %v", err)
+	}
+	if !executor.IsSupported() {
+		t.Skip("sandbox is not supported in this Darwin test environment")
 	}
 
 	// Start a long-running command

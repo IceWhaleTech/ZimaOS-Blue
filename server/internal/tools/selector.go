@@ -242,35 +242,6 @@ func applyToolHardAnchors(query string, signals sel.QueryIntentSignals, def Tool
 		return
 	}
 	name := strings.ToLower(strings.TrimSpace(def.Name))
-	if looksLikeStructuredWorkspaceArtifactTask(query, signals) {
-		allowed := make(map[string]struct{}, 8)
-		for _, toolName := range StructuredWorkspaceArtifactWorkflowToolNames(query) {
-			allowed[toolName] = struct{}{}
-		}
-		if _, ok := allowed[name]; ok {
-			match.Eligible = true
-			match.Anchored = true
-			if match.Score < 4.8 {
-				match.Score = 4.8
-			}
-			match.ConfidenceReason = "structured_workspace_artifact"
-			match.ConflictFlags = nil
-			match.MatchedSignals = append(match.MatchedSignals, "rule:structured_workspace_artifact")
-			if !containsString(match.DomainHits, sel.DomainLocalWorkspace) {
-				match.DomainHits = append(match.DomainHits, sel.DomainLocalWorkspace)
-			}
-			sort.Strings(match.MatchedSignals)
-			return
-		}
-		switch name {
-		case "file_delete", "edit", "grep", "pdf", "image":
-			match.Eligible = false
-			match.Score = 0
-			match.Anchored = false
-			match.ConfidenceReason = "structured_workspace_artifact_pruned"
-			return
-		}
-	}
 	if signals.LocalWorkspace {
 		switch name {
 		case "read", "write", "file_read", "file_write", "file_delete", "edit", "ls", "find", "grep", "convert", "pdf":

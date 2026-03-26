@@ -21,15 +21,28 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 )
 
 func newTestService(t *testing.T) (*Service, func()) {
-	return newTestServiceWithClient(t, nil)
+	return newTestServiceWithOptions(t, nil, nil)
 }
 
 func newTestServiceWithClient(t *testing.T, client *http.Client) (*Service, func()) {
+	return newTestServiceWithOptions(t, client, nil)
+}
+
+func newTestServiceWithEmbeddingProvider(t *testing.T, provider embedding.Provider) (*Service, func()) {
+	return newTestServiceWithOptions(t, nil, provider)
+}
+
+func newTestServiceWithEmbeddingProviderAndBroadcaster(
+	t *testing.T,
+	provider embedding.Provider,
+	broadcaster func(eventType string, data any),
+) (*Service, func()) {
 	t.Helper()
 
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
@@ -46,11 +59,42 @@ func newTestServiceWithClient(t *testing.T, client *http.Client) (*Service, func
 	cfg.SeedURLs = nil
 
 	svc, err := NewService(db, Options{
-		Config:       cfg,
-		Registry:     skill.NewRegistry(),
-		LocalScanner: scanner,
-		HTTPClient:   client,
-		Scanner:      NewScanner(nil),
+		Config:                   cfg,
+		Registry:                 skill.NewRegistry(),
+		LocalScanner:             scanner,
+		EmbeddingProvider:        provider,
+		Scanner:                  NewScanner(nil),
+		DiscoverEventBroadcaster: broadcaster,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	return svc, func() { _ = db.Close() }
+}
+
+func newTestServiceWithOptions(t *testing.T, client *http.Client, provider embedding.Provider) (*Service, func()) {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	scanner := skillstore.NewLocalSkillScanner(activeDir)
+	cfg := DefaultConfig(t.TempDir(), activeDir)
+	cfg.CacheRoot = cacheDir
+	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.SeedURLs = nil
+
+	svc, err := NewService(db, Options{
+		Config:            cfg,
+		Registry:          skill.NewRegistry(),
+		LocalScanner:      scanner,
+		EmbeddingProvider: provider,
+		HTTPClient:        client,
+		Scanner:           NewScanner(nil),
 	})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -118,6 +162,169 @@ description: Expert git workflows
 	if result.Skills[0].Skill.ID != "git-expert" {
 		t.Fatalf("got skill id %q, want git-expert", result.Skills[0].Skill.ID)
 	}
+}
+
+func TestNewServiceWithDBPathMigratesLegacySchemaWithoutFTSModule(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "legacy-market-fts.db")
+	createSQLiteFixtureWithFTS(t, dbPath, `
+	CREATE TABLE skills (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		version TEXT,
+		summary TEXT,
+		description TEXT,
+		author TEXT,
+		category TEXT,
+		tags TEXT,
+		source_id TEXT NOT NULL,
+		source_name TEXT,
+		homepage TEXT,
+		download_url TEXT,
+		stars INTEGER DEFAULT 0,
+		downloads INTEGER DEFAULT 0,
+		reviews INTEGER DEFAULT 0,
+		rating REAL DEFAULT 0.0,
+		versions INTEGER DEFAULT 0,
+		changelog TEXT,
+		readme TEXT,
+		readme_hash TEXT,
+		dedup_key TEXT,
+		installed INTEGER DEFAULT 0,
+		enabled INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		search_content TEXT,
+		skill_content TEXT
+	);
+	INSERT INTO skills (
+		id, name, version, summary, description, author, category, tags, source_id, source_name,
+		homepage, download_url, stars, downloads, reviews, rating, versions, changelog, readme,
+		readme_hash, dedup_key, installed, enabled, search_content, skill_content
+	) VALUES (
+		'legacy-skill', 'Legacy Skill', '1.0.0', 'legacy summary', 'legacy description', 'legacy-author',
+		'development', 'git,legacy', 'legacy-source', 'Legacy Source', 'https://example.com',
+		'https://example.com/archive.zip', 12, 34, 0, 0.0, 0, '', '# Legacy', '', '', 0, 0,
+		'legacy skill legacy description git legacy', '# Legacy'
+	);
+	CREATE VIRTUAL TABLE skills_fts USING fts5(
+		id, name, summary, description, author, category, tags, readme,
+		content='skills', content_rowid='rowid'
+	);
+	CREATE TRIGGER skills_au AFTER UPDATE ON skills BEGIN
+		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
+		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
+	END;
+	CREATE VIRTUAL TABLE skillmarket_fts USING fts5(
+		id UNINDEXED,
+		name,
+		description,
+		author,
+		category,
+		tags,
+		skill_content,
+		content='skills',
+		content_rowid='rowid'
+	);
+	CREATE TRIGGER skillmarket_au AFTER UPDATE ON skills BEGIN
+		INSERT INTO skillmarket_fts(skillmarket_fts, rowid, id, name, description, author, category, tags, skill_content)
+		VALUES ('delete', old.rowid, old.id, old.name, old.description, old.author, old.category, old.tags, old.skill_content);
+		INSERT INTO skillmarket_fts(rowid, id, name, description, author, category, tags, skill_content)
+		VALUES (new.rowid, new.id, new.name, new.description, new.author, new.category, new.tags, new.skill_content);
+	END;
+	`)
+
+	probeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer probeDB.Close()
+
+	if supportsFTS5(probeDB) {
+		t.Skip("test requires a SQLite build without FTS5 support")
+	}
+
+	activeDir := filepath.Join(tempDir, "active")
+	cacheDir := filepath.Join(tempDir, "cache")
+	cfg := DefaultConfig(tempDir, activeDir)
+	cfg.DBPath = dbPath
+	cfg.CacheRoot = cacheDir
+	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.SeedURLs = nil
+
+	svc, err := NewServiceWithDBPath(dbPath, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("NewServiceWithDBPath() error = %v", err)
+	}
+	defer svc.Close()
+
+	if svc.store == nil {
+		t.Fatal("expected initialized store")
+	}
+	if svc.store.ftsEnabled {
+		t.Fatalf("ftsEnabled = true, want false")
+	}
+
+	result, err := svc.Search(context.Background(), SearchQuery{
+		Query:    "legacy",
+		Page:     1,
+		PageSize: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if result.Total != 1 || len(result.Skills) != 1 {
+		t.Fatalf("expected one legacy result, got total=%d len=%d", result.Total, len(result.Skills))
+	}
+}
+
+type semanticTestProvider struct{}
+
+func (p *semanticTestProvider) Name() string {
+	return "test"
+}
+
+func (p *semanticTestProvider) Model() string {
+	return "bge-test"
+}
+
+func (p *semanticTestProvider) Dimensions() int {
+	return 3
+}
+
+func (p *semanticTestProvider) Embed(ctx context.Context, text string) ([]float32, error) {
+	return p.embedText(text), nil
+}
+
+func (p *semanticTestProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	result := make([][]float32, 0, len(texts))
+	for _, text := range texts {
+		result = append(result, p.embedText(text))
+	}
+	return result, nil
+}
+
+func (p *semanticTestProvider) embedText(text string) []float32 {
+	lower := strings.ToLower(text)
+	vec := []float32{0.05, 0.05, 0.05}
+	switch {
+	case strings.Contains(lower, "git") || strings.Contains(lower, "repository") || strings.Contains(lower, "rebase") || strings.Contains(lower, "commit") || strings.Contains(lower, "version control") || strings.Contains(lower, "merge"):
+		vec[0] += 1
+	case strings.Contains(lower, "recipe") || strings.Contains(lower, "kitchen") || strings.Contains(lower, "cook") || strings.Contains(lower, "meal"):
+		vec[1] += 1
+	default:
+		vec[2] += 1
+	}
+	return embedding.Normalize(vec)
 }
 
 func insertSkillFixture(t *testing.T, svc *Service, id, version, raw string, risk string, score int) {
@@ -277,6 +484,178 @@ Container and docker tooling.`, RiskLow, 90)
 	}
 	if got := result.Skills[0].Skill.ID; got != "git-expert" {
 		t.Fatalf("top hit = %q, want git-expert", got)
+	}
+}
+
+func TestServiceSemanticSearchBackfillsLegacyEmbeddings(t *testing.T) {
+	svc, cleanup := newTestServiceWithEmbeddingProvider(t, &semanticTestProvider{})
+	defer cleanup()
+
+	insertSkillFixture(t, svc, "git-expert", "1.0.0", `---
+id: git-expert
+name: Git Expert
+version: 1.0.0
+description: Rebase and commit helper
+tags: [git, repository]
+---
+
+# Git Expert
+
+Help with commits, rebases, repositories, and merge conflicts.
+`, RiskLow, 90)
+	insertSkillFixture(t, svc, "kitchen-helper", "1.0.0", `---
+id: kitchen-helper
+name: Kitchen Helper
+version: 1.0.0
+description: Recipe planning assistant
+tags: [recipe, meal]
+---
+
+# Kitchen Helper
+
+Plan meals, recipes, and cooking checklists.
+`, RiskLow, 90)
+
+	result, err := svc.Search(context.Background(), SearchQuery{
+		Query:    "version control history",
+		Page:     1,
+		PageSize: 10,
+		Semantic: true,
+	})
+	if err != nil {
+		t.Fatalf("semantic search: %v", err)
+	}
+	if len(result.Skills) == 0 {
+		t.Fatal("expected semantic search results")
+	}
+	if got := result.Skills[0].Skill.ID; got != "git-expert" {
+		t.Fatalf("top semantic hit = %q, want git-expert", got)
+	}
+	if got := result.Skills[0].MatchSource; got != "semantic" && got != "hybrid" {
+		t.Fatalf("match source = %q, want semantic or hybrid", got)
+	}
+
+	detail, err := svc.GetSkill(context.Background(), "git-expert")
+	if err != nil {
+		t.Fatalf("GetSkill(git-expert): %v", err)
+	}
+	if detail == nil {
+		t.Fatal("expected skill detail")
+	}
+	if strings.TrimSpace(detail.Skill.EmbeddingJSON) == "" {
+		t.Fatal("expected semantic search to backfill embedding_json")
+	}
+	if detail.Skill.EmbeddingModel != "bge-test" {
+		t.Fatalf("embedding model = %q, want bge-test", detail.Skill.EmbeddingModel)
+	}
+}
+
+func TestBackfillSkillEmbeddingsReportsProgress(t *testing.T) {
+	var (
+		mu     sync.Mutex
+		events []EmbeddingProgressEvent
+	)
+	svc, cleanup := newTestServiceWithEmbeddingProviderAndBroadcaster(
+		t,
+		&semanticTestProvider{},
+		func(eventType string, data any) {
+			if eventType != "skill.market.embedding.progress" {
+				return
+			}
+			event, ok := data.(EmbeddingProgressEvent)
+			if !ok {
+				t.Fatalf("unexpected embedding event payload type %T", data)
+			}
+			mu.Lock()
+			events = append(events, event)
+			mu.Unlock()
+		},
+	)
+	defer cleanup()
+
+	insertSkillFixture(t, svc, "git-expert", "1.0.0", `---
+id: git-expert
+name: Git Expert
+version: 1.0.0
+description: Git workflow assistant
+tags: [git, repository]
+---
+
+# Git Expert
+
+Review repositories, handle rebases, and explain merge conflicts.
+`, RiskLow, 90)
+
+	if err := svc.backfillSkillEmbeddings(context.Background(), SearchQuery{}); err != nil {
+		t.Fatalf("backfillSkillEmbeddings: %v", err)
+	}
+
+	status := svc.GetEmbeddingStatus()
+	if status.Running {
+		t.Fatalf("expected embedding backfill to finish, got status=%+v", status)
+	}
+	if status.TotalSkills != 1 || status.ProcessedSkills != 1 || status.EmbeddedSkills != 1 {
+		t.Fatalf("unexpected embedding status: %+v", status)
+	}
+	if status.Phase != "completed" {
+		t.Fatalf("phase = %q, want completed", status.Phase)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) < 3 {
+		t.Fatalf("expected at least started/progress/completed embedding events, got %d", len(events))
+	}
+	if events[0].Phase != "started" {
+		t.Fatalf("first embedding event phase = %q, want started", events[0].Phase)
+	}
+	if events[len(events)-1].Phase != "completed" {
+		t.Fatalf("last embedding event phase = %q, want completed", events[len(events)-1].Phase)
+	}
+}
+
+func TestIngestSkillContentPersistsEmbeddingWhenProviderAvailable(t *testing.T) {
+	svc, cleanup := newTestServiceWithEmbeddingProvider(t, &semanticTestProvider{})
+	defer cleanup()
+
+	_, err := svc.ingestSkillContent(context.Background(), ingestRequest{
+		SourceID:     "fixture-source",
+		SourceName:   "Fixture Source",
+		SourceGroup:  "fixture",
+		SourceType:   "test",
+		SourceURL:    "https://example.com/git-expert",
+		SkillPath:    "skills/git-expert/SKILL.md",
+		InstallType:  InstallTypeRawSkill,
+		ArtifactKind: ArtifactKindOpenSource,
+		SkillContent: `---
+id: git-expert
+name: Git Expert
+version: 1.0.0
+description: Git workflow assistant
+tags: [git, repository]
+---
+
+# Git Expert
+
+Review repositories, handle rebases, and explain merge conflicts.
+`,
+	})
+	if err != nil {
+		t.Fatalf("ingestSkillContent: %v", err)
+	}
+
+	detail, err := svc.GetSkill(context.Background(), "git-expert")
+	if err != nil {
+		t.Fatalf("GetSkill(git-expert): %v", err)
+	}
+	if detail == nil {
+		t.Fatal("expected ingested skill detail")
+	}
+	if strings.TrimSpace(detail.Skill.EmbeddingJSON) == "" {
+		t.Fatal("expected ingested skill to persist embedding_json")
+	}
+	if detail.Skill.EmbeddingModel != "bge-test" {
+		t.Fatalf("embedding model = %q, want bge-test", detail.Skill.EmbeddingModel)
 	}
 }
 

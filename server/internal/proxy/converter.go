@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 
@@ -873,6 +874,12 @@ func normalizeAnthropicMessageContent(content interface{}) interface{} {
 // Anthropic allows up to 4 cache breakpoints per request.
 func ApplyPromptCaching(req *AnthropicRequest) {
 	ephemeral := &AnthropicCacheControl{Type: "ephemeral"}
+
+	if len(req.Tools) > 1 {
+		sort.SliceStable(req.Tools, func(i, j int) bool {
+			return req.Tools[i].Name < req.Tools[j].Name
+		})
+	}
 
 	// Handle system prompt: convert string to array, or annotate existing array blocks.
 	switch s := req.System.(type) {

@@ -652,6 +652,15 @@ func firstObservedNonEmpty(values ...string) string {
 	return ""
 }
 
+func openedTabTargetID(page *rod.Page) string {
+	if page != nil {
+		if targetID := strings.TrimSpace(string(page.TargetID)); targetID != "" {
+			return targetID
+		}
+	}
+	return fmt.Sprintf("tab-%d", timeutil.NowNano())
+}
+
 // OpenTab opens a new tab with the given URL.
 func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 	normalizedURL, err := s.security.NormalizeAndCheckURL(url)
@@ -692,7 +701,7 @@ func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 		return nil, err
 	}
 
-	targetID := fmt.Sprintf("tab-%d", timeutil.NowNano())
+	targetID := openedTabTargetID(page)
 
 	s.tabsMu.Lock()
 	// Deactivate other tabs
@@ -1855,7 +1864,12 @@ func (s *RodService) AccessibilityTree(ctx context.Context, targetID string, max
 		depth = 10
 	}
 
-	result, err := proto.AccessibilityGetFullAXTree{Depth: &depth}.Call(tab.page)
+	rawResult, err := tab.page.Call(
+		ctx,
+		string(tab.page.GetSessionID()),
+		"Accessibility.getFullAXTree",
+		proto.AccessibilityGetFullAXTree{Depth: &depth},
+	)
 	if err != nil {
 		if isConnectionClosed(err) {
 			s.removeTab(tab)
@@ -1863,9 +1877,13 @@ func (s *RodService) AccessibilityTree(ctx context.Context, targetID string, max
 		}
 		return nil, fmt.Errorf("failed to get accessibility tree: %w", err)
 	}
+	nodes, err := decodeAccessibilityTreeNodes(rawResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode accessibility tree: %w", err)
+	}
 
 	// Build DSL with @ref references
-	builder := newAXTreeBuilder(result.Nodes)
+	builder := newAXTreeBuilder(nodes)
 	tree := builder.build()
 
 	info, _ := tab.page.Info()
@@ -1877,6 +1895,102 @@ func (s *RodService) AccessibilityTree(ctx context.Context, targetID string, max
 		TargetID: tab.targetID,
 		RefMap:   builder.refMap,
 	}, nil
+}
+
+type accessibilityTreeCompatResult struct {
+	Nodes []accessibilityTreeCompatNode `json:"nodes"`
+}
+
+type accessibilityTreeCompatNode struct {
+	NodeID           json.RawMessage                  `json:"nodeId"`
+	Ignored          bool                             `json:"ignored"`
+	Role             *proto.AccessibilityAXValue      `json:"role,omitempty"`
+	ChromeRole       *proto.AccessibilityAXValue      `json:"chromeRole,omitempty"`
+	Name             *proto.AccessibilityAXValue      `json:"name,omitempty"`
+	Description      *proto.AccessibilityAXValue      `json:"description,omitempty"`
+	Value            *proto.AccessibilityAXValue      `json:"value,omitempty"`
+	Properties       []*proto.AccessibilityAXProperty `json:"properties,omitempty"`
+	ParentID         json.RawMessage                  `json:"parentId,omitempty"`
+	ChildIDs         []json.RawMessage                `json:"childIds,omitempty"`
+	BackendDOMNodeID proto.DOMBackendNodeID           `json:"backendDOMNodeId,omitempty"`
+	FrameID          proto.PageFrameID                `json:"frameId,omitempty"`
+}
+
+func decodeAccessibilityTreeNodes(raw []byte) ([]*proto.AccessibilityAXNode, error) {
+	var direct proto.AccessibilityGetFullAXTreeResult
+	if err := json.Unmarshal(raw, &direct); err == nil {
+		return direct.Nodes, nil
+	}
+
+	var compat accessibilityTreeCompatResult
+	if err := json.Unmarshal(raw, &compat); err != nil {
+		return nil, err
+	}
+
+	nodes := make([]*proto.AccessibilityAXNode, 0, len(compat.Nodes))
+	for _, node := range compat.Nodes {
+		nodeID, err := normalizeAccessibilityAXNodeID(node.NodeID)
+		if err != nil {
+			return nil, err
+		}
+		parentID, err := normalizeAccessibilityAXNodeID(node.ParentID)
+		if err != nil {
+			return nil, err
+		}
+		childIDs, err := normalizeAccessibilityAXNodeIDs(node.ChildIDs)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, &proto.AccessibilityAXNode{
+			NodeID:           nodeID,
+			Ignored:          node.Ignored,
+			Role:             node.Role,
+			ChromeRole:       node.ChromeRole,
+			Name:             node.Name,
+			Description:      node.Description,
+			Value:            node.Value,
+			Properties:       node.Properties,
+			ParentID:         parentID,
+			ChildIDs:         childIDs,
+			BackendDOMNodeID: node.BackendDOMNodeID,
+			FrameID:          node.FrameID,
+		})
+	}
+	return nodes, nil
+}
+
+func normalizeAccessibilityAXNodeIDs(rawValues []json.RawMessage) ([]proto.AccessibilityAXNodeID, error) {
+	if len(rawValues) == 0 {
+		return nil, nil
+	}
+	ids := make([]proto.AccessibilityAXNodeID, 0, len(rawValues))
+	for _, rawValue := range rawValues {
+		id, err := normalizeAccessibilityAXNodeID(rawValue)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func normalizeAccessibilityAXNodeID(raw json.RawMessage) (proto.AccessibilityAXNodeID, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return "", nil
+	}
+
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return proto.AccessibilityAXNodeID(text), nil
+	}
+
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err == nil {
+		return proto.AccessibilityAXNodeID(number.String()), nil
+	}
+
+	return "", fmt.Errorf("unsupported accessibility node id %s", trimmed)
 }
 
 // axTreeBuilder builds a compact DSL from accessibility tree nodes.

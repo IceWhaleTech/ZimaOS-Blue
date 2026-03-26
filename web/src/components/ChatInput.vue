@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, nextTick, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { type MarketplaceAdviceResponse, type RemoteSkill, skillApi } from '@/api/skill'
 import { AudioRecorder, voiceApi } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
@@ -18,11 +19,13 @@ import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { classifyFeatureIntent } from '@/composables/useFeatureIntent'
 import { rafThrottle } from '@/utils/rafThrottle'
+import { useRouter } from 'vue-router'
 
 const { t, te } = useI18n()
 const localeStore = useLocaleStore()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
+const router = useRouter()
 
 const SPEECH_ERROR_KEY_BY_CODE: Record<string, string> = {
   timeout: 'speech.error.timeout',
@@ -39,6 +42,15 @@ function getSpeechErrorMessage(errorCodeRaw: unknown): string | null {
   if (!key) return null
   if (!te(key)) return null
   return t(key)
+}
+
+function chatText(
+  key: string,
+  fallback: string,
+  params?: Record<string, string | number | boolean>
+): string {
+  if (!te(key)) return fallback
+  return params ? t(key, params) : t(key)
 }
 
 export interface FileAttachment {
@@ -116,6 +128,8 @@ const NEW_CHAT_DRAFT_SCOPE = '__new__'
 const MAX_TEXTAREA_HEIGHT = 200
 const COMPACT_TEXTAREA_MIN_HEIGHT = 40
 const DESKTOP_TEXTAREA_MIN_HEIGHT = 43
+const SKILL_ADVICE_DEBOUNCE_MS = 650
+const SKILL_ADVICE_MIN_QUERY_LENGTH = 12
 const sendIconPath = 'M12 18.5V5.5m0 0L6.75 10.75M12 5.5l5.25 5.25'
 const mobileClearButtonStyle = { insetInlineEnd: '0.5rem' }
 const mobileMenuDropdownStyle = { insetInlineEnd: '0' }
@@ -189,6 +203,10 @@ const showASRDownloadPrompt = ref(false)
 // Inline dictation (VAD-based tap-to-dictate)
 const isDictating = ref(false)
 let dictationVAD: EnergyVAD | null = null
+const skillAdvice = ref<MarketplaceAdviceResponse | null>(null)
+const skillAdviceLoading = ref(false)
+let latestSkillAdviceRequestId = 0
+let skillAdviceTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const maxSize = computed(() => props.maxFileSize || 10 * 1024 * 1024) // 10MB default
 const canShowCancelButton = computed(() => props.canCancel ?? props.streaming ?? false)
@@ -257,13 +275,113 @@ const placeholder = computed(() =>
   isCompact.value ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
 )
 
+function normalizeSkillSearchQuery(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function shouldFetchSkillAdvice(query: string): boolean {
+  if (!query || query.length < SKILL_ADVICE_MIN_QUERY_LENGTH) return false
+  if (query.includes(' ')) return true
+  return query.length >= 24
+}
+
 const featureIntent = computed(() => classifyFeatureIntent(message.value))
+const normalizedSkillAdviceQuery = computed(() => normalizeSkillSearchQuery(message.value))
+const activeSkillAdvice = computed<MarketplaceAdviceResponse | null>(() => {
+  const advice = skillAdvice.value
+  if (!advice) return null
+  return normalizeSkillSearchQuery(advice.query) === normalizedSkillAdviceQuery.value ? advice : null
+})
 const showFeatureHint = computed(() => {
   if (props.disabled || props.streaming) return false
   if (!message.value.trim()) return false
   if (featureIntent.value.deepResearch && !chatStore.deepResearchEnabled) return true
   if (featureIntent.value.agentMode && !settingsStore.agentMode) return true
   return false
+})
+
+const skillHintQueries = computed(() => {
+  const advice = activeSkillAdvice.value
+  const current = normalizedSkillAdviceQuery.value.toLowerCase()
+  const seen = new Set<string>()
+  return (advice?.search_queries || [])
+    .map((value) => normalizeSkillSearchQuery(value))
+    .filter((value) => {
+      const normalized = value.toLowerCase()
+      if (!value || normalized === current || seen.has(normalized)) return false
+      seen.add(normalized)
+      return true
+    })
+    .slice(0, 4)
+})
+
+const skillHintTags = computed(() => {
+  const seen = new Set<string>()
+  return (activeSkillAdvice.value?.capability_tags || [])
+    .map((value) => value.trim())
+    .filter((value) => {
+      const normalized = value.toLowerCase()
+      if (!normalized || seen.has(normalized)) return false
+      seen.add(normalized)
+      return true
+    })
+    .slice(0, 6)
+})
+
+const skillHintRecommendedSkills = computed<RemoteSkill[]>(() => {
+  const advice = activeSkillAdvice.value
+  const results = advice?.results || []
+  if (!results.length) return []
+
+  const byID = new Map(results.map((item) => [item.skill.id, item.skill] as const))
+  const ordered: RemoteSkill[] = []
+
+  for (const id of advice?.recommended_ids || []) {
+    const skill = byID.get(id)
+    if (skill) ordered.push(skill)
+  }
+  for (const result of results) {
+    if (!ordered.some((item) => item.id === result.skill.id)) {
+      ordered.push(result.skill)
+    }
+  }
+
+  return ordered.slice(0, 3)
+})
+
+const skillHintInstalledSkill = computed(
+  () => activeSkillAdvice.value?.installed_decision?.selected_skill?.trim() || ''
+)
+const skillHintStoreQuery = computed(
+  () => skillHintQueries.value[0] || normalizedSkillAdviceQuery.value
+)
+const showSkillAdviceHint = computed(() => {
+  if (props.disabled || props.streaming) return false
+  if (!shouldFetchSkillAdvice(normalizedSkillAdviceQuery.value)) return false
+  return (
+    skillAdviceLoading.value ||
+    !!skillHintInstalledSkill.value ||
+    skillHintQueries.value.length > 0 ||
+    skillHintTags.value.length > 0 ||
+    skillHintRecommendedSkills.value.length > 0
+  )
+})
+const skillAdviceDescription = computed(() => {
+  if (skillAdviceLoading.value && !activeSkillAdvice.value) {
+    return chatText(
+      'chat.skillAdvisorLoadingBody',
+      'Analyzing this task to suggest skill keywords and capability tags.'
+    )
+  }
+  if (skillHintInstalledSkill.value) {
+    return te('chat.skillAdvisorInstalledBody')
+      ? t('chat.skillAdvisorInstalledBody', { skill: skillHintInstalledSkill.value })
+      : `An installed skill may already fit: ${skillHintInstalledSkill.value}`
+  }
+  return chatText(
+    'chat.skillAdvisorBody',
+    'Use these keywords in the skill store if you want to find matching skills before you send.'
+  )
 })
 
 const deepResearchInfoTags = computed(() => [
@@ -363,6 +481,75 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function clearSkillAdviceTimer() {
+  if (skillAdviceTimer) {
+    window.clearTimeout(skillAdviceTimer)
+    skillAdviceTimer = null
+  }
+}
+
+function clearSkillAdvice() {
+  clearSkillAdviceTimer()
+  latestSkillAdviceRequestId += 1
+  skillAdviceLoading.value = false
+  skillAdvice.value = null
+}
+
+async function fetchSkillAdvice(options?: { force?: boolean }) {
+  const query = normalizedSkillAdviceQuery.value
+  if (props.disabled || props.streaming || !shouldFetchSkillAdvice(query)) {
+    clearSkillAdvice()
+    return
+  }
+  if (
+    !options?.force &&
+    activeSkillAdvice.value &&
+    normalizeSkillSearchQuery(activeSkillAdvice.value.query) === query
+  ) {
+    return
+  }
+
+  const requestId = ++latestSkillAdviceRequestId
+  skillAdviceLoading.value = true
+
+  try {
+    const response = await skillApi.adviseMarket({ query })
+    if (requestId !== latestSkillAdviceRequestId) return
+    skillAdvice.value = response.data
+  } catch (err) {
+    if (requestId !== latestSkillAdviceRequestId) return
+    console.error('Failed to fetch chat skill advice:', err)
+    skillAdvice.value = null
+  } finally {
+    if (requestId === latestSkillAdviceRequestId) {
+      skillAdviceLoading.value = false
+    }
+  }
+}
+
+function scheduleSkillAdvice(options?: { force?: boolean }) {
+  clearSkillAdviceTimer()
+
+  const query = normalizedSkillAdviceQuery.value
+  if (props.disabled || props.streaming || !shouldFetchSkillAdvice(query)) {
+    clearSkillAdvice()
+    return
+  }
+
+  skillAdviceTimer = window.setTimeout(() => {
+    skillAdviceTimer = null
+    void fetchSkillAdvice(options)
+  }, options?.force ? 0 : SKILL_ADVICE_DEBOUNCE_MS)
+}
+
+function openSkillStore(query?: string) {
+  const normalized = normalizeSkillSearchQuery(query || skillHintStoreQuery.value)
+  void router.push({
+    name: 'Plugins',
+    query: normalized ? { tab: 'store', q: normalized } : { tab: 'store' },
+  })
 }
 
 function isAllowedType(file: File): boolean {
@@ -1122,6 +1309,7 @@ function stopDictation() {
 // Cleanup on unmount
 onUnmounted(() => {
   void persistAttachmentsForCurrentConversation([...attachments.value])
+  clearSkillAdvice()
   if (recorder.value) {
     recorder.value.stop()
   }
@@ -1207,6 +1395,7 @@ watch(message, (nextMessage) => {
     nextMessage,
     draftStorageScope.value === NEW_CHAT_DRAFT_SCOPE
   )
+  scheduleSkillAdvice()
 })
 
 watch(draftStorageKey, (nextKey, previousKey) => {
@@ -1232,6 +1421,14 @@ watch(isCompact, () => {
   nextTick(() => {
     resizeTextarea()
   })
+})
+
+watch([() => props.disabled, () => props.streaming], ([disabled, streaming]) => {
+  if (disabled || streaming) {
+    clearSkillAdvice()
+    return
+  }
+  scheduleSkillAdvice({ force: true })
 })
 
 function focus() {
@@ -1442,6 +1639,103 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           />
           <span>{{ t('chat.taskLoop') }}</span>
         </label>
+      </div>
+
+      <div
+        v-if="showSkillAdviceHint"
+        class="chat-skill-advice mb-2 rounded-2xl border border-amber-200/80 bg-amber-50/80 px-3 py-2.5 text-xs text-amber-950 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-50"
+      >
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div class="min-w-0">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-600/90 dark:text-amber-300/80">
+              {{
+                chatText(
+                  'chat.skillAdvisorKicker',
+                  'Skill guidance'
+                )
+              }}
+            </p>
+            <p class="mt-1 text-xs leading-5 text-amber-900/85 dark:text-amber-100/85">
+              {{ skillAdviceDescription }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="chat-skill-store-link"
+            class="chat-skill-advice__store-link inline-flex items-center justify-center rounded-full border border-amber-300/80 bg-white/70 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-white dark:border-amber-300/20 dark:bg-white/5 dark:text-amber-100 dark:hover:bg-white/10"
+            @click="openSkillStore()"
+          >
+            {{ chatText('chat.skillAdvisorOpenStore', 'Open Skill Store') }}
+          </button>
+        </div>
+
+        <div
+          v-if="skillHintInstalledSkill"
+          class="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-300/70 bg-emerald-100/80 px-2.5 py-1 text-[11px] font-medium text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200"
+        >
+          <span>{{ chatText('chat.skillAdvisorInstalledLabel', 'Installed match') }}</span>
+          <span>{{ skillHintInstalledSkill }}</span>
+        </div>
+
+        <div
+          v-if="skillHintQueries.length"
+          class="mt-2.5 flex flex-col gap-1.5"
+        >
+          <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
+            {{ chatText('chat.skillAdvisorSearchQueries', 'Suggested search phrases') }}
+          </span>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="query in skillHintQueries"
+              :key="query"
+              type="button"
+              class="chat-skill-advice__query-chip rounded-full border border-amber-300/80 bg-white/80 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-white dark:border-amber-300/20 dark:bg-white/5 dark:text-amber-100 dark:hover:bg-white/10"
+              @click="openSkillStore(query)"
+            >
+              {{ query }}
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="skillHintTags.length"
+          class="mt-2.5 flex flex-col gap-1.5"
+        >
+          <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
+            {{ chatText('chat.skillAdvisorCapabilityTags', 'Capability tags') }}
+          </span>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="tag in skillHintTags"
+              :key="tag"
+              type="button"
+              class="chat-skill-advice__tag-chip rounded-full border border-transparent bg-amber-100/90 px-2.5 py-1 text-[11px] font-medium text-amber-800 transition-colors hover:bg-amber-100 dark:bg-amber-400/10 dark:text-amber-100 dark:hover:bg-amber-400/15"
+              @click="openSkillStore(tag)"
+            >
+              #{{ tag }}
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="skillHintRecommendedSkills.length"
+          class="mt-2.5 flex flex-col gap-1.5"
+        >
+          <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
+            {{ chatText('chat.skillAdvisorRecommendedSkills', 'Marketplace matches') }}
+          </span>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="skill in skillHintRecommendedSkills"
+              :key="skill.id"
+              type="button"
+              class="chat-skill-advice__skill-chip rounded-full border border-amber-300/70 bg-white/70 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-white dark:border-amber-300/20 dark:bg-white/5 dark:text-amber-100 dark:hover:bg-white/10"
+              @click="openSkillStore(skill.name || skill.id)"
+            >
+              {{ skill.name || skill.id }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div v-if="isCompact" class="compact-mode-section mb-3">

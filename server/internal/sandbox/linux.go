@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
+
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -23,17 +25,17 @@ type LinuxExecutor struct {
 
 // newPlatformExecutor creates a new Linux executor.
 func newPlatformExecutor(config *Config) (Executor, error) {
-	base := NewBaseExecutor(config)
-
 	executor := &LinuxExecutor{
-		BaseExecutor: base,
+		BaseExecutor: NewBaseExecutor(config),
 		cgroupPath:   "/sys/fs/cgroup/sandbox",
 	}
 
-	// Try to set up cgroup
 	if err := executor.setupCgroup(); err != nil {
-		// Fall back to base executor if cgroup setup fails
-		return base, nil
+		return newUnsupportedExecutor(err.Error()), nil
+	}
+	if err := executor.probeIsolation(); err != nil {
+		_ = executor.Cleanup()
+		return newUnsupportedExecutor(err.Error()), nil
 	}
 
 	return executor, nil
@@ -90,12 +92,7 @@ func (e *LinuxExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 	cmd.Stderr = &stderr
 
 	// Set up namespace isolation
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWUTS | // New UTS namespace (hostname)
-			syscall.CLONE_NEWPID | // New PID namespace
-			syscall.CLONE_NEWIPC, // New IPC namespace
-		// Note: CLONE_NEWNET and CLONE_NEWNS require root privileges
-	}
+	cmd.SysProcAttr = e.sysProcAttr()
 
 	// Note: Resource limits (rlimit) cannot be set directly on SysProcAttr in Go.
 	// Instead, we rely on cgroup limits set below for memory, CPU, and process limits.
@@ -179,9 +176,42 @@ func (e *LinuxExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 
 // IsSupported returns true if Linux sandboxing is supported.
 func (e *LinuxExecutor) IsSupported() bool {
-	// Check if we can create namespaces
-	cmd := exec.Command("unshare", "help")
-	return cmd.Run() == nil
+	return true
+}
+
+func (e *LinuxExecutor) sysProcAttr() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{
+		Cloneflags: e.cloneFlags(),
+	}
+}
+
+func (e *LinuxExecutor) cloneFlags() uintptr {
+	flags := uintptr(syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWIPC)
+	if e != nil && e.config != nil && !e.config.NetworkEnabled {
+		flags |= syscall.CLONE_NEWNET
+	}
+	return flags
+}
+
+func (e *LinuxExecutor) probeIsolation() error {
+	probeBinary, err := exec.LookPath("true")
+	if err != nil {
+		return fmt.Errorf("failed to find probe binary for linux sandbox support check: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, probeBinary)
+	cmd.SysProcAttr = e.sysProcAttr()
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("linux sandbox namespace probe timed out: %w", err)
+		}
+		return fmt.Errorf("linux sandbox namespace probe failed: %w", err)
+	}
+
+	return nil
 }
 
 // Cleanup cleans up resources including cgroups.

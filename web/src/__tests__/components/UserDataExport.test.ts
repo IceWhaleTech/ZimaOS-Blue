@@ -110,6 +110,9 @@ describe('UserDataExport', () => {
 
     expect(companionSettingsApi.getSettings).toHaveBeenCalledTimes(1)
     expect(wrapper.classes()).toEqual(expect.arrayContaining(['w-full', 'mx-auto', 'max-w-6xl']))
+    expect(wrapper.classes()).toEqual(
+      expect.arrayContaining(['rounded-xl', 'border', 'overflow-hidden'])
+    )
     expect(wrapper.text()).toContain('Chat Data')
 
     wrapper.unmount()

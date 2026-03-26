@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +36,21 @@ func setupTestDB(t *testing.T) (*sql.DB, func()) {
 	return db, cleanup
 }
 
+func createSQLiteFixtureWithFTS(t *testing.T, dbPath, schema string) {
+	t.Helper()
+
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skipf("sqlite3 CLI unavailable: %v", err)
+	}
+
+	cmd := exec.Command("sqlite3", dbPath)
+	cmd.Stdin = strings.NewReader(schema)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sqlite3 fixture setup failed: %v\n%s", err, output)
+	}
+}
+
 func TestStore_InitSchema(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -58,6 +76,102 @@ func TestStore_InitSchema(t *testing.T) {
 	var ftsName string
 	if err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='skills_fts'").Scan(&ftsName); err != nil {
 		t.Logf("skills_fts not available (FTS5 module not loaded): %v", err)
+	}
+}
+
+func TestStore_DropsLegacyMarketplaceTriggersWithoutFTS(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "skillstore-legacy-fts.db")
+	createSQLiteFixtureWithFTS(t, dbPath, `
+	CREATE TABLE skills (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		version TEXT,
+		summary TEXT,
+		description TEXT,
+		author TEXT,
+		category TEXT,
+		tags TEXT,
+		source_id TEXT NOT NULL,
+		source_name TEXT,
+		homepage TEXT,
+		download_url TEXT,
+		stars INTEGER DEFAULT 0,
+		downloads INTEGER DEFAULT 0,
+		reviews INTEGER DEFAULT 0,
+		rating REAL DEFAULT 0.0,
+		versions INTEGER DEFAULT 0,
+		changelog TEXT,
+		readme TEXT,
+		readme_hash TEXT,
+		dedup_key TEXT,
+		installed INTEGER DEFAULT 0,
+		enabled INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		search_content TEXT
+	);
+	CREATE VIRTUAL TABLE skillmarket_fts USING fts5(
+		id UNINDEXED,
+		name,
+		description,
+		author,
+		category,
+		tags,
+		skill_content,
+		content='skills',
+		content_rowid='rowid'
+	);
+	CREATE TRIGGER skillmarket_ai AFTER INSERT ON skills BEGIN
+		INSERT INTO skillmarket_fts(rowid, id, name, description, author, category, tags, skill_content)
+		VALUES (new.rowid, new.id, new.name, new.description, new.author, new.category, new.tags, '');
+	END;
+	`)
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if supportsFTS5(db) {
+		t.Skip("test requires a SQLite build without FTS5 support")
+	}
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	if store.ftsEnabled {
+		t.Fatalf("ftsEnabled = true, want false")
+	}
+
+	now := time.Now()
+	skill := &Skill{
+		ID:          "test-skill",
+		Name:        "Test Skill",
+		Version:     "1.0.0",
+		Summary:     "summary",
+		Description: "description",
+		Author:      "author",
+		Category:    "testing",
+		Tags:        "test,example",
+		SourceID:    "fixture",
+		SourceName:  "Fixture",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		SyncedAt:    now,
+	}
+	if err := store.UpsertSkill(context.Background(), skill); err != nil {
+		t.Fatalf("UpsertSkill() error = %v", err)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'skillmarket_ai'`).Scan(&count); err != nil {
+		t.Fatalf("query trigger error = %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("skillmarket_ai trigger should have been dropped")
 	}
 }
 

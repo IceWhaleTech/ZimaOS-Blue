@@ -6,19 +6,13 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 const {
   setupFormFillerWidget,
   cleanupFormFillerWidget,
-  previewStoreState,
   settingsStoreState,
   tauriState,
 } = vi.hoisted(() => ({
   setupFormFillerWidget: vi.fn(),
   cleanupFormFillerWidget: vi.fn(),
-  previewStoreState: {
-    isPreviewMode: false,
-  },
   settingsStoreState: {
     closeBehavior: 'minimize',
-    claudeCodeEnabled: false,
-    claudeCodeEnabledLoaded: true,
   },
   tauriState: {
     isTauri: false,
@@ -65,10 +59,6 @@ vi.mock('@/composables/useTauri', () => ({
   refreshTauriDetection: tauriState.refreshTauriDetection,
 }))
 
-vi.mock('@/stores/preview', () => ({
-  usePreviewStore: () => previewStoreState,
-}))
-
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => settingsStoreState,
 }))
@@ -84,13 +74,6 @@ vi.mock('@/components/formfiller/FormFillerWidget.vue', () => ({
   ...helpers.asAsyncSFCModule({
     name: 'FormFillerWidget',
     template: '<div class="form-filler-widget-stub" />',
-  }),
-}))
-
-vi.mock('@/components/onboarding/PreviewOnboardingModal.vue', () => ({
-  ...helpers.asAsyncSFCModule({
-    name: 'PreviewOnboardingModal',
-    template: '<div class="preview-onboarding-modal-stub" />',
   }),
 }))
 
@@ -166,10 +149,7 @@ async function mountLayout(path: string) {
 describe('DefaultLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    previewStoreState.isPreviewMode = false
     settingsStoreState.closeBehavior = 'minimize'
-    settingsStoreState.claudeCodeEnabled = false
-    settingsStoreState.claudeCodeEnabledLoaded = true
     tauriState.isTauri = false
     tauriState.platform = 'unknown'
     setViewportWidth(1440)
@@ -265,22 +245,6 @@ describe('DefaultLayout', () => {
     const wrapper = await mountLayout('/chat')
 
     expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(false)
-
-    wrapper.unmount()
-  })
-
-  it('renders preview onboarding on the chat route when preview mode is active and enhanced mode is disabled', async () => {
-    setUserAgent(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
-    )
-    previewStoreState.isPreviewMode = true
-    settingsStoreState.claudeCodeEnabled = false
-    settingsStoreState.claudeCodeEnabledLoaded = true
-
-    const wrapper = await mountLayout('/chat')
-    await flushPromises()
-
-    expect(wrapper.find('.preview-onboarding-modal-stub').exists()).toBe(true)
 
     wrapper.unmount()
   })

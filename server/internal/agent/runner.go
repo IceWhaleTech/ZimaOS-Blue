@@ -1108,8 +1108,8 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	}
 
 	task.Plan = planSpec.Steps
-	task.SuccessCriteria = effectiveSuccessCriteria(planSpec.SuccessCriteria)
-	task.FallbackPlan = effectiveFallbackPlan(planSpec.FallbackPlan)
+	task.SuccessCriteria = mergeTaskSuccessCriteria(task, planSpec.SuccessCriteria)
+	task.FallbackPlan = mergeTaskFallbackPlan(task, planSpec.FallbackPlan)
 	if task.Goal == "" && planSpec.Goal != "" {
 		task.Goal = planSpec.Goal
 	}
@@ -1140,8 +1140,8 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 				return
 			}
 			task.Plan = planSpec.Steps
-			task.SuccessCriteria = effectiveSuccessCriteria(planSpec.SuccessCriteria)
-			task.FallbackPlan = effectiveFallbackPlan(planSpec.FallbackPlan)
+			task.SuccessCriteria = mergeTaskSuccessCriteria(task, planSpec.SuccessCriteria)
+			task.FallbackPlan = mergeTaskFallbackPlan(task, planSpec.FallbackPlan)
 		case "abort":
 			if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted at confirm gate", nil, TaskStatusAborted); err != nil {
 				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed when aborting at confirm gate: %v", err))
@@ -1287,49 +1287,220 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	})
 
 	verificationCtx := compileVerificationContext(task)
-	verifyStep := &PlanStep{
-		Index:       len(task.Plan),
-		Description: verificationStepDescription(verificationCtx.TaskKind, false),
-		Status:      StepStatusRunning,
-	}
-	now := timeutil.NowTime()
-	verifyStep.StartedAt = &now
+	verificationPolicy := resolveRuntimeVerificationPolicy(task)
 
 	if err := r.transitionState(ctx, task, RuntimeStateVerify, "verifying task result", nil, TaskStatusExecuting); err != nil {
 		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before verify: %v", err))
 		return
 	}
-	_, verifyOutput, verifyErr := r.groundedRuntime.VerifyTask(task)
+	groundedVerifyStep := &PlanStep{
+		Index:       len(task.Plan),
+		Description: groundedVerificationStepDescription(verificationCtx.TaskKind, false),
+		Status:      StepStatusRunning,
+	}
+	now := timeutil.NowTime()
+	groundedVerifyStep.StartedAt = &now
+	_, groundedVerifyOutput, groundedVerifyErr := r.groundedRuntime.VerifyTask(task)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		r.cancelTask(task, "task cancelled")
 		return
 	}
-	if verifyErr != nil {
+	if groundedVerifyErr != nil {
 		r.appendAudit(task, RuntimeAuditEvent{
 			Timestamp: timeutil.NowTime(),
-			Reason:    "verification_failed",
-			Error:     verifyErr.Error(),
+			Reason:    "grounded_verification_failed",
+			Error:     groundedVerifyErr.Error(),
 		})
-		verifyStep.Status = StepStatusFailed
-		verifyStep.Output = verifyOutput
+		recordVerificationFailure(task, groundedVerifyOutput)
+		groundedVerifyStep.Status = StepStatusFailed
+		groundedVerifyStep.Output = groundedVerifyOutput
 	} else {
 		r.appendAudit(task, RuntimeAuditEvent{
 			Timestamp: timeutil.NowTime(),
-			Reason:    "verification_passed",
+			Reason:    "grounded_verification_passed",
 		})
-		verifyStep.Status = StepStatusCompleted
-		verifyStep.Output = verifyOutput
+		groundedVerifyStep.Status = StepStatusCompleted
+		groundedVerifyStep.Output = groundedVerifyOutput
+		task.VerifiedOutput = groundedVerifyOutput
 	}
 	completedAt := timeutil.NowTime()
-	verifyStep.CompletedAt = &completedAt
-	task.Plan = append(task.Plan, *verifyStep)
-	if verifyStep.Status != StepStatusCompleted {
+	groundedVerifyStep.CompletedAt = &completedAt
+	task.Plan = append(task.Plan, *groundedVerifyStep)
+	_ = r.store.Update(ctx, task)
+	if groundedVerifyStep.Status != StepStatusCompleted {
 		r.failTask(ctx, task, "grounded verification failed")
 		return
 	}
 	if ctx.Err() != nil {
 		r.cancelTask(task, "task cancelled")
 		return
+	}
+
+	if verificationPolicy.EnableExternalQA {
+		externalVerifyStep := &PlanStep{
+			Index:       len(task.Plan),
+			Description: externalVerificationStepDescription(verificationCtx.TaskKind, false),
+			Status:      StepStatusRunning,
+		}
+		externalStartedAt := timeutil.NowTime()
+		externalVerifyStep.StartedAt = &externalStartedAt
+		verificationResult, verificationOutput, verificationErr := r.runVerification(ctx, task, verificationCtx)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			r.cancelTask(task, "task cancelled")
+			return
+		}
+		externalCompletedAt := timeutil.NowTime()
+		externalVerifyStep.CompletedAt = &externalCompletedAt
+		externalVerifyStep.Output = verificationOutput
+		if verificationErr != nil {
+			externalVerifyStep.Status = StepStatusFailed
+			recordVerificationFailure(task, verificationOutput)
+			r.appendAudit(task, RuntimeAuditEvent{
+				Timestamp: timeutil.NowTime(),
+				Reason:    "external_verification_failed",
+				Error:     verificationErr.Error(),
+			})
+		} else {
+			externalVerifyStep.Status = StepStatusCompleted
+			task.VerifiedOutput = verificationOutput
+			r.appendAudit(task, RuntimeAuditEvent{
+				Timestamp: timeutil.NowTime(),
+				Reason:    "external_verification_passed",
+			})
+		}
+		task.Plan = append(task.Plan, *externalVerifyStep)
+		_ = r.store.Update(ctx, task)
+		if verificationErr != nil {
+			if verificationPolicy.MaxRecoveryAttempts <= 0 {
+				r.failTask(ctx, task, "verification did not pass after bounded recovery retry")
+				return
+			}
+			if err := r.transitionState(ctx, task, RuntimeStateRecover, "verification failed", nil, TaskStatusExecuting); err != nil {
+				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before recovery: %v", err))
+				return
+			}
+			recoveryStep := &PlanStep{
+				Index:       len(task.Plan),
+				Description: recoveryStepDescription(verificationCtx.TaskKind),
+				Status:      StepStatusRunning,
+			}
+			recoveryStartedAt := timeutil.NowTime()
+			recoveryStep.StartedAt = &recoveryStartedAt
+			recoveryOutput, recoveryErr := r.runRecovery(ctx, task, verificationCtx, verificationResult)
+			if errors.Is(ctx.Err(), context.Canceled) {
+				r.cancelTask(task, "task cancelled")
+				return
+			}
+			recoveryCompletedAt := timeutil.NowTime()
+			recoveryStep.CompletedAt = &recoveryCompletedAt
+			recoveryStep.Output = recoveryOutput
+			if recoveryErr != nil {
+				recoveryStep.Status = StepStatusFailed
+				recordVerificationFailure(task, recoveryOutput)
+				r.appendAudit(task, RuntimeAuditEvent{
+					Timestamp: timeutil.NowTime(),
+					Reason:    "recovery_failed",
+					Error:     recoveryErr.Error(),
+				})
+			} else {
+				recoveryStep.Status = StepStatusCompleted
+				r.appendAudit(task, RuntimeAuditEvent{
+					Timestamp: timeutil.NowTime(),
+					Reason:    "recovery_applied",
+				})
+			}
+			task.Plan = append(task.Plan, *recoveryStep)
+			_ = r.store.Update(ctx, task)
+			if recoveryErr != nil {
+				r.failTask(ctx, task, fmt.Sprintf("verification failed and recovery failed: %v", recoveryErr))
+				return
+			}
+			if err := r.transitionState(ctx, task, RuntimeStateVerify, "re-verify after recovery", nil, TaskStatusExecuting); err != nil {
+				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before re-verify: %v", err))
+				return
+			}
+
+			retryGroundedVerifyStep := &PlanStep{
+				Index:       len(task.Plan),
+				Description: groundedVerificationStepDescription(verificationCtx.TaskKind, true),
+				Status:      StepStatusRunning,
+			}
+			retryGroundedStartedAt := timeutil.NowTime()
+			retryGroundedVerifyStep.StartedAt = &retryGroundedStartedAt
+			_, retryGroundedOutput, retryGroundedErr := r.groundedRuntime.VerifyTask(task)
+			if errors.Is(ctx.Err(), context.Canceled) {
+				r.cancelTask(task, "task cancelled")
+				return
+			}
+			retryGroundedCompletedAt := timeutil.NowTime()
+			retryGroundedVerifyStep.CompletedAt = &retryGroundedCompletedAt
+			retryGroundedVerifyStep.Output = retryGroundedOutput
+			if retryGroundedErr != nil {
+				retryGroundedVerifyStep.Status = StepStatusFailed
+				recordVerificationFailure(task, retryGroundedOutput)
+				r.appendAudit(task, RuntimeAuditEvent{
+					Timestamp: timeutil.NowTime(),
+					Reason:    "grounded_verification_failed_after_recovery",
+					Error:     retryGroundedErr.Error(),
+				})
+			} else {
+				retryGroundedVerifyStep.Status = StepStatusCompleted
+				task.VerifiedOutput = retryGroundedOutput
+				r.appendAudit(task, RuntimeAuditEvent{
+					Timestamp: timeutil.NowTime(),
+					Reason:    "grounded_verification_passed_after_recovery",
+				})
+			}
+			task.Plan = append(task.Plan, *retryGroundedVerifyStep)
+			_ = r.store.Update(ctx, task)
+			if retryGroundedErr != nil {
+				r.failTask(ctx, task, "verification did not pass after bounded recovery retry")
+				return
+			}
+
+			retryExternalVerifyStep := &PlanStep{
+				Index:       len(task.Plan),
+				Description: externalVerificationStepDescription(verificationCtx.TaskKind, true),
+				Status:      StepStatusRunning,
+			}
+			retryExternalStartedAt := timeutil.NowTime()
+			retryExternalVerifyStep.StartedAt = &retryExternalStartedAt
+			_, retryVerificationOutput, retryVerificationErr := r.runVerification(ctx, task, verificationCtx)
+			if errors.Is(ctx.Err(), context.Canceled) {
+				r.cancelTask(task, "task cancelled")
+				return
+			}
+			retryExternalCompletedAt := timeutil.NowTime()
+			retryExternalVerifyStep.CompletedAt = &retryExternalCompletedAt
+			retryExternalVerifyStep.Output = retryVerificationOutput
+			if retryVerificationErr != nil {
+				retryExternalVerifyStep.Status = StepStatusFailed
+				recordVerificationFailure(task, retryVerificationOutput)
+				r.appendAudit(task, RuntimeAuditEvent{
+					Timestamp: timeutil.NowTime(),
+					Reason:    "external_verification_failed_after_recovery",
+					Error:     retryVerificationErr.Error(),
+				})
+			} else {
+				retryExternalVerifyStep.Status = StepStatusCompleted
+				task.VerifiedOutput = retryVerificationOutput
+				r.appendAudit(task, RuntimeAuditEvent{
+					Timestamp: timeutil.NowTime(),
+					Reason:    "external_verification_passed_after_recovery",
+				})
+			}
+			task.Plan = append(task.Plan, *retryExternalVerifyStep)
+			_ = r.store.Update(ctx, task)
+			if retryVerificationErr != nil {
+				r.failTask(ctx, task, "verification did not pass after bounded recovery retry")
+				return
+			}
+		}
+	} else {
+		r.appendAudit(task, RuntimeAuditEvent{
+			Timestamp: timeutil.NowTime(),
+			Reason:    "external_verification_skipped",
+		})
 	}
 
 	task.Result = buildBaseResultSummary(task, TaskStatusCompleted, "")
@@ -1993,6 +2164,179 @@ func (r *Runner) runRecovery(ctx context.Context, task *Task, verificationCtx Ve
 	)
 }
 
+type runtimeVerificationPolicy struct {
+	EnableExternalQA    bool
+	MaxRecoveryAttempts int
+}
+
+func resolveRuntimeVerificationPolicy(task *Task) runtimeVerificationPolicy {
+	policy := runtimeVerificationPolicy{}
+	if task == nil {
+		return policy
+	}
+	sources := taskMetadataSources(task)
+	if enabled, ok := metadataBoolFromMaps(sources, "enable_external_qa", "external_qa_enabled"); ok {
+		policy.EnableExternalQA = enabled
+	}
+	if attempts, ok := metadataIntFromMaps(sources, "max_recovery_attempts"); ok {
+		policy.MaxRecoveryAttempts = attempts
+	}
+	if policy.MaxRecoveryAttempts < 0 {
+		policy.MaxRecoveryAttempts = 0
+	}
+	if policy.MaxRecoveryAttempts > 1 {
+		policy.MaxRecoveryAttempts = 1
+	}
+	if policy.EnableExternalQA && policy.MaxRecoveryAttempts == 0 {
+		policy.MaxRecoveryAttempts = 1
+	}
+	return policy
+}
+
+func mergeTaskSuccessCriteria(task *Task, planned []string) []string {
+	values := append([]string(nil), planned...)
+	for _, source := range taskMetadataSources(task) {
+		values = append(metadataStringSlice(source, "task_success_criteria"), values...)
+		values = append(metadataStringSlice(source, "success_criteria"), values...)
+		values = append(metadataStringSlice(source, "deliverables"), values...)
+	}
+	if task != nil {
+		values = append(append([]string(nil), task.SuccessCriteria...), values...)
+	}
+	return effectiveSuccessCriteria(values)
+}
+
+func mergeTaskFallbackPlan(task *Task, planned []string) []string {
+	values := append([]string(nil), planned...)
+	for _, source := range taskMetadataSources(task) {
+		values = append(metadataStringSlice(source, "task_fallback_plan"), values...)
+		values = append(metadataStringSlice(source, "fallback_order"), values...)
+		values = append(metadataStringSlice(source, "fallback_plan"), values...)
+	}
+	if task != nil {
+		values = append(append([]string(nil), task.FallbackPlan...), values...)
+	}
+	return effectiveFallbackPlan(values)
+}
+
+func taskMetadataSources(task *Task) []map[string]interface{} {
+	if task == nil || len(task.Metadata) == 0 {
+		return nil
+	}
+	sources := []map[string]interface{}{task.Metadata}
+	for _, key := range []string{"runtime_adaptation", "verification_policy", "harness_contract", "resume_checkpoint"} {
+		if nested := metadataMapValue(task.Metadata, key); len(nested) > 0 {
+			sources = append(sources, nested)
+		}
+	}
+	return sources
+}
+
+func metadataMapValue(meta map[string]interface{}, key string) map[string]interface{} {
+	if len(meta) == 0 {
+		return nil
+	}
+	raw, ok := meta[key]
+	if !ok {
+		return nil
+	}
+	typed, _ := raw.(map[string]interface{})
+	if len(typed) == 0 {
+		return nil
+	}
+	return typed
+}
+
+func metadataBoolFromMaps(sources []map[string]interface{}, keys ...string) (bool, bool) {
+	for _, source := range sources {
+		for _, key := range keys {
+			raw, ok := source[key]
+			if !ok {
+				continue
+			}
+			if typed, ok := raw.(bool); ok {
+				return typed, true
+			}
+		}
+	}
+	return false, false
+}
+
+func metadataIntFromMaps(sources []map[string]interface{}, keys ...string) (int, bool) {
+	for _, source := range sources {
+		for _, key := range keys {
+			raw, ok := source[key]
+			if !ok {
+				continue
+			}
+			switch value := raw.(type) {
+			case int:
+				return value, true
+			case int32:
+				return int(value), true
+			case int64:
+				return int(value), true
+			case float64:
+				return int(value), true
+			case float32:
+				return int(value), true
+			}
+		}
+	}
+	return 0, false
+}
+
+func metadataStringSlice(meta map[string]interface{}, key string) []string {
+	if len(meta) == 0 {
+		return nil
+	}
+	raw, ok := meta[key]
+	if !ok {
+		return nil
+	}
+	switch values := raw.(type) {
+	case []string:
+		return dedupeStrings(values)
+	case []interface{}:
+		out := make([]string, 0, len(values))
+		for _, item := range values {
+			if text := strings.TrimSpace(fmt.Sprint(item)); text != "" {
+				out = append(out, text)
+			}
+		}
+		return dedupeStrings(out)
+	default:
+		if text := strings.TrimSpace(fmt.Sprint(values)); text != "" {
+			return []string{text}
+		}
+		return nil
+	}
+}
+
+func recordVerificationFailure(task *Task, output string) {
+	if task == nil {
+		return
+	}
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return
+	}
+	for _, existing := range task.VerificationErrors {
+		if strings.TrimSpace(existing) == output {
+			return
+		}
+	}
+	task.VerificationErrors = append(task.VerificationErrors, output)
+}
+
+func groundedVerificationStepDescription(kind TaskKind, retry bool) string {
+	return verificationStepDescription(kind, retry) + " [grounded]"
+}
+
+func externalVerificationStepDescription(kind TaskKind, retry bool) string {
+	return verificationStepDescription(kind, retry) + " [external QA]"
+}
+
 func recentSuccessfulStepSummaries(task *Task, limit int) []string {
 	if task == nil || limit <= 0 {
 		return nil
@@ -2276,7 +2620,7 @@ func buildReflectionInput(task *Task, plan []PlanStep, finalStatus TaskStatus, f
 			Status:      string(step.Status),
 			Output:      step.Output,
 		})
-		if verificationOutput == "" && strings.HasPrefix(strings.ToLower(step.Description), "verify") {
+		if strings.HasPrefix(strings.ToLower(step.Description), "verify") {
 			verificationOutput = step.Output
 		}
 	}

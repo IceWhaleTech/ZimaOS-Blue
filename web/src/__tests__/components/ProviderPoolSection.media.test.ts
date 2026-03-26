@@ -67,6 +67,9 @@ function createTestI18n() {
         },
         providerPool: {
           description: 'LLM 配置',
+          location: '位置',
+          locationCloud: '云端',
+          locationLocal: '本地',
           apiFormatLabel: '格式类型',
           apiFormatHint: '默认使用自动检测，也可以手动固定为某一种 API 格式。修改后会立即生效。',
           apiFormatAutoDetected: '当前自动检测结果：{format}',
@@ -225,5 +228,87 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(mocks.providerPoolStore.updateProvider).toHaveBeenCalledWith(provider.id, {
       api_format_mode: 'auto',
     })
+  })
+
+  it('keeps non-custom non-ollama providers fixed to cloud location', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      location: 'cloud',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="provider-location-fixed-cloud"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="provider-location-local-button"]').exists()).toBe(false)
+  })
+
+  it('allows custom providers to switch location', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      location: 'local',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="provider-location-cloud-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="provider-location-local-button"]').exists()).toBe(true)
+  })
+
+  it('allows ollama to switch location', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'ollama',
+      name: 'Ollama',
+      type: 'builtin',
+      location: 'local',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="provider-location-cloud-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="provider-location-local-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="provider-location-fixed-cloud"]').exists()).toBe(false)
+  })
+
+  it('hides oauth-backed providers from the provider management UI', async () => {
+    const hiddenProvider = {
+      ...createProvider('custom'),
+      id: 'google-antigravity',
+      name: 'Google Cloud Code Assist (Antigravity)',
+      type: 'platform',
+      oauth: {
+        connected: false,
+      },
+    }
+    const visibleProvider = {
+      ...createProvider('custom'),
+      id: 'anthropic',
+      name: 'Anthropic',
+      type: 'builtin',
+    }
+    mocks.providerPoolStore.providers = [hiddenProvider, visibleProvider]
+    mocks.providerPoolStore.selectedProviderId = hiddenProvider.id
+    mocks.providerPoolStore.selectedProvider = hiddenProvider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Google Cloud Code Assist (Antigravity)')
+    expect(wrapper.text()).toContain('Anthropic')
   })
 })

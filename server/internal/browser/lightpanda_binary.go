@@ -16,12 +16,28 @@ import (
 )
 
 const (
-	lightpandaGitHubRepo = "https://github.com/lightpanda-io/browser/releases/latest/download"
+	lightpandaGitHubNightly = "https://github.com/lightpanda-io/browser/releases/download/nightly"
+	lightpandaGitHubLatest  = "https://github.com/lightpanda-io/browser/releases/latest/download"
 	// Keep this to three sources and intentionally exclude jsdelivr because the
 	// binary payload is too large for that CDN path.
-	lightpandaMirrorGhProxy  = "https://mirror.ghproxy.com/https://github.com/lightpanda-io/browser/releases/latest/download"
-	lightpandaMirrorKKGitHub = "https://kkgithub.com/lightpanda-io/browser/releases/latest/download"
+	lightpandaMirrorGhProxyNightly  = "https://mirror.ghproxy.com/https://github.com/lightpanda-io/browser/releases/download/nightly"
+	lightpandaMirrorGhProxyLatest   = "https://mirror.ghproxy.com/https://github.com/lightpanda-io/browser/releases/latest/download"
+	lightpandaMirrorKKGitHubNightly = "https://kkgithub.com/lightpanda-io/browser/releases/download/nightly"
+	lightpandaMirrorKKGitHubLatest  = "https://kkgithub.com/lightpanda-io/browser/releases/latest/download"
+
+	lightpandaReleaseNightly = "nightly"
+	lightpandaReleaseLatest  = "latest"
 )
+
+type lightpandaBinaryAsset struct {
+	Name    string
+	Release string
+}
+
+type lightpandaBinaryDownloadCandidate struct {
+	AssetName string
+	URL       string
+}
 
 // LightpandaBinaryManager resolves or downloads the Lightpanda binary.
 type LightpandaBinaryManager struct {
@@ -49,7 +65,7 @@ func (m *LightpandaBinaryManager) Ensure(ctx context.Context) (string, error) {
 		return readyPath, err
 	}
 
-	targetPath, archiveName, err := m.pathsForCurrentPlatform()
+	targetPath, candidates, err := m.downloadCandidatesForCurrentPlatform()
 	if err != nil {
 		return "", err
 	}
@@ -58,12 +74,12 @@ func (m *LightpandaBinaryManager) Ensure(ctx context.Context) (string, error) {
 	}
 
 	var lastErr error
-	for _, baseURL := range m.downloadSources() {
-		if strings.TrimSpace(baseURL) == "" {
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate.URL) == "" {
 			continue
 		}
-		tmpArchive := targetPath + ".download"
-		if err := m.downloadFile(ctx, baseURL+"/"+archiveName, tmpArchive); err != nil {
+		tmpArchive := downloadTempPath(filepath.Dir(targetPath), candidate.AssetName)
+		if err := m.downloadFile(ctx, candidate.URL, tmpArchive); err != nil {
 			lastErr = err
 			_ = os.Remove(tmpArchive)
 			continue
@@ -99,7 +115,7 @@ func (m *LightpandaBinaryManager) ReadyPath() (string, bool, error) {
 		return "", false, err
 	}
 
-	targetPath, _, err := m.pathsForCurrentPlatform()
+	targetPath, err := targetPathForCurrentPlatform(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return "", false, err
 	}
@@ -113,33 +129,119 @@ func (m *LightpandaBinaryManager) ReadyPath() (string, bool, error) {
 	return "", false, err
 }
 
-func (m *LightpandaBinaryManager) downloadSources() []string {
-	return []string{
-		lightpandaGitHubRepo,
-		lightpandaMirrorGhProxy,
-		lightpandaMirrorKKGitHub,
+func (m *LightpandaBinaryManager) downloadSources(release string) []string {
+	switch strings.TrimSpace(release) {
+	case lightpandaReleaseNightly:
+		return []string{
+			lightpandaGitHubNightly,
+			lightpandaMirrorGhProxyNightly,
+			lightpandaMirrorKKGitHubNightly,
+		}
+	default:
+		return []string{
+			lightpandaGitHubLatest,
+			lightpandaMirrorGhProxyLatest,
+			lightpandaMirrorKKGitHubLatest,
+		}
 	}
 }
 
-func (m *LightpandaBinaryManager) pathsForCurrentPlatform() (string, string, error) {
-	platform := runtime.GOOS + "-" + runtime.GOARCH
-	binaryName := "lightpanda"
-	archiveName := ""
-	switch runtime.GOOS {
-	case "darwin", "linux":
-		archiveName = "lightpanda-" + platform + ".tar.gz"
-	case "windows":
-		binaryName += ".exe"
-		archiveName = "lightpanda-" + platform + ".zip"
-	default:
-		return "", "", fmt.Errorf("lightpanda is unsupported on %s/%s", runtime.GOOS, runtime.GOARCH)
+func (m *LightpandaBinaryManager) downloadCandidatesForCurrentPlatform() (string, []lightpandaBinaryDownloadCandidate, error) {
+	targetPath, err := targetPathForCurrentPlatform(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return "", nil, err
 	}
-	cacheDir, err := os.UserCacheDir()
-	if err != nil || strings.TrimSpace(cacheDir) == "" {
+	assets, err := lightpandaAssetsForPlatform(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return "", nil, err
+	}
+	candidates := make([]lightpandaBinaryDownloadCandidate, 0, len(assets)*3)
+	for _, asset := range assets {
+		for _, baseURL := range m.downloadSources(asset.Release) {
+			if strings.TrimSpace(baseURL) == "" {
+				continue
+			}
+			candidates = append(candidates, lightpandaBinaryDownloadCandidate{
+				AssetName: asset.Name,
+				URL:       baseURL + "/" + asset.Name,
+			})
+		}
+	}
+	return targetPath, candidates, nil
+}
+
+func targetPathForCurrentPlatform(goos, goarch string) (string, error) {
+	binaryName, err := lightpandaBinaryName(goos)
+	if err != nil {
+		return "", err
+	}
+	platform := goos + "-" + goarch
+	cacheDir, cacheErr := os.UserCacheDir()
+	if cacheErr != nil || strings.TrimSpace(cacheDir) == "" {
 		cacheDir = os.TempDir()
 	}
-	targetPath := filepath.Join(cacheDir, "zimaos-blue", "browser", "lightpanda", platform, binaryName)
-	return targetPath, archiveName, nil
+	return filepath.Join(cacheDir, "zimaos-blue", "browser", "lightpanda", platform, binaryName), nil
+}
+
+func lightpandaBinaryName(goos string) (string, error) {
+	switch goos {
+	case "darwin", "linux":
+		return "lightpanda", nil
+	case "windows":
+		return "lightpanda.exe", nil
+	default:
+		return "", fmt.Errorf("lightpanda is unsupported on %s", goos)
+	}
+}
+
+func lightpandaAssetsForPlatform(goos, goarch string) ([]lightpandaBinaryAsset, error) {
+	legacyAsset, err := lightpandaLegacyArchiveForPlatform(goos, goarch)
+	if err != nil {
+		return nil, err
+	}
+	assets := make([]lightpandaBinaryAsset, 0, 2)
+	if nightlyAsset := lightpandaNightlyAssetForPlatform(goos, goarch); nightlyAsset != "" {
+		assets = append(assets, lightpandaBinaryAsset{
+			Name:    nightlyAsset,
+			Release: lightpandaReleaseNightly,
+		})
+	}
+	assets = append(assets, lightpandaBinaryAsset{
+		Name:    legacyAsset,
+		Release: lightpandaReleaseLatest,
+	})
+	return assets, nil
+}
+
+func lightpandaNightlyAssetForPlatform(goos, goarch string) string {
+	switch {
+	case goos == "darwin" && goarch == "arm64":
+		return "lightpanda-aarch64-macos"
+	case goos == "linux" && goarch == "amd64":
+		return "lightpanda-x86_64-linux"
+	default:
+		return ""
+	}
+}
+
+func lightpandaLegacyArchiveForPlatform(goos, goarch string) (string, error) {
+	platform := goos + "-" + goarch
+	switch goos {
+	case "darwin", "linux":
+		return "lightpanda-" + platform + ".tar.gz", nil
+	case "windows":
+		return "lightpanda-" + platform + ".zip", nil
+	default:
+		return "", fmt.Errorf("lightpanda is unsupported on %s/%s", goos, goarch)
+	}
+}
+
+func downloadTempPath(dir, assetName string) string {
+	name := strings.TrimSpace(assetName)
+	if name == "" {
+		name = "lightpanda.download"
+	}
+	return filepath.Join(dir, "download-"+name)
 }
 
 func (m *LightpandaBinaryManager) downloadFile(ctx context.Context, rawURL string, destPath string) error {

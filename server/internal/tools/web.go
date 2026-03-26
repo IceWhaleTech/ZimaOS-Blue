@@ -192,7 +192,7 @@ type webQueryMediaAnalysisPlan struct {
 func NewWebQueryTool(search, fetch, read, extract, crawl Tool) *WebTool {
 	return newWebTool(
 		"web_query",
-		"Unified web query tool. Pass one input and let Blue decide how to discover, read, retry, and degrade automatically. For a URL it reads the page; for a search query it discovers candidates, reads the best results, and returns one stable result envelope with sources and warnings.",
+		"Unified web entry point for search or URL reading. Blue handles discovery, reading, retries, and warning/fallback envelopes automatically.",
 		search, fetch, read, extract, crawl,
 	)
 }
@@ -244,56 +244,34 @@ func (t *WebTool) Definition() ToolDefinition {
 					"type":        "integer",
 					"description": "Optional maximum number of body characters returned in content.",
 				},
-				"include_media": map[string]interface{}{
-					"type":        "boolean",
-					"description": "When true, inspect likely webpage images and return additional media summaries alongside the page text result.",
-				},
-				"media_mode": map[string]interface{}{
-					"type":        "string",
-					"enum":        []string{webQueryMediaModeOff, webQueryMediaModeAuto, webQueryMediaModeOCR, webQueryMediaModeFull},
-					"description": "Media analysis policy. off disables media enrichment; auto evaluates whether to skip, run OCR-first, or use fuller vision review; ocr forces OCR-only; full forces vision-first review with OCR fallback.",
-				},
-				"media_prompt": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional prompt used when analyzing webpage images. Defaults to a concise describe-the-page-visuals prompt.",
-				},
-				"max_media": map[string]interface{}{
-					"type":        "integer",
-					"description": "Maximum number of webpage images to analyze when include_media is enabled.",
+				"media": map[string]interface{}{
+					"type":        "object",
+					"description": "Optional media enrichment config.",
+					"properties": map[string]interface{}{
+						"enabled":   map[string]interface{}{"type": "boolean", "description": "Enable webpage image analysis."},
+						"mode":      map[string]interface{}{"type": "string", "enum": []string{webQueryMediaModeOff, webQueryMediaModeAuto, webQueryMediaModeOCR, webQueryMediaModeFull}, "description": "off, auto, ocr, or full"},
+						"prompt":    map[string]interface{}{"type": "string", "description": "Optional image-analysis prompt."},
+						"max_items": map[string]interface{}{"type": "integer", "description": "Maximum images to analyze."},
+					},
 				},
 				"language": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional preferred transcript/subtitle language hint.",
-				},
-				"lang": map[string]interface{}{
-					"type":        "string",
-					"description": "Compatibility alias for language.",
 				},
 				"allowed_hosts": map[string]interface{}{
 					"type":        "array",
 					"description": "Optional host allowlist used during discovery and lightweight crawl expansion.",
 					"items":       map[string]interface{}{"type": "string"},
 				},
-				"headers": map[string]interface{}{
-					"type":                 "object",
-					"description":          "Optional request headers.",
-					"additionalProperties": map[string]interface{}{"type": "string"},
-				},
-				"cookies": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional Cookie header value.",
-				},
-				"authorization": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional Authorization header value.",
-				},
-				"auth_bearer": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional bearer token.",
-				},
-				"browser_target_id": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional browser tab target ID used for cookie reuse or browser fallback.",
+				"request": map[string]interface{}{
+					"type":        "object",
+					"description": "Optional auth/session overrides for reading protected pages.",
+					"properties": map[string]interface{}{
+						"headers":           map[string]interface{}{"type": "object", "description": "Extra request headers.", "additionalProperties": map[string]interface{}{"type": "string"}},
+						"cookies":           map[string]interface{}{"type": "string", "description": "Cookie header value."},
+						"auth_bearer":       map[string]interface{}{"type": "string", "description": "Bearer token without or with Bearer prefix."},
+						"browser_target_id": map[string]interface{}{"type": "string", "description": "Reuse cookies from an existing browser tab/session."},
+					},
 				},
 			},
 			"additionalProperties": true,
@@ -305,6 +283,7 @@ func (t *WebTool) Execute(ctx context.Context, args map[string]interface{}) (int
 	if t == nil {
 		return nil, errors.New("web tool is not available")
 	}
+	args = normalizeWebQueryArgs(args)
 
 	if compatAction := inferWebCompatAction(args); compatAction != "" {
 		return t.executeLegacyAction(ctx, compatAction, args)
@@ -1375,6 +1354,44 @@ func hasLegacyWebCrawlCompatArgs(args map[string]interface{}) bool {
 		return hasSeeds
 	}
 	return false
+}
+
+func normalizeWebQueryArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := normalizeWebFetchCompatArgs("web_query", args)
+
+	rawMedia, ok := compatArgValue(normalized, "media")
+	if !ok {
+		return normalized
+	}
+	media, ok := coerceCompatMap(rawMedia)
+	if !ok || len(media) == 0 {
+		return normalized
+	}
+
+	if _, exists := normalized["include_media"]; !exists {
+		if enabled, ok := firstCompatValueDeep(media, "enabled"); ok {
+			normalized["include_media"] = enabled
+		} else {
+			normalized["include_media"] = true
+		}
+	}
+	if strings.TrimSpace(asString(normalized["media_mode"])) == "" {
+		if mode := firstCompatStringDeep(media, "mode"); mode != "" {
+			normalized["media_mode"] = mode
+		}
+	}
+	if strings.TrimSpace(asString(normalized["media_prompt"])) == "" {
+		if prompt := firstCompatStringDeep(media, "prompt"); prompt != "" {
+			normalized["media_prompt"] = prompt
+		}
+	}
+	if _, exists := normalized["max_media"]; !exists {
+		if value, ok := firstCompatValueDeep(media, "max_items", "maxItems", "limit"); ok {
+			normalized["max_media"] = value
+		}
+	}
+
+	return normalized
 }
 
 func normalizeWebReadCompatArgs(args map[string]interface{}) map[string]interface{} {

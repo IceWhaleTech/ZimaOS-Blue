@@ -1,0 +1,634 @@
+package agentcore
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+)
+
+type summaryProviderStub struct {
+	respContent string
+	lastReq     llm.ChatRequest
+}
+
+func (p *summaryProviderStub) Name() string { return "stub" }
+
+func (p *summaryProviderStub) Models() []string { return []string{"stub-model"} }
+
+func (p *summaryProviderStub) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	p.lastReq = req
+	return &llm.ChatResponse{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: p.respContent},
+	}, nil
+}
+
+func (p *summaryProviderStub) ChatStream(context.Context, llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	return nil, nil
+}
+
+func (p *summaryProviderStub) ChatStreamCallback(context.Context, llm.ChatRequest, llm.StreamCallback) error {
+	return nil
+}
+
+// generateLargeText creates a string with approximately n whitespace-separated words.
+func generateLargeText(n int) string {
+	var sb strings.Builder
+	sb.Grow(n * 5) // ~5 chars per word
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString("word")
+	}
+	return sb.String()
+}
+
+func TestEstimateTokens(t *testing.T) {
+	tests := []struct {
+		name     string
+		msg      llm.Message
+		expected int
+	}{
+		{
+			name:     "empty message",
+			msg:      llm.Message{Content: ""},
+			expected: 0,
+		},
+		{
+			name:     "short message",
+			msg:      llm.Message{Content: "Hello"},
+			expected: 1, // 1 word
+		},
+		{
+			name:     "longer message",
+			msg:      llm.Message{Content: "This is a longer message with more content"},
+			expected: 8, // 8 words
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EstimateTokens(tt.msg)
+			if result != tt.expected {
+				t.Errorf("EstimateTokens() = %d, want %d", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestEstimateMessagesTokens(t *testing.T) {
+	messages := []llm.Message{
+		{Content: "Hello"},    // 1 token
+		{Content: "World"},    // 1 token
+		{Content: "Test1234"}, // 1 token (single word)
+	}
+
+	result := EstimateMessagesTokens(messages)
+	expected := 3 // 1 + 1 + 1
+
+	if result != expected {
+		t.Errorf("EstimateMessagesTokens() = %d, want %d", result, expected)
+	}
+}
+
+func TestSplitMessagesByTokenShare(t *testing.T) {
+	tests := []struct {
+		name          string
+		messages      []llm.Message
+		parts         int
+		expectedParts int
+	}{
+		{
+			name:          "empty messages",
+			messages:      []llm.Message{},
+			parts:         2,
+			expectedParts: 0,
+		},
+		{
+			name: "single part",
+			messages: []llm.Message{
+				{Content: "Hello"},
+			},
+			parts:         1,
+			expectedParts: 1,
+		},
+		{
+			name: "two parts",
+			messages: []llm.Message{
+				{Content: "Hello World Test"},
+				{Content: "Another message here"},
+			},
+			parts:         2,
+			expectedParts: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SplitMessagesByTokenShare(tt.messages, tt.parts)
+			if len(result) != tt.expectedParts {
+				t.Errorf("SplitMessagesByTokenShare() returned %d parts, want %d", len(result), tt.expectedParts)
+			}
+		})
+	}
+}
+
+func TestChunkMessagesByMaxTokens(t *testing.T) {
+	messages := []llm.Message{
+		{Content: "Short"},                                 // ~1 token
+		{Content: "This is a medium length message"},       // ~8 tokens
+		{Content: "Another short one"},                     // ~4 tokens
+		{Content: "And one more message to test chunking"}, // ~9 tokens
+	}
+
+	// With max 10 tokens, should create multiple chunks
+	chunks := ChunkMessagesByMaxTokens(messages, 10)
+
+	if len(chunks) < 2 {
+		t.Errorf("Expected at least 2 chunks, got %d", len(chunks))
+	}
+
+	// Verify all messages are preserved
+	totalMessages := 0
+	for _, chunk := range chunks {
+		totalMessages += len(chunk)
+	}
+	if totalMessages != len(messages) {
+		t.Errorf("Expected %d total messages, got %d", len(messages), totalMessages)
+	}
+}
+
+func TestComputeAdaptiveChunkRatio(t *testing.T) {
+	tests := []struct {
+		name          string
+		messages      []llm.Message
+		contextWindow int
+		minExpected   float64
+		maxExpected   float64
+	}{
+		{
+			name:          "empty messages",
+			messages:      []llm.Message{},
+			contextWindow: 100000,
+			minExpected:   BaseChunkRatio,
+			maxExpected:   BaseChunkRatio,
+		},
+		{
+			name: "small messages",
+			messages: []llm.Message{
+				{Content: "Hello"},
+				{Content: "World"},
+			},
+			contextWindow: 100000,
+			minExpected:   BaseChunkRatio - 0.01,
+			maxExpected:   BaseChunkRatio + 0.01,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ComputeAdaptiveChunkRatio(tt.messages, tt.contextWindow)
+			if result < tt.minExpected || result > tt.maxExpected {
+				t.Errorf("ComputeAdaptiveChunkRatio() = %f, want between %f and %f", result, tt.minExpected, tt.maxExpected)
+			}
+		})
+	}
+}
+
+func TestIsOversizedForSummary(t *testing.T) {
+	tests := []struct {
+		name          string
+		msg           llm.Message
+		contextWindow int
+		expected      bool
+	}{
+		{
+			name:          "small message",
+			msg:           llm.Message{Content: "Hello"},
+			contextWindow: 100000,
+			expected:      false,
+		},
+		{
+			name:          "large message",
+			msg:           llm.Message{Content: generateLargeText(200000)}, // ~200k words
+			contextWindow: 100000,
+			expected:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsOversizedForSummary(tt.msg, tt.contextWindow)
+			if result != tt.expected {
+				t.Errorf("IsOversizedForSummary() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestPruneHistoryForContextShare(t *testing.T) {
+	messages := []llm.Message{
+		{Content: generateLargeText(2500)}, // ~2500 tokens
+		{Content: generateLargeText(2500)}, // ~2500 tokens
+		{Content: generateLargeText(2500)}, // ~2500 tokens
+		{Content: generateLargeText(2500)}, // ~2500 tokens
+	}
+
+	// With max 5000 tokens budget (10000 * 0.5), should drop some messages
+	result := PruneHistoryForContextShare(messages, 10000, 0.5, 2)
+
+	if result.DroppedCount == 0 {
+		t.Error("Expected some messages to be dropped")
+	}
+
+	if result.KeptTokens > result.BudgetTokens {
+		t.Errorf("Kept tokens (%d) exceeds budget (%d)", result.KeptTokens, result.BudgetTokens)
+	}
+}
+
+func TestSanitizeToolPairs(t *testing.T) {
+	t.Run("orphaned tool result removed", func(t *testing.T) {
+		// tool_result references a tool_use that was pruned
+		messages := []llm.Message{
+			{Role: llm.RoleTool, Content: "result for pruned call", ToolCallID: "tc_pruned"},
+			{Role: llm.RoleUser, Content: "next question"},
+			{Role: llm.RoleAssistant, Content: "answer", ToolCalls: []llm.ToolCall{{ID: "tc_kept", Name: "exec"}}},
+			{Role: llm.RoleTool, Content: "result for kept call", ToolCallID: "tc_kept"},
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		if len(kept) != 3 {
+			t.Errorf("expected 3 kept, got %d", len(kept))
+		}
+		if len(dropped) != 1 {
+			t.Errorf("expected 1 dropped, got %d", len(dropped))
+		}
+		if dropped[0].ToolCallID != "tc_pruned" {
+			t.Errorf("expected tc_pruned to be dropped, got %s", dropped[0].ToolCallID)
+		}
+	})
+
+	t.Run("orphaned assistant tool_use removed", func(t *testing.T) {
+		// assistant has tool_calls but all results were pruned
+		messages := []llm.Message{
+			{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{{ID: "tc_orphan", Name: "exec"}}},
+			{Role: llm.RoleUser, Content: "next question"},
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		if len(kept) != 1 {
+			t.Errorf("expected 1 kept, got %d", len(kept))
+		}
+		if len(dropped) != 1 {
+			t.Errorf("expected 1 dropped, got %d", len(dropped))
+		}
+		if kept[0].Role != llm.RoleUser {
+			t.Errorf("expected user message kept, got %s", kept[0].Role)
+		}
+	})
+
+	t.Run("complete pair preserved", func(t *testing.T) {
+		messages := []llm.Message{
+			{Role: llm.RoleUser, Content: "do something"},
+			{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{{ID: "tc1", Name: "exec"}}},
+			{Role: llm.RoleTool, Content: "done", ToolCallID: "tc1"},
+			{Role: llm.RoleAssistant, Content: "all done"},
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		if len(kept) != 4 {
+			t.Errorf("expected 4 kept, got %d", len(kept))
+		}
+		if len(dropped) != 0 {
+			t.Errorf("expected 0 dropped, got %d", len(dropped))
+		}
+	})
+
+	t.Run("multiple tool calls partial results", func(t *testing.T) {
+		// assistant has 2 tool calls, only 1 result present
+		messages := []llm.Message{
+			{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{
+				{ID: "tc1", Name: "exec"},
+				{ID: "tc2", Name: "read"},
+			}},
+			{Role: llm.RoleTool, Content: "result1", ToolCallID: "tc1"},
+			// tc2 result was pruned
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		// assistant has at least one result (tc1), so it's kept
+		if len(kept) != 2 {
+			t.Errorf("expected 2 kept, got %d", len(kept))
+		}
+		if len(dropped) != 0 {
+			t.Errorf("expected 0 dropped, got %d", len(dropped))
+		}
+	})
+
+	t.Run("no tool messages", func(t *testing.T) {
+		messages := []llm.Message{
+			{Role: llm.RoleUser, Content: "hello"},
+			{Role: llm.RoleAssistant, Content: "hi"},
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		if len(kept) != 2 {
+			t.Errorf("expected 2 kept, got %d", len(kept))
+		}
+		if len(dropped) != 0 {
+			t.Errorf("expected 0 dropped, got %d", len(dropped))
+		}
+	})
+}
+
+func TestPruneHistoryPreservesToolPairs(t *testing.T) {
+	// Simulate a conversation where compaction drops the assistant tool_use
+	// but would leave the tool_result orphaned without the fix.
+	messages := []llm.Message{
+		// Old conversation (will be pruned due to budget)
+		{Role: llm.RoleUser, Content: generateLargeText(1000)},
+		{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{{ID: "tc_old", Name: "exec", Arguments: `{"command":"ls"}`}}},
+		{Role: llm.RoleTool, Content: generateLargeText(1000), ToolCallID: "tc_old"},
+		{Role: llm.RoleAssistant, Content: generateLargeText(1000)},
+		// Recent conversation (should be kept)
+		{Role: llm.RoleUser, Content: "recent question"},
+		{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{{ID: "tc_new", Name: "exec", Arguments: `{"command":"pwd"}`}}},
+		{Role: llm.RoleTool, Content: "result", ToolCallID: "tc_new"},
+	}
+
+	// Budget is tight enough to force pruning of old messages
+	result := PruneHistoryForContextShare(messages, 4000, 0.5, 2)
+
+	// Verify no orphaned tool results in kept messages
+	toolCallIDs := make(map[string]struct{})
+	for _, msg := range result.Messages {
+		if msg.Role == llm.RoleAssistant {
+			for _, tc := range msg.ToolCalls {
+				toolCallIDs[tc.ID] = struct{}{}
+			}
+		}
+	}
+	for _, msg := range result.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolCallID != "" {
+			if _, ok := toolCallIDs[msg.ToolCallID]; !ok {
+				t.Errorf("orphaned tool_result found: ToolCallID=%s has no matching tool_use in kept messages", msg.ToolCallID)
+			}
+		}
+	}
+
+	// Verify no orphaned assistant tool_use in kept messages
+	toolResultIDs := make(map[string]struct{})
+	for _, msg := range result.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolCallID != "" {
+			toolResultIDs[msg.ToolCallID] = struct{}{}
+		}
+	}
+	for _, msg := range result.Messages {
+		if msg.Role == llm.RoleAssistant && len(msg.ToolCalls) > 0 {
+			hasAnyResult := false
+			for _, tc := range msg.ToolCalls {
+				if _, ok := toolResultIDs[tc.ID]; ok {
+					hasAnyResult = true
+					break
+				}
+			}
+			if !hasAnyResult {
+				t.Errorf("orphaned assistant tool_use found: none of its tool_call IDs have matching results")
+			}
+		}
+	}
+}
+
+func TestNormalizeStructuredSummaryCanonicalizesLegacySections(t *testing.T) {
+	raw := strings.Join([]string{
+		"- Goal: ship pressure-driven compact",
+		"- Preferences: keep the 75% threshold",
+		"- Decisions: cue-based auto switching is disabled",
+		"- Pending: wire trim only as the final fallback",
+		"- File Paths: server/internal/server/chat.go",
+		"- File Paths: server/internal/server/chat_context.go",
+	}, "\n")
+
+	got := NormalizeStructuredSummary(raw, "", nil)
+
+	for _, token := range []string{
+		"Goal\n- ship pressure-driven compact",
+		"Instructions\n- keep the 75% threshold",
+		"Discoveries\n- cue-based auto switching is disabled",
+		"Accomplished\n- wire trim only as the final fallback",
+		"Relevant Files\n- server/internal/server/chat.go\n- server/internal/server/chat_context.go",
+	} {
+		if !strings.Contains(got, token) {
+			t.Fatalf("normalized summary missing %q:\n%s", token, got)
+		}
+	}
+}
+
+func TestNormalizeStructuredSummaryAggregatesRelevantFilesFromToolContext(t *testing.T) {
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: "Also keep server/internal/server/chat_context.go in mind."},
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+			{ID: "read-1", Name: "read", Arguments: `{"path":"server/internal/server/chat.go"}`},
+		}},
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+			{ID: "edit-1", Name: "edit", Arguments: `{"path":"server/internal/agentcore/compaction.go","old_text":"old","new_text":"new"}`},
+		}},
+	}
+
+	got := NormalizeStructuredSummary("Goal\n- fix compaction", "", messages)
+	want := "Relevant Files\n- server/internal/agentcore/compaction.go\n- server/internal/server/chat.go\n- server/internal/server/chat_context.go"
+	if !strings.Contains(got, want) {
+		t.Fatalf("normalized relevant files = %q, want ordered file aggregation %q", got, want)
+	}
+}
+
+func TestCompactorSummarizeNormalizesProviderOutput(t *testing.T) {
+	provider := &summaryProviderStub{
+		respContent: "- Goal: keep compact structured\n- Pending: verify tests\n- File Paths: server/internal/server/chat.go",
+	}
+	compactor := NewCompactor(CompactionConfig{
+		MaxContextTokens: 4096,
+		MaxHistoryShare:  1.0,
+		ReserveTokens:    256,
+	}, provider)
+
+	summary, err := compactor.Summarize(context.Background(), []llm.Message{
+		{Role: llm.RoleUser, Content: "Please keep server/internal/server/chat_context.go and the new budget flow aligned."},
+	}, "")
+	if err != nil {
+		t.Fatalf("Summarize() error = %v", err)
+	}
+	if !strings.Contains(summary, "Goal") || !strings.Contains(summary, "Accomplished") || !strings.Contains(summary, "Relevant Files") {
+		t.Fatalf("summary = %q, want canonical structured sections", summary)
+	}
+	if !strings.Contains(provider.lastReq.Messages[0].Content, "Goal, Instructions, Discoveries, Accomplished, Relevant Files") {
+		t.Fatalf("prompt = %q, want canonical summary instructions", provider.lastReq.Messages[0].Content)
+	}
+}
+
+// oldEstimateTokens is the previous len/4 implementation for benchmarking comparison.
+func oldEstimateTokens(msg llm.Message) int {
+	total := 0
+	if msg.Content != "" {
+		total += len(msg.Content) / 4
+	}
+	for _, part := range msg.ContentParts {
+		switch part.Type {
+		case "text":
+			total += len(part.Text) / 4
+		case "image":
+			total += 765
+		}
+	}
+	for _, tc := range msg.ToolCalls {
+		total += len(tc.Name)/4 + len(tc.Arguments)/4 + 10
+	}
+	if total == 0 && (msg.Role != "" || msg.ToolCallID != "") {
+		total = 4
+	}
+	return total
+}
+
+func BenchmarkEstimateTokens(b *testing.B) {
+	short := []llm.Message{
+		{Role: llm.RoleUser, Content: "Hello, how are you doing today?"},
+		{Role: llm.RoleAssistant, Content: "I'm doing well, thanks for asking! How can I help you?"},
+		{Role: llm.RoleUser, Content: "This is a medium length message with some code: func main() { fmt.Println(\"hello\") }"},
+		{Role: llm.RoleAssistant, Content: "Sure, let me help you with that function. Here's an improved version with error handling."},
+	}
+	long := []llm.Message{
+		{Role: llm.RoleUser, Content: generateLargeText(500)},
+		{Role: llm.RoleAssistant, Content: generateLargeText(2000)},
+	}
+
+	b.Run("short/old_len_div4", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, msg := range short {
+				oldEstimateTokens(msg)
+			}
+		}
+	})
+	b.Run("short/new_whitespace_split", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, msg := range short {
+				EstimateTokens(msg)
+			}
+		}
+	})
+	b.Run("long/old_len_div4", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, msg := range long {
+				oldEstimateTokens(msg)
+			}
+		}
+	})
+	b.Run("long/new_whitespace_split", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, msg := range long {
+				EstimateTokens(msg)
+			}
+		}
+	})
+}
+
+// TestEstimateTokensAccuracy compares old (len/4) vs new (whitespace-split)
+// against known token counts from real tokenizers.
+// Reference token counts obtained from OpenAI tiktoken (cl100k_base).
+func TestEstimateTokensAccuracy(t *testing.T) {
+	tests := []struct {
+		name           string
+		content        string
+		expectedTokens int // ground truth from tiktoken
+	}{
+		{
+			name:           "english_sentence",
+			content:        "The quick brown fox jumps over the lazy dog",
+			expectedTokens: 9, // tiktoken: 9
+		},
+		{
+			name:           "code_snippet",
+			content:        "func main() {\n\tfmt.Println(\"Hello, World!\")\n}",
+			expectedTokens: 15, // tiktoken: ~15
+		},
+		{
+			name:           "chinese_text",
+			content:        "今天天气真好，我们一起去公园散步吧",
+			expectedTokens: 14, // tiktoken: ~14
+		},
+		{
+			name:           "mixed_en_cn",
+			content:        "Hello 你好 World 世界",
+			expectedTokens: 6, // tiktoken: ~6
+		},
+		{
+			name:           "json_payload",
+			content:        `{"name":"test","value":42,"tags":["a","b","c"]}`,
+			expectedTokens: 21, // tiktoken: ~21
+		},
+		{
+			name:           "long_english_paragraph",
+			content:        "Large language models are neural networks trained on massive text datasets. They can generate human-like text, answer questions, write code, and perform many other language tasks. The transformer architecture enables these models to process long sequences efficiently.",
+			expectedTokens: 44, // tiktoken: ~44
+		},
+	}
+
+	t.Logf("%-25s %8s %8s %8s %8s %8s", "Case", "Truth", "Old", "OldErr%", "New", "NewErr%")
+	t.Logf("%-25s %8s %8s %8s %8s %8s", "----", "-----", "---", "-------", "---", "-------")
+
+	totalOldErr := 0.0
+	totalNewErr := 0.0
+
+	for _, tt := range tests {
+		msg := llm.Message{Content: tt.content}
+		oldResult := oldEstimateTokens(msg)
+		newResult := EstimateTokens(msg)
+
+		oldErrPct := float64(oldResult-tt.expectedTokens) / float64(tt.expectedTokens) * 100
+		newErrPct := float64(newResult-tt.expectedTokens) / float64(tt.expectedTokens) * 100
+
+		if oldErrPct < 0 {
+			totalOldErr += -oldErrPct
+		} else {
+			totalOldErr += oldErrPct
+		}
+		if newErrPct < 0 {
+			totalNewErr += -newErrPct
+		} else {
+			totalNewErr += newErrPct
+		}
+
+		t.Logf("%-25s %8d %8d %+7.1f%% %8d %+7.1f%%",
+			tt.name, tt.expectedTokens, oldResult, oldErrPct, newResult, newErrPct)
+	}
+
+	avgOldErr := totalOldErr / float64(len(tests))
+	avgNewErr := totalNewErr / float64(len(tests))
+	t.Logf("")
+	t.Logf("Average absolute error: old=%.1f%%, new=%.1f%%", avgOldErr, avgNewErr)
+
+	// New method should have lower average error than old
+	if avgNewErr > avgOldErr {
+		t.Errorf("New method (avg err %.1f%%) should be more accurate than old (avg err %.1f%%)", avgNewErr, avgOldErr)
+	}
+}
+
+func TestNormalizeParts(t *testing.T) {
+	tests := []struct {
+		name         string
+		parts        int
+		messageCount int
+		expected     int
+	}{
+		{"zero parts", 0, 10, 1},
+		{"negative parts", -1, 10, 1},
+		{"one part", 1, 10, 1},
+		{"normal case", 3, 10, 3},
+		{"parts exceed messages", 20, 5, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeParts(tt.parts, tt.messageCount)
+			if result != tt.expected {
+				t.Errorf("normalizeParts(%d, %d) = %d, want %d", tt.parts, tt.messageCount, result, tt.expected)
+			}
+		})
+	}
+}

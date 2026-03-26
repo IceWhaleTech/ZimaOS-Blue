@@ -255,9 +255,11 @@ const (
 
 // LightpandaConfig configures the read-only Lightpanda runtime.
 type LightpandaConfig struct {
-	Enabled    bool     `json:"enabled" yaml:"enabled"`
-	BinaryPath string   `json:"binary_path" yaml:"binary_path"`
-	Args       []string `json:"args" yaml:"args"`
+	Enabled         bool          `json:"enabled" yaml:"enabled"`
+	BinaryPath      string        `json:"binary_path" yaml:"binary_path"`
+	AutoDownload    *bool         `json:"auto_download,omitempty" yaml:"auto_download,omitempty"`
+	DownloadTimeout time.Duration `json:"download_timeout,omitempty" yaml:"download_timeout,omitempty"`
+	Args            []string      `json:"args" yaml:"args"`
 }
 
 // ChromiumConfig configures Chromium-specific routing preferences.
@@ -511,6 +513,7 @@ func DefaultConfig() *Config {
 	evaluateEnabled := true
 	preferLocalChrome := true
 	escalateOnFailure := true
+	autoDownload := true
 	return &Config{
 		Strategy:                     BrowserStrategySingle,
 		Driver:                       "managed",
@@ -539,9 +542,11 @@ func DefaultConfig() *Config {
 		NetworkObserveEnabled:        true,
 		SessionScreenshotRetention:   30 * 24 * time.Hour,
 		Lightpanda: LightpandaConfig{
-			Enabled:    false,
-			BinaryPath: "",
-			Args:       nil,
+			Enabled:         false,
+			BinaryPath:      "",
+			AutoDownload:    &autoDownload,
+			DownloadTimeout: 20 * time.Minute,
+			Args:            nil,
 		},
 		Chromium: ChromiumConfig{
 			PreferLocalChrome: &preferLocalChrome,
@@ -565,6 +570,10 @@ func (c *Config) Clone() *Config {
 	cloned.RelayPreferredSites = append([]string(nil), c.RelayPreferredSites...)
 	cloned.RelayPreferredSitePresets = append([]string(nil), c.RelayPreferredSitePresets...)
 	cloned.Lightpanda.Args = append([]string(nil), c.Lightpanda.Args...)
+	if c.Lightpanda.AutoDownload != nil {
+		autoDownload := *c.Lightpanda.AutoDownload
+		cloned.Lightpanda.AutoDownload = &autoDownload
+	}
 	if c.EvaluateEnabled != nil {
 		enabled := *c.EvaluateEnabled
 		cloned.EvaluateEnabled = &enabled
@@ -624,6 +633,24 @@ func (c *Config) PreferLocalChrome() bool {
 		return true
 	}
 	return *c.Chromium.PreferLocalChrome
+}
+
+// LightpandaAutoDownload reports whether Blue should warm or download the
+// upstream Lightpanda binary automatically in the background when enabled.
+func (c *Config) LightpandaAutoDownload() bool {
+	if c == nil || c.Lightpanda.AutoDownload == nil {
+		return true
+	}
+	return *c.Lightpanda.AutoDownload
+}
+
+// LightpandaDownloadTimeout returns the bounded timeout used for background
+// Lightpanda binary warmup/download.
+func (c *Config) LightpandaDownloadTimeout() time.Duration {
+	if c == nil || c.Lightpanda.DownloadTimeout <= 0 {
+		return 20 * time.Minute
+	}
+	return c.Lightpanda.DownloadTimeout
 }
 
 // CapabilityEscalateOnFailure reports whether Lightpanda failures should be

@@ -5,23 +5,19 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"os/exec"
 	"syscall"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
-// WindowsExecutor provides sandboxed execution on Windows using Job Objects.
+// WindowsExecutor is a placeholder for a future Job Object-backed implementation.
 type WindowsExecutor struct {
 	*BaseExecutor
 }
 
-// newPlatformExecutor creates a new Windows executor.
+// newPlatformExecutor currently fails closed until real Windows sandbox isolation lands.
 func newPlatformExecutor(config *Config) (Executor, error) {
-	base := NewBaseExecutor(config)
-
-	return &WindowsExecutor{
-		BaseExecutor: base,
-	}, nil
+	return newUnsupportedExecutor("windows sandbox backend is not implemented yet; Job Object isolation is not wired"), nil
 }
 
 // Execute executes a command with Windows-specific isolation.

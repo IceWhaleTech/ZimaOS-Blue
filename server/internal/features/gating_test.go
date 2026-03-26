@@ -16,9 +16,9 @@ func TestFeatureGate_IsEnabled(t *testing.T) {
 		t.Error("FeatureProviderConfig should be enabled without CLI")
 	}
 
-	// CLI-dependent features should be disabled without CLI
-	if fg.IsEnabled(FeatureToolCalling) {
-		t.Error("FeatureToolCalling should be disabled without CLI")
+	// Runtime features should be enabled without any external CLI dependency.
+	if !fg.IsEnabled(FeatureToolCalling) {
+		t.Error("FeatureToolCalling should be enabled without CLI")
 	}
 
 	// Agent mode is now native and should be enabled without CLI
@@ -26,25 +26,18 @@ func TestFeatureGate_IsEnabled(t *testing.T) {
 		t.Error("FeatureAgentMode should be enabled without CLI")
 	}
 
-	// Enable CLI
-	fg.SetCLIInstalled(true)
-
-	// Now CLI-dependent features should be enabled
+	fg.SetCLIInstalled(false)
 	if !fg.IsEnabled(FeatureToolCalling) {
-		t.Error("FeatureToolCalling should be enabled with CLI")
-	}
-
-	if !fg.IsEnabled(FeatureAgentMode) {
-		t.Error("FeatureAgentMode should be enabled with CLI")
+		t.Error("FeatureToolCalling should remain enabled even when legacy CLI flag is false")
 	}
 }
 
 func TestFeatureGate_Override(t *testing.T) {
 	fg := NewFeatureGate()
 
-	// ToolCalling should be disabled without CLI
-	if fg.IsEnabled(FeatureToolCalling) {
-		t.Error("FeatureToolCalling should be disabled without CLI")
+	// ToolCalling should be enabled by default.
+	if !fg.IsEnabled(FeatureToolCalling) {
+		t.Error("FeatureToolCalling should be enabled without CLI")
 	}
 
 	// Override to enable
@@ -55,8 +48,8 @@ func TestFeatureGate_Override(t *testing.T) {
 
 	// Clear override
 	fg.ClearOverride(FeatureToolCalling)
-	if fg.IsEnabled(FeatureToolCalling) {
-		t.Error("FeatureToolCalling should be disabled after clearing override")
+	if !fg.IsEnabled(FeatureToolCalling) {
+		t.Error("FeatureToolCalling should revert to enabled after clearing override")
 	}
 
 	// Override to disable a core feature
@@ -78,19 +71,12 @@ func TestFeatureGate_GetFeatureInfo(t *testing.T) {
 		t.Errorf("Name = %q, want %q", info.Name, "Tool Calling")
 	}
 
-	if !info.RequiresCLI {
-		t.Error("RequiresCLI should be true")
+	if info.RequiresCLI {
+		t.Error("RequiresCLI should be false")
 	}
 
-	if info.Enabled {
-		t.Error("Enabled should be false without CLI")
-	}
-
-	// Enable CLI and check again
-	fg.SetCLIInstalled(true)
-	info = fg.GetFeatureInfo(FeatureToolCalling)
 	if !info.Enabled {
-		t.Error("Enabled should be true with CLI")
+		t.Error("Enabled should be true without CLI")
 	}
 }
 
@@ -123,20 +109,19 @@ func TestFeatureGate_GetEnabledDisabledFeatures(t *testing.T) {
 	enabled := fg.GetEnabledFeatures()
 	disabled := fg.GetDisabledFeatures()
 
-	// Without CLI, some features should be disabled
-	if len(disabled) == 0 {
-		t.Error("GetDisabledFeatures should return some features without CLI")
+	// All runtime features should be enabled by default.
+	if len(disabled) != 0 {
+		t.Errorf("GetDisabledFeatures should be empty by default, got %d", len(disabled))
 	}
 
-	// Enable CLI
-	fg.SetCLIInstalled(true)
+	// Toggling the legacy compatibility flag should not disable runtime features.
+	fg.SetCLIInstalled(false)
 
 	enabled = fg.GetEnabledFeatures()
 	disabled = fg.GetDisabledFeatures()
 
-	// With CLI, all features should be enabled
 	if len(disabled) != 0 {
-		t.Errorf("GetDisabledFeatures should return empty with CLI, got %d", len(disabled))
+		t.Errorf("GetDisabledFeatures should remain empty, got %d", len(disabled))
 	}
 
 	if len(enabled) != len(fg.GetAllFeatures()) {
@@ -167,15 +152,8 @@ func TestFeatureGate_GetCLIDependentFeatures(t *testing.T) {
 	fg := NewFeatureGate()
 
 	cliFeatures := fg.GetCLIDependentFeatures()
-	if len(cliFeatures) == 0 {
-		t.Error("GetCLIDependentFeatures should return some features")
-	}
-
-	// All returned features should require CLI
-	for _, f := range cliFeatures {
-		if !f.RequiresCLI {
-			t.Errorf("Feature %q should require CLI", f.Name)
-		}
+	if len(cliFeatures) != 0 {
+		t.Errorf("GetCLIDependentFeatures should be empty, got %d entries", len(cliFeatures))
 	}
 }
 
@@ -187,8 +165,8 @@ func TestFeatureGate_GetStatus(t *testing.T) {
 		t.Fatal("GetStatus returned nil")
 	}
 
-	if status.CLIInstalled {
-		t.Error("CLIInstalled should be false")
+	if !status.CLIInstalled {
+		t.Error("CLIInstalled should default to true for legacy compatibility")
 	}
 
 	if status.TotalFeatures == 0 {
@@ -199,21 +177,19 @@ func TestFeatureGate_GetStatus(t *testing.T) {
 		t.Error("EnabledCount + DisabledCount should equal TotalFeatures")
 	}
 
-	// Check disabled reasons
-	if len(status.DisabledReasons) == 0 {
-		t.Error("DisabledReasons should have entries without CLI")
+	if len(status.DisabledReasons) != 0 {
+		t.Errorf("DisabledReasons should be empty, got %d", len(status.DisabledReasons))
 	}
 
-	// Enable CLI
-	fg.SetCLIInstalled(true)
+	fg.SetCLIInstalled(false)
 	status = fg.GetStatus()
 
-	if !status.CLIInstalled {
-		t.Error("CLIInstalled should be true")
+	if status.CLIInstalled {
+		t.Error("CLIInstalled should reflect the legacy flag when explicitly disabled")
 	}
 
 	if status.DisabledCount != 0 {
-		t.Errorf("DisabledCount should be 0 with CLI, got %d", status.DisabledCount)
+		t.Errorf("DisabledCount should stay 0, got %d", status.DisabledCount)
 	}
 }
 
@@ -226,24 +202,10 @@ func TestFeatureGate_RequireFeature(t *testing.T) {
 		t.Errorf("RequireFeature(BasicChat) should not return error, got %v", err)
 	}
 
-	// CLI feature should return error without CLI
-	err = fg.RequireFeature(FeatureToolCalling)
-	if err == nil {
-		t.Error("RequireFeature(ToolCalling) should return error without CLI")
-	}
-
-	// Check error type
-	if _, ok := err.(*FeatureDisabledError); !ok {
-		t.Error("Error should be FeatureDisabledError")
-	}
-
-	// Enable CLI
-	fg.SetCLIInstalled(true)
-
-	// Now should not return error
+	// Runtime features should not require CLI anymore.
 	err = fg.RequireFeature(FeatureToolCalling)
 	if err != nil {
-		t.Errorf("RequireFeature(ToolCalling) should not return error with CLI, got %v", err)
+		t.Errorf("RequireFeature(ToolCalling) should not return error, got %v", err)
 	}
 }
 

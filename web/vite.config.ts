@@ -8,6 +8,8 @@ import IconsResolver from 'unplugin-icons/resolver'
 import { compression } from 'vite-plugin-compression2'
 import { visualizer } from 'rollup-plugin-visualizer'
 
+const generatedDtsEnabled = !process.env.VITEST
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -31,7 +33,7 @@ export default defineConfig({
           ],
         },
       ],
-      dts: 'src/auto-imports.d.ts',
+      dts: generatedDtsEnabled ? 'src/auto-imports.d.ts' : false,
       dirs: ['src/composables', 'src/stores'],
       vueTemplate: true,
     }),
@@ -40,7 +42,7 @@ export default defineConfig({
       dirs: ['src/components'],
       extensions: ['vue'],
       deep: true,
-      dts: 'src/components.d.ts',
+      dts: generatedDtsEnabled ? 'src/components.d.ts' : false,
       resolvers: [
         // Auto import icons as components
         IconsResolver({

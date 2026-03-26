@@ -15,10 +15,37 @@ const (
 	modelFamilyCodex
 )
 
+const preferredModelPriorityThreshold = 100
+
 var modelVersionNumberRe = regexp.MustCompile(`\d+`)
 
-func inferModelFamily(modelID string) modelFamilyHint {
+func shouldPrioritizePreferredModels(total int) bool {
+	return total >= preferredModelPriorityThreshold
+}
+
+func normalizeModelPreferenceID(modelID string) string {
 	id := strings.ToLower(strings.TrimSpace(modelID))
+	if id == "" {
+		return ""
+	}
+	if slash := strings.LastIndex(id, "/"); slash >= 0 && slash < len(id)-1 {
+		id = id[slash+1:]
+	}
+	return id
+}
+
+func preferredModelPrefixRank(modelID string) int {
+	id := normalizeModelPreferenceID(modelID)
+	switch {
+	case strings.HasPrefix(id, "claude"), strings.HasPrefix(id, "gpt"):
+		return 0
+	default:
+		return 1
+	}
+}
+
+func inferModelFamily(modelID string) modelFamilyHint {
+	id := normalizeModelPreferenceID(modelID)
 	if id == "" {
 		return modelFamilyDefault
 	}
@@ -151,6 +178,9 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 
 func sortModelIDsByPreference(modelIDs []string) []string {
 	out := append([]string(nil), modelIDs...)
+	if !shouldPrioritizePreferredModels(len(out)) {
+		return out
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return compareModelPreference(out[i], out[j]) < 0
 	})
@@ -159,6 +189,9 @@ func sortModelIDsByPreference(modelIDs []string) []string {
 
 func sortModelsByPreference(models []*Model) []*Model {
 	out := append([]*Model(nil), models...)
+	if !shouldPrioritizePreferredModels(len(out)) {
+		return out
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return compareModelPreference(preferredModelID(out[i]), preferredModelID(out[j])) < 0
 	})
@@ -176,6 +209,15 @@ func preferredModelID(model *Model) string {
 }
 
 func compareModelPreference(left, right string) int {
+	leftPrefixRank := preferredModelPrefixRank(left)
+	rightPrefixRank := preferredModelPrefixRank(right)
+	if leftPrefixRank != rightPrefixRank {
+		if leftPrefixRank < rightPrefixRank {
+			return -1
+		}
+		return 1
+	}
+
 	leftScore := modelIntelligenceScore(left)
 	rightScore := modelIntelligenceScore(right)
 	if leftScore != rightScore {
@@ -197,7 +239,7 @@ func compareModelPreference(left, right string) int {
 }
 
 func modelVersionScore(modelID string) int {
-	matches := modelVersionNumberRe.FindAllString(strings.ToLower(modelID), -1)
+	matches := modelVersionNumberRe.FindAllString(normalizeModelPreferenceID(modelID), -1)
 	if len(matches) == 0 {
 		return 0
 	}
@@ -223,7 +265,7 @@ func modelVersionScore(modelID string) int {
 }
 
 func modelIntelligenceScore(modelID string) int {
-	id := strings.ToLower(strings.TrimSpace(modelID))
+	id := normalizeModelPreferenceID(modelID)
 	if id == "" {
 		return 0
 	}

@@ -69,8 +69,8 @@ jobs:
 
       - name: Build
         working-directory: server
-        run: go build ./cmd/blue
+        run: go build -tags 'fts5' ./cmd/blue
 
       - name: Test
         working-directory: server
-        run: go test ./... -count=1 -timeout 5m
+        run: go test -tags 'fts5' ./... -count=1 -timeout 5m

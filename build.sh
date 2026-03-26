@@ -13,6 +13,13 @@ COMMAND="${1:-prd}"
 # Allow explicit override from environment when needed.
 export CGO_ENABLED="${CGO_ENABLED:-1}"
 
+HOST_UNAME_S="$(uname -s)"
+if [ "$HOST_UNAME_S" = "Darwin" ]; then
+    GO_SERVER_TAGS="fts5"
+else
+    GO_SERVER_TAGS="fts5 espeak kokoro"
+fi
+
 # Add Python user bin to PATH for edge-tts
 export PATH="$PATH:$HOME/Library/Python/3.9/bin:$HOME/.local/bin"
 
@@ -140,11 +147,11 @@ start_server() {
     cd "$PROJECT_ROOT/server"
 
     local binary_path="./blue"
-    if [ "$(uname -s)" = "Darwin" ]; then
+    if [ "$HOST_UNAME_S" = "Darwin" ]; then
         make build-bluecli
         binary_path="./bin/bluecli"
     else
-        go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
+        go build -tags "$GO_SERVER_TAGS" -o blue ./cmd/blue
     fi
     success "Server built successfully"
 
@@ -198,11 +205,11 @@ start_all() {
     info "Starting Go server (dev mode)..."
     cd "$PROJECT_ROOT/server"
     local binary_path="./blue"
-    if [ "$(uname -s)" = "Darwin" ]; then
+    if [ "$HOST_UNAME_S" = "Darwin" ]; then
         make build-bluecli
         binary_path="./bin/bluecli"
     else
-        go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
+        go build -tags "$GO_SERVER_TAGS" -o blue ./cmd/blue
     fi
     run_binary "$binary_path"
 }
@@ -349,10 +356,10 @@ build_all() {
     info "Building Go server..."
     cd "$PROJECT_ROOT/server"
     EXTRA_LDFLAGS=""
-    if [ "$(uname -s)" = "Darwin" ]; then
+    if [ "$HOST_UNAME_S" = "Darwin" ]; then
         EXTRA_LDFLAGS="-extldflags '-sectcreate __TEXT __info_plist Info.plist'"
     fi
-    go build -tags 'fts5 espeak kokoro' -ldflags="-s -w $EXTRA_LDFLAGS" -o blue ./cmd/blue
+    go build -tags "$GO_SERVER_TAGS" -ldflags="-s -w $EXTRA_LDFLAGS" -o blue ./cmd/blue
 
     # macOS: create .app bundle + codesign (TCC needs proper bundle for speech recognition)
     if [ "$(uname -s)" = "Darwin" ]; then

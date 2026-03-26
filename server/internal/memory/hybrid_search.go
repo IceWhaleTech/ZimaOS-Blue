@@ -181,7 +181,6 @@ func (h *HybridSearcher) postProcess(results []HybridSearchResult, query string,
 // Store stores content with automatic embedding.
 func (h *HybridSearcher) Store(ctx context.Context, content string, metadata map[string]string) (*MemoryChunk, error) {
 	var emb []float32
-	var embModel string
 
 	if h.embeddingProvider != nil {
 		var err error
@@ -189,12 +188,10 @@ func (h *HybridSearcher) Store(ctx context.Context, content string, metadata map
 		if err != nil {
 			// Continue without embedding
 			emb = nil
-		} else {
-			embModel = h.embeddingProvider.Model()
 		}
 	}
 
-	return h.vectorStore.Store(ctx, content, emb, metadata, embModel)
+	return h.vectorStore.Store(ctx, content, emb, metadata)
 }
 
 // Delete deletes a memory chunk.

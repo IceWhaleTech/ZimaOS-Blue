@@ -46,6 +46,7 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 	resolver := NewToolPolicyResolver(cfg)
 	defs := []ToolDefinition{
 		{Name: "ask"},
+		{Name: "bash"},
 		{Name: "calendar"},
 		{Name: "email"},
 		{Name: "file_read"},
@@ -64,11 +65,12 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "write_begin"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != 15 {
-		t.Fatalf("expected 15 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 16 {
+		t.Fatalf("expected 16 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
 	}
 	allowed := map[string]bool{
 		"ask":     true,
+		"bash":    true,
 		"browser": true, "calendar": true, "email": true, "file_read": true, "file_write": true,
 		"image": true, "memory": true, "pdf": true, "plan_append": true, "plan_create": true,
 		"plan_update": true, "deep_research": true, "sessions": true, "web": true,
@@ -87,6 +89,7 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist_NormalizesCompatAliases(t
 	}
 	resolver := NewToolPolicyResolver(cfg)
 	defs := []ToolDefinition{
+		{Name: "exec"},
 		{Name: "read"},
 		{Name: "write"},
 		{Name: "delete"},
@@ -104,7 +107,7 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist_NormalizesCompatAliases(t
 	for _, def := range filtered {
 		names[def.Name] = struct{}{}
 	}
-	for _, name := range []string{"read", "write", "generate_image", "generateImage", "image_generation", "web_search", "web_fetch", "web_read", "web_crawl", "grep"} {
+	for _, name := range []string{"exec", "read", "write", "generate_image", "generateImage", "image_generation", "web_search", "web_fetch", "web_read", "web_crawl", "grep"} {
 		if _, ok := names[name]; !ok {
 			t.Fatalf("expected compat alias %q to survive default chat allowlist, got %#v", name, filtered)
 		}

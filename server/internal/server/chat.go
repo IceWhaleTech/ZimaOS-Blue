@@ -22,11 +22,11 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	sessionctx "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
@@ -107,70 +107,46 @@ func (h *ChatHandler) buildDirectoryWhitelistPromptHint() string {
 		return ""
 	}
 
-	var sb strings.Builder
-	sb.WriteString("<dir_whitelist>Additional allowed file roots: ")
-
+	var (
+		parts   []string
+		covered = make(map[string]struct{}, len(aliases))
+	)
 	if len(aliases) > 0 {
-		type aliasPair struct {
-			alias string
-			path  string
+		aliasNames := make([]string, 0, len(aliases))
+		for alias := range aliases {
+			aliasNames = append(aliasNames, alias)
 		}
-		pairs := make([]aliasPair, 0, len(aliases))
-		covered := make(map[string]struct{}, len(aliases))
-		for alias, path := range aliases {
-			pairs = append(pairs, aliasPair{alias: alias, path: path})
-			covered[path] = struct{}{}
-		}
-		sort.Slice(pairs, func(i, j int) bool {
-			if pairs[i].alias == pairs[j].alias {
-				return pairs[i].path < pairs[j].path
-			}
-			return pairs[i].alias < pairs[j].alias
-		})
-
-		const maxHintEntries = 8
-		limit := len(pairs)
-		if limit > maxHintEntries {
-			limit = maxHintEntries
-		}
-		for i := 0; i < limit; i++ {
-			if i > 0 {
-				sb.WriteString("; ")
-			}
-			sb.WriteString("@")
-			sb.WriteString(pairs[i].alias)
-			sb.WriteString("=")
-			sb.WriteString(pairs[i].path)
-		}
-		if len(pairs) > limit {
-			sb.WriteString(fmt.Sprintf("; +%d more", len(pairs)-limit))
-		}
-
-		for _, root := range roots {
-			if _, ok := covered[root]; ok {
+		sort.Strings(aliasNames)
+		for _, alias := range aliasNames {
+			root := strings.TrimSpace(aliases[alias])
+			if root == "" {
 				continue
 			}
-			sb.WriteString("; ")
-			sb.WriteString(root)
-		}
-	} else {
-		for i, root := range roots {
-			if i > 0 {
-				sb.WriteString("; ")
-			}
-			sb.WriteString(root)
+			parts = append(parts, "@"+alias+" => "+root)
+			covered[root] = struct{}{}
 		}
 	}
-	sb.WriteString(". Prefer relative paths for files in the current workspace. For these additional roots, use @alias/... when available, or absolute paths if needed.</dir_whitelist>")
-	return sb.String()
+	for _, root := range roots {
+		if _, ok := covered[root]; ok {
+			continue
+		}
+		parts = append(parts, root)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return "<dir_whitelist>Additional tool-accessible directories: " +
+		strings.Join(parts, "; ") +
+		". Prefer relative paths for files in the current workspace. For these additional roots, use @alias/... when available, or absolute paths if needed.</dir_whitelist>"
 }
 
 func (h *ChatHandler) directoryWhitelistScope() ([]string, map[string]string) {
-	if h == nil || h.claudeCodeHandler == nil {
+	if h == nil || h.settingsHandler == nil {
 		return nil, nil
 	}
 
-	enabled, entries := h.claudeCodeHandler.DirectoryWhitelistSnapshot()
+	enabled, entries := h.settingsHandler.DirectoryWhitelistSnapshot()
 	if !enabled || len(entries) == 0 {
 		return nil, nil
 	}
@@ -178,34 +154,35 @@ func (h *ChatHandler) directoryWhitelistScope() ([]string, map[string]string) {
 	roots := make([]string, 0, len(entries))
 	aliases := make(map[string]string, len(entries))
 	seenPaths := make(map[string]struct{}, len(entries))
-	seenAliases := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
-		rawPath := strings.TrimSpace(entry.Path)
-		if rawPath == "" {
+		root := filepath.Clean(strings.TrimSpace(entry.Path))
+		if root == "." || root == "" {
 			continue
 		}
-		absPath, err := filepath.Abs(rawPath)
-		if err != nil {
+		key := strings.ToLower(root)
+		if _, ok := seenPaths[key]; ok {
 			continue
 		}
-		cleanPath := filepath.Clean(absPath)
-		if _, ok := seenPaths[cleanPath]; !ok {
-			seenPaths[cleanPath] = struct{}{}
-			roots = append(roots, cleanPath)
-		}
+		seenPaths[key] = struct{}{}
+		roots = append(roots, root)
 
 		alias := strings.TrimSpace(entry.Alias)
 		if alias == "" {
 			continue
 		}
-		aliasKey := strings.ToLower(alias)
-		if _, exists := seenAliases[aliasKey]; exists {
+		if _, ok := aliases[alias]; ok {
 			continue
 		}
-		seenAliases[aliasKey] = struct{}{}
-		aliases[alias] = cleanPath
+		aliases[alias] = root
 	}
 
+	if len(roots) == 0 {
+		return nil, nil
+	}
+	sort.Strings(roots)
+	if len(aliases) == 0 {
+		return roots, nil
+	}
 	return roots, aliases
 }
 
@@ -607,7 +584,7 @@ func buildDeepSearchExecutionHint(userMessage string) string {
 	if !shouldUseHeavyResearchWorkflow(userMessage) {
 		return ""
 	}
-	return claudecode.BuildKnowledgeBaseResearchGuidance()
+	return agentcore.BuildKnowledgeBaseResearchGuidance()
 }
 
 func buildArtifactWorkflowExecutionHint(userMessage string) string {
@@ -635,20 +612,8 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 	}
 	if shouldPreferWorkspaceFileWorkflow(userMessage) {
 		hint := fmt.Sprintf("This is a local workspace synthesis task. Keep the local file workflow available together: file_read/file_write/file_delete for CRUD, plus ls/find/grep/rg/edit/convert/pdf as needed. Discover and read the relevant files, then write the completed deliverable to %q. Prefer local file tools over browser, email, calendar, or research detours.", target)
-		if isStructuredWorkspaceArtifactTask(userMessage) {
-			hint += " When the request names concrete local source files and a saved output artifact, read those referenced source files directly, prefer one broad extraction pass per source before writing, and avoid redundant narrower rereads of the same source unless one specific answer is still missing."
-		}
 		if shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
 			hint += " When the request covers a folder, inbox, or local collection, read the discovered relevant source set to completion in as few rounds as practical, cover each relevant item exactly once in the final artifact, and keep clearly unrelated noise out of the deliverable."
-		}
-		if looksLikeExecutiveBriefingArtifactTask(lower) {
-			hint += " For executive briefings, lead with 3-5 highest-priority takeaways, then call out risks, opportunities, and explicit actions or decisions. Before writing, identify whether the source materials include a highest-impact named customer churn risk, a highest-impact named upsell target, or a clearest named competitor-displacement opportunity; when present, include the most important ones by name in the top priorities or action section instead of replacing them with only generic aggregates. Do not collapse named accounts, competitors, or material opportunities into vague phrases like customer churn risk or competitive opportunity when the evidence provides a specific name or dollar context. Prefer concise bullets or short paragraphs over large tables unless the user explicitly asked for tables, compress secondary market color aggressively so the critical items stand out, keep the final briefing inside any requested word budget, and avoid playful styling such as emoji headers unless the user asked for that tone."
-		}
-		if looksLikeInboxTriageArtifactTask(lower) {
-			hint += " For inbox triage reports, put the explicit priority label beside the first mention of each key item in the opening summary, including any urgent incident, high-priority client follow-up, or archive/no-action item that you mention there (for example, P0, P1, or P4). Keep one canonical priority-sorted section from P0 through P4, keep the explicit P-label on every email entry in that main section and not only on section headers, and once the report reaches P4 avoid later tables or headings that repeat P0-P4; switch to descriptive labels like Critical Items or Archive instead."
-		}
-		if looksLikeProjectStatusSummaryArtifactTask(lower) {
-			hint += " For project-status summaries synthesized from local emails or documents, preserve the requested section titles exactly and, when the output file is Markdown, render those exact titles as Markdown headings unless the user asked for another format. Before writing, identify the major backend, data, and frontend technologies, the key original and updated budget figures, the key original and updated milestone dates, the major security or compliance findings, and the most recent live/blocked/next status. Present the exact original-versus-updated budget and timeline figures side by side when they changed, summarize the major security or compliance findings with their concrete mitigations, and make causal cross-links explicit so the reader can see what changed the budget, what caused any schedule slip, which customer requests should influence prioritization, and what the most recent status update says is live, blocked, or next. Keep concrete technology names, money figures, dates, client names, and security issue names instead of replacing them with generic paraphrases."
 		}
 		if strings.Contains(lower, ".pdf") {
 			hint += " When a PDF is referenced, use the pdf/read path instead of web tools."
@@ -672,6 +637,9 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 func shouldEnforceDeepSearchMinRounds(message string) bool {
 	lower := strings.ToLower(strings.TrimSpace(message))
 	if lower == "" {
+		return false
+	}
+	if shouldSkipDeepSearchMinRoundsForWorkspaceArtifactTask(message) {
 		return false
 	}
 	if !shouldPreferDeepSearchReport(lower) {
@@ -745,6 +713,37 @@ func shouldEnforceDeepSearchMinRounds(message string) bool {
 	}
 	for _, cue := range analysisCues {
 		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldSkipDeepSearchMinRoundsForWorkspaceArtifactTask(message string) bool {
+	if strings.TrimSpace(extractRequestedArtifactWriteTarget(message)) == "" {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return false
+	}
+	if !tools.LooksLikeWorkspaceFileTask(lower) &&
+		!hasExplicitWorkspaceSourceCue(lower) &&
+		!isExplicitMemoryFileStoreRequest(lower) &&
+		!isExplicitMemoryFileRecallRequest(lower) {
+		return false
+	}
+	if hasPublicArtifactResearchCue(lower) && !hasExplicitWorkspaceSourceCue(lower) {
+		return false
+	}
+	if len(extractNumberedQuestions(message)) >= 2 {
+		return true
+	}
+	if !strings.Contains(lower, "workspace") {
+		return false
+	}
+	for _, ext := range []string{".pdf", ".txt", ".md", ".doc", ".docx", ".ppt", ".pptx", ".csv", ".xlsx"} {
+		if strings.Contains(lower, ext) {
 			return true
 		}
 	}
@@ -3732,6 +3731,8 @@ func resolveResponseSanitizeProfile(provider, providerID, model string) response
 	if strings.Contains(model, "codex") ||
 		strings.Contains(provider, "codex") ||
 		strings.Contains(providerID, "codex") ||
+		strings.Contains(provider, "agentcore") ||
+		strings.Contains(providerID, "agentcore") ||
 		strings.Contains(provider, "claudecode") ||
 		strings.Contains(providerID, "claudecode") {
 		return responseSanitizeProfileStrict
@@ -4939,7 +4940,7 @@ func (h *ChatHandler) resolveContextWindowForModel(model string) int {
 	if h != nil && h.compactionConfig.MaxContextTokens > 0 {
 		return h.compactionConfig.MaxContextTokens
 	}
-	return claudecode.DefaultContextTokens
+	return agentcore.DefaultContextTokens
 }
 
 // resolveSessionTokenBudgetForModel returns the conversation-history budget used
@@ -5811,7 +5812,7 @@ func (h *ChatHandler) rejectIfPreparedInputExceedsBudget(c echo.Context, model s
 	})
 }
 
-func (h *ChatHandler) selectChatToolsForRequest(userMessage, model, sessionID string, webSearchEnabled, deepResearchEnabled *bool) []tools.ToolDefinition {
+func (h *ChatHandler) selectChatToolsForRequest(userMessage, model, sessionID, explicitProviderID string, state memory.ConversationCommandState, webSearchEnabled, deepResearchEnabled *bool) []tools.ToolDefinition {
 	selectedTools := h.selectTools(userMessage, tools.ToolPolicyRequest{
 		Model:               model,
 		SessionID:           sessionID,
@@ -5820,6 +5821,7 @@ func (h *ChatHandler) selectChatToolsForRequest(userMessage, model, sessionID st
 	})
 	selectedTools = applyWebSearchPreference(selectedTools, webSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, deepResearchEnabled)
+	selectedTools = h.stabilizePromptCacheToolSurface(sessionID, explicitProviderID, state, webSearchEnabled, deepResearchEnabled, selectedTools)
 	return selectedTools
 }
 
@@ -5857,7 +5859,7 @@ func estimateCurrentRequestMessages(req SendMessageRequest) []llm.Message {
 
 func (h *ChatHandler) rejectIfCurrentRequestExceedsBudget(c echo.Context, convID, model string, req SendMessageRequest, explicitProviderID string) error {
 	messages := estimateCurrentRequestMessages(req)
-	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(req.Message, model, convID, req.WebSearchEnabled, req.DeepResearchEnabled))
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(req.Message, model, convID, explicitProviderID, memory.ConversationCommandState{ConversationID: convID}, req.WebSearchEnabled, req.DeepResearchEnabled))
 	if _, structuredEvaluatorNoTools := h.isStructuredEvaluatorConversation(c.Request().Context(), convID, req.Message); structuredEvaluatorNoTools {
 		budgetTools = nil
 	}
@@ -6120,9 +6122,8 @@ type ChatHandler struct {
 	toolGateway        *tools.ToolGateway
 	sessionAuditStore  *sessionaudit.Store
 	persistCoordinator *PersistenceCoordinator
-	streamController   *claudecode.StreamController
-	compactionConfig   claudecode.CompactionConfig
-	claudeCodeHandler  *claudecode.Handler
+	streamController   *agentcore.StreamController
+	compactionConfig   agentcore.CompactionConfig
 	metricsRecorder    MetricsRecorder
 	companionManager   *companion.Manager
 	promptGuard        *promptguard.Detector
@@ -6130,7 +6131,7 @@ type ChatHandler struct {
 	convMu             sync.RWMutex
 
 	// System prompt builder for channel messages
-	systemPromptBuilder *claudecode.SystemPromptBuilder
+	systemPromptBuilder *agentcore.SystemPromptBuilder
 
 	// STT service for audio transcription
 	sttService stt.Service
@@ -6204,7 +6205,7 @@ type ChatHandler struct {
 
 	// Proxy bridge: routes LLM calls through proxy pipeline (cache/pruner/routing)
 	proxyBridge *proxybridge.Bridge
-	// Unified runtime provider dispatches to Claude Code CLI or proxy at call time.
+	// Unified runtime provider dispatches to the local coding runtime or proxy at call time.
 	runtimeProvider llm.Provider
 
 	// Smart tool selection: IR-based filtering of tools per query
@@ -6213,7 +6214,7 @@ type ChatHandler struct {
 	toolPolicyResolver *tools.ToolPolicyResolver
 	toolTraceStore     *tools.ToolTraceStore
 	flagEvaluator      chatFlagEvaluator
-	skillSelector      *claudecode.SkillSelector
+	skillSelector      *agentcore.SkillSelector
 	settingsHandler    *SettingsHandler
 	smallModel         smallmodel.Runtime
 	deepResearchExec   interface {
@@ -6233,6 +6234,9 @@ type ChatHandler struct {
 	// Provider affinity: tracks last successful provider per conversation
 	// to maximize Anthropic prompt cache hits across turns.
 	providerAffinityMap sync.Map // convID → *providerAffinity
+	// Prompt-cache tool affinity: keeps Anthropic tool surfaces stable within a conversation
+	// so provider-side prompt caching can reuse the tool prefix across turns.
+	promptCacheToolSurfaceMap sync.Map // convID → *promptCacheToolSurface
 
 	// Auto-rollback gate baseline for short-qa route (windowed failure-rate check).
 	smallModelGateMu           sync.Mutex
@@ -6317,7 +6321,18 @@ type providerAffinity struct {
 	ExpiresAt  time.Time
 }
 
+type promptCacheToolSurface struct {
+	ProviderID          string
+	WebSearchEnabled    bool
+	DeepResearchEnabled bool
+	RegistryVersion     uint64
+	PromptPolicyHash    string
+	Tools               []tools.ToolDefinition
+	ExpiresAt           time.Time
+}
+
 const providerAffinityTTL = 10 * time.Minute // 2× Anthropic cache TTL
+const promptCacheToolSurfaceTTL = providerAffinityTTL
 
 // SetToolSelector enables IR-based smart tool selection.
 func (h *ChatHandler) SetToolSelector(ts *tools.ToolSelector) {
@@ -6395,12 +6410,12 @@ func (h *ChatHandler) GetToolTraceStore() *tools.ToolTraceStore {
 }
 
 // SetSkillSelector enables progressive smart skill selection.
-func (h *ChatHandler) SetSkillSelector(ss *claudecode.SkillSelector) {
+func (h *ChatHandler) SetSkillSelector(ss *agentcore.SkillSelector) {
 	h.skillSelector = ss
 }
 
 // GetSkillSelector returns the current skill selector (may be nil).
-func (h *ChatHandler) GetSkillSelector() *claudecode.SkillSelector {
+func (h *ChatHandler) GetSkillSelector() *agentcore.SkillSelector {
 	return h.skillSelector
 }
 
@@ -6421,19 +6436,32 @@ func (h *ChatHandler) resolvePromptPolicy() PromptPolicy {
 	)
 }
 
-// selectToolsDetailed returns the first-turn static tool set after route and
-// policy filtering. Query-based member pruning is intentionally disabled.
+// selectToolsDetailed returns the first-turn static tool set after policy
+// filtering plus lightweight routing/schema compression. Query-based member
+// pruning is intentionally disabled, but the router still reduces prompt cost
+// by compressing schemas and hiding obviously irrelevant low-signal members.
 func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.ToolPolicyRequest) ([]tools.ToolDefinition, *tools.ToolSelectionDebug) {
 	allDefs := h.toolDefinitionsForPolicy(policyReq)
+	routed := allDefs
+	if h.toolRouter != nil {
+		routed = h.toolRouter.Route(userMessage, policyReq.Model, allDefs)
+	}
+	routed = preferResearchReportWorkflowTools(userMessage, allDefs, routed)
+	routed = preferPublicArtifactResearchWorkflowTools(userMessage, allDefs, routed)
+	routed = preferWorkspaceFileWorkflowTools(userMessage, allDefs, routed)
+	routed = preferDirectArtifactWritingTools(userMessage, allDefs, routed)
+	routed = preferImageGenerationWorkflowTools(userMessage, allDefs, routed)
+	routed = preferForcedDeepResearchTools(userMessage, allDefs, routed, policyReq.DeepResearchEnabled)
+	routed = keepAlwaysExposedChatTools(allDefs, routed)
 
-	names := make([]string, len(allDefs))
-	for i, d := range allDefs {
+	names := make([]string, len(routed))
+	for i, d := range routed {
 		names[i] = d.Name
 	}
 	logger.Info().
 		Int("total", len(allDefs)).
 		Int("selected", len(allDefs)).
-		Int("routed", len(allDefs)).
+		Int("routed", len(routed)).
 		Strs("tools", names).
 		Str("model", policyReq.Model).
 		Str("query", userMessage).
@@ -6441,7 +6469,17 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		Bool("router_nil", h.toolRouter == nil).
 		Msg("[chat] selectTools")
 
-	return allDefs, nil
+	return routed, nil
+}
+
+func keepAlwaysExposedChatTools(allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(allDefs) == 0 || len(current) == 0 {
+		return current
+	}
+	// Keep the public shell surface visible even when narrow workflow routing
+	// collapses the rest of the tool set. This maps either public `bash` or
+	// legacy/internal `exec` through the compat-name layer.
+	return mergeToolDefsByName(current, filterToolDefsToNames(allDefs, "bash"))
 }
 
 func (h *ChatHandler) toolDefinitionsForPolicy(policyReq tools.ToolPolicyRequest) []tools.ToolDefinition {
@@ -7337,6 +7375,47 @@ func isStructuredWorkspaceArtifactTask(userMessage string) bool {
 		tools.LooksLikeStructuredWorkspaceArtifactTask(userMessage)
 }
 
+func looksLikeInboxTriageArtifactTask(lower string) bool {
+	if lower == "" {
+		return false
+	}
+	hasInboxDomain := false
+	for _, cue := range []string{
+		"inbox",
+		"email inbox",
+		"mailbox",
+		"emails",
+		"messages",
+		"收件箱",
+		"邮件",
+		"邮箱",
+	} {
+		if strings.Contains(lower, cue) {
+			hasInboxDomain = true
+			break
+		}
+	}
+	if !hasInboxDomain {
+		return false
+	}
+	for _, cue := range []string{
+		"triage",
+		"priorit",
+		"priority",
+		"recommended action",
+		"day plan",
+		"分类",
+		"优先级",
+		"整理",
+		"归类",
+	} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
+}
+
 func hasToolDefName(defs []tools.ToolDefinition, name string) bool {
 	target := normalizeFileToolCompatName(name)
 	for _, def := range defs {
@@ -7444,8 +7523,8 @@ func (h *ChatHandler) resolveSkillSelection(ctx context.Context, userMessage str
 		return "", ""
 	}
 
-	opts := claudecode.SelectOptions{
-		Mode:                claudecode.SkillSelectorModeHybrid,
+	opts := agentcore.SelectOptions{
+		Mode:                agentcore.SkillSelectorModeHybrid,
 		EnableRerank:        true,
 		ConfidenceThreshold: 0.78,
 	}
@@ -7575,6 +7654,15 @@ func isTimeoutLikeError(err error) bool {
 	return strings.Contains(errLower, "timeout") || strings.Contains(errLower, "deadline exceeded")
 }
 
+func httpStatusForChatError(err error) int {
+	if pe, ok := err.(*proxybridge.ProxyError); ok {
+		if pe.StatusCode >= 400 && pe.StatusCode <= 599 {
+			return pe.StatusCode
+		}
+	}
+	return http.StatusInternalServerError
+}
+
 func buildIMChatFailureError(lang i18n.Language, err error) error {
 	baseKey := i18n.MsgServiceUnavailable
 	if isTimeoutLikeError(err) {
@@ -7616,6 +7704,10 @@ func preContentRetrySkipReason(err error) string {
 	switch {
 	case proxy.IsContextWindowExceededMessage(body):
 		return "context_too_long"
+	case upstreamerrors.HasRequestBuildFailureText(bodyLower):
+		return "request_build_failure"
+	case isWrappedModelUnavailableErrorText(body):
+		return "no_provider"
 	case pe.IsClientError():
 		return "client_error"
 	case pe.IsOverloaded():
@@ -7636,6 +7728,19 @@ func preContentRetrySkipReason(err error) string {
 	return ""
 }
 
+func isRequestTooLargeErrorText(msg string) bool {
+	msg = strings.ToLower(strings.TrimSpace(msg))
+	if msg == "" {
+		return false
+	}
+	return strings.Contains(msg, "内容超长") ||
+		strings.Contains(msg, "request too large") ||
+		strings.Contains(msg, "payload too large") ||
+		strings.Contains(msg, "entity too large") ||
+		strings.Contains(msg, "too large") ||
+		strings.Contains(msg, "too long")
+}
+
 func isRetryableIMPreContentProxyError(err error) bool {
 	pe, ok := err.(*proxybridge.ProxyError)
 	if !ok {
@@ -7654,7 +7759,7 @@ func isRetryableIMPreContentProxyError(err error) bool {
 }
 
 func shouldRollbackIMDefaultModelToAuto(model string, err error) bool {
-	if strings.TrimSpace(model) != defaultCCCLIModel {
+	if strings.TrimSpace(model) != defaultRuntimeModel {
 		return false
 	}
 	// Default Codex model is a convenience preference. If it's unavailable on
@@ -7672,6 +7777,12 @@ func mapStreamErrorCode(err error, actualProviderID string) string {
 		switch {
 		case proxy.IsContextWindowExceededMessage(bodyLower):
 			return "context_window_exceeded"
+		case upstreamerrors.HasRequestBuildFailureText(bodyLower) && isRequestTooLargeErrorText(bodyLower):
+			return "request_too_large"
+		case upstreamerrors.HasRequestBuildFailureText(bodyLower):
+			return "request_build_failed"
+		case isWrappedModelUnavailableErrorText(pe.Body):
+			return "provider_unavailable"
 		case isOpenRouterFreeModelPublicationError(pe):
 			return "provider_openrouter_privacy_policy"
 		case strings.Contains(bodyLower, "does not support tool calls"):
@@ -7696,6 +7807,12 @@ func mapStreamErrorCode(err error, actualProviderID string) string {
 	switch {
 	case proxy.IsContextWindowExceededMessage(errLower):
 		return "context_window_exceeded"
+	case upstreamerrors.HasRequestBuildFailureText(errLower) && isRequestTooLargeErrorText(errLower):
+		return "request_too_large"
+	case upstreamerrors.HasRequestBuildFailureText(errLower):
+		return "request_build_failed"
+	case isWrappedModelUnavailableErrorText(err.Error()):
+		return "provider_unavailable"
 	case strings.Contains(errLower, "no endpoints found matching your data policy") &&
 		strings.Contains(errLower, "free model publication"):
 		return "provider_openrouter_privacy_policy"
@@ -7786,15 +7903,41 @@ func isOpenRouterFreeModelPublicationError(pe *proxybridge.ProxyError) bool {
 		strings.Contains(bodyLower, "free model publication")
 }
 
+func isWrappedModelUnavailableErrorText(msg string) bool {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return false
+	}
+	msgLower := strings.ToLower(msg)
+
+	switch {
+	case strings.Contains(msgLower, "no available provider"),
+		strings.Contains(msgLower, "no available distributor"),
+		strings.Contains(msgLower, "model not configured"),
+		strings.Contains(msgLower, "model is not available"),
+		(strings.Contains(msgLower, "model_not_found") &&
+			(strings.Contains(msgLower, "distributor") ||
+				strings.Contains(msgLower, "not configured") ||
+				strings.Contains(msgLower, "not available"))):
+		return true
+	}
+
+	return strings.Contains(msg, "无可用渠道") ||
+		strings.Contains(msg, "未配置") ||
+		strings.Contains(msg, "未启用") ||
+		strings.Contains(msg, "模型不存在") ||
+		strings.Contains(msg, "未找到模型")
+}
+
 func isNoProviderError(err error) bool {
 	if err == nil {
 		return false
 	}
 	if pe, ok := err.(*proxybridge.ProxyError); ok {
-		return pe.IsNoProvider()
+		return pe.IsNoProvider() || isWrappedModelUnavailableErrorText(pe.Body)
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no available provider") || strings.Contains(msg, "no proxy bridge configured")
+	return strings.Contains(msg, "no proxy bridge configured") || isWrappedModelUnavailableErrorText(msg)
 }
 
 func shouldTriggerDeepResearchFallbackByIntent(routingMessage string, deepResearchEnabled *bool) bool {
@@ -9745,8 +9888,8 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		toolRegistry:                   toolRegistry,
 		toolExecutor:                   toolExecutor,
 		toolGateway:                    toolGateway,
-		streamController:               claudecode.NewStreamController(),
-		compactionConfig:               claudecode.DefaultCompactionConfig(),
+		streamController:               agentcore.NewStreamController(),
+		compactionConfig:               agentcore.DefaultCompactionConfig(),
 		convToSession:                  make(map[string]string),
 		eventQueue:                     make(chan func(), 100), // Buffered channel for async events
 		eventStop:                      make(chan struct{}),
@@ -9867,6 +10010,7 @@ func (h *ChatHandler) resetTransientCaches() {
 	h.providerWarmupsMu.Unlock()
 
 	h.summaryCache = cache.NewGenericCache[string](cache.Config{MaxSize: 200, DefaultTTL: 30 * time.Minute})
+	h.promptCacheToolSurfaceMap = sync.Map{}
 }
 
 // queueEvent queues an event for async processing. Falls back to sync if queue is full.
@@ -9905,13 +10049,8 @@ func (h *ChatHandler) SetPersistenceOptions(async, readLite bool) {
 	h.ensurePersistenceCoordinator()
 }
 
-// SetClaudeCodeHandler sets the Claude Code handler for checking enabled status.
-func (h *ChatHandler) SetClaudeCodeHandler(handler *claudecode.Handler) {
-	h.claudeCodeHandler = handler
-}
-
 // SetSystemPromptBuilder sets the system prompt builder for channel messages.
-func (h *ChatHandler) SetSystemPromptBuilder(builder *claudecode.SystemPromptBuilder) {
+func (h *ChatHandler) SetSystemPromptBuilder(builder *agentcore.SystemPromptBuilder) {
 	h.systemPromptBuilder = builder
 }
 
@@ -9971,13 +10110,9 @@ func (h *ChatHandler) SetIMModel(model string) {
 	h.imModel = model
 }
 
-const defaultCCCLIModel = "gpt-5.3-codex-spark"
+const defaultRuntimeModel = "gpt-5.3-codex-spark"
 
-func (h *ChatHandler) isCCCLIEnabled() bool {
-	return h != nil && h.claudeCodeHandler != nil && h.claudeCodeHandler.IsEnabled()
-}
-
-func (h *ChatHandler) shouldUseDefaultCCCLIModel(modelID string) bool {
+func (h *ChatHandler) shouldUseDefaultRuntimeModel(modelID string) bool {
 	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {
 		return false
@@ -10010,14 +10145,11 @@ func (h *ChatHandler) shouldUseDefaultCCCLIModel(modelID string) bool {
 	return true
 }
 
-func (h *ChatHandler) defaultModelForCCCLI(model string) string {
+func (h *ChatHandler) defaultModelForRuntime(model string) string {
 	normalized := strings.TrimSpace(model)
 	if normalized == "" {
-		if h.isCCCLIEnabled() {
-			if h.shouldUseDefaultCCCLIModel(defaultCCCLIModel) {
-				return defaultCCCLIModel
-			}
-			return "auto"
+		if h.shouldUseDefaultRuntimeModel(defaultRuntimeModel) {
+			return defaultRuntimeModel
 		}
 		return "auto"
 	}
@@ -11580,7 +11712,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		Str("user_id", msg.UserID).
 		Str("content", msg.Content).
 		Bool("has_provider_pool", h.providerPool != nil).
-		Bool("has_claude_code", h.claudeCodeHandler != nil).
+		Bool("has_runtime_provider", h.runtimeProvider != nil).
 		Msg("ProcessChannelMessage called")
 
 	// Extract language from message metadata
@@ -11605,6 +11737,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	convID := channelConversationID(msg.ChannelName, msg.ChatID)
 	ctx = withProxySession(ctx, convID)
 	ctx = withProxyLocale(ctx, string(lang))
+	convState := h.conversationCommandStateOrDefault(ctx, convID)
 
 	// Ensure conversation exists in store (create if first message)
 	if h.store != nil {
@@ -11976,7 +12109,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	ctxResult := h.buildSmartContext(ctx, smartContextParams{
 		ConvID:                convID,
 		UserMessage:           msg.Content,
-		Model:                 h.defaultModelForCCCLI(h.imModel),
+		Model:                 h.defaultModelForRuntime(h.imModel),
 		NoHistoryRecentRounds: noHistoryRecentRounds,
 		PreloadedMessages:     preloaded,
 	})
@@ -11995,7 +12128,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			Msg("[chat] ProcessChannelMessage: short affirmative continuation detected")
 	}
 
-	modelID := h.defaultModelForCCCLI(h.imModel)
+	modelID := h.defaultModelForRuntime(h.imModel)
 	previousResponseID := ""
 	if supportsResponsesContinuation(modelID) {
 		previousResponseID = h.getPreviousResponseID(convID)
@@ -12098,7 +12231,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Add first-turn tool definitions using the full static chat allowlist.
-	selectedTools := h.selectChatToolsForRequest(routingMessage, req.Model, convID, nil, channelDeepResearchEnabled)
+	selectedTools := h.selectChatToolsForRequest(routingMessage, req.Model, convID, "", convState, nil, channelDeepResearchEnabled)
 	req.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
@@ -14441,12 +14574,6 @@ func buildPostWorkspaceArtifactContinuationNudge(userMessage string, toolCalls [
 		return ""
 	}
 	nudge := fmt.Sprintf("This is still a local workspace synthesis task for %q. You must finish with exactly one acceptable outcome: (1) save the requested file, or (2) if no file was requested, return the final summary directly in the reply. For this request, the only acceptable outcome is saving %q. Do not stop after listing files, searching, or extracting raw content. Do not guess new filenames that were not actually discovered. Continue from the evidence you already gathered, use local file tools only as needed, then write the completed deliverable in this turn. Prefer pdf/convert/read for local sources and avoid browser, email, calendar, or research detours unless the user explicitly asked for them.", target, target)
-	if isStructuredWorkspaceArtifactTask(userMessage) && hasWorkspaceArtifactContentEvidence(toolCalls, toolResults) {
-		nudge += " You already have sufficient successful local source evidence for this local structured-output task. Do not reopen the same source in narrower slices or chase alternate tables when the needed answers are already present; write the requested artifact from the gathered evidence now."
-	}
-	if extra := buildWorkspaceNumberedAnswerPrecisionHint(userMessage); extra != "" {
-		nudge += " " + extra
-	}
 	return nudge + " After saving the file, give a brief final confirmation."
 }
 
@@ -14497,16 +14624,33 @@ func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage s
 	}
 
 	hasContentEvidence := hasWorkspaceArtifactContentEvidence(toolCalls, toolResults)
-	priority := append(artifactWriteCompletionToolNames(target),
-		"read",
-		"grep",
-		"convert",
-		"pdf",
-	)
-	if isStructuredWorkspaceArtifactTask(userMessage) && hasContentEvidence {
-		priority = structuredWorkspaceArtifactWriteCompletionToolNames(target)
-	} else if !hasContentEvidence {
-		priority = append(priority, "ls", "find")
+	priority := append([]string(nil), artifactWriteCompletionToolNames(target)...)
+	if hasContentEvidence && isStructuredWorkspaceArtifactTask(userMessage) {
+		filteredPriority := priority[:0]
+		for _, name := range priority {
+			if normalizeFileToolCompatName(name) == "edit" {
+				continue
+			}
+			filteredPriority = append(filteredPriority, name)
+		}
+		priority = filteredPriority
+	}
+	if !hasContentEvidence {
+		priority = append(priority,
+			"read",
+			"grep",
+			"convert",
+			"pdf",
+			"ls",
+			"find",
+		)
+	} else if !isStructuredWorkspaceArtifactTask(userMessage) {
+		priority = append(priority,
+			"read",
+			"grep",
+			"convert",
+			"pdf",
+		)
 	}
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
@@ -14838,106 +14982,10 @@ func hasWorkspaceArtifactProgress(toolCalls []llm.ToolCall, toolResults []llm.Me
 }
 
 func maybeOverrideWorkspaceArtifactWriteWithDeterministicDraft(userMessage string, currentToolCalls []llm.ToolCall, historyToolCalls []llm.ToolCall, historyToolResults []llm.Message) ([]llm.ToolCall, bool) {
-	questions := extractNumberedQuestions(userMessage)
-	if len(currentToolCalls) == 0 {
-		logger.Debug().Msg("[chat] workspace artifact override skipped: no current tool calls")
-		return currentToolCalls, false
-	}
-
-	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
-	normalizedTarget := normalizeWorkspaceArtifactComparablePath(target)
-	if normalizedTarget == "" {
-		logger.Debug().Msg("[chat] workspace artifact override skipped: no requested write target")
-		return currentToolCalls, false
-	}
-
-	evidence := collectWorkspaceArtifactEvidence(historyToolCalls, historyToolResults)
-	if len(evidence) == 0 {
-		logger.Debug().
-			Int("history_calls", len(historyToolCalls)).
-			Int("history_results", len(historyToolResults)).
-			Str("target", normalizedTarget).
-			Msg("[chat] workspace artifact override skipped: no evidence recovered")
-		return currentToolCalls, false
-	}
-
-	draft, ok := buildDeterministicWorkspaceArtifactOrchestrationDraft(userMessage, target, evidence, questions)
-	if !ok || strings.TrimSpace(draft) == "" {
-		logger.Debug().
-			Int("questions", len(questions)).
-			Int("evidence_blocks", len(evidence)).
-			Str("target", normalizedTarget).
-			Msg("[chat] workspace artifact override skipped: no deterministic draft")
-		return currentToolCalls, false
-	}
-
-	overridden := false
-	writeTargetMatched := false
-	out := append([]llm.ToolCall(nil), currentToolCalls...)
-	for i := range out {
-		toolName := normalizeFileToolCompatName(out[i].Name)
-		if toolName != "write" && toolName != "file_write" {
-			continue
-		}
-		normalizedArgs := normalizeToolCallArgumentsForExecution(out[i].Arguments)
-		if strings.TrimSpace(normalizedArgs) == "" {
-			continue
-		}
-
-		var payload map[string]interface{}
-		if json.Unmarshal([]byte(normalizedArgs), &payload) != nil || len(payload) == 0 {
-			continue
-		}
-
-		writePath := normalizeWorkspaceArtifactComparablePath(anyToStringForLLM(payload["path"]))
-		if writePath == "" || writePath != normalizedTarget {
-			continue
-		}
-		writeTargetMatched = true
-
-		currentContent := strings.TrimSpace(anyToStringForLLM(payload["content"]))
-		if currentContent == strings.TrimSpace(draft) {
-			logger.Debug().
-				Str("target", normalizedTarget).
-				Str("draft_last_line", lastNonEmptyWorkspaceArtifactLine(draft)).
-				Msg("[chat] workspace artifact override skipped: write already matches deterministic draft")
-			continue
-		}
-
-		payload["content"] = draft
-		payload["append"] = false
-		payload["create_dirs"] = true
-		updatedArgs, err := json.Marshal(payload)
-		if err != nil {
-			continue
-		}
-		out[i].Arguments = string(updatedArgs)
-		overridden = true
-	}
-	if !writeTargetMatched {
-		logger.Debug().
-			Str("target", normalizedTarget).
-			Int("tool_calls", len(currentToolCalls)).
-			Msg("[chat] workspace artifact override skipped: no matching write target in current tool calls")
-	} else if !overridden {
-		logger.Debug().
-			Str("target", normalizedTarget).
-			Str("draft_last_line", lastNonEmptyWorkspaceArtifactLine(draft)).
-			Msg("[chat] workspace artifact override skipped: matching write could not be updated")
-	}
-
-	return out, overridden
-}
-
-func lastNonEmptyWorkspaceArtifactLine(text string) string {
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
-		if line != "" {
-			return line
-		}
-	}
-	return ""
+	_ = userMessage
+	_ = historyToolCalls
+	_ = historyToolResults
+	return currentToolCalls, false
 }
 
 func isWorkspaceArtifactProgressTool(name string) bool {
@@ -15090,33 +15138,11 @@ func buildPostWorkspaceArtifactWriteRetryNudge(userMessage string) string {
 		nudge += " Cover each discovered relevant source exactly once in the final artifact and leave clearly unrelated noise out."
 	}
 	nudge += " Preserve any explicit sections, chronology, per-item classifications, priority/category/action fields, or requested exclusions from the original request."
-	lower := strings.ToLower(strings.TrimSpace(userMessage))
-	if looksLikeExecutiveBriefingArtifactTask(lower) {
-		nudge += " Keep the most important named customer risk, named upsell target, and named competitor opportunity explicit when the evidence contains them; do not replace them with only generic category labels."
-	}
-	if looksLikeProjectStatusSummaryArtifactTask(lower) {
-		nudge += " Reproduce any explicitly requested section titles exactly, keep concrete technology names, exact money figures, exact milestone dates, exact security finding labels, and latest status details, and show original-versus-updated values explicitly when the evidence shows both."
-	}
-	if extra := buildWorkspaceNumberedAnswerPrecisionHint(userMessage); extra != "" {
-		nudge += " " + extra
-	}
 	return nudge + " After saving the file, give a brief final confirmation."
 }
 
-func buildWorkspaceNumberedAnswerPrecisionHint(userMessage string) string {
-	if len(extractNumberedQuestions(userMessage)) < 2 {
-		return ""
-	}
-	return "For numbered question tasks, answer each line in order using the exact phrase or value already present in the gathered evidence. Preserve important qualifiers such as exact category labels, file names, dates, and modifiers like \"typed\" instead of paraphrasing them away."
-}
-
 func workspaceArtifactWriteRecoveryThreshold(userMessage string) int {
-	if shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
-		return 1
-	}
-	if len(extractNumberedQuestions(userMessage)) >= 2 {
-		return 2
-	}
+	_ = userMessage
 	return 3
 }
 
@@ -15925,138 +15951,6 @@ func buildSuccessfulArtifactCompletion(userMessage string, toolCalls []llm.ToolC
 		return ""
 	}
 	return fmt.Sprintf("Saved the requested file to %q.", target)
-}
-
-func looksLikeExecutiveBriefingArtifactTask(lower string) bool {
-	for _, cue := range []string{
-		"executive assistant",
-		"executive summary",
-		"executive briefing",
-		"daily briefing",
-		"daily brief",
-		"daily summary",
-		"briefing",
-		"简报",
-		"日报",
-		"每日总结",
-		"高管",
-	} {
-		if strings.Contains(lower, cue) {
-			return true
-		}
-	}
-	return false
-}
-
-func looksLikeInboxTriageArtifactTask(lower string) bool {
-	if lower == "" {
-		return false
-	}
-	hasInboxDomain := false
-	for _, cue := range []string{
-		"inbox",
-		"email inbox",
-		"mailbox",
-		"emails",
-		"messages",
-		"收件箱",
-		"邮件",
-		"邮箱",
-	} {
-		if strings.Contains(lower, cue) {
-			hasInboxDomain = true
-			break
-		}
-	}
-	if !hasInboxDomain {
-		return false
-	}
-	for _, cue := range []string{
-		"triage",
-		"priorit",
-		"priority",
-		"recommended action",
-		"day plan",
-		"分类",
-		"优先级",
-		"整理",
-		"归类",
-	} {
-		if strings.Contains(lower, cue) {
-			return true
-		}
-	}
-	return false
-}
-
-func looksLikeProjectStatusSummaryArtifactTask(lower string) bool {
-	if lower == "" {
-		return false
-	}
-	hasProjectCue := false
-	for _, cue := range []string{
-		"project overview",
-		"current status",
-		"timeline",
-		"budget",
-		"project status",
-		"status update",
-		"project",
-		"项目",
-		"进度",
-		"状态",
-		"预算",
-		"时间线",
-	} {
-		if strings.Contains(lower, cue) {
-			hasProjectCue = true
-			break
-		}
-	}
-	if !hasProjectCue {
-		return false
-	}
-	hasCollectionCue := false
-	for _, cue := range []string{
-		"emails/",
-		"emails",
-		"folder",
-		"directory",
-		"documents",
-		"workspace",
-		"邮件",
-		"文件夹",
-		"目录",
-		"文档",
-	} {
-		if strings.Contains(lower, cue) {
-			hasCollectionCue = true
-			break
-		}
-	}
-	if !hasCollectionCue {
-		return false
-	}
-	for _, cue := range []string{
-		"timeline",
-		"budget",
-		"technology",
-		"tech stack",
-		"security",
-		"client/business impact",
-		"current status",
-		"timeline",
-		"风险",
-		"预算",
-		"技术",
-		"安全",
-		"当前状态",
-	} {
-		if strings.Contains(lower, cue) {
-			return true
-		}
-	}
-	return false
 }
 
 func containsLLMToolName(tools []llm.Tool, name string) bool {
@@ -18301,7 +18195,7 @@ func (h *ChatHandler) extractMemoryWithMode(convID, source, model string, mode m
 	}
 
 	req := llm.ChatRequest{
-		Model: h.defaultModelForCCCLI("auto"),
+		Model: h.defaultModelForRuntime("auto"),
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: `You are a memory extraction assistant. Extract important facts from this conversation as short, structured bullet points.
 Focus on: user preferences, personal info, decisions, key facts, action items, technical choices, and explicit capability/tool expectations the user wants remembered (e.g. session query capability).
@@ -18486,6 +18380,7 @@ func (h *ChatHandler) DeleteConversation(c echo.Context) error {
 	h.invalidateWarmup(id)
 	h.conversationCache.Invalidate(id)
 	h.clearProviderAffinity(id)
+	h.clearPromptCacheToolSurface(id)
 	h.summaryCache.Del(id)
 
 	return c.NoContent(http.StatusNoContent)
@@ -18911,7 +18806,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	} else if convState.SelectedModelID != "" {
 		model = convState.SelectedModelID
 	}
-	model = h.defaultModelForCCCLI(model)
+	model = h.defaultModelForRuntime(model)
 	currentExplicitProviderID := strings.TrimSpace(req.Provider)
 	if currentExplicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
 		currentExplicitProviderID = strings.TrimSpace(convState.SelectedProviderID)
@@ -19039,7 +18934,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
 		}
 	}
-	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(routingMessage, model, convID, req.WebSearchEnabled, req.DeepResearchEnabled))
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(routingMessage, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
 	if structuredEvaluatorNoTools {
 		budgetTools = nil
 	}
@@ -19083,7 +18978,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Get first-turn tool definitions using the full static chat allowlist.
-	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
+	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
 		logger.Info().
@@ -20379,7 +20274,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		// Emit error event to companion (async)
 		sanitizedErr := proxy.SanitizeError(err)
 		h.emitErrorEventAsync(sessionID, sanitizedErr)
-		return echo.NewHTTPError(http.StatusInternalServerError, sanitizedErr)
+		return echo.NewHTTPError(httpStatusForChatError(err), sanitizedErr)
 	}
 
 	// Get provider name for display — use resolved provider from response if available
@@ -20539,6 +20434,7 @@ func (h *ChatHandler) DeleteMessages(c echo.Context) error {
 	h.clearPreviousResponseID(convID)
 	h.invalidateWarmup(convID)
 	h.conversationCache.Invalidate(convID)
+	h.clearPromptCacheToolSurface(convID)
 	h.summaryCache.Del(convID)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -20558,6 +20454,7 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/conversations/:id/pin", h.PinConversation)
 	g.POST("/conversations/:id/unpin", h.UnpinConversation)
 	g.GET("/conversations/:id/messages", h.GetMessages)
+	g.GET("/conversations/:id/messages/active-stream", h.GetConversationActiveStream)
 	g.GET("/conversations/:id/command-state", h.GetConversationCommandState)
 	g.PATCH("/conversations/:id/command-state", h.PatchConversationCommandState)
 	g.POST("/conversations/:id/messages", h.SendMessage, chatBodyLimit)
@@ -20613,6 +20510,104 @@ func (h *ChatHandler) getProviderAffinity(convID string) *providerAffinity {
 // clearProviderAffinity removes provider affinity for a conversation (e.g., on deletion).
 func (h *ChatHandler) clearProviderAffinity(convID string) {
 	h.providerAffinityMap.Delete(convID)
+}
+
+func (h *ChatHandler) getPromptCacheToolSurface(convID string) *promptCacheToolSurface {
+	v, ok := h.promptCacheToolSurfaceMap.Load(convID)
+	if !ok {
+		return nil
+	}
+	surface := v.(*promptCacheToolSurface)
+	if timeutil.NowTime().After(surface.ExpiresAt) {
+		h.promptCacheToolSurfaceMap.Delete(convID)
+		return nil
+	}
+	return surface
+}
+
+func (h *ChatHandler) setPromptCacheToolSurface(convID string, surface *promptCacheToolSurface) {
+	if strings.TrimSpace(convID) == "" || surface == nil {
+		return
+	}
+	surfaceCopy := *surface
+	surfaceCopy.Tools = cloneToolDefs(surface.Tools)
+	if surfaceCopy.ExpiresAt.IsZero() {
+		surfaceCopy.ExpiresAt = timeutil.NowTime().Add(promptCacheToolSurfaceTTL)
+	}
+	h.promptCacheToolSurfaceMap.Store(convID, &surfaceCopy)
+}
+
+func (h *ChatHandler) clearPromptCacheToolSurface(convID string) {
+	h.promptCacheToolSurfaceMap.Delete(convID)
+}
+
+func (h *ChatHandler) stabilizePromptCacheToolSurface(convID, explicitProviderID string, state memory.ConversationCommandState, webSearchEnabled, deepResearchEnabled *bool, defs []tools.ToolDefinition) []tools.ToolDefinition {
+	if h == nil || len(defs) == 0 || strings.TrimSpace(convID) == "" {
+		return defs
+	}
+	targetProviderID, targetProvider, ok := h.promptCacheTargetProvider(convID, explicitProviderID, state)
+	if !ok || !supportsAnthropicPromptCaching(targetProvider) {
+		h.clearPromptCacheToolSurface(convID)
+		return defs
+	}
+
+	registryVersion := uint64(0)
+	if h.toolRegistry != nil {
+		registryVersion = h.toolRegistry.Version()
+	}
+	key := promptCacheToolSurface{
+		ProviderID:          strings.TrimSpace(targetProviderID),
+		WebSearchEnabled:    resolvePromptCacheToolToggle(webSearchEnabled, state.WebSearchEnabled),
+		DeepResearchEnabled: resolvePromptCacheToolToggle(deepResearchEnabled, state.DeepResearchEnabled),
+		RegistryVersion:     registryVersion,
+		PromptPolicyHash:    h.resolvePromptPolicy().Hash,
+	}
+
+	canonical := sortToolDefsByName(defs)
+	if cached := h.getPromptCacheToolSurface(convID); cached != nil &&
+		cached.ProviderID == key.ProviderID &&
+		cached.WebSearchEnabled == key.WebSearchEnabled &&
+		cached.DeepResearchEnabled == key.DeepResearchEnabled &&
+		cached.RegistryVersion == key.RegistryVersion &&
+		cached.PromptPolicyHash == key.PromptPolicyHash {
+		merged := sortToolDefsByName(mergeToolDefsByName(cached.Tools, canonical))
+		key.Tools = merged
+		key.ExpiresAt = timeutil.NowTime().Add(promptCacheToolSurfaceTTL)
+		h.setPromptCacheToolSurface(convID, &key)
+		return merged
+	}
+
+	key.Tools = canonical
+	key.ExpiresAt = timeutil.NowTime().Add(promptCacheToolSurfaceTTL)
+	h.setPromptCacheToolSurface(convID, &key)
+	return canonical
+}
+
+func resolvePromptCacheToolToggle(explicit *bool, fallback bool) bool {
+	if explicit != nil {
+		return *explicit
+	}
+	return fallback
+}
+
+func sortToolDefsByName(defs []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(defs) == 0 {
+		return nil
+	}
+	out := cloneToolDefs(defs)
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+func cloneToolDefs(defs []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(defs) == 0 {
+		return nil
+	}
+	out := make([]tools.ToolDefinition, len(defs))
+	copy(out, defs)
+	return out
 }
 
 // HandleCardAction processes an interactive card button click.
@@ -20975,7 +20970,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	} else if convState.SelectedModelID != "" {
 		model = convState.SelectedModelID
 	}
-	model = h.defaultModelForCCCLI(model)
+	model = h.defaultModelForRuntime(model)
 	currentExplicitProviderID := strings.TrimSpace(req.Provider)
 	if currentExplicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
 		currentExplicitProviderID = strings.TrimSpace(convState.SelectedProviderID)
@@ -21176,7 +21171,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
 		}
 	}
-	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(routingMessage, model, convID, req.WebSearchEnabled, req.DeepResearchEnabled))
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(routingMessage, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
 	if structuredEvaluatorNoTools {
 		budgetTools = nil
 	}
@@ -21222,7 +21217,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Get first-turn tool definitions using the full static chat allowlist.
-	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
+	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
 		logger.Info().
@@ -21609,6 +21604,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			})
 		}
 		return true
+	}
+	persistSyntheticStreamingDraft := func() {
+		if strings.TrimSpace(fullContent) == "" {
+			return
+		}
+		persistStreamingDraft()
 	}
 
 	// TODO checklist tracking: when the first message contains `- [ ]` items,
@@ -22760,6 +22761,7 @@ STREAM_LOOP:
 				})
 				fullContent += dupMsg
 				totalDeltaChars += len(dupMsg)
+				persistSyntheticStreamingDraft()
 				break STREAM_LOOP
 			}
 
@@ -22783,6 +22785,7 @@ STREAM_LOOP:
 						})
 						fullContent += fallbackMsg
 						totalDeltaChars += len(fallbackMsg)
+						persistSyntheticStreamingDraft()
 						break STREAM_LOOP
 					}
 					dropPendingVisibleDelta()
@@ -22909,6 +22912,7 @@ STREAM_LOOP:
 				// Fallback for tools without dedicated card formatters.
 				fullContent += processBlock
 			}
+			persistSyntheticStreamingDraft()
 			// Plan tools may update checklist state without emitting markdown in the
 			// assistant narrative. Ensure the checklist is visible at least once so
 			// frontend has a stable TODO source for in-place updates.
@@ -22920,6 +22924,7 @@ STREAM_LOOP:
 					"done":      false,
 					"stream_id": streamID,
 				})
+				persistSyntheticStreamingDraft()
 			}
 
 			// Reconcile the tracked checklist after each tool round. Prefer explicit
@@ -22970,6 +22975,7 @@ STREAM_LOOP:
 						"done":      false,
 						"stream_id": streamID,
 					})
+					persistSyntheticStreamingDraft()
 				}
 				logger.Warn().
 					Int("tool_round", toolRound).
@@ -23003,6 +23009,7 @@ STREAM_LOOP:
 						"done":      false,
 						"stream_id": streamID,
 					})
+					persistSyntheticStreamingDraft()
 				}
 				awaitingPostToolSummary = false
 				accumulateCompletedRoundUsage()
@@ -23842,6 +23849,7 @@ STREAM_LOOP:
 						"done":      false,
 						"stream_id": streamID,
 					})
+					persistSyntheticStreamingDraft()
 				}
 				break
 			}
@@ -23860,6 +23868,7 @@ STREAM_LOOP:
 			})
 			fullContent += delta
 			totalDeltaChars += len(delta)
+			persistSyntheticStreamingDraft()
 			logger.Warn().
 				Str("conv_id", convID).
 				Str("target", extractRequestedArtifactPath(routingMessage)).
@@ -24072,7 +24081,7 @@ STREAM_LOOP:
 					h.recordContextPackAudit(promptCtx, convID, selection)
 				}
 
-				injectedBudgetTools := defsToLLMTools(h.selectChatToolsForRequest(injectedMsg, model, convID, req.WebSearchEnabled, req.DeepResearchEnabled))
+				injectedBudgetTools := defsToLLMTools(h.selectChatToolsForRequest(injectedMsg, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
 				if structuredEvaluatorNoTools {
 					injectedBudgetTools = nil
 				}
@@ -24098,7 +24107,7 @@ STREAM_LOOP:
 				applyBudgetAttemptToChatReq(currentBudgetAttempt)
 				pendingContextCompacting = progressiveContextTrim != nil || compacted
 
-				injectedTools := h.selectChatToolsForRequest(injectedMsg, chatReq.Model, convID, req.WebSearchEnabled, req.DeepResearchEnabled)
+				injectedTools := h.selectChatToolsForRequest(injectedMsg, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
 				if structuredEvaluatorNoTools {
 					injectedTools = nil
 				}
@@ -24889,7 +24898,7 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 		return ""
 	}
 
-	prefix := claudecode.StructuredSummaryInstructions(summaryCustomFocus) +
+	prefix := agentcore.StructuredSummaryInstructions(summaryCustomFocus) +
 		"\nOutput ONLY the summary text.\n\nConversation snippets:\n"
 	suffix := transcript.String() + "\nSummary:"
 
@@ -24922,7 +24931,7 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 	if len(runes) > 1400 {
 		summary = string(runes[:1400]) + "..."
 	}
-	summary = claudecode.NormalizeStructuredSummary(summary, "", messages)
+	summary = agentcore.NormalizeStructuredSummary(summary, "", messages)
 	summary = sanitizeCompressedSummaryOutput(summary)
 	if summary == "" {
 		h.smallModelStats.RecordFallback(smallmodel.FallbackReasonLowConfidence)
@@ -24973,7 +24982,7 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 	ctx = withProxyBackground(ctx)
 
 	req := llm.ChatRequest{
-		Model: h.defaultModelForCCCLI("auto"),
+		Model: h.defaultModelForRuntime("auto"),
 		Messages: []llm.Message{
 			{
 				Role:    llm.RoleSystem,
@@ -25319,6 +25328,12 @@ type CancelStreamRequest struct {
 	StreamID string `json:"stream_id"`
 }
 
+type ConversationActiveStreamResponse struct {
+	ConversationID string `json:"conversation_id"`
+	Active         bool   `json:"active"`
+	StreamID       string `json:"stream_id,omitempty"`
+}
+
 // Warmup pre-computes the system prompt and conversation context for a conversation.
 // Called when the user starts typing to reduce TTFT when the message is actually sent.
 // POST /conversations/:id/warmup → 204 No Content
@@ -25513,6 +25528,21 @@ func (h *ChatHandler) CancelStream(c echo.Context) error {
 		"success":   false,
 		"stream_id": req.StreamID,
 		"message":   "Stream not found or already completed",
+	})
+}
+
+// GetConversationActiveStream reports whether the conversation currently has an active stream.
+func (h *ChatHandler) GetConversationActiveStream(c echo.Context) error {
+	convID := c.Param("id")
+	if _, err := h.checkConversationOwnership(c, convID); err != nil {
+		return err
+	}
+
+	streamID := strings.TrimSpace(h.activeStreamIDForConversation(convID))
+	return c.JSON(http.StatusOK, ConversationActiveStreamResponse{
+		ConversationID: convID,
+		Active:         streamID != "",
+		StreamID:       streamID,
 	})
 }
 

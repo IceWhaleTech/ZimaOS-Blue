@@ -350,11 +350,24 @@ browser:
   lightpanda:
     enabled: false
     binary_path: ""     # optional explicit Lightpanda binary path; when empty Blue can use cached/downloaded binaries
+    auto_download: true # background warmup/download via GitHub releases, mirror.ghproxy.com, kkgithub.com (never jsdelivr)
+    download_timeout: "20m"
     args: []
   chromium:
     prefer_local_chrome: true
   capability_router:
     escalate_on_failure: true
+
+# Security controls
+security:
+  sandbox:
+    enabled: true
+    default_timeout: "5m"
+    max_timeout: "5m"
+    memory_limit: "256MB"
+    cpu_limit: 1.0
+    process_limit: 10
+    network_enabled: false
 
 # Harness control plane (runtime-first, benchmark-ready)
 harness:

@@ -34,6 +34,7 @@ import { findLatestTodoChecklistSummary } from '@/utils/todoChecklist'
 import { reportStartupMark } from '@/utils/startupTrace'
 import type { Provider } from '@/api/providerPool'
 import { rafThrottle } from '@/utils/rafThrottle'
+import { sortItemsByModelPreference } from '@/utils/modelPreference'
 
 reportStartupMark('chat_view_setup_enter')
 
@@ -242,17 +243,7 @@ const pageStack = ref<string[]>(_initMobile && _initConvId ? [_initConvId] : [])
 const showListPage = computed(() => isMobile.value && pageStack.value.length === 0)
 const mobileAnimationEnabled = ref(false) // Only animate after user interaction, not on page load
 const showTopbarMenu = ref(false)
-const enhancedModeCardVisible = ref(false)
-const enhancedModeCardEnabled = ref(false)
 const isRtl = computed(() => getLocaleDirection(locale.value) === 'rtl')
-const enhancedModeCardStyle = ref<{ top: string; insetInlineEnd: string }>({
-  top: '0px',
-  insetInlineEnd: '0px',
-})
-
-const enhancedModeCardTitle = computed(() =>
-  enhancedModeCardEnabled.value ? t('chat.enhancedMode') : t('chat.enableEnhancedMode')
-)
 
 const presetQuestionDraft = ref('')
 const presetQuestionContextText = computed(() => {
@@ -268,28 +259,6 @@ const initialPrimaryDataHydrating = ref(false)
 const showInitialThreadSkeleton = computed(
   () => initialPrimaryDataHydrating.value && chatStore.messages.length === 0 && !chatStore.error
 )
-
-const enhancedModeCardDescription = computed(() =>
-  enhancedModeCardEnabled.value
-    ? t(
-        'chat.enhancedModeHoverDescription',
-        'Claude Code CLI is active, giving chat and agent work a stronger local coding runtime.'
-      )
-    : t(
-        'chat.enableEnhancedModeHoverDescription',
-        'Turn on Claude Code CLI to unlock stronger coding workflows and higher-compatibility agent actions.'
-      )
-)
-
-const enhancedModeCardCapabilities = computed(() => [
-  t('chat.enhancedModeHoverCapabilitySkills', 'CLI-native coding skills'),
-  t('chat.enhancedModeHoverCapabilityTools', 'Stronger tool calling and multi-step actions'),
-  t('chat.enhancedModeHoverCapabilityFiles', 'Reliable file reads, edits, and patch workflows'),
-  t(
-    'chat.enhancedModeHoverCapabilityCommands',
-    'Command execution through the Claude Code CLI runtime'
-  ),
-])
 
 const showRoutingMenu = ref(false)
 const routingMenuAnchorEl = ref<HTMLElement | null>(null)
@@ -831,9 +800,6 @@ const activeTodoPanelJumpTitle = computed(() =>
   chatTextWithFallback('chat.activeTodo.jumpToMessage', 'Jump to checklist message')
 )
 
-// Check if Claude Code CLI is enabled (from store, reactive)
-const isClaudeCodeEnabled = computed(() => settingsStore.claudeCodeEnabled)
-
 // Provider status computed properties
 const enabledLlmProviders = computed(() =>
   providerPoolStore.enabledProviders.filter((provider) => provider.type !== 'media')
@@ -950,12 +916,11 @@ const fixedModelOptions = computed(() => {
     duplicateCount.set(model.id, (duplicateCount.get(model.id) || 0) + 1)
   }
 
-  return availableModels
-    .sort((a, b) => {
-      const byModel = a.id.localeCompare(b.id)
-      if (byModel !== 0) return byModel
-      return a.provider_id.localeCompare(b.provider_id)
-    })
+  return sortItemsByModelPreference(
+    availableModels,
+    (model) => model.id,
+    (left, right) => left.provider_id.localeCompare(right.provider_id)
+  )
     .map((model) => ({
       id: model.id,
       providerId: model.provider_id,
@@ -1103,9 +1068,6 @@ function bindVirtualItemHeight(
 function checkMobile() {
   isMobile.value = _initMobile
   isNarrowScreen.value = window.innerWidth < 768
-  if (enhancedModeCardVisible.value) {
-    hideEnhancedModeCard()
-  }
   // Auto-show sidebar on desktop wide screen, hide on narrow
   if (!isMobile.value) {
     showSidebar.value = !isNarrowScreen.value
@@ -1128,25 +1090,6 @@ useChatShortcuts({
   onToggleSidebar: () => toggleSidebar(),
   onCancelStream: () => hasCancelableWork.value && handleCancel(),
 })
-
-function showEnhancedModeCard(event: MouseEvent | FocusEvent, enabled: boolean) {
-  const anchor = event.currentTarget
-  if (!(anchor instanceof HTMLElement)) return
-
-  const rect = anchor.getBoundingClientRect()
-  enhancedModeCardEnabled.value = enabled
-  enhancedModeCardStyle.value = {
-    top: `${Math.round(rect.bottom + 10)}px`,
-    insetInlineEnd: isRtl.value
-      ? `${Math.max(8, Math.round(rect.left))}px`
-      : `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`,
-  }
-  enhancedModeCardVisible.value = true
-}
-
-function hideEnhancedModeCard() {
-  enhancedModeCardVisible.value = false
-}
 
 // Scroll to bottom when messages change
 let autoScrollRafId: number | null = null
@@ -2277,53 +2220,6 @@ onUnmounted(() => {
                 </svg>
               </button>
 
-              <span
-                v-if="isClaudeCodeEnabled && !shouldCollapseTopbarControls"
-                class="chat-mode-pill chat-mode-pill-enabled relative group inline-flex items-center gap-1 flex-shrink-0 cursor-default"
-                @mouseenter="showEnhancedModeCard($event, true)"
-                @mouseleave="hideEnhancedModeCard"
-              >
-                <svg
-                  class="w-3 h-3"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
-                <span>{{ t('chat.enhancedMode') }}</span>
-              </span>
-              <router-link
-                v-else-if="!shouldCollapseTopbarControls"
-                to="/settings?tab=llm#claude-code-settings"
-                class="chat-mode-pill chat-mode-pill-muted relative group inline-flex items-center gap-1 flex-shrink-0 transition-colors cursor-pointer"
-                data-onboarding-anchor="enhanced-mode-entry"
-                @mouseenter="showEnhancedModeCard($event, false)"
-                @mouseleave="hideEnhancedModeCard"
-                @focusin="showEnhancedModeCard($event, false)"
-                @focusout="hideEnhancedModeCard"
-              >
-                <svg
-                  class="w-3 h-3"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
-                <span>{{ t('chat.enableEnhancedMode') }}</span>
-              </router-link>
-
               <!-- Mobile: collapsed topbar actions trigger -->
               <div v-if="shouldCollapseTopbarControls" class="topbar-more-container relative">
                 <button
@@ -2331,7 +2227,6 @@ onUnmounted(() => {
                   :class="{
                     'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-white': showTopbarMenu,
                   }"
-                  data-onboarding-anchor="enhanced-mode-menu"
                   :title="t('chat.moreActions')"
                   @click.stop="toggleTopbarMenu"
                 >
@@ -2347,57 +2242,6 @@ onUnmounted(() => {
               </div>
             </div>
           </header>
-          <Teleport to="body">
-            <div
-              v-if="enhancedModeCardVisible"
-              class="enhanced-mode-hover-card"
-              :style="enhancedModeCardStyle"
-              aria-hidden="true"
-            >
-              <div
-                class="enhanced-mode-hover-card__hero"
-                :class="{
-                  'is-enabled': enhancedModeCardEnabled,
-                  'is-disabled': !enhancedModeCardEnabled,
-                }"
-              >
-                <div class="enhanced-mode-hover-card__icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                </div>
-                <div class="enhanced-mode-hover-card__hero-copy">
-                  <div class="enhanced-mode-hover-card__eyebrow">
-                    {{ t('chat.enhancedModeHoverPoweredBy', 'Powered by Claude Code CLI') }}
-                  </div>
-                  <div class="enhanced-mode-hover-card__title">{{ enhancedModeCardTitle }}</div>
-                </div>
-                <span class="enhanced-mode-hover-card__state">
-                  {{
-                    enhancedModeCardEnabled
-                      ? t('common.enabled', 'Enabled')
-                      : t('common.disabled', 'Disabled')
-                  }}
-                </span>
-              </div>
-              <p class="enhanced-mode-hover-card__description">
-                {{ enhancedModeCardDescription }}
-              </p>
-              <div class="enhanced-mode-hover-card__grid">
-                <div
-                  v-for="capability in enhancedModeCardCapabilities"
-                  :key="capability"
-                  class="enhanced-mode-hover-card__item"
-                >
-                  {{ capability }}
-                </div>
-              </div>
-            </div>
-          </Teleport>
           <Teleport to="body">
             <Transition
               enter-active-class="transition ease-out duration-150"
@@ -2926,36 +2770,6 @@ onUnmounted(() => {
                   </div>
                   <div class="p-4">
                     <div class="grid grid-cols-2 gap-3">
-                      <router-link
-                        to="/settings?tab=llm#claude-code-settings"
-                        class="quick-action-tile"
-                        :class="{ 'is-active': isClaudeCodeEnabled }"
-                        data-onboarding-anchor="enhanced-mode-entry"
-                        @click="showTopbarMenu = false"
-                      >
-                        <div class="flex items-center justify-between">
-                          <svg
-                            class="w-5 h-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M13 10V3L4 14h7v7l9-11h-7z"
-                            />
-                          </svg>
-                          <span class="quick-action-pill">{{
-                            isClaudeCodeEnabled ? t('common.enabled') : t('common.disabled')
-                          }}</span>
-                        </div>
-                        <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
-                          {{ t('chat.enhancedMode') }}
-                        </div>
-                      </router-link>
-
                       <button
                         class="quick-action-tile"
                         :class="{ 'is-active': settingsStore.showToolDetails }"
@@ -3098,52 +2912,6 @@ onUnmounted(() => {
               </div>
 
               <div class="chat-thread-actions flex items-center gap-2 flex-shrink-0">
-                <span
-                  v-if="isClaudeCodeEnabled"
-                  class="chat-mode-pill chat-mode-pill-enabled relative group inline-flex items-center gap-1 flex-shrink-0 cursor-default"
-                  @mouseenter="showEnhancedModeCard($event, true)"
-                  @mouseleave="hideEnhancedModeCard"
-                >
-                  <svg
-                    class="w-3 h-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  <span>{{ t('chat.enhancedMode') }}</span>
-                </span>
-                <router-link
-                  v-else
-                  to="/settings?tab=llm#claude-code-settings"
-                  class="chat-mode-pill chat-mode-pill-muted relative group inline-flex items-center gap-1 flex-shrink-0 transition-colors cursor-pointer"
-                  data-onboarding-anchor="enhanced-mode-entry"
-                  @mouseenter="showEnhancedModeCard($event, false)"
-                  @mouseleave="hideEnhancedModeCard"
-                  @focusin="showEnhancedModeCard($event, false)"
-                  @focusout="hideEnhancedModeCard"
-                >
-                  <svg
-                    class="w-3 h-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  <span>{{ t('chat.enableEnhancedMode') }}</span>
-                </router-link>
                 <button
                   class="chat-thread-detail-btn inline-flex items-center gap-2 transition-colors cursor-pointer"
                   :class="{ 'is-active': settingsStore.showToolDetails }"
@@ -3692,6 +3460,10 @@ onUnmounted(() => {
                           ? t('chat.streamError')
                           : chatStore.streamError === 'contextWindowExceeded'
                             ? t('chat.contextWindowExceeded')
+                            : chatStore.streamError === 'requestBuildFailed'
+                              ? t('chat.requestBuildFailed')
+                              : chatStore.streamError === 'requestTooLarge'
+                                ? t('chat.requestTooLarge')
                             : chatStore.streamError === 'providerNoResponse'
                               ? t('chat.providerNoResponse')
                               : chatStore.streamError === 'providerReturnedEmpty'
@@ -4748,223 +4520,6 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
   color: rgb(3, 105, 161);
 }
 
-.chat-mode-pill {
-  min-height: var(--chat-header-control-size);
-  padding-inline: 0.76rem;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(248, 250, 252, 0.7);
-  color: rgb(71, 85, 105);
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-}
-
-.enhanced-mode-hover-card {
-  pointer-events: none;
-  position: fixed;
-  top: 0;
-  inset-inline-end: 0;
-  width: min(24rem, calc(100vw - 1rem));
-  border-radius: 1.2rem;
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 44%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
-  padding: 0.88rem;
-  color: rgb(15, 23, 42);
-  text-align: start;
-  box-shadow:
-    0 24px 46px -32px rgba(15, 23, 42, 0.24),
-    0 16px 28px -24px rgba(59, 130, 246, 0.18);
-  z-index: 20010;
-}
-
-.enhanced-mode-hover-card__hero {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.82rem;
-  min-height: 5rem;
-  padding: 0.95rem 1rem;
-  border-radius: 1rem;
-  overflow: hidden;
-  border: 1px solid rgba(219, 234, 254, 0.92);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.64)),
-    linear-gradient(160deg, rgba(59, 130, 246, 0.14), rgba(255, 255, 255, 0.52));
-}
-
-.enhanced-mode-hover-card__hero::before,
-.enhanced-mode-hover-card__hero::after {
-  content: '';
-  position: absolute;
-  border-radius: 999px;
-  pointer-events: none;
-}
-
-.enhanced-mode-hover-card__hero::before {
-  top: -1.6rem;
-  inset-inline-end: -0.8rem;
-  width: 5.4rem;
-  height: 5.4rem;
-  background: rgba(59, 130, 246, 0.12);
-}
-
-.enhanced-mode-hover-card__hero::after {
-  inset-inline-start: 1rem;
-  bottom: -1.8rem;
-  width: 6.8rem;
-  height: 3.4rem;
-  background: rgba(14, 165, 233, 0.08);
-  filter: blur(18px);
-}
-
-.enhanced-mode-hover-card__hero.is-enabled {
-  border-color: rgba(167, 243, 208, 0.94);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.64)),
-    linear-gradient(160deg, rgba(16, 185, 129, 0.16), rgba(255, 255, 255, 0.52));
-}
-
-.enhanced-mode-hover-card__hero.is-enabled::before {
-  background: rgba(16, 185, 129, 0.12);
-}
-
-.enhanced-mode-hover-card__icon {
-  position: relative;
-  z-index: 1;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 1rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: rgb(37, 99, 235);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.74)),
-    rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(59, 130, 246, 0.18);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.42),
-    0 12px 24px -22px rgba(59, 130, 246, 0.36);
-}
-
-.enhanced-mode-hover-card__hero.is-enabled .enhanced-mode-hover-card__icon {
-  color: rgb(5, 150, 105);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.74)),
-    rgba(16, 185, 129, 0.14);
-  border-color: rgba(16, 185, 129, 0.2);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.42),
-    0 12px 24px -22px rgba(16, 185, 129, 0.34);
-}
-
-.enhanced-mode-hover-card__icon svg {
-  width: 1.35rem;
-  height: 1.35rem;
-}
-
-.enhanced-mode-hover-card__hero-copy {
-  position: relative;
-  z-index: 1;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.enhanced-mode-hover-card__eyebrow {
-  color: rgba(59, 130, 246, 0.86);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.enhanced-mode-hover-card__hero.is-enabled .enhanced-mode-hover-card__eyebrow {
-  color: rgba(5, 150, 105, 0.82);
-}
-
-.enhanced-mode-hover-card__title {
-  margin-top: 0.18rem;
-  color: rgba(15, 23, 42, 0.96);
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.enhanced-mode-hover-card__state {
-  position: relative;
-  z-index: 1;
-  align-self: flex-start;
-  flex-shrink: 0;
-  padding: 0.34rem 0.62rem;
-  border-radius: 999px;
-  border: 1px solid rgba(203, 213, 225, 0.88);
-  background: rgba(255, 255, 255, 0.82);
-  color: rgba(15, 23, 42, 0.8);
-  font-size: 0.68rem;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-}
-
-.enhanced-mode-hover-card__description {
-  margin-top: 0.82rem;
-  color: rgba(71, 85, 105, 0.94);
-  font-size: 0.78rem;
-  line-height: 1.58;
-}
-
-.enhanced-mode-hover-card__grid {
-  margin-top: 0.82rem;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
-}
-
-.enhanced-mode-hover-card__item {
-  min-height: 3.2rem;
-  display: flex;
-  align-items: flex-start;
-  padding: 0.72rem 0.76rem;
-  border-radius: 0.92rem;
-  border: 1px solid rgba(203, 213, 225, 0.88);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.9));
-  color: rgba(30, 41, 59, 0.94);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.45;
-}
-
-.chat-mode-pill.chat-mode-pill-enabled {
-  border-color: rgba(16, 185, 129, 0.24);
-  background: rgba(236, 253, 245, 0.64);
-  color: rgb(5, 150, 105);
-}
-
-.chat-mode-pill.chat-mode-pill-muted:hover {
-  border-color: rgba(148, 163, 184, 0.34);
-  background: rgba(241, 245, 249, 0.86);
-}
-
-.chat-mode-pill.chat-mode-pill-tools {
-  border-color: rgba(148, 163, 184, 0.24);
-  background: rgba(255, 255, 255, 0.88);
-  color: rgb(71, 85, 105);
-}
-
-.chat-mode-pill.chat-mode-pill-tools:hover {
-  border-color: rgba(125, 211, 252, 0.34);
-  background: rgba(248, 250, 252, 0.98);
-  color: rgb(51, 65, 85);
-}
-
-.chat-mode-pill.chat-mode-pill-tools.is-active {
-  border-color: rgba(56, 189, 248, 0.46);
-  background: rgba(239, 246, 255, 0.96);
-  color: rgb(3, 105, 161);
-}
-
 .bg-surface-base {
   background: transparent;
 }
@@ -5531,13 +5086,6 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
   color: rgb(103, 232, 249);
 }
 
-:root.dark .chat-mode-pill,
-[data-theme='dark'] .chat-mode-pill {
-  border-color: rgba(71, 85, 105, 0.48);
-  background: rgba(30, 41, 59, 0.52);
-  color: rgb(148, 163, 184);
-}
-
 :root.dark .chat-thread-detail-btn,
 [data-theme='dark'] .chat-thread-detail-btn {
   border-color: rgba(71, 85, 105, 0.58);
@@ -5565,118 +5113,6 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
 :root.dark .chat-thread-routing-btn__status,
 [data-theme='dark'] .chat-thread-routing-btn__status {
   box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.92);
-}
-
-:root.dark .enhanced-mode-hover-card,
-[data-theme='dark'] .enhanced-mode-hover-card {
-  border-color: rgba(71, 85, 105, 0.76);
-  background:
-    radial-gradient(circle at top right, rgba(96, 165, 250, 0.2), transparent 44%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.94));
-  color: rgb(241, 245, 249);
-  box-shadow: 0 22px 40px rgba(2, 6, 23, 0.42);
-}
-
-:root.dark .enhanced-mode-hover-card__hero,
-[data-theme='dark'] .enhanced-mode-hover-card__hero {
-  border-color: rgba(59, 130, 246, 0.2);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    linear-gradient(160deg, rgba(59, 130, 246, 0.18), rgba(15, 23, 42, 0.04));
-}
-
-:root.dark .enhanced-mode-hover-card__hero.is-enabled,
-[data-theme='dark'] .enhanced-mode-hover-card__hero.is-enabled {
-  border-color: rgba(16, 185, 129, 0.22);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    linear-gradient(160deg, rgba(16, 185, 129, 0.18), rgba(15, 23, 42, 0.04));
-}
-
-:root.dark .enhanced-mode-hover-card__icon,
-[data-theme='dark'] .enhanced-mode-hover-card__icon {
-  color: rgb(191, 219, 254);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
-    rgba(59, 130, 246, 0.24);
-  border-color: rgba(147, 197, 253, 0.2);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 12px 24px -22px rgba(59, 130, 246, 0.44);
-}
-
-:root.dark .enhanced-mode-hover-card__hero.is-enabled .enhanced-mode-hover-card__icon,
-[data-theme='dark'] .enhanced-mode-hover-card__hero.is-enabled .enhanced-mode-hover-card__icon {
-  color: rgb(167, 243, 208);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
-    rgba(16, 185, 129, 0.24);
-  border-color: rgba(110, 231, 183, 0.2);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 12px 24px -22px rgba(16, 185, 129, 0.44);
-}
-
-:root.dark .enhanced-mode-hover-card__eyebrow,
-[data-theme='dark'] .enhanced-mode-hover-card__eyebrow {
-  color: rgba(147, 197, 253, 0.88);
-}
-
-:root.dark .enhanced-mode-hover-card__hero.is-enabled .enhanced-mode-hover-card__eyebrow,
-[data-theme='dark'] .enhanced-mode-hover-card__hero.is-enabled .enhanced-mode-hover-card__eyebrow {
-  color: rgba(110, 231, 183, 0.86);
-}
-
-:root.dark .enhanced-mode-hover-card__title,
-[data-theme='dark'] .enhanced-mode-hover-card__title {
-  color: rgba(248, 250, 252, 0.98);
-}
-
-:root.dark .enhanced-mode-hover-card__state,
-[data-theme='dark'] .enhanced-mode-hover-card__state {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.92);
-}
-
-:root.dark .enhanced-mode-hover-card__description,
-[data-theme='dark'] .enhanced-mode-hover-card__description {
-  color: rgba(203, 213, 225, 0.92);
-}
-
-:root.dark .enhanced-mode-hover-card__item,
-[data-theme='dark'] .enhanced-mode-hover-card__item {
-  border-color: rgba(71, 85, 105, 0.72);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.88));
-  color: rgba(241, 245, 249, 0.94);
-}
-
-:root.dark .chat-mode-pill.chat-mode-pill-enabled,
-[data-theme='dark'] .chat-mode-pill.chat-mode-pill-enabled {
-  border-color: rgba(16, 185, 129, 0.3);
-  background: rgba(6, 78, 59, 0.24);
-  color: rgb(110, 231, 183);
-}
-
-:root.dark .chat-mode-pill.chat-mode-pill-tools,
-[data-theme='dark'] .chat-mode-pill.chat-mode-pill-tools {
-  border-color: rgba(71, 85, 105, 0.58);
-  background: rgba(30, 41, 59, 0.62);
-  color: rgb(203, 213, 225);
-}
-
-:root.dark .chat-mode-pill.chat-mode-pill-tools:hover,
-[data-theme='dark'] .chat-mode-pill.chat-mode-pill-tools:hover {
-  border-color: rgba(100, 116, 139, 0.68);
-  background: rgba(30, 41, 59, 0.92);
-  color: rgb(241, 245, 249);
-}
-
-:root.dark .chat-mode-pill.chat-mode-pill-tools.is-active,
-[data-theme='dark'] .chat-mode-pill.chat-mode-pill-tools.is-active {
-  border-color: rgba(56, 189, 248, 0.46);
-  background: rgba(8, 47, 73, 0.38);
-  color: rgb(103, 232, 249);
 }
 
 :root.dark .chat-section-label,

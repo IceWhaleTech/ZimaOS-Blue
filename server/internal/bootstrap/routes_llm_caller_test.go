@@ -5,8 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
@@ -119,12 +117,11 @@ func TestProxyBridgeLLMCaller_NilBridge(t *testing.T) {
 	}
 }
 
-func TestResolveDefaultModelForCCCLI_RespectsExplicitAuto(t *testing.T) {
-	cc := claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore())
-	if got := resolveDefaultModelForCCCLI("auto", cc, nil); got != "auto" {
-		t.Fatalf("resolveDefaultModelForCCCLI(auto) = %q, want auto", got)
+func TestResolveDefaultRuntimeModel_RespectsExplicitAuto(t *testing.T) {
+	if got := resolveDefaultRuntimeModel("auto", nil); got != "auto" {
+		t.Fatalf("resolveDefaultRuntimeModel(auto) = %q, want auto", got)
 	}
-	if got := resolveDefaultModelForCCCLI("", cc, nil); got != defaultCCCLIModel {
-		t.Fatalf("resolveDefaultModelForCCCLI(empty) = %q, want %q", got, defaultCCCLIModel)
+	if got := resolveDefaultRuntimeModel("", nil); got != defaultRuntimeModel {
+		t.Fatalf("resolveDefaultRuntimeModel(empty) = %q, want %q", got, defaultRuntimeModel)
 	}
 }

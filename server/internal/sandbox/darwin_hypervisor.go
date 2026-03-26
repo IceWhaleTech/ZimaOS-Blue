@@ -7,12 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"syscall"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // HypervisorExecutor provides sandboxed execution on macOS using Virtualization.framework
@@ -384,70 +384,14 @@ func (e *HypervisorExecutor) executeWithEnhancedIsolation(ctx context.Context, r
 
 // generateSandboxProfile creates a restrictive sandbox-exec profile.
 func (e *HypervisorExecutor) generateSandboxProfile(req *ExecutionRequest) string {
-	// Use a simpler, more permissive profile that works reliably
-	// The profile allows basic operations needed for command execution
-	profile := `(version 1)
-(deny default)
-
-; Allow basic process operations
-(allow process-fork)
-(allow process-exec)
-
-; Allow reading system files needed for execution
-(allow file-read*)
-
-; Allow writing to temp directories
-(allow file-write* (subpath "/tmp"))
-(allow file-write* (subpath "/private/tmp"))
-(allow file-write* (subpath "/var/folders"))
-(allow file-write* (subpath "/private/var/folders"))
-`
-
-	// Add work directory if specified
-	if req.WorkDir != "" && req.WorkDir != "/tmp" {
-		profile += fmt.Sprintf("(allow file-write* (subpath \"%s\"))\n", req.WorkDir)
-	}
-
-	// Add allowed paths from config
-	for _, path := range e.config.AllowedPaths {
-		if path != "/tmp" && path != "/tmp/sandbox" {
-			profile += fmt.Sprintf("(allow file-write* (subpath \"%s\"))\n", path)
-		}
-	}
-
-	profile += `
-; Allow basic system operations
-(allow sysctl-read)
-(allow mach-lookup)
-(allow signal (target self))
-
-; Allow IPC for basic functionality
-(allow ipc-posix-shm-read-data)
-(allow ipc-posix-shm-write-data)
-`
-
-	// Network access
-	if e.config.NetworkEnabled {
-		profile += `
-; Allow network access
-(allow network-outbound)
-(allow network-inbound)
-(allow system-socket)
-`
-	} else {
-		profile += `
-; Deny network access
-(deny network-outbound)
-(deny network-inbound)
-(deny system-socket)
-`
-	}
-
-	return profile
+	return generateDarwinSandboxProfile(e.config, req)
 }
 
 // IsSupported returns true if Hypervisor-based sandboxing is supported.
 func (e *HypervisorExecutor) IsSupported() bool {
+	if !sandboxExecAvailable() {
+		return false
+	}
 	// Check if any VM backend is available
 	_, err := e.detectBestBackend()
 	return err == nil

@@ -3,7 +3,6 @@
 
 .PHONY: all build build-frontend build-backend dev clean help
 .PHONY: build-linux build-darwin build-windows build-all
-.PHONY: download-claude-code prepare-claude-code-dir
 .PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar tauri-verify-macos-package
 .PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
 
@@ -17,17 +16,11 @@ PROJECT_ROOT := $(shell pwd)
 WEB_DIR := $(PROJECT_ROOT)/web
 SERVER_DIR := $(PROJECT_ROOT)/server
 EMBED_DIR := $(SERVER_DIR)/internal/web/dist
-CLAUDE_CODE_DIR := $(SERVER_DIR)/internal/claudecode/bin
 DIST_DIR := $(PROJECT_ROOT)/dist
 TAURI_DIR := $(PROJECT_ROOT)/tauri-app
 TAURI_LIB_DIR := $(TAURI_DIR)/src-tauri/lib
 SKILLS_SRC := $(PROJECT_ROOT)/assets/skills
 SKILLS_EMBED := $(SERVER_DIR)/internal/skill/embedded/skills
-
-# Claude Code CLI embedding options (default: no embedding, download on first use)
-EMBED_CLAUDE_CODE ?= false
-EMBED_PLATFORM ?= $(shell go env GOOS)-$(shell go env GOARCH | sed 's/amd64/x64/')
-EMBED_ALL_PLATFORMS ?= false
 
 # Go build flags
 LDFLAGS := -s -w
@@ -39,14 +32,8 @@ LDFLAGS += -X main.gitCommit=$(GIT_COMMIT)
 all: build
 
 # Build everything (frontend + backend)
-# Claude Code CLI is downloaded on first use by default
-build: build-frontend copy-frontend copy-skills prepare-claude-code-dir build-backend
+build: build-frontend copy-frontend copy-skills build-backend
 	@echo "Build complete! Binary at $(DIST_DIR)/zimaos-blue"
-
-# Build with embedded Claude Code CLI
-build-embedded: EMBED_CLAUDE_CODE=true
-build-embedded: build-frontend copy-frontend copy-skills download-claude-code build-backend
-	@echo "Build complete with embedded Claude Code CLI! Binary at $(DIST_DIR)/zimaos-blue"
 
 # Build frontend only
 build-frontend:
@@ -69,31 +56,6 @@ copy-skills:
 	@mkdir -p $(SKILLS_EMBED)
 	@cp -r $(SKILLS_SRC)/* $(SKILLS_EMBED)/
 
-# Prepare Claude Code CLI directory (create .gitkeep for go:embed)
-prepare-claude-code-dir:
-	@mkdir -p $(CLAUDE_CODE_DIR)
-	@touch $(CLAUDE_CODE_DIR)/.gitkeep
-ifeq ($(EMBED_CLAUDE_CODE),false)
-	@echo "Claude Code CLI will be downloaded on first use"
-endif
-
-# Download Claude Code CLI binaries (for embedding)
-download-claude-code:
-ifeq ($(EMBED_CLAUDE_CODE),true)
-ifeq ($(EMBED_ALL_PLATFORMS),true)
-	@echo "Downloading Claude Code CLI for all platforms..."
-	@$(PROJECT_ROOT)/scripts/download-claude-code.sh --all
-else
-	@echo "Downloading Claude Code CLI for $(EMBED_PLATFORM)..."
-	@$(PROJECT_ROOT)/scripts/download-claude-code.sh --platform $(EMBED_PLATFORM)
-endif
-else
-	@echo "Skipping Claude Code CLI embedding (EMBED_CLAUDE_CODE=false)"
-	@echo "CLI will be downloaded on first use"
-	@mkdir -p $(CLAUDE_CODE_DIR)
-	@touch $(CLAUDE_CODE_DIR)/.gitkeep
-endif
-
 # Build backend only (assumes frontend is already built and copied)
 build-backend:
 	@echo "Building backend..."
@@ -108,33 +70,33 @@ dev:
 	@echo "Run 'cd server && go run -tags dev ./cmd/blue' in another terminal"
 
 # Cross-compilation targets
-build-linux: build-frontend copy-frontend copy-skills prepare-claude-code-dir
+build-linux: build-frontend copy-frontend copy-skills
 	@echo "Building for Linux (amd64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
 
-build-linux-arm64: build-frontend copy-frontend copy-skills prepare-claude-code-dir
+build-linux-arm64: build-frontend copy-frontend copy-skills
 	@echo "Building for Linux (arm64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
 
-build-darwin: build-frontend copy-frontend copy-skills prepare-claude-code-dir
+build-darwin: build-frontend copy-frontend copy-skills
 	@echo "Building for macOS (amd64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
 
-build-darwin-arm64: build-frontend copy-frontend copy-skills prepare-claude-code-dir
+build-darwin-arm64: build-frontend copy-frontend copy-skills
 	@echo "Building for macOS (arm64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
 
-build-windows: build-frontend copy-frontend copy-skills prepare-claude-code-dir
+build-windows: build-frontend copy-frontend copy-skills
 	@echo "Building for Windows (amd64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
 
 # Build for all platforms
-build-all: build-frontend copy-frontend copy-skills prepare-claude-code-dir
+build-all: build-frontend copy-frontend copy-skills
 	@echo "Building for all platforms..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
@@ -145,20 +107,6 @@ build-all: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "All builds complete!"
 	@ls -lh $(DIST_DIR)/
 
-# Build for all platforms with embedded Claude Code CLI
-build-all-embedded: EMBED_CLAUDE_CODE=true
-build-all-embedded: EMBED_ALL_PLATFORMS=true
-build-all-embedded: build-frontend copy-frontend copy-skills download-claude-code
-	@echo "Building for all platforms with embedded Claude Code CLI..."
-	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
-	@echo "All builds complete with embedded Claude Code CLI!"
-	@ls -lh $(DIST_DIR)/
-
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
@@ -167,8 +115,6 @@ clean:
 	@rm -rf $(SKILLS_EMBED)
 	@rm -rf $(WEB_DIR)/dist
 	@rm -rf $(WEB_DIR)/node_modules/.cache
-	@rm -f $(CLAUDE_CODE_DIR)/claude-*
-	@rm -f $(CLAUDE_CODE_DIR)/VERSION
 	@echo "Clean complete!"
 
 # GoReleaser targets
@@ -180,12 +126,12 @@ release-check:
 	@goreleaser check
 
 # Build snapshot release (for testing, no publish)
-release-snapshot: build-frontend copy-frontend copy-skills prepare-claude-code-dir
+release-snapshot: build-frontend copy-frontend copy-skills
 	@echo "Building snapshot release..."
 	@goreleaser release --snapshot --clean
 
 # Build and publish release (requires GITHUB_TOKEN)
-release: build-frontend copy-frontend copy-skills prepare-claude-code-dir
+release: build-frontend copy-frontend copy-skills
 	@echo "Building and publishing release..."
 	@goreleaser release --clean
 
@@ -276,11 +222,9 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Go Binary Targets:"
-	@echo "  build              Build binary (Claude Code CLI downloaded on first use)"
-	@echo "  build-embedded     Build binary with embedded Claude Code CLI"
+	@echo "  build              Build binary"
 	@echo "  build-frontend     Build frontend only"
 	@echo "  build-backend      Build backend only (requires frontend to be built)"
-	@echo "  download-claude-code  Download Claude Code CLI binaries for embedding"
 	@echo "  dev                Show development mode instructions"
 	@echo "  build-linux        Build for Linux (amd64)"
 	@echo "  build-linux-arm64  Build for Linux (arm64)"
@@ -288,7 +232,6 @@ help:
 	@echo "  build-darwin-arm64 Build for macOS (arm64)"
 	@echo "  build-windows      Build for Windows (amd64)"
 	@echo "  build-all          Build for all platforms"
-	@echo "  build-all-embedded Build for all platforms with embedded Claude Code CLI"
 	@echo "  clean              Remove build artifacts"
 	@echo ""
 	@echo "Tauri Desktop App Targets:"
@@ -314,14 +257,10 @@ help:
 	@echo ""
 	@echo "Environment variables:"
 	@echo "  VERSION              Set version string (default: $(VERSION))"
-	@echo "  EMBED_CLAUDE_CODE    Embed Claude Code CLI (default: false)"
-	@echo "  EMBED_PLATFORM       Platform to embed (default: current platform)"
-	@echo "  EMBED_ALL_PLATFORMS  Embed all platforms (default: false)"
 	@echo "  MACOS_REQUIRE_NOTARIZATION  Require Apple signing/notarization creds in tauri-package (default: 1)"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make build                           # Build without embedded CLI"
-	@echo "  make build-embedded                  # Build with embedded CLI for current platform"
+	@echo "  make build                           # Build the app"
 	@echo "  make tauri-dev                       # Run Tauri desktop app in dev mode"
 	@echo "  make tauri-build                     # Build Tauri desktop app"
 	@echo "  make tauri-package                   # Build signed/notarized macOS package when creds are present"

@@ -38,6 +38,12 @@ type SessionsService interface {
 	AppendSessionMessage(ctx context.Context, sessionID string, msg SessionMessage) (*SessionMessage, error)
 }
 
+// RuntimeSessionActionHandler optionally routes explicit runtime-aware session
+// requests to the external agent sessions control plane.
+type RuntimeSessionActionHandler interface {
+	HandleRuntimeSessionAction(ctx context.Context, action string, args map[string]interface{}) (interface{}, error)
+}
+
 // SessionsListTool lists recent sessions/conversations.
 type SessionsListTool struct {
 	service SessionsService
@@ -139,6 +145,9 @@ func (t *SessionsTool) Definition() ToolDefinition {
 				"role":            map[string]interface{}{"type": "string", "description": "Message role for spawn/send."},
 				"provider":        map[string]interface{}{"type": "string", "description": "Optional provider metadata for spawn/send."},
 				"model":           map[string]interface{}{"type": "string", "description": "Optional model metadata for spawn/send."},
+				"runtime":         map[string]interface{}{"type": "string", "enum": []string{"acp", "a2a"}, "description": "Optional external runtime selector. When set to acp or a2a, Blue routes this request to external agent sessions instead of conversations."},
+				"profile_id":      map[string]interface{}{"type": "string", "description": "Optional external agent profile ID for runtime-aware spawn/send."},
+				"cwd":             map[string]interface{}{"type": "string", "description": "Optional working directory for runtime-aware spawn."},
 			},
 			"additionalProperties": true,
 		},
@@ -157,6 +166,7 @@ func (t *SessionsHistoryTool) Definition() ToolDefinition {
 				"id":     map[string]interface{}{"type": "string", "description": "Session / conversation ID"},
 				"limit":  map[string]interface{}{"type": "integer", "description": "Maximum number of messages (default 50, max 500)"},
 				"offset": map[string]interface{}{"type": "integer", "description": "Pagination offset (default 0)"},
+				"runtime": map[string]interface{}{"type": "string", "enum": []string{"acp", "a2a"}, "description": "Optional external runtime selector. When set, reads external agent session history."},
 			},
 			"required": []string{"id"},
 		},
@@ -172,7 +182,8 @@ func (t *SessionStatusTool) Definition() ToolDefinition {
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"id": map[string]interface{}{"type": "string", "description": "Session / conversation ID"},
+				"id":      map[string]interface{}{"type": "string", "description": "Session / conversation ID"},
+				"runtime": map[string]interface{}{"type": "string", "enum": []string{"acp", "a2a"}, "description": "Optional external runtime selector. When set, reads external agent session status."},
 			},
 			"required": []string{"id"},
 		},
@@ -196,6 +207,9 @@ func (t *SessionsSpawnTool) Definition() ToolDefinition {
 				"role":            map[string]interface{}{"type": "string", "description": "Role for the initial message (default user)"},
 				"provider":        map[string]interface{}{"type": "string", "description": "Optional provider metadata for the initial message"},
 				"model":           map[string]interface{}{"type": "string", "description": "Optional model metadata for the initial message"},
+				"runtime":         map[string]interface{}{"type": "string", "enum": []string{"acp", "a2a"}, "description": "Optional external runtime selector. When set, creates an external agent session."},
+				"profile_id":      map[string]interface{}{"type": "string", "description": "External agent profile ID for runtime-aware spawn."},
+				"cwd":             map[string]interface{}{"type": "string", "description": "Optional working directory for runtime-aware spawn."},
 			},
 		},
 	}
@@ -216,6 +230,7 @@ func (t *SessionsSendTool) Definition() ToolDefinition {
 				"role":     map[string]interface{}{"type": "string", "description": "Message role (default user)"},
 				"provider": map[string]interface{}{"type": "string", "description": "Optional provider metadata"},
 				"model":    map[string]interface{}{"type": "string", "description": "Optional model metadata"},
+				"runtime":  map[string]interface{}{"type": "string", "enum": []string{"acp", "a2a"}, "description": "Optional external runtime selector. When set, sends to an external agent session."},
 			},
 			"required": []string{"id"},
 		},
@@ -226,6 +241,12 @@ func (t *SessionsSendTool) Definition() ToolDefinition {
 func (t *SessionsTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	if t == nil || t.service == nil {
 		return nil, errors.New("sessions service not available")
+	}
+	if explicitRuntimeRequested(args) {
+		if runtimeHandler, ok := t.service.(RuntimeSessionActionHandler); ok {
+			return runtimeHandler.HandleRuntimeSessionAction(ctx, resolveSessionsAction(args), args)
+		}
+		return nil, errors.New("runtime-aware sessions are not available")
 	}
 
 	switch resolveSessionsAction(args) {
@@ -288,6 +309,12 @@ func (t *SessionsHistoryTool) Execute(ctx context.Context, args map[string]inter
 	if t == nil || t.service == nil {
 		return nil, errors.New("sessions service not available")
 	}
+	if explicitRuntimeRequested(args) {
+		if runtimeHandler, ok := t.service.(RuntimeSessionActionHandler); ok {
+			return runtimeHandler.HandleRuntimeSessionAction(ctx, "history", args)
+		}
+		return nil, errors.New("runtime-aware sessions are not available")
+	}
 	sessionID := firstCompatString(args, "id", "session_id", "session", "conversation_id")
 	if sessionID == "" {
 		return nil, errors.New("id is required")
@@ -324,6 +351,12 @@ func (t *SessionStatusTool) Execute(ctx context.Context, args map[string]interfa
 	if t == nil || t.service == nil {
 		return nil, errors.New("sessions service not available")
 	}
+	if explicitRuntimeRequested(args) {
+		if runtimeHandler, ok := t.service.(RuntimeSessionActionHandler); ok {
+			return runtimeHandler.HandleRuntimeSessionAction(ctx, "status", args)
+		}
+		return nil, errors.New("runtime-aware sessions are not available")
+	}
 	sessionID := firstCompatString(args, "id", "session_id", "session", "conversation_id")
 	if sessionID == "" {
 		return nil, errors.New("id is required")
@@ -347,6 +380,12 @@ func (t *SessionStatusTool) Execute(ctx context.Context, args map[string]interfa
 func (t *SessionsSpawnTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	if t == nil || t.service == nil {
 		return nil, errors.New("sessions service not available")
+	}
+	if explicitRuntimeRequested(args) {
+		if runtimeHandler, ok := t.service.(RuntimeSessionActionHandler); ok {
+			return runtimeHandler.HandleRuntimeSessionAction(ctx, "spawn", args)
+		}
+		return nil, errors.New("runtime-aware sessions are not available")
 	}
 	title := firstCompatString(args, "title", "name")
 	if title == "" {
@@ -393,6 +432,12 @@ func (t *SessionsSpawnTool) Execute(ctx context.Context, args map[string]interfa
 func (t *SessionsSendTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	if t == nil || t.service == nil {
 		return nil, errors.New("sessions service not available")
+	}
+	if explicitRuntimeRequested(args) {
+		if runtimeHandler, ok := t.service.(RuntimeSessionActionHandler); ok {
+			return runtimeHandler.HandleRuntimeSessionAction(ctx, "send", args)
+		}
+		return nil, errors.New("runtime-aware sessions are not available")
 	}
 	sessionID := firstCompatString(args, "id", "session_id", "session", "conversation_id")
 	if sessionID == "" {
@@ -466,6 +511,11 @@ func normalizeSessionRole(role string) string {
 		return "user"
 	}
 	return role
+}
+
+func explicitRuntimeRequested(args map[string]interface{}) bool {
+	runtime := strings.ToLower(strings.TrimSpace(firstCompatString(args, "runtime")))
+	return runtime == "acp" || runtime == "a2a"
 }
 
 // RegisterSessionTools registers native session tools backed by the provided service.

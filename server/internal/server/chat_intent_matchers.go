@@ -174,7 +174,6 @@ var (
 
 	workspaceFileEditCueMatcher = newUnicodeAhoMatcher([]string{
 		"update",
-		"change",
 		"replace",
 		"modify",
 		"edit",

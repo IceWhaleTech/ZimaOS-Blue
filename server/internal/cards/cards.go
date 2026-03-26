@@ -403,6 +403,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return fileReadCard(content)
 	case "write", "file_write":
 		return fileWriteCard(content)
+	case "write_commit":
+		return fileWriteCard(content)
 	case "office":
 		return fileWriteCard(content)
 	case "ls":
@@ -1006,17 +1008,51 @@ func fileWriteCard(content string) map[string]interface{} {
 	} else if m, ok := data["message"].(string); ok {
 		msg = m
 	}
-	details := []map[string]interface{}{}
-	if p, ok := data["path"].(string); ok {
-		details = append(details, map[string]interface{}{"label": "Path", "value": p})
+
+	displayPath := strings.TrimSpace(formatValue(data["original_path"]))
+	resolvedPath := strings.TrimSpace(formatValue(data["path"]))
+	absolutePath := strings.TrimSpace(formatValue(data["absolute_path"]))
+	if displayPath == "" {
+		displayPath = resolvedPath
 	}
-	return map[string]interface{}{
+	details := []map[string]interface{}{}
+	if displayPath != "" {
+		pathDetail := map[string]interface{}{
+			"label": "Path",
+			"value": escapeBackticks(RedactSensitiveText(displayPath)),
+		}
+		if status == "success" && isGenericCardLocalAbsolutePath(absolutePath) {
+			pathDetail["reveal_path"] = absolutePath
+		}
+		details = append(details, pathDetail)
+	}
+
+	card := map[string]interface{}{
 		"type":    "result",
 		"title":   "File Write",
 		"status":  status,
 		"message": msg,
 		"details": details,
 	}
+	if resolvedPath != "" || absolutePath != "" || displayPath != "" {
+		artifact := map[string]interface{}{}
+		switch {
+		case resolvedPath != "":
+			artifact["path"] = resolvedPath
+		case displayPath != "":
+			artifact["path"] = displayPath
+		}
+		if absolutePath != "" {
+			artifact["local_path"] = absolutePath
+		}
+		if displayPath != "" {
+			artifact["original_path"] = displayPath
+		}
+		if len(artifact) > 0 {
+			card["artifacts"] = []map[string]interface{}{artifact}
+		}
+	}
+	return card
 }
 
 func lsCard(content string) map[string]interface{} {

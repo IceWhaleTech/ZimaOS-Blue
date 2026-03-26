@@ -244,46 +244,31 @@ func (t *BrowserTool) maybeRequireRelayApproval(ctx context.Context, b BrowserBa
 func (t *BrowserTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "browser",
-		Description: "Final web fallback and live page tool. Use for login flows, CAPTCHA/challenges, JS-heavy rendering, clicking/typing/forms, scrolling, screenshots, or tab/session reuse. Prefer web_query for normal discovery and page reading; switch to browser for live interaction or when web_query reports browser-required warnings.",
+		Description: "Live browser fallback for login walls, JS-heavy pages, interactive actions, screenshots, and tab/session reuse. Prefer web_query for ordinary reading.",
 		Icon:        "browser",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"description": "Action: navigate, snapshot, snapshot_interactive, snapshot_auto, act, screenshot, tabs, close, recipe (run automation template), recipes (list available templates)",
+					"description": "navigate, snapshot, snapshot_interactive, snapshot_auto, act, screenshot, tabs, close, recipe, or recipes",
 				},
 				"url": map[string]interface{}{
 					"type":        "string",
-					"description": "URL to navigate to (required for navigate; optional for screenshot when capturing the current tab or a target_id tab)",
-				},
-				"ref": map[string]interface{}{
-					"type":        "number",
-					"description": "Element @ref from accessibility tree DSL (required for act)",
-				},
-				"act_type": map[string]interface{}{
-					"type":        "string",
-					"description": "Action type for act: click, type, focus, hover, scroll, select",
-				},
-				"value": map[string]interface{}{
-					"type":        "string",
-					"description": "Value for type/select actions",
+					"description": "Target URL for navigate, or optional screenshot URL.",
 				},
 				"target_id": map[string]interface{}{
 					"type":        "string",
-					"description": "Tab target ID (optional, defaults to active tab)",
-				},
-				"vision": map[string]interface{}{
-					"type":        "boolean",
-					"description": "Whether the calling model supports vision/images",
+					"description": "Optional tab target ID. Defaults to the active tab when supported.",
 				},
 				"recipe": map[string]interface{}{
 					"type":        "string",
-					"description": "Recipe name for action=recipe (search, fill_form, extract, login)",
+					"description": "Recipe name for action=recipe.",
 				},
 				"params": map[string]interface{}{
-					"type":        "object",
-					"description": "Recipe parameters as key-value pairs (e.g., {\"query\": \"test\", \"engine\": \"google\"})",
+					"type":                 "object",
+					"description":          "Action details. For act use ref/act_type/value. For recipe pass recipe inputs. Optional vision=true enables visual follow-up when supported.",
+					"additionalProperties": true,
 				},
 			},
 			"required": []string{"action"},

@@ -25,13 +25,14 @@ type ModelDiscovery struct {
 		GetCopilotAccessToken(providerID string) (string, error)
 		GetCopilotEndpoint() string
 	}
-	client         *http.Client
-	insecureClient *http.Client
-	cache          map[string][]*Model
-	cacheTTL       time.Duration
-	cacheAt        map[string]time.Time
-	mu             sync.RWMutex
-	fetching       map[string]bool // tracks in-flight async fetches
+	client          *http.Client
+	insecureClient  *http.Client
+	cache           map[string][]*Model
+	cacheTTL        time.Duration
+	cacheAt         map[string]time.Time
+	mu              sync.RWMutex
+	fetching        map[string]bool // tracks in-flight async fetches
+	onModelsChanged func(providerID string)
 }
 
 // NewModelDiscovery creates a new ModelDiscovery
@@ -53,6 +54,23 @@ func NewModelDiscovery(registry *Registry, storage Storage, cacheTTL time.Durati
 		cacheAt:  make(map[string]time.Time),
 		fetching: make(map[string]bool),
 	}
+}
+
+// SetModelsChangedHook registers a callback that runs after fresh model data is
+// written into discovery cache/storage. Callers typically use this to rebuild
+// router snapshots so empty-model routing doesn't keep serving stale candidates.
+func (d *ModelDiscovery) SetModelsChangedHook(hook func(providerID string)) {
+	if d == nil {
+		return
+	}
+	d.onModelsChanged = hook
+}
+
+func (d *ModelDiscovery) notifyModelsChanged(providerID string) {
+	if d == nil || d.onModelsChanged == nil {
+		return
+	}
+	d.onModelsChanged(providerID)
 }
 
 // SetOAuthManager sets the OAuth manager for Copilot token exchange
@@ -84,10 +102,11 @@ func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]
 		// Fall back to built-in models
 		builtinModels := GetBuiltinModels(providerID)
 		if builtinModels != nil {
-			return builtinModels, nil
+			return sortModelsByPreference(builtinModels), nil
 		}
 		return nil, err
 	}
+	models = sortModelsByPreference(models)
 
 	// Cache the results
 	d.mu.Lock()
@@ -99,6 +118,7 @@ func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]
 	if err := d.storage.SaveModels(providerID, models); err != nil {
 		// Log but don't fail
 	}
+	d.notifyModelsChanged(providerID)
 
 	return models, nil
 }
@@ -311,7 +331,7 @@ func (d *ModelDiscovery) GetAllModels() []*Model {
 		}
 	}
 
-	return allModels
+	return sortModelsByPreference(allModels)
 }
 
 // RefreshAll refreshes models for all enabled providers
@@ -614,6 +634,7 @@ func (d *ModelDiscovery) tryOllamaStyleEndpoint(ctx context.Context, baseURL str
 				},
 			}
 			inferOllamaCapabilities(model)
+			applyDiscoveredModelTypeHeuristics(model)
 			models = append(models, model)
 		}
 		return models, nil
@@ -699,6 +720,7 @@ func (d *ModelDiscovery) tryLiteLLMStyleEndpoint(ctx context.Context, baseURL st
 					},
 				}
 				inferCapabilities(model)
+				applyDiscoveredModelTypeHeuristics(model)
 				models = append(models, model)
 			}
 			if len(models) > 0 {
@@ -863,6 +885,7 @@ func (d *ModelDiscovery) parseOpenAIModelsResponse(body []byte, provider *Provid
 			// Infer capabilities from model name
 			inferCapabilities(model)
 		}
+		applyDiscoveredModelTypeHeuristics(model)
 
 		models = append(models, model)
 	}
@@ -1024,6 +1047,7 @@ func (d *ModelDiscovery) fetchGoogleModels(ctx context.Context, provider *Provid
 				model.Capabilities.FunctionCall = true
 			}
 		}
+		applyDiscoveredModelTypeHeuristics(model)
 
 		models = append(models, model)
 	}
@@ -1108,6 +1132,7 @@ func (d *ModelDiscovery) fetchOllamaModels(ctx context.Context, provider *Provid
 			// Infer capabilities from model name
 			inferOllamaCapabilities(model)
 		}
+		applyDiscoveredModelTypeHeuristics(model)
 
 		models = append(models, model)
 	}
@@ -1298,6 +1323,7 @@ func (d *ModelDiscovery) ProbeModels(ctx context.Context, providerID string, con
 
 	// Persist to storage
 	_ = d.storage.SaveModels(providerID, models)
+	d.notifyModelsChanged(providerID)
 
 	// Log summary
 	available := 0

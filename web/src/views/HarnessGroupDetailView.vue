@@ -5,8 +5,11 @@ import { useI18n } from 'vue-i18n'
 import {
   harnessApi,
   type HarnessArtifactRef,
+  type HarnessCheckpointArtifact,
+  type HarnessContract,
   type HarnessGroupPromotionResult,
   type HarnessPromoteGroupSpec,
+  type HarnessRuntimeEvidenceEntry,
   type HarnessRunGroup,
   type HarnessRunGroupItem,
   type HarnessRunGroupReport,
@@ -82,6 +85,18 @@ type ScorecardDiagnosticRow = {
 
 type FailedItemDiagnosticRow = FailedItemRow & {
   verification: ScorecardVerificationDiagnostics
+}
+
+type ContractSummaryRow = {
+  itemID: string
+  itemIndex: number | null
+  profile: string
+  contract: HarnessContract
+}
+
+type RuntimeEvidenceRunRow = {
+  run: HarnessRunSummary | null
+  entries: HarnessRuntimeEvidenceEntry[]
 }
 
 type GroupPromotionFormState = {
@@ -296,6 +311,9 @@ const items = computed(() => report.value?.items || [])
 const scorecards = computed(() => report.value?.scorecards || [])
 const linkedRuns = computed(() => report.value?.linked_runs || [])
 const artifacts = computed(() => report.value?.artifacts || [])
+const checkpoints = computed(() => report.value?.checkpoints || [])
+const runtimeEvidence = computed(() => report.value?.runtime_evidence || {})
+const itemContracts = computed(() => report.value?.item_contracts || {})
 const verdictCounts = computed(() => report.value?.verdict_counts || {})
 const failedItems = computed<FailedItemDiagnosticRow[]>(() =>
   (report.value?.failed_items || []).map((entry) => {
@@ -404,6 +422,28 @@ const scorecardDiagnosticsByItemID = computed<Record<string, ScorecardDiagnostic
   }
   return out
 })
+const contractRows = computed<ContractSummaryRow[]>(() =>
+  Object.entries(itemContracts.value)
+    .map(([itemID, contract]) => ({
+      itemID,
+      itemIndex: itemByID.value[itemID]?.index ?? null,
+      profile: itemByID.value[itemID]?.profile || '',
+      contract,
+    }))
+    .sort((left, right) => Number(left.itemIndex ?? 9999) - Number(right.itemIndex ?? 9999))
+)
+const runtimeEvidenceRows = computed<RuntimeEvidenceRunRow[]>(() =>
+  linkedRuns.value
+    .map((run) => ({
+      run,
+      entries: [...(runtimeEvidence.value[run.id] || [])].sort((left, right) => {
+        const leftTime = Date.parse(left.created_at || '')
+        const rightTime = Date.parse(right.created_at || '')
+        return leftTime - rightTime
+      }),
+    }))
+    .filter((row) => row.entries.length > 0)
+)
 const hasScorecardDiagnostics = computed(() =>
   scorecardDiagnostics.value.some(
     (row) =>
@@ -536,15 +576,63 @@ function remediationHint(label?: string | null): string {
 function verificationTraceHasContent(summary?: VerificationTraceSummary | null): boolean {
   return Boolean(
     summary &&
-      (summary.eventCount != null ||
-        summary.artifactCount != null ||
-        summary.toolNames.length > 0 ||
-        summary.eventsError ||
-        summary.artifactsError)
+    (summary.eventCount != null ||
+      summary.artifactCount != null ||
+      summary.toolNames.length > 0 ||
+      summary.eventsError ||
+      summary.artifactsError)
   )
 }
 
 void verificationTraceHasContent
+
+function contractStringList(values?: string[] | null): string[] {
+  return Array.isArray(values)
+    ? values.map((value) => String(value || '').trim()).filter((value) => value.length > 0)
+    : []
+}
+
+function contractArtifacts(contract?: HarnessContract | null): string[] {
+  return (contract?.expected_artifacts || [])
+    .map((artifact) => firstNonEmpty(String(artifact?.path || ''), String(artifact?.label || '')))
+    .filter((value) => value.length > 0)
+}
+
+function contractBrowserChecks(contract?: HarnessContract | null): string[] {
+  return (contract?.browser_checks || [])
+    .map((check) =>
+      firstNonEmpty(
+        String(check?.name || ''),
+        String(check?.target || ''),
+        String(check?.required_observation || ''),
+        String(check?.required_artifact || '')
+      )
+    )
+    .filter((value) => value.length > 0)
+}
+
+function contractAPIChecks(contract?: HarnessContract | null): string[] {
+  return (contract?.api_checks || [])
+    .map((check) =>
+      firstNonEmpty(
+        String(check?.name || ''),
+        String(check?.target || ''),
+        String(check?.required_check || '')
+      )
+    )
+    .filter((value) => value.length > 0)
+}
+
+function checkpointPayload(
+  record?: HarnessCheckpointArtifact | null
+): Record<string, unknown> | null {
+  return asRecord(record?.payload || null)
+}
+
+function checkpointStringList(record?: HarnessCheckpointArtifact | null, key?: string): string[] {
+  if (!key) return []
+  return readStringList([checkpointPayload(record)], key)
+}
 
 function runPreview(run?: HarnessRunSummary | null): string {
   if (!run) return ''
@@ -877,11 +965,7 @@ onUnmounted(() => {
           </label>
           <label class="promotion-form-span-2">
             <span>{{ tr('common.description', 'Description') }}</span>
-            <textarea
-              v-model="promotionForm.description"
-              name="promotion-description"
-              rows="3"
-            />
+            <textarea v-model="promotionForm.description" name="promotion-description" rows="3" />
           </label>
           <label class="promotion-form-span-2">
             <span>{{ tr('harness.evalSpec.name', 'Eval name') }}</span>
@@ -899,7 +983,9 @@ onUnmounted(() => {
         </form>
 
         <article v-if="promotionResult" class="promotion-result-card">
-          <strong>{{ tr('harness.group.promoted', 'Group promoted into reusable eval assets') }}</strong>
+          <strong>{{
+            tr('harness.group.promoted', 'Group promoted into reusable eval assets')
+          }}</strong>
           <div class="detail-pills">
             <span v-if="promotionResult.dataset">
               {{ tr('harness.dataset.create', 'Dataset') }}:
@@ -1217,6 +1303,189 @@ onUnmounted(() => {
               <span v-else class="panel-caption">
                 {{ tr('harness.group.noProposalIds', 'No review proposals attached') }}
               </span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="contractRows.length" class="panel">
+        <div class="panel-header">
+          <h2>{{ tr('harness.group.contracts', 'Run contracts') }}</h2>
+          <span class="panel-caption">{{ contractRows.length }}</span>
+        </div>
+        <div class="table-like">
+          <article v-for="row in contractRows" :key="row.itemID" class="table-row">
+            <div class="row-primary">
+              <div class="row-title-line">
+                <strong>#{{ row.itemIndex ?? '?' }}</strong>
+                <span v-if="row.profile" class="profile-chip">{{ profileLabel(row.profile) }}</span>
+                <span v-if="row.contract.risk_level" class="status-chip is-warning">
+                  {{ tr('harness.group.riskLevel', 'Risk') }}: {{ row.contract.risk_level }}
+                </span>
+              </div>
+              <div class="detail-pills">
+                <span
+                  v-for="deliverable in contractStringList(row.contract.deliverables)"
+                  :key="`deliverable-${row.itemID}-${deliverable}`"
+                >
+                  {{ tr('harness.group.deliverables', 'Deliverable') }}: {{ deliverable }}
+                </span>
+                <span
+                  v-for="artifact in contractArtifacts(row.contract)"
+                  :key="`artifact-${row.itemID}-${artifact}`"
+                >
+                  {{ tr('harness.group.expectedArtifacts', 'Expected artifact') }}: {{ artifact }}
+                </span>
+                <span
+                  v-for="toolName in contractStringList(row.contract.required_tool_calls)"
+                  :key="`tool-${row.itemID}-${toolName}`"
+                >
+                  {{ tr('harness.group.requiredToolCalls', 'Required tool') }}: {{ toolName }}
+                </span>
+                <span
+                  v-for="observation in contractStringList(row.contract.required_observations)"
+                  :key="`observation-${row.itemID}-${observation}`"
+                >
+                  {{ tr('harness.group.requiredObservations', 'Required observation') }}:
+                  {{ observation }}
+                </span>
+                <span
+                  v-for="browserCheck in contractBrowserChecks(row.contract)"
+                  :key="`browser-${row.itemID}-${browserCheck}`"
+                >
+                  {{ tr('harness.group.browserQa', 'Browser QA') }}: {{ browserCheck }}
+                </span>
+                <span
+                  v-for="apiCheck in contractAPIChecks(row.contract)"
+                  :key="`api-${row.itemID}-${apiCheck}`"
+                >
+                  {{ tr('harness.group.apiChecks', 'API check') }}: {{ apiCheck }}
+                </span>
+              </div>
+              <p v-if="contractStringList(row.contract.fallback_order).length" class="row-subtitle">
+                {{ tr('harness.group.fallbackOrder', 'Fallback order') }}:
+                {{ contractStringList(row.contract.fallback_order).join(' -> ') }}
+              </p>
+              <p
+                v-if="contractStringList(row.contract.stop_conditions).length"
+                class="row-subtitle"
+              >
+                {{ tr('harness.group.stopConditions', 'Stop conditions') }}:
+                {{ contractStringList(row.contract.stop_conditions).join(', ') }}
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="checkpoints.length" class="panel">
+        <div class="panel-header">
+          <h2>{{ tr('harness.group.checkpoints', 'Checkpoints') }}</h2>
+          <span class="panel-caption">{{ checkpoints.length }}</span>
+        </div>
+        <div class="failed-grid">
+          <article
+            v-for="checkpoint in checkpoints"
+            :key="checkpoint.artifact.id"
+            class="failed-card"
+          >
+            <div class="failed-header">
+              <strong>{{
+                checkpoint.artifact.label || tr('harness.group.checkpoint', 'Checkpoint')
+              }}</strong>
+              <span class="status-chip is-warning">
+                {{ tr('harness.group.attemptIndex', 'Attempt') }}
+                {{ Number(checkpointPayload(checkpoint)?.attempt_index || 0) }}
+              </span>
+            </div>
+            <p class="failed-title">
+              {{
+                String(checkpointPayload(checkpoint)?.summary || '').trim() ||
+                tr('harness.group.noCheckpointSummary', 'No checkpoint summary recorded.')
+              }}
+            </p>
+            <div class="detail-pills">
+              <span
+                v-for="label in checkpointStringList(checkpoint, 'failure_labels')"
+                :key="`checkpoint-label-${checkpoint.artifact.id}-${label}`"
+              >
+                {{ tr('harness.group.failureLabel', 'Failure label') }}: {{ label }}
+              </span>
+              <span
+                v-for="evidence in checkpointStringList(checkpoint, 'verified_evidence')"
+                :key="`checkpoint-evidence-${checkpoint.artifact.id}-${evidence}`"
+              >
+                {{ tr('harness.group.evidence', 'Evidence') }}: {{ evidence }}
+              </span>
+            </div>
+            <p
+              v-if="checkpointStringList(checkpoint, 'unresolved_risks').length"
+              class="failed-reason"
+            >
+              {{ tr('harness.group.unresolvedRisks', 'Unresolved risks') }}:
+              {{ checkpointStringList(checkpoint, 'unresolved_risks').join(', ') }}
+            </p>
+            <p
+              v-if="String(checkpointPayload(checkpoint)?.recommended_resume || '').trim()"
+              class="row-subtitle"
+            >
+              {{ String(checkpointPayload(checkpoint)?.recommended_resume || '').trim() }}
+            </p>
+            <code class="artifact-path">{{
+              checkpoint.artifact.path_or_url || tr('common.notAvailable', 'Not available')
+            }}</code>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="runtimeEvidenceRows.length" class="panel">
+        <div class="panel-header">
+          <h2>{{ tr('harness.group.runtimeEvidence', 'Runtime evidence') }}</h2>
+          <span class="panel-caption">{{ runtimeEvidenceRows.length }}</span>
+        </div>
+        <div class="run-list">
+          <article
+            v-for="row in runtimeEvidenceRows"
+            :key="row.run?.id || row.entries[0]?.run_id"
+            class="run-card"
+          >
+            <div class="run-header">
+              <div>
+                <div class="run-title-line">
+                  <strong>{{
+                    row.run?.goal || row.run?.id || tr('harness.group.linkedRuns', 'Linked run')
+                  }}</strong>
+                  <span class="status-chip" :class="statusTone(row.run?.status || 'completed')">
+                    {{ statusLabel(row.run?.status || 'completed') }}
+                  </span>
+                </div>
+                <p class="run-meta">
+                  {{ tr('harness.group.eventCount', 'Event count') }}: {{ row.entries.length }}
+                </p>
+              </div>
+              <code class="run-id">{{ row.run?.id || row.entries[0]?.run_id }}</code>
+            </div>
+            <div class="runtime-evidence-list">
+              <article v-for="entry in row.entries" :key="entry.id" class="evidence-entry">
+                <div class="row-title-line">
+                  <strong>{{ humanizeEnum(entry.event_type) }}</strong>
+                  <span class="panel-caption">
+                    {{
+                      tr('harness.group.stepLabel', 'Step') + ' ' + Number(entry.step_index || 0)
+                    }}
+                    ·
+                    {{
+                      tr('harness.group.plannerRound', 'Round') +
+                      ' ' +
+                      Number(entry.planner_round || 0)
+                    }}
+                  </span>
+                </div>
+                <p class="row-subtitle">
+                  {{ entry.summary || tr('common.notAvailable', 'Not available') }}
+                </p>
+                <p class="run-meta">{{ formatDate(entry.created_at) }}</p>
+              </article>
             </div>
           </article>
         </div>
@@ -1600,6 +1869,18 @@ onUnmounted(() => {
   padding: 1.2rem;
 }
 
+.runtime-evidence-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.evidence-entry {
+  padding: 0.85rem 1rem;
+  border-radius: 0.95rem;
+  background: rgba(241, 245, 249, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
 .panel-header,
 .table-row,
 .run-header,
@@ -1639,9 +1920,7 @@ onUnmounted(() => {
 }
 
 .promotion-panel {
-  background:
-    linear-gradient(135deg, rgba(255, 251, 235, 0.92), rgba(255, 255, 255, 0.96)),
-    #fff;
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.92), rgba(255, 255, 255, 0.96)), #fff;
 }
 
 .promotion-form {

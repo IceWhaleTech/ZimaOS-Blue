@@ -12,15 +12,24 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 )
 
+type sessionBrowserBackend interface {
+	BrowserBackend
+	ListSessionInfos(ctx context.Context) ([]browser.SessionInfo, error)
+	GetSessionInfo(ctx context.Context, targetID string) (*browser.SessionInfo, error)
+	CaptureSessionMonitor(ctx context.Context, targetID string) (*browser.SessionMonitorResponse, error)
+	CaptureSessionScreenshot(ctx context.Context, targetID string) (*browser.SessionScreenshotResponse, error)
+}
+
 // HybridCapabilityBrowserBackend routes browser work by capability between
 // Lightpanda read-only sessions and Chromium runtimes.
 type HybridCapabilityBrowserBackend struct {
-	config      *browser.Config
-	lightpanda  *browser.LightpandaService
-	managed     *RodBrowserBackend
-	relay       *RodBrowserBackend
-	preferRelay func(rawURL string) bool
-	relayReady  func(ctx context.Context) bool
+	config           *browser.Config
+	lightpanda       *browser.LightpandaService
+	lightpandaBinary sessionBrowserBackend
+	managed          sessionBrowserBackend
+	relay            sessionBrowserBackend
+	preferRelay      func(rawURL string) bool
+	relayReady       func(ctx context.Context) bool
 
 	relayAvailabilityMu        sync.RWMutex
 	relayAvailabilityValue     bool
@@ -33,18 +42,20 @@ const hybridRelayAvailabilityTTL = 2 * time.Second
 func NewHybridCapabilityBrowserBackend(
 	config *browser.Config,
 	lightpanda *browser.LightpandaService,
-	managed *RodBrowserBackend,
-	relay *RodBrowserBackend,
+	lightpandaBinary sessionBrowserBackend,
+	managed sessionBrowserBackend,
+	relay sessionBrowserBackend,
 	preferRelay func(rawURL string) bool,
 	relayReady func(ctx context.Context) bool,
 ) *HybridCapabilityBrowserBackend {
 	return &HybridCapabilityBrowserBackend{
-		config:      config.Clone(),
-		lightpanda:  lightpanda,
-		managed:     managed,
-		relay:       relay,
-		preferRelay: preferRelay,
-		relayReady:  relayReady,
+		config:           config.Clone(),
+		lightpanda:       lightpanda,
+		lightpandaBinary: lightpandaBinary,
+		managed:          managed,
+		relay:            relay,
+		preferRelay:      preferRelay,
+		relayReady:       relayReady,
 	}
 }
 
@@ -61,7 +72,7 @@ func (b *HybridCapabilityBrowserBackend) lightpandaEnabled() bool {
 		b.lightpanda != nil
 }
 
-func (b *HybridCapabilityBrowserBackend) chromiumCandidates(rawURL string) (*RodBrowserBackend, *RodBrowserBackend) {
+func (b *HybridCapabilityBrowserBackend) chromiumCandidates(rawURL string) (sessionBrowserBackend, sessionBrowserBackend) {
 	if b == nil {
 		return nil, nil
 	}
@@ -87,10 +98,10 @@ func (b *HybridCapabilityBrowserBackend) chromiumCandidates(rawURL string) (*Rod
 	return primary, fallback
 }
 
-func (b *HybridCapabilityBrowserBackend) chromiumCandidateList(rawURL string) []*RodBrowserBackend {
+func (b *HybridCapabilityBrowserBackend) chromiumCandidateList(rawURL string) []sessionBrowserBackend {
 	primary, fallback := b.chromiumCandidates(rawURL)
-	out := make([]*RodBrowserBackend, 0, 2)
-	appendUnique := func(candidate *RodBrowserBackend) {
+	out := make([]sessionBrowserBackend, 0, 2)
+	appendUnique := func(candidate sessionBrowserBackend) {
 		if candidate == nil {
 			return
 		}
@@ -104,6 +115,57 @@ func (b *HybridCapabilityBrowserBackend) chromiumCandidateList(rawURL string) []
 	appendUnique(primary)
 	appendUnique(fallback)
 	return out
+}
+
+func (b *HybridCapabilityBrowserBackend) chromiumDetailForBackend(candidate sessionBrowserBackend) browser.SessionEngineDetail {
+	switch candidate {
+	case nil:
+		return ""
+	case b.relay:
+		return browser.SessionEngineDetailChromiumRelay
+	default:
+		return browser.SessionEngineDetailChromiumManaged
+	}
+}
+
+func (b *HybridCapabilityBrowserBackend) warmChromiumSession(ctx context.Context, rawURL string) (sessionBrowserBackend, string, browser.SessionEngineDetail, bool) {
+	candidates := b.chromiumCandidateList(rawURL)
+	if len(candidates) == 0 {
+		return nil, "", "", false
+	}
+
+	selectSession := func(requireActive bool) (sessionBrowserBackend, string, browser.SessionEngineDetail, bool) {
+		for _, candidate := range candidates {
+			if candidate == nil {
+				continue
+			}
+			sessions, err := candidate.ListSessionInfos(ctx)
+			if err != nil {
+				continue
+			}
+			detail := b.chromiumDetailForBackend(candidate)
+			for _, info := range sessions {
+				targetID := strings.TrimSpace(info.ID)
+				if targetID == "" {
+					continue
+				}
+				active := strings.EqualFold(strings.TrimSpace(info.Status), "active")
+				if active != requireActive {
+					continue
+				}
+				if info.EngineDetail != "" {
+					detail = info.EngineDetail
+				}
+				return candidate, targetID, detail, true
+			}
+		}
+		return nil, "", "", false
+	}
+
+	if candidate, targetID, detail, ok := selectSession(true); ok {
+		return candidate, targetID, detail, true
+	}
+	return selectSession(false)
 }
 
 func (b *HybridCapabilityBrowserBackend) relayAvailable(ctx context.Context) bool {
@@ -133,7 +195,7 @@ func (b *HybridCapabilityBrowserBackend) relayAvailable(ctx context.Context) boo
 	return available
 }
 
-func (b *HybridCapabilityBrowserBackend) chromiumCandidatesForNewSession(ctx context.Context, rawURL string) (*RodBrowserBackend, *RodBrowserBackend) {
+func (b *HybridCapabilityBrowserBackend) chromiumCandidatesForNewSession(ctx context.Context, rawURL string) (sessionBrowserBackend, sessionBrowserBackend) {
 	primary, fallback := b.chromiumCandidates(rawURL)
 	if b.relay == nil || b.relayAvailable(ctx) {
 		return primary, fallback
@@ -154,6 +216,12 @@ func (b *HybridCapabilityBrowserBackend) lightpandaPreferredNavigate(ctx context
 	if !b.lightpandaEnabled() || strings.TrimSpace(targetID) != "" {
 		return false
 	}
+	if _, _, _, ok := b.warmChromiumSession(ctx, rawURL); ok {
+		return false
+	}
+	if host := webFetchHostForURL(rawURL); host != "" && !webFetchSupportsLightpandaHost(host) {
+		return false
+	}
 	hint := GetBrowserRouteHint(ctx)
 	if strings.TrimSpace(hint.Action) != "navigate" {
 		return false
@@ -172,27 +240,45 @@ func (b *HybridCapabilityBrowserBackend) lightpandaPreferredNavigate(ctx context
 	return true
 }
 
-func (b *HybridCapabilityBrowserBackend) targetEngine(ctx context.Context, targetID string) browser.SessionEngine {
+func (b *HybridCapabilityBrowserBackend) targetDetail(ctx context.Context, targetID string) browser.SessionEngineDetail {
 	targetID = strings.TrimSpace(targetID)
 	if targetID == "" {
 		return ""
 	}
 	if b.lightpanda != nil && b.lightpanda.HasSession(targetID) {
-		return browser.SessionEngineLightpanda
+		return browser.SessionEngineDetailLightpandaShim
+	}
+	if b.lightpandaBinary != nil {
+		if _, err := b.lightpandaBinary.GetSessionInfo(ctx, targetID); err == nil {
+			return browser.SessionEngineDetailLightpandaBinary
+		}
 	}
 	for _, candidate := range b.chromiumCandidateList("") {
 		if candidate == nil {
 			continue
 		}
 		if _, err := candidate.GetSessionInfo(ctx, targetID); err == nil {
-			svcEngine := browser.SessionEngineChromiumManaged
+			svcEngine := browser.SessionEngineDetailChromiumManaged
 			if candidate == b.relay {
-				svcEngine = browser.SessionEngineChromiumRelay
+				svcEngine = browser.SessionEngineDetailChromiumRelay
 			}
 			return svcEngine
 		}
 	}
 	return ""
+}
+
+func (b *HybridCapabilityBrowserBackend) targetEngine(ctx context.Context, targetID string) browser.SessionEngine {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
+		return browser.SessionEngineLightpanda
+	case browser.SessionEngineDetailChromiumManaged:
+		return browser.SessionEngineChromiumManaged
+	case browser.SessionEngineDetailChromiumRelay:
+		return browser.SessionEngineChromiumRelay
+	default:
+		return ""
+	}
 }
 
 func (b *HybridCapabilityBrowserBackend) isLightpandaEscalationError(err error) bool {
@@ -213,7 +299,7 @@ func (b *HybridCapabilityBrowserBackend) navigateChromium(ctx context.Context, r
 	})
 }
 
-func (b *HybridCapabilityBrowserBackend) chromiumForTarget(ctx context.Context, targetID string) *RodBrowserBackend {
+func (b *HybridCapabilityBrowserBackend) chromiumForTarget(ctx context.Context, targetID string) sessionBrowserBackend {
 	targetID = strings.TrimSpace(targetID)
 	if targetID == "" {
 		primary, _ := b.chromiumCandidates("")
@@ -231,10 +317,15 @@ func (b *HybridCapabilityBrowserBackend) chromiumForTarget(ctx context.Context, 
 }
 
 func (b *HybridCapabilityBrowserBackend) sessionInfoForTarget(ctx context.Context, targetID string) (*browser.SessionInfo, error) {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
 		return b.lightpanda.SessionInfo(targetID)
-	case browser.SessionEngineChromiumManaged, browser.SessionEngineChromiumRelay:
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return nil, browser.ErrTabNotFound
+		}
+		return b.lightpandaBinary.GetSessionInfo(ctx, targetID)
+	case browser.SessionEngineDetailChromiumManaged, browser.SessionEngineDetailChromiumRelay:
 		chromiumBackend := b.chromiumForTarget(ctx, targetID)
 		if chromiumBackend == nil {
 			return nil, browser.ErrTabNotFound
@@ -255,12 +346,15 @@ func unsupportedLightpandaAction(action string) error {
 
 // UsesRelay reports whether the selected engine is relay/local Chrome.
 func (b *HybridCapabilityBrowserBackend) UsesRelay(ctx context.Context, targetID string) bool {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineChromiumRelay:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailChromiumRelay:
 		return true
-	case browser.SessionEngineLightpanda:
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return false
 	default:
+		if candidate, _, _, ok := b.warmChromiumSession(ctx, ""); ok {
+			return candidate == b.relay
+		}
 		primary, _ := b.chromiumCandidatesForNewSession(ctx, "")
 		return primary != nil && primary == b.relay
 	}
@@ -268,11 +362,14 @@ func (b *HybridCapabilityBrowserBackend) UsesRelay(ctx context.Context, targetID
 
 // UsesRelayFor reports whether the selected route for a URL will use relay/local Chrome.
 func (b *HybridCapabilityBrowserBackend) UsesRelayFor(ctx context.Context, targetID, rawURL string) bool {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineChromiumRelay:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailChromiumRelay:
 		return true
-	case browser.SessionEngineLightpanda:
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return false
+	}
+	if candidate, _, _, ok := b.warmChromiumSession(ctx, rawURL); ok {
+		return candidate == b.relay
 	}
 	if b.lightpandaPreferredNavigate(ctx, rawURL, targetID) {
 		return false
@@ -282,15 +379,28 @@ func (b *HybridCapabilityBrowserBackend) UsesRelayFor(ctx context.Context, targe
 }
 
 func (b *HybridCapabilityBrowserBackend) Navigate(ctx context.Context, rawURL string, targetID string) (BrowserNavResult, error) {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
 		resp, err := b.lightpanda.Navigate(ctx, &browser.NavigateRequest{URL: rawURL, TargetID: targetID})
 		if err != nil {
 			return BrowserNavResult{}, err
 		}
 		return BrowserNavResult{URL: resp.URL, Title: resp.Title, TargetID: resp.TargetID}, nil
-	case browser.SessionEngineChromiumManaged, browser.SessionEngineChromiumRelay:
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return BrowserNavResult{}, browser.ErrTabNotFound
+		}
+		return b.lightpandaBinary.Navigate(ctx, rawURL, targetID)
+	case browser.SessionEngineDetailChromiumManaged, browser.SessionEngineDetailChromiumRelay:
 		return b.navigateChromium(ctx, rawURL, targetID)
+	}
+
+	if strings.TrimSpace(targetID) == "" {
+		if candidate, warmTargetID, _, ok := b.warmChromiumSession(ctx, rawURL); ok && candidate != nil {
+			if nav, err := candidate.Navigate(ctx, rawURL, warmTargetID); err == nil {
+				return nav, nil
+			}
+		}
 	}
 
 	if b.lightpandaPreferredNavigate(ctx, rawURL, targetID) {
@@ -301,13 +411,18 @@ func (b *HybridCapabilityBrowserBackend) Navigate(ctx context.Context, rawURL st
 		if !b.config.CapabilityEscalateOnFailure() || !b.isLightpandaEscalationError(err) {
 			return BrowserNavResult{}, err
 		}
+		if b.lightpandaBinary != nil {
+			if nav, binaryErr := b.lightpandaBinary.Navigate(ctx, rawURL, targetID); binaryErr == nil {
+				return nav, nil
+			}
+		}
 	}
 	return b.navigateChromium(ctx, rawURL, targetID)
 }
 
 func (b *HybridCapabilityBrowserBackend) CookieHeader(ctx context.Context, targetID string, rawURL string) (string, error) {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return "", unsupportedLightpandaAction("cookie/session continuity")
 	default:
 		primary, fallback := b.chromiumCandidates(rawURL)
@@ -321,7 +436,8 @@ func (b *HybridCapabilityBrowserBackend) CookieHeader(ctx context.Context, targe
 }
 
 func (b *HybridCapabilityBrowserBackend) ObserveNetwork(ctx context.Context, targetID string, maxEntries int, clear bool) (BrowserObservedNetworkResult, error) {
-	if b.targetEngine(ctx, targetID) == browser.SessionEngineLightpanda {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return BrowserObservedNetworkResult{}, unsupportedLightpandaAction("network observation")
 	}
 	backend := b.chromiumForTarget(ctx, targetID)
@@ -335,7 +451,8 @@ func (b *HybridCapabilityBrowserBackend) ObserveNetwork(ctx context.Context, tar
 }
 
 func (b *HybridCapabilityBrowserBackend) WaitNetworkIdle(ctx context.Context, targetID string, idleMS int, timeoutMS int) error {
-	if b.targetEngine(ctx, targetID) == browser.SessionEngineLightpanda {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return unsupportedLightpandaAction("network-idle waiting")
 	}
 	backend := b.chromiumForTarget(ctx, targetID)
@@ -349,8 +466,8 @@ func (b *HybridCapabilityBrowserBackend) WaitNetworkIdle(ctx context.Context, ta
 }
 
 func (b *HybridCapabilityBrowserBackend) AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (BrowserA11yTreeResult, error) {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
 		resp, err := b.lightpanda.AccessibilityTree(ctx, targetID, maxDepth)
 		if err != nil {
 			return BrowserA11yTreeResult{}, err
@@ -362,6 +479,11 @@ func (b *HybridCapabilityBrowserBackend) AccessibilityTree(ctx context.Context, 
 			TargetID: resp.TargetID,
 			RefMap:   resp.RefMap,
 		}, nil
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return BrowserA11yTreeResult{}, browser.ErrTabNotFound
+		}
+		return b.lightpandaBinary.AccessibilityTree(ctx, targetID, maxDepth)
 	default:
 		backend := b.chromiumForTarget(ctx, targetID)
 		if backend == nil {
@@ -372,8 +494,8 @@ func (b *HybridCapabilityBrowserBackend) AccessibilityTree(ctx context.Context, 
 }
 
 func (b *HybridCapabilityBrowserBackend) InteractiveElements(ctx context.Context, targetID string) (BrowserInteractiveResult, error) {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
 		resp, err := b.lightpanda.InteractiveElements(ctx, targetID)
 		if err != nil {
 			return BrowserInteractiveResult{}, err
@@ -386,6 +508,11 @@ func (b *HybridCapabilityBrowserBackend) InteractiveElements(ctx context.Context
 			RefMap:   resp.RefMap,
 			Count:    resp.Count,
 		}, nil
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return BrowserInteractiveResult{}, browser.ErrTabNotFound
+		}
+		return b.lightpandaBinary.InteractiveElements(ctx, targetID)
 	default:
 		backend := b.chromiumForTarget(ctx, targetID)
 		if backend == nil {
@@ -396,9 +523,14 @@ func (b *HybridCapabilityBrowserBackend) InteractiveElements(ctx context.Context
 }
 
 func (b *HybridCapabilityBrowserBackend) CountInteractiveElements(ctx context.Context, targetID string) (int, error) {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
 		return b.lightpanda.CountInteractiveElements(ctx, targetID)
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return 0, browser.ErrTabNotFound
+		}
+		return b.lightpandaBinary.CountInteractiveElements(ctx, targetID)
 	default:
 		backend := b.chromiumForTarget(ctx, targetID)
 		if backend == nil {
@@ -409,7 +541,8 @@ func (b *HybridCapabilityBrowserBackend) CountInteractiveElements(ctx context.Co
 }
 
 func (b *HybridCapabilityBrowserBackend) ActByRef(ctx context.Context, targetID string, ref int, refMap map[int]int, action string, value string) error {
-	if b.targetEngine(ctx, targetID) == browser.SessionEngineLightpanda {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return unsupportedLightpandaAction("interactive actions")
 	}
 	backend := b.chromiumForTarget(ctx, targetID)
@@ -420,7 +553,8 @@ func (b *HybridCapabilityBrowserBackend) ActByRef(ctx context.Context, targetID 
 }
 
 func (b *HybridCapabilityBrowserBackend) ActByInteractiveRef(ctx context.Context, targetID string, ref int, refMap map[int]string, action string, value string) error {
-	if b.targetEngine(ctx, targetID) == browser.SessionEngineLightpanda {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return unsupportedLightpandaAction("interactive actions")
 	}
 	backend := b.chromiumForTarget(ctx, targetID)
@@ -438,7 +572,8 @@ func (b *HybridCapabilityBrowserBackend) Screenshot(ctx context.Context, rawURL 
 }
 
 func (b *HybridCapabilityBrowserBackend) ScreenshotTab(ctx context.Context, targetID string) (string, error) {
-	if b.targetEngine(ctx, targetID) == browser.SessionEngineLightpanda {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return "", unsupportedLightpandaAction("screenshots")
 	}
 	backend := b.chromiumForTarget(ctx, targetID)
@@ -449,9 +584,14 @@ func (b *HybridCapabilityBrowserBackend) ScreenshotTab(ctx context.Context, targ
 }
 
 func (b *HybridCapabilityBrowserBackend) CloseTab(ctx context.Context, targetID string) error {
-	switch b.targetEngine(ctx, targetID) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
 		return b.lightpanda.CloseTab(ctx, targetID)
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return nil
+		}
+		return b.lightpandaBinary.CloseTab(ctx, targetID)
 	default:
 		backend := b.chromiumForTarget(ctx, targetID)
 		if backend == nil {
@@ -486,6 +626,20 @@ func (b *HybridCapabilityBrowserBackend) Tabs(ctx context.Context) ([]BrowserTab
 			}
 		}
 	}
+	if b.lightpandaBinary != nil {
+		if tabs, err := b.lightpandaBinary.Tabs(ctx); err == nil {
+			for _, tab := range tabs {
+				key := strings.TrimSpace(tab.TargetID)
+				if key != "" {
+					if _, ok := seen[key]; ok {
+						continue
+					}
+					seen[key] = struct{}{}
+				}
+				out = append(out, tab)
+			}
+		}
+	}
 	for _, candidate := range b.chromiumCandidateList("") {
 		if candidate == nil {
 			continue
@@ -510,7 +664,8 @@ func (b *HybridCapabilityBrowserBackend) Tabs(ctx context.Context) ([]BrowserTab
 
 func (b *HybridCapabilityBrowserBackend) ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
 	targetID := strings.TrimSpace(params["target_id"])
-	if b.targetEngine(ctx, targetID) == browser.SessionEngineLightpanda {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
 		return BrowserRecipeResult{}, unsupportedLightpandaAction("recipes")
 	}
 	rawURL := strings.TrimSpace(params["url"])
@@ -554,6 +709,14 @@ func (b *HybridCapabilityBrowserBackend) ListBrowserSessions(ctx context.Context
 	if b.lightpanda != nil {
 		for _, info := range b.lightpanda.ListSessionInfos() {
 			appendUnique(info)
+		}
+	}
+	if b.lightpandaBinary != nil {
+		sessions, err := b.lightpandaBinary.ListSessionInfos(ctx)
+		if err == nil {
+			for _, info := range sessions {
+				appendUnique(info)
+			}
 		}
 	}
 	for _, candidate := range b.chromiumCandidateList("") {
@@ -611,10 +774,15 @@ func (b *HybridCapabilityBrowserBackend) NavigateBrowserSession(ctx context.Cont
 
 // CaptureBrowserSessionMonitor captures either text or image monitor payloads.
 func (b *HybridCapabilityBrowserBackend) CaptureBrowserSessionMonitor(ctx context.Context, id string) (*browser.SessionMonitorResponse, error) {
-	switch b.targetEngine(ctx, id) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, id) {
+	case browser.SessionEngineDetailLightpandaShim:
 		return b.lightpanda.CaptureMonitor(id)
-	case browser.SessionEngineChromiumManaged, browser.SessionEngineChromiumRelay:
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return nil, browser.ErrTabNotFound
+		}
+		return b.lightpandaBinary.CaptureSessionMonitor(ctx, id)
+	case browser.SessionEngineDetailChromiumManaged, browser.SessionEngineDetailChromiumRelay:
 		chromiumBackend := b.chromiumForTarget(ctx, id)
 		if chromiumBackend == nil {
 			return nil, browser.ErrTabNotFound
@@ -627,10 +795,15 @@ func (b *HybridCapabilityBrowserBackend) CaptureBrowserSessionMonitor(ctx contex
 
 // CaptureBrowserSessionScreenshot preserves the legacy screenshot endpoint.
 func (b *HybridCapabilityBrowserBackend) CaptureBrowserSessionScreenshot(ctx context.Context, id string) (*browser.SessionScreenshotResponse, error) {
-	switch b.targetEngine(ctx, id) {
-	case browser.SessionEngineLightpanda:
+	switch b.targetDetail(ctx, id) {
+	case browser.SessionEngineDetailLightpandaShim:
 		return b.lightpanda.CaptureScreenshot(id)
-	case browser.SessionEngineChromiumManaged, browser.SessionEngineChromiumRelay:
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return nil, browser.ErrTabNotFound
+		}
+		return b.lightpandaBinary.CaptureSessionScreenshot(ctx, id)
+	case browser.SessionEngineDetailChromiumManaged, browser.SessionEngineDetailChromiumRelay:
 		chromiumBackend := b.chromiumForTarget(ctx, id)
 		if chromiumBackend == nil {
 			return nil, browser.ErrTabNotFound

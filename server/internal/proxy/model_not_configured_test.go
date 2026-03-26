@@ -97,6 +97,18 @@ func TestIsModelNotConfiguredError(t *testing.T) {
 			body:       `{"error":{"message":"Model not configured"}}`,
 			expected:   true,
 		},
+		{
+			name:       "wrapped 503 model_not_found from relay",
+			statusCode: 503,
+			body:       `{"error":{"code":"model_not_found","message":"分组 default 下模型 360gpt2-pro 无可用渠道（distributor）","type":"new_api_error"}}`,
+			expected:   true,
+		},
+		{
+			name:       "wrapped 502 model_not_found from relay",
+			statusCode: 502,
+			body:       `{"error":{"code":"model_not_found","message":"upstream model not found: claude-3-5-sonnet-20241022","type":"upstream_error"}}`,
+			expected:   true,
+		},
 
 		// Negative cases — should NOT be detected as "not configured"
 		{

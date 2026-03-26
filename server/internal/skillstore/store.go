@@ -67,6 +67,25 @@ func dropFTSTriggers(db *sql.DB) error {
 	return nil
 }
 
+func dropAllSkillFTSTriggers(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	for _, stmt := range []string{
+		`DROP TRIGGER IF EXISTS skills_ai`,
+		`DROP TRIGGER IF EXISTS skills_ad`,
+		`DROP TRIGGER IF EXISTS skills_au`,
+		`DROP TRIGGER IF EXISTS skillmarket_ai`,
+		`DROP TRIGGER IF EXISTS skillmarket_ad`,
+		`DROP TRIGGER IF EXISTS skillmarket_au`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func isFTSUnavailableError(err error) bool {
 	if err == nil {
 		return false
@@ -162,14 +181,19 @@ func (s *Store) initSchema() error {
 
 	_, _ = s.db.Exec("ALTER TABLE skills ADD COLUMN readme_hash TEXT")
 
+	ftsSupported := supportsFTS5(s.db)
+	if !ftsSupported {
+		if err := dropAllSkillFTSTriggers(s.db); err != nil {
+			return fmt.Errorf("drop legacy skill FTS triggers: %w", err)
+		}
+		s.ftsEnabled = false
+		return nil
+	}
+
 	if err := dropFTSTriggers(s.db); err != nil {
 		return fmt.Errorf("drop skill FTS triggers: %w", err)
 	}
-
-	s.ftsEnabled = supportsFTS5(s.db)
-	if !s.ftsEnabled {
-		return nil
-	}
+	s.ftsEnabled = true
 
 	ftsStatements := []string{
 		`CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(

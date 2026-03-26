@@ -105,12 +105,22 @@ func (c *Controller) verifyGroupRun(ctx context.Context, group *RunGroup, item *
 	runCompleted := run.Status == RunStatusCompleted
 	addCheck("run_completed", RunStatusCompleted, run.Status, runCompleted, verificationFailureLabelForRun(run.Status), fmt.Sprintf("run finished with status %s", run.Status))
 
-	requiredTools := decodeStringSlice(item.Expected["required_tool_calls"])
-	forbiddenTools := decodeStringSlice(item.Expected["forbidden_tool_calls"])
-	requiredChecks := decodeStringSlice(item.Expected["required_checks"])
-	requiredObservations := decodeStringSlice(item.Expected["required_observations"])
-	forbiddenObservations := decodeStringSlice(item.Expected["forbidden_observations"])
+	contract := DecodeHarnessContract(item.Metadata, item.Expected, run.Metadata)
+	requiredTools := dedupeContractStrings(append(append([]string(nil), contract.RequiredToolCalls...), decodeStringSlice(item.Expected["required_tool_calls"])...))
+	forbiddenTools := dedupeContractStrings(append(append([]string(nil), contract.ForbiddenToolCalls...), decodeStringSlice(item.Expected["forbidden_tool_calls"])...))
+	requiredChecks := dedupeContractStrings(append(append([]string(nil), contract.RequiredChecks...), decodeStringSlice(item.Expected["required_checks"])...))
+	requiredObservations := dedupeContractStrings(append(append([]string(nil), contract.RequiredObservations...), decodeStringSlice(item.Expected["required_observations"])...))
+	forbiddenObservations := dedupeContractStrings(append(append([]string(nil), contract.ForbiddenObservations...), decodeStringSlice(item.Expected["forbidden_observations"])...))
 	expectedArtifacts := decodeExpectedArtifactContracts(item.Expected["expected_artifacts"])
+	if len(expectedArtifacts) == 0 && len(contract.ExpectedArtifacts) > 0 {
+		for _, artifact := range contract.ExpectedArtifacts {
+			expectedArtifacts = append(expectedArtifacts, expectedArtifactContract{
+				Path:      strings.TrimSpace(artifact.Path),
+				Label:     strings.TrimSpace(artifact.Label),
+				MustExist: artifact.MustExist,
+			})
+		}
+	}
 
 	for _, contract := range expectedArtifacts {
 		ok, actual := verifyExpectedArtifact(contract, run, artifacts)
@@ -165,6 +175,53 @@ func (c *Controller) verifyGroupRun(ctx context.Context, group *RunGroup, item *
 			ok,
 			"verification_failed",
 			fmt.Sprintf("forbidden observation %q was observed", strings.TrimSpace(forbidden)),
+		)
+	}
+	for _, browserCheck := range contract.BrowserChecks {
+		target := firstNonEmpty(browserCheck.Name, browserCheck.Target, "browser QA")
+		requiredObservation := firstNonEmpty(browserCheck.RequiredObservation, "browser_used")
+		if requiredObservation != "" {
+			ok := observationSeen(observations, requiredObservation)
+			label := firstNonEmpty(browserCheck.FailureLabel, "browser_qa_missing")
+			addCheck(
+				"browser_check",
+				target,
+				observations,
+				ok,
+				label,
+				fmt.Sprintf("browser QA %q did not produce observation %q", target, requiredObservation),
+			)
+		}
+		requiredArtifact := strings.TrimSpace(browserCheck.RequiredArtifact)
+		if browserCheck.RequireScreenshot && requiredArtifact == "" {
+			requiredArtifact = "screenshot"
+		}
+		if requiredArtifact != "" {
+			ok, actual := verifyArtifactHint(requiredArtifact, artifacts)
+			label := firstNonEmpty(browserCheck.FailureLabel, "ui_regression")
+			addCheck(
+				"browser_artifact",
+				requiredArtifact,
+				actual,
+				ok,
+				label,
+				fmt.Sprintf("browser QA %q did not produce artifact %q", target, requiredArtifact),
+			)
+		}
+	}
+	for _, apiCheck := range contract.APIChecks {
+		expected := firstNonEmpty(apiCheck.RequiredCheck, apiCheck.Expectation, apiCheck.Target, apiCheck.Name)
+		if expected == "" {
+			continue
+		}
+		ok := verificationCorpusContains(corpus, expected)
+		addCheck(
+			"api_check",
+			expected,
+			corpus["checks"],
+			ok,
+			firstNonEmpty(apiCheck.FailureLabel, "api_check_missing"),
+			fmt.Sprintf("API check %q was not observed", expected),
 		)
 	}
 
@@ -246,6 +303,18 @@ func deriveVerificationObservations(events []RunEvent, artifacts []ArtifactRef, 
 	if evidenceToolSeen(toolNames) {
 		observed.add("evidence_tool_used")
 	}
+	if browserToolSeen(toolNames) {
+		observed.add("browser_used")
+	}
+	for _, artifact := range artifacts {
+		joined := strings.ToLower(strings.TrimSpace(strings.Join([]string{artifact.Kind, artifact.Label, artifact.PathOrURL, artifact.MIMEType}, " ")))
+		if strings.Contains(joined, "screenshot") || strings.Contains(joined, ".png") || strings.Contains(joined, ".jpg") {
+			observed.add("screenshot_captured")
+		}
+		if strings.Contains(joined, "dom") || strings.Contains(joined, "html") {
+			observed.add("dom_snapshot_captured")
+		}
+	}
 	sawToolError := false
 	for _, event := range events {
 		switch event.Type {
@@ -271,6 +340,34 @@ func deriveVerificationObservations(events []RunEvent, artifacts []ArtifactRef, 
 		}
 	}
 	return observed.values()
+}
+
+func browserToolSeen(toolNames []string) bool {
+	for _, name := range toolNames {
+		lower := strings.ToLower(strings.TrimSpace(name))
+		switch {
+		case strings.Contains(lower, "browser"),
+			strings.Contains(lower, "playwright"),
+			strings.Contains(lower, "chrome"),
+			strings.Contains(lower, "puppeteer"):
+			return true
+		}
+	}
+	return false
+}
+
+func verifyArtifactHint(expected string, artifacts []ArtifactRef) (bool, string) {
+	expected = strings.ToLower(strings.TrimSpace(expected))
+	if expected == "" {
+		return false, ""
+	}
+	for _, artifact := range artifacts {
+		corpus := strings.ToLower(strings.TrimSpace(strings.Join([]string{artifact.Kind, artifact.Label, artifact.PathOrURL, artifact.MIMEType}, " ")))
+		if strings.Contains(corpus, expected) {
+			return true, firstNonEmpty(strings.TrimSpace(artifact.PathOrURL), strings.TrimSpace(artifact.Label), strings.TrimSpace(artifact.Kind))
+		}
+	}
+	return false, ""
 }
 
 func buildVerificationCorpus(run *Run, events []RunEvent, toolNames []string, artifacts []ArtifactRef) map[string]string {

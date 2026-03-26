@@ -48,42 +48,84 @@ func (h *UserTaskProjectionHandler) ListTasks(c echo.Context) error {
 }
 
 func (h *UserTaskProjectionHandler) GetTask(c echo.Context) error {
-	run, err := h.manager.Get(c.Request().Context(), c.Param("id"))
-	if err != nil || !isVisibleUserTaskRun(run) {
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
 	userID := harnessUserID(c)
-	if userID != "" && run.UserID != "" && run.UserID != userID {
+	conversationID := strings.TrimSpace(c.QueryParam("conversation_id"))
+
+	if run, err := h.manager.Get(c.Request().Context(), taskID); err == nil {
+		if !isVisibleUserTaskRun(run) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+		}
+		if userID != "" && run.UserID != "" && run.UserID != userID {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+		}
+		projection, projectErr := h.service.Get(c.Request().Context(), run.ID, projectionScopeForConversation(conversationID, run.ConversationID))
+		if projectErr != nil || projection == nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+		}
+		return c.JSON(http.StatusOK, projection)
+	}
+
+	group, err := h.manager.GetGroup(c.Request().Context(), taskID)
+	if err != nil || !isVisibleUserTaskGroup(group) {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
-	scope := "background"
-	if conversationID := strings.TrimSpace(c.QueryParam("conversation_id")); conversationID != "" && conversationID == strings.TrimSpace(run.ConversationID) {
-		scope = "current"
+	if userID != "" && group.OwnerUserID != "" && group.OwnerUserID != userID {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
-	projection, err := h.service.projectionForRun(c.Request().Context(), run, scope)
-	if err != nil || projection == nil {
+	projection, projectErr := h.service.Get(c.Request().Context(), group.ID, projectionScopeForConversation(conversationID, userTaskGroupConversationID(group)))
+	if projectErr != nil || projection == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
 	return c.JSON(http.StatusOK, projection)
 }
 
 func (h *UserTaskProjectionHandler) CancelTask(c echo.Context) error {
-	run, err := h.manager.Get(c.Request().Context(), c.Param("id"))
-	if err != nil || !isVisibleUserTaskRun(run) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
-	}
 	userID := harnessUserID(c)
-	if userID != "" && run.UserID != "" && run.UserID != userID {
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
-	if err := h.manager.Cancel(c.Request().Context(), run.ID, "cancelled by user"); err != nil {
+
+	if run, err := h.manager.Get(c.Request().Context(), taskID); err == nil && isVisibleUserTaskRun(run) {
+		if userID != "" && run.UserID != "" && run.UserID != userID {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+		}
+		if err := h.manager.Cancel(c.Request().Context(), run.ID, "cancelled by user"); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		projection, projectErr := h.service.Get(c.Request().Context(), run.ID, projectionScopeForConversation(strings.TrimSpace(c.QueryParam("conversation_id")), run.ConversationID))
+		if projectErr != nil || projection == nil {
+			return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+		}
+		return c.JSON(http.StatusOK, projection)
+	}
+
+	group, err := h.manager.GetGroup(c.Request().Context(), taskID)
+	if err != nil || !isVisibleUserTaskGroup(group) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+	}
+	if userID != "" && group.OwnerUserID != "" && group.OwnerUserID != userID {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+	}
+	if err := h.manager.CancelGroup(c.Request().Context(), group.ID, "cancelled by user"); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	projection, err := h.service.Get(c.Request().Context(), run.ID, "current")
-	if err != nil || projection == nil {
+	projection, projectErr := h.service.Get(c.Request().Context(), group.ID, projectionScopeForConversation(strings.TrimSpace(c.QueryParam("conversation_id")), userTaskGroupConversationID(group)))
+	if projectErr != nil || projection == nil {
 		return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
 	}
 	return c.JSON(http.StatusOK, projection)
+}
+
+func projectionScopeForConversation(requestedConversationID string, taskConversationID string) string {
+	if strings.TrimSpace(requestedConversationID) != "" && strings.TrimSpace(requestedConversationID) == strings.TrimSpace(taskConversationID) {
+		return "current"
+	}
+	return "background"
 }
 
 func parsePositiveInt(raw string) int {

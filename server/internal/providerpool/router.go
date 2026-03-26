@@ -66,6 +66,11 @@ func NewRouter(registry *Registry, discovery *ModelDiscovery, defaultStrategy Ro
 		cooldownCfg:     DefaultCooldownConfig(),
 		defaultStrategy: defaultStrategy,
 	}
+	if discovery != nil {
+		discovery.SetModelsChangedHook(func(_ string) {
+			r.RebuildCandidates()
+		})
+	}
 	r.RebuildCandidates()
 	return r
 }

@@ -35,14 +35,9 @@ func (t *AskTool) Definition() ToolDefinition {
 	}
 
 	return ToolDefinition{
-		Name: "ask",
-		Description: `Ask the user one or more questions.
-Preferred format: {"questions":[{"question":"...","type":"radio","options":[...]}]}.
-Text-input format: {"questions":[{"question":"...","type":"text"}]}.
-Single-question shorthand: {"q":"...","a":[...]} or {"mq":"...","a":[...]}.
-Option items can be strings or objects: {"label":"...","description":"...","value":"..."}.
-Inside questions items, use only "question"/"detail"/"options"/"type".`,
-		Icon: "question",
+		Name:        "ask",
+		Description: "Ask the user 1-3 short questions. Use questions=[{question,type,options,detail}] with type=radio|checkbox|text.",
+		Icon:        "question",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -74,24 +69,8 @@ Inside questions items, use only "question"/"detail"/"options"/"type".`,
 						"required": []string{"question"},
 					},
 				},
-				"q": map[string]interface{}{
-					"type":        "string",
-					"description": "Single-select question text (shorthand).",
-				},
-				"detail": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional extra detail for q/mq shorthand.",
-				},
-				"mq": map[string]interface{}{
-					"type":        "string",
-					"description": "Multi-select question text (shorthand).",
-				},
-				"a": map[string]interface{}{
-					"type":        "array",
-					"items":       optionItemSchema,
-					"description": "Options for q/mq shorthand.",
-				},
 			},
+			"required": []string{"questions"},
 		},
 	}
 }

@@ -3,11 +3,28 @@ package skillmarket
 import (
 	"context"
 	"database/sql"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+func createSQLiteFixtureWithFTS(t *testing.T, dbPath, schema string) {
+	t.Helper()
+
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skipf("sqlite3 CLI unavailable: %v", err)
+	}
+
+	cmd := exec.Command("sqlite3", dbPath)
+	cmd.Stdin = strings.NewReader(schema)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sqlite3 fixture setup failed: %v\n%s", err, output)
+	}
+}
 
 func TestNewStoreMigratesLegacySkillstoreSchema(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "legacy-market.db"))
@@ -110,5 +127,114 @@ func TestNewStoreMigratesLegacySkillstoreSchema(t *testing.T) {
 	}
 	if result.Skills[0].Skill.Slug != "legacy-skill" {
 		t.Fatalf("expected legacy skill slug backfill, got %q", result.Skills[0].Skill.Slug)
+	}
+}
+
+func TestNewStoreMigratesLegacySchemaWithoutFTSModule(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy-market-fts.db")
+	createSQLiteFixtureWithFTS(t, dbPath, `
+	CREATE TABLE skills (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		version TEXT,
+		summary TEXT,
+		description TEXT,
+		author TEXT,
+		category TEXT,
+		tags TEXT,
+		source_id TEXT NOT NULL,
+		source_name TEXT,
+		homepage TEXT,
+		download_url TEXT,
+		stars INTEGER DEFAULT 0,
+		downloads INTEGER DEFAULT 0,
+		reviews INTEGER DEFAULT 0,
+		rating REAL DEFAULT 0.0,
+		versions INTEGER DEFAULT 0,
+		changelog TEXT,
+		readme TEXT,
+		readme_hash TEXT,
+		dedup_key TEXT,
+		installed INTEGER DEFAULT 0,
+		enabled INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		search_content TEXT,
+		skill_content TEXT
+	);
+	INSERT INTO skills (
+		id, name, version, summary, description, author, category, tags, source_id, source_name,
+		homepage, download_url, stars, downloads, reviews, rating, versions, changelog, readme,
+		readme_hash, dedup_key, installed, enabled, search_content, skill_content
+	) VALUES (
+		'legacy-skill', 'Legacy Skill', '1.0.0', 'legacy summary', 'legacy description', 'legacy-author',
+		'development', 'git,legacy', 'legacy-source', 'Legacy Source', 'https://example.com',
+		'https://example.com/archive.zip', 12, 34, 0, 0.0, 0, '', '# Legacy', '', '', 0, 0,
+		'legacy skill legacy description git legacy', '# Legacy'
+	);
+	CREATE VIRTUAL TABLE skills_fts USING fts5(
+		id, name, summary, description, author, category, tags, readme,
+		content='skills', content_rowid='rowid'
+	);
+	CREATE TRIGGER skills_au AFTER UPDATE ON skills BEGIN
+		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
+		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
+	END;
+	CREATE VIRTUAL TABLE skillmarket_fts USING fts5(
+		id UNINDEXED,
+		name,
+		description,
+		author,
+		category,
+		tags,
+		skill_content,
+		content='skills',
+		content_rowid='rowid'
+	);
+	CREATE TRIGGER skillmarket_au AFTER UPDATE ON skills BEGIN
+		INSERT INTO skillmarket_fts(skillmarket_fts, rowid, id, name, description, author, category, tags, skill_content)
+		VALUES ('delete', old.rowid, old.id, old.name, old.description, old.author, old.category, old.tags, old.skill_content);
+		INSERT INTO skillmarket_fts(rowid, id, name, description, author, category, tags, skill_content)
+		VALUES (new.rowid, new.id, new.name, new.description, new.author, new.category, new.tags, new.skill_content);
+	END;
+	`)
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if supportsFTS5(db) {
+		t.Skip("test requires a SQLite build without FTS5 support")
+	}
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	if store.ftsEnabled {
+		t.Fatalf("ftsEnabled = true, want false")
+	}
+
+	var slug string
+	if err := db.QueryRow(`SELECT slug FROM skills WHERE id = ?`, "legacy-skill").Scan(&slug); err != nil {
+		t.Fatalf("query slug error = %v", err)
+	}
+	if slug != "legacy-skill" {
+		t.Fatalf("slug = %q, want legacy-skill", slug)
+	}
+
+	for _, trigger := range []string{"skills_au", "skillmarket_au"} {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = ?`, trigger).Scan(&count); err != nil {
+			t.Fatalf("query trigger %s error = %v", trigger, err)
+		}
+		if count != 0 {
+			t.Fatalf("trigger %s should have been dropped", trigger)
+		}
 	}
 }

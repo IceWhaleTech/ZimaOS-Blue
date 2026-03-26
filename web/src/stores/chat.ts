@@ -7,6 +7,7 @@ import type {
   MessageStats,
   MessageAttachment,
   ConversationCommandState,
+  ConversationActiveStreamState as ConversationActiveStreamSnapshot,
   ConversationCommandStatePatch,
   StreamChunk,
 } from '@/api/chat'
@@ -1515,6 +1516,55 @@ export const useChatStore = defineStore('chat', () => {
     applyVisibleStreamState(state)
   }
 
+  function restoreServerActiveStreamState(
+    conversationId: string,
+    serverState?: ConversationActiveStreamSnapshot | null
+  ): boolean {
+    if (!serverState?.active || currentConversationId.value !== conversationId) return false
+    if (getActiveStreamState(conversationId)) return true
+
+    const lastMessage = messages.value[messages.value.length - 1]
+    const previewContent =
+      lastMessage?.role === 'assistant' && lastMessage.conversation_id === conversationId
+        ? lastMessage.content || ''
+        : ''
+
+    const hasPreview = previewContent.trim().length > 0
+    const phase: StreamUIPhase = hasPreview ? 'streaming' : 'executing'
+    const statusLabel =
+      resolveStreamUIStateLabel(phase) || resolveProcessTraceText('events.processing', 'Processing')
+    const nextState: ActiveConversationStreamState = {
+      conversationId,
+      streamId: serverState.stream_id?.trim() || null,
+      sending: false,
+      streaming: true,
+      receivedFirstChunk: hasPreview,
+      streamProgress: null,
+      toolExecuting: !hasPreview,
+      toolExecutingStartTime: !hasPreview ? Date.now() : 0,
+      toolExecutingNames: [],
+      toolExecutingCommands: [],
+      toolSandboxAvailable: false,
+      awaitingConfirmation: false,
+      previewContent,
+      processContentLength: 0,
+      toolResults: [],
+      processTrace: [],
+      statusStartedAt: Date.now(),
+      statusSummary: statusLabel,
+      uiState: createStreamUIState(phase, {
+        label: statusLabel,
+        detail: null,
+        canRetry: false,
+      }),
+      recoveryBaseline: createConversationRecoveryBaseline(conversationId),
+    }
+
+    activeStreamState.value = nextState
+    restoreDetachedActiveStream(conversationId)
+    return true
+  }
+
   async function connectConversationStream(
     conversationId: string,
     request: SendMessageRequest,
@@ -2630,9 +2680,10 @@ export const useChatStore = defineStore('chat', () => {
     try {
       // Fetch messages without setting loading state to avoid flash
       error.value = null
-      const [messageResponse] = await Promise.all([
+      const [messageResponse, _commandStateResponse, activeStreamResponse] = await Promise.all([
         messageApi.list(id, PAGE_SIZE, 0),
         fetchCommandState(id).catch(() => null),
+        messageApi.getActiveStreamState(id).catch(() => null),
       ])
       const fetchedMessages = messageResponse.data
 
@@ -2645,6 +2696,29 @@ export const useChatStore = defineStore('chat', () => {
         reportStartupMark('chat_select_conversation_done', {
           message_count: fetchedMessages.length,
         })
+
+        const detachedState = getActiveStreamState(id)
+        if (detachedState) {
+          if (
+            detachedState.streaming ||
+            detachedState.previewContent ||
+            detachedState.toolResults.length > 0
+          ) {
+            restoreDetachedActiveStream(id)
+          } else if (currentConversationId.value === id) {
+            applyVisibleStreamState(detachedState)
+          }
+          if (detachedState.uiState.phase === 'recovering') {
+            startInterruptedStreamRecovery(id)
+          }
+          void recoverPendingConfirmations(true)
+          return
+        }
+
+        if (restoreServerActiveStreamState(id, activeStreamResponse?.data)) {
+          void recoverPendingConfirmations(true)
+          return
+        }
       }
     } catch (e) {
       if (currentConversationId.value === id) {
@@ -2652,24 +2726,6 @@ export const useChatStore = defineStore('chat', () => {
         messages.value = []
         reportStartupMark('chat_select_conversation_error')
       }
-    }
-
-    const detachedState = getActiveStreamState(id)
-    if (detachedState) {
-      if (
-        detachedState.streaming ||
-        detachedState.previewContent ||
-        detachedState.toolResults.length > 0
-      ) {
-        restoreDetachedActiveStream(id)
-      } else if (currentConversationId.value === id) {
-        applyVisibleStreamState(detachedState)
-      }
-      if (detachedState.uiState.phase === 'recovering') {
-        startInterruptedStreamRecovery(id)
-      }
-      void recoverPendingConfirmations(true)
-      return
     }
 
     // Restore pending confirmations for this conversation if any.
@@ -2984,6 +3040,8 @@ export const useChatStore = defineStore('chat', () => {
             PROVIDER_RETURNED_EMPTY: 'providerReturnedEmpty',
             'No response body': 'noResponseBody',
             context_window_exceeded: 'contextWindowExceeded',
+            request_build_failed: 'requestBuildFailed',
+            request_too_large: 'requestTooLarge',
             provider_tool_unsupported: 'provider_tool_unsupported',
             provider_unavailable: 'provider_unavailable',
             provider_auth_error: 'provider_auth_error',
@@ -3010,6 +3068,22 @@ export const useChatStore = defineStore('chat', () => {
               lower.includes('reduce conversation history')
             )
               return 'contextWindowExceeded'
+            if (
+              lower.includes('request_too_large') ||
+              lower.includes('内容超长') ||
+              lower.includes('request too large') ||
+              lower.includes('payload too large') ||
+              lower.includes('entity too large')
+            )
+              return 'requestTooLarge'
+            if (
+              lower.includes('request_build_failed') ||
+              lower.includes('构建请求失败') ||
+              lower.includes('failed to build request') ||
+              lower.includes('improperly_formed_request') ||
+              lower.includes('工具参数错误')
+            )
+              return 'requestBuildFailed'
             if (lower.includes('provider_tool_unsupported')) return 'provider_tool_unsupported'
             if (lower.includes('provider_unavailable') || lower.includes('no available provider'))
               return 'provider_unavailable'

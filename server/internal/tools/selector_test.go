@@ -221,7 +221,7 @@ func TestToolSelector_WorkspaceFileTaskPrefersFileWorkflow(t *testing.T) {
 	}
 }
 
-func TestToolSelector_StructuredWorkspaceArtifactTaskUsesMinimalFileWorkflow(t *testing.T) {
+func TestToolSelector_StructuredWorkspaceArtifactTaskUsesGenericFileWorkflow(t *testing.T) {
 	ts := DefaultToolSelector()
 	ts.MaxTools = 10
 	defs := []ToolDefinition{
@@ -244,17 +244,20 @@ func TestToolSelector_StructuredWorkspaceArtifactTaskUsesMinimalFileWorkflow(t *
 
 	for _, required := range []string{"file_read", "file_write", "ls", "find", "convert", "pdf"} {
 		if !containsToolName(selected, required) {
-			t.Fatalf("expected structured local artifact workflow to keep %s, got=%v", required, names)
+			t.Fatalf("expected generic local artifact workflow to keep %s, got=%v", required, names)
 		}
 	}
-	for _, excluded := range []string{"file_delete", "edit", "grep", "image", "calendar"} {
+	if !containsToolName(selected, "edit") || !containsToolName(selected, "file_delete") || !containsToolName(selected, "grep") {
+		t.Fatalf("expected generic local artifact workflow to keep broad file-manipulation tools, got=%v", names)
+	}
+	for _, excluded := range []string{"image", "calendar"} {
 		if containsToolName(selected, excluded) {
-			t.Fatalf("expected structured local artifact workflow to prune %s, got=%v", excluded, names)
+			t.Fatalf("expected generic local artifact workflow to suppress unrelated tool %s, got=%v", excluded, names)
 		}
 	}
 }
 
-func TestToolSelector_StructuredWorkspaceArtifactTaskIsNotPDFSpecific(t *testing.T) {
+func TestToolSelector_StructuredWorkspaceArtifactTaskKeepsBroadWorkflowForNonPDFInputs(t *testing.T) {
 	ts := DefaultToolSelector()
 	ts.MaxTools = 10
 	defs := []ToolDefinition{
@@ -274,13 +277,16 @@ func TestToolSelector_StructuredWorkspaceArtifactTaskIsNotPDFSpecific(t *testing
 	selected := ts.Select("Read summary_source.txt from my workspace and write a concise three-paragraph summary to summary_output.txt.", defs)
 	names := toolNames(selected)
 
-	for _, required := range []string{"file_read", "file_write", "ls", "find", "convert"} {
+	for _, required := range []string{"file_read", "file_write", "ls", "find", "convert", "edit", "file_delete", "grep"} {
 		if !containsToolName(selected, required) {
-			t.Fatalf("expected structured local artifact workflow to keep %s, got=%v", required, names)
+			t.Fatalf("expected generic local artifact workflow to keep %s, got=%v", required, names)
 		}
 	}
-	if containsToolName(selected, "pdf") || containsToolName(selected, "calendar") || containsToolName(selected, "file_delete") {
-		t.Fatalf("expected non-PDF structured local artifact task to stay compact, got=%v", names)
+	if !containsToolName(selected, "pdf") {
+		t.Fatalf("expected broad local artifact workflow to remain format-agnostic, got=%v", names)
+	}
+	if containsToolName(selected, "calendar") {
+		t.Fatalf("expected non-PDF local artifact task to suppress unrelated calendar tools, got=%v", names)
 	}
 }
 

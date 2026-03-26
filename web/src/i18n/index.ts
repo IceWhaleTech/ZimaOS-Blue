@@ -1,51 +1,54 @@
 import { createI18n } from 'vue-i18n'
 
-import { deepMergeMessages, type LocaleMessages } from './merge'
-import { reportStartupMark } from '@/utils/startupTrace'
+type LocaleMessages = Record<string, unknown>
+type LocaleModule = { default: LocaleMessages }
 
-// Minimal fallback messages for initial render (before locale loads)
+// Minimal fallback messages for initial render before the selected locale finishes loading.
 const minimalMessages = {
   common: {
     loading: 'Loading...',
   },
-}
+} satisfies LocaleMessages
 
-export type LocaleKey =
-  | 'ca-ES'
-  | 'cs-CZ'
-  | 'da-DK'
-  | 'de-DE'
-  | 'el-GR'
-  | 'en-GB'
-  | 'en-US'
-  | 'es-ES'
-  | 'fr-FR'
-  | 'ga-IE'
-  | 'hr-HR'
-  | 'hu-HU'
-  | 'it-IT'
-  | 'ja-JP'
-  | 'ko-KR'
-  | 'ml-IN'
-  | 'nb-NO'
-  | 'nl-NL'
-  | 'pl-PL'
-  | 'pt-BR'
-  | 'pt-PT'
-  | 'ro-RO'
-  | 'ru-RU'
-  | 'sk-SK'
-  | 'sv-SE'
-  | 'zh-CN'
-  | 'zh-TW'
+export const localeKeys = [
+  'ca-ES',
+  'cs-CZ',
+  'da-DK',
+  'de-DE',
+  'el-GR',
+  'en-GB',
+  'en-US',
+  'es-ES',
+  'fr-FR',
+  'ga-IE',
+  'hr-HR',
+  'hu-HU',
+  'it-IT',
+  'ja-JP',
+  'ko-KR',
+  'ml-IN',
+  'nb-NO',
+  'nl-NL',
+  'pl-PL',
+  'pt-BR',
+  'pt-PT',
+  'ro-RO',
+  'ru-RU',
+  'sk-SK',
+  'sv-SE',
+  'zh-CN',
+  'zh-TW',
+] as const
+
+export type LocaleKey = (typeof localeKeys)[number]
 
 export type LocaleDirection = 'ltr' | 'rtl'
 
 const LOCALE_KEY = 'zimaos-blue-locale'
-const LOCALE_ENHANCEMENTS_START_DELAY_MS = 2500
 const RTL_LANGUAGE_CODES = new Set(['ar', 'ckb', 'fa', 'he', 'ps', 'ur'])
+const localeKeySet = new Set<LocaleKey>(localeKeys)
 
-// Map browser language codes to our locale keys
+// Map browser language codes to our locale keys.
 const browserLocaleMap: Record<string, LocaleKey> = {
   ca: 'ca-ES',
   cs: 'cs-CZ',
@@ -109,7 +112,7 @@ export const localeOptions = [
   { value: 'sv-SE', label: 'Svenska' },
   { value: 'zh-CN', label: '简体中文' },
   { value: 'zh-TW', label: '繁體中文' },
-] as const
+] as const satisfies readonly { value: LocaleKey; label: string }[]
 
 export function getLocaleDirection(locale: string): LocaleDirection {
   const normalized = locale.trim().toLowerCase()
@@ -118,18 +121,19 @@ export function getLocaleDirection(locale: string): LocaleDirection {
 }
 
 function getDefaultLocale(): LocaleKey {
-  const saved = localStorage.getItem(LOCALE_KEY)
-  if (saved && localeOptions.some((o) => o.value === saved)) {
-    return saved as LocaleKey
+  if (typeof localStorage !== 'undefined') {
+    const saved = localStorage.getItem(LOCALE_KEY)
+    if (saved && localeKeySet.has(saved as LocaleKey)) {
+      return saved as LocaleKey
+    }
   }
 
-  const browserLang = navigator.language
-  // Try exact match first
+  const browserLang = typeof navigator !== 'undefined' ? navigator.language : 'en-US'
   const exactMatch = browserLocaleMap[browserLang]
   if (exactMatch) {
     return exactMatch
   }
-  // Try language code only
+
   const langCode = browserLang.split('-')[0]
   if (langCode) {
     const langMatch = browserLocaleMap[langCode]
@@ -143,344 +147,116 @@ function getDefaultLocale(): LocaleKey {
 
 export const i18n = createI18n({
   legacy: false,
-  locale: 'en-US', // Start with en-US, will switch in initLocale after loading
+  locale: 'en-US',
   fallbackLocale: 'en-US',
   missingWarn: false,
   fallbackWarn: false,
   messages: {
-    'en-US': minimalMessages, // Minimal messages, full locale loaded async
+    'en-US': minimalMessages,
   },
 })
 
 type LocaleComposerBridge = {
   setLocaleMessage: (locale: string, message: LocaleMessages) => void
-  getLocaleMessage: (locale: string) => LocaleMessages
   locale: { value: string }
 }
 
-type LocaleMessageMap = Record<string, LocaleMessages>
-
-function createLocaleMessageMapLoader(
-  loader: () => Promise<{ default: LocaleMessageMap }>
-): () => Promise<LocaleMessageMap> {
-  let pending: Promise<LocaleMessageMap> | null = null
-  return () => {
-    if (!pending) {
-      pending = loader().then((module) => module.default as LocaleMessageMap)
-    }
-    return pending
-  }
+const localeLoaders: Record<LocaleKey, () => Promise<LocaleModule>> = {
+  'ca-ES': () => import('./locales/ca-ES'),
+  'cs-CZ': () => import('./locales/cs-CZ'),
+  'da-DK': () => import('./locales/da-DK'),
+  'de-DE': () => import('./locales/de-DE'),
+  'el-GR': () => import('./locales/el-GR'),
+  'en-GB': () => import('./locales/en-GB'),
+  'en-US': () => import('./locales/en-US'),
+  'es-ES': () => import('./locales/es-ES'),
+  'fr-FR': () => import('./locales/fr-FR'),
+  'ga-IE': () => import('./locales/ga-IE'),
+  'hr-HR': () => import('./locales/hr-HR'),
+  'hu-HU': () => import('./locales/hu-HU'),
+  'it-IT': () => import('./locales/it-IT'),
+  'ja-JP': () => import('./locales/ja-JP'),
+  'ko-KR': () => import('./locales/ko-KR'),
+  'ml-IN': () => import('./locales/ml-IN'),
+  'nb-NO': () => import('./locales/nb-NO'),
+  'nl-NL': () => import('./locales/nl-NL'),
+  'pl-PL': () => import('./locales/pl-PL'),
+  'pt-BR': () => import('./locales/pt-BR'),
+  'pt-PT': () => import('./locales/pt-PT'),
+  'ro-RO': () => import('./locales/ro-RO'),
+  'ru-RU': () => import('./locales/ru-RU'),
+  'sk-SK': () => import('./locales/sk-SK'),
+  'sv-SE': () => import('./locales/sv-SE'),
+  'zh-CN': () => import('./locales/zh-CN'),
+  'zh-TW': () => import('./locales/zh-TW'),
 }
 
-const loadPriorityLocaleOverrides = createLocaleMessageMapLoader(
-  () => import('./priority-overrides')
-)
-const loadPriorityBillingOverrides = createLocaleMessageMapLoader(
-  () => import('./priority-billing-overrides')
-)
-const loadPrioritySettingsOverrides = createLocaleMessageMapLoader(
-  () => import('./priority-settings-overrides')
-)
-const loadContextCompressionOverrides = createLocaleMessageMapLoader(
-  () => import('./context-compression-overrides')
-)
-const loadPriorityTranslationOverrides = createLocaleMessageMapLoader(
-  () => import('./priority-translation-overrides')
-)
-const loadPresetQuestionContentOverrides = createLocaleMessageMapLoader(
-  () => import('./preset-question-content-overrides')
-)
-const loadPrioritySmallModelOverrides = createLocaleMessageMapLoader(
-  () => import('./priority-small-model-overrides')
-)
-const loadMediaFallbackOverrides = createLocaleMessageMapLoader(
-  () => import('./media-fallback-overrides')
-)
-const loadResultCardMessageOverrides = createLocaleMessageMapLoader(
-  () => import('./result-card-message-overrides')
-)
-const loadResearchToolOverrides = createLocaleMessageMapLoader(
-  () => import('./research-tool-overrides')
-)
-const loadSecurityScanDetailOverrides = createLocaleMessageMapLoader(
-  () => import('./security-scan-detail-overrides')
-)
-const loadSkillToolOverrides = createLocaleMessageMapLoader(() => import('./skill-tool-overrides'))
-const loadSkillStoreMarketplaceOverrides = createLocaleMessageMapLoader(
-  () => import('./skill-store-marketplace-overrides')
-)
-const loadSelfReflectProposalOverrides = createLocaleMessageMapLoader(
-  () => import('./self-reflect-proposal-overrides')
-)
-const loadApiProxyPrunerOverrides = createLocaleMessageMapLoader(
-  () => import('./api-proxy-pruner-overrides')
-)
-const loadMemorySurfaceOverrides = createLocaleMessageMapLoader(
-  () => import('./memory-surface-overrides')
-)
-const loadRalphLoopHoverOverrides = createLocaleMessageMapLoader(
-  () => import('./ralph-loop-hover-overrides')
-)
-const loadExtensionsBrowseOverrides = createLocaleMessageMapLoader(
-  () => import('./extensions-browse-overrides')
-)
-
-const loadedBaseLocales = new Set<LocaleKey>()
-const loadingBaseLocales = new Map<LocaleKey, Promise<void>>()
-const loadedLocaleEnhancements = new Set<LocaleKey>()
-const loadingLocaleEnhancements = new Map<LocaleKey, Promise<void>>()
+const loadedLocales = new Set<LocaleKey>()
+const loadingLocales = new Map<LocaleKey, Promise<LocaleKey>>()
 
 function applyLocaleState(locale: LocaleKey): void {
   const direction = getLocaleDirection(locale)
   ;(i18n.global as unknown as LocaleComposerBridge).locale.value = locale
-  localStorage.setItem(LOCALE_KEY, locale)
-  document.documentElement.lang = locale
-  document.documentElement.dir = direction
-  document.documentElement.dataset.localeDirection = direction
 
-  if (window.__TAURI_INTERNALS__?.invoke) {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(LOCALE_KEY, locale)
+  }
+
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = locale
+    document.documentElement.dir = direction
+    document.documentElement.dataset.localeDirection = direction
+  }
+
+  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__?.invoke) {
     window.__TAURI_INTERNALS__.invoke('set_tray_locale', { locale }).catch(() => {})
   }
 }
 
-async function loadLocaleBaseMessages(locale: LocaleKey): Promise<void> {
-  if (loadedBaseLocales.has(locale)) {
-    return
+async function loadLocaleMessages(locale: LocaleKey): Promise<LocaleKey> {
+  if (loadedLocales.has(locale)) {
+    return locale
   }
 
-  const existing = loadingBaseLocales.get(locale)
+  const existing = loadingLocales.get(locale)
   if (existing) {
     return existing
   }
 
   const pending = (async () => {
     try {
-      if (locale !== 'en-US') {
-        await loadLocaleBaseMessages('en-US')
+      const module = await localeLoaders[locale]()
+      ;(i18n.global as unknown as LocaleComposerBridge).setLocaleMessage(locale, module.default)
+      loadedLocales.add(locale)
+      return locale
+    } catch (error) {
+      if (locale === 'en-US') {
+        console.warn(`Failed to load locale ${locale}, continuing with minimal fallback`, error)
+        return 'en-US'
       }
 
-      const messages = await import(`./locales/${locale}.ts`)
-      const localeMessages = messages.default as LocaleMessages
-      const i18nGlobal = i18n.global as unknown as LocaleComposerBridge
-      const apiProxyPrunerOverrides = (await loadApiProxyPrunerOverrides())[locale] || {}
-      const memorySurfaceOverrides = (await loadMemorySurfaceOverrides())[locale] || {}
-      const ralphLoopHoverOverrides = (await loadRalphLoopHoverOverrides())[locale] || {}
-      const mergedSelfReflectProposalOverrides =
-        locale === 'en-US' || locale === 'zh-CN'
-          ? {}
-          : (await loadSelfReflectProposalOverrides())[locale] || {}
-      const mergedBaseMessages =
-        locale === 'en-US'
-          ? localeMessages
-          : deepMergeMessages<LocaleMessages>(i18nGlobal.getLocaleMessage('en-US'), localeMessages)
-      const localizedBaseMessages = deepMergeMessages<LocaleMessages>(
-        mergedBaseMessages,
-        mergedSelfReflectProposalOverrides
-      )
-      const fullyLocalizedBaseMessages = deepMergeMessages<LocaleMessages>(
-        localizedBaseMessages,
-        apiProxyPrunerOverrides
-      )
-      const fullyLocalizedBaseMessagesWithMemorySurface = deepMergeMessages<LocaleMessages>(
-        fullyLocalizedBaseMessages,
-        memorySurfaceOverrides
-      )
-      const fullyLocalizedBaseMessagesWithRalphLoop = deepMergeMessages<LocaleMessages>(
-        fullyLocalizedBaseMessagesWithMemorySurface,
-        ralphLoopHoverOverrides
-      )
-
-      i18nGlobal.setLocaleMessage(locale, fullyLocalizedBaseMessagesWithRalphLoop)
-      loadedBaseLocales.add(locale)
-    } catch (error) {
-      console.warn(`Failed to load locale base ${locale}, falling back to en-US`, error)
+      console.warn(`Failed to load locale ${locale}, falling back to en-US`, error)
+      return loadLocaleMessages('en-US')
     } finally {
-      loadingBaseLocales.delete(locale)
+      loadingLocales.delete(locale)
     }
   })()
 
-  loadingBaseLocales.set(locale, pending)
-  return pending
-}
-
-async function loadLocaleEnhancements(locale: LocaleKey): Promise<void> {
-  if (loadedLocaleEnhancements.has(locale)) {
-    return
-  }
-
-  const existing = loadingLocaleEnhancements.get(locale)
-  if (existing) {
-    return existing
-  }
-
-  const pending = (async () => {
-    try {
-      await loadLocaleBaseMessages(locale)
-
-      const [
-        priorityLocaleOverrides,
-        resultCardMessageOverrides,
-        securityScanDetailOverrides,
-        priorityBillingOverrides,
-        prioritySettingsOverrides,
-        contextCompressionOverrides,
-        priorityTranslationOverrides,
-        presetQuestionContentOverrides,
-        mediaFallbackOverrides,
-        skillToolOverrides,
-        researchToolOverrides,
-        skillStoreMarketplaceOverrides,
-        prioritySmallModelOverrides,
-        extensionsBrowseOverrides,
-      ] = await Promise.all([
-        loadPriorityLocaleOverrides(),
-        loadResultCardMessageOverrides(),
-        loadSecurityScanDetailOverrides(),
-        loadPriorityBillingOverrides(),
-        loadPrioritySettingsOverrides(),
-        loadContextCompressionOverrides(),
-        loadPriorityTranslationOverrides(),
-        loadPresetQuestionContentOverrides(),
-        loadMediaFallbackOverrides(),
-        loadSkillToolOverrides(),
-        loadResearchToolOverrides(),
-        loadSkillStoreMarketplaceOverrides(),
-        loadPrioritySmallModelOverrides(),
-        loadExtensionsBrowseOverrides(),
-      ])
-
-      const localeOverrides = priorityLocaleOverrides[locale] || {}
-      const localizedResultCardMessageOverrides = resultCardMessageOverrides[locale] || {}
-      const localizedSecurityScanDetailOverrides = securityScanDetailOverrides[locale] || {}
-      const billingOverrides = priorityBillingOverrides[locale] || {}
-      const settingsOverrides = prioritySettingsOverrides[locale] || {}
-      const localizedContextCompressionOverrides = contextCompressionOverrides[locale] || {}
-      const translationOverrides = priorityTranslationOverrides[locale] || {}
-      const localizedPresetQuestionContentOverrides = presetQuestionContentOverrides[locale] || {}
-      const localizedMediaFallbackOverrides = mediaFallbackOverrides[locale] || {}
-      const localizedSkillToolOverrides = skillToolOverrides[locale] || {}
-      const localizedResearchToolOverrides = researchToolOverrides[locale] || {}
-      const localizedSkillStoreMarketplaceOverrides = skillStoreMarketplaceOverrides[locale] || {}
-      const smallModelOverrides = prioritySmallModelOverrides[locale] || {}
-      const localizedExtensionsBrowseOverrides = extensionsBrowseOverrides[locale] || {}
-      const i18nGlobal = i18n.global as unknown as LocaleComposerBridge
-      const currentMessages = i18nGlobal.getLocaleMessage(locale)
-      const withPriorityOverrides = deepMergeMessages<LocaleMessages>(
-        currentMessages,
-        localeOverrides
-      )
-      const withResultCardMessageOverrides = deepMergeMessages<LocaleMessages>(
-        withPriorityOverrides,
-        localizedResultCardMessageOverrides
-      )
-      const withSecurityScanDetailOverrides = deepMergeMessages<LocaleMessages>(
-        withResultCardMessageOverrides,
-        localizedSecurityScanDetailOverrides
-      )
-      const withBillingOverrides = deepMergeMessages<LocaleMessages>(
-        withSecurityScanDetailOverrides,
-        billingOverrides
-      )
-      const withSettingsOverrides = deepMergeMessages<LocaleMessages>(
-        withBillingOverrides,
-        settingsOverrides
-      )
-      const withContextCompressionOverrides = deepMergeMessages<LocaleMessages>(
-        withSettingsOverrides,
-        localizedContextCompressionOverrides
-      )
-      const withTranslationOverrides = deepMergeMessages<LocaleMessages>(
-        withContextCompressionOverrides,
-        translationOverrides
-      )
-      const withPresetQuestionContentOverrides = deepMergeMessages<LocaleMessages>(
-        withTranslationOverrides,
-        localizedPresetQuestionContentOverrides
-      )
-      const withMediaFallbackOverrides = deepMergeMessages<LocaleMessages>(
-        withPresetQuestionContentOverrides,
-        localizedMediaFallbackOverrides
-      )
-      const withSkillToolOverrides = deepMergeMessages<LocaleMessages>(
-        withMediaFallbackOverrides,
-        localizedSkillToolOverrides
-      )
-      const withResearchToolOverrides = deepMergeMessages<LocaleMessages>(
-        withSkillToolOverrides,
-        localizedResearchToolOverrides
-      )
-      const withSkillStoreMarketplaceOverrides = deepMergeMessages<LocaleMessages>(
-        withResearchToolOverrides,
-        localizedSkillStoreMarketplaceOverrides
-      )
-      const mergedMessages = deepMergeMessages<LocaleMessages>(
-        withSkillStoreMarketplaceOverrides,
-        smallModelOverrides
-      )
-      const fullyMergedMessages = deepMergeMessages<LocaleMessages>(
-        mergedMessages,
-        localizedExtensionsBrowseOverrides
-      )
-
-      i18nGlobal.setLocaleMessage(locale, fullyMergedMessages)
-      loadedLocaleEnhancements.add(locale)
-    } catch (error) {
-      console.warn(`Failed to load locale enhancements for ${locale}`, error)
-    } finally {
-      loadingLocaleEnhancements.delete(locale)
-    }
-  })()
-
-  loadingLocaleEnhancements.set(locale, pending)
+  loadingLocales.set(locale, pending)
   return pending
 }
 
 export async function setLocale(locale: LocaleKey): Promise<void> {
-  // Always ensure fallback locale is fully loaded so missing keys in other locales
-  // cleanly fall back to English instead of showing raw translation keys.
-  await loadLocaleBaseMessages('en-US')
-  await loadLocaleBaseMessages(locale)
-  await loadLocaleEnhancements('en-US')
-  if (locale !== 'en-US') {
-    await loadLocaleEnhancements(locale)
-  }
-  applyLocaleState(locale)
+  const resolvedLocale = await loadLocaleMessages(locale)
+  applyLocaleState(resolvedLocale)
 }
 
 export function getLocale(): LocaleKey {
   return (i18n.global as unknown as LocaleComposerBridge).locale.value as LocaleKey
 }
 
-// Initialize: always load the default locale (including en-US)
 export async function initLocale(): Promise<void> {
   const defaultLocale = getDefaultLocale()
-  await loadLocaleBaseMessages('en-US')
-  await loadLocaleBaseMessages(defaultLocale)
-  applyLocaleState(defaultLocale)
-
-  const scheduleEnhancements = (fn: () => void) => {
-    const runWhenIdle = () => {
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        ;(
-          window as Window & {
-            requestIdleCallback: (cb: () => void, options?: { timeout?: number }) => number
-          }
-        ).requestIdleCallback(fn, {
-          timeout: LOCALE_ENHANCEMENTS_START_DELAY_MS,
-        })
-        return
-      }
-      setTimeout(fn, 0)
-    }
-
-    setTimeout(runWhenIdle, LOCALE_ENHANCEMENTS_START_DELAY_MS)
-  }
-
-  scheduleEnhancements(() => {
-    reportStartupMark('locale_enhancements_start')
-    void loadLocaleEnhancements('en-US')
-    if (defaultLocale !== 'en-US') {
-      void loadLocaleEnhancements(defaultLocale)
-    }
-  })
+  const resolvedLocale = await loadLocaleMessages(defaultLocale)
+  applyLocaleState(resolvedLocale)
 }

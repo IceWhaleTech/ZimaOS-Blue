@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { deepMergeMessages, type LocaleMessages } from '../i18n/merge'
-import extensionsBrowseOverrides from '../i18n/extensions-browse-overrides'
-import prioritySettingsOverrides from '../i18n/priority-settings-overrides'
-import researchToolOverrides from '../i18n/research-tool-overrides'
-import skillToolOverrides from '../i18n/skill-tool-overrides'
 import { getLocalizedToolDescription, getLocalizedToolName } from './toolLocalization'
+
+type LocaleMessages = Record<string, unknown>
 
 function fileNameFromModulePath(modulePath: string): string {
   return modulePath.split('/').pop() ?? modulePath
@@ -36,32 +33,13 @@ const localeMessagesByCode = new Map(
 )
 
 const localeCodes = [...localeMessagesByCode.keys()].sort()
-const baseLocale = localeMessagesByCode.get('en-US') as LocaleMessages
 
-function buildMergedLocaleMessages(locale: string): LocaleMessages {
+function getLocaleMessages(locale: string): LocaleMessages {
   const localeMessages = localeMessagesByCode.get(locale)
   if (!localeMessages) {
     throw new Error(`Missing locale: ${locale}`)
   }
-
-  const mergedBase = locale === 'en-US' ? baseLocale : deepMergeMessages(baseLocale, localeMessages)
-  const withSettingsOverrides = deepMergeMessages(
-    mergedBase,
-    (prioritySettingsOverrides as Record<string, LocaleMessages>)[locale] || {}
-  )
-  const withSkillToolOverrides = deepMergeMessages(
-    withSettingsOverrides,
-    (skillToolOverrides as Record<string, LocaleMessages>)[locale] || {}
-  )
-  const withBrowseOverrides = deepMergeMessages(
-    withSkillToolOverrides,
-    (extensionsBrowseOverrides as Record<string, LocaleMessages>)[locale] || {}
-  )
-
-  return deepMergeMessages(
-    withBrowseOverrides,
-    (researchToolOverrides as Record<string, LocaleMessages>)[locale] || {}
-  )
+  return localeMessages
 }
 
 const nameCoverage = [
@@ -180,7 +158,7 @@ describe('tool page localization coverage', () => {
 
   it('resolves localized built-in tool names across all locales', () => {
     for (const locale of localeCodes) {
-      const messages = buildMergedLocaleMessages(locale)
+      const messages = getLocaleMessages(locale)
       const t = (key: string) => String(getByPath(messages, key) ?? '')
       const te = (key: string) => {
         const value = getByPath(messages, key)
@@ -197,7 +175,7 @@ describe('tool page localization coverage', () => {
 
   it('resolves localized built-in tool descriptions across all locales', () => {
     for (const locale of localeCodes) {
-      const messages = buildMergedLocaleMessages(locale)
+      const messages = getLocaleMessages(locale)
       const t = (key: string) => String(getByPath(messages, key) ?? '')
       const te = (key: string) => {
         const value = getByPath(messages, key)
@@ -221,7 +199,7 @@ describe('tool page localization coverage', () => {
   })
 
   it('prefers unified labels and descriptions for legacy alias tools', () => {
-    const messages = buildMergedLocaleMessages('en-US')
+    const messages = getLocaleMessages('en-US')
     const t = (key: string) => String(getByPath(messages, key) ?? '')
     const te = (key: string) => {
       const value = getByPath(messages, key)

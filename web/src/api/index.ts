@@ -14,12 +14,12 @@ export * from './cron'
 export * from './audit'
 export * from './security'
 export * from './companion'
-export * from './claudecode'
 export * from './service'
 export * from './userdata'
 export * from './proxyCache'
 export * from './deepResearch'
 export * from './harness'
+export * from './agentSessions'
 
 export interface HealthStatus {
   status: string

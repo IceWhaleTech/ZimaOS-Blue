@@ -17,12 +17,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a2ui"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/bootstrap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
@@ -277,10 +277,16 @@ func shouldSkipStartupSTTAuthorization(args []string) bool {
 		}
 	}
 
-	if len(positional) < 2 {
+	if len(positional) == 0 {
 		return false
 	}
-	return positional[0] == "gateway" && positional[1] == "run"
+	if positional[0] != "gateway" {
+		return false
+	}
+	if len(positional) < 2 {
+		return true
+	}
+	return positional[1] != "run"
 }
 
 // runServer is the main server entry point, called by cobra rootCmd
@@ -297,7 +303,7 @@ func runServer() {
 	var hotReloader *config.HotReloader
 
 	// Initialize logger
-	if err := logger.Init(&cfg.Log); err != nil {
+	if err := logger.InitWithMirror(&cfg.Log, filepath.Join(getLogsDir(), "blue.log")); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
@@ -479,16 +485,8 @@ func runServer() {
 
 	// Claude provider
 	claudeKey := os.Getenv("ANTHROPIC_API_KEY")
-	claudeBaseURL := ""
-	// Also check config.yaml for Claude Code CLI settings
-	if cfg.ClaudeCode.APIKey != "" {
-		claudeKey = cfg.ClaudeCode.APIKey
-	}
-	if cfg.ClaudeCode.BaseURL != "" {
-		claudeBaseURL = cfg.ClaudeCode.BaseURL
-	}
 	if claudeKey != "" {
-		llmRegistry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
+		llmRegistry.Register(llm.NewClaudeProvider(claudeKey, ""))
 	}
 
 	// Ollama provider is only registered when explicitly configured.
@@ -607,13 +605,13 @@ func runServer() {
 		logger.Fatal().Err(err).Msg("Failed to initialize API key service")
 	}
 
-	// Initialize Claude Code CLI provider with internal API key for local proxy
+	// Initialize internal routing API keys for the local proxy/runtime bridge.
 	// This must be done after apiKeyService is ready
 	// Create three internal API keys for different routing modes:
-	// - cc-cli-auto: Auto mode (system chooses best provider)
-	// - cc-cli-cloud: Cloud mode (force cloud provider)
-	// - cc-cli-local: Local mode (force local CC CLI)
-	var ccCliAutoKey, ccCliCloudKey, ccCliLocalKey string
+	// - runtime-auto: Auto mode (system chooses best provider)
+	// - runtime-cloud: Cloud mode (force cloud provider)
+	// - runtime-local: Local mode (force local runtime)
+	var runtimeAutoKey, runtimeCloudKey, runtimeLocalKey string
 
 	if providerpool.GetTrialLicense() != "" {
 		// Helper function to create or recreate an API key
@@ -645,18 +643,18 @@ func runServer() {
 		}
 
 		// Create three keys for different routing modes
-		ccCliAutoKey = createOrRecreateKey("cc-cli-auto", []string{"chat", "proxy", "route:auto"})
-		ccCliCloudKey = createOrRecreateKey("cc-cli-cloud", []string{"chat", "proxy", "route:cloud"})
-		ccCliLocalKey = createOrRecreateKey("cc-cli-local", []string{"chat", "proxy", "route:local"})
+		runtimeAutoKey = createOrRecreateKey("runtime-auto", []string{"chat", "proxy", "route:auto"})
+		runtimeCloudKey = createOrRecreateKey("runtime-cloud", []string{"chat", "proxy", "route:cloud"})
+		runtimeLocalKey = createOrRecreateKey("runtime-local", []string{"chat", "proxy", "route:local"})
 
 		logger.Info().
-			Str("auto_key", ccCliAutoKey[:8]+"...").
-			Str("cloud_key", ccCliCloudKey[:8]+"...").
-			Str("local_key", ccCliLocalKey[:8]+"...").
-			Msg("Created three internal API keys for CC CLI routing modes")
+			Str("auto_key", runtimeAutoKey[:8]+"...").
+			Str("cloud_key", runtimeCloudKey[:8]+"...").
+			Str("local_key", runtimeLocalKey[:8]+"...").
+			Msg("Created three internal API keys for runtime routing modes")
 	}
 
-	// Note: Claude Code CLI is no longer registered as an LLM provider.
+	// Note: the local coding runtime is not registered as an LLM provider.
 	// All chat requests are routed through the proxy, which handles provider selection internally.
 
 	// Initialize auth middleware
@@ -826,13 +824,22 @@ func runServer() {
 
 	// Sync initialization for Sandbox manager (must complete before route registration)
 	{
-		var err error
-		sandboxManager, err = sandbox.NewManager(nil)
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize sandbox manager, sandbox features will be disabled")
+		if !cfg.Security.Sandbox.Enabled {
+			logger.Info().Msg("Sandbox features disabled by config")
 		} else {
-			sandboxHandler = sandbox.NewHandler(sandboxManager)
-			logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
+			var err error
+			sandboxManager, err = bootstrap.NewSandboxManagerFromConfig(cfg)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to initialize sandbox manager, sandbox features will be disabled")
+			} else if sandboxManager == nil {
+				logger.Info().Msg("Sandbox features disabled by config")
+			} else if !sandboxManager.IsSupported() {
+				logger.Warn().Str("reason", sandboxManager.SupportReason()).Msg("Sandbox manager initialized without a supported isolation backend; sandbox features will remain disabled")
+				sandboxManager = nil
+			} else {
+				sandboxHandler = sandbox.NewHandler(sandboxManager)
+				logger.Info().Bool("supported", true).Msg("Sandbox handler initialized")
+			}
 		}
 	}
 
@@ -1060,19 +1067,28 @@ func runServer() {
 		relayPreferredSites := cfg.Browser.ExpandedRelayPreferredSites()
 		lightpandaSvc := browser.NewLightpandaService(&cfg.Browser)
 		lightpandaShimSvc = lightpandaSvc
+		var lightpandaBinaryBackend *tools.LightpandaBinaryBrowserBackend
 		if cfg.Browser.Lightpanda.Enabled {
+			lightpandaBinaryRuntime := browser.NewLightpandaBinaryRuntime(&cfg.Browser)
+			lightpandaBinaryBackend = tools.NewLightpandaBinaryBrowserBackend(lightpandaBinaryRuntime)
+			lm.RegisterShutdownHook(func(ctx context.Context) error {
+				return lightpandaBinaryRuntime.Stop(ctx)
+			})
 			go func() {
-				path, err := lightpandaSvc.EnsureBinary(context.Background())
+				path, err := lightpandaSvc.WarmBinary(context.Background())
 				if err != nil {
 					logger.Warn().Err(err).Msg("Lightpanda browser-lite binary is not ready; Blue will keep using the read-layer shim and Chromium fallback until it becomes available")
 					return
 				}
-				logger.Info().Str("binary_path", path).Msg("Lightpanda browser-lite binary is ready")
+				if strings.TrimSpace(path) != "" {
+					logger.Info().Str("binary_path", path).Msg("Lightpanda browser-lite binary is ready")
+				}
 			}()
 		}
 		browserBackend = tools.NewHybridCapabilityBrowserBackend(
 			&cfg.Browser,
 			lightpandaSvc,
+			lightpandaBinaryBackend,
 			managedRuntime.rodBackend,
 			relayRuntime.rodBackend,
 			func(rawURL string) bool {
@@ -1514,10 +1530,8 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 	contextResolver := contextpack.NewResolver(contextRegistry, contextAnnotationStore, contextpack.ResolverConfig{MaxFiles: 3, MaxTokens: 1500, SearchLimit: 5})
 
-	// Initialize Claude Code handler
-	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir, configKV)
 	workspaceDir := workspaceMgr.Dir() // {dataDir}/workspace/
-	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{WorkspaceDir: workspaceDir})
+	systemPromptBuilder := agentcore.NewSystemPromptBuilder(&agentcore.Config{WorkspaceDir: workspaceDir})
 	systemPromptBuilder.SetToolRegistry(toolRegistry)
 	systemPromptBuilder.SetWorkspace(workspaceMgr)
 	systemPromptBuilder.SetContextResolver(contextResolver)
@@ -1693,7 +1707,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		STTService:         sttService,
 		NgrokTunnelMgr:     ngrokTunnelMgr,
 		NgrokConfigStore:   ngrokConfigStore,
-		ClaudeCodeHandler:  claudeCodeHandler,
 		MemoryHandler:      memoryHandler,
 		ChannelConfigStore: channelConfigStore,
 		ConfigKV:           configKV,
@@ -1722,38 +1735,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		lm.RegisterShutdownHook(func(ctx context.Context) error {
 			return closer.Close()
 		})
-	}
-}
-
-// convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.
-func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig, apiKey, baseURL string) *claudecode.ClaudeCodeConfig {
-	return &claudecode.ClaudeCodeConfig{
-		Enabled:      cfg.Enabled,
-		Command:      cfg.Command,
-		WorkspaceDir: cfg.WorkspaceDir,
-		DefaultModel: cfg.DefaultModel,
-		Timeout:      cfg.Timeout,
-		SessionTTL:   cfg.SessionTTL,
-		APIKey:       apiKey,
-		BaseURL:      baseURL,
-		Backend: claudecode.CliBackendConfig{
-			Command:           cfg.Command,
-			Args:              cfg.Backend.Args,
-			ResumeArgs:        cfg.Backend.ResumeArgs,
-			Output:            cfg.Backend.Output,
-			Input:             cfg.Backend.Input,
-			MaxPromptArgChars: cfg.Backend.MaxPromptArgChars,
-			Env:               cfg.Backend.Env,
-			ClearEnv:          cfg.Backend.ClearEnv,
-			ModelArg:          cfg.Backend.ModelArg,
-			ModelAliases:      cfg.Backend.ModelAliases,
-			SessionArg:        cfg.Backend.SessionArg,
-			SessionMode:       cfg.Backend.SessionMode,
-			SystemPromptArg:   cfg.Backend.SystemPromptArg,
-			SystemPromptMode:  cfg.Backend.SystemPromptMode,
-			SystemPromptWhen:  cfg.Backend.SystemPromptWhen,
-			Serialize:         cfg.Backend.Serialize,
-		},
 	}
 }
 

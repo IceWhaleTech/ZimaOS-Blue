@@ -50,4 +50,23 @@ describe('workspaceGeneratedFiles', () => {
       '/tmp/workspace/reports/summary.md',
     ])
   })
+
+  it('extracts reveal-path targets when the displayed path is not directly resolvable', () => {
+    const card = {
+      type: 'result',
+      title: 'file_write',
+      status: 'success',
+      details: [
+        {
+          label: 'Path',
+          value: '@docs/reports/summary.md',
+          reveal_path: '/tmp/workspace/reports/summary.md',
+        },
+      ],
+    } as TypelessCardResult
+
+    expect(extractLocalPathCandidatesFromCard(card, '/tmp/workspace')).toEqual([
+      '/tmp/workspace/reports/summary.md',
+    ])
+  })
 })

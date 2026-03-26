@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	skillEmbed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
 	"github.com/spf13/cobra"
 )
@@ -38,7 +38,7 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		fmt.Println("  blue help <skill>        Show full SKILL.md manual")
 		fmt.Println("  blue <skill> key=value   Execute a skill")
 
-		skills := listPinnedSkillSummaries(claudecode.PinnedSkills(), skillEmbed.SkillsFS.ReadFile)
+		skills := listPinnedSkillSummaries(agentcore.PinnedSkills(), skillEmbed.SkillsFS.ReadFile)
 		if len(skills) == 0 {
 			return nil
 		}
@@ -59,7 +59,7 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		return target.Help()
 	}
 
-	pinnedSet := buildPinnedSkillSet(claudecode.PinnedSkills())
+	pinnedSet := buildPinnedSkillSet(agentcore.PinnedSkills())
 	for _, candidate := range candidateSkillIDs(args[0]) {
 		if _, pinned := pinnedSet[candidate]; !pinned {
 			continue

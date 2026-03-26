@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { SkillTab, SkillStoreTab, ToolTab } from '@/components/extensions'
 import { useSkillStore } from '@/stores/skill'
 
 const { t } = useI18n()
 const skillStore = useSkillStore()
+const route = useRoute()
 
 const activeMainTab = ref<'skill' | 'store' | 'tool'>('skill')
 
@@ -46,6 +48,32 @@ const tabs = computed(() => [
 
 const activeTabMeta = computed(
   () => tabs.value.find((tab) => tab.id === activeMainTab.value) ?? tabs.value[0]!
+)
+const skillStoreInitialQuery = computed(() => {
+  const value = route.query.q
+  if (typeof value === 'string') return value.trim()
+  if (Array.isArray(value)) return String(value[0] || '').trim()
+  return ''
+})
+
+watch(
+  () => [route.query.tab, route.query.q],
+  ([tabRaw, queryRaw]) => {
+    const tab = typeof tabRaw === 'string' ? tabRaw.trim().toLowerCase() : ''
+    const query =
+      typeof queryRaw === 'string'
+        ? queryRaw.trim()
+        : Array.isArray(queryRaw)
+          ? String(queryRaw[0] || '').trim()
+          : ''
+
+    if (tab === 'store' || tab === 'tool' || tab === 'skill') {
+      activeMainTab.value = tab
+      return
+    }
+    activeMainTab.value = query ? 'store' : 'skill'
+  },
+  { immediate: true }
 )
 
 function setActiveTab(tabId: 'skill' | 'store' | 'tool') {
@@ -169,7 +197,11 @@ async function installSkill() {
                 key="skill"
                 @install-skill="openUploadModal('skill')"
               />
-              <SkillStoreTab v-else-if="activeMainTab === 'store'" key="store" />
+              <SkillStoreTab
+                v-else-if="activeMainTab === 'store'"
+                key="store"
+                :initial-search-query="skillStoreInitialQuery"
+              />
               <ToolTab v-else key="tool" />
             </Transition>
           </div>

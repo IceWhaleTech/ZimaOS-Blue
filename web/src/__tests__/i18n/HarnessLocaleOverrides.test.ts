@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import harnessLocaleOverrides from '@/i18n/harness-locale-overrides'
-import type { LocaleMessages } from '@/i18n/merge'
+type LocaleMessages = Record<string, unknown>
 
 const localeKeys = [
   'ca-ES',
@@ -150,13 +149,7 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
   }, messages)
 }
 
-describe('Harness locale overrides', () => {
-  it('covers every supported non-en-US locale', () => {
-    expect(Object.keys(harnessLocaleOverrides).sort()).toEqual(
-      localeKeys.filter((locale) => locale !== 'en-US').sort()
-    )
-  })
-
+describe('Harness locale coverage', () => {
   it('is wired through all 27 locale source files', () => {
     expect(localeMessagesByFile.size).toBe(27)
 
@@ -164,10 +157,10 @@ describe('Harness locale overrides', () => {
       const file = `${locale}.ts`
       const source = localeSourceByFile.get(file)
       expect(source, `${file} should be loadable as raw source`).toBeTruthy()
-      expect(source, `${file} should expose common.all`).toMatch(/\ball:\s*/)
-      expect(source, `${file} should expose common.notAvailable`).toMatch(/\bnotAvailable:\s*/)
-      expect(source, `${file} should expose common.updatedAt`).toMatch(/\bupdatedAt:\s*/)
-      expect(source, `${file} should expose nav.harness`).toMatch(/\bharness:\s*/)
+      expect(source, `${file} should expose common.all`).toMatch(/"all"\s*:/)
+      expect(source, `${file} should expose common.notAvailable`).toMatch(/"notAvailable"\s*:/)
+      expect(source, `${file} should expose common.updatedAt`).toMatch(/"updatedAt"\s*:/)
+      expect(source, `${file} should expose nav.harness`).toMatch(/"harness"\s*:/)
     }
   })
 
@@ -183,12 +176,12 @@ describe('Harness locale overrides', () => {
     }
   })
 
-  it('uses translated harness labels for Chinese locales', () => {
+  it('preserves the Harness product name for Chinese locales', () => {
     const zhCN = localeMessagesByFile.get('zh-CN.ts') as LocaleMessages
     const zhTW = localeMessagesByFile.get('zh-TW.ts') as LocaleMessages
 
-    expect(getPathValue(zhCN, 'nav.harness')).toBe('测试夹具')
-    expect(getPathValue(zhCN, 'harness.quickEval.systemWillDo')).toBe('测试夹具将自动完成')
+    expect(getPathValue(zhCN, 'nav.harness')).toBe('Harness')
+    expect(getPathValue(zhCN, 'harness.quickEval.systemWillDo')).toBe('Harness 将自动完成')
     expect(getPathValue(zhCN, 'harness.quickEval.useConversation')).toBe('使用会话')
     expect(getPathValue(zhCN, 'harness.quickEval.selectConversation')).toBe('选择会话')
     expect(getPathValue(zhCN, 'harness.quickEval.draftCases')).toBe('草稿用例')
@@ -198,8 +191,8 @@ describe('Harness locale overrides', () => {
     expect(getPathValue(zhCN, 'harness.quickEval.regressionLabel')).toBe('回归')
     expect(getPathValue(zhCN, 'harness.quickEval.researchLabel')).toBe('研究')
     expect(getPathValue(zhCN, 'harness.quickEval.smokeDatasetName')).toBe('冒烟数据集')
-    expect(getPathValue(zhTW, 'nav.harness')).toBe('測試夾具')
-    expect(getPathValue(zhTW, 'harness.quickEval.systemWillDo')).toBe('測試夾具將自動完成')
+    expect(getPathValue(zhTW, 'nav.harness')).toBe('Harness')
+    expect(getPathValue(zhTW, 'harness.quickEval.systemWillDo')).toBe('Harness 將自動完成')
     expect(getPathValue(zhTW, 'harness.quickEval.useConversation')).toBe('使用對話')
     expect(getPathValue(zhTW, 'harness.quickEval.selectConversation')).toBe('選擇對話')
     expect(getPathValue(zhTW, 'harness.quickEval.draftCases')).toBe('草稿案例')

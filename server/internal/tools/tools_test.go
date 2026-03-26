@@ -1493,6 +1493,15 @@ func TestFileWriteTool(t *testing.T) {
 	if resultMap["success"] != true {
 		t.Error("expected success=true")
 	}
+	if got := resultMap["path"]; got != "output.txt" {
+		t.Fatalf("path = %v, want output.txt", got)
+	}
+	if got := resultMap["original_path"]; got != testFile {
+		t.Fatalf("original_path = %v, want %q", got, testFile)
+	}
+	if got := resultMap["absolute_path"]; got != testFile {
+		t.Fatalf("absolute_path = %v, want %q", got, testFile)
+	}
 
 	// Verify file content
 	content, err := readTestFile(testFile)
@@ -1663,6 +1672,12 @@ func TestTransactionalWriteToolsCommit(t *testing.T) {
 	}
 	if got, _ := commitPayload["sha256"].(string); got != wantSHA {
 		t.Fatalf("write_commit sha256 = %q, want %q", got, wantSHA)
+	}
+	if got, _ := commitPayload["original_path"].(string); got != target {
+		t.Fatalf("write_commit original_path = %q, want %q", got, target)
+	}
+	if got, _ := commitPayload["absolute_path"].(string); got != target {
+		t.Fatalf("write_commit absolute_path = %q, want %q", got, target)
 	}
 
 	got, err := readTestFile(target)

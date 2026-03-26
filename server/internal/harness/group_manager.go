@@ -139,12 +139,21 @@ func (c *Controller) GetGroupReport(ctx context.Context, id string) (*RunGroupRe
 		return nil, err
 	}
 	runByID := make(map[string]*Run, len(linkedRuns))
+	runtimeEvidence := make(map[string][]RuntimeEvidenceEntry, len(linkedRuns))
 	for i := range linkedRuns {
 		run := linkedRuns[i]
 		runByID[run.ID] = &run
+		if driver, driverErr := c.driverFor(run.Kind); driverErr == nil {
+			if provider, ok := driver.(RuntimeEvidenceProvider); ok {
+				if evidence, evidenceErr := provider.ListRuntimeEvidence(ctx, &run); evidenceErr == nil && len(evidence) > 0 {
+					runtimeEvidence[run.ID] = evidence
+				}
+			}
+		}
 	}
 
 	artifacts := make([]ArtifactRef, 0)
+	checkpoints := make([]CheckpointArtifact, 0)
 	seenArtifacts := make(map[string]struct{})
 	for i := range linkedRuns {
 		runArtifacts, artErr := c.store.ListArtifacts(ctx, linkedRuns[i].ID)
@@ -157,17 +166,36 @@ func (c *Controller) GetGroupReport(ctx context.Context, id string) (*RunGroupRe
 			}
 			seenArtifacts[artifact.ID] = struct{}{}
 			artifacts = append(artifacts, artifact)
+			if strings.TrimSpace(artifact.Kind) == "checkpoint" {
+				checkpoints = append(checkpoints, CheckpointArtifact{
+					RunID:       linkedRuns[i].ID,
+					GroupItemID: linkedRuns[i].GroupItemID,
+					Artifact:    artifact,
+					Payload:     unmarshalMetadata(artifact.MetadataJSON),
+				})
+			}
+		}
+	}
+
+	itemContracts := make(map[string]HarnessContract, len(items))
+	for _, item := range items {
+		contract := DecodeHarnessContract(group.Metadata, item.Metadata, item.Expected, item.Input)
+		if contractMeta := HarnessContractMetadata(contract); len(contractMeta) > 0 {
+			itemContracts[item.ID] = contract
 		}
 	}
 
 	report := &RunGroupReport{
-		Group:         group,
-		Items:         items,
-		VerdictCounts: make(map[string]int),
-		LinkedRuns:    linkedRuns,
-		Artifacts:     artifacts,
-		Scorecards:    scorecards,
-		Breakdown:     cloneMetadataMap(group.Summary),
+		Group:           group,
+		Items:           items,
+		VerdictCounts:   make(map[string]int),
+		LinkedRuns:      linkedRuns,
+		Artifacts:       artifacts,
+		Scorecards:      scorecards,
+		Breakdown:       cloneMetadataMap(group.Summary),
+		RuntimeEvidence: runtimeEvidence,
+		ItemContracts:   itemContracts,
+		Checkpoints:     checkpoints,
 	}
 
 	var totalScore float64

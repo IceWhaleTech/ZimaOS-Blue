@@ -24,7 +24,6 @@ const bootstrapState = reactive({
   webPush: false,
   providers: false,
   backendSettings: false,
-  claudeCode: false,
 })
 
 async function createProtectedBootstrapDeps() {
@@ -91,10 +90,6 @@ const canPrefetchBackendSettings = computed(() => {
   return previewStore.isPreviewMode || authStore.hasPermission(PagePermissions.SETTINGS)
 })
 
-const canPrefetchClaudeCode = computed(() => {
-  return previewStore.isPreviewMode || authStore.hasPermission(PagePermissions.CHAT)
-})
-
 async function loadProtectedBootstrapDeps(): Promise<ProtectedBootstrapDeps> {
   protectedBootstrapPromise ??= createProtectedBootstrapDeps()
   return protectedBootstrapPromise
@@ -118,7 +113,6 @@ function resetProtectedBootstrap() {
   bootstrapState.webPush = false
   bootstrapState.providers = false
   bootstrapState.backendSettings = false
-  bootstrapState.claudeCode = false
 }
 
 async function initializeProtectedFeatures() {
@@ -155,12 +149,6 @@ async function initializeProtectedFeatures() {
     })
   }
 
-  if (!bootstrapState.claudeCode && canPrefetchClaudeCode.value) {
-    bootstrapState.claudeCode = true
-    deps.settingsStore.fetchClaudeCodeEnabled().catch(() => {
-      bootstrapState.claudeCode = false
-    })
-  }
 }
 
 watch(
@@ -168,7 +156,6 @@ watch(
     () => hasProtectedSession.value,
     () => canPrefetchProviders.value,
     () => canPrefetchBackendSettings.value,
-    () => canPrefetchClaudeCode.value,
   ],
   ([nextHasProtectedSession]) => {
     if (!nextHasProtectedSession) {

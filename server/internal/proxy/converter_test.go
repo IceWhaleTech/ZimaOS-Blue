@@ -115,6 +115,31 @@ func TestConvertRequestToGemini(t *testing.T) {
 	}
 }
 
+func TestApplyPromptCaching_SortsAnthropicToolsBeforeAnnotating(t *testing.T) {
+	req := &AnthropicRequest{
+		Tools: []AnthropicTool{
+			{Name: "write"},
+			{Name: "ask"},
+			{Name: "read"},
+		},
+	}
+
+	ApplyPromptCaching(req)
+
+	if got := req.Tools[0].Name; got != "ask" {
+		t.Fatalf("tool[0] = %q, want %q", got, "ask")
+	}
+	if got := req.Tools[1].Name; got != "read" {
+		t.Fatalf("tool[1] = %q, want %q", got, "read")
+	}
+	if got := req.Tools[2].Name; got != "write" {
+		t.Fatalf("tool[2] = %q, want %q", got, "write")
+	}
+	if req.Tools[2].CacheControl == nil || req.Tools[2].CacheControl.Type != "ephemeral" {
+		t.Fatalf("expected last sorted tool to receive cache_control, got=%+v", req.Tools[2].CacheControl)
+	}
+}
+
 func TestConvertAnthropicResponse(t *testing.T) {
 	fc := NewFormatConverter()
 

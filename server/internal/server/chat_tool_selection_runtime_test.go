@@ -5,6 +5,8 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -28,8 +30,35 @@ func toolNameSet(defs []tools.ToolDefinition) map[string]struct{} {
 	return names
 }
 
+func selectedToolNames(defs []tools.ToolDefinition) []string {
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		names = append(names, def.Name)
+	}
+	return names
+}
+
+func attachTestProviderPool(t *testing.T, handler *ChatHandler, provider *providerpool.Provider) {
+	t.Helper()
+
+	storage, err := providerpool.NewFileStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	handler.SetProviderPool(&providerpool.Pool{Registry: registry})
+}
+
 func TestSelectTools_FirstTurnExposesFullStaticAllowlist(t *testing.T) {
 	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run real shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Email inbox search and triage"})
@@ -53,6 +82,7 @@ func TestSelectTools_FirstTurnExposesFullStaticAllowlist(t *testing.T) {
 
 	names := toolNameSet(got)
 	for _, required := range []string{
+		"bash",
 		"calendar",
 		"deep_research",
 		"email",
@@ -89,6 +119,34 @@ func TestSelectTools_FirstTurnStillExposesToolsForPlainReply(t *testing.T) {
 	}
 }
 
+func TestSelectTools_WorkspaceWorkflowStillKeepsBashVisible(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run real shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "edit", Description: "Edit workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Search inbox messages"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	got := handler.selectTools("Review all files under notes/ and write a summary to out.md.", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	})
+
+	names := toolNameSet(got)
+	for _, required := range []string{"bash", "read", "write"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q to remain exposed in workspace workflow, got=%v", required, got)
+		}
+	}
+	if _, ok := names["email"]; ok {
+		t.Fatalf("expected unrelated productivity tool to stay hidden, got=%v", got)
+	}
+}
+
 func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})
@@ -104,6 +162,8 @@ func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testi
 		"Look up the latest updates and create a checklist",
 		"claude-3-5-haiku-20241022",
 		"session-1",
+		"",
+		memory.ConversationCommandState{ConversationID: "session-1"},
 		&webSearchEnabled,
 		&deepResearchEnabled,
 	)
@@ -118,5 +178,108 @@ func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testi
 		if _, ok := names[required]; !ok {
 			t.Fatalf("expected %q to remain visible, got=%v", required, got)
 		}
+	}
+}
+
+func TestStabilizePromptCacheToolSurface_AnthropicKeepsStickyUnion(t *testing.T) {
+	registry := tools.NewRegistry()
+	handler := newChatToolSelectionTestHandler(registry)
+	attachTestProviderPool(t, handler, &providerpool.Provider{
+		ID:        "anthropic-test",
+		Name:      "Anthropic Test",
+		Type:      providerpool.ProviderTypeCustom,
+		Location:  providerpool.ProviderLocationCloud,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		APIFormat: providerpool.APIFormatAnthropic,
+	})
+
+	state := memory.ConversationCommandState{
+		ConversationID:     "conv-1",
+		SelectedProviderID: "anthropic-test",
+	}
+
+	first := handler.stabilizePromptCacheToolSurface("conv-1", "", state, nil, nil, []tools.ToolDefinition{
+		{Name: "write"},
+		{Name: "ask"},
+	})
+	if got := selectedToolNames(first); len(got) != 2 || got[0] != "ask" || got[1] != "write" {
+		t.Fatalf("first stabilize = %v, want [ask write]", got)
+	}
+
+	second := handler.stabilizePromptCacheToolSurface("conv-1", "", state, nil, nil, []tools.ToolDefinition{
+		{Name: "ask"},
+	})
+	if got := selectedToolNames(second); len(got) != 2 || got[0] != "ask" || got[1] != "write" {
+		t.Fatalf("second stabilize = %v, want sticky union [ask write]", got)
+	}
+}
+
+func TestStabilizePromptCacheToolSurface_ToggleChangeResetsStickyTools(t *testing.T) {
+	registry := tools.NewRegistry()
+	handler := newChatToolSelectionTestHandler(registry)
+	attachTestProviderPool(t, handler, &providerpool.Provider{
+		ID:        "anthropic-test",
+		Name:      "Anthropic Test",
+		Type:      providerpool.ProviderTypeCustom,
+		Location:  providerpool.ProviderLocationCloud,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		APIFormat: providerpool.APIFormatAnthropic,
+	})
+
+	state := memory.ConversationCommandState{
+		ConversationID:     "conv-1",
+		SelectedProviderID: "anthropic-test",
+		WebSearchEnabled:   true,
+	}
+
+	first := handler.stabilizePromptCacheToolSurface("conv-1", "", state, nil, nil, []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "read"},
+	})
+	if got := selectedToolNames(first); len(got) != 2 || got[0] != "read" || got[1] != "web_search" {
+		t.Fatalf("first stabilize = %v, want [read web_search]", got)
+	}
+
+	webSearchEnabled := false
+	second := handler.stabilizePromptCacheToolSurface("conv-1", "", state, &webSearchEnabled, nil, []tools.ToolDefinition{
+		{Name: "read"},
+	})
+	if got := selectedToolNames(second); len(got) != 1 || got[0] != "read" {
+		t.Fatalf("toggle reset stabilize = %v, want [read]", got)
+	}
+}
+
+func TestStabilizePromptCacheToolSurface_NonAnthropicDoesNotStick(t *testing.T) {
+	registry := tools.NewRegistry()
+	handler := newChatToolSelectionTestHandler(registry)
+	attachTestProviderPool(t, handler, &providerpool.Provider{
+		ID:        "openai-test",
+		Name:      "OpenAI Test",
+		Type:      providerpool.ProviderTypeCustom,
+		Location:  providerpool.ProviderLocationCloud,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		APIFormat: providerpool.APIFormatOpenAI,
+	})
+
+	state := memory.ConversationCommandState{
+		ConversationID:     "conv-1",
+		SelectedProviderID: "openai-test",
+	}
+
+	_ = handler.stabilizePromptCacheToolSurface("conv-1", "", state, nil, nil, []tools.ToolDefinition{
+		{Name: "write"},
+		{Name: "ask"},
+	})
+	second := handler.stabilizePromptCacheToolSurface("conv-1", "", state, nil, nil, []tools.ToolDefinition{
+		{Name: "ask"},
+	})
+	if got := selectedToolNames(second); len(got) != 1 || got[0] != "ask" {
+		t.Fatalf("non-anthropic stabilize = %v, want [ask]", got)
+	}
+	if cached := handler.getPromptCacheToolSurface("conv-1"); cached != nil {
+		t.Fatalf("expected no cached sticky tool surface for non-anthropic provider, got=%v", selectedToolNames(cached.Tools))
 	}
 }

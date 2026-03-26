@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -2038,7 +2038,7 @@ func TestStreamMessageInjectsConversationAnchor(t *testing.T) {
 
 	toolRegistry := tools.NewRegistry()
 	handler := NewChatHandler(store, registry, toolRegistry)
-	handler.SetSystemPromptBuilder(claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{}))
+	handler.SetSystemPromptBuilder(agentcore.NewSystemPromptBuilder(&agentcore.Config{}))
 
 	e := echo.New()
 	reqBody := `{"message":"B","provider":"streaming-mock","model":"streaming-mock-model"}`

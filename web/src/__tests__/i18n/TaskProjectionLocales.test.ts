@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { LocaleMessages } from '@/i18n/merge'
+type LocaleMessages = Record<string, unknown>
 
 const requiredPaths = [
   'chat.backgroundTasks',
@@ -80,7 +80,7 @@ describe('task projection locale coverage', () => {
       for (const path of requiredPaths) {
         const leaf = path.split('.').pop() as string
         expect(source, `${fileName} should explicitly declare ${path}`).toMatch(
-          new RegExp(`\\b${leaf}:\\s*`)
+          new RegExp(`"${leaf}"\\s*:`)
         )
       }
     }

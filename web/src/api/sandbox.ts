@@ -3,6 +3,7 @@ import api from './client'
 // Types
 export interface SandboxInfo {
   supported: boolean
+  support_reason?: string
   default_timeout: string
   max_timeout: string
   memory_limit: number
@@ -41,10 +42,18 @@ export interface ExecuteRequest {
   memory_mb?: number
 }
 
+export interface UpdateSandboxConfigRequest {
+  network_enabled?: boolean
+}
+
 // Sandbox API
 export const sandboxApi = {
   // Get sandbox info and configuration
   getInfo: () => api.get<SandboxInfo>('/sandbox/info'),
+
+  // Update sandbox runtime configuration
+  updateConfig: (request: UpdateSandboxConfigRequest) =>
+    api.patch<SandboxInfo>('/sandbox/config', request),
 
   // Execute a command in the sandbox
   execute: (request: ExecuteRequest) => api.post<ExecutionResult>('/sandbox/execute', request),

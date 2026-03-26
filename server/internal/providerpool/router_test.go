@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -1481,6 +1482,125 @@ func TestRouterDynamicProviderRegisterUnregisterUpdatesRouting(t *testing.T) {
 	}
 	if result.Provider.ID != base.ID {
 		t.Fatalf("expected base provider after dynamic unregister, got %s", result.Provider.ID)
+	}
+}
+
+func TestRouterFetchModelsAutomaticallyRefreshesEmptyModelCandidates(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-fetch-refresh-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"data": [
+				{"id": "claude-sonnet-4-6"},
+				{"id": "claude-3-5-sonnet-20241022"}
+			]
+		}`))
+	}))
+	defer upstream.Close()
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+
+	provider := &Provider{
+		ID:        "relay-provider",
+		Name:      "Relay Provider",
+		Type:      ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    ProviderStatusActive,
+		Location:  ProviderLocationCloud,
+		Priority:  100,
+		APIKeys:   []APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+		APIFormat: APIFormatOpenAI,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*Model{{
+		ID:           "claude-3-5-sonnet-20241022",
+		ProviderID:   provider.ID,
+		Name:         "claude-3-5-sonnet-20241022",
+		Enabled:      true,
+		Capabilities: ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+	}}); err != nil {
+		t.Fatalf("save initial models failed: %v", err)
+	}
+
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	initial, err := router.Route(&RouteRequest{Mode: RoutingModeAuto})
+	if err != nil {
+		t.Fatalf("initial route failed: %v", err)
+	}
+	if initial.Model == nil || initial.Model.ID != "claude-3-5-sonnet-20241022" {
+		t.Fatalf("initial empty-model route = %v, want stale model claude-3-5-sonnet-20241022", initial.Model)
+	}
+
+	if _, err := discovery.FetchModels(context.Background(), provider.ID); err != nil {
+		t.Fatalf("FetchModels failed: %v", err)
+	}
+
+	refreshed, err := router.Route(&RouteRequest{Mode: RoutingModeAuto})
+	if err != nil {
+		t.Fatalf("route after FetchModels failed: %v", err)
+	}
+	if refreshed.Model == nil || refreshed.Model.ID != "claude-sonnet-4-6" {
+		t.Fatalf("route after FetchModels model = %v, want claude-sonnet-4-6", refreshed.Model)
+	}
+}
+
+func TestSupportsChatCompletionsRejectsEmbeddingLikeModels(t *testing.T) {
+	tests := []struct {
+		name    string
+		model   *Model
+		allowed bool
+	}{
+		{
+			name: "embedding flagged as chat by relay still rejected",
+			model: &Model{
+				ID:      "embedding-bert-512-v1",
+				Name:    "embedding-bert-512-v1",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					FunctionCall: true,
+					Streaming:    true,
+				},
+			},
+			allowed: false,
+		},
+		{
+			name: "chat model remains allowed",
+			model: &Model{
+				ID:      "claude-sonnet-4-6",
+				Name:    "claude-sonnet-4-6",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					FunctionCall: true,
+					Streaming:    true,
+				},
+			},
+			allowed: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SupportsChatCompletions(tt.model); got != tt.allowed {
+				t.Fatalf("SupportsChatCompletions(%q) = %v, want %v", tt.model.ID, got, tt.allowed)
+			}
+		})
 	}
 }
 

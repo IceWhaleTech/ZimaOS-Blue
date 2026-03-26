@@ -11,6 +11,7 @@ import { providerPoolApi } from '@/api/providerPool'
 import { getLocaleDirection } from '@/i18n'
 import { formatTokens } from '@/utils/format'
 import { getLocalizedMediaModelName } from '@/utils/mediaModelLocalization'
+import { filterProvidersVisibleInUI, isProviderVisibleInUI } from '@/utils/providerVisibility'
 
 const { t, te, locale } = useI18n()
 const route = useRoute()
@@ -59,8 +60,10 @@ function getProviderTab(provider: Provider): ProviderTab {
       return 'custom'
   }
 }
+const visibleProviders = computed(() => filterProvidersVisibleInUI(store.providers || []))
+
 function providersForTab(tab: ProviderTab): Provider[] {
-  const allProviders = store.providers || []
+  const allProviders = visibleProviders.value
   if (tab === 'all') return allProviders
   return allProviders.filter((provider) => getProviderTab(provider) === tab)
 }
@@ -145,6 +148,16 @@ function getLocalizedProviderModelName(model: Model): string {
   return getLocalizedMediaModelName(model, t, te)
 }
 
+function canEditProviderLocation(provider?: Provider | null): boolean {
+  return !!provider && (provider.type === 'custom' || provider.id === 'ollama')
+}
+
+function getEffectiveProviderLocation(provider?: Provider | null): 'cloud' | 'local' {
+  if (!provider) return 'cloud'
+  if (!canEditProviderLocation(provider)) return 'cloud'
+  return provider.location === 'local' ? 'local' : 'cloud'
+}
+
 // New API key form
 const newKey = ref({
   providerId: '',
@@ -195,7 +208,9 @@ const draggedModel = ref<Model | null>(null)
 const dragOverModel = ref<string | null>(null)
 
 // Provider to display in detail panel - always show selected provider regardless of tab
-const displayProvider = computed(() => store.selectedProvider)
+const displayProvider = computed(() =>
+  isProviderVisibleInUI(store.selectedProvider) ? store.selectedProvider : null
+)
 
 // Models for selected provider
 const selectedProviderModels = computed(() => {
@@ -537,6 +552,9 @@ async function toggleProvider(provider: Provider) {
 }
 
 async function updateProviderLocation(providerId: string, location: 'cloud' | 'local') {
+  const provider = store.providers.find((item) => item.id === providerId)
+  if (!canEditProviderLocation(provider)) return
+
   try {
     await store.updateProvider(providerId, { location })
   } catch (e) {
@@ -817,7 +835,7 @@ async function handleIDEImportSuccess(providerId: string) {
   }
 
   const imported = store.providers.find((p) => p.id === providerId)
-  if (!imported) {
+  if (!imported || !isProviderVisibleInUI(imported)) {
     return
   }
   activeTab.value = visibleTab(getProviderTab(imported))
@@ -1828,15 +1846,14 @@ onMounted(() => {
               </span>
               <!-- Location badge -->
               <span
-                v-if="provider.location"
                 :class="[
                   'text-[10px] px-1.5 py-0.5 rounded',
-                  provider.location === 'cloud'
+                  getEffectiveProviderLocation(provider) === 'cloud'
                     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                     : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
                 ]"
               >
-                {{ provider.location === 'cloud' ? '☁️' : '💻' }}
+                {{ getEffectiveProviderLocation(provider) === 'cloud' ? '☁️' : '💻' }}
               </span>
               <span
                 :class="getStatusColor(provider.status, provider.enabled)"
@@ -1875,12 +1892,12 @@ onMounted(() => {
       <!-- Provider Details -->
       <div class="space-y-2 lg:max-h-[480px] lg:overflow-y-auto">
         <div
-          v-if="store.selectedProvider"
+          v-if="displayProvider"
           class="bg-white dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-700 p-4"
         >
           <div
             class="flex items-center justify-between mb-4 group/header"
-            @touchstart="startLongPress('provider-' + store.selectedProvider!.id)"
+            @touchstart="startLongPress('provider-' + displayProvider!.id)"
             @touchend="cancelLongPress()"
             @touchcancel="cancelLongPress()"
           >
@@ -1889,28 +1906,28 @@ onMounted(() => {
                 <!-- Builtin provider: clickable logo to website -->
                 <a
                   v-if="
-                    (store.selectedProvider.type === 'builtin' ||
-                      store.selectedProvider.type === 'platform' ||
-                      store.selectedProvider.type === 'media') &&
-                    store.selectedProvider.website
+                    (displayProvider.type === 'builtin' ||
+                      displayProvider.type === 'platform' ||
+                      displayProvider.type === 'media') &&
+                    displayProvider.website
                   "
-                  :href="store.selectedProvider.website"
+                  :href="displayProvider.website"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="block cursor-pointer hover:opacity-80 transition-opacity"
                   :title="t('providerPool.visitWebsite')"
                 >
                   <ProviderIcon
-                    :provider-id="store.selectedProvider.id"
-                    :custom-icon="store.selectedProvider.custom_icon"
+                    :provider-id="displayProvider.id"
+                    :custom-icon="displayProvider.custom_icon"
                     size="xl"
                   />
                 </a>
                 <!-- Non-builtin or no website: regular icon -->
                 <template v-else>
                   <ProviderIcon
-                    :provider-id="store.selectedProvider.id"
-                    :custom-icon="store.selectedProvider.custom_icon"
+                    :provider-id="displayProvider.id"
+                    :custom-icon="displayProvider.custom_icon"
                     size="xl"
                   />
                 </template>
@@ -1951,17 +1968,17 @@ onMounted(() => {
               <div class="cursor-pointer select-none" @click="showModelParams = !showModelParams">
                 <div class="flex items-center gap-1.5">
                   <h2 class="font-bold text-gray-900 dark:text-white">
-                    {{ getProviderName(store.selectedProvider) }}
+                    {{ getProviderName(displayProvider) }}
                   </h2>
                   <span
-                    v-if="store.selectedProvider.beta"
+                    v-if="displayProvider.beta"
                     class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 tracking-wide"
                   >
                     {{ tr('providerPool.beta', 'Beta') }}
                   </span>
                 </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ getProviderDescription(store.selectedProvider) }}
+                  {{ getProviderDescription(displayProvider) }}
                 </p>
                 <!-- Inline model params summary -->
                 <div
@@ -1970,15 +1987,15 @@ onMounted(() => {
                   <span
                     >{{ t('providerPool.temperature') }}:
                     {{
-                      store.selectedProvider!.model_params?.temperature ?? t('providerPool.default')
+                      displayProvider!.model_params?.temperature ?? t('providerPool.default')
                     }}</span
                   >
                   <span>·</span>
                   <span>
                     {{ t('providerPool.maxTokens') }}:
                     {{
-                      store.selectedProvider!.model_params?.max_tokens ||
-                      store.selectedProvider!.model_params?.detected_max_tokens ||
+                      displayProvider!.model_params?.max_tokens ||
+                      displayProvider!.model_params?.detected_max_tokens ||
                       t('providerPool.default')
                     }}
                   </span>
@@ -1999,28 +2016,39 @@ onMounted(() => {
                 <!-- Location Toggle -->
                 <div class="flex items-center gap-1 mt-1" @click.stop>
                   <span class="text-xs text-gray-400">{{ t('providerPool.location') }}:</span>
-                  <button
-                    :class="[
-                      'px-1.5 py-0.5 rounded text-[10px] transition-colors',
-                      displayProvider.location === 'cloud'
-                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                        : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500',
-                    ]"
-                    @click="updateProviderLocation(displayProvider!.id, 'cloud')"
+                  <template v-if="canEditProviderLocation(displayProvider)">
+                    <button
+                      data-testid="provider-location-cloud-button"
+                      :class="[
+                        'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                        getEffectiveProviderLocation(displayProvider) === 'cloud'
+                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                          : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500',
+                      ]"
+                      @click="updateProviderLocation(displayProvider!.id, 'cloud')"
+                    >
+                      ☁️ {{ t('providerPool.locationCloud') }}
+                    </button>
+                    <button
+                      data-testid="provider-location-local-button"
+                      :class="[
+                        'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                        getEffectiveProviderLocation(displayProvider) === 'local'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500',
+                      ]"
+                      @click="updateProviderLocation(displayProvider!.id, 'local')"
+                    >
+                      💻 {{ t('providerPool.locationLocal') }}
+                    </button>
+                  </template>
+                  <span
+                    v-else
+                    data-testid="provider-location-fixed-cloud"
+                    class="px-1.5 py-0.5 rounded text-[10px] transition-colors bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
                   >
                     ☁️ {{ t('providerPool.locationCloud') }}
-                  </button>
-                  <button
-                    :class="[
-                      'px-1.5 py-0.5 rounded text-[10px] transition-colors',
-                      displayProvider.location === 'local'
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500',
-                    ]"
-                    @click="updateProviderLocation(displayProvider!.id, 'local')"
-                  >
-                    💻 {{ t('providerPool.locationLocal') }}
-                  </button>
+                  </span>
                 </div>
               </div>
             </div>
@@ -2399,7 +2427,7 @@ onMounted(() => {
           </div>
 
           <!-- OAuth Section (for OAuth-capable providers) — shown before API Keys -->
-          <div v-if="store.selectedProvider?.oauth" class="mb-4">
+          <div v-if="displayProvider?.oauth" class="mb-4">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.oauth.title') }}
@@ -2408,7 +2436,7 @@ onMounted(() => {
             <div class="space-y-2">
               <!-- Account list -->
               <div
-                v-for="account in oauthAccounts[store.selectedProvider.id] || []"
+                v-for="account in oauthAccounts[displayProvider.id] || []"
                 :key="account.id"
                 class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700"
               >
@@ -2425,7 +2453,7 @@ onMounted(() => {
                   <button
                     :disabled="disconnectingAccountId === account.id"
                     class="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50"
-                    @click="disconnectOAuth(store.selectedProvider.id, account.id)"
+                    @click="disconnectOAuth(displayProvider.id, account.id)"
                   >
                     {{
                       disconnectingAccountId === account.id
@@ -2441,18 +2469,18 @@ onMounted(() => {
               >
                 <span class="text-sm text-gray-500 dark:text-gray-400">
                   {{
-                    (oauthAccounts[store.selectedProvider.id] || []).length
+                    (oauthAccounts[displayProvider.id] || []).length
                       ? t('providerPool.oauth.addAccount')
                       : t('providerPool.oauth.notConnected')
                   }}
                 </span>
                 <button
-                  :disabled="connectingOAuth === store.selectedProvider.id"
+                  :disabled="connectingOAuth === displayProvider.id"
                   class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-50"
-                  @click="startOAuthConnect(store.selectedProvider.id)"
+                  @click="startOAuthConnect(displayProvider.id)"
                 >
                   {{
-                    connectingOAuth === store.selectedProvider.id
+                    connectingOAuth === displayProvider.id
                       ? '...'
                       : t('providerPool.oauth.connect')
                   }}
@@ -2460,27 +2488,27 @@ onMounted(() => {
               </div>
               <!-- Subscription Tier & Quota (shown once for the provider) -->
               <div
-                v-if="store.loadingQuota === store.selectedProvider.id"
+                v-if="store.loadingQuota === displayProvider.id"
                 class="text-xs text-gray-400 px-1"
               >
                 {{ t('providerPool.oauth.loadingQuota') }}
               </div>
-              <template v-else-if="store.oauthQuota[store.selectedProvider.id]">
-                <div v-if="store.oauthQuota[store.selectedProvider.id].tier" class="px-1">
+              <template v-else-if="store.oauthQuota[displayProvider.id]">
+                <div v-if="store.oauthQuota[displayProvider.id].tier" class="px-1">
                   <span
                     class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                    :class="tierBadgeClass(store.oauthQuota[store.selectedProvider.id].tier)"
+                    :class="tierBadgeClass(store.oauthQuota[displayProvider.id].tier)"
                   >
                     {{
-                      store.oauthQuota[store.selectedProvider.id].tier_name ||
-                      store.oauthQuota[store.selectedProvider.id].tier
+                      store.oauthQuota[displayProvider.id].tier_name ||
+                      store.oauthQuota[displayProvider.id].tier
                     }}
                   </span>
                 </div>
                 <div
                   v-if="
-                    store.oauthQuota[store.selectedProvider.id].error &&
-                    !store.oauthQuota[store.selectedProvider.id].tier
+                    store.oauthQuota[displayProvider.id].error &&
+                    !store.oauthQuota[displayProvider.id].tier
                   "
                   class="text-xs text-gray-400 px-1"
                 >
@@ -2488,14 +2516,14 @@ onMounted(() => {
                 </div>
                 <!-- Per-Model Quota Bars -->
                 <div
-                  v-if="store.oauthQuota[store.selectedProvider.id].model_quotas?.length"
+                  v-if="store.oauthQuota[displayProvider.id].model_quotas?.length"
                   class="space-y-1 px-1"
                 >
                   <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                     {{ t('providerPool.oauth.modelQuota') }}
                   </div>
                   <div
-                    v-for="mq in store.oauthQuota[store.selectedProvider.id].model_quotas"
+                    v-for="mq in store.oauthQuota[displayProvider.id].model_quotas"
                     :key="mq.model"
                     class="flex items-center gap-2 text-xs"
                   >
@@ -2531,9 +2559,9 @@ onMounted(() => {
           <!-- API Keys Section — hidden for pure-OAuth providers with no keys -->
           <div
             v-if="
-              !store.selectedProvider?.oauth ||
-              store.selectedProvider!.api_keys?.length ||
-              store.selectedProvider!.type === 'trial'
+              !displayProvider?.oauth ||
+              displayProvider!.api_keys?.length ||
+              displayProvider!.type === 'trial'
             "
             class="mb-4"
           >

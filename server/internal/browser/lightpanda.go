@@ -124,6 +124,33 @@ func (s *LightpandaService) EnsureBinary(ctx context.Context) (string, error) {
 	return s.binaryManager.Ensure(ctx)
 }
 
+// WarmBinary resolves an already-ready Lightpanda binary path or performs a
+// bounded background-friendly download attempt when auto-download is enabled.
+// It never blocks the read-layer shim startup path directly; callers should
+// invoke it from their own goroutine if they want non-blocking warmup.
+func (s *LightpandaService) WarmBinary(ctx context.Context) (string, error) {
+	if s == nil || s.binaryManager == nil {
+		return "", ErrBrowserNotAvailable
+	}
+	if readyPath, ok, err := s.binaryManager.ReadyPath(); err != nil {
+		return "", err
+	} else if ok {
+		return readyPath, nil
+	}
+	if s.config == nil || !s.config.LightpandaAutoDownload() {
+		return "", nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if timeout := s.config.LightpandaDownloadTimeout(); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	return s.binaryManager.Ensure(ctx)
+}
+
 // BinaryAvailable reports whether a usable upstream Lightpanda binary already
 // exists locally without triggering a download attempt.
 func (s *LightpandaService) BinaryAvailable() bool {

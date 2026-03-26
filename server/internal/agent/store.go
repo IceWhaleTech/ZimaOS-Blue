@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS agent_tasks (
 	verification_errors_json TEXT DEFAULT '[]',
 	grounding_status TEXT DEFAULT '',
 	ground_state_json TEXT DEFAULT '',
+	metadata_json   TEXT DEFAULT '{}',
 	error           TEXT DEFAULT '',
 	created_at      DATETIME NOT NULL,
 	updated_at      DATETIME NOT NULL
@@ -75,12 +76,12 @@ func (s *Store) Create(ctx context.Context, task *Task) error {
 		task.Status = TaskStatusPending
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO agent_tasks (id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, error, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO agent_tasks (id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, metadata_json, error, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ID, task.UserID, task.ConversationID, task.Goal,
 		MarshalPlan(task.Plan), string(task.Status),
 		string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
-		task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), task.Error,
+		task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), marshalMetadataMap(task.Metadata), task.Error,
 		task.CreatedAt, task.UpdatedAt,
 	)
 	return err
@@ -99,11 +100,11 @@ func (s *Store) Get(ctx context.Context, id string, userID ...string) (*Task, er
 	var row *sql.Row
 	if scopedUserID != "" {
 		row = s.db.QueryRowContext(ctx,
-			`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, error, created_at, updated_at
+			`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, metadata_json, error, created_at, updated_at
 			 FROM agent_tasks WHERE id = ? AND user_id = ?`, id, scopedUserID)
 	} else {
 		row = s.db.QueryRowContext(ctx,
-			`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, error, created_at, updated_at
+			`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, metadata_json, error, created_at, updated_at
 			 FROM agent_tasks WHERE id = ?`, id)
 	}
 	return scanTask(row)
@@ -115,7 +116,7 @@ func (s *Store) ListByUser(ctx context.Context, userID string, limit int) ([]*Ta
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, error, created_at, updated_at
+		`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, metadata_json, error, created_at, updated_at
 		 FROM agent_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -143,20 +144,20 @@ func (s *Store) Update(ctx context.Context, task *Task, userID ...string) error 
 	)
 	if scopedUserID != "" {
 		res, err = s.db.ExecContext(ctx,
-			`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, verified_output=?, verification_errors_json=?, grounding_status=?, ground_state_json=?, error=?, updated_at=?
+			`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, verified_output=?, verification_errors_json=?, grounding_status=?, ground_state_json=?, metadata_json=?, error=?, updated_at=?
 			 WHERE id=? AND user_id=?`,
 			task.Goal, MarshalPlan(task.Plan), string(task.Status),
 			string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
-			task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), task.Error,
+			task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), marshalMetadataMap(task.Metadata), task.Error,
 			task.UpdatedAt, task.ID, scopedUserID,
 		)
 	} else {
 		res, err = s.db.ExecContext(ctx,
-			`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, verified_output=?, verification_errors_json=?, grounding_status=?, ground_state_json=?, error=?, updated_at=?
+			`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, verified_output=?, verification_errors_json=?, grounding_status=?, ground_state_json=?, metadata_json=?, error=?, updated_at=?
 			 WHERE id=?`,
 			task.Goal, MarshalPlan(task.Plan), string(task.Status),
 			string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
-			task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), task.Error,
+			task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), marshalMetadataMap(task.Metadata), task.Error,
 			task.UpdatedAt, task.ID,
 		)
 	}
@@ -197,10 +198,10 @@ func (s *Store) Delete(ctx context.Context, id string, userID ...string) error {
 func scanTask(row *sql.Row) (*Task, error) {
 	var t Task
 	var planJSON, status, runtimeState, runtimeAudit, successCriteria, fallbackPlan string
-	var verificationErrors, groundingStatus, groundStateJSON string
+	var verificationErrors, groundingStatus, groundStateJSON, metadataJSON string
 	err := row.Scan(&t.ID, &t.UserID, &t.ConversationID, &t.Goal,
 		&planJSON, &status, &runtimeState, &runtimeAudit, &successCriteria, &fallbackPlan, &t.CurrentStep, &t.Progress,
-		&t.Result, &t.VerifiedOutput, &verificationErrors, &groundingStatus, &groundStateJSON, &t.Error, &t.CreatedAt, &t.UpdatedAt)
+		&t.Result, &t.VerifiedOutput, &verificationErrors, &groundingStatus, &groundStateJSON, &metadataJSON, &t.Error, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +214,7 @@ func scanTask(row *sql.Row) (*Task, error) {
 	t.VerificationErrors = unmarshalStringSlice(verificationErrors)
 	t.GroundingStatus = groundingStatus
 	t.GroundState = unmarshalGroundTruthState(groundStateJSON)
+	t.Metadata = unmarshalMetadataMap(metadataJSON)
 	return &t, nil
 }
 
@@ -223,10 +225,10 @@ type rowScanner interface {
 func scanTaskRows(rows *sql.Rows) (*Task, error) {
 	var t Task
 	var planJSON, status, runtimeState, runtimeAudit, successCriteria, fallbackPlan string
-	var verificationErrors, groundingStatus, groundStateJSON string
+	var verificationErrors, groundingStatus, groundStateJSON, metadataJSON string
 	err := rows.Scan(&t.ID, &t.UserID, &t.ConversationID, &t.Goal,
 		&planJSON, &status, &runtimeState, &runtimeAudit, &successCriteria, &fallbackPlan, &t.CurrentStep, &t.Progress,
-		&t.Result, &t.VerifiedOutput, &verificationErrors, &groundingStatus, &groundStateJSON, &t.Error, &t.CreatedAt, &t.UpdatedAt)
+		&t.Result, &t.VerifiedOutput, &verificationErrors, &groundingStatus, &groundStateJSON, &metadataJSON, &t.Error, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +241,7 @@ func scanTaskRows(rows *sql.Rows) (*Task, error) {
 	t.VerificationErrors = unmarshalStringSlice(verificationErrors)
 	t.GroundingStatus = groundingStatus
 	t.GroundState = unmarshalGroundTruthState(groundStateJSON)
+	t.Metadata = unmarshalMetadataMap(metadataJSON)
 	return &t, nil
 }
 
@@ -318,6 +321,7 @@ func ensureTaskColumns(db *sql.DB) error {
 		{name: "verification_errors_json", definition: "TEXT DEFAULT '[]'"},
 		{name: "grounding_status", definition: "TEXT DEFAULT ''"},
 		{name: "ground_state_json", definition: "TEXT DEFAULT ''"},
+		{name: "metadata_json", definition: "TEXT DEFAULT '{}'"},
 	}
 	existing := map[string]struct{}{}
 	rows, err := db.Query(`PRAGMA table_info(agent_tasks)`)

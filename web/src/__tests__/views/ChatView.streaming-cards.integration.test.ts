@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   settingsStore: {
     agentAutoConfirm: false,
     agentMode: false,
-    claudeCodeEnabled: false,
     showToolDetails: true,
     selectedProvider: 'openai',
     selectedModel: 'gpt-4o-mini',
@@ -130,6 +129,7 @@ vi.mock('@/api/chat', () => ({
     list: vi.fn(),
     send: vi.fn(),
     cancelStream: vi.fn(),
+    getActiveStreamState: vi.fn(),
   },
   warmupApi: {
     trigger: (...args: unknown[]) => mocks.warmupTrigger(...args),
@@ -260,7 +260,18 @@ vi.mock('@/components/ConversationList.vue', () =>
 vi.mock('@/components/ChatInput.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'ChatInput',
-    template: '<div class="chat-input-stub" />',
+    props: {
+      canCancel: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    emits: ['send', 'draft-change', 'inject', 'cancel', 'cancel-pre-ttft', 'warmup'],
+    template: `
+      <div class="chat-input-stub">
+        <button v-if="canCancel" type="button" @click="$emit('cancel')">Stop generating</button>
+      </div>
+    `,
   })
 )
 
@@ -415,6 +426,7 @@ async function mountIntegratedChatView() {
     routes: [
       { path: '/chat', component: { template: '<div />' } },
       { path: '/settings', component: { template: '<div />' } },
+      { path: '/security', component: { template: '<div />' } },
     ],
   })
   router.push('/chat')
@@ -451,7 +463,6 @@ describe('ChatView streaming card chain integration', () => {
 
     mocks.settingsStore.agentAutoConfirm = false
     mocks.settingsStore.agentMode = false
-    mocks.settingsStore.claudeCodeEnabled = false
     mocks.settingsStore.showToolDetails = true
     mocks.settingsStore.selectedProvider = 'openai'
     mocks.settingsStore.selectedModel = 'gpt-4o-mini'
@@ -574,6 +585,71 @@ describe('ChatView streaming card chain integration', () => {
       .mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.send).mockReset()
     vi.mocked(messageApi.cancelStream).mockReset()
+    vi.mocked(messageApi.getActiveStreamState)
+      .mockReset()
+      .mockResolvedValue({ data: { conversation_id: 'conv-1', active: false } } as never)
+  })
+
+  it('sends a question from ChatView and renders the completed assistant reply', async () => {
+    const provider = {
+      id: 'openai',
+      type: 'builtin',
+      enabled: true,
+      status: 'active',
+    } as Record<string, unknown>
+    const question = 'What is 2 + 2?'
+    const answer = '2 + 2 equals 4.'
+    const persistedMessages = [
+      {
+        id: 'msg-user-1',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: question,
+        created_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'msg-assistant-1',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: answer,
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+    ]
+
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.enabledProviders = [provider]
+    mocks.providerPoolStore.activeProviders = [provider]
+
+    vi.mocked(messageApi.list)
+      .mockResolvedValueOnce({ data: [] } as never)
+      .mockResolvedValue({ data: persistedMessages } as never)
+
+    mocks.sseConnect.mockImplementationOnce(async (conversationId, request, options: any) => {
+      expect(conversationId).toBe('conv-1')
+      expect(request).toEqual(
+        expect.objectContaining({
+          message: question,
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        })
+      )
+
+      options.onMessage({ delta: answer, done: false })
+      options.onNewMessage?.(1)
+      options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+    })
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    wrapper.findComponent({ name: 'ChatInput' }).vm.$emit('send', question, [])
+    await settleView()
+
+    expect(mocks.sseConnect).toHaveBeenCalledTimes(1)
+    expect(store.sending).toBe(false)
+    expect(store.streaming).toBe(false)
+    expect(store.messages).toEqual(persistedMessages)
+    expect(wrapper.text()).toContain(question)
+    expect(wrapper.text()).toContain(answer)
   })
 
   it('keeps the active assistant streaming state visible after mid-stream injection appends a temp user message', async () => {
@@ -598,6 +674,106 @@ describe('ChatView streaming card chain integration', () => {
     expect(wrapper.text()).toContain('补充一点背景')
     expect(wrapper.find('.assistant-status-bar').exists()).toBe(true)
     expect(wrapper.find('.assistant-status-label').exists()).toBe(true)
+  })
+
+  it('restores a server-reported active stream with persisted preview content after the view remounts', async () => {
+    const persistedMessages = [
+      {
+        id: 'msg-assistant-1',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: '- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。',
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+    ]
+
+    vi.mocked(messageApi.list).mockResolvedValue({ data: persistedMessages } as never)
+    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
+      {
+        data: {
+          conversation_id: 'conv-1',
+          active: true,
+          stream_id: 'stream-preview-1',
+        },
+      } as never
+    )
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    expect(store.streaming).toBe(true)
+    expect(store.sending).toBe(false)
+    expect(store.streamingContent).toContain('我继续执行第二步。')
+    expect(wrapper.text()).toContain('我继续执行第二步。')
+    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+  })
+
+  it('shows an executing rail and stop control when the server reports an active stream without preview text', async () => {
+    vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
+      {
+        data: {
+          conversation_id: 'conv-1',
+          active: true,
+          stream_id: 'stream-live-1',
+        },
+      } as never
+    )
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    expect(store.streaming).toBe(true)
+    expect(store.sending).toBe(false)
+    expect(store.toolExecuting).toBe(true)
+    expect(store.streamUIState.phase).toBe('executing')
+    expect(wrapper.find('.chat-stream-status-rail').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Processing')
+    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+  })
+
+  it('does not render the previous assistant reply as active preview when only the latest user turn is persisted', async () => {
+    vi.mocked(messageApi.list).mockResolvedValue(
+      {
+        data: [
+          {
+            id: 'msg-assistant-prev',
+            conversation_id: 'conv-1',
+            role: 'assistant',
+            content: '上一轮已经完成的回复',
+            created_at: '2026-03-08T00:00:00.000Z',
+          },
+          {
+            id: 'msg-user-latest',
+            conversation_id: 'conv-1',
+            role: 'user',
+            content: '继续执行新的任务',
+            created_at: '2026-03-08T00:00:01.000Z',
+          },
+        ],
+      } as never
+    )
+    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
+      {
+        data: {
+          conversation_id: 'conv-1',
+          active: true,
+          stream_id: 'stream-live-2',
+        },
+      } as never
+    )
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    expect(store.streaming).toBe(true)
+    expect(store.toolExecuting).toBe(true)
+    expect(store.streamUIState.phase).toBe('executing')
+    expect(store.streamingContent).toBe('')
+    expect(store.messages).toHaveLength(3)
+    expect(store.messages[2]?.id.startsWith('streaming-')).toBe(true)
+    expect(store.messages[2]?.content).toBe('')
+    expect(wrapper.text()).toContain('上一轮已经完成的回复')
+    expect(wrapper.text()).toContain('继续执行新的任务')
+    expect(wrapper.text()).toContain('Processing')
+    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
   })
 
   it('renders streamed web-fetch and browser cards with the real chat store, then submits both card actions', async () => {
@@ -1379,6 +1555,7 @@ describe('ChatView streaming card chain integration', () => {
       routes: [
         { path: '/chat', component: { template: '<div />' } },
         { path: '/settings', component: { template: '<div />' } },
+        { path: '/security', component: { template: '<div />' } },
       ],
     })
     router.push('/chat')
@@ -1427,6 +1604,7 @@ describe('ChatView streaming card chain integration', () => {
       routes: [
         { path: '/chat', component: { template: '<div />' } },
         { path: '/settings', component: { template: '<div />' } },
+        { path: '/security', component: { template: '<div />' } },
       ],
     })
     router.push('/chat')

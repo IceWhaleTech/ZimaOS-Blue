@@ -25,11 +25,11 @@ func TestVectorStoreSearchKeywordFallsBackWithoutFTS(t *testing.T) {
 	defer store.Close()
 
 	ctx := context.Background()
-	if _, err := store.Store(ctx, "another memory", nil, map[string]string{"tag_0": "other"}, ""); err != nil {
+	if _, err := store.Store(ctx, "another memory", nil, map[string]string{"tag_0": "other"}); err != nil {
 		t.Fatalf("Store seed: %v", err)
 	}
 
-	chunk, err := store.Store(ctx, "remember exact phrase", nil, map[string]string{"tag_0": "smoke", "source_id": "daily/2026-03-08.md"}, "")
+	chunk, err := store.Store(ctx, "remember exact phrase", nil, map[string]string{"tag_0": "smoke", "source_id": "daily/2026-03-08.md"})
 	if err != nil {
 		t.Fatalf("Store source chunk: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestVectorStoreStoresQuantizedVectorsForInt8Column(t *testing.T) {
 
 	ctx := context.Background()
 	queryVec := []float32{0.1, -0.2, 0.3, -0.4}
-	if _, err := store.Store(ctx, "vector memory", queryVec, map[string]string{"source_id": "daily/2026-03-08.md"}, "test-model"); err != nil {
+	if _, err := store.Store(ctx, "vector memory", queryVec, map[string]string{"source_id": "daily/2026-03-08.md"}); err != nil {
 		t.Fatalf("Store with embedding: %v", err)
 	}
 
@@ -107,7 +107,7 @@ func TestVectorStoreDeleteRemovesRowsBySourceID(t *testing.T) {
 
 	ctx := context.Background()
 	for _, content := range []string{"first same file", "second same file"} {
-		if _, err := store.Store(ctx, content, nil, map[string]string{"source_id": "daily/2026-03-08.md"}, ""); err != nil {
+		if _, err := store.Store(ctx, content, nil, map[string]string{"source_id": "daily/2026-03-08.md"}); err != nil {
 			t.Fatalf("Store %q: %v", content, err)
 		}
 	}
@@ -154,7 +154,7 @@ func TestNewVectorStoreDropsStaleFTSTriggersWhenFTSDisabled(t *testing.T) {
 	}
 	defer store.Close()
 
-	if _, err := store.Store(context.Background(), "write after cleanup", nil, nil, ""); err != nil {
+	if _, err := store.Store(context.Background(), "write after cleanup", nil, nil); err != nil {
 		t.Fatalf("Store after cleanup: %v", err)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -80,7 +81,7 @@ func (h *ChatHandler) warmupModelForConversation(convID string) string {
 	if selectedModelID := strings.TrimSpace(state.SelectedModelID); selectedModelID != "" {
 		model = selectedModelID
 	}
-	return h.defaultModelForCCCLI(model)
+	return h.defaultModelForRuntime(model)
 }
 
 func (h *ChatHandler) isWarmupTokenCurrent(convID, token string) bool {
@@ -293,6 +294,25 @@ func supportsPromptCacheKey(provider *providerpool.Provider) bool {
 	return providerpool.UsesResponsesIntegration(provider)
 }
 
+func supportsAnthropicPromptCaching(provider *providerpool.Provider) bool {
+	if provider == nil {
+		return false
+	}
+	if provider.APIFormat == providerpool.APIFormatAnthropic || provider.DetectedFormat == providerpool.APIFormatAnthropic {
+		return true
+	}
+	for _, raw := range []string{provider.EffectiveBaseURL(), provider.BaseURL, provider.DetectedEndpoint} {
+		trimmed := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), "/")
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasSuffix(trimmed, "/anthropic") || strings.HasSuffix(trimmed, "/messages") {
+			return true
+		}
+	}
+	return false
+}
+
 func buildSystemPromptCacheKey(providerID, model string, messages []llm.Message, tools []llm.Tool) string {
 	system := make([]string, 0, len(messages))
 	for _, msg := range messages {
@@ -319,7 +339,7 @@ func buildSystemPromptCacheKey(providerID, model string, messages []llm.Message,
 		ProviderID: strings.TrimSpace(providerID),
 		Model:      strings.TrimSpace(model),
 		System:     system,
-		Tools:      tools,
+		Tools:      sortLLMToolsByName(tools),
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -327,4 +347,16 @@ func buildSystemPromptCacheKey(providerID, model string, messages []llm.Message,
 	}
 	sum := sha256.Sum256(raw)
 	return "blue:prompt-cache:" + hex.EncodeToString(sum[:16])
+}
+
+func sortLLMToolsByName(tools []llm.Tool) []llm.Tool {
+	if len(tools) == 0 {
+		return nil
+	}
+	out := make([]llm.Tool, len(tools))
+	copy(out, tools)
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Name < out[j].Name
+	})
+	return out
 }

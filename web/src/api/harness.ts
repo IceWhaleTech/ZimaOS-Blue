@@ -155,6 +155,59 @@ export interface HarnessArtifactRef {
   metadata_json?: string
 }
 
+export interface HarnessContract {
+  deliverables?: string[]
+  success_criteria?: string[]
+  expected_artifacts?: Array<{
+    path?: string
+    label?: string
+    must_exist?: boolean
+  }>
+  required_tool_calls?: string[]
+  forbidden_tool_calls?: string[]
+  required_checks?: string[]
+  required_observations?: string[]
+  forbidden_observations?: string[]
+  browser_checks?: Array<{
+    name?: string
+    target?: string
+    expectation?: string
+    required_observation?: string
+    required_artifact?: string
+    failure_label?: string
+    require_screenshot?: boolean
+  }>
+  api_checks?: Array<{
+    name?: string
+    target?: string
+    expectation?: string
+    required_check?: string
+    failure_label?: string
+  }>
+  fallback_order?: string[]
+  stop_conditions?: string[]
+  evaluator_hints?: string[]
+  risk_level?: string
+}
+
+export interface HarnessRuntimeEvidenceEntry {
+  id: string
+  run_id: string
+  step_index?: number
+  planner_round?: number
+  event_type: string
+  summary?: string
+  payload_json?: string
+  created_at: string
+}
+
+export interface HarnessCheckpointArtifact {
+  run_id: string
+  group_item_id?: string
+  artifact: HarnessArtifactRef
+  payload?: Record<string, unknown> | null
+}
+
 export interface HarnessRunGroupReport {
   group: HarnessRunGroup
   items?: HarnessRunGroupItem[]
@@ -166,6 +219,9 @@ export interface HarnessRunGroupReport {
   linked_runs?: HarnessRunSummary[]
   artifacts?: HarnessArtifactRef[]
   scorecards?: HarnessScorecard[]
+  runtime_evidence?: Record<string, HarnessRuntimeEvidenceEntry[]>
+  item_contracts?: Record<string, HarnessContract>
+  checkpoints?: HarnessCheckpointArtifact[]
 }
 
 export interface HarnessDataset {
@@ -413,7 +469,8 @@ function normalizeQueryArray(value?: string | string[]) {
 }
 
 export const harnessApi = {
-  createGroup: (payload: HarnessRunGroupSpec) => api.post<HarnessRunGroup>('/harness/groups', payload),
+  createGroup: (payload: HarnessRunGroupSpec) =>
+    api.post<HarnessRunGroup>('/harness/groups', payload),
 
   listGroups: (params: HarnessRunGroupListParams = {}) =>
     api.get<HarnessRunGroup[]>('/harness/groups', {

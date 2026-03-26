@@ -5,9 +5,12 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
+
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -29,50 +32,63 @@ type DarwinExecutor struct {
 }
 
 // newPlatformExecutor creates a new Darwin executor.
-// It checks the BLUE_SANDBOX_MODE environment variable to determine which executor to use:
-// - "hypervisor": Use HypervisorExecutor for VM-based isolation
-// - "sandbox-exec": Use traditional DarwinExecutor with sandbox-exec
-// - "auto" or unset: Automatically select the best available option
+// BLUE_SANDBOX_MODE (or config.DarwinExecutorMode) controls selection:
+// - "hypervisor": fail closed until a true VM-backed executor is implemented
+// - "sandbox-exec": use the traditional sandbox-exec path
+// - "auto" or unset: use sandbox-exec when available, otherwise report unsupported
 func newPlatformExecutor(config *Config) (Executor, error) {
-	mode := DarwinExecutorMode(os.Getenv("BLUE_SANDBOX_MODE"))
+	mode := resolveDarwinExecutorMode(config)
 
 	switch mode {
 	case DarwinExecutorModeHypervisor:
-		// Force Hypervisor mode
-		return NewHypervisorExecutor(config, nil)
+		return newUnsupportedExecutor("macOS hypervisor sandbox backend is not implemented yet"), nil
 
 	case DarwinExecutorModeSandboxExec:
-		// Force sandbox-exec mode
-		base := NewBaseExecutor(config)
-		return &DarwinExecutor{BaseExecutor: base}, nil
+		if !sandboxExecAvailable() {
+			return newUnsupportedExecutor("sandbox-exec is not available on this system"), nil
+		}
+		return &DarwinExecutor{BaseExecutor: NewBaseExecutor(config)}, nil
 
 	case DarwinExecutorModeAuto, "":
-		// Auto-detect: try Hypervisor first, fall back to sandbox-exec
-		hvExecutor, err := NewHypervisorExecutor(config, nil)
-		if err == nil && hvExecutor.IsSupported() {
-			return hvExecutor, nil
+		if !sandboxExecAvailable() {
+			return newUnsupportedExecutor("sandbox-exec is not available on this system"), nil
 		}
-
-		// Fall back to sandbox-exec
-		base := NewBaseExecutor(config)
-		return &DarwinExecutor{BaseExecutor: base}, nil
+		return &DarwinExecutor{BaseExecutor: NewBaseExecutor(config)}, nil
 
 	default:
-		// Unknown mode, use sandbox-exec
-		base := NewBaseExecutor(config)
-		return &DarwinExecutor{BaseExecutor: base}, nil
+		if !sandboxExecAvailable() {
+			return newUnsupportedExecutor(fmt.Sprintf("unknown macOS sandbox mode %q and sandbox-exec is unavailable", mode)), nil
+		}
+		return &DarwinExecutor{BaseExecutor: NewBaseExecutor(config)}, nil
 	}
 }
 
 // Execute executes a command with macOS-specific isolation.
 func (e *DarwinExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*ExecutionResult, error) {
+	if !sandboxExecAvailable() {
+		return nil, fmt.Errorf("%w: sandbox-exec is not available on this system", ErrSandboxNotSupported)
+	}
+
 	// Create execution context with timeout
 	execCtx, cancel := context.WithTimeout(ctx, req.Timeout)
 	defer cancel()
 
-	// Create command
-	// On macOS, we can use sandbox-exec for basic sandboxing
-	cmd := exec.CommandContext(execCtx, req.Command, req.Args...)
+	profileFile, err := os.CreateTemp("", "blue-sandbox-*.sb")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sandbox profile: %w", err)
+	}
+	profilePath := profileFile.Name()
+	if err := os.WriteFile(profilePath, []byte(generateDarwinSandboxProfile(e.config, req)), 0644); err != nil {
+		_ = profileFile.Close()
+		_ = os.Remove(profilePath)
+		return nil, fmt.Errorf("failed to write sandbox profile: %w", err)
+	}
+	_ = profileFile.Close()
+	defer os.Remove(profilePath)
+
+	args := []string{"-f", profilePath, req.Command}
+	args = append(args, req.Args...)
+	cmd := exec.CommandContext(execCtx, "sandbox-exec", args...)
 
 	// Set working directory
 	if req.WorkDir != "" {
@@ -134,7 +150,7 @@ func (e *DarwinExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*E
 	e.mu.Unlock()
 
 	// Run command
-	err := cmd.Run()
+	err = cmd.Run()
 	result.EndTime = timeutil.NowTime()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 	result.Stdout = truncateOutput(stdout.String(), 1024*1024)
@@ -174,24 +190,91 @@ func (e *DarwinExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*E
 
 // IsSupported returns true if macOS sandboxing is supported.
 func (e *DarwinExecutor) IsSupported() bool {
-	// Check if sandbox-exec is available
-	cmd := exec.Command("sandbox-exec", "-h")
-	return cmd.Run() == nil
+	return sandboxExecAvailable()
+}
+
+func resolveDarwinExecutorMode(config *Config) DarwinExecutorMode {
+	mode := strings.TrimSpace(os.Getenv("BLUE_SANDBOX_MODE"))
+	if mode == "" && config != nil {
+		mode = strings.TrimSpace(config.DarwinExecutorMode)
+	}
+	if mode == "" {
+		return DarwinExecutorModeAuto
+	}
+	return DarwinExecutorMode(mode)
+}
+
+func sandboxExecAvailable() bool {
+	_, err := exec.LookPath("sandbox-exec")
+	return err == nil
+}
+
+// generateDarwinSandboxProfile returns a sandbox-exec profile for macOS.
+func generateDarwinSandboxProfile(config *Config, req *ExecutionRequest) string {
+	if config == nil {
+		config = DefaultConfig()
+	}
+
+	profile := `(version 1)
+(deny default)
+
+; Allow basic process operations
+(allow process-fork)
+(allow process-exec)
+
+; Allow reading system files needed for execution
+(allow file-read*)
+
+; Allow writing to temp directories
+(allow file-write* (subpath "/tmp"))
+(allow file-write* (subpath "/private/tmp"))
+(allow file-write* (subpath "/var/folders"))
+(allow file-write* (subpath "/private/var/folders"))
+`
+
+	if req != nil && req.WorkDir != "" && req.WorkDir != "/tmp" {
+		profile += fmt.Sprintf("(allow file-write* (subpath %q))\n", req.WorkDir)
+	}
+
+	for _, path := range config.AllowedPaths {
+		if path != "/tmp" && path != "/tmp/sandbox" {
+			profile += fmt.Sprintf("(allow file-write* (subpath %q))\n", path)
+		}
+	}
+
+	profile += `
+; Allow basic system operations
+(allow sysctl-read)
+(allow mach-lookup)
+(allow signal (target self))
+
+; Allow IPC for basic functionality
+(allow ipc-posix-shm-read-data)
+(allow ipc-posix-shm-write-data)
+`
+
+	if config.NetworkEnabled {
+		profile += `
+; Allow network access
+(allow network-outbound)
+(allow network-inbound)
+(allow system-socket)
+`
+	} else {
+		profile += `
+; Deny network access
+(deny network-outbound)
+(deny network-inbound)
+(deny system-socket)
+`
+	}
+
+	return profile
 }
 
 // sandboxProfile returns a basic sandbox profile for macOS.
 func sandboxProfile() string {
-	return `
-(version 1)
-(deny default)
-(allow process-fork)
-(allow process-exec)
-(allow file-read*)
-(allow file-write* (subpath "/tmp"))
-(allow file-write* (subpath "/var/folders"))
-(allow sysctl-read)
-(allow mach-lookup)
-`
+	return generateDarwinSandboxProfile(DefaultConfig(), nil)
 }
 
 // Ensure DarwinExecutor implements Executor

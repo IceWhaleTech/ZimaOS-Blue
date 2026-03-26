@@ -6,6 +6,11 @@ export type NoLLMDegradeMode = 'deepresearch'
 export type SmallModelUnavailablePolicy = 'ir_first'
 export type ContextCompressionMode = 'offline' | 'small_model' | 'auto'
 
+export interface DirectoryWhitelistEntry {
+  path: string
+  alias?: string
+}
+
 // User settings stored on backend
 export interface Settings {
   locale?: string // User's preferred locale (e.g., "zh-CN", "en-US")
@@ -47,6 +52,8 @@ export interface Settings {
   small_model_route_short_qa_enabled?: boolean // default false
   no_llm_degrade_mode?: NoLLMDegradeMode // Fixed deepresearch
   small_model_unavailable_policy?: SmallModelUnavailablePolicy // Fixed ir_first
+  directory_whitelist_enabled?: boolean // default true with /tmp on non-Windows when unset
+  directory_whitelist?: DirectoryWhitelistEntry[] // extra tool roots outside workspace; defaults to [/tmp] on non-Windows when unset
   voice_wake_enabled?: boolean // default false
   voice_wake_triggers?: string[] // default ["Hey Blue"]
   voice_wake_locale?: string // optional locale override

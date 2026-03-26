@@ -337,6 +337,9 @@ func (o *FetchOrchestrator) preferredReadLane(rawURL string) string {
 	if host == "" {
 		return ""
 	}
+	if webFetchPrefersBrowserHost(host) && o.tool != nil && o.tool.browser != nil {
+		return webAccessLaneBrowser
+	}
 	if adapter, ok := o.memory.loadAdapter(host); ok && strings.TrimSpace(adapter.PreferredLane) != "" {
 		return strings.TrimSpace(adapter.PreferredLane)
 	}
@@ -430,6 +433,9 @@ func (o *FetchOrchestrator) Fetch(ctx context.Context, req FetchRequest) (FetchR
 
 func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBrowserTarget bool, hasStrategy bool, strategy DomainStrategy, hasAdapter bool, adapter AdapterManifest) []string {
 	ordered := make([]string, 0, 5)
+	host := webFetchHostForURL(req.URL)
+	browserPreferred := webFetchPrefersBrowserHost(host) && req.AllowBrowser
+	lightpandaAllowed := webFetchSupportsLightpandaHost(host)
 	appendLane := func(lane string) {
 		lane = strings.TrimSpace(lane)
 		if lane == "" {
@@ -452,7 +458,9 @@ func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBro
 		}
 		appendLane(webAccessLaneHTTP)
 	case webAccessLaneLightpandaShim:
-		appendLane(webAccessLaneLightpandaShim)
+		if lightpandaAllowed {
+			appendLane(webAccessLaneLightpandaShim)
+		}
 	case webAccessLaneBrowser:
 		appendLane(webAccessLaneBrowser)
 	case webAccessLaneProxyFetcher:
@@ -461,11 +469,19 @@ func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBro
 	if len(ordered) > 0 {
 		return ordered
 	}
+	if browserPreferred {
+		if req.AllowSession && hasBrowserTarget {
+			appendLane(webFetchStrategySession)
+		}
+		appendLane(webAccessLaneBrowser)
+	}
 
 	if autoAllowed && hasAdapter {
 		switch strings.TrimSpace(adapter.PreferredLane) {
 		case webAccessLaneLightpandaShim:
-			appendLane(webAccessLaneLightpandaShim)
+			if lightpandaAllowed {
+				appendLane(webAccessLaneLightpandaShim)
+			}
 		case webAccessLaneBrowser:
 			appendLane(webAccessLaneBrowser)
 		case webAccessLaneProxyFetcher:
@@ -480,8 +496,12 @@ func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBro
 	}
 	if autoAllowed && hasStrategy {
 		switch strings.TrimSpace(strategy.PreferredLane) {
-		case webAccessLaneBrowser, webAccessLaneProxyFetcher, webAccessLaneHTTPNative, webAccessLaneHTTP, webAccessLaneLightpandaShim:
+		case webAccessLaneBrowser, webAccessLaneProxyFetcher, webAccessLaneHTTPNative, webAccessLaneHTTP:
 			appendLane(strategy.PreferredLane)
+		case webAccessLaneLightpandaShim:
+			if lightpandaAllowed {
+				appendLane(strategy.PreferredLane)
+			}
 		case webFetchStrategySession:
 			if req.AllowSession && hasBrowserTarget {
 				appendLane(webFetchStrategySession)
@@ -493,7 +513,9 @@ func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBro
 	}
 	appendLane(webAccessLaneHTTP)
 	appendLane(webAccessLaneHTTPNative)
-	appendLane(webAccessLaneLightpandaShim)
+	if lightpandaAllowed {
+		appendLane(webAccessLaneLightpandaShim)
+	}
 	if req.AllowProxy {
 		appendLane(webAccessLaneProxyFetcher)
 	}

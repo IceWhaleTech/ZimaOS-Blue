@@ -65,3 +65,20 @@ func TestResolveCDPWebSocketURL_ResolvesVersionEndpointAndPreservesQuery(t *test
 		t.Fatalf("resolveCDPWebSocketURL() = %q, want %q", got, want)
 	}
 }
+
+func TestResolveCDPWebSocketURL_RewritesUnspecifiedResolvedHostToOriginalEndpoint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"webSocketDebuggerUrl":"ws://0.0.0.0:9222/"}`))
+	}))
+	defer srv.Close()
+
+	got, err := resolveCDPWebSocketURL(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("resolveCDPWebSocketURL() error = %v", err)
+	}
+	want := "ws://" + srv.Listener.Addr().String() + "/"
+	if got != want {
+		t.Fatalf("resolveCDPWebSocketURL() = %q, want %q", got, want)
+	}
+}

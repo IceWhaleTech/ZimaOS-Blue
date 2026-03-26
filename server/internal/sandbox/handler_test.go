@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	appconfig "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/labstack/echo/v4"
 )
 
@@ -337,6 +339,105 @@ func TestHandler_Info(t *testing.T) {
 	}
 }
 
+func TestHandler_Info_UnsupportedIncludesReason(t *testing.T) {
+	handler := NewHandler(&Manager{
+		config:   DefaultConfig(),
+		executor: newUnsupportedExecutor("test sandbox reason"),
+	})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sandbox/info", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.Info(c)
+	if err != nil {
+		t.Fatalf("Info() error = %v", err)
+	}
+
+	var info map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&info); err != nil {
+		t.Fatalf("Info() failed to decode response: %v", err)
+	}
+
+	if info["supported"] != false {
+		t.Fatalf("Info() supported = %v, want false", info["supported"])
+	}
+	if info["support_reason"] != "test sandbox reason" {
+		t.Fatalf("Info() support_reason = %v, want %q", info["support_reason"], "test sandbox reason")
+	}
+}
+
+func TestHandler_UpdateConfig_NetworkEnabled(t *testing.T) {
+	handler, manager, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	store := appconfig.NewConfigStore(kvstore.NewMemoryStore())
+	cfg := &appconfig.Config{}
+	cfg.Security.Sandbox.Enabled = true
+	cfg.Security.Sandbox.NetworkEnabled = false
+	if err := store.Import(cfg); err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	handler.SetConfigStore(store)
+
+	hookCalled := false
+	handler.SetNetworkConfigHook(func(networkEnabled bool) {
+		hookCalled = true
+		if !networkEnabled {
+			t.Fatalf("networkEnabled = %v, want true", networkEnabled)
+		}
+	})
+
+	body := []byte(`{"network_enabled":true}`)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/sandbox/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.UpdateConfig(c); err != nil {
+		t.Fatalf("UpdateConfig() error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("UpdateConfig() status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	if !manager.GetConfig().NetworkEnabled {
+		t.Fatal("manager config should be updated")
+	}
+	if store.Config() == nil || !store.Config().Security.Sandbox.NetworkEnabled {
+		t.Fatal("config store security.sandbox.network_enabled should be true")
+	}
+	if !hookCalled {
+		t.Fatal("network config hook should be called")
+	}
+
+	var info map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&info); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if info["network_enabled"] != true {
+		t.Fatalf("response network_enabled = %v, want true", info["network_enabled"])
+	}
+}
+
+func TestHandler_UpdateConfig_RequiresNetworkEnabled(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/sandbox/config", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.UpdateConfig(c)
+	if err == nil {
+		t.Fatal("UpdateConfig() expected error")
+	}
+}
+
 func TestHandler_RegisterRoutes(t *testing.T) {
 	handler, _, cleanup := setupTestHandler(t)
 	defer cleanup()
@@ -352,6 +453,7 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 		"/api/v1/sandbox/execute",
 		"/api/v1/sandbox/status/:id",
 		"/api/v1/sandbox/kill/:id",
+		"/api/v1/sandbox/config",
 		"/api/v1/sandbox/info",
 	}
 

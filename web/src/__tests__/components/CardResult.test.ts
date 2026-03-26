@@ -743,9 +743,37 @@ describe('CardResult', () => {
 
     const button = wrapper.get('button')
     expect(button.text()).toContain('Open location')
+    expect(wrapper.text()).toContain('/Users/orca/Documents/report.pdf')
     await button.trigger('click')
     expect(openInBrowserMock).toHaveBeenCalledWith('/Users/orca/Documents/report.pdf')
     expect(wrapper.find('a').exists()).toBe(false)
+  })
+
+  it('shows the original path while revealing via a separate absolute path', async () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'File Write',
+          status: 'success',
+          details: [
+            {
+              label: 'Path',
+              value: '@docs/reports/summary.md',
+              reveal_path: '/Users/orca/Documents/project/reports/summary.md',
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('@docs/reports/summary.md')
+    expect(wrapper.text()).toContain('打开所在位置')
+    await wrapper.get('button').trigger('click')
+    expect(openInBrowserMock).toHaveBeenCalledWith('/Users/orca/Documents/project/reports/summary.md')
   })
 
   it('keeps /api detail paths as links instead of local file paths', () => {

@@ -5,27 +5,11 @@ import (
 	"time"
 )
 
-func TestDefaultClaudeCodeCLIConfig(t *testing.T) {
-	cfg := DefaultClaudeCodeCLIConfig()
+func TestDefaultAgentCoreConfig(t *testing.T) {
+	cfg := DefaultAgentCoreConfig()
 
-	if !cfg.Enabled {
-		t.Error("expected Enabled to be true by default")
-	}
-
-	if !cfg.Install.VerifyChecksum {
-		t.Error("expected VerifyChecksum to be true by default")
-	}
-
-	if !cfg.Features.Skills {
-		t.Error("expected Skills to be true by default")
-	}
-
-	if !cfg.Features.ToolCalling {
-		t.Error("expected ToolCalling to be true by default")
-	}
-
-	if !cfg.Features.FileOperations {
-		t.Error("expected FileOperations to be true by default")
+	if cfg.WorkspaceDir != "." {
+		t.Errorf("expected WorkspaceDir '.', got %q", cfg.WorkspaceDir)
 	}
 }
 
@@ -268,41 +252,6 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	}
 	if len(cfg.Ripgrep.MirrorBaseURLs) != 3 {
 		t.Fatalf("expected 3 ripgrep mirror base urls, got %#v", cfg.Ripgrep.MirrorBaseURLs)
-	}
-}
-
-func TestCLIFeaturesConfig(t *testing.T) {
-	cfg := CLIFeaturesConfig{
-		Skills:           true,
-		ToolCalling:      true,
-		FileOperations:   true,
-		TerminalCommands: true,
-		MCPIntegration:   true,
-		AgentMode:        true,
-		ProjectContext:   true,
-	}
-
-	// All features should be enabled
-	if !cfg.Skills {
-		t.Error("expected Skills to be true")
-	}
-	if !cfg.ToolCalling {
-		t.Error("expected ToolCalling to be true")
-	}
-	if !cfg.FileOperations {
-		t.Error("expected FileOperations to be true")
-	}
-	if !cfg.TerminalCommands {
-		t.Error("expected TerminalCommands to be true")
-	}
-	if !cfg.MCPIntegration {
-		t.Error("expected MCPIntegration to be true")
-	}
-	if !cfg.AgentMode {
-		t.Error("expected AgentMode to be true")
-	}
-	if !cfg.ProjectContext {
-		t.Error("expected ProjectContext to be true")
 	}
 }
 

@@ -76,7 +76,6 @@ const mocks = vi.hoisted(() => ({
   settingsStore: {
     agentAutoConfirm: false,
     agentMode: false,
-    claudeCodeEnabled: false,
     showToolDetails: true,
     fetchTools: vi.fn(),
     updateFromPoolProviders: vi.fn(),
@@ -311,6 +310,7 @@ describe('ChatView provider gating', () => {
       routes: [
         { path: '/chat', name: 'Chat', component: ChatView },
         { path: '/settings', name: 'Settings', component: { template: '<div />' } },
+        { path: '/security', name: 'Security', component: { template: '<div />' } },
       ],
     })
     await router.push('/chat')
@@ -443,20 +443,13 @@ describe('ChatView provider gating', () => {
     expect(menuStyle).not.toContain('top: 0px')
   })
 
-  it('shows the enhanced mode info card on hover when Claude Code CLI is enabled', async () => {
-    mocks.settingsStore.claudeCodeEnabled = true
-
+  it('does not render the removed runtime controls on the chat page', async () => {
     const wrapper = await mountChatView()
-    const enhancedPill = wrapper.find('.chat-mode-pill.chat-mode-pill-enabled')
 
-    expect(enhancedPill.exists()).toBe(true)
+    expect(wrapper.find('.chat-mode-pill.chat-mode-pill-enabled').exists()).toBe(false)
+    expect(wrapper.find('[data-onboarding-anchor="enhanced-mode-entry"]').exists()).toBe(false)
+    expect(wrapper.find('[data-onboarding-anchor="enhanced-mode-menu"]').exists()).toBe(false)
     expect(wrapper.find('.enhanced-mode-hover-card').exists()).toBe(false)
-
-    await enhancedPill.trigger('mouseenter')
-    await flushPromises()
-
-    expect(wrapper.find('.enhanced-mode-hover-card').exists()).toBe(true)
-    expect(wrapper.findAll('.enhanced-mode-hover-card__item')).toHaveLength(4)
   })
 
   it('routes talk-mode transcripts to sendMessage when no stream is active', async () => {
