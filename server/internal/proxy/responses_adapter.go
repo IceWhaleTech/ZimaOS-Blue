@@ -97,6 +97,7 @@ type responsesInputContentPart struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"`
+	Detail   string `json:"detail,omitempty"`
 	Audio    any    `json:"input_audio,omitempty"`
 }
 
@@ -145,8 +146,9 @@ type responsesAPIOutputItem struct {
 }
 
 type responsesAPIContentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type    string `json:"type"`
+	Text    string `json:"text,omitempty"`
+	Refusal string `json:"refusal,omitempty"`
 }
 
 type chatAudioTranscriber func(inputAudio any) (string, bool)
@@ -165,9 +167,12 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 
 	out := responsesRequestForOpenAI{
 		Model:  in.Model,
-		Store:  true,
 		Stream: in.Stream,
 	}
+	// Preserve explicit store preference if client sent one; otherwise default to true.
+	// This lets applyStorePolicy distinguish "converter-set" from "client-set" later.
+	out.Store = true // default; will be overridden if client explicitly set store
+
 	// Prefer max_completion_tokens when both fields are present.
 	if in.MaxCompletionTokens > 0 {
 		out.MaxOutputTokens = in.MaxCompletionTokens
@@ -214,19 +219,33 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 	if len(in.Tools) > 0 {
 		out.Tools = make([]responsesTool, 0, len(in.Tools))
 		for _, t := range in.Tools {
-			if t.Type != "" && t.Type != "function" {
+			// Preserve all tool types (function, image_generation, computer_use, etc.)
+			// Only skip anonymous or empty tool definitions
+			if t.Type == "" && t.Function.Name == "" {
 				continue
 			}
-			if t.Function.Name == "" {
-				continue
+			// For function tools, map to Responses API function type
+			if t.Type == "function" || t.Type == "" {
+				if t.Function.Name == "" {
+					continue
+				}
+				out.Tools = append(out.Tools, responsesTool{
+					Type:        "function",
+					Name:        t.Function.Name,
+					Description: t.Function.Description,
+					Parameters:  t.Function.Parameters,
+					Strict:      t.Function.Strict,
+				})
+			} else {
+				// Preserve non-function tool types as-is (e.g., image_generation, computer_use)
+				out.Tools = append(out.Tools, responsesTool{
+					Type:        t.Type,
+					Name:        t.Function.Name,
+					Description: t.Function.Description,
+					Parameters:  t.Function.Parameters,
+					Strict:      t.Function.Strict,
+				})
 			}
-			out.Tools = append(out.Tools, responsesTool{
-				Type:        "function",
-				Name:        t.Function.Name,
-				Description: t.Function.Description,
-				Parameters:  t.Function.Parameters,
-				Strict:      t.Function.Strict,
-			})
 		}
 	}
 
@@ -312,9 +331,41 @@ func clampResponsesMaxOutputTokens(body []byte, maxAllowed int) []byte {
 
 // clampChatCompletionsMaxTokens caps chat-completions output token fields when
 // a model-level limit is known. Unknown model limits remain passthrough.
+// It also ensures max_completion_tokens is set from max_tokens so that both
+// legacy models (which use max_tokens) and newer models (which require
+// max_completion_tokens) are served correctly.
 func clampChatCompletionsMaxTokens(body []byte, maxAllowed int) []byte {
+	// Ensure max_completion_tokens is populated from max_tokens for
+	// forward compatibility with OpenAI models that reject max_tokens.
+	body = ensureMaxCompletionTokens(body)
 	body = clampPositiveIntJSONField(body, "max_tokens", maxAllowed)
 	body = clampPositiveIntJSONField(body, "max_completion_tokens", maxAllowed)
+	return body
+}
+
+// ensureMaxCompletionTokens converts max_tokens to max_completion_tokens.
+// OpenAI's gpt-5.4 series rejects max_tokens entirely and requires
+// max_completion_tokens. Unlike older models that ignore the new field,
+// gpt-5.4 fails if max_tokens is present at all — so we must remove it.
+func ensureMaxCompletionTokens(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	maxTokens := gjson.GetBytes(body, "max_tokens")
+	maxCompletionTokens := gjson.GetBytes(body, "max_completion_tokens")
+	if maxTokens.Exists() && !maxCompletionTokens.Exists() {
+		// gpt-5.4 fails if max_tokens is present at all, so we must remove it
+		// after copying the value to max_completion_tokens.
+		out, _ := sjson.SetBytes(body, "max_completion_tokens", maxTokens.Int())
+		out, _ = sjson.DeleteBytes(out, "max_tokens")
+		return out
+	}
+	// If max_tokens exists alongside max_completion_tokens, remove max_tokens
+	// as it will cause gpt-5.4 to reject the request.
+	if maxTokens.Exists() && maxCompletionTokens.Exists() {
+		out, _ := sjson.DeleteBytes(body, "max_tokens")
+		return out
+	}
 	return body
 }
 
@@ -322,35 +373,76 @@ const fixedCodexResponsesEndpointPath = "/backend-api/codex/responses"
 
 // applyResponsesStorePolicy applies endpoint-specific store policy and returns
 // both transformed body and the policy label for observability.
-func applyResponsesStorePolicy(body []byte, finalPath string) ([]byte, string) {
+// It respects the client's explicit store preference when set, and sets the
+// appropriate default when not specified. For stateless requests (store:false),
+// it also injects include: ["reasoning.encrypted_content"] per OpenAI spec.
+// The originalBody param is the request body before conversion, used to detect
+// whether the client explicitly set the store field.
+func applyResponsesStorePolicy(body []byte, finalPath string, originalBody []byte) ([]byte, string) {
 	if normalizeResponsesEndpointPath(finalPath) == fixedCodexResponsesEndpointPath {
-		return ensureResponsesStore(body, false), "codex_store_false"
+		return applyStorePolicy(body, false, originalBody)
 	}
-	return ensureResponsesStore(body, true), "responses_store_true"
+	return applyStorePolicy(body, true, originalBody)
 }
 
 func normalizeResponsesEndpointPath(path string) string {
 	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(path)), "/")
 }
 
+// applyStorePolicy sets the store policy, respecting client preference when explicitly set.
+// When store=false (stateless), also injects include: ["reasoning.encrypted_content"].
+// originalBody is used to detect whether the client explicitly set store (before conversion
+// may have added a default value).
+func applyStorePolicy(body []byte, defaultVal bool, originalBody []byte) ([]byte, string) {
+	if len(body) == 0 {
+		return body, "unchanged"
+	}
+	// Check original body for explicit client store preference
+	clientStoreExplicit := gjson.GetBytes(originalBody, "store")
+
+	if clientStoreExplicit.Exists() {
+		// Client explicitly set store - respect their choice
+		if clientStoreExplicit.Bool() {
+			return body, "client_store_true"
+		}
+		// Client explicitly set store:false - inject include for stateless mode
+		return injectIncludeForStateless(body)
+	}
+	// No explicit store preference in original request - apply default
+	if defaultVal {
+		out, err := sjson.SetBytes(body, "store", true)
+		if err != nil {
+			return body, "error"
+		}
+		return out, "default_store_true"
+	}
+	return injectIncludeForStateless(body)
+}
+
+// injectIncludeForStateless adds include: ["reasoning.encrypted_content"] for
+// stateless (store:false) requests per OpenAI API spec.
+func injectIncludeForStateless(body []byte) ([]byte, string) {
+	// First set store:false
+	out, err := sjson.SetBytes(body, "store", false)
+	if err != nil {
+		return body, "error"
+	}
+	// Inject include if not already present
+	include := gjson.GetBytes(out, "include")
+	if !include.Exists() {
+		outStr, err := sjson.SetBytes(out, "include", []string{"reasoning.encrypted_content"})
+		if err != nil {
+			return body, "error"
+		}
+		return []byte(outStr), "store_false_with_include"
+	}
+	return out, "store_false"
+}
+
 // ensureResponsesStoreEnabled keeps legacy behavior for generic /responses
 // endpoints by forcing store=true.
 func ensureResponsesStoreEnabled(body []byte) []byte {
-	return ensureResponsesStore(body, true)
-}
-
-func ensureResponsesStore(body []byte, enabled bool) []byte {
-	if len(body) == 0 {
-		return body
-	}
-	store := gjson.GetBytes(body, "store")
-	if store.Exists() && store.Bool() == enabled {
-		return body
-	}
-	out, err := sjson.SetBytes(body, "store", enabled)
-	if err != nil {
-		return body
-	}
+	out, _ := sjson.SetBytes(body, "store", true)
 	return out
 }
 
@@ -534,19 +626,25 @@ func convertChatContentPart(part map[string]interface{}, audioTranscriber chatAu
 		return responsesInputContentPart{Type: "input_text", Text: text}, true
 	case "image_url", "input_image":
 		imageURL := ""
+		detail := ""
 		switch v := part["image_url"].(type) {
 		case string:
 			imageURL = v
 		case map[string]interface{}:
 			imageURL = anyToString(v["url"])
+			detail = anyToString(v["detail"])
 		}
 		if imageURL == "" {
 			imageURL = anyToString(part["url"])
 		}
+		// Also check top-level detail field (Responses API native format)
+		if detail == "" {
+			detail = anyToString(part["detail"])
+		}
 		if imageURL == "" {
 			return responsesInputContentPart{}, false
 		}
-		return responsesInputContentPart{Type: "input_image", ImageURL: imageURL}, true
+		return responsesInputContentPart{Type: "input_image", ImageURL: imageURL, Detail: detail}, true
 	case "input_audio":
 		audio, ok := part["input_audio"]
 		if !ok || audio == nil {

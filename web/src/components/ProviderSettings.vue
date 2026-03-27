@@ -21,11 +21,12 @@ const error = ref<string | null>(null)
 const apiKey = ref('')
 const baseUrl = ref('')
 const showApiKey = ref(false)
+const region = ref<'auto' | 'cn' | 'international'>('auto')
 
 // Provider metadata
 const providerMeta: Record<
   string,
-  { requiresApiKey: boolean; defaultUrl: string; description: string }
+  { requiresApiKey: boolean; defaultUrl: string; description: string; supportsRegion?: boolean }
 > = {
   claude: {
     requiresApiKey: true,
@@ -61,6 +62,12 @@ const providerMeta: Record<
     requiresApiKey: true,
     defaultUrl: 'https://api.siliconflow.cn/v1',
     description: 'providerSettings.siliconflowDesc',
+  },
+  minimax: {
+    requiresApiKey: true,
+    defaultUrl: 'https://api.minimax.io/anthropic',
+    description: 'providerSettings.minimaxDesc',
+    supportsRegion: true,
   },
 }
 
@@ -138,6 +145,7 @@ function loadProviderConfig(providerName: string) {
   if (provider) {
     apiKey.value = '' // Always clear API key input
     baseUrl.value = provider.base_url || providerMeta[providerName]?.defaultUrl || ''
+    region.value = (provider.region as 'auto' | 'cn' | 'international') || 'auto'
     showApiKey.value = false
   }
 }
@@ -149,12 +157,15 @@ async function saveConfig() {
     saving.value = true
     error.value = null
 
-    const config: { api_key?: string; base_url?: string } = {}
+    const config: { api_key?: string; base_url?: string; region?: 'auto' | 'cn' | 'international' } = {}
     if (apiKey.value) {
       config.api_key = apiKey.value
     }
     if (baseUrl.value) {
       config.base_url = baseUrl.value
+    }
+    if (currentMeta.value.supportsRegion) {
+      config.region = region.value
     }
 
     const response = await providerSettingsApi.update(selectedProvider.value, config)
@@ -329,6 +340,42 @@ function clearApiKey() {
             <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">
               {{ t('providerSettings.baseUrlHint', { default: currentMeta.defaultUrl }) }}
             </p>
+          </div>
+
+          <!-- Region selector (for providers that support it) -->
+          <div v-if="currentMeta.supportsRegion">
+            <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">
+              {{ t('settings.region') || 'Region' }}
+            </label>
+            <div class="flex gap-4">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  v-model="region"
+                  type="radio"
+                  value="auto"
+                  class="w-4 h-4 text-gray-600 dark:text-gray-400"
+                />
+                <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.regionAuto') || 'Auto' }}</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  v-model="region"
+                  type="radio"
+                  value="cn"
+                  class="w-4 h-4 text-gray-600 dark:text-gray-400"
+                />
+                <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.regionCN') || 'CN' }}</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  v-model="region"
+                  type="radio"
+                  value="international"
+                  class="w-4 h-4 text-gray-600 dark:text-gray-400"
+                />
+                <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.regionIntl') || 'International' }}</span>
+              </label>
+            </div>
           </div>
 
           <!-- API Key (for providers that require it) -->

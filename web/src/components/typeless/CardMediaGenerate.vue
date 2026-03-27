@@ -16,9 +16,15 @@ const taskResult = ref<TypelessCardMediaGenerate | null>(null)
 // Use polled result if available, otherwise use card prop
 const displayCard = computed(() => taskResult.value || props.card)
 
-const isGenerating = computed(() => displayCard.value.status === 'generating')
-const isSuccess = computed(() => displayCard.value.status === 'success')
-const isError = computed(() => displayCard.value.status === 'error')
+const isGenerating = computed(() => {
+  const gen = displayCard.value.status === 'generating' || displayCard.value.status === 'processing'
+  if (import.meta.env.DEV) {
+    console.log('[CardMediaGenerate] isGenerating computed', { displayStatus: displayCard.value.status, result: gen, taskResultExists: !!taskResult.value })
+  }
+  return gen
+})
+const isSuccess = computed(() => displayCard.value.status === 'success' || displayCard.value.status === 'succeeded')
+const isError = computed(() => displayCard.value.status === 'error' || displayCard.value.status === 'failed')
 const images = computed(() => displayCard.value.images || [])
 
 function openLightbox(image: GalleryImage) {
@@ -35,11 +41,25 @@ function getImageSrc(image: GalleryImage): string {
 
 // Poll task status when generating
 async function pollTask() {
-  if (!props.card.task_id || !isGenerating.value) return
+  if (import.meta.env.DEV) {
+    console.log('[CardMediaGenerate] pollTask called', { task_id: props.card.task_id, isGenerating: isGenerating.value, status: props.card.status })
+  }
+  if (!props.card.task_id || !isGenerating.value) {
+    if (import.meta.env.DEV) {
+      console.log('[CardMediaGenerate] pollTask early return: no task_id or not generating')
+    }
+    return
+  }
   try {
     const resp = await authFetch(`/api/v1/media/tasks/${props.card.task_id}`)
+    if (import.meta.env.DEV) {
+      console.log('[CardMediaGenerate] pollTask response', { status: resp.status, ok: resp.ok })
+    }
     if (!resp.ok) return
     const task = await resp.json()
+    if (import.meta.env.DEV) {
+      console.log('[CardMediaGenerate] task status from API:', task.status)
+    }
     if (task.status === 'succeeded' && task.response?.data?.length > 0) {
       const imgs: GalleryImage[] = task.response.data.map((d: any) => ({
         src: d.url || d.original_url,
@@ -73,8 +93,18 @@ function stopPolling() {
 }
 
 onMounted(() => {
+  if (import.meta.env.DEV) {
+    console.log('[CardMediaGenerate] onMounted', { task_id: props.card.task_id, status: props.card.status, isGenerating: isGenerating.value })
+  }
   if (isGenerating.value && props.card.task_id) {
+    if (import.meta.env.DEV) {
+      console.log('[CardMediaGenerate] Starting poll timer')
+    }
     pollTimer.value = setInterval(pollTask, 3000)
+  } else {
+    if (import.meta.env.DEV) {
+      console.log('[CardMediaGenerate] NOT starting poll: isGenerating=', isGenerating.value, 'task_id=', props.card.task_id)
+    }
   }
 })
 

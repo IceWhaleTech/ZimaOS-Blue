@@ -8,6 +8,7 @@ export interface ProviderConfigResponse {
   enabled: boolean
   has_api_key: boolean
   default_url?: string
+  region?: 'auto' | 'cn' | 'international'
 }
 
 // Provider configuration update request
@@ -15,6 +16,7 @@ export interface ProviderConfigRequest {
   api_key?: string
   base_url?: string
   enabled?: boolean
+  region?: 'auto' | 'cn' | 'international'
 }
 
 // Test connection response

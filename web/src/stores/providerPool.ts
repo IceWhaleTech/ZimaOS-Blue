@@ -508,8 +508,17 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function clearProviderError(id: string) {
     try {
-      await providerPoolApi.clearError(id)
       const provider = providers.value.find((p) => p.id === id)
+      if (provider?.type === 'media') {
+        // Media providers don't have a clear-error endpoint
+        // Just update local state
+        if (provider) {
+          provider.status = 'active'
+          provider.last_error = ''
+        }
+        return
+      }
+      await providerPoolApi.clearError(id)
       if (provider) {
         provider.status = 'active'
         provider.last_error = ''

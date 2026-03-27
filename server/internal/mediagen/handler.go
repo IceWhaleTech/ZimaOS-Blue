@@ -65,10 +65,13 @@ func mediaScopeArgs(c echo.Context) []string {
 
 func mediaScopedContext(c echo.Context, fallbackUserID string) context.Context {
 	ctx := c.Request().Context()
-	if claims := auth.GetUserFromContext(c); claims != nil && strings.TrimSpace(claims.UserID) != "" && claims.Role != "admin" {
-		return ctx
-	}
 	fallbackUserID = strings.TrimSpace(fallbackUserID)
+	// If we have auth claims with a real user, use that as the fallback
+	if fallbackUserID == "" {
+		if claims := auth.GetUserFromContext(c); claims != nil && strings.TrimSpace(claims.UserID) != "" && claims.Role != "admin" {
+			fallbackUserID = strings.TrimSpace(claims.UserID)
+		}
+	}
 	if fallbackUserID == "" {
 		return ctx
 	}
@@ -692,8 +695,9 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 		if err != nil {
 			return err
 		}
-		scopedCtx = mediaScopedContext(c, resolvedConversationUserID)
 	}
+	// Always call mediaScopedContext so auth claims are used as fallback when no ConversationID.
+	scopedCtx = mediaScopedContext(c, resolvedConversationUserID)
 
 	// Set conversation title early — before task creation so it works even if generation fails.
 	if req.ConversationID != "" && h.updateTitle != nil {

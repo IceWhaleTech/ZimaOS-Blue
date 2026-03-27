@@ -61,6 +61,7 @@ export interface Provider {
   models?: Model[]
   oauth?: OAuthConfig
   is_builtin?: boolean
+  region?: 'auto' | 'cn' | 'international'
 }
 
 export interface APIKey {

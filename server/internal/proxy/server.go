@@ -62,7 +62,8 @@ func NewProxyServer(config *ProxyConfig) (*ProxyServer, error) {
 	failover := NewFailoverHandler(&config.Routing.Failover, router)
 	healthCheck := NewHealthChecker(router, connPool, &config.HealthCheck)
 	handler := NewProxyHandler(router, connPool, failover)
-	handler.SetResponsesIntegrationEnabled(false)
+	// Enable Responses Integration for Codex models on OpenAI direct providers
+	handler.SetResponsesIntegrationEnabled(true)
 
 	// Initialize v0.10.5.1+ components (Antigravity-inspired)
 	var modelRouter *ModelRouter

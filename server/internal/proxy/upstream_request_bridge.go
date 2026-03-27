@@ -8,6 +8,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/oauth"
+	"github.com/tidwall/gjson"
 )
 
 // UpstreamRequestBridgeContext carries mutable request-building state.
@@ -33,6 +34,7 @@ type UpstreamRequestBridge interface {
 var defaultUpstreamRequestBridges = []UpstreamRequestBridge{
 	responsesEndpointBridge{},
 	codexModelResponsesBridge{},
+	codexModelResponsesBridgeOpenAI{},
 	anthropicEndpointBridge{},
 	cloudCodeFormatBridge{},
 	anthropicFormatBridge{},
@@ -101,6 +103,38 @@ func (codexModelResponsesBridge) Build(ctx *UpstreamRequestBridgeContext) error 
 	}
 	ctx.Body = converted
 	ctx.EffectiveFormat = providerpool.APIFormatResponses
+	return nil
+}
+
+// codexModelResponsesBridgeOpenAI handles Codex models on OpenAI direct providers.
+// OpenAI returns "not a chat model" for Codex models via /v1/chat/completions,
+// so we must route them through /v1/responses instead.
+type codexModelResponsesBridgeOpenAI struct{}
+
+func (codexModelResponsesBridgeOpenAI) Name() string { return "codex_model_responses_openai" }
+
+func (codexModelResponsesBridgeOpenAI) Match(ctx *UpstreamRequestBridgeContext) bool {
+	if !isChatCompletionsPath(ctx.RequestPath) {
+		return false
+	}
+	// Only apply to OpenAI-format providers (not Responses-format providers)
+	if ctx.EffectiveFormat == providerpool.APIFormatResponses {
+		return false
+	}
+	// Check if the model is a Codex model
+	model := strings.ToLower(gjson.GetBytes(ctx.Body, "model").String())
+	return strings.Contains(model, "codex")
+}
+
+func (codexModelResponsesBridgeOpenAI) Build(ctx *UpstreamRequestBridgeContext) error {
+	ctx.RequestPath = "/v1/responses"
+	converted, err := convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(ctx.Body, ctx.AudioTranscriber)
+	if err != nil {
+		return fmt.Errorf("convert codex openai->responses: %w", err)
+	}
+	ctx.Body = converted
+	ctx.EffectiveFormat = providerpool.APIFormatResponses
+	slog.Info("[proxy] codex model routed to responses API", "model", gjson.GetBytes(ctx.Body, "model").String())
 	return nil
 }
 

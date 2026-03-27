@@ -487,7 +487,10 @@ func TestBuildUpstreamRequestWithFormat_ResponsesEndpointConvertsBody(t *testing
 		t.Fatalf("max_output_tokens = %d, want 5", got)
 	}
 	if got := gjson.GetBytes(convertedBody, "store").Bool(); got {
-		t.Fatalf("store = true, want false for codex fixed endpoint")
+		t.Fatalf("store = true, want false for codex fixed endpoint (no explicit store in request → default is false)")
+	}
+	if !gjson.GetBytes(convertedBody, "include").Exists() {
+		t.Fatalf("store=false without include for stateless request: want include:[\"reasoning.encrypted_content\"]")
 	}
 }
 
@@ -706,8 +709,12 @@ func TestBuildUpstreamRequestWithFormat_GenericResponsesPathForcesStoreTrue(t *t
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "store").Bool(); !got {
-		t.Fatalf("store = false, want true")
+	// Client explicitly set store:false - we now respect it and inject include per spec
+	if got := gjson.GetBytes(convertedBody, "store").Bool(); got {
+		t.Fatalf("store = true, want false (client explicit preference should be respected)")
+	}
+	if !gjson.GetBytes(convertedBody, "include").Exists() {
+		t.Fatalf("store=false without include: want include:[\"reasoning.encrypted_content\"]")
 	}
 }
 

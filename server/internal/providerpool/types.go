@@ -140,6 +140,11 @@ type Provider struct {
 	// This is persisted and survives restarts. When set, it overrides BaseURL.
 	DetectedEndpoint string `json:"detected_endpoint,omitempty"`
 
+	// Region specifies the region/token plan for providers that support CN/International.
+	// Supported values: "auto" (default, automatic failover), "cn", "international".
+	// Only meaningful for providers that support multiple regions (e.g., minimax, moonshot).
+	Region string `json:"region,omitempty"`
+
 	// Health check
 	LastHealthCheck time.Time `json:"last_health_check,omitempty"`
 	LastError       string    `json:"last_error,omitempty"`
@@ -160,12 +165,40 @@ func (p *Provider) ParsedBaseURL() *url.URL {
 	return p.parsedURL
 }
 
-// EffectiveBaseURL returns the effective base URL to use, considering DetectedEndpoint.
-// If DetectedEndpoint is set, it takes precedence over BaseURL.
+// EffectiveBaseURL returns the effective base URL to use, considering Region and DetectedEndpoint.
+// Region takes precedence: "cn" uses China endpoint, "international" uses International endpoint.
+// When Region is "auto" or empty, DetectedEndpoint (if set) takes precedence over BaseURL.
 func (p *Provider) EffectiveBaseURL() string {
+	// Region-based URL override for providers that support CN/International
+	switch p.Region {
+	case "cn":
+		return p.regionalBaseURL("cn")
+	case "international":
+		return p.regionalBaseURL("international")
+	}
+	// Auto mode: DetectedEndpoint takes precedence
 	if p.DetectedEndpoint != "" {
 		return p.DetectedEndpoint
 	}
+	return p.BaseURL
+}
+
+// regionalBaseURL returns the appropriate base URL for the given region.
+// Only supported for providers with known regional domain pairs.
+func (p *Provider) regionalBaseURL(region string) string {
+	switch p.ID {
+	case "minimax":
+		if region == "cn" {
+			return "https://api.minimaxi.com"
+		}
+		return "https://api.minimax.io"
+	case "moonshot":
+		if region == "cn" {
+			return "https://api.moonshot.cn"
+		}
+		return "https://api.moonshot.ai"
+	}
+	// Fallback to current BaseURL for unsupported providers
 	return p.BaseURL
 }
 

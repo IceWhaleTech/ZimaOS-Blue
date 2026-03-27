@@ -41,6 +41,11 @@ var BuiltinModelPricing = map[string]*ModelPricing{
 	"claude-haiku-4-5": {ModelID: "claude-haiku-4-5", InputPrice: 1.0, OutputPrice: 5.0, CachePrice: 0.1},
 
 	// ===== OpenAI GPT =====
+	// GPT-5.4
+	"gpt-5.4":      {ModelID: "gpt-5.4", InputPrice: 2.5, OutputPrice: 15.0, CachePrice: 0.25},
+	"gpt-5.4-mini": {ModelID: "gpt-5.4-mini", InputPrice: 0.75, OutputPrice: 4.5, CachePrice: 0.075},
+	"gpt-5.4-nano": {ModelID: "gpt-5.4-nano", InputPrice: 0.20, OutputPrice: 1.25, CachePrice: 0.02},
+	"gpt-5.4-pro":  {ModelID: "gpt-5.4-pro", InputPrice: 30.0, OutputPrice: 180.0, CachePrice: 3.0},
 	// GPT-5
 	"gpt-5":      {ModelID: "gpt-5", InputPrice: 1.25, OutputPrice: 10.0, CachePrice: 0.125},
 	"gpt-5-mini": {ModelID: "gpt-5-mini", InputPrice: 0.25, OutputPrice: 2.0, CachePrice: 0.025},

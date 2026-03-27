@@ -2723,7 +2723,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyConnPool := proxy.NewConnectionPool(&deps.Config.Proxy.Connection)
 		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
-		proxyHandler.SetResponsesIntegrationEnabled(false)
+		proxyHandler.SetResponsesIntegrationEnabled(true)
 		proxyHandler.SetSTTService(deps.STTService)
 		proxyHandler.SetProviderRaceConfig(routingConfig.Failover.ProviderRace)
 		proxyHandler.SetPromptCacheEnabled(true) // default ON for new installs

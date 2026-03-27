@@ -2035,6 +2035,9 @@ func (ph *ProxyHandler) buildUpstreamRequest(r *http.Request, route *providerpoo
 // buildUpstreamRequestWithFormat creates an upstream request using the given effective API format.
 func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *providerpool.RouteResult, body []byte, effectiveFormat providerpool.APIFormat) (*http.Request, error) {
 	provider := route.Provider
+	// Capture original body before any modifications — needed by applyResponsesStorePolicy
+	// to detect client-explicit store preference before conversion adds defaults.
+	originalBody := body
 	if disableResponsesContinuation(r) {
 		body = stripPreviousResponseID(body)
 		ph.clearCachedResponsesPreviousID(r)
@@ -2154,7 +2157,7 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		body = ph.injectCachedResponsesAssistantContextForRoute(r, route, body)
 		body = ph.sanitizeResponsesInputForContinuationDisabledRoute(r, route, body)
 		storePolicy := ""
-		body, storePolicy = applyResponsesStorePolicy(body, finalPath)
+		body, storePolicy = applyResponsesStorePolicy(body, finalPath, originalBody)
 		body = clampResponsesMaxOutputTokens(body, resolveResponsesMaxOutputTokensLimit(route))
 		hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount := responsesContinuationLogFields(body)
 		slog.Info("[proxy] responses continuation payload prepared",

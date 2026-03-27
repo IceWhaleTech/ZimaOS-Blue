@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -86,6 +87,7 @@ type ProviderConfig struct {
 	APIKey  string `json:"api_key,omitempty"`
 	BaseURL string `json:"base_url,omitempty"`
 	Enabled bool   `json:"enabled"`
+	Region  string `json:"region,omitempty"` // "auto", "cn", or "international"
 }
 
 // ProvidersConfig holds all provider configurations.
@@ -268,6 +270,7 @@ type UpdateProviderConfigRequest struct {
 	APIKey  *string `json:"api_key,omitempty"`
 	BaseURL *string `json:"base_url,omitempty"`
 	Enabled *bool   `json:"enabled,omitempty"`
+	Region  *string `json:"region,omitempty"`
 }
 
 // UpdateProviderConfig updates the configuration for a specific provider.
@@ -301,6 +304,12 @@ func (h *ProviderSettingsHandler) UpdateProviderConfig(c echo.Context) error {
 	}
 	if req.Enabled != nil {
 		config.Enabled = *req.Enabled
+	}
+	if req.Region != nil {
+		if !isValidRegion(*req.Region) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "region must be 'auto', 'cn', or 'international'"})
+		}
+		config.Region = *req.Region
 	}
 
 	h.config.Providers[name] = config
@@ -415,13 +424,25 @@ func (h *ProviderSettingsHandler) TestProviderConnection(c echo.Context) error {
 		})
 	}
 
+	slog.Info("[provider_settings] testing provider connection",
+		"provider", name,
+		"has_api_key", config.APIKey != "",
+		"base_url", config.BaseURL)
+
 	models := provider.Models()
 	if len(models) == 0 {
+		slog.Warn("[provider_settings] provider connection test: no models returned (API unreachable or rate limited)",
+			"provider", name,
+			"base_url", config.BaseURL)
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success":    false,
 			"messageKey": "noModelsAvailable",
 		})
 	}
+
+	slog.Info("[provider_settings] provider connection test succeeded",
+		"provider", name,
+		"model_count", len(models))
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success":    true,
@@ -446,4 +467,14 @@ func maskAPIKey(key string) string {
 		return "****"
 	}
 	return key[:4] + "****" + key[len(key)-4:]
+}
+
+// isValidRegion checks if the region value is valid.
+func isValidRegion(region string) bool {
+	switch region {
+	case "", "auto", "cn", "international":
+		return true
+	default:
+		return false
+	}
 }

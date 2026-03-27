@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -140,7 +140,7 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 		if !isRetryableError(err) {
 			return nil, err
 		}
-		log.Printf("[mulerouter] Poll attempt %d failed (retryable): %v", attempt+1, err)
+		slog.Debug("mulerouter poll attempt failed (retryable)", "attempt", attempt+1, "error", err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("mulerouter poll failed after retries: %w", err)
@@ -241,7 +241,7 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 		if !hasURL {
 			// Upstream says "succeeded" but no URL yet (e.g. only content_type).
 			// Treat as still processing so the poller keeps going.
-			log.Printf("[mediagen] poll succeeded but no URLs found for task %s, keeping as processing. raw body: %s", taskID, truncate(string(respBody), 500))
+			slog.Info("poll succeeded but no URLs found for task, keeping as processing", "taskID", taskID, "rawBody", truncate(string(respBody), 500))
 			task.Status = TaskStatusProcessing
 			task.Response = nil
 			task.CompletedAt = nil
@@ -324,7 +324,7 @@ func (p *MuleRouterProvider) generateOpenAI(ctx context.Context, req *MediaReque
 		}
 		return nil, fmt.Errorf("mulerouter response read error (status %d): %w%s", resp.StatusCode, err, bodyPreview)
 	}
-	log.Printf("[mulerouter] generateOpenAI response status=%d body_len=%d body=%.200s", resp.StatusCode, len(respBody), string(respBody))
+	slog.Debug("generateOpenAI response", "status", resp.StatusCode, "bodyLen", len(respBody), "body", string(respBody))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("mulerouter API error (status %d): %s", resp.StatusCode, string(respBody))
@@ -343,7 +343,7 @@ func (p *MuleRouterProvider) generateOpenAI(ctx context.Context, req *MediaReque
 			RevisedPrompt: d.RevisedPrompt,
 			ContentType:   "image/png",
 		})
-		log.Printf("[mulerouter] generateOpenAI result[%d]: url=%q b64_len=%d", len(results)-1, d.URL, len(d.B64JSON))
+		slog.Debug("generateOpenAI result", "index", len(results)-1, "url", d.URL, "b64Len", len(d.B64JSON))
 	}
 
 	if len(results) == 0 {
@@ -436,7 +436,7 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
 	var resp *http.Response
-	log.Printf("[mulerouter] generateVendor POST %s", url)
+	slog.Debug("generateVendor POST", "url", url)
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
@@ -448,7 +448,7 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 		if !isRetryableError(err) {
 			return nil, fmt.Errorf("mulerouter request failed: %w", err)
 		}
-		log.Printf("[mulerouter] generateVendor attempt %d failed (retryable): %v", attempt+1, err)
+		slog.Debug("generateVendor attempt failed (retryable)", "attempt", attempt+1, "error", err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("mulerouter request failed after retries: %w", err)
@@ -465,7 +465,7 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 		}
 		return nil, fmt.Errorf("mulerouter response read error (status %d): %w%s", resp.StatusCode, err, bodyPreview)
 	}
-	log.Printf("[mulerouter] generateVendor response status=%d body_len=%d body=%.100s", resp.StatusCode, len(respBody), string(respBody))
+	slog.Debug("generateVendor response", "status", resp.StatusCode, "bodyLen", len(respBody), "body", string(respBody))
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 		return nil, fmt.Errorf("mulerouter vendor API error (status %d): %s", resp.StatusCode, string(respBody))

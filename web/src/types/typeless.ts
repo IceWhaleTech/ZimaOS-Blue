@@ -866,7 +866,7 @@ export interface TypelessCardUIReviewProgress extends TypelessCardBase {
 export interface TypelessCardMediaGenerate extends TypelessCardBase {
   type: 'media-generate'
   media_type: 'image' | 'video'
-  status: 'generating' | 'success' | 'error'
+  status: 'generating' | 'processing' | 'success' | 'succeeded' | 'error' | 'failed'
   task_id?: string
   message?: string
   elapsed_ms?: number

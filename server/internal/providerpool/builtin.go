@@ -80,7 +80,7 @@ func BuiltinProviders() []*Provider {
 			APIFormat:   APIFormatAnthropic,
 			Priority:    30,
 			Icon:        "minimax",
-			Description: "MiniMax API - M2.5 series models",
+			Description: "MiniMax API - M2.7 series models",
 			Website:     "https://platform.minimax.io",
 			APIKeyURL:   "https://platform.minimax.io/user-center/basic-information/interface-key",
 			AlternateBaseURLs: []string{
@@ -472,6 +472,90 @@ func GetTrialLicense() string {
 func BuiltinModels() map[string][]*Model {
 	return map[string][]*Model{
 		"openai": {
+			{
+				ID:          "gpt-5.4",
+				ProviderID:  "openai",
+				Name:        "gpt-5.4",
+				DisplayName: "GPT-5.4",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					Thinking:     true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 1050000, // 1,050K tokens per official spec
+				MaxOutput:     128000,  // 128K per official spec
+				InputPrice:    2.5,     // $2.50 per 1M input tokens
+				OutputPrice:   15.0,    // $15.00 per 1M output tokens
+				CachePrice:    0.25,    // $0.25 per 1M cached input tokens
+			},
+			{
+				ID:          "gpt-5.4-mini",
+				ProviderID:  "openai",
+				Name:        "gpt-5.4-mini",
+				DisplayName: "GPT-5.4 Mini",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					Thinking:     true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 1050000, // 1,050K tokens per official spec
+				MaxOutput:     128000,  // 128K per official spec
+				InputPrice:    0.75,    // $0.75 per 1M input tokens
+				OutputPrice:   4.50,    // $4.50 per 1M output tokens
+				CachePrice:    0.075,   // $0.075 per 1M cached input tokens
+			},
+			{
+				ID:          "gpt-5.4-nano",
+				ProviderID:  "openai",
+				Name:        "gpt-5.4-nano",
+				DisplayName: "GPT-5.4 Nano",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					Thinking:     true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 400000,  // 400K tokens per official spec
+				MaxOutput:     128000,  // 128K per official spec
+				InputPrice:    0.20,    // $0.20 per 1M input tokens
+				OutputPrice:   1.25,    // $1.25 per 1M output tokens
+				CachePrice:    0.02,    // $0.02 per 1M cached input tokens
+			},
+			{
+				ID:          "gpt-5.4-pro",
+				ProviderID:  "openai",
+				Name:        "gpt-5.4-pro",
+				DisplayName: "GPT-5.4 Pro",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					Thinking:     true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 1050000, // 1,050K tokens per official spec
+				MaxOutput:     128000,  // 128K per official spec
+				InputPrice:    30.00,   // $30.00 per 1M input tokens
+				OutputPrice:   180.00,  // $180.00 per 1M output tokens
+				CachePrice:    3.00,    // $3.00 per 1M cached input tokens (1/10th of input)
+			},
 			{
 				ID:          "gpt-4o",
 				ProviderID:  "openai",
@@ -907,10 +991,10 @@ func BuiltinModels() map[string][]*Model {
 		},
 		"minimax": {
 			{
-				ID:          "MiniMax-M2.5",
+				ID:          "MiniMax-M2.7",
 				ProviderID:  "minimax",
-				Name:        "MiniMax-M2.5",
-				DisplayName: "MiniMax M2.5",
+				Name:        "MiniMax-M2.7",
+				DisplayName: "MiniMax M2.7",
 				Enabled:     true,
 				Capabilities: ModelCapabilities{
 					Chat:         true,
@@ -925,10 +1009,10 @@ func BuiltinModels() map[string][]*Model {
 				OutputPrice:   8.0,
 			},
 			{
-				ID:          "codex-MiniMax-M2.5",
+				ID:          "MiniMax-M2.7-highspeed",
 				ProviderID:  "minimax",
-				Name:        "codex-MiniMax-M2.5",
-				DisplayName: "MiniMax M2.5 (Codex)",
+				Name:        "MiniMax-M2.7-highspeed",
+				DisplayName: "MiniMax M2.7 Highspeed",
 				Enabled:     true,
 				Capabilities: ModelCapabilities{
 					Chat:         true,

@@ -1259,6 +1259,17 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 		candidate.DetectedEndpoint = ""
 		candidate.ResetParsedURL()
 	}
+	if updates.Region != "" {
+		if !isValidRegion(updates.Region) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "region must be 'auto', 'cn', or 'international'"})
+		}
+		candidate.Region = updates.Region
+		// When user explicitly sets region, clear DetectedEndpoint so region takes effect
+		if candidate.Region != "auto" {
+			candidate.DetectedEndpoint = ""
+			candidate.ResetParsedURL()
+		}
+	}
 
 	// Non-third-party providers use a single canonical format.
 	// Third-party providers in auto mode re-detect immediately when the format mode
@@ -1313,6 +1324,15 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 func isValidAPIFormatMode(mode APIFormatMode) bool {
 	switch mode {
 	case "", APIFormatModeAuto, APIFormatModePinned:
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidRegion(region string) bool {
+	switch region {
+	case "", "auto", "cn", "international":
 		return true
 	default:
 		return false
@@ -1623,6 +1643,9 @@ func (h *Handler) UpdateAllowedModels(c echo.Context) error {
 	if err := h.pool.Registry.Update(provider); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+
+	// Rebuild routing snapshot so the new allowed-models take effect immediately
+	h.pool.Router.RebuildCandidates()
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"message":        "allowed models updated",

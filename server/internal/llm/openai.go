@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -110,17 +111,22 @@ func (p *OpenAIProvider) fetchModels() []string {
 
 	// Try to fetch models, handling /v1 compatibility
 	url := p.getAPIPath("/models")
+	slog.Info("[llm/openai] fetching models from OpenAI API", "url", url)
 	models := p.tryFetchModels(ctx, url)
 	if models == nil {
 		// If failed, try without /v1 (for endpoints that don't use it)
 		baseURL := p.normalizeBaseURL()
 		if !strings.HasSuffix(baseURL, "/v1") {
+			slog.Warn("[llm/openai] first fetch failed, retrying without /v1", "url", url, "retry_url", baseURL+"/models")
 			models = p.tryFetchModels(ctx, baseURL+"/models")
 		}
 	}
 
 	if len(models) > 0 {
 		p.cachedModels = models
+		slog.Info("[llm/openai] models fetched successfully", "count", len(models), "cached", p.cachedModels != nil)
+	} else {
+		slog.Warn("[llm/openai] failed to fetch models from OpenAI API (all attempts returned no models)", "url", url)
 	}
 	return models
 }

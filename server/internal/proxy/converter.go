@@ -97,6 +97,7 @@ type OpenAIMessage struct {
 type OpenAITool struct {
 	Type     string             `json:"type"`
 	Function OpenAIToolFunction `json:"function"`
+	Strict   bool               `json:"strict,omitempty"`
 }
 
 type OpenAIToolFunction struct {
@@ -107,6 +108,7 @@ type OpenAIToolFunction struct {
 
 type OpenAIToolCall struct {
 	ID       string             `json:"id"`
+	CallID   string             `json:"call_id,omitempty"`
 	Type     string             `json:"type"`
 	Function OpenAIToolCallFunc `json:"function"`
 }
