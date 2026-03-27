@@ -567,6 +567,19 @@ func (m *Manager) GetTask(taskID string, userID ...string) (*MediaTask, error) {
 		if taskVisibleToScope(task, userID) {
 			return task, nil
 		}
+		// In-memory scope mismatch — fall back to DB in case the in-memory copy is stale
+		// (e.g. after server restart where memory was lost but DB still has the task).
+		if m.taskStore != nil {
+			pt, err := m.taskStore.Get(taskID, userID...)
+			if err == nil && pt != nil {
+				mediaTask := pt.ToMediaTask()
+				m.tasks.Store(taskID, mediaTask) // re-cache in memory
+				return mediaTask, nil
+			}
+			if err != nil && err != sql.ErrNoRows {
+				return nil, err
+			}
+		}
 		return nil, ErrTaskNotFound
 	}
 	// Fall back to persistent store

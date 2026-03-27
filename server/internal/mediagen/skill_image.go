@@ -25,7 +25,7 @@ func (t *ImageGenerateSkill) availableImageModels() string {
 		}
 	}
 	if len(names) == 0 {
-		return "dall-e-3, nano-banana-pro, qwen-image-max, midjourney, gemini-2.0-flash-exp-image-generation"
+		return "nano-banana-pro, qwen-image-max, midjourney, gemini-2.0-flash-exp-image-generation"
 	}
 	return strings.Join(names, ", ")
 }

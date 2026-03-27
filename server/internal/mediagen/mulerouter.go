@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -48,9 +49,9 @@ func (p *MuleRouterProvider) Name() string { return "mulerouter" }
 func (p *MuleRouterProvider) SupportedModels() []MediaModelInfo {
 	return []MediaModelInfo{
 		// --- Text-to-Image (t2i) ---
+		// Note: DALL-E is NOT supported on MuleRouter — do not add here.
 		{ID: "nano-banana-pro", Name: "Nano Banana Pro", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
 		{ID: "qwen-image-max", Name: "Qwen Image Max", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
-		{ID: "dall-e-3", Name: "DALL-E 3", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
 		{ID: "midjourney", Name: "Midjourney", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
 		{ID: "wan2.5-t2i-preview", Name: "Wan 2.5 T2I", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
 		{ID: "wan2.6-t2i", Name: "Wan 2.6 T2I", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
@@ -58,7 +59,7 @@ func (p *MuleRouterProvider) SupportedModels() []MediaModelInfo {
 		{ID: "nano-banana-pro", Name: "Nano Banana Pro Edit", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
 		{ID: "qwen-image-edit-max", Name: "Qwen Image Edit", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
 		{ID: "wan2.5-i2i-preview", Name: "Wan 2.5 I2I", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
-		{ID: "wan2.6-image", Name: "Wan 2.6 Image Edit", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
+		{ID: "wan2.6-i2i", Name: "Wan 2.6 I2I", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
 		// --- Text-to-Video (t2v) ---
 		{ID: "wan2.6-t2v", Name: "Wan 2.6 T2V", Type: MediaTypeVideo, Category: CategoryT2V, Provider: "mulerouter"},
 		{ID: "wan2.5-t2v-spark", Name: "Wan 2.5 T2V Spark", Type: MediaTypeVideo, Category: CategoryT2V, Provider: "mulerouter"},
@@ -91,14 +92,15 @@ func (p *MuleRouterProvider) Generate(ctx context.Context, req *MediaRequest) (*
 		model = "nano-banana-pro"
 	}
 
+	// Fall back to nano-banana-pro for unsupported models (e.g. dall-e-*, gemini-*).
+	// These would route to wrong/alibaba endpoints that don't exist for those model IDs.
 	vendor := modelToVendor(model)
-
-	// OpenAI vendor uses /v1/images/generations (synchronous)
-	if vendor == "openai" {
-		return p.generateOpenAI(ctx, req, model)
+	if vendor == "alibaba" && model != "" && !isAlibabaModel(model) {
+		model = "nano-banana-pro"
+		vendor = "google"
 	}
 
-	// All other vendors use async task pattern via /vendors/{vendor}/v1/{model}/generation
+	// All vendors use async task pattern via /vendors/{vendor}/v1/{model}/generation
 	return p.generateVendor(ctx, req, model, vendor)
 }
 
@@ -112,16 +114,36 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 	}
 	meta := metaVal.(*muleRouterTaskMeta)
 
-	url := fmt.Sprintf("%s/vendors/%s/v1/%s/%s", p.baseURL, meta.vendor, vendorEndpoint(meta.vendor, meta.model, meta.isEdit), taskID)
+	var url string
+	endpoint := vendorEndpoint(meta.vendor, meta.model, meta.isEdit)
+	// Midjourney uses /tob/diffusion, all other vendors use /{model}/generation
+	if meta.vendor == "midjourney" {
+		url = fmt.Sprintf("%s/vendors/%s/v1/%s/%s", p.baseURL, meta.vendor, endpoint, taskID)
+	} else {
+		url = fmt.Sprintf("%s/vendors/%s/v1/%s/generation/%s", p.baseURL, meta.vendor, endpoint, taskID)
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.client.Do(httpReq)
+	var resp *http.Response
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
+		}
+		resp, err = p.client.Do(httpReq)
+		if err == nil {
+			break
+		}
+		if !isRetryableError(err) {
+			return nil, err
+		}
+		log.Printf("[mulerouter] Poll attempt %d failed (retryable): %v", attempt+1, err)
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mulerouter poll failed after retries: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -237,6 +259,9 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 			}
 		}
 		p.taskMeta.Delete(taskID)
+	case "canceled":
+		task.Status = TaskStatusCancelled
+		p.taskMeta.Delete(taskID)
 	default:
 		task.Status = TaskStatusProcessing
 		task.Progress = taskResp.Progress
@@ -285,14 +310,21 @@ func (p *MuleRouterProvider) generateOpenAI(ctx context.Context, req *MediaReque
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mulerouter request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	// Read response body with size limit to detect truncation
+	var respBody []byte
+	respBody, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB max
 	if err != nil {
-		return nil, err
+		bodyPreview := ""
+		if len(respBody) > 0 {
+			bodyPreview = fmt.Sprintf("; body preview: %s", string(respBody[:min(len(respBody), 200)]))
+		}
+		return nil, fmt.Errorf("mulerouter response read error (status %d): %w%s", resp.StatusCode, err, bodyPreview)
 	}
+	log.Printf("[mulerouter] generateOpenAI response status=%d body_len=%d body=%.200s", resp.StatusCode, len(respBody), string(respBody))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("mulerouter API error (status %d): %s", resp.StatusCode, string(respBody))
@@ -300,7 +332,7 @@ func (p *MuleRouterProvider) generateOpenAI(ctx context.Context, req *MediaReque
 
 	var oaiResp openAIImageResponse
 	if err := json.Unmarshal(respBody, &oaiResp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("json unmarshal error: %w; body: %.200s", err, string(respBody))
 	}
 
 	var results []MediaResult
@@ -311,6 +343,7 @@ func (p *MuleRouterProvider) generateOpenAI(ctx context.Context, req *MediaReque
 			RevisedPrompt: d.RevisedPrompt,
 			ContentType:   "image/png",
 		})
+		log.Printf("[mulerouter] generateOpenAI result[%d]: url=%q b64_len=%d", len(results)-1, d.URL, len(d.B64JSON))
 	}
 
 	if len(results) == 0 {
@@ -387,7 +420,14 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 	if err != nil {
 		return nil, err
 	}
-	url := fmt.Sprintf("%s/vendors/%s/v1/%s", p.baseURL, vendor, vendorEndpoint(vendor, model, isEdit))
+	var url string
+	endpoint := vendorEndpoint(vendor, model, isEdit)
+	// Midjourney uses /tob/diffusion, all other vendors use /{model}/generation
+	if vendor == "midjourney" {
+		url = fmt.Sprintf("%s/vendors/%s/v1/%s", p.baseURL, vendor, endpoint)
+	} else {
+		url = fmt.Sprintf("%s/vendors/%s/v1/%s/generation", p.baseURL, vendor, endpoint)
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -395,16 +435,37 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.client.Do(httpReq)
+	var resp *http.Response
+	log.Printf("[mulerouter] generateVendor POST %s", url)
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
+		}
+		resp, err = p.client.Do(httpReq)
+		if err == nil {
+			break
+		}
+		if !isRetryableError(err) {
+			return nil, fmt.Errorf("mulerouter request failed: %w", err)
+		}
+		log.Printf("[mulerouter] generateVendor attempt %d failed (retryable): %v", attempt+1, err)
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mulerouter request failed after retries: %w", err)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	// Read response body with size limit to detect truncation
+	var respBody []byte
+	respBody, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB max
 	if err != nil {
-		return nil, err
+		bodyPreview := ""
+		if len(respBody) > 0 {
+			bodyPreview = fmt.Sprintf("; body preview: %s", string(respBody[:min(len(respBody), 200)]))
+		}
+		return nil, fmt.Errorf("mulerouter response read error (status %d): %w%s", resp.StatusCode, err, bodyPreview)
 	}
+	log.Printf("[mulerouter] generateVendor response status=%d body_len=%d body=%.100s", resp.StatusCode, len(respBody), string(respBody))
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 		return nil, fmt.Errorf("mulerouter vendor API error (status %d): %s", resp.StatusCode, string(respBody))
@@ -437,12 +498,50 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 	}, nil
 }
 
+// isRetryableError returns true if the error is a transient network error worth retrying.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for timeout
+	if netErr, ok := err.(net.Error); ok {
+		return netErr.Temporary() || netErr.Timeout()
+	}
+	// Check for connection reset, broken pipe
+	s := err.Error()
+	return strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "broken pipe") ||
+		strings.Contains(s, "TLS handshake timeout") ||
+		strings.Contains(s, "Handshake did not verify") ||
+		strings.Contains(s, "unexpected TLS fragment") ||
+		strings.Contains(s, "server misbehaving") ||
+		strings.Contains(s, "503 Service Unavailable") ||
+		strings.Contains(s, "502 Bad Gateway") ||
+		strings.Contains(s, "504 Gateway Timeout") ||
+		strings.Contains(s, "network is unreachable") ||
+		strings.Contains(s, "no such host")
+}
+
+// isAlibabaModel returns true if the model ID belongs to the Alibaba vendor.
+func isAlibabaModel(model string) bool {
+	switch model {
+	case "qwen-image-max", "qwen-image-edit-max",
+		"wan2.6-t2i", "wan2.6-i2i",
+		"wan2.5-t2i-preview", "wan2.5-i2i-preview",
+		"wan2.1-t2i", "wan2.2-t2i", "wan2.1-i2i", "wan2.2-i2i",
+		"wan2.5-t2i", "wan2.5-i2i",
+		"wan2.6-t2i-spark", "wan2.6-i2i-spark",
+		"wan2.1-t2i-spark", "wan2.2-t2i-spark":
+		return true
+	}
+	return false
+}
+
 // modelToVendor maps a model ID to its MuleRouter vendor path segment.
+// Note: DALL-E is not supported on MuleRouter — requests will fall back to nano-banana-pro.
 func modelToVendor(model string) string {
 	switch model {
-	case "dall-e-3", "dall-e-2":
-		return "openai"
-	case "nano-banana-pro":
+	case "nano-banana-pro", "nano-banana-2":
 		return "google"
 	case "midjourney", "midjourney-video":
 		return "midjourney"
@@ -450,14 +549,17 @@ func modelToVendor(model string) string {
 		"wan2.5-i2v-spark", "wan2.6-i2v-spark":
 		return "mulerouter"
 	default:
-		// Alibaba covers: qwen-*, wan2.1-*, wan2.2-*, wan2.5-*, wan2.6-* (non-spark)
+		// Alibaba covers: qwen-image-max, qwen-image-edit-max,
+		// wan2.6-t2i, wan2.6-i2i, wan2.5-t2i-preview, wan2.5-i2i-preview, etc.
+		// For unsupported models (e.g. dall-e-*), Generate() defaults to nano-banana-pro.
 		return "alibaba"
 	}
 }
 
-// vendorEndpoint returns the API path suffix for a given vendor+model.
-// Most vendors use /{model}/generation, but Midjourney uses /tob/diffusion.
-// When isEdit is true and the vendor supports a separate edit endpoint, use that instead.
+// vendorEndpoint returns the model-specific path segment (without /generation).
+// Midjourney uses /tob/diffusion or /tob/video-diffusion.
+// Google nano-banana-pro edit uses /edit suffix.
+// All other vendors use just the model name.
 func vendorEndpoint(vendor, model string, isEdit bool) string {
 	if vendor == "midjourney" {
 		if model == "midjourney-video" {
@@ -469,7 +571,7 @@ func vendorEndpoint(vendor, model string, isEdit bool) string {
 	if isEdit && vendor == "google" && model == "nano-banana-pro" {
 		return model + "/edit"
 	}
-	return model + "/generation"
+	return model
 }
 
 // isKF2VModel returns true if the model is a keyframe-to-video model.

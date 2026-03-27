@@ -281,6 +281,7 @@ func (t *PersistentTask) ToMediaTask() *MediaTask {
 			Error:       t.Error,
 			Progress:    t.Progress,
 			CreatedAt:   t.CreatedAt,
+			UpdatedAt:   t.UpdatedAt,
 			CompletedAt: t.CompletedAt,
 		},
 		UserID:     t.UserID,
