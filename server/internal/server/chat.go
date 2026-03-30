@@ -18378,6 +18378,7 @@ func (h *ChatHandler) DeleteConversation(c echo.Context) error {
 	h.clearWarmupToken(id)
 	h.cancelProviderWarmup(id, "conversation_deleted")
 	h.invalidateWarmup(id)
+	h.clearPreviousResponseID(id)
 	h.conversationCache.Invalidate(id)
 	h.clearProviderAffinity(id)
 	h.clearPromptCacheToolSurface(id)
