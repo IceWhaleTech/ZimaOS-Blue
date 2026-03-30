@@ -11653,7 +11653,9 @@ func (h *ChatHandler) persistChannelUserMessage(ctx context.Context, convID, con
 	})
 	if err != nil {
 		logger.Warn().Err(err).Str("conv_id", convID).Msg("failed to persist IM user message")
+		return
 	}
+	h.conversationCache.Invalidate(convID)
 }
 
 func (h *ChatHandler) buildIMToolContext(baseCtx context.Context, msg channel.Message, convID string, lang i18n.Language, withCheckpoint bool) context.Context {
