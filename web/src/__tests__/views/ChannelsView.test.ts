@@ -7,7 +7,13 @@ const settingsStoreMock = {
   fetchBackendSettings: vi.fn().mockResolvedValue(undefined),
 }
 
-const authFetchMock = vi.fn()
+const listChannelsMock = vi.fn()
+const getChannelSettingsMock = vi.fn()
+const updateChannelSettingsMock = vi.fn()
+const updateChannelMock = vi.fn()
+const toggleChannelMock = vi.fn()
+const getChannelStatusMock = vi.fn()
+const testChannelConnectionMock = vi.fn()
 const getTunnelProvidersMock = vi.fn()
 const getRemoteAccessConfigMock = vi.fn()
 const getRemoteAccessStatusMock = vi.fn()
@@ -16,8 +22,16 @@ vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => settingsStoreMock,
 }))
 
-vi.mock('@/api/client', () => ({
-  authFetch: authFetchMock,
+vi.mock('@/api/channels', () => ({
+  channelsApi: {
+    list: listChannelsMock,
+    getSettings: getChannelSettingsMock,
+    updateSettings: updateChannelSettingsMock,
+    updateChannel: updateChannelMock,
+    toggleChannel: toggleChannelMock,
+    getChannelStatus: getChannelStatusMock,
+    testConnection: testChannelConnectionMock,
+  },
 }))
 
 vi.mock('@/api/remote-access', () => ({
@@ -104,10 +118,33 @@ describe('ChannelsView', () => {
     settingsStoreMock.backendSettings = {}
     settingsStoreMock.fetchBackendSettings.mockResolvedValue(undefined)
 
-    authFetchMock.mockResolvedValue({
-      ok: false,
+    listChannelsMock.mockResolvedValue({
       status: 401,
-      json: vi.fn().mockResolvedValue({}),
+      data: {},
+    })
+    getChannelSettingsMock.mockResolvedValue({
+      status: 401,
+      data: {},
+    })
+    updateChannelSettingsMock.mockResolvedValue({
+      status: 404,
+      data: {},
+    })
+    updateChannelMock.mockResolvedValue({
+      status: 404,
+      data: {},
+    })
+    toggleChannelMock.mockResolvedValue({
+      status: 404,
+      data: {},
+    })
+    getChannelStatusMock.mockResolvedValue({
+      status: 404,
+      data: {},
+    })
+    testChannelConnectionMock.mockResolvedValue({
+      status: 404,
+      data: {},
     })
 
     getTunnelProvidersMock.mockResolvedValue({ data: { providers: [] } })
@@ -160,49 +197,37 @@ describe('ChannelsView', () => {
   })
 
   it('saves Feishu session mode through the channel config API', async () => {
-    let savedBody = ''
-    authFetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (url === '/api/channels' && !init) {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            channels: [
-              {
-                id: 'feishu',
-                enabled: false,
-                status: 'disconnected',
-                config: {
-                  app_id: 'cli_test',
-                  app_secret: 'secret',
-                  session_mode: 'false',
-                },
-              },
-            ],
-          }),
-        })
-      }
-      if (url === '/api/channels/settings' && !init) {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({}),
-        })
-      }
-      if (url === '/api/channels/feishu' && init?.method === 'PUT') {
-        savedBody = String(init.body || '')
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            channel: {
-              status: 'disconnected',
+    let savedBody: Record<string, unknown> | null = null
+    listChannelsMock.mockResolvedValue({
+      status: 200,
+      data: {
+        channels: [
+          {
+            id: 'feishu',
+            enabled: false,
+            status: 'disconnected',
+            config: {
+              app_id: 'cli_test',
+              app_secret: 'secret',
+              session_mode: 'false',
             },
-          }),
-        })
-      }
+          },
+        ],
+      },
+    })
+    getChannelSettingsMock.mockResolvedValue({
+      status: 200,
+      data: {},
+    })
+    updateChannelMock.mockImplementation((_channelId: string, payload: Record<string, unknown>) => {
+      savedBody = payload
       return Promise.resolve({
-        ok: false,
-        status: 404,
-        json: vi.fn().mockResolvedValue({}),
+        status: 200,
+        data: {
+          channel: {
+            status: 'disconnected',
+          },
+        },
       })
     })
 
@@ -239,8 +264,8 @@ describe('ChannelsView', () => {
     await feishuCard.find('.channel-card-save-stub').trigger('click')
     await flushPromises()
 
-    expect(savedBody).not.toBe('')
-    expect(JSON.parse(savedBody)).toMatchObject({
+    expect(savedBody).not.toBeNull()
+    expect(savedBody).toMatchObject({
       enabled: false,
       config: {
         app_id: 'cli_test',

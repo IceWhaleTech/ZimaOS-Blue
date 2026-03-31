@@ -11,7 +11,7 @@ import {
 } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
-import { authFetch } from '@/api/client'
+import { channelsApi } from '@/api/channels'
 import {
   getChannelIconOrDefault,
   getChannelIconStyleVars,
@@ -185,7 +185,15 @@ function showGroupAccessResult(success: boolean, message: string) {
   }, 3000)
 }
 
-function formatFetchFailureMessage(response: Response, fallback: string, message?: string): string {
+function isSuccessfulStatus(status: number): boolean {
+  return status >= 200 && status < 300
+}
+
+function formatFetchFailureMessage(
+  response: { status?: number },
+  fallback: string,
+  message?: string
+): string {
   const status = Number(response.status) || 0
   if (status === 401) {
     return 'Channels request was rejected by the server (401).'
@@ -1187,14 +1195,9 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
   triggerRef(channelDefs)
 
   try {
-    const response = await authFetch(`/api/channels/${channelId}/toggle`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
-    })
-
-    const data = await response.json()
-    if (response.ok) {
+    const response = await channelsApi.toggleChannel(channelId, { enabled })
+    const data = response.data
+    if (isSuccessfulStatus(response.status)) {
       // Update status from server response
       channelDef.status = data.status || (enabled ? 'connected' : 'disconnected')
       channelDef.lastError = data.channel?.last_error
@@ -1237,18 +1240,18 @@ async function loadChannelConfigs() {
   loading.value = true
   channelLoadError.value = null
   try {
-    const response = await authFetch('/api/channels')
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
+    const response = await channelsApi.list()
+    if (!isSuccessfulStatus(response.status)) {
+      const data = response.data || {}
       channelLoadError.value = formatFetchFailureMessage(
         response,
         'Failed to load channels.',
-        data?.message
+        data.message
       )
       return
     }
 
-    const data = await response.json()
+    const data = response.data
     // Merge server data with local channel definitions
     for (const serverChannel of data.channels || []) {
       const localChannel = channelMap.value.get(serverChannel.id)
@@ -1285,10 +1288,10 @@ async function loadChannelConfigs() {
 
 async function loadChannelSettings() {
   try {
-    const response = await authFetch('/api/channels/settings')
-    if (!response.ok) return
+    const response = await channelsApi.getSettings()
+    if (!isSuccessfulStatus(response.status)) return
 
-    const data = (await response.json()) as ChannelSettingsResponse
+    const data = response.data as ChannelSettingsResponse
     const groupAccess = data.group_access || {}
     groupAccessPolicy.value = normalizeGroupAccessPolicy(groupAccess.policy)
     groupAccessMentionPolicy.value = normalizeGroupMentionPolicy(groupAccess.mention_policy)
@@ -1326,20 +1329,16 @@ async function saveGroupAccessSettings() {
       return
     }
 
-    const response = await authFetch('/api/channels/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        group_access: {
-          policy: groupAccessDraftPolicy.value,
-          mention_policy: groupAccessDraftMentionPolicy.value,
-          allowed_chat_ids: parsed.allowed_chat_ids,
-        },
-      }),
+    const response = await channelsApi.updateSettings({
+      group_access: {
+        policy: groupAccessDraftPolicy.value,
+        mention_policy: groupAccessDraftMentionPolicy.value,
+        allowed_chat_ids: parsed.allowed_chat_ids,
+      },
     })
 
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
+    const data = response.data || {}
+    if (!isSuccessfulStatus(response.status)) {
       showGroupAccessResult(false, data.message || t('channels.groupAccessSaveFailed'))
       return
     }
@@ -1375,17 +1374,13 @@ async function saveChannel(channelId: string) {
       config[field.key] = field.value
     }
 
-    const response = await authFetch(`/api/channels/${channelId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        enabled: channelDef.enabled,
-        config,
-      }),
+    const response = await channelsApi.updateChannel(channelId, {
+      enabled: channelDef.enabled,
+      config,
     })
 
-    const data = await response.json()
-    if (response.ok) {
+    const data = response.data
+    if (isSuccessfulStatus(response.status)) {
       // Update status from server response
       if (data.channel) {
         channelDef.status = data.channel.status || channelDef.status
@@ -1438,15 +1433,15 @@ async function pollChannelStatus(channelId: string) {
     attempts++
 
     try {
-      const response = await authFetch(`/api/channels/${channelId}/status`)
-      if (!response.ok) {
+      const response = await channelsApi.getChannelStatus(channelId)
+      if (!isSuccessfulStatus(response.status)) {
         // API error, stop polling
         clearInterval(interval)
         channelPollIntervals.delete(channelId)
         return
       }
 
-      const data = await response.json()
+      const data = response.data
       const channelDef = channelMap.value.get(channelId)
       if (!channelDef) {
         clearInterval(interval)
@@ -1490,13 +1485,8 @@ async function testConnection(channelId: string) {
       config[field.key] = field.value
     }
 
-    const response = await authFetch('/api/setup/test-connection', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: channelId, config }),
-    })
-
-    const data = await response.json()
+    const response = await channelsApi.testConnection({ type: channelId, config })
+    const data = response.data
     // Use message_key for i18n translation if available, fallback to message
     let message = data.message
     if (data.message_key) {
