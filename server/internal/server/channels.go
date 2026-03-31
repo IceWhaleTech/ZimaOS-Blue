@@ -692,9 +692,15 @@ func (h *ChannelConfigHandler) ToggleChannel(c echo.Context) error {
 			// Enabling: create, register and start the connection
 			cfg.Status = "connecting"
 
-			// Check if channel is already registered
-			_, exists := h.manager.Get(id)
-			if !exists && h.factory != nil {
+			if h.factory != nil {
+				// Always recreate to apply the latest saved config.
+				if ch, exists := h.manager.Get(id); exists {
+					if ch.IsConnected() {
+						_ = h.manager.StopChannel(ctx, id)
+					}
+					_ = h.manager.Unregister(id)
+				}
+
 				// Create and register channel
 				ch, err := h.factory.CreateChannel(cfg)
 				if err != nil {
@@ -745,10 +751,15 @@ func (h *ChannelConfigHandler) ToggleChannel(c echo.Context) error {
 				}
 			}
 		} else if !req.Enabled && wasEnabled {
-			// Disabling: stop the connection
-			if ch, exists := h.manager.Get(id); exists && ch.IsConnected() {
-				if err := h.manager.StopChannel(ctx, id); err != nil {
-					cfg.LastError = err.Error()
+			// Disabling: stop and unregister so next enable uses fresh config
+			if ch, exists := h.manager.Get(id); exists {
+				if ch.IsConnected() {
+					if err := h.manager.StopChannel(ctx, id); err != nil {
+						cfg.LastError = err.Error()
+					}
+				}
+				if h.factory != nil {
+					_ = h.manager.Unregister(id)
 				}
 			}
 			cfg.Status = "disconnected"
