@@ -2115,7 +2115,6 @@ export default {
     ollamaUrlSaved: 'Ollama URL を保存しました',
     availableTools: '利用可能なツール',
     noToolsAvailable: '利用可能なツールがありません',
-  ,
           externalAgents: {
         eyebrow: "ACP / A2A",
         title: "外部エージェント",

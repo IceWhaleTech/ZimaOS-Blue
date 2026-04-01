@@ -2133,7 +2133,6 @@ export default {
     availableTools: 'Ferramentas disponíveis',
     noToolsAvailable: 'Nenhuma ferramenta disponível',
     configSaved: 'Configuração guardada com sucesso',
-  ,
           externalAgents: {
         eyebrow: "ACP / A2A",
         title: "Agentes externos",

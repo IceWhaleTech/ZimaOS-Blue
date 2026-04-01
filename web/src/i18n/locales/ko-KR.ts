@@ -2103,7 +2103,6 @@ export default {
     ollamaUrlSaved: 'Ollama URL 저장됨',
     availableTools: '사용 가능한 도구',
     noToolsAvailable: '사용 가능한 도구가 없습니다',
-  ,
           externalAgents: {
         eyebrow: "ACP / A2A",
         title: "외부 에이전트",

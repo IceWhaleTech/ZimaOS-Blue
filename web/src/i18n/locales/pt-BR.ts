@@ -2127,7 +2127,6 @@ export default {
     ollamaUrlSaved: 'URL do Ollama salva',
     availableTools: 'Ferramentas disponíveis',
     noToolsAvailable: 'Nenhuma ferramenta disponível',
-  ,
           externalAgents: {
         eyebrow: "ACP / A2A",
         title: "Agentes externos",

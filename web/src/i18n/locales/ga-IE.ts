@@ -2035,7 +2035,6 @@ export default {
       lastUpdated: 'Last updated',
       noModels: 'No quota information available',
     },
-  ,
           externalAgents: {
         eyebrow: "ACP / A2A",
         title: "Gníomhairí seachtracha",
