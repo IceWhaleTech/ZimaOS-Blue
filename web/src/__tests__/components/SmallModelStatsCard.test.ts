@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import SmallModelStatsCard from '@/components/dashboard/cards/SmallModelStatsCard.vue'
-import { i18n } from '@/i18n'
+import { i18n, setLocale } from '@/i18n'
 import { settingsApi } from '@/api/settings'
 
 vi.mock('@/api/settings', () => ({
@@ -10,9 +10,19 @@ vi.mock('@/api/settings', () => ({
   },
 }))
 
+const localStorageMock = {
+  getItem: vi.fn(() => null),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
+}
+
+vi.stubGlobal('localStorage', localStorageMock)
+
 describe('SmallModelStatsCard', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks()
+    await setLocale('en-US')
     vi.useFakeTimers()
   })
 
@@ -20,7 +30,7 @@ describe('SmallModelStatsCard', () => {
     vi.useRealTimers()
   })
 
-  it('renders stats, normalizes fallback reason labels, and supports manual refresh', async () => {
+  it('renders stats, localizes fallback reason labels, and supports manual refresh', async () => {
     vi.mocked(settingsApi.getSmallModelStats)
       .mockResolvedValueOnce({
         data: {
@@ -82,13 +92,23 @@ describe('SmallModelStatsCard', () => {
     expect(wrapper.text()).toContain('80%')
     expect(wrapper.text()).toContain('75%')
     expect(wrapper.text()).toContain('18.5ms')
-    expect(wrapper.text()).toContain('deepresearch unavailable')
+    expect(wrapper.text()).toContain(
+      i18n.global.t('settings.smallModel.fallbackReasonLabels.deepresearch_unavailable')
+    )
     expect(wrapper.text().toLowerCase()).not.toContain('shadow')
+    expect(wrapper.text()).not.toContain('deepresearch_unavailable')
+    expect(wrapper.text()).not.toContain('model_unready')
 
-    const firstText = wrapper.text()
-    expect(firstText.indexOf('timeout')).toBeLessThan(firstText.indexOf('deepresearch unavailable'))
-    expect(firstText.indexOf('deepresearch unavailable')).toBeLessThan(
-      firstText.indexOf('model unready')
+    const fallbackChips = wrapper.findAll('.dashboard-card-chip').slice(1)
+    expect(fallbackChips).toHaveLength(3)
+    expect(fallbackChips[0]?.text()).toContain(
+      i18n.global.t('settings.smallModel.fallbackReasonLabels.timeout')
+    )
+    expect(fallbackChips[1]?.text()).toContain(
+      i18n.global.t('settings.smallModel.fallbackReasonLabels.deepresearch_unavailable')
+    )
+    expect(fallbackChips[2]?.text()).toContain(
+      i18n.global.t('settings.smallModel.fallbackReasonLabels.model_unready')
     )
 
     await wrapper.find('button').trigger('click')

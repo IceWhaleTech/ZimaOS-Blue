@@ -1,6 +1,17 @@
 ---
 name: ui_reviewer
+version: "1.0.0"
 description: "Review UI/UX quality and accessibility for a webpage or screenshot, with structured scoring and findings. Use when the user asks for UI review, design critique, accessibility check, or quality scoring. Canonical actions are review_url, review_image, and check_accessibility."
+invocation: "blue ui.review_url url=https://example.com --json"
+examples:
+  - "blue ui.review_url url=https://example.com --json"
+  - "blue ui.check_accessibility url=https://example.com --json"
+capability_tags:
+  - ui
+  - ux
+  - accessibility
+interaction_mode: stateless
+card_support: both
 ---
 
 # UI Reviewer Skill
@@ -59,4 +70,5 @@ blue ui.check_accessibility url=https://example.com --json
 - Prefer `--json` for structured output.
 - Use this skill for quality evaluation, not for generic browsing/search.
 - Canonical actions are `review_url`, `review_image`, and `check_accessibility`.
-- Do not invent `audit` as an action name; use `blue ui.review_url` for live website reviews.
+- Runtime compatibility still normalizes legacy aliases such as `audit`, `review`, and `a11y`, but new docs and prompts should use the canonical action names above so routing stays deterministic.
+- Do not invent `audit` as a new first-class action name; use `blue ui.review_url` for live website reviews.

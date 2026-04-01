@@ -13,22 +13,21 @@ const circuitBreakers = ref<
 const loading = ref(true)
 const refreshInterval = ref<number | null>(null)
 
-// Error type labels
-const errorTypeLabels: Record<string, string> = {
-  context_too_long: 'Context Too Long',
-  max_tokens_exceeded: 'Content Limit',
-  rate_limited: 'Rate Limited',
-  quota_exceeded: 'Quota Exceeded',
-  concurrency_limit: 'Concurrency',
-  model_overloaded: 'Overloaded',
-  service_unavailable: 'Unavailable',
-  timeout: 'Timeout',
-  repetitive_output: 'Repetitive',
-  infinite_loop: 'Loop',
-  invalid_request: 'Invalid',
-  auth_failed: 'Auth Failed',
-  model_not_found: 'Not Found',
-  unknown: 'Unknown',
+const errorTypeKeyMap: Record<string, string> = {
+  context_too_long: 'settings.failover.errorTypes.context_too_long',
+  max_tokens_exceeded: 'settings.failover.errorTypes.max_tokens_exceeded',
+  rate_limited: 'settings.failover.errorTypes.rate_limited',
+  quota_exceeded: 'settings.failover.errorTypes.quota_exceeded',
+  concurrency_limit: 'settings.failover.errorTypes.concurrency_limit',
+  model_overloaded: 'settings.failover.errorTypes.model_overloaded',
+  service_unavailable: 'settings.failover.errorTypes.service_unavailable',
+  timeout: 'settings.failover.errorTypes.timeout',
+  repetitive_output: 'settings.failover.errorTypes.repetitive_output',
+  infinite_loop: 'settings.failover.errorTypes.infinite_loop',
+  invalid_request: 'settings.failover.errorTypes.invalid_request',
+  auth_failed: 'settings.failover.errorTypes.auth_failed',
+  model_not_found: 'settings.failover.errorTypes.model_not_found',
+  unknown: 'settings.failover.errorTypes.unknown',
 }
 
 // Computed
@@ -45,9 +44,9 @@ const successRateColor = computed(() => {
 })
 
 const statusText = computed(() => {
-  if (!config.value?.enabled) return t('common.disabled', 'Disabled')
+  if (!config.value?.enabled) return t('common.disabled')
   if (!metrics.value) return '-'
-  if (metrics.value.failover_total === 0) return t('settings.failover.noFailovers', 'No failovers')
+  if (metrics.value.failover_total === 0) return t('settings.failover.noFailovers')
   return `${failoverSuccessRate.value}%`
 })
 
@@ -58,7 +57,7 @@ const topErrors = computed(() => {
     .slice(0, 3)
     .map(([type, count]) => ({
       type,
-      label: errorTypeLabels[type] || type,
+      label: errorTypeKeyMap[type] ? t(errorTypeKeyMap[type]) : type,
       count,
     }))
 })
@@ -113,23 +112,29 @@ onUnmounted(() => {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy min-w-0">
-          <p class="dashboard-card-label">Failover</p>
+          <p class="dashboard-card-label">{{ t('dashboard.cards.failoverStatus') }}</p>
           <p class="dashboard-card-subtitle mt-2">
-            {{ t('settings.failover.successRate', 'Success Rate') }}
+            {{ t('settings.failover.successRate') }}
             <span class="ms-1" :class="successRateColor">{{ loading ? '-' : statusText }}</span>
           </p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2 text-xs">
-          <span class="dashboard-card-chip">{{ config?.enabled ? 'ON' : 'OFF' }}</span>
-          <span v-if="config?.circuit_breaker" class="dashboard-card-chip">CB</span>
-          <span v-if="config?.streaming_anomaly?.enabled" class="dashboard-card-chip">AD</span>
+          <span class="dashboard-card-chip">{{
+            config?.enabled ? t('common.enabled') : t('common.disabled')
+          }}</span>
+          <span v-if="config?.circuit_breaker" class="dashboard-card-chip">{{
+            t('settings.failover.circuitBreakerEnabled')
+          }}</span>
+          <span v-if="config?.streaming_anomaly?.enabled" class="dashboard-card-chip">{{
+            t('settings.failover.anomalyDetection')
+          }}</span>
         </div>
       </div>
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="dashboard-card-subsurface p-3">
           <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('settings.failover.totalFailovers', 'Total') }}
+            {{ t('settings.failover.totalFailovers') }}
           </p>
           <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
             {{ metrics?.failover_total || 0 }}
@@ -137,7 +142,7 @@ onUnmounted(() => {
         </div>
         <div class="dashboard-card-subsurface p-3">
           <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('settings.failover.failedFailovers', 'Failed') }}
+            {{ t('settings.failover.failedFailovers') }}
           </p>
           <p
             class="mt-1 text-lg font-semibold"
@@ -152,7 +157,7 @@ onUnmounted(() => {
         </div>
         <div class="dashboard-card-subsurface p-3">
           <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('settings.failover.streamAnomalies', 'Anomalies') }}
+            {{ t('settings.failover.streamAnomalies') }}
           </p>
           <p
             class="mt-1 text-lg font-semibold"
@@ -167,7 +172,7 @@ onUnmounted(() => {
         </div>
         <div class="dashboard-card-subsurface p-3">
           <p class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('common.success', 'Success') }}
+            {{ t('common.success') }}
           </p>
           <p class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
             {{ metrics?.failover_success || 0 }}
@@ -178,33 +183,37 @@ onUnmounted(() => {
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
         <div class="dashboard-card-subsurface p-3">
           <p class="mb-2 text-gray-500 dark:text-gray-400">
-            {{ t('settings.failover.circuitBreakers', 'Breakers') }}
+            {{ t('settings.failover.circuitBreakers') }}
           </p>
-          <div v-if="totalBreakers === 0" class="text-gray-400">-</div>
+          <div v-if="totalBreakers === 0" class="text-gray-400">
+            {{ t('settings.failover.noBreakers') }}
+          </div>
           <div v-else class="flex flex-wrap gap-2">
             <span class="dashboard-card-chip text-green-700 dark:text-green-300"
-              >{{ healthyBreakersCount }} OK</span
+              >{{ healthyBreakersCount }} {{ t('settings.failover.chips.healthy') }}</span
             >
             <span
               v-if="halfOpenBreakersCount > 0"
               class="dashboard-card-chip text-yellow-700 dark:text-yellow-300"
             >
-              {{ halfOpenBreakersCount }} Half
+              {{ halfOpenBreakersCount }} {{ t('settings.failover.chips.halfOpen') }}
             </span>
             <span
               v-if="openBreakersCount > 0"
               class="dashboard-card-chip text-red-700 dark:text-red-300"
             >
-              {{ openBreakersCount }} Open
+              {{ openBreakersCount }} {{ t('settings.failover.chips.open') }}
             </span>
           </div>
         </div>
 
         <div class="dashboard-card-subsurface p-3">
           <p class="mb-2 text-gray-500 dark:text-gray-400">
-            {{ t('settings.failover.topErrors', 'Errors') }}
+            {{ t('settings.failover.topErrors') }}
           </p>
-          <div v-if="topErrors.length === 0" class="text-gray-400">-</div>
+          <div v-if="topErrors.length === 0" class="text-gray-400">
+            {{ t('settings.failover.noErrors') }}
+          </div>
           <div v-else class="flex flex-wrap gap-2">
             <span v-for="err in topErrors" :key="err.type" class="dashboard-card-chip">
               {{ err.label }} <span class="font-semibold">{{ err.count }}</span>

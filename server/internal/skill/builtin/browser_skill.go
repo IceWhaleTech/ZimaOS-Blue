@@ -16,6 +16,7 @@ import (
 type BrowserServiceInterface interface {
 	Start(ctx context.Context) error
 	Navigate(ctx context.Context, url string, targetID string) (BrowserNavResult, error)
+	ExtractText(ctx context.Context, targetID, selector string) (string, error)
 	AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (BrowserA11yResult, error)
 	InteractiveElements(ctx context.Context, targetID string) (BrowserInteractiveResult, error)
 	CountInteractiveElements(ctx context.Context, targetID string) (int, error)
@@ -99,7 +100,7 @@ func NewBrowser() *Browser {
 			ID:          "browser",
 			Name:        "Browser",
 			Version:     "1.0.0",
-			Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots. For keyword search use web_search; for UI quality scoring use ui_reviewer.",
+			Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots. For keyword search or public-page reads use web_query; for UI quality scoring use ui_reviewer.",
 			Category:    "system",
 			Icon:        "browser",
 			Tags:        []string{"browser", "web", "scrape", "automate", "navigate", "accessibility"},
@@ -330,13 +331,15 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 
 		b.cacheRefs(a11y.TargetID, a11y.RefMap, nil)
 
-		return skill.NewResult(map[string]any{
+		payload := map[string]any{
 			"tree":      a11y.Tree,
 			"url":       a11y.URL,
 			"title":     a11y.Title,
 			"target_id": a11y.TargetID,
 			"message":   pageMessage(a11y.Title, a11y.URL, a11y.Tree, -1),
-		}), nil
+		}
+		b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
+		return skill.NewResult(payload), nil
 
 	case "snapshot_interactive":
 		return b.doSnapshotInteractive(ctx, svc, targetID)
@@ -488,7 +491,9 @@ const (
 	// Pages with ≤ this many interactive elements use snapshot_interactive
 	interactiveThreshold = 30
 	// A11y tree DSL longer than this is considered "too large" → fall back
-	a11yTreeMaxLen = 6000
+	a11yTreeMaxLen          = 6000
+	readableContentMaxLen   = 3200
+	readableContentMinChars = 140
 )
 
 // pageMessage builds the human-readable message for snapshot results.
@@ -568,14 +573,16 @@ func (b *Browser) autoSnapshot(ctx context.Context, svc BrowserServiceInterface,
 	b.lastTarget = a11y.TargetID
 	b.mu.Unlock()
 
-	return skill.NewResult(map[string]any{
+	payload := map[string]any{
 		"tree":      a11y.Tree,
 		"url":       a11y.URL,
 		"title":     a11y.Title,
 		"target_id": a11y.TargetID,
 		"strategy":  "a11y",
 		"message":   fmt.Sprintf("Page: %s (%s)\n\n%s", a11y.Title, a11y.URL, a11y.Tree),
-	}), nil
+	}
+	b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
+	return skill.NewResult(payload), nil
 }
 
 // doSnapshotInteractive extracts interactive elements and caches the ref map.
@@ -587,7 +594,7 @@ func (b *Browser) doSnapshotInteractive(ctx context.Context, svc BrowserServiceI
 
 	b.cacheRefs(result.TargetID, nil, result.RefMap)
 
-	return skill.NewResult(map[string]any{
+	payload := map[string]any{
 		"tree":      result.Tree,
 		"url":       result.URL,
 		"title":     result.Title,
@@ -595,7 +602,9 @@ func (b *Browser) doSnapshotInteractive(ctx context.Context, svc BrowserServiceI
 		"count":     result.Count,
 		"strategy":  "interactive",
 		"message":   pageMessage(result.Title, result.URL, result.Tree, result.Count),
-	}), nil
+	}
+	b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
+	return skill.NewResult(payload), nil
 }
 
 // doScreenshotWithInteractive returns a screenshot + interactive elements list.
@@ -623,7 +632,7 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 	data, err := svc.ScreenshotTab(ctx, targetID)
 	if err != nil {
 		// Screenshot failed — return interactive only
-		return skill.NewResult(map[string]any{
+		payload := map[string]any{
 			"tree":      interactive.Tree,
 			"url":       interactive.URL,
 			"title":     interactive.Title,
@@ -631,11 +640,13 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 			"count":     interactive.Count,
 			"strategy":  "interactive",
 			"message":   pageMessage(interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
-		}), nil
+		}
+		b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
+		return skill.NewResult(payload), nil
 	}
 	data = b.normalizeScreenshotPayload(data)
 
-	return skill.NewResult(map[string]any{
+	payload := map[string]any{
 		"screenshot": data,
 		"tree":       interactive.Tree,
 		"url":        interactive.URL,
@@ -644,7 +655,255 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 		"count":      interactive.Count,
 		"strategy":   "screenshot+interactive",
 		"message":    "Page: " + interactive.Title + " (" + interactive.URL + ") — screenshot + " + strconv.Itoa(interactive.Count) + " interactive elements\n\n" + interactive.Tree,
-	}), nil
+	}
+	b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
+	return skill.NewResult(payload), nil
+}
+
+func (b *Browser) maybeAugmentSnapshotWithReadableContent(ctx context.Context, svc BrowserServiceInterface, payload map[string]any) {
+	if payload == nil || svc == nil {
+		return
+	}
+	url, _ := payload["url"].(string)
+	title, _ := payload["title"].(string)
+	tree, _ := payload["tree"].(string)
+	targetID, _ := payload["target_id"].(string)
+	count := browserCountFromPayload(payload["count"])
+	if !browserShouldTryReadableContent(url, title, tree, count) {
+		return
+	}
+
+	content, err := extractReadableSkillBrowserContent(ctx, svc, targetID, url)
+	if err != nil || strings.TrimSpace(content) == "" {
+		return
+	}
+
+	payload["content"] = content
+	payload["content_format"] = "text"
+	payload["content_strategy"] = "extract_recipe"
+	if tree == "" {
+		payload["message"] = fmt.Sprintf("Page: %s (%s)\n\nMain content:\n%s", title, url, content)
+		return
+	}
+	sectionLabel := "Page structure"
+	switch strings.TrimSpace(fmt.Sprintf("%v", payload["strategy"])) {
+	case "interactive", "screenshot+interactive":
+		sectionLabel = "Interactive elements"
+	}
+	payload["message"] = fmt.Sprintf("Page: %s (%s)\n\nMain content:\n%s\n\n%s:\n%s", title, url, content, sectionLabel, tree)
+}
+
+func browserShouldTryReadableContent(url, title, tree string, count int) bool {
+	if strings.TrimSpace(url) == "" {
+		return false
+	}
+	if !browserLooksDocumentationPage(url, title) {
+		return false
+	}
+	if strings.TrimSpace(tree) == "" {
+		return true
+	}
+	if count >= interactiveThreshold {
+		return true
+	}
+	if browserTreeLooksNavigationHeavy(tree) {
+		return true
+	}
+	return true
+}
+
+func browserLooksDocumentationPage(url, title string) bool {
+	lowerURL := strings.ToLower(strings.TrimSpace(url))
+	lowerTitle := strings.ToLower(strings.TrimSpace(title))
+	switch {
+	case strings.Contains(lowerURL, "/docs/"):
+		return true
+	case strings.Contains(lowerURL, "/reference/"):
+		return true
+	case strings.Contains(lowerURL, "/api/reference/"):
+		return true
+	case strings.Contains(lowerURL, "/guides/"):
+		return true
+	case strings.Contains(lowerTitle, "api reference"):
+		return true
+	case strings.Contains(lowerTitle, "documentation"):
+		return true
+	case strings.Contains(lowerTitle, "developer docs"):
+		return true
+	default:
+		return false
+	}
+}
+
+func browserTreeLooksNavigationHeavy(tree string) bool {
+	lines := strings.Split(strings.TrimSpace(tree), "\n")
+	total := 0
+	navLines := 0
+	textLines := 0
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		total++
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "[a]") || strings.Contains(lower, "[link]") || strings.Contains(lower, "[menuitem]") || strings.Contains(lower, "[button]") {
+			navLines++
+		}
+		if strings.Contains(line, ". ") || strings.Contains(line, ": ") {
+			textLines++
+		}
+	}
+	if total == 0 {
+		return false
+	}
+	return navLines*100/total >= 70 && textLines <= 2
+}
+
+func extractReadableSkillBrowserContent(ctx context.Context, svc BrowserServiceInterface, targetID, url string) (string, error) {
+	if strings.TrimSpace(targetID) != "" {
+		if content, err := extractReadableSkillBrowserContentFromTab(ctx, svc, targetID); err == nil && strings.TrimSpace(content) != "" {
+			return content, nil
+		}
+	}
+	return extractReadableSkillBrowserContentViaRecipe(ctx, svc, url)
+}
+
+func extractReadableSkillBrowserContentFromTab(ctx context.Context, svc BrowserServiceInterface, targetID string) (string, error) {
+	selectors := []string{
+		"main",
+		"article",
+		`[role="main"]`,
+		".sl-markdown-content",
+		"[data-pagefind-body]",
+		".docs-content",
+		".documentation",
+		".doc-content",
+		".content",
+		".markdown-body",
+		".prose",
+		"[data-content]",
+		".content-area",
+		".docs-page",
+	}
+	best := ""
+	for _, selector := range selectors {
+		text, err := svc.ExtractText(ctx, targetID, selector)
+		if err != nil {
+			continue
+		}
+		candidate := cleanReadableBrowserContent(text)
+		if len([]rune(candidate)) > len([]rune(best)) {
+			best = candidate
+		}
+	}
+	heading, _ := svc.ExtractText(ctx, targetID, "h1")
+	heading = cleanReadableBrowserContent(heading)
+	if heading != "" && !strings.Contains(strings.ToLower(best), strings.ToLower(heading)) {
+		best = strings.TrimSpace(heading + "\n\n" + best)
+	}
+	if len([]rune(best)) < readableContentMinChars {
+		return "", fmt.Errorf("readable browser content too short")
+	}
+	return truncateReadableBrowserContent(best, readableContentMaxLen), nil
+}
+
+func extractReadableSkillBrowserContentViaRecipe(ctx context.Context, svc BrowserServiceInterface, url string) (string, error) {
+	selectors, err := json.Marshal(map[string]string{
+		"main_content":      "main, article, [role='main'], .sl-markdown-content, [data-pagefind-body], .docs-content, .documentation, .doc-content, .content",
+		"secondary_content": ".markdown-body, .prose, [data-content], .content-area, .docs-page",
+		"page_heading":      "h1",
+	})
+	if err != nil {
+		return "", err
+	}
+	result, err := svc.ExecuteRecipe(ctx, "extract", map[string]string{
+		"url":       url,
+		"selectors": string(selectors),
+	})
+	if err != nil {
+		return "", err
+	}
+	if !result.Success {
+		if strings.TrimSpace(result.Message) != "" {
+			return "", fmt.Errorf("%s", result.Message)
+		}
+		return "", fmt.Errorf("browser extract recipe failed")
+	}
+
+	extracted, _ := result.Data["extracted"].(map[string]interface{})
+	candidates := []string{
+		cleanReadableBrowserContent(browserStringValue(extracted["main_content"])),
+		cleanReadableBrowserContent(browserStringValue(extracted["secondary_content"])),
+	}
+	best := ""
+	for _, candidate := range candidates {
+		if len([]rune(candidate)) > len([]rune(best)) {
+			best = candidate
+		}
+	}
+	heading := cleanReadableBrowserContent(browserStringValue(extracted["page_heading"]))
+	if heading != "" && !strings.Contains(strings.ToLower(best), strings.ToLower(heading)) {
+		best = strings.TrimSpace(heading + "\n\n" + best)
+	}
+	if len([]rune(best)) < readableContentMinChars {
+		return "", fmt.Errorf("readable browser content too short")
+	}
+	return truncateReadableBrowserContent(best, readableContentMaxLen), nil
+}
+
+func cleanReadableBrowserContent(raw string) string {
+	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	lines := strings.Split(raw, "\n")
+	cleaned := make([]string, 0, len(lines))
+	previousBlank := false
+	for _, line := range lines {
+		line = strings.Join(strings.Fields(strings.TrimSpace(line)), " ")
+		if line == "" {
+			if previousBlank {
+				continue
+			}
+			previousBlank = true
+			cleaned = append(cleaned, "")
+			continue
+		}
+		previousBlank = false
+		cleaned = append(cleaned, line)
+	}
+	return strings.TrimSpace(strings.Join(cleaned, "\n"))
+}
+
+func truncateReadableBrowserContent(raw string, max int) string {
+	if max <= 0 {
+		return raw
+	}
+	runes := []rune(raw)
+	if len(runes) <= max {
+		return raw
+	}
+	return strings.TrimSpace(string(runes[:max]))
+}
+
+func browserCountFromPayload(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int32:
+		return int(n)
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
+}
+
+func browserStringValue(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // extractRecipeParams extracts recipe params from the skill input.

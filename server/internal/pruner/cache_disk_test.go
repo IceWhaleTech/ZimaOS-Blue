@@ -134,3 +134,30 @@ func TestDiskCache_Cleanup(t *testing.T) {
 		t.Error("expected at least 1 expired entry cleaned up")
 	}
 }
+
+func TestDiskCache_UsesReaderPoolForFileDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "pruner_cache.db")
+	cache := NewDiskCache(dbPath, 5*time.Minute)
+	defer cache.Close()
+
+	if cache.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if cache.readDB == cache.db {
+		t.Fatal("expected file-backed disk cache to use a separate read db")
+	}
+
+	cache.Put("reader-key", []ScoredSegment{{Segment: Segment{Content: "reader"}, Score: 1.0}})
+
+	if err := cache.db.Close(); err != nil {
+		t.Fatalf("close writer db: %v", err)
+	}
+
+	got, ok := cache.Get("reader-key")
+	if !ok {
+		t.Fatal("expected cache hit via reader pool")
+	}
+	if len(got) != 1 || got[0].Segment.Content != "reader" {
+		t.Fatalf("unexpected cached segments via reader pool: %+v", got)
+	}
+}

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -125,6 +126,16 @@ func TestQuestionManager_TimeoutActionError(t *testing.T) {
 	if ans != nil {
 		t.Fatalf("answers should be nil on timeout error mode, got %+v", ans)
 	}
+	var runtimeErr ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "question_timeout" {
+		t.Fatalf("code = %q, want question_timeout", runtimeErr.ToolRuntimeCode())
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected timeout error to match context.DeadlineExceeded, got %v", err)
+	}
 }
 
 func TestQuestionManager_DynamicTimeoutOverride(t *testing.T) {
@@ -199,6 +210,90 @@ func TestQuestionManager_NoActiveClient_ErrorReturnsImmediately(t *testing.T) {
 	}
 	if elapsed > 200*time.Millisecond {
 		t.Fatalf("expected immediate error without timeout wait, elapsed=%s", elapsed)
+	}
+	var runtimeErr ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "question_delivery_unavailable" {
+		t.Fatalf("code = %q, want question_delivery_unavailable", runtimeErr.ToolRuntimeCode())
+	}
+}
+
+func TestQuestionManager_ContextCancellationReturnsStructuredRuntimeError(t *testing.T) {
+	broker := sse.NewBroker()
+	ch := broker.Subscribe("u1")
+	defer broker.Unsubscribe("u1", ch)
+
+	mgr := NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	questions := []QuestionItem{{
+		ID:       "q1",
+		Question: "Pick one",
+		Options:  []QuestionOption{{Label: "A", Value: "a"}},
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ans, silent, err := mgr.AskQuestions(ctx, "u1", "s1", questions)
+	if err == nil {
+		t.Fatal("expected cancellation error")
+	}
+	if silent {
+		t.Fatal("silent should be false on cancellation")
+	}
+	if ans != nil {
+		t.Fatalf("answers should be nil on cancellation, got %+v", ans)
+	}
+	var runtimeErr ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "question_cancelled" {
+		t.Fatalf("code = %q, want question_cancelled", runtimeErr.ToolRuntimeCode())
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation error to match context.Canceled, got %v", err)
+	}
+	if mgr.PendingCount() != 0 {
+		t.Fatalf("PendingCount() = %d, want 0", mgr.PendingCount())
+	}
+}
+
+func TestQuestionManager_ContextDeadlineReturnsStructuredRuntimeError(t *testing.T) {
+	broker := sse.NewBroker()
+	ch := broker.Subscribe("u1")
+	defer broker.Unsubscribe("u1", ch)
+
+	mgr := NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	questions := []QuestionItem{{
+		ID:       "q1",
+		Question: "Pick one",
+		Options:  []QuestionOption{{Label: "A", Value: "a"}},
+	}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	ans, silent, err := mgr.AskQuestions(ctx, "u1", "s1", questions)
+	if err == nil {
+		t.Fatal("expected deadline error")
+	}
+	if silent {
+		t.Fatal("silent should be false on deadline error")
+	}
+	if ans != nil {
+		t.Fatalf("answers should be nil on deadline error, got %+v", ans)
+	}
+	var runtimeErr ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "question_timeout" {
+		t.Fatalf("code = %q, want question_timeout", runtimeErr.ToolRuntimeCode())
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline error to match context.DeadlineExceeded, got %v", err)
 	}
 }
 

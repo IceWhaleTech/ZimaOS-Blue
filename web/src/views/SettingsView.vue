@@ -23,6 +23,7 @@ import { proxyCacheApi, type PrunerConfig } from '@/api/proxyCache'
 import { useTauri } from '@/composables/useTauri'
 import { serviceApi } from '@/api/service'
 import type { ServiceInfo } from '@/api/service'
+import { formatSmallModelFallbackReason } from '@/utils/smallModelFallbackReason'
 
 const { t, te } = useI18n()
 const route = useRoute()
@@ -452,7 +453,7 @@ async function handleSmallModelRouteImageQAEnabledChange(next: boolean) {
 }
 
 function formatFallbackReason(reason: string): string {
-  return reason.split('_').join(' ')
+  return formatSmallModelFallbackReason(reason, t, te)
 }
 
 async function fetchSmallModelStats() {
@@ -1243,7 +1244,9 @@ onUnmounted(() => {
                     <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {{
                         t('settings.smallModel.irFeatureHintDesc', {
-                          deepResearch: t('ui.deepResearchTitle'),
+                          deepResearch: te('ui.deepResearchTitle')
+                            ? t('ui.deepResearchTitle')
+                            : 'Deep Research',
                           agentMode: t('chat.taskLoop'),
                         })
                       }}
@@ -1772,7 +1775,7 @@ onUnmounted(() => {
                       >
                         <div class="text-gray-500 dark:text-gray-400">
                           {{
-                            t('settings.smallModel.deepResearchFallbacks', 'DeepResearch Fallbacks')
+                            t('settings.smallModel.deepResearchFallbacks', 'Research Fallbacks')
                           }}
                         </div>
                         <div class="mt-1 font-medium text-gray-900 dark:text-white">
@@ -1935,7 +1938,7 @@ onUnmounted(() => {
                           :key="reason"
                           class="flex items-center justify-between text-xs rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5"
                         >
-                          <span class="text-gray-700 dark:text-gray-200 font-mono">{{
+                          <span class="text-gray-700 dark:text-gray-200">{{
                             formatFallbackReason(reason)
                           }}</span>
                           <span class="text-gray-900 dark:text-white font-medium">{{ count }}</span>

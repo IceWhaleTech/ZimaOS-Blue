@@ -16,6 +16,7 @@ const (
 	RunKindAgentTask RunKind = "agent_task"
 	RunKindResearch  RunKind = "research"
 	RunKindSubagent  RunKind = "subagent"
+	RunKindWorkflow  RunKind = "workflow"
 )
 
 type RunStatus string
@@ -165,6 +166,7 @@ type Manager interface {
 	Get(ctx context.Context, id string) (*Run, error)
 	List(ctx context.Context, filter RunFilter) ([]Run, error)
 	Cancel(ctx context.Context, id string, reason string) error
+	PerformAction(ctx context.Context, id string, action string, input map[string]interface{}) (*Run, error)
 	SpawnChild(ctx context.Context, parentID string, spec RunSpec) (*Run, error)
 	AppendEvent(ctx context.Context, event RunEvent) error
 	AttachArtifact(ctx context.Context, ref ArtifactRef) error
@@ -189,11 +191,16 @@ type Store interface {
 }
 
 type RunEnv struct {
-	Manager *Controller
+	Manager    *Controller
+	RunContext *RunContext
 }
 
 type SnapshotDriver interface {
 	Sync(ctx context.Context, run *Run) (*Run, error)
+}
+
+type ActionDriver interface {
+	PerformAction(ctx context.Context, run *Run, action string, input map[string]interface{}) (*Run, error)
 }
 
 type RunGroupKind string

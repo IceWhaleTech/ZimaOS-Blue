@@ -15,12 +15,22 @@ import (
 
 // SQLiteRepository implements Repository using SQLite.
 type SQLiteRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // NewSQLiteRepository creates a new SQLiteRepository.
 func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
-	return &SQLiteRepository{db: db}
+	return NewSQLiteRepositoryWithReadDB(db, db)
+}
+
+// NewSQLiteRepositoryWithReadDB creates a new SQLiteRepository with separate
+// write and read database handles.
+func NewSQLiteRepositoryWithReadDB(writeDB, readDB *sql.DB) *SQLiteRepository {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	return &SQLiteRepository{db: writeDB, readDB: readDB}
 }
 
 // Table helpers
@@ -29,12 +39,34 @@ func (r *SQLiteRepository) tenants(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "tenants")
 }
 
+func (r *SQLiteRepository) tenantsRead(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.reader(), "tenants")
+}
+
 func (r *SQLiteRepository) members(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "tenant_members")
 }
 
+func (r *SQLiteRepository) membersRead(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.reader(), "tenant_members")
+}
+
 func (r *SQLiteRepository) invitations(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "tenant_invitations")
+}
+
+func (r *SQLiteRepository) invitationsRead(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.reader(), "tenant_invitations")
+}
+
+func (r *SQLiteRepository) reader() *sql.DB {
+	if r != nil && r.readDB != nil {
+		return r.readDB
+	}
+	if r == nil {
+		return nil
+	}
+	return r.db
 }
 
 // Row structs for zorm scanning
@@ -72,6 +104,17 @@ type invitationRow struct {
 	ExpiresAt  string  `json:"expires_at" zorm:"expires_at"`
 	AcceptedAt *string `json:"accepted_at" zorm:"accepted_at"`
 	CreatedAt  string  `json:"created_at" zorm:"created_at"`
+}
+
+type memberWithUserRow struct {
+	ID        string  `json:"id" zorm:"id"`
+	TenantID  string  `json:"tenant_id" zorm:"tenant_id"`
+	UserID    string  `json:"user_id" zorm:"user_id"`
+	Role      string  `json:"role" zorm:"role"`
+	JoinedAt  string  `json:"joined_at" zorm:"joined_at"`
+	InvitedBy *string `json:"invited_by" zorm:"invited_by"`
+	Username  string  `json:"username" zorm:"username"`
+	Email     string  `json:"email" zorm:"email"`
 }
 
 // Converter functions
@@ -143,6 +186,137 @@ func rowToInvitation(row invitationRow) *TenantInvitation {
 	inv.TenantID, _ = uuid.Parse(row.TenantID)
 	inv.InvitedBy, _ = uuid.Parse(row.InvitedBy)
 	return inv
+}
+
+func rowToMemberWithUser(row memberWithUserRow) *TenantMemberWithUser {
+	member := &TenantMemberWithUser{
+		TenantMember: TenantMember{
+			Role:     MemberRole(row.Role),
+			JoinedAt: parseTimeStr(row.JoinedAt),
+		},
+		Username: row.Username,
+	}
+	member.ID, _ = uuid.Parse(row.ID)
+	member.TenantID, _ = uuid.Parse(row.TenantID)
+	member.UserID, _ = uuid.Parse(row.UserID)
+	if row.Email != "" {
+		email := row.Email
+		member.Email = &email
+	}
+	if row.InvitedBy != nil {
+		invitedBy, _ := uuid.Parse(*row.InvitedBy)
+		member.InvitedBy = &invitedBy
+	}
+	return member
+}
+
+func stringFromMapValue(m z.V, key string) string {
+	value, ok := valueFromMapKey(m, key)
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	case time.Time:
+		return typed.Format(time.RFC3339)
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func valueFromMapKey(m z.V, key string) (interface{}, bool) {
+	if m == nil {
+		return nil, false
+	}
+	if value, ok := m[key]; ok {
+		return value, true
+	}
+
+	for rawKey, value := range m {
+		if normalizeMapKey(rawKey) == key {
+			return value, true
+		}
+	}
+
+	return nil, false
+}
+
+func normalizeMapKey(key string) string {
+	key = strings.TrimSpace(strings.Trim(key, "`"))
+	if key == "" {
+		return ""
+	}
+
+	fields := strings.Fields(key)
+	if len(fields) >= 3 && strings.EqualFold(fields[len(fields)-2], "as") {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if len(fields) >= 2 {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if dot := strings.LastIndex(key, "."); dot >= 0 {
+		return strings.Trim(key[dot+1:], "`")
+	}
+	return key
+}
+
+func tenantFromMapRow(row z.V) *Tenant {
+	return rowToTenant(tenantRow{
+		ID:          stringFromMapValue(row, "id"),
+		Name:        stringFromMapValue(row, "name"),
+		Slug:        stringFromMapValue(row, "slug"),
+		Description: ptrOrNilString(stringFromMapValue(row, "description")),
+		Status:      stringFromMapValue(row, "status"),
+		Settings:    ptrOrNilString(stringFromMapValue(row, "settings")),
+		Limits:      ptrOrNilString(stringFromMapValue(row, "limits")),
+		OwnerID:     stringFromMapValue(row, "owner_id"),
+		CreatedAt:   stringFromMapValue(row, "created_at"),
+		UpdatedAt:   stringFromMapValue(row, "updated_at"),
+		DeletedAt:   ptrOrNilString(stringFromMapValue(row, "deleted_at")),
+	})
+}
+
+func memberWithUserFromMapRow(row z.V) *TenantMemberWithUser {
+	email := ptrOrNilString(stringFromMapValue(row, "email"))
+	return &TenantMemberWithUser{
+		TenantMember: TenantMember{
+			ID:        parseUUIDString(stringFromMapValue(row, "id")),
+			TenantID:  parseUUIDString(stringFromMapValue(row, "tenant_id")),
+			UserID:    parseUUIDString(stringFromMapValue(row, "user_id")),
+			Role:      MemberRole(stringFromMapValue(row, "role")),
+			JoinedAt:  parseTimeStr(stringFromMapValue(row, "joined_at")),
+			InvitedBy: parseUUIDPtrString(ptrOrNilString(stringFromMapValue(row, "invited_by"))),
+		},
+		Username: stringFromMapValue(row, "username"),
+		Email:    email,
+	}
+}
+
+func ptrOrNilString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	v := value
+	return &v
+}
+
+func parseUUIDString(value string) uuid.UUID {
+	id, _ := uuid.Parse(value)
+	return id
+}
+
+func parseUUIDPtrString(value *string) *uuid.UUID {
+	if value == nil {
+		return nil
+	}
+	id, err := uuid.Parse(*value)
+	if err != nil {
+		return nil
+	}
+	return &id
 }
 
 // InitSchema creates the necessary tables.
@@ -230,7 +404,7 @@ func (r *SQLiteRepository) Create(ctx context.Context, tenant *Tenant) error {
 // GetByID retrieves a tenant by ID.
 func (r *SQLiteRepository) GetByID(ctx context.Context, id uuid.UUID) (*Tenant, error) {
 	var rows []tenantRow
-	_, err := r.tenants(ctx).Select(&rows,
+	_, err := r.tenantsRead(ctx).Select(&rows,
 		z.Where(z.Eq("id", id.String()), z.IsNull("deleted_at")),
 		z.Limit(1),
 	)
@@ -246,7 +420,7 @@ func (r *SQLiteRepository) GetByID(ctx context.Context, id uuid.UUID) (*Tenant, 
 // GetBySlug retrieves a tenant by slug.
 func (r *SQLiteRepository) GetBySlug(ctx context.Context, slug string) (*Tenant, error) {
 	var rows []tenantRow
-	_, err := r.tenants(ctx).Select(&rows,
+	_, err := r.tenantsRead(ctx).Select(&rows,
 		z.Where(z.Eq("slug", slug), z.IsNull("deleted_at")),
 		z.Limit(1),
 	)
@@ -301,6 +475,9 @@ func (r *SQLiteRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 // List retrieves tenants with pagination and filtering.
 func (r *SQLiteRepository) List(ctx context.Context, query *ListTenantsQuery) (*ListTenantsResponse, error) {
+	if query == nil {
+		query = &ListTenantsQuery{}
+	}
 	// Set defaults
 	if query.Page < 1 {
 		query.Page = 1
@@ -309,25 +486,19 @@ func (r *SQLiteRepository) List(ctx context.Context, query *ListTenantsQuery) (*
 		query.PageSize = 20
 	}
 
-	// Build query
-	baseQuery := `FROM tenants WHERE deleted_at IS NULL`
-	args := []interface{}{}
-
+	conds := []interface{}{z.IsNull("deleted_at")}
 	if query.Search != "" {
-		baseQuery += ` AND (name LIKE ? OR slug LIKE ?)`
 		searchPattern := "%" + query.Search + "%"
-		args = append(args, searchPattern, searchPattern)
+		conds = append(conds, z.Or(z.Like("name", searchPattern), z.Like("slug", searchPattern)))
 	}
 
 	if query.Status != nil {
-		baseQuery += ` AND status = ?`
-		args = append(args, *query.Status)
+		conds = append(conds, z.Eq("status", string(*query.Status)))
 	}
 
-	// Count total
 	var total int64
-	countQuery := `SELECT COUNT(*) ` + baseQuery
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	_, err := r.tenantsRead(ctx).Select(&total, z.Fields("count(1)"), z.Where(conds...))
+	if err != nil {
 		return nil, fmt.Errorf("failed to count tenants: %w", err)
 	}
 
@@ -344,41 +515,20 @@ func (r *SQLiteRepository) List(ctx context.Context, query *ListTenantsQuery) (*
 		orderDir = "ASC"
 	}
 
-	// Fetch tenants
-	selectQuery := `SELECT id, name, slug, description, status, settings, limits, owner_id, created_at, updated_at, deleted_at ` +
-		baseQuery + fmt.Sprintf(` ORDER BY %s %s LIMIT ? OFFSET ?`, orderBy, orderDir)
-
 	offset := (query.Page - 1) * query.PageSize
-	args = append(args, query.PageSize, offset)
-
-	rows, err := r.db.QueryContext(ctx, selectQuery, args...)
+	var rows []tenantRow
+	_, err = r.tenantsRead(ctx).Select(&rows,
+		z.Where(conds...),
+		z.OrderBy(fmt.Sprintf("%s %s", orderBy, orderDir)),
+		z.Limit(query.PageSize, offset),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tenants: %w", err)
 	}
-	defer rows.Close()
 
 	tenants := make([]*Tenant, 0)
-	for rows.Next() {
-		t := &Tenant{}
-		var idStr, ownerIDStr string
-		if err := rows.Scan(
-			&idStr,
-			&t.Name,
-			&t.Slug,
-			&t.Description,
-			&t.Status,
-			&t.Settings,
-			&t.Limits,
-			&ownerIDStr,
-			&t.CreatedAt,
-			&t.UpdatedAt,
-			&t.DeletedAt,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan tenant: %w", err)
-		}
-		t.ID, _ = uuid.Parse(idStr)
-		t.OwnerID, _ = uuid.Parse(ownerIDStr)
-		tenants = append(tenants, t)
+	for _, row := range rows {
+		tenants = append(tenants, rowToTenant(row))
 	}
 
 	totalPages := int(total) / query.PageSize
@@ -397,50 +547,45 @@ func (r *SQLiteRepository) List(ctx context.Context, query *ListTenantsQuery) (*
 
 // ExistsBySlug checks if a slug exists.
 func (r *SQLiteRepository) ExistsBySlug(ctx context.Context, slug string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM tenants WHERE slug = ? AND deleted_at IS NULL)`
-	var exists bool
-	if err := r.db.QueryRowContext(ctx, query, slug).Scan(&exists); err != nil {
+	var total int64
+	_, err := r.tenantsRead(ctx).Select(&total,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("slug", slug), z.IsNull("deleted_at")),
+	)
+	if err != nil {
 		return false, fmt.Errorf("failed to check slug existence: %w", err)
 	}
-	return exists, nil
+	return total > 0, nil
 }
 
 // GetUserTenants retrieves all tenants a user belongs to.
 func (r *SQLiteRepository) GetUserTenants(ctx context.Context, userID uuid.UUID) ([]*Tenant, error) {
-	query := `SELECT t.id, t.name, t.slug, t.description, t.status, t.settings, t.limits, t.owner_id, t.created_at, t.updated_at, t.deleted_at
-		FROM tenants t
-		INNER JOIN tenant_members tm ON t.id = tm.tenant_id
-		WHERE tm.user_id = ? AND t.deleted_at IS NULL
-		ORDER BY t.name ASC`
-
-	rows, err := r.db.QueryContext(ctx, query, userID.String())
+	var rows []z.V
+	_, err := z.TableContext(ctx, r.reader(), "tenants t").Select(&rows,
+		z.Fields(
+			"t.id id",
+			"t.name name",
+			"t.slug slug",
+			"t.description description",
+			"t.status status",
+			"t.settings settings",
+			"t.limits limits",
+			"t.owner_id owner_id",
+			"t.created_at created_at",
+			"t.updated_at updated_at",
+			"t.deleted_at deleted_at",
+		),
+		z.InnerJoin("tenant_members tm", "tm.tenant_id = t.id"),
+		z.Where(z.Eq("tm.user_id", userID.String()), z.IsNull("t.deleted_at")),
+		z.OrderBy("t.name ASC"),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user tenants: %w", err)
 	}
-	defer rows.Close()
 
 	tenants := make([]*Tenant, 0)
-	for rows.Next() {
-		t := &Tenant{}
-		var idStr, ownerIDStr string
-		if err := rows.Scan(
-			&idStr,
-			&t.Name,
-			&t.Slug,
-			&t.Description,
-			&t.Status,
-			&t.Settings,
-			&t.Limits,
-			&ownerIDStr,
-			&t.CreatedAt,
-			&t.UpdatedAt,
-			&t.DeletedAt,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan tenant: %w", err)
-		}
-		t.ID, _ = uuid.Parse(idStr)
-		t.OwnerID, _ = uuid.Parse(ownerIDStr)
-		tenants = append(tenants, t)
+	for _, row := range rows {
+		tenants = append(tenants, tenantFromMapRow(row))
 	}
 
 	return tenants, nil
@@ -474,7 +619,7 @@ func (r *SQLiteRepository) AddMember(ctx context.Context, member *TenantMember) 
 // GetMember retrieves a member by tenant and user ID.
 func (r *SQLiteRepository) GetMember(ctx context.Context, tenantID, userID uuid.UUID) (*TenantMember, error) {
 	var rows []memberRow
-	_, err := r.members(ctx).Select(&rows,
+	_, err := r.membersRead(ctx).Select(&rows,
 		z.Where(z.Eq("tenant_id", tenantID.String()), z.Eq("user_id", userID.String())),
 		z.Limit(1),
 	)
@@ -518,6 +663,9 @@ func (r *SQLiteRepository) RemoveMember(ctx context.Context, tenantID, userID uu
 
 // ListMembers retrieves members of a tenant with pagination.
 func (r *SQLiteRepository) ListMembers(ctx context.Context, tenantID uuid.UUID, query *ListMembersQuery) (*ListMembersResponse, error) {
+	if query == nil {
+		query = &ListMembersQuery{}
+	}
 	// Set defaults
 	if query.Page < 1 {
 		query.Page = 1
@@ -526,62 +674,50 @@ func (r *SQLiteRepository) ListMembers(ctx context.Context, tenantID uuid.UUID, 
 		query.PageSize = 20
 	}
 
-	// Build query
-	baseQuery := `FROM tenant_members tm
-		INNER JOIN users u ON tm.user_id = u.id
-		WHERE tm.tenant_id = ? AND u.deleted_at IS NULL`
-	args := []interface{}{tenantID.String()}
-
+	conds := []interface{}{
+		z.Eq("tm.tenant_id", tenantID.String()),
+		z.IsNull("u.deleted_at"),
+	}
 	if query.Role != nil {
-		baseQuery += ` AND tm.role = ?`
-		args = append(args, *query.Role)
+		conds = append(conds, z.Eq("tm.role", string(*query.Role)))
 	}
 
-	// Count total
 	var total int64
-	countQuery := `SELECT COUNT(*) ` + baseQuery
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	joined := z.TableContext(ctx, r.reader(), "tenant_members tm")
+	_, err := joined.Select(&total,
+		z.Fields("count(1)"),
+		z.InnerJoin("users u", "u.id = tm.user_id"),
+		z.Where(conds...),
+	)
+	if err != nil {
 		return nil, fmt.Errorf("failed to count members: %w", err)
 	}
 
-	// Fetch members
-	selectQuery := `SELECT tm.id, tm.tenant_id, tm.user_id, tm.role, tm.joined_at, tm.invited_by, u.username, u.email ` +
-		baseQuery + ` ORDER BY tm.joined_at DESC LIMIT ? OFFSET ?`
-
 	offset := (query.Page - 1) * query.PageSize
-	args = append(args, query.PageSize, offset)
-
-	rows, err := r.db.QueryContext(ctx, selectQuery, args...)
+	var rows []z.V
+	_, err = joined.Select(&rows,
+		z.Fields(
+			"tm.id id",
+			"tm.tenant_id tenant_id",
+			"tm.user_id user_id",
+			"tm.role role",
+			"tm.joined_at joined_at",
+			"tm.invited_by invited_by",
+			"u.username username",
+			"COALESCE(u.email, '') email",
+		),
+		z.InnerJoin("users u", "u.id = tm.user_id"),
+		z.Where(conds...),
+		z.OrderBy("tm.joined_at DESC"),
+		z.Limit(query.PageSize, offset),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list members: %w", err)
 	}
-	defer rows.Close()
 
 	members := make([]*TenantMemberWithUser, 0)
-	for rows.Next() {
-		member := &TenantMemberWithUser{}
-		var idStr, tenantIDStr, userIDStr string
-		var invitedByStr *string
-		if err := rows.Scan(
-			&idStr,
-			&tenantIDStr,
-			&userIDStr,
-			&member.Role,
-			&member.JoinedAt,
-			&invitedByStr,
-			&member.Username,
-			&member.Email,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan member: %w", err)
-		}
-		member.ID, _ = uuid.Parse(idStr)
-		member.TenantID, _ = uuid.Parse(tenantIDStr)
-		member.UserID, _ = uuid.Parse(userIDStr)
-		if invitedByStr != nil {
-			invitedBy, _ := uuid.Parse(*invitedByStr)
-			member.InvitedBy = &invitedBy
-		}
-		members = append(members, member)
+	for _, row := range rows {
+		members = append(members, memberWithUserFromMapRow(row))
 	}
 
 	totalPages := int(total) / query.PageSize
@@ -600,9 +736,12 @@ func (r *SQLiteRepository) ListMembers(ctx context.Context, tenantID uuid.UUID, 
 
 // CountMembers returns the number of members in a tenant.
 func (r *SQLiteRepository) CountMembers(ctx context.Context, tenantID uuid.UUID) (int64, error) {
-	query := `SELECT COUNT(*) FROM tenant_members WHERE tenant_id = ?`
 	var count int64
-	if err := r.db.QueryRowContext(ctx, query, tenantID.String()).Scan(&count); err != nil {
+	_, err := r.membersRead(ctx).Select(&count,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("tenant_id", tenantID.String())),
+	)
+	if err != nil {
 		return 0, fmt.Errorf("failed to count members: %w", err)
 	}
 	return count, nil
@@ -610,12 +749,15 @@ func (r *SQLiteRepository) CountMembers(ctx context.Context, tenantID uuid.UUID)
 
 // IsMember checks if a user is a member of a tenant.
 func (r *SQLiteRepository) IsMember(ctx context.Context, tenantID, userID uuid.UUID) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM tenant_members WHERE tenant_id = ? AND user_id = ?)`
-	var exists bool
-	if err := r.db.QueryRowContext(ctx, query, tenantID.String(), userID.String()).Scan(&exists); err != nil {
+	var count int64
+	_, err := r.membersRead(ctx).Select(&count,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("tenant_id", tenantID.String()), z.Eq("user_id", userID.String())),
+	)
+	if err != nil {
 		return false, fmt.Errorf("failed to check membership: %w", err)
 	}
-	return exists, nil
+	return count > 0, nil
 }
 
 // CreateInvitation creates a new invitation.
@@ -639,7 +781,7 @@ func (r *SQLiteRepository) CreateInvitation(ctx context.Context, invitation *Ten
 // GetInvitationByID retrieves an invitation by ID.
 func (r *SQLiteRepository) GetInvitationByID(ctx context.Context, id uuid.UUID) (*TenantInvitation, error) {
 	var rows []invitationRow
-	_, err := r.invitations(ctx).Select(&rows,
+	_, err := r.invitationsRead(ctx).Select(&rows,
 		z.Where(z.Eq("id", id.String())),
 		z.Limit(1),
 	)
@@ -655,7 +797,7 @@ func (r *SQLiteRepository) GetInvitationByID(ctx context.Context, id uuid.UUID) 
 // GetInvitationByToken retrieves an invitation by token.
 func (r *SQLiteRepository) GetInvitationByToken(ctx context.Context, token string) (*TenantInvitation, error) {
 	var rows []invitationRow
-	_, err := r.invitations(ctx).Select(&rows,
+	_, err := r.invitationsRead(ctx).Select(&rows,
 		z.Where(z.Eq("token", token)),
 		z.Limit(1),
 	)
@@ -671,7 +813,7 @@ func (r *SQLiteRepository) GetInvitationByToken(ctx context.Context, token strin
 // GetPendingInvitationByEmail retrieves a pending invitation by email for a tenant.
 func (r *SQLiteRepository) GetPendingInvitationByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*TenantInvitation, error) {
 	var rows []invitationRow
-	_, err := r.invitations(ctx).Select(&rows,
+	_, err := r.invitationsRead(ctx).Select(&rows,
 		z.Where(
 			z.Eq("tenant_id", tenantID.String()),
 			z.Eq("email", email),
@@ -721,7 +863,7 @@ func (r *SQLiteRepository) DeleteInvitation(ctx context.Context, id uuid.UUID) e
 // ListPendingInvitations retrieves pending invitations for a tenant.
 func (r *SQLiteRepository) ListPendingInvitations(ctx context.Context, tenantID uuid.UUID) ([]*TenantInvitation, error) {
 	var rows []invitationRow
-	_, err := r.invitations(ctx).Select(&rows,
+	_, err := r.invitationsRead(ctx).Select(&rows,
 		z.Where(
 			z.Eq("tenant_id", tenantID.String()),
 			z.IsNull("accepted_at"),

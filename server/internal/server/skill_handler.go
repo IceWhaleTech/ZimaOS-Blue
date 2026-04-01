@@ -24,6 +24,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 )
@@ -68,7 +69,8 @@ type RemoteSkill struct {
 	CuratedLabel        string   `json:"curated_label,omitempty"`
 }
 
-func (h *SkillHandler) remoteSkillFromDocument(doc skillmarket.SkillDocument) *RemoteSkill {
+func (h *SkillHandler) remoteSkillFromDocument(doc skillmarket.SkillDocument, installedIDs map[string]bool) *RemoteSkill {
+	installed, _ := h.skillInstalledState(doc.ID, installedIDs)
 	return &RemoteSkill{
 		ID:                  doc.ID,
 		Name:                doc.Name,
@@ -84,7 +86,7 @@ func (h *SkillHandler) remoteSkillFromDocument(doc skillmarket.SkillDocument) *R
 		Homepage:            firstString(doc.Homepage, doc.RepoURL, doc.DownloadURL),
 		Stars:               doc.Stars,
 		Downloads:           doc.Downloads,
-		Installed:           h.registry.Get(doc.ID) != nil,
+		Installed:           installed,
 		RiskLevel:           doc.RiskLevel,
 		SecurityBadge:       doc.SecurityBadge,
 		Installable:         doc.Installable,
@@ -97,6 +99,19 @@ func (h *SkillHandler) remoteSkillFromDocument(doc skillmarket.SkillDocument) *R
 		CuratedRank:         doc.CuratedRank,
 		CuratedLabel:        doc.CuratedLabel,
 	}
+}
+
+func (h *SkillHandler) skillInstalledState(id string, installedIDs map[string]bool) (bool, bool) {
+	installed := false
+	if installedIDs != nil {
+		installed = installedIDs[id]
+	} else {
+		installed = h.getInstalledSkillIDs()[id]
+	}
+	if info := h.registry.GetInfo(id); info != nil {
+		return installed, info.Enabled
+	}
+	return installed, installed
 }
 
 func firstString(values ...string) string {
@@ -169,7 +184,7 @@ type SkillHandler struct {
 	syncService         *skillstore.SyncService          // Sync service for periodic updates
 	featuredLoader      *skillstore.FeaturedSkillsLoader // Featured skills fallback
 	localScanner        *skillstore.LocalSkillScanner    // Local skill discovery
-	skillsDir           string                           // {dataDir}/workspace/.claude/skills/
+	skillsDir           string                           // active managed install dir, typically {dataDir}/workspace/.claude/skills/
 	eventBroker         SkillEventPublisher              // Unified SSE event broker
 	sources             map[string]*SkillSource
 	remoteSkills        map[string]*RemoteSkill
@@ -447,7 +462,8 @@ var skillsHiddenFromSkillTab = map[string]bool{
 	"push-notification": true, // legacy name for reminder
 }
 
-// ListSkills returns all skills from the .claude/skills/ directory.
+// ListSkills returns installed skills from the active managed directory plus
+// compatible peer roots when available.
 func (h *SkillHandler) ListSkills(c echo.Context) error {
 	response := make([]SkillResponse, 0)
 	seen := make(map[string]struct{})
@@ -502,7 +518,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// GetSkill returns a specific skill from the .claude/skills/ directory.
+// GetSkill returns a specific installed or marketplace skill.
 func (h *SkillHandler) GetSkill(c echo.Context) error {
 	id, err := validatedSkillID(c.Param("id"))
 	if err != nil {
@@ -520,9 +536,19 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 		}
 	}
 
+	if payload, ok := h.installedSkillDetailPayload(id); ok {
+		return c.JSON(http.StatusOK, payload)
+	}
+
 	if h.localScanner != nil {
 		for _, candidate := range skillIDAliases(id) {
 			if ls := h.localScanner.Get(candidate); ls != nil {
+				enabled := true
+				builtin := false
+				if info := h.registry.GetInfo(ls.ID); info != nil {
+					enabled = info.Enabled
+					builtin = info.Builtin
+				}
 				return c.JSON(http.StatusOK, marketDetailCompatibilityPayload(&RemoteSkill{
 					ID:            ls.ID,
 					Name:          ls.Name,
@@ -537,7 +563,7 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 					Installed:     true,
 					SecurityBadge: skillmarket.BadgeYellow,
 					RiskLevel:     "unknown",
-				}, true, true, false))
+				}, true, enabled, builtin))
 			}
 		}
 	}
@@ -588,6 +614,48 @@ func marketDetailCompatibilityPayload(skill *RemoteSkill, installed, enabled, bu
 	}
 }
 
+func (h *SkillHandler) installedSkillDetailPayload(id string) (map[string]interface{}, bool) {
+	resolved, ok := h.resolveInstalledSkill(id)
+	if !ok {
+		return nil, false
+	}
+	enabled := resolved.Document.Enabled
+	builtin := false
+	name := firstString(resolved.Document.Name, resolved.ID)
+	version := strings.TrimSpace(resolved.Document.Version)
+	description := strings.TrimSpace(resolved.Document.Description)
+	author := strings.TrimSpace(resolved.Document.Author)
+	category := strings.TrimSpace(resolved.Document.Category)
+	tags := append([]string(nil), resolved.Document.Tags...)
+	if info := h.registry.GetInfo(resolved.ID); info != nil && info.Manifest != nil {
+		enabled = info.Enabled
+		builtin = info.Builtin
+		name = firstString(info.Manifest.Name, name)
+		version = firstString(info.Manifest.Version, version)
+		description = firstString(info.Manifest.Description, description)
+		author = firstString(info.Manifest.Author, author)
+		category = firstString(info.Manifest.Category, category)
+		if len(info.Manifest.Tags) > 0 {
+			tags = append([]string(nil), info.Manifest.Tags...)
+		}
+	}
+	return marketDetailCompatibilityPayload(&RemoteSkill{
+		ID:            resolved.ID,
+		Name:          name,
+		Version:       version,
+		Description:   description,
+		Author:        author,
+		Category:      category,
+		Tags:          tags,
+		SourceID:      "local",
+		SourceName:    "Local",
+		SourceGroup:   "local",
+		Installed:     true,
+		SecurityBadge: skillmarket.BadgeYellow,
+		RiskLevel:     "unknown",
+	}, true, enabled, builtin), true
+}
+
 // GetSkillContent returns the content (SKILL.md/readme) of a skill
 func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 	id, err := validatedSkillID(c.Param("id"))
@@ -598,6 +666,28 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 	}
 	ctx := c.Request().Context()
 
+	if resolved, ok := h.resolveInstalledSkill(id); ok {
+		name := firstString(resolved.Document.Name, resolved.ID)
+		if info := h.registry.GetInfo(resolved.ID); info != nil && info.Manifest != nil {
+			name = firstString(info.Manifest.Name, name)
+		}
+		content := string(resolved.Raw)
+		if content == "" {
+			if _, data, err := readInstalledSkillEntry(resolved.EntryDir); err == nil {
+				content = string(data)
+			}
+		}
+		if content != "" {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"id":         resolved.ID,
+				"name":       name,
+				"content":    content,
+				"source":     "directory",
+				"entry_file": resolved.Document.EntryFile,
+			})
+		}
+	}
+
 	// First check if skill exists in registry
 	var info *skill.SkillInfo
 	for _, candidate := range skillIDAliases(id) {
@@ -607,9 +697,9 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 	}
 
 	// Try to read SKILL.md from directory
-	if h.skillsDir != "" {
+	for _, root := range h.managedSkillRoots() {
 		for _, candidate := range skillIDAliases(id) {
-			dir := filepath.Join(h.skillsDir, candidate)
+			dir := filepath.Join(root, candidate)
 			entryDoc, data, err := readInstalledSkillEntry(dir)
 			if err == nil {
 				name := candidate
@@ -709,6 +799,14 @@ func (h *SkillHandler) EnableSkill(c echo.Context) error {
 			"error": err.Error(),
 		})
 	}
+	if canonicalID, err := h.ensureInstalledSkillRegistered(id); err == nil {
+		if err := h.registry.Enable(canonicalID); err == nil {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"message": "skill enabled",
+			})
+		}
+	}
 	for _, candidate := range skillIDAliases(id) {
 		if err := h.registry.Enable(candidate); err == nil {
 			return c.JSON(http.StatusOK, map[string]interface{}{
@@ -729,6 +827,14 @@ func (h *SkillHandler) DisableSkill(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 		})
+	}
+	if canonicalID, err := h.ensureInstalledSkillRegistered(id); err == nil {
+		if err := h.registry.Disable(canonicalID); err == nil {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"message": "skill disabled",
+			})
+		}
 	}
 	for _, candidate := range skillIDAliases(id) {
 		if err := h.registry.Disable(candidate); err == nil {
@@ -799,6 +905,7 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 
 	installRoot := tempRoot
 	entryFile := entryDocumentNameFromURL(file.Filename)
+	var installBundle *skillmanifest.InstallBundle
 	switch {
 	case isSkillArchiveFilename(file.Filename):
 		archivePath := filepath.Join(tempRoot, "upload"+skillbundle.ArchiveExtension(file.Filename, file.Filename, file.Header.Get("Content-Type")))
@@ -821,15 +928,16 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 				"message": "failed to extract uploaded archive: " + err.Error(),
 			})
 		}
-		resolvedRoot, skillFile, err := skillbundle.FindArchiveInstallRoot(extractDir, "")
+		bundle, err := skillmanifest.ValidateArchiveInstallRoot(extractDir, "", skillmanifest.Options{RequireContract: true})
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]interface{}{
 				"success": false,
 				"message": err.Error(),
 			})
 		}
-		installRoot = resolvedRoot
-		entryFile = filepath.Base(skillFile)
+		installBundle = bundle
+		installRoot = bundle.Root
+		entryFile = bundle.EntryDoc.Name
 	default:
 		if _, err := writeInstalledSkillDocument(tempRoot, entryFile, content); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
@@ -839,37 +947,40 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 		}
 	}
 
-	entryDoc, body, err := readInstalledSkillEntry(installRoot)
-	if err != nil {
+	if installBundle == nil {
+		bundle, err := skillmanifest.ValidateInstalledDir(installRoot, "", skillmanifest.Options{RequireContract: true})
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"success": false,
+				"message": err.Error(),
+			})
+		}
+		installBundle = bundle
+	}
+	if installBundle == nil || installBundle.Document.Manifest == nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"success": false,
-			"message": err.Error(),
+			"message": "failed to validate uploaded skill bundle",
 		})
 	}
 	if strings.TrimSpace(entryFile) == "" {
-		entryFile = entryDoc.Name
+		entryFile = installBundle.EntryDoc.Name
 	}
-	skillID, manifest, err := h.parseSkillContent(string(body), file.Filename, "", "")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+	skillID := installBundle.Document.ID
+	manifest := installBundle.Document.Manifest
+	if err := h.ensureSkillInstallTargetAvailable(skillID); err != nil {
+		status := http.StatusConflict
+		message := strings.TrimSpace(err.Error())
+		if httpErr, ok := err.(*echo.HTTPError); ok {
+			status = httpErr.Code
+			message = strings.TrimSpace(fmt.Sprint(httpErr.Message))
+		}
+		return c.JSON(status, map[string]interface{}{
 			"success": false,
-			"message": "failed to parse uploaded skill: " + err.Error(),
+			"message": message,
 		})
 	}
-	if existingID, installed := h.resolveInstalledSkillID(skillID); installed {
-		return c.JSON(http.StatusConflict, map[string]interface{}{
-			"success": false,
-			"message": fmt.Sprintf("skill already installed as %s", existingID),
-		})
-	}
-
 	skillDir := filepath.Join(h.skillsDir, skillID)
-	if skillDirHasInstalledEntry(skillDir) {
-		return c.JSON(http.StatusConflict, map[string]interface{}{
-			"success": false,
-			"message": "skill already installed",
-		})
-	}
 	if err := os.Rename(installRoot, skillDir); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -903,7 +1014,7 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 
 func isSkillArchiveFilename(name string) bool {
 	lower := strings.ToLower(strings.TrimSpace(name))
-	return strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz")
+	return strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") || strings.HasSuffix(lower, ".skill")
 }
 
 // ListSources returns all skill sources
@@ -1126,6 +1237,22 @@ func (h *SkillHandler) browseSkillsFromMemory(c echo.Context) error {
 // getInstalledSkillIDs returns a map of installed skill IDs
 func (h *SkillHandler) getInstalledSkillIDs() map[string]bool {
 	installedIDs := make(map[string]bool)
+	for _, root := range h.managedSkillRoots() {
+		if entries, err := os.ReadDir(root); err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+					continue
+				}
+				bundle, err := skillmanifest.ValidateInstalledDir(filepath.Join(root, entry.Name()), "", skillmanifest.Options{})
+				if err != nil {
+					continue
+				}
+				if id := h.installedSkillCanonicalID(bundle); id != "" {
+					installedIDs[id] = true
+				}
+			}
+		}
+	}
 	for _, s := range h.registry.List() {
 		installedIDs[s.Manifest.ID] = true
 	}
@@ -1344,6 +1471,39 @@ func (h *SkillHandler) registerInstalledSkill(manifest *skill.Manifest) error {
 	return nil
 }
 
+func (h *SkillHandler) syncInstalledSkillRegistration(manifest *skill.Manifest) error {
+	if manifest == nil {
+		return nil
+	}
+	info := h.registry.GetInfo(manifest.ID)
+	if info == nil {
+		return h.registerInstalledSkill(manifest)
+	}
+	if info.Builtin {
+		if h.localScanner != nil {
+			_ = h.localScanner.Scan()
+		}
+		return nil
+	}
+
+	enabled := info.Enabled
+	if err := h.registry.Unregister(manifest.ID); err != nil {
+		return err
+	}
+	if err := h.registry.Register(NewRemoteSkillAdapter(manifest), false); err != nil {
+		return err
+	}
+	if !enabled {
+		if err := h.registry.Disable(manifest.ID); err != nil {
+			return err
+		}
+	}
+	if h.localScanner != nil {
+		_ = h.localScanner.Scan()
+	}
+	return nil
+}
+
 // downloadGitHubDirectory downloads all files from a GitHub directory into destDir.
 // It calls progressFn(downloaded, total) after each file is written.
 func (h *SkillHandler) downloadGitHubDirectory(ctx context.Context, ghURL, destDir string, progressFn func(downloaded, total int)) error {
@@ -1517,8 +1677,37 @@ func (h *SkillHandler) downloadSkillMD(ctx context.Context, id string, rs *Remot
 
 	// Fallback: generate minimal SKILL.md
 	_ = lastErr // all download attempts failed, use fallback
-	return []byte(fmt.Sprintf("---\nid: %s\nname: %s\ndescription: %s\nversion: %s\n---\n\n# %s\n\n%s\n",
-		id, rs.Name, rs.Description, firstNonEmpty(rs.Version, "1.0.0"), rs.Name, rs.Description)), nil
+	name := firstNonEmpty(rs.Name, id)
+	description := firstNonEmpty(rs.Description, name)
+	version := firstNonEmpty(rs.Version, "1.0.0")
+	return []byte(fmt.Sprintf(`---
+id: %s
+name: %s
+description: %s
+version: %s
+invocation: blue %s
+examples:
+  - blue %s
+capability_tags:
+  - %s
+interaction_mode: stateless
+card_support: none
+---
+
+# %s
+
+%s
+`,
+		id,
+		name,
+		description,
+		version,
+		id,
+		id,
+		id,
+		name,
+		description,
+	)), nil
 }
 
 // InstallSkill installs a skill by downloading files to the skills directory.
@@ -1551,10 +1740,8 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 
 	// Check if already installed (directory exists with SKILL.md) or already
 	// present in registry.
-	if existingID, installed := h.resolveInstalledSkillID(id); installed {
-		return c.JSON(http.StatusConflict, map[string]string{
-			"error": fmt.Sprintf("skill already installed as %s", existingID),
-		})
+	if err := h.ensureSkillInstallTargetAvailable(id); err != nil {
+		return renderSkillMarketError(c, err, http.StatusBadRequest)
 	}
 	skillDir := filepath.Join(h.skillsDir, id)
 
@@ -1697,14 +1884,20 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	if resolvedID, ok := h.resolveInstalledSkillID(id); ok {
-		id = resolvedID
-	}
 
 	if h.skillsDir == "" {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "skills directory not configured",
 		})
+	}
+
+	skillDir := filepath.Join(h.skillsDir, id)
+	if resolved, ok := h.resolveInstalledSkill(id); ok {
+		id = resolved.ID
+		skillDir = resolved.EntryDir
+	} else if resolvedID, ok := h.resolveInstalledSkillID(id); ok {
+		id = resolvedID
+		skillDir = filepath.Join(h.skillsDir, id)
 	}
 
 	if info := h.registry.GetInfo(id); info != nil && info.Builtin {
@@ -1723,7 +1916,6 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 		})
 	}
 
-	skillDir := filepath.Join(h.skillsDir, id)
 	_, dirErr := os.Stat(skillDir)
 	inRegistry := h.registry.Get(id) != nil
 	if os.IsNotExist(dirErr) && !inRegistry {
@@ -2324,7 +2516,161 @@ func (h *SkillHandler) createManifestFromRemoteSkill(rs *RemoteSkill) *skill.Man
 	}
 }
 
+type installedSkillResolution struct {
+	ID       string
+	Document skillmanifest.Document
+	Raw      []byte
+	EntryDir string
+}
+
+func (h *SkillHandler) managedSkillRoots() []string {
+	if strings.TrimSpace(h.skillsDir) == "" {
+		return nil
+	}
+	return skillmanifest.ResolvePeerRootsForManagedDir(h.skillsDir)
+}
+
+func (h *SkillHandler) resolveInstalledSkill(id string) (installedSkillResolution, bool) {
+	roots := h.managedSkillRoots()
+	if len(roots) == 0 {
+		return installedSkillResolution{}, false
+	}
+	candidates := skillmanifest.CandidateIDs(id)
+	if len(candidates) == 0 {
+		return installedSkillResolution{}, false
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || strings.HasPrefix(candidate, ".") {
+			continue
+		}
+		for _, root := range roots {
+			bundle, err := skillmanifest.ValidateInstalledDir(filepath.Join(root, candidate), "", skillmanifest.Options{})
+			if err != nil {
+				continue
+			}
+			return h.newInstalledSkillResolution(bundle), true
+		}
+	}
+
+	for _, candidate := range candidates {
+		normalizedCandidate := skillmarket.NormalizeSkillID(candidate)
+		for _, root := range roots {
+			entries, err := os.ReadDir(root)
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+					continue
+				}
+				bundle, err := skillmanifest.ValidateInstalledDir(filepath.Join(root, entry.Name()), "", skillmanifest.Options{})
+				if err != nil {
+					continue
+				}
+				if !installedSkillMatchesCandidate(candidate, normalizedCandidate, entry.Name(), bundle.Document.ID, bundle.Document.Name) {
+					continue
+				}
+				return h.newInstalledSkillResolution(bundle), true
+			}
+		}
+	}
+
+	return installedSkillResolution{}, false
+}
+
+func (h *SkillHandler) ensureInstalledSkillRegistered(id string) (string, error) {
+	resolved, ok := h.resolveInstalledSkill(id)
+	if !ok {
+		return "", fmt.Errorf("skill %s not found", id)
+	}
+	if h.registry.Get(resolved.ID) == nil {
+		if err := h.registerInstalledSkill(resolved.Document.Manifest); err != nil {
+			return "", err
+		}
+	}
+	return resolved.ID, nil
+}
+
+func (h *SkillHandler) installedSkillCanonicalID(bundle *skillmanifest.InstallBundle) string {
+	if bundle == nil {
+		return ""
+	}
+	candidates := []string{
+		strings.TrimSpace(filepath.Base(bundle.Root)),
+		strings.TrimSpace(bundle.Document.ID),
+		strings.TrimSpace(bundle.Document.Name),
+	}
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if info := h.registry.GetInfo(candidate); info != nil && info.Manifest != nil {
+			return strings.TrimSpace(info.Manifest.ID)
+		}
+	}
+	if h.localScanner != nil {
+		for _, candidate := range candidates {
+			if candidate == "" {
+				continue
+			}
+			if ls := h.localScanner.Get(candidate); ls != nil {
+				return strings.TrimSpace(firstString(ls.ID, candidate))
+			}
+		}
+	}
+	if name := strings.TrimSpace(bundle.Document.Name); name != "" {
+		if _, err := skillmarket.ValidateSkillID(name); err == nil {
+			return name
+		}
+	}
+	if id := strings.TrimSpace(bundle.Document.ID); id != "" {
+		if _, err := skillmarket.ValidateSkillID(id); err == nil {
+			return id
+		}
+	}
+	return strings.TrimSpace(firstString(bundle.Document.Name, bundle.Document.ID))
+}
+
+func (h *SkillHandler) newInstalledSkillResolution(bundle *skillmanifest.InstallBundle) installedSkillResolution {
+	if bundle == nil {
+		return installedSkillResolution{}
+	}
+	return installedSkillResolution{
+		ID:       h.installedSkillCanonicalID(bundle),
+		Document: bundle.Document,
+		Raw:      append([]byte(nil), bundle.Raw...),
+		EntryDir: bundle.Root,
+	}
+}
+
+func installedSkillMatchesCandidate(candidate, normalizedCandidate string, aliases ...string) bool {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return false
+	}
+	if normalizedCandidate == "" {
+		normalizedCandidate = skillmarket.NormalizeSkillID(candidate)
+	}
+	for _, alias := range aliases {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			continue
+		}
+		if strings.EqualFold(candidate, alias) {
+			return true
+		}
+		if normalizedCandidate != "" && skillmarket.NormalizeSkillID(alias) == normalizedCandidate {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *SkillHandler) resolveInstalledSkillID(id string) (string, bool) {
+	if resolved, ok := h.resolveInstalledSkill(id); ok {
+		return resolved.ID, true
+	}
 	for _, candidate := range skillIDAliases(id) {
 		if h.registry.Get(candidate) != nil {
 			return candidate, true
@@ -2332,13 +2678,44 @@ func (h *SkillHandler) resolveInstalledSkillID(id string) (string, bool) {
 		if h.localScanner != nil && h.localScanner.Get(candidate) != nil {
 			return candidate, true
 		}
-		if h.skillsDir != "" {
-			if skillDirHasInstalledEntry(filepath.Join(h.skillsDir, candidate)) {
+		for _, root := range h.managedSkillRoots() {
+			if skillDirHasInstalledEntry(filepath.Join(root, candidate)) {
 				return candidate, true
 			}
 		}
 	}
 	return strings.TrimSpace(id), false
+}
+
+func (h *SkillHandler) installConflictRoots() []string {
+	return h.managedSkillRoots()
+}
+
+func (h *SkillHandler) ensureSkillInstallTargetAvailable(skillID string) error {
+	if strings.TrimSpace(h.skillsDir) == "" {
+		return echo.NewHTTPError(http.StatusInternalServerError, "skills directory not configured")
+	}
+	conflictRoots := h.installConflictRoots()
+	if len(conflictRoots) > 1 {
+		resolved, ok, err := skillmanifest.FindAnyByCandidatesStrict(skillmanifest.CandidateIDs(skillID), conflictRoots, "", skillmanifest.Options{})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusConflict, err.Error())
+		}
+		if ok {
+			existingID := strings.TrimSpace(firstString(resolved.Document.ID, resolved.Document.Name, skillID))
+			return echo.NewHTTPError(http.StatusConflict, fmt.Sprintf("skill already installed as %s", existingID))
+		}
+	}
+	if existingID, installed := h.resolveInstalledSkillID(skillID); installed {
+		return echo.NewHTTPError(http.StatusConflict, fmt.Sprintf("skill already installed as %s", existingID))
+	}
+	skillDir := filepath.Join(h.skillsDir, skillID)
+	if _, err := os.Stat(skillDir); err == nil {
+		return echo.NewHTTPError(http.StatusConflict, "skill already installed")
+	} else if err != nil && !os.IsNotExist(err) {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("stat skill dir: %v", err))
+	}
+	return nil
 }
 
 // RemoteSkillAdapter adapts a remote skill manifest to the Skill interface
@@ -2402,9 +2779,11 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
+		installedIDs := h.getInstalledSkillIDs()
 		legacySkills := make([]map[string]interface{}, 0, len(result.Skills))
 		for _, item := range result.Skills {
 			doc := item.Skill
+			installed, enabled := h.skillInstalledState(doc.ID, installedIDs)
 			legacySkills = append(legacySkills, map[string]interface{}{
 				"id":                    doc.ID,
 				"name":                  doc.Name,
@@ -2420,8 +2799,8 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 				"download_url":          firstString(doc.DownloadURL, doc.RepoURL, doc.Homepage),
 				"stars":                 doc.Stars,
 				"downloads":             doc.Downloads,
-				"installed":             h.registry.Get(doc.ID) != nil,
-				"enabled":               h.registry.Get(doc.ID) != nil,
+				"installed":             installed,
+				"enabled":               enabled,
 				"score":                 item.Score,
 				"updated_at":            doc.LastUpdated,
 				"risk_level":            doc.RiskLevel,
@@ -2620,8 +2999,9 @@ func (h *SkillHandler) GetPopularSkills(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		items := make([]*RemoteSkill, 0, len(search.Skills))
+		installedIDs := h.getInstalledSkillIDs()
 		for _, item := range search.Skills {
-			items = append(items, h.remoteSkillFromDocument(item.Skill))
+			items = append(items, h.remoteSkillFromDocument(item.Skill, installedIDs))
 		}
 		return c.JSON(http.StatusOK, items)
 	}
@@ -2661,8 +3041,9 @@ func (h *SkillHandler) GetRecentSkills(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		items := make([]*RemoteSkill, 0, len(search.Skills))
+		installedIDs := h.getInstalledSkillIDs()
 		for _, item := range search.Skills {
-			items = append(items, h.remoteSkillFromDocument(item.Skill))
+			items = append(items, h.remoteSkillFromDocument(item.Skill, installedIDs))
 		}
 		return c.JSON(http.StatusOK, items)
 	}
@@ -2755,8 +3136,9 @@ func (h *SkillHandler) GetFeaturedSkills(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		result := make([]*RemoteSkill, 0, len(skills))
+		installedIDs := h.getInstalledSkillIDs()
 		for _, skill := range skills {
-			result = append(result, h.remoteSkillFromDocument(skill))
+			result = append(result, h.remoteSkillFromDocument(skill, installedIDs))
 		}
 		return c.JSON(http.StatusOK, result)
 	}
@@ -2784,7 +3166,9 @@ func (h *SkillHandler) GetFeaturedSkills(c echo.Context) error {
 
 	// Convert to RemoteSkill format for consistency
 	result := make([]*RemoteSkill, 0, len(skills))
+	installedIDs := h.getInstalledSkillIDs()
 	for _, s := range skills {
+		installed, _ := h.skillInstalledState(s.ID, installedIDs)
 		result = append(result, &RemoteSkill{
 			ID:          s.ID,
 			Name:        s.Name,
@@ -2798,7 +3182,7 @@ func (h *SkillHandler) GetFeaturedSkills(c echo.Context) error {
 			Homepage:    s.Homepage,
 			DownloadURL: s.SourceURL,
 			Stars:       s.Stars,
-			Installed:   h.registry.Get(s.ID) != nil,
+			Installed:   installed,
 		})
 	}
 
@@ -2814,6 +3198,7 @@ func (h *SkillHandler) ListLocalSkills(c echo.Context) error {
 	}
 
 	skills := h.localScanner.GetAll()
+	installedIDs := h.getInstalledSkillIDs()
 
 	// Convert to response format
 	result := make([]map[string]interface{}, 0, len(skills))
@@ -2829,7 +3214,7 @@ func (h *SkillHandler) ListLocalSkills(c echo.Context) error {
 			"file_path":     s.FilePath,
 			"discovered_at": s.DiscoveredAt,
 			"last_modified": s.LastModified,
-			"installed":     h.registry.Get(s.ID) != nil,
+			"installed":     installedIDs[s.ID],
 		})
 	}
 
@@ -2868,28 +3253,61 @@ func (h *SkillHandler) VerifySkill(c echo.Context) error {
 		})
 	}
 
-	// Check if skill exists in registry
-	skill := h.registry.Get(id)
-	if skill == nil {
-		return c.JSON(http.StatusNotFound, map[string]interface{}{
-			"id":      id,
-			"visible": false,
-			"error":   "skill not found in registry",
+	if resolved, ok := h.resolveInstalledSkill(id); ok {
+		enabled := resolved.Document.Enabled
+		builtin := false
+		name := firstString(resolved.Document.Name, resolved.ID)
+		version := strings.TrimSpace(resolved.Document.Version)
+		description := strings.TrimSpace(resolved.Document.Description)
+		if info := h.registry.GetInfo(resolved.ID); info != nil && info.Manifest != nil {
+			enabled = info.Enabled
+			builtin = info.Builtin
+			name = firstString(info.Manifest.Name, name)
+			version = firstString(info.Manifest.Version, version)
+			description = firstString(info.Manifest.Description, description)
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"id":          resolved.ID,
+			"visible":     true,
+			"enabled":     enabled,
+			"builtin":     builtin,
+			"name":        name,
+			"version":     version,
+			"description": description,
 		})
 	}
 
-	// Get skill info
-	info := h.registry.GetInfo(id)
-	manifest := skill.Manifest()
+	for _, candidate := range skillIDAliases(id) {
+		if info := h.registry.GetInfo(candidate); info != nil && info.Manifest != nil {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"id":          info.Manifest.ID,
+				"visible":     true,
+				"enabled":     info.Enabled,
+				"builtin":     info.Builtin,
+				"name":        info.Manifest.Name,
+				"version":     info.Manifest.Version,
+				"description": info.Manifest.Description,
+			})
+		}
+		if h.localScanner != nil {
+			if ls := h.localScanner.Get(candidate); ls != nil {
+				return c.JSON(http.StatusOK, map[string]interface{}{
+					"id":          ls.ID,
+					"visible":     true,
+					"enabled":     true,
+					"builtin":     false,
+					"name":        ls.Name,
+					"version":     ls.Version,
+					"description": ls.Description,
+				})
+			}
+		}
+	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"id":          id,
-		"visible":     true,
-		"enabled":     info.Enabled,
-		"builtin":     info.Builtin,
-		"name":        manifest.Name,
-		"version":     manifest.Version,
-		"description": manifest.Description,
+	return c.JSON(http.StatusNotFound, map[string]interface{}{
+		"id":      id,
+		"visible": false,
+		"error":   "skill not found in registry",
 	})
 }
 
@@ -2952,14 +3370,10 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to parse skill: %v", err)})
 		}
 
-		if existingID, installed := h.resolveInstalledSkillID(skillID); installed {
-			return c.JSON(http.StatusConflict, map[string]string{"error": fmt.Sprintf("skill already installed as %s", existingID)})
+		if err := h.ensureSkillInstallTargetAvailable(skillID); err != nil {
+			return renderSkillMarketError(c, err, http.StatusBadRequest)
 		}
-
 		skillDir := filepath.Join(h.skillsDir, skillID)
-		if _, err := os.Stat(skillDir); err == nil {
-			return c.JSON(http.StatusConflict, map[string]string{"error": "skill already installed"})
-		}
 		if err := os.Rename(tempDir, skillDir); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("move: %v", err)})
 		}
@@ -3013,14 +3427,10 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to parse skill: %v", err)})
 	}
 
-	if existingID, installed := h.resolveInstalledSkillID(skillID); installed {
-		return c.JSON(http.StatusConflict, map[string]string{"error": fmt.Sprintf("skill already installed as %s", existingID)})
+	if err := h.ensureSkillInstallTargetAvailable(skillID); err != nil {
+		return renderSkillMarketError(c, err, http.StatusBadRequest)
 	}
-
 	skillDir := filepath.Join(h.skillsDir, skillID)
-	if skillDirHasInstalledEntry(skillDir) {
-		return c.JSON(http.StatusConflict, map[string]string{"error": "skill already installed"})
-	}
 
 	tempDir, err := os.MkdirTemp(h.skillsDir, ".skill-install-*")
 	if err != nil {
@@ -3057,102 +3467,36 @@ func (h *SkillHandler) parseSkillContent(content, sourceURL, overrideName, overr
 	if err := validateDownloadedSkillContent([]byte(content), "", sourceURL); err != nil {
 		return "", nil, err
 	}
-
-	manifest := &skill.Manifest{
-		Version:  "1.0.0",
-		Metadata: make(map[string]string),
+	dirName := "skill"
+	if base := strings.TrimSuffix(filepath.Base(strings.TrimSpace(sourceURL)), filepath.Ext(strings.TrimSpace(sourceURL))); base != "" && !strings.EqualFold(base, "SKILL") {
+		dirName = base
 	}
-
-	// Parse YAML frontmatter if present
-	if strings.HasPrefix(content, "---") {
-		parts := strings.SplitN(content, "---", 3)
-		if len(parts) >= 3 {
-			frontmatter := parts[1]
-
-			// Parse frontmatter lines
-			for _, line := range strings.Split(frontmatter, "\n") {
-				line = strings.TrimSpace(line)
-				if line == "" {
-					continue
-				}
-
-				colonIdx := strings.Index(line, ":")
-				if colonIdx == -1 {
-					continue
-				}
-
-				key := strings.TrimSpace(line[:colonIdx])
-				value := strings.Trim(strings.TrimSpace(line[colonIdx+1:]), `"'`)
-
-				switch key {
-				case "name":
-					manifest.Name = value
-					if manifest.ID == "" {
-						manifest.ID = value
-					}
-				case "id":
-					manifest.ID = value
-				case "description":
-					manifest.Description = value
-				case "version":
-					manifest.Version = value
-				case "author":
-					manifest.Author = value
-				case "category":
-					manifest.Category = value
-				case "tags":
-					// Parse tags array [tag1, tag2]
-					value = strings.Trim(value, "[]")
-					for _, tag := range strings.Split(value, ",") {
-						tag = strings.TrimSpace(tag)
-						if tag != "" {
-							manifest.Tags = append(manifest.Tags, tag)
-						}
-					}
-				}
-			}
-		}
+	doc, err := skillmanifest.ParseEntry(dirName, sourceURL, []byte(content), skillmanifest.Options{RequireContract: true})
+	if err != nil {
+		return "", nil, err
 	}
-
-	// Apply overrides
+	manifest := doc.Manifest
+	if manifest == nil {
+		return "", nil, fmt.Errorf("parsed skill manifest is empty")
+	}
 	if overrideName != "" {
 		manifest.Name = overrideName
 	}
 	if overrideDesc != "" {
 		manifest.Description = overrideDesc
 	}
-
-	// Generate ID from URL if not set
-	if manifest.ID == "" {
-		// Extract ID from URL path
-		parts := strings.Split(sourceURL, "/")
-		for i := len(parts) - 1; i >= 0; i-- {
-			part := strings.TrimSuffix(parts[i], ".md")
-			part = strings.TrimSuffix(part, ".MD")
-			if part != "" && part != "SKILL" {
-				manifest.ID = strings.ToLower(part)
-				break
-			}
-		}
+	if manifest.Metadata == nil {
+		manifest.Metadata = make(map[string]string)
 	}
-
-	// Use ID as name if not set
-	if manifest.Name == "" {
-		manifest.Name = manifest.ID
-	}
-
-	if manifest.ID == "" {
-		return "", nil, fmt.Errorf("could not determine skill ID")
-	}
+	manifest.Metadata["source_url"] = sourceURL
 	validatedID, err := normalizedSkillID(manifest.ID)
 	if err != nil {
 		return "", nil, err
 	}
 	manifest.ID = validatedID
-
-	// Store source URL in metadata
-	manifest.Metadata["source_url"] = sourceURL
-
+	if manifest.Name == "" {
+		manifest.Name = manifest.ID
+	}
 	return manifest.ID, manifest, nil
 }
 
@@ -3164,7 +3508,9 @@ func (h *SkillHandler) getFeaturedSkillsFallback() []*RemoteSkill {
 
 	skills := h.featuredLoader.GetAll()
 	result := make([]*RemoteSkill, 0, len(skills))
+	installedIDs := h.getInstalledSkillIDs()
 	for _, s := range skills {
+		installed, _ := h.skillInstalledState(s.ID, installedIDs)
 		result = append(result, &RemoteSkill{
 			ID:            s.ID,
 			Name:          s.Name,
@@ -3179,7 +3525,7 @@ func (h *SkillHandler) getFeaturedSkillsFallback() []*RemoteSkill {
 			Homepage:      s.Homepage,
 			DownloadURL:   s.SourceURL,
 			Stars:         s.Stars,
-			Installed:     h.registry.Get(s.ID) != nil,
+			Installed:     installed,
 			RiskLevel:     "unknown",
 			SecurityBadge: skillmarket.BadgeYellow,
 			Installable:   strings.TrimSpace(s.SourceURL) != "" || strings.TrimSpace(s.Homepage) != "",

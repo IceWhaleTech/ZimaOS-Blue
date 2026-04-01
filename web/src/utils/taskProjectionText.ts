@@ -1,8 +1,5 @@
 import type { UserTaskKind } from '@/api/tasks'
-import {
-  localizeDeepResearchSegment,
-  splitDeepResearchSegments,
-} from '@/utils/deepResearchText'
+import { localizeDeepResearchSegment, splitDeepResearchSegments } from '@/utils/deepResearchText'
 
 type Translate = (key: string, fallback: string) => string
 
@@ -28,12 +25,16 @@ const AGENT_RUNTIME_KEYS: Record<string, [key: string, fallback: string]> = {
 }
 
 const DEFAULT_TITLE_KEYS: Record<string, [key: string, fallback: string]> = {
-  research_task: ['chat.taskDefaultResearchTitle', 'Research task'],
+  research_task: ['chat.taskDefaultResearchTitle', 'Deep Research task'],
   agent_task: ['chat.taskDefaultAgentTitle', 'Agent task'],
+  workflow: ['chat.taskDefaultWorkflowTitle', 'Workflow task'],
 }
 
 function normalizeToken(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
 }
 
 function translateKnownToken(
@@ -57,9 +58,14 @@ export function localizeTaskProjectionTitle(
 ): string {
   const trimmed = String(title || '').trim()
   if (!trimmed) {
-    return kind === 'research'
-      ? translate('chat.taskDefaultResearchTitle', 'Research task')
-      : translate('chat.taskDefaultAgentTitle', 'Agent task')
+    switch (kind) {
+      case 'research':
+        return translate('chat.taskDefaultResearchTitle', 'Deep Research task')
+      case 'workflow':
+        return translate('chat.taskDefaultWorkflowTitle', 'Workflow task')
+      default:
+        return translate('chat.taskDefaultAgentTitle', 'Agent task')
+    }
   }
   const normalized = normalizeToken(trimmed)
   return translateKnownToken(normalized, DEFAULT_TITLE_KEYS, translate) || trimmed

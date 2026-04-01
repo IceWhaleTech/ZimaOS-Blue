@@ -8,20 +8,194 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 const retentionWindow = 7 * 24 * time.Hour
 
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 func NewStore(db *sql.DB) (*Store, error) {
-	store := &Store{db: db}
+	return NewStoreWithReadDB(db, db)
+}
+
+func NewStoreWithReadDB(writeDB, readDB *sql.DB) (*Store, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	store := &Store{db: writeDB, readDB: readDB}
 	if err := store.migrate(); err != nil {
 		return nil, fmt.Errorf("convert store migrate: %w", err)
 	}
 	return store, nil
+}
+
+func (s *Store) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *Store) table(name string) *z.ZormTable {
+	return z.Table(s.db, name)
+}
+
+func (s *Store) readTable(name string) *z.ZormTable {
+	return z.Table(s.reader(), name)
+}
+
+type convertTaskRow struct {
+	ID                string  `json:"id" zorm:"id"`
+	UserID            string  `json:"user_id" zorm:"user_id"`
+	ConversationID    string  `json:"conversation_id" zorm:"conversation_id"`
+	Action            string  `json:"action" zorm:"action"`
+	Status            string  `json:"status" zorm:"status"`
+	TargetFormat      string  `json:"target_format" zorm:"target_format"`
+	SourceSummary     string  `json:"source_summary" zorm:"source_summary"`
+	Progress          float64 `json:"progress" zorm:"progress"`
+	Message           string  `json:"message" zorm:"message"`
+	Error             string  `json:"error" zorm:"error"`
+	TranscriptPreview string  `json:"transcript_preview" zorm:"transcript_preview"`
+	RequestJSON       string  `json:"request_json" zorm:"request_json"`
+	OutputsJSON       string  `json:"outputs_json" zorm:"outputs_json"`
+	CreatedAt         string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt         string  `json:"updated_at" zorm:"updated_at"`
+	StartedAt         *string `json:"started_at" zorm:"started_at"`
+	CompletedAt       *string `json:"completed_at" zorm:"completed_at"`
+}
+
+type storedSourceRow struct {
+	ID             string `json:"id" zorm:"id"`
+	UserID         string `json:"user_id" zorm:"user_id"`
+	ConversationID string `json:"conversation_id" zorm:"conversation_id"`
+	Name           string `json:"name" zorm:"name"`
+	MimeType       string `json:"mime_type" zorm:"mime_type"`
+	Path           string `json:"path" zorm:"path"`
+	SizeBytes      int64  `json:"size_bytes" zorm:"size_bytes"`
+	CreatedAt      string `json:"created_at" zorm:"created_at"`
+}
+
+type convertTaskIDRow struct {
+	ID string `json:"id" zorm:"id"`
+}
+
+type convertSourcePathRow struct {
+	Path string `json:"path" zorm:"path"`
+}
+
+func taskToValues(task *ConvertTask) (z.V, error) {
+	requestJSON := "{}"
+	if task.Request != nil {
+		if raw, err := json.Marshal(task.Request); err == nil {
+			requestJSON = string(raw)
+		}
+	}
+	outputsJSON, err := marshalStoredOutputs(task.Outputs)
+	if err != nil {
+		return nil, err
+	}
+	return z.V{
+		"id":                 task.ID,
+		"user_id":            task.UserID,
+		"conversation_id":    task.ConversationID,
+		"action":             task.Action,
+		"status":             string(task.Status),
+		"target_format":      task.TargetFormat,
+		"source_summary":     task.SourceSummary,
+		"progress":           task.Progress,
+		"message":            task.Message,
+		"error":              task.Error,
+		"transcript_preview": task.TranscriptPreview,
+		"request_json":       requestJSON,
+		"outputs_json":       outputsJSON,
+		"created_at":         task.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updated_at":         task.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		"started_at":         nullableTime(task.StartedAt),
+		"completed_at":       nullableTime(task.CompletedAt),
+	}, nil
+}
+
+func rowToTask(row convertTaskRow) (*ConvertTask, error) {
+	task := &ConvertTask{
+		ID:                row.ID,
+		UserID:            row.UserID,
+		ConversationID:    row.ConversationID,
+		Action:            row.Action,
+		Status:            TaskStatus(row.Status),
+		TargetFormat:      row.TargetFormat,
+		SourceSummary:     row.SourceSummary,
+		Progress:          row.Progress,
+		Message:           row.Message,
+		Error:             row.Error,
+		TranscriptPreview: row.TranscriptPreview,
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, row.CreatedAt); err == nil {
+		task.CreatedAt = parsed
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, row.UpdatedAt); err == nil {
+		task.UpdatedAt = parsed
+	}
+	if row.StartedAt != nil && strings.TrimSpace(*row.StartedAt) != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, *row.StartedAt); err == nil {
+			task.StartedAt = &parsed
+		}
+	}
+	if row.CompletedAt != nil && strings.TrimSpace(*row.CompletedAt) != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, *row.CompletedAt); err == nil {
+			task.CompletedAt = &parsed
+		}
+	}
+	if strings.TrimSpace(row.RequestJSON) != "" && strings.TrimSpace(row.RequestJSON) != "{}" {
+		var request TaskRequest
+		if err := json.Unmarshal([]byte(row.RequestJSON), &request); err == nil {
+			task.Request = &request
+			if len(request.Sources) > 0 {
+				task.Sources = append([]string(nil), request.Sources...)
+			}
+		}
+	}
+	outputs, err := unmarshalStoredOutputs(row.OutputsJSON)
+	if err != nil {
+		return nil, err
+	}
+	task.Outputs = outputs
+	return task, nil
+}
+
+func sourceToValues(source *StoredSource) z.V {
+	return z.V{
+		"id":              source.ID,
+		"user_id":         source.UserID,
+		"conversation_id": source.ConversationID,
+		"name":            source.Name,
+		"mime_type":       source.MimeType,
+		"path":            source.Path,
+		"size_bytes":      source.SizeBytes,
+		"created_at":      source.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func rowToSource(row storedSourceRow) *StoredSource {
+	source := &StoredSource{
+		ID:             row.ID,
+		UserID:         row.UserID,
+		ConversationID: row.ConversationID,
+		Name:           row.Name,
+		MimeType:       row.MimeType,
+		Path:           row.Path,
+		SizeBytes:      row.SizeBytes,
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, row.CreatedAt); err == nil {
+		source.CreatedAt = parsed
+	}
+	return source
 }
 
 func (s *Store) migrate() error {
@@ -81,40 +255,11 @@ func (s *Store) CreateTask(task *ConvertTask) error {
 		task.CreatedAt = now
 	}
 	task.UpdatedAt = now
-	requestJSON := "{}"
-	if task.Request != nil {
-		if raw, err := json.Marshal(task.Request); err == nil {
-			requestJSON = string(raw)
-		}
-	}
-	outputsJSON, err := marshalStoredOutputs(task.Outputs)
+	values, err := taskToValues(task)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(
-		`INSERT INTO convert_tasks (
-			id, user_id, conversation_id, action, status, target_format, source_summary,
-			progress, message, error, transcript_preview, request_json, outputs_json,
-			created_at, updated_at, started_at, completed_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		task.ID,
-		task.UserID,
-		task.ConversationID,
-		task.Action,
-		string(task.Status),
-		task.TargetFormat,
-		task.SourceSummary,
-		task.Progress,
-		task.Message,
-		task.Error,
-		task.TranscriptPreview,
-		requestJSON,
-		outputsJSON,
-		task.CreatedAt.Format(time.RFC3339Nano),
-		task.UpdatedAt.Format(time.RFC3339Nano),
-		nullableTime(task.StartedAt),
-		nullableTime(task.CompletedAt),
-	)
+	_, err = s.table("convert_tasks").Insert(values)
 	return err
 }
 
@@ -123,106 +268,125 @@ func (s *Store) UpdateTask(task *ConvertTask) error {
 		return fmt.Errorf("task is nil")
 	}
 	task.UpdatedAt = timeutil.NowTime().UTC()
-	requestJSON := "{}"
-	if task.Request != nil {
-		if raw, err := json.Marshal(task.Request); err == nil {
-			requestJSON = string(raw)
-		}
-	}
-	outputsJSON, err := marshalStoredOutputs(task.Outputs)
+	values, err := taskToValues(task)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(
-		`UPDATE convert_tasks SET
-			user_id=?, conversation_id=?, action=?, status=?, target_format=?, source_summary=?,
-			progress=?, message=?, error=?, transcript_preview=?, request_json=?, outputs_json=?,
-			updated_at=?, started_at=?, completed_at=?
-		 WHERE id=?`,
-		task.UserID,
-		task.ConversationID,
-		task.Action,
-		string(task.Status),
-		task.TargetFormat,
-		task.SourceSummary,
-		task.Progress,
-		task.Message,
-		task.Error,
-		task.TranscriptPreview,
-		requestJSON,
-		outputsJSON,
-		task.UpdatedAt.Format(time.RFC3339Nano),
-		nullableTime(task.StartedAt),
-		nullableTime(task.CompletedAt),
-		task.ID,
+	_, err = s.table("convert_tasks").Update(
+		values,
+		z.Fields(
+			"user_id",
+			"conversation_id",
+			"action",
+			"status",
+			"target_format",
+			"source_summary",
+			"progress",
+			"message",
+			"error",
+			"transcript_preview",
+			"request_json",
+			"outputs_json",
+			"updated_at",
+			"started_at",
+			"completed_at",
+		),
+		z.Where(z.Eq("id", task.ID)),
 	)
 	return err
 }
 
 func (s *Store) GetTask(taskID string) (*ConvertTask, error) {
-	row := s.db.QueryRow(
-		`SELECT id, user_id, conversation_id, action, status, target_format, source_summary,
-			progress, message, error, transcript_preview, request_json, outputs_json,
-			created_at, updated_at, started_at, completed_at
-		 FROM convert_tasks WHERE id=?`,
-		taskID,
+	var rows []convertTaskRow
+	_, err := s.readTable("convert_tasks").Select(&rows,
+		z.Where(z.Eq("id", taskID)),
+		z.Limit(1),
 	)
-	return scanTask(row)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return rowToTask(rows[0])
 }
 
 func (s *Store) ListTasks(userID, conversationID string, limit int) ([]*ConvertTask, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	query := `SELECT id, user_id, conversation_id, action, status, target_format, source_summary,
-		progress, message, error, transcript_preview, request_json, outputs_json,
-		created_at, updated_at, started_at, completed_at FROM convert_tasks`
-	args := make([]interface{}, 0, 3)
-	clauses := make([]string, 0, 2)
+	opts := []z.ZormItem{
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit),
+	}
+	conds := make([]interface{}, 0, 2)
 	if strings.TrimSpace(userID) != "" {
-		clauses = append(clauses, "user_id=?")
-		args = append(args, userID)
+		conds = append(conds, z.Eq("user_id", userID))
 	}
 	if strings.TrimSpace(conversationID) != "" {
-		clauses = append(clauses, "conversation_id=?")
-		args = append(args, conversationID)
+		conds = append(conds, z.Eq("conversation_id", conversationID))
 	}
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
 	}
-	query += " ORDER BY created_at DESC LIMIT ?"
-	args = append(args, limit)
-	rows, err := s.db.Query(query, args...)
+	var rows []convertTaskRow
+	_, err := s.readTable("convert_tasks").Select(&rows, opts...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var tasks []*ConvertTask
-	for rows.Next() {
-		task, err := scanTaskRows(rows)
+	tasks := make([]*ConvertTask, 0, len(rows))
+	for i := range rows {
+		task, err := rowToTask(rows[i])
 		if err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, task)
 	}
-	return tasks, rows.Err()
+	return tasks, nil
 }
 
 func (s *Store) MarkInterruptedTasksFailed(message string) error {
+	var rows []convertTaskRow
+	if _, err := s.readTable("convert_tasks").Select(&rows,
+		z.Fields("id", "message", "error"),
+		z.Where(z.In("status", string(StatusPending), string(StatusProcessing))),
+	); err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	txTable := z.Table(tx, "convert_tasks")
 	now := timeutil.NowTime().UTC().Format(time.RFC3339Nano)
-	_, err := s.db.Exec(
-		`UPDATE convert_tasks
-		 SET status=?, error=CASE WHEN error='' THEN ? ELSE error END, message=CASE WHEN message='' THEN ? ELSE message END, updated_at=?, completed_at=?
-		 WHERE status IN (?, ?)`,
-		string(StatusFailed),
-		message,
-		message,
-		now,
-		now,
-		string(StatusPending),
-		string(StatusProcessing),
-	)
-	return err
+	for i := range rows {
+		updateValues := z.V{
+			"status":       string(StatusFailed),
+			"updated_at":   now,
+			"completed_at": now,
+		}
+		if rows[i].Error == "" {
+			updateValues["error"] = message
+		}
+		if rows[i].Message == "" {
+			updateValues["message"] = message
+		}
+		fields := []string{"status", "updated_at", "completed_at"}
+		if rows[i].Error == "" {
+			fields = append(fields, "error")
+		}
+		if rows[i].Message == "" {
+			fields = append(fields, "message")
+		}
+		if _, err := txTable.Update(updateValues, z.Fields(fields...), z.Where(z.Eq("id", rows[i].ID))); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) CreateSource(source *StoredSource) error {
@@ -232,112 +396,81 @@ func (s *Store) CreateSource(source *StoredSource) error {
 	if source.CreatedAt.IsZero() {
 		source.CreatedAt = timeutil.NowTime().UTC()
 	}
-	_, err := s.db.Exec(
-		`INSERT INTO convert_sources (id, user_id, conversation_id, name, mime_type, path, size_bytes, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		source.ID,
-		source.UserID,
-		source.ConversationID,
-		source.Name,
-		source.MimeType,
-		source.Path,
-		source.SizeBytes,
-		source.CreatedAt.Format(time.RFC3339Nano),
-	)
+	_, err := s.table("convert_sources").Insert(sourceToValues(source))
 	return err
 }
 
 func (s *Store) GetSource(sourceID string) (*StoredSource, error) {
-	row := s.db.QueryRow(
-		`SELECT id, user_id, conversation_id, name, mime_type, path, size_bytes, created_at
-		 FROM convert_sources WHERE id=?`,
-		sourceID,
+	var rows []storedSourceRow
+	_, err := s.readTable("convert_sources").Select(&rows,
+		z.Where(z.Eq("id", sourceID)),
+		z.Limit(1),
 	)
-	var source StoredSource
-	var createdAt string
-	if err := row.Scan(&source.ID, &source.UserID, &source.ConversationID, &source.Name, &source.MimeType, &source.Path, &source.SizeBytes, &createdAt); err != nil {
+	if err != nil {
 		return nil, err
 	}
-	if parsed, err := time.Parse(time.RFC3339Nano, createdAt); err == nil {
-		source.CreatedAt = parsed
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
 	}
-	return &source, nil
+	return rowToSource(rows[0]), nil
 }
 
 func (s *Store) ListSources(userID, conversationID string, limit int) ([]*StoredSource, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	query := `SELECT id, user_id, conversation_id, name, mime_type, path, size_bytes, created_at FROM convert_sources`
-	args := make([]interface{}, 0, 3)
-	clauses := make([]string, 0, 2)
+	opts := []z.ZormItem{
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit),
+	}
+	conds := make([]interface{}, 0, 2)
 	if strings.TrimSpace(userID) != "" {
-		clauses = append(clauses, "user_id=?")
-		args = append(args, userID)
+		conds = append(conds, z.Eq("user_id", userID))
 	}
 	if strings.TrimSpace(conversationID) != "" {
-		clauses = append(clauses, "conversation_id=?")
-		args = append(args, conversationID)
+		conds = append(conds, z.Eq("conversation_id", conversationID))
 	}
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
 	}
-	query += " ORDER BY created_at DESC LIMIT ?"
-	args = append(args, limit)
-	rows, err := s.db.Query(query, args...)
+	var rows []storedSourceRow
+	_, err := s.readTable("convert_sources").Select(&rows, opts...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var sources []*StoredSource
-	for rows.Next() {
-		var source StoredSource
-		var createdAt string
-		if err := rows.Scan(&source.ID, &source.UserID, &source.ConversationID, &source.Name, &source.MimeType, &source.Path, &source.SizeBytes, &createdAt); err != nil {
-			return nil, err
-		}
-		if parsed, err := time.Parse(time.RFC3339Nano, createdAt); err == nil {
-			source.CreatedAt = parsed
-		}
-		sources = append(sources, &source)
+	sources := make([]*StoredSource, 0, len(rows))
+	for i := range rows {
+		sources = append(sources, rowToSource(rows[i]))
 	}
-	return sources, rows.Err()
+	return sources, nil
 }
 
 func (s *Store) CleanupExpired(cutoff time.Time) (taskIDs []string, taskRoots []string, sourcePaths []string, err error) {
 	cutoffSQL := cutoff.UTC().Format(time.RFC3339Nano)
-	taskRows, err := s.db.Query(`SELECT id FROM convert_tasks WHERE created_at < ?`, cutoffSQL)
-	if err != nil {
+	var taskRows []convertTaskIDRow
+	if _, err := s.readTable("convert_tasks").Select(&taskRows,
+		z.Fields("id"),
+		z.Where(z.Lt("created_at", cutoffSQL)),
+	); err != nil {
 		return nil, nil, nil, err
 	}
-	for taskRows.Next() {
-		var id string
-		if scanErr := taskRows.Scan(&id); scanErr != nil {
-			taskRows.Close()
-			return nil, nil, nil, scanErr
-		}
-		taskIDs = append(taskIDs, id)
+	for i := range taskRows {
+		taskIDs = append(taskIDs, taskRows[i].ID)
 	}
-	taskRows.Close()
-
-	sourceRows, err := s.db.Query(`SELECT path FROM convert_sources WHERE created_at < ?`, cutoffSQL)
-	if err != nil {
+	var sourceRows []convertSourcePathRow
+	if _, err := s.readTable("convert_sources").Select(&sourceRows,
+		z.Fields("path"),
+		z.Where(z.Lt("created_at", cutoffSQL)),
+	); err != nil {
 		return nil, nil, nil, err
 	}
-	for sourceRows.Next() {
-		var path string
-		if scanErr := sourceRows.Scan(&path); scanErr != nil {
-			sourceRows.Close()
-			return nil, nil, nil, scanErr
-		}
-		sourcePaths = append(sourcePaths, path)
+	for i := range sourceRows {
+		sourcePaths = append(sourcePaths, sourceRows[i].Path)
 	}
-	sourceRows.Close()
-
-	if _, err = s.db.Exec(`DELETE FROM convert_tasks WHERE created_at < ?`, cutoffSQL); err != nil {
+	if _, err = s.table("convert_tasks").Delete(z.Where(z.Lt("created_at", cutoffSQL))); err != nil {
 		return nil, nil, nil, err
 	}
-	if _, err = s.db.Exec(`DELETE FROM convert_sources WHERE created_at < ?`, cutoffSQL); err != nil {
+	if _, err = s.table("convert_sources").Delete(z.Where(z.Lt("created_at", cutoffSQL))); err != nil {
 		return nil, nil, nil, err
 	}
 	return taskIDs, taskRoots, sourcePaths, nil
@@ -348,75 +481,4 @@ func nullableTime(ts *time.Time) interface{} {
 		return nil
 	}
 	return ts.UTC().Format(time.RFC3339Nano)
-}
-
-func scanTask(row interface {
-	Scan(dest ...interface{}) error
-}) (*ConvertTask, error) {
-	return scanTaskCommon(row)
-}
-
-func scanTaskRows(rows *sql.Rows) (*ConvertTask, error) {
-	return scanTaskCommon(rows)
-}
-
-func scanTaskCommon(row interface {
-	Scan(dest ...interface{}) error
-}) (*ConvertTask, error) {
-	var task ConvertTask
-	var requestJSON, outputsJSON string
-	var createdAt, updatedAt string
-	var startedAt, completedAt sql.NullString
-	if err := row.Scan(
-		&task.ID,
-		&task.UserID,
-		&task.ConversationID,
-		&task.Action,
-		&task.Status,
-		&task.TargetFormat,
-		&task.SourceSummary,
-		&task.Progress,
-		&task.Message,
-		&task.Error,
-		&task.TranscriptPreview,
-		&requestJSON,
-		&outputsJSON,
-		&createdAt,
-		&updatedAt,
-		&startedAt,
-		&completedAt,
-	); err != nil {
-		return nil, err
-	}
-	if parsed, err := time.Parse(time.RFC3339Nano, createdAt); err == nil {
-		task.CreatedAt = parsed
-	}
-	if parsed, err := time.Parse(time.RFC3339Nano, updatedAt); err == nil {
-		task.UpdatedAt = parsed
-	}
-	if startedAt.Valid {
-		if parsed, err := time.Parse(time.RFC3339Nano, startedAt.String); err == nil {
-			task.StartedAt = &parsed
-		}
-	}
-	if completedAt.Valid {
-		if parsed, err := time.Parse(time.RFC3339Nano, completedAt.String); err == nil {
-			task.CompletedAt = &parsed
-		}
-	}
-	if strings.TrimSpace(requestJSON) != "" && strings.TrimSpace(requestJSON) != "{}" {
-		var request TaskRequest
-		if err := json.Unmarshal([]byte(requestJSON), &request); err == nil {
-			task.Request = &request
-			if len(request.Sources) > 0 {
-				task.Sources = append([]string(nil), request.Sources...)
-			}
-		}
-	}
-	outputs, err := unmarshalStoredOutputs(outputsJSON)
-	if err != nil {
-		return nil, err
-	}
-	task.Outputs = outputs
-	return &task, nil
 }

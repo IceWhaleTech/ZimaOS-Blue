@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 const createTableSQL = `
@@ -50,21 +51,185 @@ CREATE INDEX IF NOT EXISTS idx_agent_runtime_events_task ON agent_runtime_events
 
 // Store persists agent tasks in SQLite.
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // NewStore creates a new agent task store.
 func NewStore(db *sql.DB) (*Store, error) {
-	if _, err := db.Exec(createTableSQL); err != nil {
+	return NewStoreWithReadDB(db, db)
+}
+
+// NewStoreWithReadDB creates a new agent task store with separate write and
+// read database handles.
+func NewStoreWithReadDB(writeDB, readDB *sql.DB) (*Store, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	if _, err := writeDB.Exec(createTableSQL); err != nil {
 		return nil, err
 	}
-	if err := ensureTaskColumns(db); err != nil {
+	if err := ensureTaskColumns(writeDB); err != nil {
 		return nil, err
 	}
-	if err := ensureRuntimeTables(db); err != nil {
+	if err := ensureRuntimeTables(writeDB); err != nil {
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &Store{db: writeDB, readDB: readDB}, nil
+}
+
+func (s *Store) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *Store) table(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, s.db, name)
+}
+
+func (s *Store) readTable(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), name)
+}
+
+type agentTaskRow struct {
+	ID                     string `json:"id" zorm:"id"`
+	UserID                 string `json:"user_id" zorm:"user_id"`
+	ConversationID         string `json:"conversation_id" zorm:"conversation_id"`
+	Goal                   string `json:"goal" zorm:"goal"`
+	Plan                   string `json:"plan" zorm:"plan"`
+	Status                 string `json:"status" zorm:"status"`
+	RuntimeState           string `json:"runtime_state" zorm:"runtime_state"`
+	RuntimeAudit           string `json:"runtime_audit" zorm:"runtime_audit"`
+	SuccessCriteria        string `json:"success_criteria" zorm:"success_criteria"`
+	FallbackPlan           string `json:"fallback_plan" zorm:"fallback_plan"`
+	CurrentStep            int    `json:"current_step" zorm:"current_step"`
+	Progress               int    `json:"progress" zorm:"progress"`
+	Result                 string `json:"result" zorm:"result"`
+	VerifiedOutput         string `json:"verified_output" zorm:"verified_output"`
+	VerificationErrorsJSON string `json:"verification_errors_json" zorm:"verification_errors_json"`
+	GroundingStatus        string `json:"grounding_status" zorm:"grounding_status"`
+	GroundStateJSON        string `json:"ground_state_json" zorm:"ground_state_json"`
+	MetadataJSON           string `json:"metadata_json" zorm:"metadata_json"`
+	Error                  string `json:"error" zorm:"error"`
+	CreatedAt              string `json:"created_at" zorm:"created_at"`
+	UpdatedAt              string `json:"updated_at" zorm:"updated_at"`
+}
+
+type runtimeEventRow struct {
+	ID           string `json:"id" zorm:"id"`
+	TaskID       string `json:"task_id" zorm:"task_id"`
+	StepIndex    int    `json:"step_index" zorm:"step_index"`
+	PlannerRound int    `json:"planner_round" zorm:"planner_round"`
+	EventType    string `json:"event_type" zorm:"event_type"`
+	PayloadJSON  string `json:"payload_json" zorm:"payload_json"`
+	CreatedAt    string `json:"created_at" zorm:"created_at"`
+}
+
+func taskValues(task *Task) z.V {
+	return z.V{
+		"id":                       task.ID,
+		"user_id":                  task.UserID,
+		"conversation_id":          task.ConversationID,
+		"goal":                     task.Goal,
+		"plan":                     MarshalPlan(task.Plan),
+		"status":                   string(task.Status),
+		"runtime_state":            string(task.RuntimeState),
+		"runtime_audit":            marshalAudit(task.RuntimeAudit),
+		"success_criteria":         marshalStringSlice(task.SuccessCriteria),
+		"fallback_plan":            marshalStringSlice(task.FallbackPlan),
+		"current_step":             task.CurrentStep,
+		"progress":                 task.Progress,
+		"result":                   task.Result,
+		"verified_output":          task.VerifiedOutput,
+		"verification_errors_json": marshalStringSlice(task.VerificationErrors),
+		"grounding_status":         task.GroundingStatus,
+		"ground_state_json":        marshalGroundTruthState(task.GroundState),
+		"metadata_json":            marshalMetadataMap(task.Metadata),
+		"error":                    task.Error,
+		"created_at":               task.CreatedAt,
+		"updated_at":               task.UpdatedAt,
+	}
+}
+
+func runtimeEventValues(event RuntimeEvent) z.V {
+	return z.V{
+		"id":            event.ID,
+		"task_id":       event.TaskID,
+		"step_index":    event.StepIndex,
+		"planner_round": event.PlannerRound,
+		"event_type":    event.EventType,
+		"payload_json":  event.PayloadJSON,
+		"created_at":    event.CreatedAt,
+	}
+}
+
+func parseAgentTime(raw string) time.Time {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func rowToTask(row agentTaskRow) *Task {
+	task := &Task{
+		ID:                 row.ID,
+		UserID:             row.UserID,
+		ConversationID:     row.ConversationID,
+		Goal:               row.Goal,
+		Plan:               UnmarshalPlan(row.Plan),
+		Status:             TaskStatus(row.Status),
+		RuntimeState:       RuntimeState(row.RuntimeState),
+		RuntimeAudit:       unmarshalAudit(row.RuntimeAudit),
+		SuccessCriteria:    unmarshalStringSlice(row.SuccessCriteria),
+		FallbackPlan:       unmarshalStringSlice(row.FallbackPlan),
+		CurrentStep:        row.CurrentStep,
+		Progress:           row.Progress,
+		Result:             row.Result,
+		VerifiedOutput:     row.VerifiedOutput,
+		VerificationErrors: unmarshalStringSlice(row.VerificationErrorsJSON),
+		GroundingStatus:    row.GroundingStatus,
+		GroundState:        unmarshalGroundTruthState(row.GroundStateJSON),
+		Metadata:           unmarshalMetadataMap(row.MetadataJSON),
+		Error:              row.Error,
+		CreatedAt:          parseAgentTime(row.CreatedAt),
+		UpdatedAt:          parseAgentTime(row.UpdatedAt),
+	}
+	return task
+}
+
+func rowsToTasks(rows []agentTaskRow) []*Task {
+	tasks := make([]*Task, 0, len(rows))
+	for i := range rows {
+		tasks = append(tasks, rowToTask(rows[i]))
+	}
+	return tasks
+}
+
+func rowToRuntimeEvent(row runtimeEventRow) RuntimeEvent {
+	return RuntimeEvent{
+		ID:           row.ID,
+		TaskID:       row.TaskID,
+		StepIndex:    row.StepIndex,
+		PlannerRound: row.PlannerRound,
+		EventType:    row.EventType,
+		PayloadJSON:  row.PayloadJSON,
+		CreatedAt:    parseAgentTime(row.CreatedAt),
+	}
 }
 
 // Create inserts a new task.
@@ -75,15 +240,7 @@ func (s *Store) Create(ctx context.Context, task *Task) error {
 	if task.Status == "" {
 		task.Status = TaskStatusPending
 	}
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO agent_tasks (id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, metadata_json, error, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		task.ID, task.UserID, task.ConversationID, task.Goal,
-		MarshalPlan(task.Plan), string(task.Status),
-		string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
-		task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), marshalMetadataMap(task.Metadata), task.Error,
-		task.CreatedAt, task.UpdatedAt,
-	)
+	_, err := s.table(ctx, "agent_tasks").Insert(taskValues(task))
 	return err
 }
 
@@ -97,17 +254,19 @@ func normalizeTaskScope(userID []string) string {
 // Get retrieves a task by ID.
 func (s *Store) Get(ctx context.Context, id string, userID ...string) (*Task, error) {
 	scopedUserID := normalizeTaskScope(userID)
-	var row *sql.Row
+	conds := []interface{}{z.Eq("id", id)}
 	if scopedUserID != "" {
-		row = s.db.QueryRowContext(ctx,
-			`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, metadata_json, error, created_at, updated_at
-			 FROM agent_tasks WHERE id = ? AND user_id = ?`, id, scopedUserID)
-	} else {
-		row = s.db.QueryRowContext(ctx,
-			`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, metadata_json, error, created_at, updated_at
-			 FROM agent_tasks WHERE id = ?`, id)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
-	return scanTask(row)
+	var rows []agentTaskRow
+	_, err := s.readTable(ctx, "agent_tasks").Select(&rows, z.Where(conds...), z.Limit(1))
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return rowToTask(rows[0]), nil
 }
 
 // ListByUser returns tasks for a user, ordered by creation time descending.
@@ -115,196 +274,167 @@ func (s *Store) ListByUser(ctx context.Context, userID string, limit int) ([]*Ta
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, verified_output, verification_errors_json, grounding_status, ground_state_json, metadata_json, error, created_at, updated_at
-		 FROM agent_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, userID, limit)
+	var rows []agentTaskRow
+	_, err := s.readTable(ctx, "agent_tasks").Select(&rows,
+		z.Where(z.Eq("user_id", userID)),
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var tasks []*Task
-	for rows.Next() {
-		t, err := scanTaskRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		tasks = append(tasks, t)
-	}
-	return tasks, rows.Err()
+	return rowsToTasks(rows), nil
 }
 
 // Update updates a task's mutable fields.
 func (s *Store) Update(ctx context.Context, task *Task, userID ...string) error {
 	task.UpdatedAt = timeutil.NowTime()
 	scopedUserID := normalizeTaskScope(userID)
-	var (
-		res sql.Result
-		err error
-	)
+	conds := []interface{}{z.Eq("id", task.ID)}
 	if scopedUserID != "" {
-		res, err = s.db.ExecContext(ctx,
-			`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, verified_output=?, verification_errors_json=?, grounding_status=?, ground_state_json=?, metadata_json=?, error=?, updated_at=?
-			 WHERE id=? AND user_id=?`,
-			task.Goal, MarshalPlan(task.Plan), string(task.Status),
-			string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
-			task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), marshalMetadataMap(task.Metadata), task.Error,
-			task.UpdatedAt, task.ID, scopedUserID,
-		)
-	} else {
-		res, err = s.db.ExecContext(ctx,
-			`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, verified_output=?, verification_errors_json=?, grounding_status=?, ground_state_json=?, metadata_json=?, error=?, updated_at=?
-			 WHERE id=?`,
-			task.Goal, MarshalPlan(task.Plan), string(task.Status),
-			string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
-			task.CurrentStep, task.Progress, task.Result, task.VerifiedOutput, marshalStringSlice(task.VerificationErrors), task.GroundingStatus, marshalGroundTruthState(task.GroundState), marshalMetadataMap(task.Metadata), task.Error,
-			task.UpdatedAt, task.ID,
-		)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+	affected, err := s.table(ctx, "agent_tasks").Update(
+		taskValues(task),
+		z.Fields(
+			"goal",
+			"plan",
+			"status",
+			"runtime_state",
+			"runtime_audit",
+			"success_criteria",
+			"fallback_plan",
+			"current_step",
+			"progress",
+			"result",
+			"verified_output",
+			"verification_errors_json",
+			"grounding_status",
+			"ground_state_json",
+			"metadata_json",
+			"error",
+			"updated_at",
+		),
+		z.Where(conds...),
+	)
 	if err != nil {
 		return err
 	}
-	if scopedUserID != "" {
-		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
-			return sql.ErrNoRows
-		}
+	if scopedUserID != "" && affected == 0 {
+		return sql.ErrNoRows
 	}
-	return err
+	return nil
 }
 
 // Delete removes a task.
 func (s *Store) Delete(ctx context.Context, id string, userID ...string) error {
 	scopedUserID := normalizeTaskScope(userID)
-	var (
-		res sql.Result
-		err error
-	)
+	conds := []interface{}{z.Eq("id", id)}
 	if scopedUserID != "" {
-		res, err = s.db.ExecContext(ctx, `DELETE FROM agent_tasks WHERE id=? AND user_id=?`, id, scopedUserID)
-	} else {
-		res, err = s.db.ExecContext(ctx, `DELETE FROM agent_tasks WHERE id=?`, id)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+	affected, err := s.table(ctx, "agent_tasks").Delete(z.Where(conds...))
 	if err != nil {
 		return err
 	}
-	if scopedUserID != "" {
-		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
-			return sql.ErrNoRows
-		}
+	if scopedUserID != "" && affected == 0 {
+		return sql.ErrNoRows
 	}
-	return err
-}
-
-func scanTask(row *sql.Row) (*Task, error) {
-	var t Task
-	var planJSON, status, runtimeState, runtimeAudit, successCriteria, fallbackPlan string
-	var verificationErrors, groundingStatus, groundStateJSON, metadataJSON string
-	err := row.Scan(&t.ID, &t.UserID, &t.ConversationID, &t.Goal,
-		&planJSON, &status, &runtimeState, &runtimeAudit, &successCriteria, &fallbackPlan, &t.CurrentStep, &t.Progress,
-		&t.Result, &t.VerifiedOutput, &verificationErrors, &groundingStatus, &groundStateJSON, &metadataJSON, &t.Error, &t.CreatedAt, &t.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	t.Status = TaskStatus(status)
-	t.RuntimeState = RuntimeState(runtimeState)
-	t.Plan = UnmarshalPlan(planJSON)
-	t.RuntimeAudit = unmarshalAudit(runtimeAudit)
-	t.SuccessCriteria = unmarshalStringSlice(successCriteria)
-	t.FallbackPlan = unmarshalStringSlice(fallbackPlan)
-	t.VerificationErrors = unmarshalStringSlice(verificationErrors)
-	t.GroundingStatus = groundingStatus
-	t.GroundState = unmarshalGroundTruthState(groundStateJSON)
-	t.Metadata = unmarshalMetadataMap(metadataJSON)
-	return &t, nil
-}
-
-type rowScanner interface {
-	Scan(dest ...interface{}) error
-}
-
-func scanTaskRows(rows *sql.Rows) (*Task, error) {
-	var t Task
-	var planJSON, status, runtimeState, runtimeAudit, successCriteria, fallbackPlan string
-	var verificationErrors, groundingStatus, groundStateJSON, metadataJSON string
-	err := rows.Scan(&t.ID, &t.UserID, &t.ConversationID, &t.Goal,
-		&planJSON, &status, &runtimeState, &runtimeAudit, &successCriteria, &fallbackPlan, &t.CurrentStep, &t.Progress,
-		&t.Result, &t.VerifiedOutput, &verificationErrors, &groundingStatus, &groundStateJSON, &metadataJSON, &t.Error, &t.CreatedAt, &t.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	t.Status = TaskStatus(status)
-	t.RuntimeState = RuntimeState(runtimeState)
-	t.Plan = UnmarshalPlan(planJSON)
-	t.RuntimeAudit = unmarshalAudit(runtimeAudit)
-	t.SuccessCriteria = unmarshalStringSlice(successCriteria)
-	t.FallbackPlan = unmarshalStringSlice(fallbackPlan)
-	t.VerificationErrors = unmarshalStringSlice(verificationErrors)
-	t.GroundingStatus = groundingStatus
-	t.GroundState = unmarshalGroundTruthState(groundStateJSON)
-	t.Metadata = unmarshalMetadataMap(metadataJSON)
-	return &t, nil
+	return nil
 }
 
 // CountRunning returns the number of running tasks for a user.
 func (s *Store) CountRunning(ctx context.Context, userID string) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM agent_tasks WHERE user_id=? AND status IN ('pending','planning','executing','waiting_input')`,
-		userID).Scan(&count)
-	return count, err
+	var count int64
+	_, err := s.readTable(ctx, "agent_tasks").Select(
+		&count,
+		z.Fields("count(1)"),
+		z.Where(
+			z.Eq("user_id", userID),
+			z.In(
+				"status",
+				string(TaskStatusPending),
+				string(TaskStatusPlanning),
+				string(TaskStatusExecuting),
+				string(TaskStatusWaitingInput),
+			),
+		),
+	)
+	return int(count), err
 }
 
 // SetStatus is a convenience method to update just the status.
 func (s *Store) SetStatus(ctx context.Context, id string, status TaskStatus, errMsg string, userID ...string) error {
 	now := timeutil.NowTime()
 	scopedUserID := normalizeTaskScope(userID)
-	var (
-		res sql.Result
-		err error
-	)
+	conds := []interface{}{z.Eq("id", id)}
 	if scopedUserID != "" {
-		res, err = s.db.ExecContext(ctx,
-			`UPDATE agent_tasks SET status=?, error=?, updated_at=? WHERE id=? AND user_id=?`,
-			string(status), errMsg, now, id, scopedUserID)
-	} else {
-		res, err = s.db.ExecContext(ctx,
-			`UPDATE agent_tasks SET status=?, error=?, updated_at=? WHERE id=?`,
-			string(status), errMsg, now, id)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+	affected, err := s.table(ctx, "agent_tasks").Update(
+		z.V{
+			"status":     string(status),
+			"error":      errMsg,
+			"updated_at": now,
+		},
+		z.Fields("status", "error", "updated_at"),
+		z.Where(conds...),
+	)
 	if err != nil {
 		return err
 	}
-	if scopedUserID != "" {
-		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
-			return sql.ErrNoRows
-		}
+	if scopedUserID != "" && affected == 0 {
+		return sql.ErrNoRows
 	}
-	return err
+	return nil
 }
 
 // Cleanup removes tasks older than the given duration.
 func (s *Store) Cleanup(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := timeutil.NowTime().Add(-olderThan)
-	result, err := s.db.ExecContext(ctx,
-		`DELETE FROM agent_tasks WHERE created_at < ? AND status IN ('completed','failed','cancelled','aborted')`,
-		cutoff)
+	affected, err := s.table(ctx, "agent_tasks").Delete(
+		z.Where(
+			z.Expr("created_at < ?", cutoff),
+			z.In(
+				"status",
+				string(TaskStatusCompleted),
+				string(TaskStatusFailed),
+				string(TaskStatusCancelled),
+				string(TaskStatusAborted),
+			),
+		),
+	)
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	return int64(affected), nil
 }
 
 // RecoverStaleTasks marks any tasks stuck in running states as failed.
 // Call this on startup to clean up tasks from a previous crash.
 func (s *Store) RecoverStaleTasks(ctx context.Context) (int64, error) {
 	now := timeutil.NowTime()
-	result, err := s.db.ExecContext(ctx,
-		`UPDATE agent_tasks SET status='failed', error='interrupted by server restart', updated_at=?
-		 WHERE status IN ('pending','planning','executing','waiting_input')`, now)
+	affected, err := s.table(ctx, "agent_tasks").Update(
+		z.V{
+			"status":     string(TaskStatusFailed),
+			"error":      "interrupted by server restart",
+			"updated_at": now,
+		},
+		z.Fields("status", "error", "updated_at"),
+		z.Where(
+			z.In(
+				"status",
+				string(TaskStatusPending),
+				string(TaskStatusPlanning),
+				string(TaskStatusExecuting),
+				string(TaskStatusWaitingInput),
+			),
+		),
+	)
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	return int64(affected), nil
 }
 
 func ensureTaskColumns(db *sql.DB) error {
@@ -371,30 +501,23 @@ func (s *Store) AppendRuntimeEvent(ctx context.Context, event RuntimeEvent) erro
 	if strings.TrimSpace(event.ID) == "" {
 		return sql.ErrNoRows
 	}
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO agent_runtime_events (id, task_id, step_index, planner_round, event_type, payload_json, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		event.ID, event.TaskID, event.StepIndex, event.PlannerRound, event.EventType, event.PayloadJSON, event.CreatedAt,
-	)
+	_, err := s.table(ctx, "agent_runtime_events").Insert(runtimeEventValues(event))
 	return err
 }
 
 func (s *Store) ListRuntimeEvents(ctx context.Context, taskID string) ([]RuntimeEvent, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, task_id, step_index, planner_round, event_type, payload_json, created_at
-		 FROM agent_runtime_events WHERE task_id = ? ORDER BY created_at ASC, id ASC`, taskID)
+	var rows []runtimeEventRow
+	_, err := s.readTable(ctx, "agent_runtime_events").Select(
+		&rows,
+		z.Where(z.Eq("task_id", taskID)),
+		z.OrderBy("created_at ASC, id ASC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var out []RuntimeEvent
-	for rows.Next() {
-		var event RuntimeEvent
-		if err := rows.Scan(&event.ID, &event.TaskID, &event.StepIndex, &event.PlannerRound, &event.EventType, &event.PayloadJSON, &event.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, event)
+	out := make([]RuntimeEvent, 0, len(rows))
+	for i := range rows {
+		out = append(out, rowToRuntimeEvent(rows[i]))
 	}
-	return out, rows.Err()
+	return out, nil
 }

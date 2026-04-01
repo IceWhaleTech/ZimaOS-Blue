@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
+
+var analyzeSkillTopicURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
 
 // AnalyzeExecutor is the interface for the analyze backend.
 // Decouples skill/builtin from tools package to avoid import cycles.
@@ -80,6 +84,8 @@ func (a *Analyze) Validate(input map[string]any) error {
 		}
 	}
 
+	promoteAnalyzeSkillTopicURLs(input)
+
 	// Normalize: promote "query" to "search_queries" array if not set.
 	if _, ok := input["search_queries"]; !ok {
 		if q, ok := input["query"].(string); ok && q != "" {
@@ -102,6 +108,68 @@ func normalizeAnalyzeSkillInput(input map[string]any) {
 		} else if raw, ok := input["queries"]; ok {
 			input["search_queries"] = raw
 		}
+	}
+}
+
+func promoteAnalyzeSkillTopicURLs(input map[string]any) {
+	rawTopic, _ := input["topic"].(string)
+	topic := strings.TrimSpace(rawTopic)
+	if topic == "" || analyzeSkillHasStringInputs(input["urls"]) {
+		return
+	}
+
+	urls := extractAnalyzeSkillTopicURLs(topic)
+	if len(urls) == 0 {
+		return
+	}
+
+	promoted := make([]interface{}, 0, len(urls))
+	for _, url := range urls {
+		promoted = append(promoted, url)
+	}
+	input["urls"] = promoted
+
+	if cleaned := stripAnalyzeSkillTopicURLs(topic); cleaned != "" && cleaned != topic {
+		input["topic"] = cleaned
+	}
+}
+
+func extractAnalyzeSkillTopicURLs(topic string) []string {
+	matches := analyzeSkillTopicURLPattern.FindAllString(topic, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(matches))
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		candidate := strings.TrimSpace(match)
+		if candidate == "" {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		out = append(out, candidate)
+	}
+	return out
+}
+
+func stripAnalyzeSkillTopicURLs(topic string) string {
+	cleaned := analyzeSkillTopicURLPattern.ReplaceAllString(topic, " ")
+	return strings.TrimSpace(strings.Join(strings.Fields(cleaned), " "))
+}
+
+func analyzeSkillHasStringInputs(raw any) bool {
+	switch typed := raw.(type) {
+	case string:
+		return strings.TrimSpace(typed) != ""
+	case []string:
+		return len(typed) > 0
+	case []interface{}:
+		return len(typed) > 0
+	default:
+		return false
 	}
 }
 

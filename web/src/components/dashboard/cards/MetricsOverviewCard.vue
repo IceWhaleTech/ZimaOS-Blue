@@ -45,8 +45,8 @@ function formatLatency(ms: number | undefined | null): string {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">Metrics</p>
-          <p class="dashboard-card-subtitle mt-2">Usage overview</p>
+          <p class="dashboard-card-label">{{ t('dashboard.cards.metricsOverview') }}</p>
+          <p class="dashboard-card-subtitle mt-2">{{ t('metrics.cards.overview.subtitle') }}</p>
         </div>
       </div>
 
@@ -90,7 +90,8 @@ function formatLatency(ms: number | undefined | null): string {
             {{ formatLatency(stats.avgLatency) }}
           </p>
           <p class="dashboard-card-footnote mt-2">
-            P95 {{ formatLatency(stats.p95Latency) }} · P99 {{ formatLatency(stats.p99Latency) }}
+            {{ t('metrics.p95') }} {{ formatLatency(stats.p95Latency) }} ·
+            {{ t('metrics.p99') }} {{ formatLatency(stats.p99Latency) }}
           </p>
         </div>
 

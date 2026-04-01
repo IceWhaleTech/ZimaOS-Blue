@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -274,5 +275,30 @@ func TestApprovalAuthorizeToolCall_AutoAllowsSimpleFileDelete(t *testing.T) {
 	}
 	if decision.Approval.Required {
 		t.Fatal("expected no approval requirement for simple file delete")
+	}
+}
+
+func TestApprovalAuthorizeToolCallReturnsStructuredCancelError(t *testing.T) {
+	h := NewApprovalHandler(nil)
+	h.config.DefaultPolicy = "ask"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := h.AuthorizeToolCall(ctx, tools.ToolApprovalRequest{
+		ToolName:  "browser",
+		RouteKind: tools.ToolRouteKindAgent,
+		SessionID: "conv-cancelled",
+		UserID:    "user-1",
+	})
+	if err == nil {
+		t.Fatal("expected cancellation error")
+	}
+	var runtimeErr tools.ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "tool_approval_cancelled" {
+		t.Fatalf("code = %q, want tool_approval_cancelled", runtimeErr.ToolRuntimeCode())
 	}
 }

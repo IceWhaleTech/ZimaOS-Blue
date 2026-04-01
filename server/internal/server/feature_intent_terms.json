@@ -1,11 +1,18 @@
 {
   "deep_research_explicit": [
     "deep research",
+    "research mode",
+    "research workflow",
+    "research capability",
+    "harness research",
     "深度搜索",
     "深度研究",
     "深入研究",
     "深度调研",
     "深入调研",
+    "研究模式",
+    "研究流程",
+    "研究能力",
     "人物调研",
     "查阅观点",
     "按时期调研"
@@ -39,11 +46,18 @@
   ],
   "deep_research_negations": [
     "no deep research",
+    "no research mode",
     "without deep research",
+    "without research mode",
     "disable deep research",
+    "disable research mode",
+    "disable research",
     "不要深度搜索",
     "不用深度搜索",
-    "关闭深度搜索"
+    "关闭深度搜索",
+    "不要研究模式",
+    "不用研究模式",
+    "关闭研究模式"
   ],
   "agent_mode_explicit": [
     "agent mode",
@@ -98,6 +112,8 @@
     "what's",
     "how to",
     "how do i",
+    "explain",
+    "tell me about",
     "什么是",
     "啥是",
     "怎么用",

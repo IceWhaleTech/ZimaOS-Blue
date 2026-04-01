@@ -3,20 +3,29 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 type stubDriver struct {
-	kind      RunKind
-	started   []string
-	cancelled []string
+	kind          RunKind
+	started       []string
+	cancelled     []string
+	actions       []string
+	actionInputs  []map[string]interface{}
+	actionResults map[string]RunStatus
+	actionErr     error
 }
 
 func (d *stubDriver) Kind() RunKind { return d.kind }
@@ -34,6 +43,64 @@ func (d *stubDriver) Cancel(_ context.Context, run *Run) error {
 	d.cancelled = append(d.cancelled, run.ID)
 	return nil
 }
+func (d *stubDriver) PerformAction(_ context.Context, run *Run, action string, input map[string]interface{}) (*Run, error) {
+	if d.actionErr != nil {
+		return nil, d.actionErr
+	}
+	nextStatus, ok := d.actionResults[action]
+	if !ok {
+		return nil, fmt.Errorf("unsupported run action %q", action)
+	}
+	d.actions = append(d.actions, action)
+	d.actionInputs = append(d.actionInputs, cloneMetadataMap(input))
+	snapshot := *run
+	snapshot.Metadata = cloneMetadataMap(run.Metadata)
+	snapshot.Status = nextStatus
+	return &snapshot, nil
+}
+
+type runContextDriver struct {
+	kind         RunKind
+	order        *[]string
+	lastEnv      RunEnv
+	lastRunCtx   *RunContext
+	toolRunID    string
+	toolUserID   string
+	toolSession  string
+	toolModel    string
+	toolAgentID  string
+	startErr     error
+	startedCount int
+}
+
+func (d *runContextDriver) Kind() RunKind { return d.kind }
+func (d *runContextDriver) Validate(spec RunSpec) error {
+	if spec.Goal == "" {
+		return fmt.Errorf("goal is required")
+	}
+	return nil
+}
+func (d *runContextDriver) Start(ctx context.Context, run *Run, env RunEnv) error {
+	d.startedCount++
+	d.lastEnv = env
+	d.lastRunCtx = GetRunContext(ctx)
+	d.toolRunID = tools.GetRunID(ctx)
+	d.toolUserID = tools.GetUserID(ctx)
+	d.toolSession = tools.GetSessionID(ctx)
+	d.toolModel = tools.GetModel(ctx)
+	d.toolAgentID = tools.GetAgentID(ctx)
+	if d.order != nil {
+		*d.order = append(*d.order, "start")
+	}
+	if d.startErr != nil {
+		return d.startErr
+	}
+	if run != nil {
+		return env.Manager.SyncSnapshot(ctx, run)
+	}
+	return nil
+}
+func (d *runContextDriver) Cancel(_ context.Context, _ *Run) error { return nil }
 
 type recursiveListOneDriver struct {
 	kind       RunKind
@@ -57,6 +124,49 @@ func (d *recursiveListOneDriver) Sync(ctx context.Context, run *Run) (*Run, erro
 	}
 	snapshot := *run
 	snapshot.Status = RunStatusExecuting
+	if err := d.controller.SyncSnapshot(ctx, &snapshot); err != nil {
+		return nil, err
+	}
+	return d.controller.ListOne(ctx, run.ID)
+}
+
+type stagedSnapshotDriver struct {
+	kind         RunKind
+	controller   *Controller
+	syncStatuses []RunStatus
+	syncCalls    int
+}
+
+func (d *stagedSnapshotDriver) Kind() RunKind { return d.kind }
+func (d *stagedSnapshotDriver) Validate(spec RunSpec) error {
+	if spec.Goal == "" {
+		return fmt.Errorf("goal is required")
+	}
+	return nil
+}
+func (d *stagedSnapshotDriver) Start(_ context.Context, _ *Run, _ RunEnv) error { return nil }
+func (d *stagedSnapshotDriver) Cancel(_ context.Context, _ *Run) error          { return nil }
+func (d *stagedSnapshotDriver) Sync(ctx context.Context, run *Run) (*Run, error) {
+	if run == nil {
+		return nil, nil
+	}
+	snapshot := *run
+	if len(d.syncStatuses) > 0 {
+		index := d.syncCalls
+		if index >= len(d.syncStatuses) {
+			index = len(d.syncStatuses) - 1
+		}
+		snapshot.Status = d.syncStatuses[index]
+		d.syncCalls++
+	}
+	if snapshot.Status != RunStatusPending && snapshot.StartedAt == nil {
+		started := time.Now().UTC()
+		snapshot.StartedAt = &started
+	}
+	if isTerminalRunStatus(snapshot.Status) && snapshot.FinishedAt == nil {
+		finished := time.Now().UTC()
+		snapshot.FinishedAt = &finished
+	}
 	if err := d.controller.SyncSnapshot(ctx, &snapshot); err != nil {
 		return nil, err
 	}
@@ -108,6 +218,240 @@ func TestController_SubmitAndList(t *testing.T) {
 	}
 }
 
+func TestController_PerformActionCancelUsesCancelControlPath(t *testing.T) {
+	controller := newTestController(t)
+	driver := &stubDriver{kind: RunKindAgentTask}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:   RunKindAgentTask,
+		Goal:   "cancel via action",
+		UserID: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	run.Status = RunStatusExecuting
+	if err := controller.store.UpdateRun(context.Background(), run); err != nil {
+		t.Fatalf("UpdateRun failed: %v", err)
+	}
+
+	updated, err := controller.PerformAction(context.Background(), run.ID, "cancel", map[string]interface{}{
+		"reason": "cancelled by test",
+	})
+	if err != nil {
+		t.Fatalf("PerformAction(cancel) failed: %v", err)
+	}
+	if len(driver.cancelled) != 1 || driver.cancelled[0] != run.ID {
+		t.Fatalf("driver cancel calls = %#v, want [%q]", driver.cancelled, run.ID)
+	}
+	if len(driver.actions) != 0 {
+		t.Fatalf("driver action calls = %#v, want none for cancel shim", driver.actions)
+	}
+	if updated == nil || updated.Status != RunStatusCancelled {
+		t.Fatalf("updated run = %#v, want cancelled snapshot", updated)
+	}
+	if strings.TrimSpace(updated.Error) != "cancelled by test" {
+		t.Fatalf("updated error = %q, want cancelled by test", updated.Error)
+	}
+	events, err := controller.ListEvents(context.Background(), run.ID, 20)
+	if err != nil {
+		t.Fatalf("ListEvents failed: %v", err)
+	}
+	runActionSeen := false
+	runCancelledSeen := false
+	for _, event := range events {
+		if event.Type == "run_action" && event.Message == "cancel" {
+			runActionSeen = true
+		}
+		if event.Type == "run_cancelled" && event.Message == "cancelled by test" {
+			runCancelledSeen = true
+		}
+	}
+	if !runActionSeen || !runCancelledSeen {
+		t.Fatalf("events = %#v, want run_action(cancel) and run_cancelled(cancelled by test)", events)
+	}
+}
+
+func TestController_SubmitExposesRunContextToMiddlewareAndDriver(t *testing.T) {
+	controller := newTestController(t)
+	order := []string{}
+	driver := &runContextDriver{kind: RunKindAgentTask, order: &order}
+	controller.UseExecutionMiddleware(ExecutionMiddlewareHooks{
+		BeforeStartFunc: func(ctx context.Context, runCtx *RunContext) error {
+			order = append(order, "before")
+			if runCtx == nil || runCtx.Run == nil {
+				t.Fatal("expected run context in BeforeStart")
+			}
+			if got := GetRunContext(ctx); got != runCtx {
+				t.Fatalf("context runCtx = %#v, want %#v", got, runCtx)
+			}
+			runCtx.Values["phase"] = "before"
+			return nil
+		},
+		AfterStartFunc: func(_ context.Context, runCtx *RunContext) {
+			order = append(order, "after")
+			if runCtx == nil || runCtx.Values["phase"] != "before" {
+				t.Fatalf("runCtx.Values = %#v, want phase=before", runCtx.Values)
+			}
+		},
+	})
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:      RunKindAgentTask,
+		Goal:      "ship harness middleware",
+		UserID:    "user-1",
+		SessionID: "session-1",
+		Model:     "gpt-test",
+		AgentID:   "main",
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if want := []string{"before", "start", "after"}; len(order) != len(want) {
+		t.Fatalf("order = %#v, want %#v", order, want)
+	} else {
+		for i := range want {
+			if order[i] != want[i] {
+				t.Fatalf("order = %#v, want %#v", order, want)
+			}
+		}
+	}
+	if driver.lastEnv.RunContext == nil {
+		t.Fatal("expected RunEnv.RunContext")
+	}
+	if driver.lastRunCtx != driver.lastEnv.RunContext {
+		t.Fatalf("ctx runCtx = %#v, env runCtx = %#v", driver.lastRunCtx, driver.lastEnv.RunContext)
+	}
+	if driver.lastEnv.RunContext.Run == nil || driver.lastEnv.RunContext.Run.ID != run.ID {
+		t.Fatalf("run context run = %#v, want run %q", driver.lastEnv.RunContext.Run, run.ID)
+	}
+	if driver.lastEnv.RunContext.Controller != controller {
+		t.Fatal("expected controller on run context")
+	}
+	if driver.lastEnv.RunContext.Values["phase"] != "before" {
+		t.Fatalf("run context values = %#v, want phase=before", driver.lastEnv.RunContext.Values)
+	}
+	if driver.toolRunID != run.ID {
+		t.Fatalf("tools run_id = %q, want %q", driver.toolRunID, run.ID)
+	}
+	if driver.toolUserID != "user-1" {
+		t.Fatalf("tools user_id = %q, want %q", driver.toolUserID, "user-1")
+	}
+	if driver.toolSession != "session-1" {
+		t.Fatalf("tools session_id = %q, want %q", driver.toolSession, "session-1")
+	}
+	if driver.toolModel != "gpt-test" {
+		t.Fatalf("tools model = %q, want %q", driver.toolModel, "gpt-test")
+	}
+	if driver.toolAgentID != "main" {
+		t.Fatalf("tools agent_id = %q, want %q", driver.toolAgentID, "main")
+	}
+}
+
+func TestController_SubmitFailsWhenExecutionMiddlewareBlocksStart(t *testing.T) {
+	controller := newTestController(t)
+	driver := &stubDriver{kind: RunKindAgentTask}
+	onStartErrorCalls := 0
+	controller.UseExecutionMiddleware(ExecutionMiddlewareHooks{
+		BeforeStartFunc: func(_ context.Context, _ *RunContext) error {
+			return fmt.Errorf("blocked by middleware")
+		},
+		OnStartErrorFunc: func(_ context.Context, _ *RunContext, runErr error) {
+			onStartErrorCalls++
+			if runErr == nil || !strings.Contains(runErr.Error(), "blocked by middleware") {
+				t.Fatalf("unexpected runErr = %v", runErr)
+			}
+		},
+	})
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:   RunKindAgentTask,
+		Goal:   "blocked dispatch",
+		UserID: "user-1",
+	})
+	if err == nil {
+		t.Fatal("expected Submit to fail")
+	}
+	if run != nil {
+		t.Fatalf("expected nil run on Submit failure, got %#v", run)
+	}
+	if len(driver.started) != 0 {
+		t.Fatalf("driver should not have started, got %#v", driver.started)
+	}
+	if onStartErrorCalls != 1 {
+		t.Fatalf("OnStartError calls = %d, want 1", onStartErrorCalls)
+	}
+
+	runs, listErr := controller.List(context.Background(), RunFilter{UserID: "user-1", Kind: RunKindAgentTask, Limit: 10})
+	if listErr != nil {
+		t.Fatalf("List failed: %v", listErr)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("runs = %#v, want one failed run", runs)
+	}
+	if runs[0].Status != RunStatusFailed {
+		t.Fatalf("run status = %q, want %q", runs[0].Status, RunStatusFailed)
+	}
+	if !strings.Contains(runs[0].Error, "blocked by middleware") {
+		t.Fatalf("run error = %q, want middleware error", runs[0].Error)
+	}
+}
+
+func TestController_SpawnChildExposesParentRunContext(t *testing.T) {
+	controller := newTestController(t)
+	parentDriver := &stubDriver{kind: RunKindAgentTask}
+	childDriver := &runContextDriver{kind: RunKindSubagent}
+	controller.RegisterDriver(parentDriver)
+	controller.RegisterDriver(childDriver)
+
+	parent, err := controller.Submit(context.Background(), RunSpec{
+		Kind:         RunKindAgentTask,
+		Goal:         "root",
+		UserID:       "user-1",
+		ApprovalMode: ApprovalModeAsk,
+		MaxDepth:     2,
+		MaxSubagents: 1,
+	})
+	if err != nil {
+		t.Fatalf("Submit parent failed: %v", err)
+	}
+
+	controller.UseExecutionMiddleware(ExecutionMiddlewareHooks{
+		BeforeStartFunc: func(_ context.Context, runCtx *RunContext) error {
+			if runCtx == nil || runCtx.Run == nil {
+				t.Fatal("expected child run context")
+			}
+			if runCtx.Run.Kind == RunKindSubagent {
+				if runCtx.Parent == nil || runCtx.Parent.ID != parent.ID {
+					t.Fatalf("parent = %#v, want %q", runCtx.Parent, parent.ID)
+				}
+			}
+			return nil
+		},
+	})
+
+	child, err := controller.SpawnChild(context.Background(), parent.ID, RunSpec{
+		Kind:         RunKindSubagent,
+		Goal:         "child",
+		ApprovalMode: ApprovalModeAsk,
+	})
+	if err != nil {
+		t.Fatalf("SpawnChild failed: %v", err)
+	}
+	if childDriver.lastEnv.RunContext == nil {
+		t.Fatal("expected child RunContext")
+	}
+	if childDriver.lastEnv.RunContext.Parent == nil || childDriver.lastEnv.RunContext.Parent.ID != parent.ID {
+		t.Fatalf("child parent = %#v, want %q", childDriver.lastEnv.RunContext.Parent, parent.ID)
+	}
+	if child.ParentRunID != parent.ID {
+		t.Fatalf("child.ParentRunID = %q, want %q", child.ParentRunID, parent.ID)
+	}
+}
+
 func TestController_SpawnChildEnforcesPolicy(t *testing.T) {
 	controller := newTestController(t)
 	parentDriver := &stubDriver{kind: RunKindAgentTask}
@@ -151,6 +495,124 @@ func TestController_SpawnChildEnforcesPolicy(t *testing.T) {
 		ApprovalMode: ApprovalModeAsk,
 	}); err == nil {
 		t.Fatal("expected max subagents enforcement")
+	}
+}
+
+func TestController_SubmitRejectsNegativeBudgetWithGuardError(t *testing.T) {
+	controller := newTestController(t)
+	driver := &stubDriver{kind: RunKindAgentTask}
+	controller.RegisterDriver(driver)
+
+	_, err := controller.Submit(context.Background(), RunSpec{
+		Kind:     RunKindAgentTask,
+		Goal:     "bad budget",
+		UserID:   "user-1",
+		MaxSteps: -1,
+	})
+	if err == nil {
+		t.Fatal("expected negative budget to fail")
+	}
+	var guardErr *GuardPipelineError
+	if !errors.As(err, &guardErr) {
+		t.Fatalf("expected GuardPipelineError, got %T: %v", err, err)
+	}
+	if guardErr.Stage != RuntimeStageNormalize || guardErr.Code != "invalid_budget" {
+		t.Fatalf("unexpected guard error: %#v", guardErr)
+	}
+}
+
+func TestController_SpawnChildRejectsNegativeBudgetWithGuardError(t *testing.T) {
+	controller := newTestController(t)
+	parentDriver := &stubDriver{kind: RunKindAgentTask}
+	childDriver := &stubDriver{kind: RunKindSubagent}
+	controller.RegisterDriver(parentDriver)
+	controller.RegisterDriver(childDriver)
+
+	parent, err := controller.Submit(context.Background(), RunSpec{
+		Kind:         RunKindAgentTask,
+		Goal:         "root",
+		UserID:       "user-1",
+		ApprovalMode: ApprovalModeAsk,
+		MaxDepth:     2,
+		MaxSubagents: 2,
+	})
+	if err != nil {
+		t.Fatalf("Submit parent failed: %v", err)
+	}
+
+	_, err = controller.SpawnChild(context.Background(), parent.ID, RunSpec{
+		Kind:          RunKindSubagent,
+		Goal:          "bad child budget",
+		ApprovalMode:  ApprovalModeAsk,
+		MaxToolRounds: -1,
+	})
+	if err == nil {
+		t.Fatal("expected negative child budget to fail")
+	}
+	var guardErr *GuardPipelineError
+	if !errors.As(err, &guardErr) {
+		t.Fatalf("expected GuardPipelineError, got %T: %v", err, err)
+	}
+	if guardErr.Stage != RuntimeStageNormalize || guardErr.Code != "invalid_budget" {
+		t.Fatalf("unexpected guard error: %#v", guardErr)
+	}
+}
+
+func TestController_SpawnChildEmitsStageChangedEvents(t *testing.T) {
+	controller := newTestController(t)
+	parentDriver := &stubDriver{kind: RunKindAgentTask}
+	childDriver := &stubDriver{kind: RunKindSubagent}
+	controller.RegisterDriver(parentDriver)
+	controller.RegisterDriver(childDriver)
+
+	parent, err := controller.Submit(context.Background(), RunSpec{
+		Kind:         RunKindAgentTask,
+		Goal:         "root",
+		UserID:       "user-1",
+		ApprovalMode: ApprovalModeAsk,
+		MaxDepth:     2,
+		MaxSubagents: 2,
+		MaxSteps:     9,
+	})
+	if err != nil {
+		t.Fatalf("Submit parent failed: %v", err)
+	}
+
+	child, err := controller.SpawnChild(context.Background(), parent.ID, RunSpec{
+		Kind:         RunKindSubagent,
+		Goal:         "child",
+		ApprovalMode: ApprovalModeAsk,
+	})
+	if err != nil {
+		t.Fatalf("SpawnChild failed: %v", err)
+	}
+
+	events, err := controller.ListEvents(context.Background(), child.ID, 20)
+	if err != nil {
+		t.Fatalf("ListEvents failed: %v", err)
+	}
+	var stages []string
+	for _, event := range events {
+		if event.Type != "stage_changed" {
+			continue
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal([]byte(event.PayloadJSON), &payload); err != nil {
+			t.Fatalf("invalid stage payload: %v", err)
+		}
+		stage, _ := payload["stage"].(string)
+		if stage != "" {
+			stages = append(stages, stage)
+		}
+	}
+	for _, want := range []string{
+		string(RuntimeStageNormalize),
+		string(RuntimeStagePolicy),
+		string(RuntimeStageExecute),
+	} {
+		if !containsString(stages, want) {
+			t.Fatalf("missing stage %q in events: %#v", want, stages)
+		}
 	}
 }
 
@@ -273,6 +735,15 @@ func TestController_ListOneDoesNotTriggerSyncRecursion(t *testing.T) {
 	if got.Status != RunStatusExecuting {
 		t.Fatalf("expected executing status after sync, got %s", got.Status)
 	}
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestController_CreatesArtifactRootForRuns(t *testing.T) {

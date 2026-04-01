@@ -3,6 +3,7 @@ package skillstore
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -322,6 +323,56 @@ func TestLocalSkillScanner_EmptyDirectory(t *testing.T) {
 
 	if scanner.Count() != 0 {
 		t.Errorf("expected 0 skills in empty directory, got %d", scanner.Count())
+	}
+}
+
+func TestLocalSkillScanner_MultipleRootsPreferEarlierRoot(t *testing.T) {
+	workspaceDir := t.TempDir()
+	agentsDir := filepath.Join(workspaceDir, ".agents", "skills", "browser")
+	claudeDir := filepath.Join(workspaceDir, ".claude", "skills", "browser")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatalf("mkdir agents skill dir: %v", err)
+	}
+	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+		t.Fatalf("mkdir claude skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser from agents root
+version: 1.0.0
+---
+`), 0o644); err != nil {
+		t.Fatalf("write agents skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(claudeDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser from claude root
+version: 1.0.0
+---
+`), 0o644); err != nil {
+		t.Fatalf("write claude skill: %v", err)
+	}
+
+	scanner := NewLocalSkillScannerWithRoots([]string{
+		filepath.Join(workspaceDir, ".agents", "skills"),
+		filepath.Join(workspaceDir, ".claude", "skills"),
+	})
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+
+	if scanner.Count() != 1 {
+		t.Fatalf("Count() = %d, want 1 deduplicated skill", scanner.Count())
+	}
+	skill := scanner.Get("browser")
+	if skill == nil {
+		t.Fatal("expected browser skill to be discovered")
+	}
+	if skill.Description != "Browser from agents root" {
+		t.Fatalf("description=%q, want agents root precedence", skill.Description)
+	}
+	if !strings.Contains(skill.FilePath, filepath.Join(".agents", "skills", "browser", "SKILL.md")) {
+		t.Fatalf("expected agents file path, got %q", skill.FilePath)
 	}
 }
 

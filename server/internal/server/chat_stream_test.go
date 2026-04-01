@@ -178,6 +178,8 @@ type toolRoundPinnedProviderFailoverProxyHandler struct {
 	requestDisableCont    []bool
 }
 
+type resolvedRouteModelSwitchProxyHandler struct{}
+
 type emitCardToolMock struct {
 	def tools.ToolDefinition
 }
@@ -1195,6 +1197,21 @@ func (h *toolRoundPinnedProviderFailoverProxyHandler) ServeHTTP(w http.ResponseW
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_failover_2","choices":[{"delta":{"content":"备用 provider 恢复成功。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
+	}
+}
+
+func (h *resolvedRouteModelSwitchProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockRelay"
+		rr.ProviderID = "prov_resolved_route_switch"
+		rr.Model = "claude-haiku-4-5"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "data: %s\n\n", `{"id":"resolved_route_switch","choices":[{"delta":{"content":"已切换到可用模型。"},"finish_reason":"stop"}],"model":"claude-haiku-4-5"}`)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
 	}
 }
 
@@ -4553,6 +4570,51 @@ func TestStreamMessage_ToolRoundPreContent502_RetriesWithoutPinnedProvider(t *te
 	}
 	if len(fakeProxy.requestExcluded[2]) != 1 || fakeProxy.requestExcluded[2][0] != "prov_primary" {
 		t.Fatalf("expected third call to exclude prov_primary, got %v", fakeProxy.requestExcluded[2])
+	}
+}
+
+func TestStreamMessage_EmitsProviderResolvedForExplicitModelSwitch(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test provider resolved event for explicit model switch")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.SetProxyBridge(proxybridge.NewBridge(&resolvedRouteModelSwitchProxyHandler{}))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我继续","model":"claude-3-5-haiku-20241022"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	events := extractJSONSSEEvents(t, rec.Body.String())
+	resolved := requireProcessEvent(t, events, "provider_resolved", "success")
+	if gotProvider, _ := resolved["process_provider"].(string); gotProvider != "MockRelay" {
+		t.Fatalf("expected provider_resolved to mention MockRelay, got event=%v", resolved)
+	}
+	if gotModel, _ := resolved["process_model"].(string); gotModel != "claude-haiku-4-5" {
+		t.Fatalf("expected provider_resolved to mention claude-haiku-4-5, got event=%v", resolved)
+	}
+	if gotDetail, _ := resolved["process_detail"].(string); gotDetail != "Switched to an available upstream model for this response." {
+		t.Fatalf("expected provider_resolved to explain model switch, got event=%v", resolved)
+	}
+	if !strings.Contains(rec.Body.String(), `"model":"claude-3-5-haiku-20241022"`) {
+		t.Fatalf("expected final SSE payload to keep stable display model, body=%s", rec.Body.String())
 	}
 }
 

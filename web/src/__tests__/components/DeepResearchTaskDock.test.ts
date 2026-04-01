@@ -46,14 +46,17 @@ function createTestI18n() {
           loading: 'Loading...',
         },
         chat: {
-          deepResearchProgress: 'Deep Research Running',
+          researchProgress: 'Research Running',
+          deepResearchProgress: 'Deep Research in progress',
           deepResearchStageIntake: 'Intake',
           deepResearchStagePlanning: 'Planning',
           deepResearchStageRetrieve: 'Retrieving',
           deepResearchStageVerify: 'Verifying',
           deepResearchStageSynthesize: 'Synthesizing',
-          deepResearchRunningTasks: 'Running research tasks',
-          deepResearchRunningElsewhere: 'Track active deep research jobs across conversations.',
+          researchRunningTasks: 'Running research tasks',
+          researchRunningElsewhere: 'Track active research tasks across conversations.',
+          deepResearchRunningTasks: 'Running Deep Research tasks',
+          deepResearchRunningElsewhere: 'Track active Deep Research tasks across conversations.',
           deepResearchIteration: 'Iteration',
           deepResearchBackToTask: 'View result',
           deepResearchCancelTask: 'Cancel',
@@ -112,7 +115,7 @@ describe('DeepResearchTaskDock', () => {
       wrapper.get('[data-testid="deep-research-task-dock-toggle"]').attributes('aria-expanded')
     ).toBe('false')
     expect(wrapper.find('[data-testid="deep-research-task-dock-details"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Running research tasks')
+    expect(wrapper.text()).toContain('Running Deep Research tasks')
     expect(wrapper.text()).toContain('Planning')
     expect(wrapper.text()).toContain('48%')
     expect(wrapper.text()).toContain('Track session badge regressions')
@@ -123,7 +126,7 @@ describe('DeepResearchTaskDock', () => {
     expect(
       wrapper.get('[data-testid="deep-research-task-dock-toggle"]').attributes('aria-expanded')
     ).toBe('true')
-    expect(wrapper.text()).toContain('Track active deep research jobs across conversations.')
+    expect(wrapper.text()).toContain('Track active Deep Research tasks across conversations.')
     expect(wrapper.text()).toContain('Compare browser grounding changes')
     expect(wrapper.text()).toContain('Need one primary source')
   })

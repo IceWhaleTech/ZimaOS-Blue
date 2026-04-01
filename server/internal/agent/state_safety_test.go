@@ -22,3 +22,21 @@ func TestAsStringGuardsRecursivePayloads(t *testing.T) {
 		t.Fatalf("asString() = %q, want circular marker", got)
 	}
 }
+
+func TestEvaluateAssertionsTreatsCanonicalWebSearchCommandAsWebFamilyEvidence(t *testing.T) {
+	state := NewGroundTruthState()
+	state.Commands["task/assertions/tc/1"] = GroundedCommandFact{
+		ToolCallID: "task/assertions/tc/1",
+		Tool:       "exec",
+		Command:    `blue web_search query="OpenAI Responses API latest docs"`,
+		ExitCode:   0,
+	}
+
+	failures := EvaluateAssertions(state, []PlannerAssertion{{
+		Type: "tool_called",
+		Tool: "web_query",
+	}})
+	if len(failures) != 0 {
+		t.Fatalf("EvaluateAssertions() failures = %v, want no failures", failures)
+	}
+}

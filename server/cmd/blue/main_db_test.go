@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 )
 
 func TestApplyPrimaryDatabasePoolConfig(t *testing.T) {
@@ -19,7 +21,7 @@ func TestApplyPrimaryDatabasePoolConfig(t *testing.T) {
 	}
 	defer db.Close()
 
-	applyPrimaryDatabasePoolConfig(db, config.DatabasePerfConfig{
+	applyPrimaryDatabasePoolConfig(&dbutil.SQLiteConn{Writer: db, Reader: db}, config.DatabasePerfConfig{
 		PoolSize:        2,
 		MaxIdleConns:    2,
 		ConnMaxLifetime: time.Minute,
@@ -56,4 +58,41 @@ func TestApplyPrimaryDatabasePoolConfig(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("idle connections did not shrink before deadline; idle=%d", db.Stats().Idle)
+}
+
+func TestOpenPrimaryDatabaseWithStartupRecoveryDetectsCorruptionAfterCleanShutdown(t *testing.T) {
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, "blue.db")
+	if err := os.WriteFile(dbPath, []byte("not-a-sqlite-database"), 0o600); err != nil {
+		t.Fatalf("write corrupt db: %v", err)
+	}
+
+	dbutil.SetStartupQuickCheckEnabled(false)
+	t.Cleanup(func() {
+		dbutil.SetStartupQuickCheckEnabled(true)
+	})
+
+	conn, err := openPrimaryDatabaseWithStartupRecovery(dataDir, config.DatabasePerfConfig{
+		WALMode:      true,
+		PoolSize:     2,
+		MaxIdleConns: 1,
+	})
+	if err != nil {
+		t.Fatalf("openPrimaryDatabaseWithStartupRecovery() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+
+	if err := dbutil.QuickCheckDatabase(dbPath); err != nil {
+		t.Fatalf("QuickCheckDatabase(%s) error = %v", dbPath, err)
+	}
+
+	backups, err := filepath.Glob(dbPath + ".bak.*")
+	if err != nil {
+		t.Fatalf("glob corrupt backups: %v", err)
+	}
+	if len(backups) == 0 {
+		t.Fatalf("expected corrupt db backup for %s", dbPath)
+	}
 }

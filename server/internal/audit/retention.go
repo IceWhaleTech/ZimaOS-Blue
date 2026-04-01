@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // RetentionConfig holds configuration for audit log retention.
@@ -32,6 +33,7 @@ func DefaultRetentionConfig() *RetentionConfig {
 // RetentionManager manages audit log retention.
 type RetentionManager struct {
 	db      *sql.DB
+	readDB  *sql.DB
 	config  *RetentionConfig
 	done    chan struct{}
 	stopped bool
@@ -39,15 +41,43 @@ type RetentionManager struct {
 
 // NewRetentionManager creates a new retention manager.
 func NewRetentionManager(db *sql.DB, config *RetentionConfig) *RetentionManager {
+	return NewRetentionManagerWithReadDB(db, db, config)
+}
+
+// NewRetentionManagerWithReadDB creates a new retention manager with separate
+// write and read database handles.
+func NewRetentionManagerWithReadDB(writeDB, readDB *sql.DB, config *RetentionConfig) *RetentionManager {
 	if config == nil {
 		config = DefaultRetentionConfig()
 	}
+	if readDB == nil {
+		readDB = writeDB
+	}
 
 	return &RetentionManager{
-		db:     db,
+		db:     writeDB,
+		readDB: readDB,
 		config: config,
 		done:   make(chan struct{}),
 	}
+}
+
+func (m *RetentionManager) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, m.db, "audit_logs")
+}
+
+func (m *RetentionManager) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, m.reader(), "audit_logs")
+}
+
+func (m *RetentionManager) reader() *sql.DB {
+	if m != nil && m.readDB != nil {
+		return m.readDB
+	}
+	if m == nil {
+		return nil
+	}
+	return m.db
 }
 
 // Start starts the retention manager background job.
@@ -105,16 +135,18 @@ func (m *RetentionManager) cleanup() {
 
 // deleteBatch deletes a batch of old audit logs.
 func (m *RetentionManager) deleteBatch(ctx context.Context, cutoff time.Time) (int64, error) {
-	query := `DELETE FROM audit_logs WHERE id IN (
-		SELECT id FROM audit_logs WHERE timestamp < ? LIMIT ?
-	)`
-
-	result, err := m.db.ExecContext(ctx, query, cutoff, m.config.BatchSize)
+	n, err := m.table(ctx).Delete(
+		z.Where(z.Expr(
+			"id IN (SELECT id FROM audit_logs WHERE timestamp < ? LIMIT ?)",
+			cutoff,
+			m.config.BatchSize,
+		)),
+	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete audit logs: %w", err)
 	}
 
-	return result.RowsAffected()
+	return int64(n), nil
 }
 
 // CleanupNow runs the cleanup immediately.
@@ -128,60 +160,26 @@ func (m *RetentionManager) GetRetentionStats(ctx context.Context) (*RetentionSta
 	stats := &RetentionStats{}
 
 	// Get total count
-	err := m.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_logs").Scan(&stats.TotalCount)
-	if err != nil {
+	if _, err := m.readTable(ctx).Select(&stats.TotalCount, z.Fields("count(1)")); err != nil {
 		return nil, fmt.Errorf("failed to get total count: %w", err)
 	}
 
-	// Get oldest entry
-	var oldestStr sql.NullString
-	err = m.db.QueryRowContext(ctx, "SELECT MIN(timestamp) FROM audit_logs").Scan(&oldestStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get oldest entry: %w", err)
+	var boundRows []z.V
+	if _, err := m.readTable(ctx).Select(&boundRows, z.Fields("min(timestamp)", "max(timestamp)"), z.Limit(1)); err != nil {
+		return nil, fmt.Errorf("failed to get retention bounds: %w", err)
 	}
-	if oldestStr.Valid && oldestStr.String != "" {
-		// Try multiple time formats that SQLite might use
-		formats := []string{
-			time.RFC3339Nano,
-			time.RFC3339,
-			"2006-01-02 15:04:05.999999999-07:00",
-			"2006-01-02T15:04:05.999999999-07:00",
-			"2006-01-02 15:04:05",
-		}
-		for _, format := range formats {
-			if t, parseErr := time.Parse(format, oldestStr.String); parseErr == nil {
-				stats.OldestEntry = &t
-				break
-			}
-		}
-	}
-
-	// Get newest entry
-	var newestStr sql.NullString
-	err = m.db.QueryRowContext(ctx, "SELECT MAX(timestamp) FROM audit_logs").Scan(&newestStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get newest entry: %w", err)
-	}
-	if newestStr.Valid && newestStr.String != "" {
-		formats := []string{
-			time.RFC3339Nano,
-			time.RFC3339,
-			"2006-01-02 15:04:05.999999999-07:00",
-			"2006-01-02T15:04:05.999999999-07:00",
-			"2006-01-02 15:04:05",
-		}
-		for _, format := range formats {
-			if t, parseErr := time.Parse(format, newestStr.String); parseErr == nil {
-				stats.NewestEntry = &t
-				break
-			}
-		}
+	if len(boundRows) > 0 {
+		stats.OldestEntry = parseRetentionValue(boundRows[0], "min(timestamp)")
+		stats.NewestEntry = parseRetentionValue(boundRows[0], "max(timestamp)")
 	}
 
 	// Get count of entries to be deleted
 	cutoff := timeutil.NowTime().AddDate(0, 0, -m.config.RetentionDays)
-	err = m.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_logs WHERE timestamp < ?", cutoff).Scan(&stats.ExpiredCount)
-	if err != nil {
+	if _, err := m.readTable(ctx).Select(
+		&stats.ExpiredCount,
+		z.Fields("count(1)"),
+		z.Where(z.Expr("timestamp < ?", cutoff)),
+	); err != nil {
 		return nil, fmt.Errorf("failed to get expired count: %w", err)
 	}
 
@@ -218,4 +216,35 @@ func DefaultArchiveConfig() *ArchiveConfig {
 		ArchiveAfterDays: 30,
 		CompressArchives: true,
 	}
+}
+
+func parseRetentionValue(values z.V, key string) *time.Time {
+	raw, ok := values[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	text, ok := raw.(string)
+	if !ok || text == "" {
+		return nil
+	}
+	return parseRetentionTimePtr(&text)
+}
+
+func parseRetentionTimePtr(raw *string) *time.Time {
+	if raw == nil || *raw == "" {
+		return nil
+	}
+	formats := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05",
+	}
+	for _, format := range formats {
+		if t, err := time.Parse(format, *raw); err == nil {
+			return &t
+		}
+	}
+	return nil
 }

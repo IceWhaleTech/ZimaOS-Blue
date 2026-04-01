@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -75,9 +76,11 @@ type SearchResult struct {
 
 type searchRecipe struct{}
 
-func (r *searchRecipe) Name() string        { return "search" }
-func (r *searchRecipe) Description() string { return "Search via search engine and return structured results (title, url, snippet). Params: query (required), engine (optional: google/bing/duckduckgo/baidu, default google), max_results (optional, default 10)" }
-func (r *searchRecipe) KeepTab() bool       { return false }
+func (r *searchRecipe) Name() string { return "search" }
+func (r *searchRecipe) Description() string {
+	return "Search via search engine and return structured results (title, url, snippet). Params: query (required), engine (optional: google/bing/duckduckgo/baidu, default google), max_results (optional, default 10)"
+}
+func (r *searchRecipe) KeepTab() bool { return false }
 
 func (r *searchRecipe) Validate(params map[string]string) error {
 	if params["query"] == "" {
@@ -108,12 +111,23 @@ func (r *searchRecipe) Execute(ctx context.Context, svc *RodService, params map[
 
 	timeout := GetTimeout(0, svc.config)
 
-	// Navigate to search engine
-	if err := page.Timeout(timeout).Navigate(engine.URL); err != nil {
+	// Prefer direct navigation to the search results page. This is more robust
+	// than relying on homepage DOM search-box selectors, which can drift or be
+	// hidden behind anti-bot interstitials.
+	targetURL := engine.URL
+	if directURL := buildSearchURL(engineName, query); directURL != "" {
+		targetURL = directURL
+	}
+	if err := page.Timeout(timeout).Navigate(targetURL); err != nil {
 		return nil, fmt.Errorf("navigate to %s failed: %w", engineName, err)
 	}
-	if err := page.WaitLoad(); err != nil {
+	if err := waitPageLoad(page, 0); err != nil {
 		return nil, fmt.Errorf("page load failed: %w", err)
+	}
+	_ = waitPageStable(page, 2*time.Second)
+
+	if results, err := extractSearchResults(page, engine); err == nil && len(results) > 0 {
+		return finalizeSearchRecipeResult(page, engineName, query, params["max_results"], results)
 	}
 
 	// Find and fill search box
@@ -132,7 +146,7 @@ func (r *searchRecipe) Execute(ctx context.Context, svc *RodService, params map[
 
 	// Wait for results to load
 	time.Sleep(1500 * time.Millisecond)
-	_ = page.WaitStable(2 * time.Second)
+	_ = waitPageStable(page, 2*time.Second)
 
 	// Extract results via JS for efficiency
 	results, err := extractSearchResults(page, engine)
@@ -140,9 +154,13 @@ func (r *searchRecipe) Execute(ctx context.Context, svc *RodService, params map[
 		return nil, fmt.Errorf("failed to extract results: %w", err)
 	}
 
+	return finalizeSearchRecipeResult(page, engineName, query, params["max_results"], results)
+}
+
+func finalizeSearchRecipeResult(page *rod.Page, engineName, query, rawMaxResults string, results []SearchResult) (*RecipeResult, error) {
 	// Limit results
 	maxResults := 10
-	if v := params["max_results"]; v != "" {
+	if v := rawMaxResults; v != "" {
 		if n := parseInt(v); n > 0 && n < 50 {
 			maxResults = n
 		}
@@ -151,7 +169,7 @@ func (r *searchRecipe) Execute(ctx context.Context, svc *RodService, params map[
 		results = results[:maxResults]
 	}
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 
 	msg := fmt.Sprintf("Search '%s' on %s — %d results", query, engineName, len(results))
 	return &RecipeResult{
@@ -165,6 +183,26 @@ func (r *searchRecipe) Execute(ctx context.Context, svc *RodService, params map[
 		},
 		Message: msg,
 	}, nil
+}
+
+func buildSearchURL(engineName, query string) string {
+	trimmedQuery := strings.TrimSpace(query)
+	if trimmedQuery == "" {
+		return ""
+	}
+	escapedQuery := url.QueryEscape(trimmedQuery)
+	switch strings.ToLower(strings.TrimSpace(engineName)) {
+	case "google":
+		return "https://www.google.com/search?q=" + escapedQuery
+	case "bing":
+		return "https://www.bing.com/search?q=" + escapedQuery
+	case "duckduckgo":
+		return "https://duckduckgo.com/?q=" + escapedQuery
+	case "baidu":
+		return "https://www.baidu.com/s?wd=" + escapedQuery
+	default:
+		return ""
+	}
 }
 
 func extractSearchResults(page *rod.Page, engine searchEngine) ([]SearchResult, error) {
@@ -251,7 +289,7 @@ func (r *fillFormRecipe) Execute(ctx context.Context, svc *RodService, params ma
 		svc.pool.ReleasePage(page, browser)
 		return nil, fmt.Errorf("navigate failed: %w", err)
 	}
-	if err := page.WaitLoad(); err != nil {
+	if err := waitPageLoad(page, 0); err != nil {
 		svc.pool.ReleasePage(page, browser)
 		return nil, fmt.Errorf("page load failed: %w", err)
 	}
@@ -279,11 +317,11 @@ func (r *fillFormRecipe) Execute(ctx context.Context, svc *RodService, params ma
 		if err := page.Keyboard.Press(input.Enter); err == nil {
 			submitted = true
 			time.Sleep(1 * time.Second)
-			_ = page.WaitStable(2 * time.Second)
+			_ = waitPageStable(page, 2*time.Second)
 		}
 	}
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 
 	// Register as tab
 	targetID := fmt.Sprintf("tab-%d", timeutil.NowNano())
@@ -414,7 +452,7 @@ func (r *extractRecipe) Execute(ctx context.Context, svc *RodService, params map
 	if err := page.Timeout(timeout).Navigate(params["url"]); err != nil {
 		return nil, fmt.Errorf("navigate failed: %w", err)
 	}
-	if err := page.WaitLoad(); err != nil {
+	if err := waitPageLoad(page, 0); err != nil {
 		return nil, fmt.Errorf("page load failed: %w", err)
 	}
 
@@ -443,7 +481,7 @@ func (r *extractRecipe) Execute(ctx context.Context, svc *RodService, params map
 		}
 	}
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 
 	return &RecipeResult{
 		Success: true,
@@ -496,7 +534,7 @@ func (r *loginRecipe) Execute(ctx context.Context, svc *RodService, params map[s
 		svc.pool.ReleasePage(page, browser)
 		return nil, fmt.Errorf("navigate failed: %w", err)
 	}
-	if err := page.WaitLoad(); err != nil {
+	if err := waitPageLoad(page, 0); err != nil {
 		svc.pool.ReleasePage(page, browser)
 		return nil, fmt.Errorf("page load failed: %w", err)
 	}
@@ -555,9 +593,9 @@ func (r *loginRecipe) Execute(ctx context.Context, svc *RodService, params map[s
 
 	// Wait for navigation
 	time.Sleep(2 * time.Second)
-	_ = page.WaitStable(3 * time.Second)
+	_ = waitPageStable(page, 3*time.Second)
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 
 	// Determine success by URL change
 	urlChanged := info.URL != startURL

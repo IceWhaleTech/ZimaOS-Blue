@@ -51,6 +51,15 @@ func (d *AgentDriver) Start(ctx context.Context, run *harness.Run, _ harness.Run
 		return fmt.Errorf("agent runtime is not available")
 	}
 	contract := harness.DecodeHarnessContract(run.Metadata)
+	metadata := cloneMap(run.Metadata)
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	if model := strings.TrimSpace(run.Model); model != "" {
+		if _, ok := metadata["model"]; !ok {
+			metadata["model"] = model
+		}
+	}
 	task := &agentpkg.Task{
 		ID:              run.ID,
 		UserID:          run.UserID,
@@ -60,7 +69,7 @@ func (d *AgentDriver) Start(ctx context.Context, run *harness.Run, _ harness.Run
 		WorkspaceRoot:   run.WorkspaceRoot,
 		SuccessCriteria: harness.HarnessContractSuccessCriteria(contract),
 		FallbackPlan:    harness.HarnessContractFallbackPlan(contract),
-		Metadata:        cloneMap(run.Metadata),
+		Metadata:        metadata,
 	}
 	conversationCtx := composeConversationContext(run.Metadata)
 	_, err := d.runner.SubmitTask(ctx, task, conversationCtx)

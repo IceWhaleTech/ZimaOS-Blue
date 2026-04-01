@@ -3,12 +3,14 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
 
@@ -98,6 +100,27 @@ func (s *runtimeObserverStub) OnQuestionRequested(event QuestionRuntimeEvent) {
 
 func (s *runtimeObserverStub) OnQuestionResolved(event QuestionRuntimeEvent) {
 	s.questionResolved = append(s.questionResolved, event)
+}
+
+type structuredRuntimeErrorStub struct {
+	code    string
+	message string
+	details map[string]interface{}
+}
+
+func (e *structuredRuntimeErrorStub) Error() string { return e.message }
+
+func (e *structuredRuntimeErrorStub) ToolRuntimeCode() string { return e.code }
+
+func (e *structuredRuntimeErrorStub) ToolRuntimeDetails() map[string]interface{} {
+	if len(e.details) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(e.details))
+	for key, value := range e.details {
+		out[key] = value
+	}
+	return out
 }
 
 func TestToolGatewayRejectsUnknownTool(t *testing.T) {
@@ -450,6 +473,148 @@ func TestToolGatewayHonorsApprovalDeny(t *testing.T) {
 	}
 	if result == nil || result.Approval == nil || result.Approval.ID != "approval-1" {
 		t.Fatalf("expected approval metadata, got %+v", result)
+	}
+}
+
+func TestToolGatewayPreservesStructuredRuntimeExecutionError(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(&gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "subagents",
+			Description: "subagents",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"goal": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"goal"},
+			},
+		},
+		err: &structuredRuntimeErrorStub{
+			code:    "budget_exceeded",
+			message: "max depth exceeded",
+			details: map[string]interface{}{"stage": "policy", "max_depth": 2},
+		},
+	})
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-structured-runtime-error",
+		ToolName:   "subagents",
+		Arguments:  `{"goal":"investigate retry path"}`,
+		RouteKind:  ToolRouteKindAgent,
+	})
+	if err == nil {
+		t.Fatal("expected structured runtime error")
+	}
+	gatewayErr, ok := err.(*ToolGatewayError)
+	if !ok {
+		t.Fatalf("expected ToolGatewayError, got %T", err)
+	}
+	if gatewayErr.Code != "budget_exceeded" {
+		t.Fatalf("code = %q, want budget_exceeded", gatewayErr.Code)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.CompactLLMContent), &payload); err != nil {
+		t.Fatalf("decode compact payload: %v", err)
+	}
+	if got := payload["code"]; got != "budget_exceeded" {
+		t.Fatalf("payload code = %v, want budget_exceeded", got)
+	}
+	details, ok := payload["details"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload details = %#v", payload["details"])
+	}
+	if got := details["stage"]; got != "policy" {
+		t.Fatalf("details.stage = %v, want policy", got)
+	}
+	if got := details["tool"]; got != "subagents" {
+		t.Fatalf("details.tool = %v, want subagents", got)
+	}
+}
+
+func TestToolGatewayPreservesWrappedStructuredRuntimeExecutionError(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(&gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "subagents",
+			Description: "subagents",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"goal": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"goal"},
+			},
+		},
+		err: fmt.Errorf("wrapped runtime failure: %w", &structuredRuntimeErrorStub{
+			code:    "subagent_disabled",
+			message: "subagents are disabled for the current agent",
+			details: map[string]interface{}{"stage": "policy", "agent_id": "main"},
+		}),
+	})
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	_, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-wrapped-runtime-error",
+		ToolName:   "subagents",
+		Arguments:  `{"goal":"investigate retry path"}`,
+		RouteKind:  ToolRouteKindAgent,
+	})
+	if err == nil {
+		t.Fatal("expected wrapped structured runtime error")
+	}
+	gatewayErr, ok := err.(*ToolGatewayError)
+	if !ok {
+		t.Fatalf("expected ToolGatewayError, got %T", err)
+	}
+	if gatewayErr.Code != "subagent_disabled" {
+		t.Fatalf("code = %q, want subagent_disabled", gatewayErr.Code)
+	}
+}
+
+func TestToolGatewayPreservesStructuredQuestionRuntimeError(t *testing.T) {
+	registry := NewRegistry()
+	questionMgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 0)
+	questionMgr.SetTimeoutActionFunc(func() string { return "error" })
+	RegisterAskTool(registry, questionMgr)
+
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-question-runtime-error",
+		ToolName:   "ask",
+		Arguments:  `{"questions":[{"question":"Pick one","options":[{"label":"A","value":"a"}]}]}`,
+		RouteKind:  ToolRouteKindAgent,
+		UserID:     "user-1",
+		SessionID:  "session-1",
+	})
+	if err == nil {
+		t.Fatal("expected structured question runtime error")
+	}
+	gatewayErr, ok := err.(*ToolGatewayError)
+	if !ok {
+		t.Fatalf("expected ToolGatewayError, got %T", err)
+	}
+	if gatewayErr.Code != "question_delivery_unavailable" {
+		t.Fatalf("code = %q, want question_delivery_unavailable", gatewayErr.Code)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.CompactLLMContent), &payload); err != nil {
+		t.Fatalf("decode compact payload: %v", err)
+	}
+	if got := payload["code"]; got != "question_delivery_unavailable" {
+		t.Fatalf("payload code = %v, want question_delivery_unavailable", got)
+	}
+	details, ok := payload["details"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload details = %#v", payload["details"])
+	}
+	if got := details["tool"]; got != "ask" {
+		t.Fatalf("details.tool = %v, want ask", got)
+	}
+	if got := details["question_count"]; got != float64(1) {
+		t.Fatalf("details.question_count = %v, want 1", got)
 	}
 }
 

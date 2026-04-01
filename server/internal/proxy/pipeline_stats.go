@@ -1,20 +1,24 @@
 package proxy
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // PipelineStatsCollector collects and batch-persists proxy pipeline statistics
 // (routing, failover) asynchronously.
 type PipelineStatsCollector struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 
 	// Failover aggregates (atomic)
 	failoverTotal   int64
@@ -53,14 +57,131 @@ type failoverLogEntry struct {
 
 // NewPipelineStatsCollector creates a new collector. Call Start() to begin background persistence.
 func NewPipelineStatsCollector(db *sql.DB, routingStats *RoutingStats) *PipelineStatsCollector {
+	return NewPipelineStatsCollectorWithReadDB(db, db, routingStats)
+}
+
+// NewPipelineStatsCollectorWithReadDB creates a new collector with separate
+// write and read database handles.
+func NewPipelineStatsCollectorWithReadDB(writeDB, readDB *sql.DB, routingStats *RoutingStats) *PipelineStatsCollector {
+	if readDB == nil {
+		readDB = writeDB
+	}
 	c := &PipelineStatsCollector{
-		db:           db,
+		db:           writeDB,
+		readDB:       readDB,
 		routingStats: routingStats,
 		stopCh:       make(chan struct{}),
 	}
 	c.initSchema()
 	c.loadStats()
 	return c
+}
+
+func (c *PipelineStatsCollector) reader() *sql.DB {
+	if c != nil && c.readDB != nil {
+		return c.readDB
+	}
+	if c == nil {
+		return nil
+	}
+	return c.db
+}
+
+func (c *PipelineStatsCollector) table(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, c.db, name)
+}
+
+func (c *PipelineStatsCollector) readTable(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, c.reader(), name)
+}
+
+type pipelineStatsRow struct {
+	FailoverTotal         int64 `json:"failover_total" zorm:"failover_total"`
+	FailoverSuccess       int64 `json:"failover_success" zorm:"failover_success"`
+	FailoverFailure       int64 `json:"failover_failure" zorm:"failover_failure"`
+	FailoverTimeout       int64 `json:"failover_timeout" zorm:"failover_timeout"`
+	FailoverRateLimit     int64 `json:"failover_rate_limit" zorm:"failover_rate_limit"`
+	FailoverAuthError     int64 `json:"failover_auth_error" zorm:"failover_auth_error"`
+	FailoverModelNotFound int64 `json:"failover_model_not_found" zorm:"failover_model_not_found"`
+	FailoverAPIError      int64 `json:"failover_api_error" zorm:"failover_api_error"`
+	FailoverCooldown      int64 `json:"failover_cooldown" zorm:"failover_cooldown"`
+	FailoverUnknown       int64 `json:"failover_unknown" zorm:"failover_unknown"`
+	RoutedRequests        int64 `json:"routed_requests" zorm:"routed_requests"`
+	TokensRouted          int64 `json:"tokens_routed" zorm:"tokens_routed"`
+	CostSavedMicro        int64 `json:"cost_saved_micro" zorm:"cost_saved_micro"`
+}
+
+type smartFailoverMetricsRow struct {
+	FailoverTotal   int64 `json:"failover_total" zorm:"failover_total"`
+	FailoverSuccess int64 `json:"failover_success" zorm:"failover_success"`
+	FailoverFailure int64 `json:"failover_failure" zorm:"failover_failure"`
+	StreamAnomalies int64 `json:"stream_anomalies" zorm:"stream_anomalies"`
+}
+
+type smartFailoverProviderErrorRow struct {
+	Provider      string `json:"provider" zorm:"provider"`
+	ErrorType     string `json:"error_type" zorm:"error_type"`
+	ErrorCount    int64  `json:"error_count" zorm:"error_count"`
+	FailoverCount int64  `json:"failover_count" zorm:"failover_count"`
+}
+
+type circuitBreakerStateRow struct {
+	Name            string  `json:"name" zorm:"name"`
+	State           string  `json:"state" zorm:"state"`
+	Failures        int     `json:"failures" zorm:"failures"`
+	Successes       int     `json:"successes" zorm:"successes"`
+	LastFailureTime *string `json:"last_failure_time" zorm:"last_failure_time"`
+	LastStateChange *string `json:"last_state_change" zorm:"last_state_change"`
+}
+
+type failoverLogRow struct {
+	ID              int64  `json:"id" zorm:"id,auto_incr"`
+	Timestamp       string `json:"timestamp" zorm:"timestamp"`
+	RequestID       string `json:"request_id" zorm:"request_id"`
+	TotalAttempts   int    `json:"total_attempts" zorm:"total_attempts"`
+	SuccessProvider string `json:"success_provider" zorm:"success_provider"`
+	SuccessModel    string `json:"success_model" zorm:"success_model"`
+	FailedProviders string `json:"failed_providers" zorm:"failed_providers"`
+	FinalError      string `json:"final_error" zorm:"final_error"`
+	DurationMs      int64  `json:"duration_ms" zorm:"duration_ms"`
+}
+
+type failoverLogIDRow struct {
+	ID int64 `json:"id" zorm:"id"`
+}
+
+func formatPipelineStatsTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+func parsePipelineStatsTime(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func nullablePipelineStatsTime(t time.Time) interface{} {
+	if t.IsZero() {
+		return nil
+	}
+	return formatPipelineStatsTime(t)
 }
 
 // Start begins the background flush goroutine.
@@ -153,17 +274,17 @@ func (c *PipelineStatsCollector) OnFailover(result *providerpool.FailoverResult)
 
 // PipelineSnapshot is the combined stats snapshot returned by the API.
 type PipelineSnapshot struct {
-	Routing  RoutingStatsSnapshot   `json:"routing"`
-	Failover FailoverSnapshot       `json:"failover"`
+	Routing  RoutingStatsSnapshot `json:"routing"`
+	Failover FailoverSnapshot     `json:"failover"`
 }
 
 // FailoverSnapshot contains failover statistics.
 type FailoverSnapshot struct {
-	Total    int64                        `json:"total"`
-	Success  int64                        `json:"success"`
-	Failure  int64                        `json:"failure"`
-	ByReason map[string]int64             `json:"by_reason"`
-	Recent   []*failoverLogEntry          `json:"recent"`
+	Total    int64               `json:"total"`
+	Success  int64               `json:"success"`
+	Failure  int64               `json:"failure"`
+	ByReason map[string]int64    `json:"by_reason"`
+	Recent   []*failoverLogEntry `json:"recent"`
 }
 
 // Snapshot returns a combined pipeline stats snapshot.
@@ -290,35 +411,36 @@ func (c *PipelineStatsCollector) loadStats() {
 		return
 	}
 
-	var ft, fs, ff int64
-	var fTimeout, fRateLimit, fAuthError, fModelNotFound, fAPIError, fCooldown, fUnknown int64
-	var rr, tr, csm int64
-
-	err := c.db.QueryRow(`
-		SELECT COALESCE(failover_total,0), COALESCE(failover_success,0), COALESCE(failover_failure,0),
-		       COALESCE(failover_timeout,0), COALESCE(failover_rate_limit,0), COALESCE(failover_auth_error,0),
-		       COALESCE(failover_model_not_found,0), COALESCE(failover_api_error,0),
-		       COALESCE(failover_cooldown,0), COALESCE(failover_unknown,0),
-		       COALESCE(routed_requests,0), COALESCE(tokens_routed,0), COALESCE(cost_saved_micro,0)
-		FROM pipeline_stats WHERE id = 1
-	`).Scan(&ft, &fs, &ff, &fTimeout, &fRateLimit, &fAuthError, &fModelNotFound, &fAPIError, &fCooldown, &fUnknown, &rr, &tr, &csm)
-	if err != nil {
-		return // no data yet
+	ctx := context.Background()
+	var rows []pipelineStatsRow
+	if _, err := c.readTable(ctx, "pipeline_stats").Select(&rows,
+		z.Fields(
+			"failover_total", "failover_success", "failover_failure",
+			"failover_timeout", "failover_rate_limit", "failover_auth_error",
+			"failover_model_not_found", "failover_api_error",
+			"failover_cooldown", "failover_unknown",
+			"routed_requests", "tokens_routed", "cost_saved_micro",
+		),
+		z.Where(z.Eq("id", 1)),
+		z.Limit(1),
+	); err != nil || len(rows) == 0 {
+		return
 	}
+	row := rows[0]
 
-	atomic.StoreInt64(&c.failoverTotal, ft)
-	atomic.StoreInt64(&c.failoverSuccess, fs)
-	atomic.StoreInt64(&c.failoverFailure, ff)
+	atomic.StoreInt64(&c.failoverTotal, row.FailoverTotal)
+	atomic.StoreInt64(&c.failoverSuccess, row.FailoverSuccess)
+	atomic.StoreInt64(&c.failoverFailure, row.FailoverFailure)
 
 	// Load reason counters
 	reasonMap := map[providerpool.FailoverReason]int64{
-		providerpool.FailoverReasonTimeout:       fTimeout,
-		providerpool.FailoverReasonRateLimit:     fRateLimit,
-		providerpool.FailoverReasonAuthError:     fAuthError,
-		providerpool.FailoverReasonModelNotFound: fModelNotFound,
-		providerpool.FailoverReasonAPIError:      fAPIError,
-		providerpool.FailoverReasonCooldown:      fCooldown,
-		providerpool.FailoverReasonUnknown:       fUnknown,
+		providerpool.FailoverReasonTimeout:       row.FailoverTimeout,
+		providerpool.FailoverReasonRateLimit:     row.FailoverRateLimit,
+		providerpool.FailoverReasonAuthError:     row.FailoverAuthError,
+		providerpool.FailoverReasonModelNotFound: row.FailoverModelNotFound,
+		providerpool.FailoverReasonAPIError:      row.FailoverAPIError,
+		providerpool.FailoverReasonCooldown:      row.FailoverCooldown,
+		providerpool.FailoverReasonUnknown:       row.FailoverUnknown,
 	}
 	for reason, count := range reasonMap {
 		if count > 0 {
@@ -330,7 +452,7 @@ func (c *PipelineStatsCollector) loadStats() {
 
 	// Load routing stats into the existing RoutingStats
 	if c.routingStats != nil {
-		c.routingStats.Load(rr, tr, csm)
+		c.routingStats.Load(row.RoutedRequests, row.TokensRouted, row.CostSavedMicro)
 	}
 
 	// Load smart failover metrics (deferred — smartMetrics may not be set yet at init time)
@@ -345,46 +467,43 @@ func (c *PipelineStatsCollector) LoadSmartMetrics() {
 	}
 
 	// Load global counters
-	var ft, fs, ff, sa int64
-	err := c.db.QueryRow(`
-		SELECT COALESCE(failover_total,0), COALESCE(failover_success,0),
-		       COALESCE(failover_failure,0), COALESCE(stream_anomalies,0)
-		FROM smart_failover_metrics WHERE id = 1
-	`).Scan(&ft, &fs, &ff, &sa)
-	if err == nil {
+	ctx := context.Background()
+	var metricRows []smartFailoverMetricsRow
+	if _, err := c.readTable(ctx, "smart_failover_metrics").Select(&metricRows,
+		z.Fields("failover_total", "failover_success", "failover_failure", "stream_anomalies"),
+		z.Where(z.Eq("id", 1)),
+		z.Limit(1),
+	); err == nil && len(metricRows) > 0 {
+		row := metricRows[0]
 		c.smartMetrics.mu.Lock()
-		c.smartMetrics.FailoverTotal = ft
-		c.smartMetrics.FailoverSuccess = fs
-		c.smartMetrics.FailoverFailure = ff
-		atomic.StoreInt64(&c.smartMetrics.StreamAnomalies, sa)
+		c.smartMetrics.FailoverTotal = row.FailoverTotal
+		c.smartMetrics.FailoverSuccess = row.FailoverSuccess
+		c.smartMetrics.FailoverFailure = row.FailoverFailure
+		atomic.StoreInt64(&c.smartMetrics.StreamAnomalies, row.StreamAnomalies)
 		c.smartMetrics.mu.Unlock()
 	}
 
 	// Load per-provider error/failover counts
-	rows, err := c.db.Query(`SELECT provider, error_type, error_count, failover_count FROM smart_failover_provider_errors`)
-	if err != nil {
+	var rows []smartFailoverProviderErrorRow
+	if _, err := c.readTable(ctx, "smart_failover_provider_errors").Select(&rows,
+		z.Fields("provider", "error_type", "error_count", "failover_count"),
+	); err != nil {
 		return
 	}
-	defer rows.Close()
 
 	c.smartMetrics.mu.Lock()
 	defer c.smartMetrics.mu.Unlock()
-	for rows.Next() {
-		var provider, errType string
-		var errCount, foCount int64
-		if err := rows.Scan(&provider, &errType, &errCount, &foCount); err != nil {
-			continue
-		}
-		et := RetryableErrorType(errType)
-		if errCount > 0 {
-			c.smartMetrics.ErrorsByType[et] += errCount
-			if _, ok := c.smartMetrics.ProviderErrors[provider]; !ok {
-				c.smartMetrics.ProviderErrors[provider] = make(map[RetryableErrorType]int64)
+	for i := range rows {
+		et := RetryableErrorType(rows[i].ErrorType)
+		if rows[i].ErrorCount > 0 {
+			c.smartMetrics.ErrorsByType[et] += rows[i].ErrorCount
+			if _, ok := c.smartMetrics.ProviderErrors[rows[i].Provider]; !ok {
+				c.smartMetrics.ProviderErrors[rows[i].Provider] = make(map[RetryableErrorType]int64)
 			}
-			c.smartMetrics.ProviderErrors[provider][et] += errCount
+			c.smartMetrics.ProviderErrors[rows[i].Provider][et] += rows[i].ErrorCount
 		}
-		if foCount > 0 {
-			c.smartMetrics.ProviderFailovers[provider] += foCount
+		if rows[i].FailoverCount > 0 {
+			c.smartMetrics.ProviderFailovers[rows[i].Provider] += rows[i].FailoverCount
 		}
 	}
 }
@@ -396,23 +515,25 @@ func (c *PipelineStatsCollector) LoadBreakerState() {
 		return
 	}
 
-	rows, err := c.db.Query(`SELECT name, state, failures, successes, last_failure_time, last_state_change FROM circuit_breaker_state`)
-	if err != nil {
+	ctx := context.Background()
+	var rows []circuitBreakerStateRow
+	if _, err := c.readTable(ctx, "circuit_breaker_state").Select(&rows,
+		z.Fields("name", "state", "failures", "successes", "last_failure_time", "last_state_change"),
+	); err != nil {
 		return
 	}
-	defer rows.Close()
 
-	for rows.Next() {
+	for i := range rows {
 		var snap BreakerSnapshot
-		var lastFailure, lastChange sql.NullString
-		if err := rows.Scan(&snap.Name, &snap.State, &snap.Failures, &snap.Successes, &lastFailure, &lastChange); err != nil {
-			continue
+		snap.Name = rows[i].Name
+		snap.State = rows[i].State
+		snap.Failures = rows[i].Failures
+		snap.Successes = rows[i].Successes
+		if rows[i].LastFailureTime != nil {
+			snap.LastFailureTime = parsePipelineStatsTime(*rows[i].LastFailureTime)
 		}
-		if lastFailure.Valid {
-			snap.LastFailureTime, _ = time.Parse(time.RFC3339, lastFailure.String)
-		}
-		if lastChange.Valid {
-			snap.LastStateChange, _ = time.Parse(time.RFC3339, lastChange.String)
+		if rows[i].LastStateChange != nil {
+			snap.LastStateChange = parsePipelineStatsTime(*rows[i].LastStateChange)
 		}
 		c.failoverHandler.LoadBreakerState(snap)
 		slog.Info("[pipeline-stats] restored circuit breaker", "name", snap.Name, "state", snap.State, "failures", snap.Failures)
@@ -440,6 +561,7 @@ func (c *PipelineStatsCollector) flush() {
 		return
 	}
 
+	ctx := context.Background()
 	now := timeutil.NowTime()
 
 	// Snapshot failover counters
@@ -466,37 +588,34 @@ func (c *PipelineStatsCollector) flush() {
 	defer tx.Rollback()
 
 	// UPSERT pipeline_stats
-	_, err = tx.Exec(`
-		INSERT INTO pipeline_stats (id, failover_total, failover_success, failover_failure,
-			failover_timeout, failover_rate_limit, failover_auth_error,
-			failover_model_not_found, failover_api_error, failover_cooldown, failover_unknown,
-			routed_requests, tokens_routed, cost_saved_micro, updated_at)
-		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			failover_total = excluded.failover_total,
-			failover_success = excluded.failover_success,
-			failover_failure = excluded.failover_failure,
-			failover_timeout = excluded.failover_timeout,
-			failover_rate_limit = excluded.failover_rate_limit,
-			failover_auth_error = excluded.failover_auth_error,
-			failover_model_not_found = excluded.failover_model_not_found,
-			failover_api_error = excluded.failover_api_error,
-			failover_cooldown = excluded.failover_cooldown,
-			failover_unknown = excluded.failover_unknown,
-			routed_requests = excluded.routed_requests,
-			tokens_routed = excluded.tokens_routed,
-			cost_saved_micro = excluded.cost_saved_micro,
-			updated_at = excluded.updated_at
-	`, ft, fs, ff,
-		reasons[string(providerpool.FailoverReasonTimeout)],
-		reasons[string(providerpool.FailoverReasonRateLimit)],
-		reasons[string(providerpool.FailoverReasonAuthError)],
-		reasons[string(providerpool.FailoverReasonModelNotFound)],
-		reasons[string(providerpool.FailoverReasonAPIError)],
-		reasons[string(providerpool.FailoverReasonCooldown)],
-		reasons[string(providerpool.FailoverReasonUnknown)],
-		rr, tr, csm, now.Format(time.RFC3339))
-
+	_, err = z.TableContext(ctx, tx, "pipeline_stats").Insert(
+		z.V{
+			"id":                       1,
+			"failover_total":           ft,
+			"failover_success":         fs,
+			"failover_failure":         ff,
+			"failover_timeout":         reasons[string(providerpool.FailoverReasonTimeout)],
+			"failover_rate_limit":      reasons[string(providerpool.FailoverReasonRateLimit)],
+			"failover_auth_error":      reasons[string(providerpool.FailoverReasonAuthError)],
+			"failover_model_not_found": reasons[string(providerpool.FailoverReasonModelNotFound)],
+			"failover_api_error":       reasons[string(providerpool.FailoverReasonAPIError)],
+			"failover_cooldown":        reasons[string(providerpool.FailoverReasonCooldown)],
+			"failover_unknown":         reasons[string(providerpool.FailoverReasonUnknown)],
+			"routed_requests":          rr,
+			"tokens_routed":            tr,
+			"cost_saved_micro":         csm,
+			"updated_at":               formatPipelineStatsTime(now),
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"id"},
+			[]string{
+				"failover_total", "failover_success", "failover_failure",
+				"failover_timeout", "failover_rate_limit", "failover_auth_error",
+				"failover_model_not_found", "failover_api_error", "failover_cooldown", "failover_unknown",
+				"routed_requests", "tokens_routed", "cost_saved_micro", "updated_at",
+			},
+		),
+	)
 	if err != nil {
 		slog.Warn("[pipeline-stats] failed to upsert pipeline_stats", "error", err)
 		return
@@ -509,28 +628,47 @@ func (c *PipelineStatsCollector) flush() {
 	c.eventMu.Unlock()
 
 	if len(events) > 0 {
-		stmt, err := tx.Prepare(`
-			INSERT INTO failover_log (timestamp, request_id, total_attempts, success_provider,
-				success_model, failed_providers, final_error, duration_ms)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`)
-		if err == nil {
-			for _, e := range events {
-				stmt.Exec(e.Timestamp.Format(time.RFC3339), e.RequestID, e.TotalAttempts,
-					e.SuccessProvider, e.SuccessModel, e.FailedProviders, e.FinalError, e.DurationMs)
+		logTable := z.TableContext(ctx, tx, "failover_log")
+		for _, e := range events {
+			if _, err := logTable.Insert(z.V{
+				"timestamp":        formatPipelineStatsTime(e.Timestamp),
+				"request_id":       e.RequestID,
+				"total_attempts":   e.TotalAttempts,
+				"success_provider": e.SuccessProvider,
+				"success_model":    e.SuccessModel,
+				"failed_providers": e.FailedProviders,
+				"final_error":      e.FinalError,
+				"duration_ms":      e.DurationMs,
+			}); err != nil {
+				slog.Warn("[pipeline-stats] failed to insert failover_log", "error", err, "request_id", e.RequestID)
 			}
-			stmt.Close()
 		}
 
 		// Trim to last 1000 rows
-		tx.Exec(`DELETE FROM failover_log WHERE id NOT IN (SELECT id FROM failover_log ORDER BY id DESC LIMIT 1000)`)
+		var total int64
+		if _, err := logTable.Select(&total, z.Fields("count(1)")); err == nil && total > 1000 {
+			var staleRows []failoverLogIDRow
+			if _, err := logTable.Select(&staleRows,
+				z.Fields("id"),
+				z.OrderBy("id ASC"),
+				z.Limit(int(total-1000)),
+			); err == nil && len(staleRows) > 0 {
+				ids := make([]int64, 0, len(staleRows))
+				for i := range staleRows {
+					ids = append(ids, staleRows[i].ID)
+				}
+				if _, err := logTable.Delete(z.Where(z.In("id", ids))); err != nil {
+					slog.Warn("[pipeline-stats] failed to trim failover_log", "error", err)
+				}
+			}
+		}
 	}
 
 	// Flush smart failover metrics
-	c.flushSmartMetrics(tx, now)
+	c.flushSmartMetrics(ctx, tx, now)
 
 	// Flush circuit breaker state
-	c.flushBreakerState(tx, now)
+	c.flushBreakerState(ctx, tx, now)
 
 	if err := tx.Commit(); err != nil {
 		slog.Warn("[pipeline-stats] failed to commit", "error", err)
@@ -542,32 +680,35 @@ func (c *PipelineStatsCollector) loadRecentFailovers(limit int) []*failoverLogEn
 		return nil
 	}
 
-	rows, err := c.db.Query(`
-		SELECT timestamp, request_id, total_attempts, success_provider,
-		       success_model, failed_providers, final_error, duration_ms
-		FROM failover_log ORDER BY id DESC LIMIT ?
-	`, limit)
-	if err != nil {
+	ctx := context.Background()
+	var rows []failoverLogRow
+	if _, err := c.readTable(ctx, "failover_log").Select(&rows,
+		z.Fields("id", "timestamp", "request_id", "total_attempts", "success_provider", "success_model", "failed_providers", "final_error", "duration_ms"),
+		z.OrderBy("id DESC"),
+		z.Limit(limit),
+	); err != nil {
 		return nil
 	}
-	defer rows.Close()
 
-	var result []*failoverLogEntry
-	for rows.Next() {
-		var e failoverLogEntry
-		var ts string
-		if err := rows.Scan(&ts, &e.RequestID, &e.TotalAttempts, &e.SuccessProvider,
-			&e.SuccessModel, &e.FailedProviders, &e.FinalError, &e.DurationMs); err != nil {
-			continue
+	result := make([]*failoverLogEntry, 0, len(rows))
+	for i := range rows {
+		e := &failoverLogEntry{
+			Timestamp:       parsePipelineStatsTime(rows[i].Timestamp),
+			RequestID:       rows[i].RequestID,
+			TotalAttempts:   rows[i].TotalAttempts,
+			SuccessProvider: rows[i].SuccessProvider,
+			SuccessModel:    rows[i].SuccessModel,
+			FailedProviders: rows[i].FailedProviders,
+			FinalError:      rows[i].FinalError,
+			DurationMs:      rows[i].DurationMs,
 		}
-		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
-		result = append(result, &e)
+		result = append(result, e)
 	}
 	return result
 }
 
 // flushSmartMetrics persists SmartFailoverHandler.FailoverMetrics to DB.
-func (c *PipelineStatsCollector) flushSmartMetrics(tx *sql.Tx, now time.Time) {
+func (c *PipelineStatsCollector) flushSmartMetrics(ctx context.Context, tx *sql.Tx, now time.Time) {
 	if c.smartMetrics == nil {
 		return
 	}
@@ -597,16 +738,20 @@ func (c *PipelineStatsCollector) flushSmartMetrics(tx *sql.Tx, now time.Time) {
 	c.smartMetrics.mu.RUnlock()
 
 	// Upsert global counters
-	tx.Exec(`
-		INSERT INTO smart_failover_metrics (id, failover_total, failover_success, failover_failure, stream_anomalies, updated_at)
-		VALUES (1, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			failover_total = excluded.failover_total,
-			failover_success = excluded.failover_success,
-			failover_failure = excluded.failover_failure,
-			stream_anomalies = excluded.stream_anomalies,
-			updated_at = excluded.updated_at
-	`, ft, fs, ff, sa, now.Format(time.RFC3339))
+	_, _ = z.TableContext(ctx, tx, "smart_failover_metrics").Insert(
+		z.V{
+			"id":               1,
+			"failover_total":   ft,
+			"failover_success": fs,
+			"failover_failure": ff,
+			"stream_anomalies": sa,
+			"updated_at":       formatPipelineStatsTime(now),
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"id"},
+			[]string{"failover_total", "failover_success", "failover_failure", "stream_anomalies", "updated_at"},
+		),
+	)
 
 	// Upsert per-provider error counts
 	// Merge failover counts into the same rows
@@ -623,24 +768,26 @@ func (c *PipelineStatsCollector) flushSmartMetrics(tx *sql.Tx, now time.Time) {
 	}
 
 	if len(provErrors) > 0 {
-		stmt, err := tx.Prepare(`
-			INSERT INTO smart_failover_provider_errors (provider, error_type, error_count, failover_count)
-			VALUES (?, ?, ?, ?)
-			ON CONFLICT(provider, error_type) DO UPDATE SET
-				error_count = excluded.error_count,
-				failover_count = excluded.failover_count
-		`)
-		if err == nil {
-			for _, pe := range provErrors {
-				stmt.Exec(pe.provider, string(pe.errType), pe.count, foByProvider[pe.provider])
-			}
-			stmt.Close()
+		table := z.TableContext(ctx, tx, "smart_failover_provider_errors")
+		for _, pe := range provErrors {
+			_, _ = table.Insert(
+				z.V{
+					"provider":       pe.provider,
+					"error_type":     string(pe.errType),
+					"error_count":    pe.count,
+					"failover_count": foByProvider[pe.provider],
+				},
+				z.OnConflictDoUpdateSet(
+					[]string{"provider", "error_type"},
+					[]string{"error_count", "failover_count"},
+				),
+			)
 		}
 	}
 }
 
 // flushBreakerState persists circuit breaker state to DB.
-func (c *PipelineStatsCollector) flushBreakerState(tx *sql.Tx, now time.Time) {
+func (c *PipelineStatsCollector) flushBreakerState(ctx context.Context, tx *sql.Tx, now time.Time) {
 	if c.failoverHandler == nil {
 		return
 	}
@@ -650,33 +797,22 @@ func (c *PipelineStatsCollector) flushBreakerState(tx *sql.Tx, now time.Time) {
 		return
 	}
 
-	stmt, err := tx.Prepare(`
-		INSERT INTO circuit_breaker_state (name, state, failures, successes, last_failure_time, last_state_change, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(name) DO UPDATE SET
-			state = excluded.state,
-			failures = excluded.failures,
-			successes = excluded.successes,
-			last_failure_time = excluded.last_failure_time,
-			last_state_change = excluded.last_state_change,
-			updated_at = excluded.updated_at
-	`)
-	if err != nil {
-		return
-	}
-	defer stmt.Close()
-
+	table := z.TableContext(ctx, tx, "circuit_breaker_state")
 	for _, snap := range snaps {
-		var lastFailure, lastChange *string
-		if !snap.LastFailureTime.IsZero() {
-			s := snap.LastFailureTime.Format(time.RFC3339)
-			lastFailure = &s
-		}
-		if !snap.LastStateChange.IsZero() {
-			s := snap.LastStateChange.Format(time.RFC3339)
-			lastChange = &s
-		}
-		stmt.Exec(snap.Name, snap.State, snap.Failures, snap.Successes,
-			lastFailure, lastChange, now.Format(time.RFC3339))
+		_, _ = table.Insert(
+			z.V{
+				"name":              snap.Name,
+				"state":             snap.State,
+				"failures":          snap.Failures,
+				"successes":         snap.Successes,
+				"last_failure_time": nullablePipelineStatsTime(snap.LastFailureTime),
+				"last_state_change": nullablePipelineStatsTime(snap.LastStateChange),
+				"updated_at":        formatPipelineStatsTime(now),
+			},
+			z.OnConflictDoUpdateSet(
+				[]string{"name"},
+				[]string{"state", "failures", "successes", "last_failure_time", "last_state_change", "updated_at"},
+			),
+		)
 	}
 }

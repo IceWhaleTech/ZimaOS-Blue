@@ -52,11 +52,14 @@ func NewGroundedVerifier(verifyResult func(GroundedToolResult) bool) *GroundedVe
 }
 
 func (v *GroundedVerifier) Respond(ctx context.Context, llmCaller LLMCaller, input ResponderInput) (*GroundedResponse, error) {
+	if deterministic := v.deterministicResponse(input); deterministic != nil {
+		return deterministic, nil
+	}
 	if llmCaller == nil {
 		return nil, fmt.Errorf("responder LLM is not configured")
 	}
 	resp, err := llmCaller.Chat(ctx, llm.ChatRequest{
-		Model: "auto",
+		Model: firstNonEmptyString(input.Model, "auto"),
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: buildResponderSystemPrompt()},
 			{Role: llm.RoleUser, Content: buildResponderUserPrompt(input)},
@@ -71,11 +74,389 @@ func (v *GroundedVerifier) Respond(ctx context.Context, llmCaller LLMCaller, inp
 }
 
 type ResponderInput struct {
+	Model              string
 	Goal               string
 	Step               PlanStep
 	GroundState        *GroundTruthState
 	PriorToolCallIDs   []string
 	PreviousViolations []string
+}
+
+func (v *GroundedVerifier) deterministicResponse(input ResponderInput) *GroundedResponse {
+	if input.GroundState == nil {
+		return nil
+	}
+	for _, toolCallID := range deterministicResponderToolCallIDs(input) {
+		result, ok := input.GroundState.Results[toolCallID]
+		if !ok || !result.OK {
+			continue
+		}
+		if v.verifyResult != nil && !v.verifyResult(result) {
+			continue
+		}
+		call := input.GroundState.Calls[toolCallID]
+		if response := deterministicWebGroundedResponse(toolCallID, call, result); response != nil {
+			return response
+		}
+		if response := deterministicAnalyzeGroundedResponse(toolCallID, call, result); response != nil {
+			return response
+		}
+	}
+	return nil
+}
+
+func deterministicResponderToolCallIDs(input ResponderInput) []string {
+	if len(input.PriorToolCallIDs) > 0 {
+		seen := make(map[string]struct{}, len(input.PriorToolCallIDs))
+		out := make([]string, 0, len(input.PriorToolCallIDs))
+		for i := len(input.PriorToolCallIDs) - 1; i >= 0; i-- {
+			toolCallID := strings.TrimSpace(input.PriorToolCallIDs[i])
+			if toolCallID == "" {
+				continue
+			}
+			if _, ok := seen[toolCallID]; ok {
+				continue
+			}
+			seen[toolCallID] = struct{}{}
+			out = append(out, toolCallID)
+		}
+		return out
+	}
+	if input.GroundState == nil || len(input.GroundState.Results) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(input.GroundState.Results))
+	for toolCallID := range input.GroundState.Results {
+		out = append(out, toolCallID)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(out)))
+	return out
+}
+
+func deterministicWebGroundedResponse(toolCallID string, call GroundedToolCall, result GroundedToolResult) *GroundedResponse {
+	if !deterministicWebEvidenceEnabled(call, result) {
+		return nil
+	}
+	title, url, snippet := deterministicWebEvidenceFields(result.Result)
+	excerpts := deterministicClaimExcerpts(title, url, snippet)
+	if len(excerpts) == 0 {
+		return nil
+	}
+	claims := make([]ResponseClaim, 0, len(excerpts))
+	for _, excerpt := range excerpts {
+		claims = append(claims, ResponseClaim{
+			Type:        ClaimTypeToolOutput,
+			ToolCallIDs: []string{toolCallID},
+			Excerpt:     excerpt,
+		})
+	}
+	return &GroundedResponse{
+		Summary: deterministicWebSummary(title, url),
+		Claims:  claims,
+	}
+}
+
+func deterministicWebEvidenceEnabled(call GroundedToolCall, result GroundedToolResult) bool {
+	if !groundedResultHasUsefulEvidence(result) {
+		return false
+	}
+	if !deterministicWebResultReady(result.Result) {
+		return false
+	}
+	toolName := normalizeGroundToolName(firstNonEmptyString(call.Tool, result.Tool))
+	if isGroundedWebToolFamily(toolName) {
+		return true
+	}
+	if toolName != "bash" {
+		return false
+	}
+	command := firstNonEmptyString(
+		strings.TrimSpace(asString(call.Args["command"])),
+		strings.TrimSpace(asString(call.Args["cmd"])),
+	)
+	return isGroundedWebToolFamily(groundedCLICommandSkillToken(command))
+}
+
+func deterministicWebResultReady(value any) bool {
+	payloads := deterministicStructuredPayloads(value)
+	if len(payloads) == 0 {
+		return false
+	}
+	for _, payload := range payloads {
+		status := strings.ToLower(strings.TrimSpace(asString(extractField(payload, "status"))))
+		nextAction := strings.ToLower(strings.TrimSpace(asString(extractField(payload, "next_action"))))
+		if nextAction == "retry_browser" || nextAction == "authorize_provider" {
+			continue
+		}
+		switch status {
+		case "", "ok", "partial":
+			return true
+		}
+	}
+	return false
+}
+
+func deterministicWebEvidenceFields(value any) (string, string, string) {
+	var title string
+	var url string
+	var snippet string
+	for _, payload := range deterministicStructuredPayloads(value) {
+		if title == "" {
+			title = deterministicExcerpt(firstNonEmptyString(
+				strings.TrimSpace(asString(extractField(payload, "title"))),
+				strings.TrimSpace(asString(extractField(payload, "page_title"))),
+				deterministicSourceTitle(payload),
+			), 160)
+		}
+		if url == "" {
+			url = deterministicExcerpt(firstNonEmptyString(
+				strings.TrimSpace(asString(extractField(payload, "final_url"))),
+				strings.TrimSpace(asString(extractField(payload, "target_url"))),
+				strings.TrimSpace(asString(extractField(payload, "url"))),
+				strings.TrimSpace(asString(extractField(payload, "input"))),
+				deterministicSourceURL(payload),
+			), 320)
+		}
+		if snippet == "" {
+			snippet = deterministicExcerpt(firstNonEmptyString(
+				strings.TrimSpace(asString(extractField(payload, "snippet"))),
+				strings.TrimSpace(asString(extractField(payload, "summary"))),
+				strings.TrimSpace(asString(extractField(payload, "message"))),
+				strings.TrimSpace(asString(extractField(payload, "content"))),
+				deterministicSourceSnippet(payload),
+			), 180)
+		}
+		if title != "" && url != "" && snippet != "" {
+			break
+		}
+	}
+	return title, url, snippet
+}
+
+func deterministicAnalyzeGroundedResponse(toolCallID string, call GroundedToolCall, result GroundedToolResult) *GroundedResponse {
+	if !deterministicAnalyzeEvidenceEnabled(call, result) {
+		return nil
+	}
+	answer, topic, message := deterministicAnalyzeEvidenceFields(result.Result)
+	excerpts := deterministicClaimExcerpts(answer, topic, message)
+	if len(excerpts) == 0 {
+		return nil
+	}
+	claims := make([]ResponseClaim, 0, len(excerpts))
+	for _, excerpt := range excerpts {
+		claims = append(claims, ResponseClaim{
+			Type:        ClaimTypeToolOutput,
+			ToolCallIDs: []string{toolCallID},
+			Excerpt:     excerpt,
+		})
+	}
+	return &GroundedResponse{
+		Summary: deterministicAnalyzeSummary(answer, topic),
+		Claims:  claims,
+	}
+}
+
+func deterministicAnalyzeEvidenceEnabled(call GroundedToolCall, result GroundedToolResult) bool {
+	if !groundedResultCarriesAnalyzeEvidence(call, result) {
+		return false
+	}
+	return groundedResultHasAnalyzeEvidence(result.Result)
+}
+
+func deterministicAnalyzeEvidenceFields(value any) (string, string, string) {
+	for _, payload := range deterministicStructuredPayloads(value) {
+		if !deterministicAnalyzeResultReady(payload) {
+			continue
+		}
+		answer := deterministicExcerpt(firstNonEmptyString(
+			strings.TrimSpace(asString(extractField(payload, "answer"))),
+			strings.TrimSpace(asString(extractField(payload, "summary"))),
+			strings.TrimSpace(asString(extractField(payload, "content"))),
+		), 220)
+		topic := deterministicExcerpt(strings.TrimSpace(asString(extractField(payload, "topic"))), 160)
+		message := deterministicExcerpt(strings.TrimSpace(asString(extractField(payload, "message"))), 180)
+		if answer != "" || topic != "" || message != "" {
+			return answer, topic, message
+		}
+	}
+	return "", "", ""
+}
+
+func deterministicAnalyzeResultReady(value any) bool {
+	status := strings.ToLower(strings.TrimSpace(asString(extractField(value, "status"))))
+	if status == "failed" || status == "error" {
+		return false
+	}
+	return firstNonEmptyString(
+		strings.TrimSpace(asString(extractField(value, "answer"))),
+		strings.TrimSpace(asString(extractField(value, "summary"))),
+		strings.TrimSpace(asString(extractField(value, "message"))),
+		strings.TrimSpace(asString(extractField(value, "topic"))),
+	) != ""
+}
+
+func deterministicAnalyzeSummary(answer, topic string) string {
+	switch {
+	case answer != "" && topic != "":
+		return fmt.Sprintf("Grounded analyze result collected for %s.", topic)
+	case answer != "":
+		return "Grounded analyze result collected."
+	case topic != "":
+		return fmt.Sprintf("Grounded analyze result collected for %s.", topic)
+	default:
+		return "Grounded analyze result collected."
+	}
+}
+
+func deterministicStructuredPayloads(value any) []map[string]any {
+	type queueItem struct {
+		value any
+		depth int
+	}
+	queue := []queueItem{{value: value, depth: 0}}
+	seen := make(map[string]struct{})
+	out := make([]map[string]any, 0, 4)
+	appendPayload := func(payload map[string]any) {
+		if len(payload) == 0 {
+			return
+		}
+		key := serializedResult(payload)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, payload)
+	}
+	for len(queue) > 0 {
+		item := queue[0]
+		queue = queue[1:]
+		if item.depth > 3 || item.value == nil {
+			continue
+		}
+		if payload, ok := item.value.(map[string]any); ok {
+			appendPayload(payload)
+			for _, key := range []string{"data", "page", "result"} {
+				if next := extractField(payload, key); next != nil {
+					queue = append(queue, queueItem{value: next, depth: item.depth + 1})
+				}
+			}
+		}
+		if nested := parseGroundedNestedPayload(item.value); nested != nil {
+			appendPayload(nested)
+			for _, key := range []string{"data", "page", "result"} {
+				if next := extractField(nested, key); next != nil {
+					queue = append(queue, queueItem{value: next, depth: item.depth + 1})
+				}
+			}
+		}
+	}
+	return out
+}
+
+func deterministicSourceURL(payload map[string]any) string {
+	source := deterministicSelectedSource(payload)
+	if len(source) == 0 {
+		return ""
+	}
+	return firstNonEmptyString(
+		strings.TrimSpace(asString(extractField(source, "final_url"))),
+		strings.TrimSpace(asString(extractField(source, "url"))),
+	)
+}
+
+func deterministicSourceTitle(payload map[string]any) string {
+	source := deterministicSelectedSource(payload)
+	if len(source) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(asString(extractField(source, "title")))
+}
+
+func deterministicSourceSnippet(payload map[string]any) string {
+	source := deterministicSelectedSource(payload)
+	if len(source) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(asString(extractField(source, "snippet")))
+}
+
+func deterministicSelectedSource(payload map[string]any) map[string]any {
+	rawSources, ok := extractField(payload, "sources").([]any)
+	if !ok {
+		return nil
+	}
+	var fallback map[string]any
+	for _, raw := range rawSources {
+		source, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if fallback == nil && deterministicSourceUsable(source) {
+			fallback = source
+		}
+		if asBool(extractField(source, "selected")) && deterministicSourceUsable(source) {
+			return source
+		}
+	}
+	return fallback
+}
+
+func deterministicSourceUsable(source map[string]any) bool {
+	return firstNonEmptyString(
+		strings.TrimSpace(asString(extractField(source, "title"))),
+		strings.TrimSpace(asString(extractField(source, "url"))),
+		strings.TrimSpace(asString(extractField(source, "final_url"))),
+		strings.TrimSpace(asString(extractField(source, "snippet"))),
+	) != ""
+}
+
+func deterministicClaimExcerpts(values ...string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func deterministicWebSummary(title, url string) string {
+	switch {
+	case title != "" && url != "":
+		return fmt.Sprintf("Grounded web evidence collected for %s (%s).", title, url)
+	case title != "":
+		return fmt.Sprintf("Grounded web evidence collected for %s.", title)
+	case url != "":
+		return fmt.Sprintf("Grounded web evidence collected from %s.", url)
+	default:
+		return "Grounded web evidence collected."
+	}
+}
+
+func deterministicExcerpt(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if idx := strings.IndexAny(value, "\r\n\t\"\\"); idx >= 0 {
+		value = value[:idx]
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	runes := []rune(value)
+	if limit > 0 && len(runes) > limit {
+		value = string(runes[:limit])
+	}
+	return strings.TrimSpace(value)
 }
 
 func buildResponderSystemPrompt() string {

@@ -1,10 +1,17 @@
 package bootstrap
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+)
 
-func resolveIPCSocketPath(_ string) string {
-	if sockPath := os.Getenv("BLUE_IPC_SOCKET"); sockPath != "" {
+func resolveIPCSocketPath(dataDir string) string {
+	if sockPath := strings.TrimSpace(os.Getenv("BLUE_IPC_SOCKET")); sockPath != "" {
 		return sockPath
+	}
+	if dataDir = strings.TrimSpace(dataDir); dataDir != "" {
+		return filepath.Join(dataDir, "blue.sock")
 	}
 	return "/tmp/blue.sock"
 }

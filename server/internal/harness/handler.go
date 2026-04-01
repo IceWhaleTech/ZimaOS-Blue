@@ -27,6 +27,7 @@ type RunDetailProvider interface {
 
 type RunDetail struct {
 	Run              *Run                     `json:"run"`
+	Actions          RunActionAvailability    `json:"actions"`
 	Events           []RunEvent               `json:"events"`
 	Artifacts        []ArtifactRef            `json:"artifacts"`
 	PendingApprovals []map[string]interface{} `json:"pending_approvals,omitempty"`
@@ -49,6 +50,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/runs/:id", h.GetRun)
 	g.GET("/runs/:id/detail", h.GetRunDetail)
 	g.POST("/runs/:id/cancel", h.CancelRun)
+	g.POST("/runs/:id/actions/:action", h.PerformRunAction)
 	g.GET("/runs/:id/events", h.ListEvents)
 	g.GET("/runs/:id/artifacts", h.ListArtifacts)
 	g.POST("/datasets", h.CreateDataset)
@@ -66,14 +68,22 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/eval-runs/:id/report", h.GetEvalRunReport)
 	g.POST("/eval-runs/:id/cancel", h.CancelEvalRun)
 	g.POST("/eval-runs/:id/compare", h.CompareEvalRun)
+	g.POST("/eval-runs/:id/selector-gate", h.EvaluateSelectorGate)
+	g.POST("/eval-runs/:id/execution-gate", h.EvaluateExecutionEquivalence)
+	g.POST("/eval-runs/:id/budget-gate", h.EvaluateSkillCutoverBudgetGate)
+	g.POST("/cutover-readiness", h.EvaluateSkillCutoverReadiness)
+	g.GET("/comparison-reports/:id", h.GetComparisonReport)
 	g.POST("/baselines", h.CreateBaseline)
 	g.GET("/baselines", h.ListBaselines)
+	g.POST("/selector-curated/ensure", h.EnsureSelectorCuratedAssets)
+	g.POST("/execution-batch1/ensure", h.EnsureBatch1ExecutionAssets)
 	g.POST("/groups", h.CreateGroup)
 	g.GET("/groups", h.ListGroups)
 	g.GET("/groups/:id", h.GetGroup)
 	g.GET("/groups/:id/items", h.ListGroupItems)
 	g.GET("/groups/:id/report", h.GetGroupReport)
 	g.POST("/groups/:id/cancel", h.CancelGroup)
+	g.POST("/groups/:id/actions/:action", h.PerformGroupAction)
 	g.POST("/groups/:id/retry_failed", h.RetryFailedGroup)
 	g.POST("/groups/:id/promote", h.PromoteGroup)
 }
@@ -316,6 +326,107 @@ func (h *Handler) CompareEvalRun(c echo.Context) error {
 	return c.JSON(http.StatusOK, report)
 }
 
+func (h *Handler) EvaluateSelectorGate(c echo.Context) error {
+	evalRun, err := h.scopedEvalRun(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "eval run not found"})
+	}
+	var req SelectorGateRequest
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if req.BaselineID != "" {
+		if _, err := h.scopedBaselineByID(c, req.BaselineID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "baseline not found"})
+		}
+	}
+	if req.BaseEvalRunID != "" {
+		if _, err := h.scopedEvalRunByID(c, req.BaseEvalRunID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "selector gate base eval run not found"})
+		}
+	}
+	report, err := h.manager.EvaluateSelectorGate(c.Request().Context(), evalRun.ID, req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, report)
+}
+
+func (h *Handler) EvaluateExecutionEquivalence(c echo.Context) error {
+	evalRun, err := h.scopedEvalRun(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "eval run not found"})
+	}
+	var req ExecutionEquivalenceRequest
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if req.BaselineID != "" {
+		if _, err := h.scopedBaselineByID(c, req.BaselineID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "baseline not found"})
+		}
+	}
+	if req.BaseEvalRunID != "" {
+		if _, err := h.scopedEvalRunByID(c, req.BaseEvalRunID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "execution gate base eval run not found"})
+		}
+	}
+	report, err := h.manager.EvaluateExecutionEquivalence(c.Request().Context(), evalRun.ID, req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, report)
+}
+
+func (h *Handler) EvaluateSkillCutoverBudgetGate(c echo.Context) error {
+	evalRun, err := h.scopedEvalRun(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "eval run not found"})
+	}
+	var req SkillCutoverBudgetRequest
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if req.BaselineID != "" {
+		if _, err := h.scopedBaselineByID(c, req.BaselineID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "baseline not found"})
+		}
+	}
+	if req.BaseEvalRunID != "" {
+		if _, err := h.scopedEvalRunByID(c, req.BaseEvalRunID); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "budget gate base eval run not found"})
+		}
+	}
+	report, err := h.manager.EvaluateSkillCutoverBudgetGate(c.Request().Context(), evalRun.ID, req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, report)
+}
+
+func (h *Handler) EvaluateSkillCutoverReadiness(c echo.Context) error {
+	var req SkillCutoverReadinessRequest
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if userID := harnessUserID(c); userID != "" {
+		req.OwnerUserID = userID
+	}
+	report, err := h.manager.EvaluateSkillCutoverReadiness(c.Request().Context(), req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, report)
+}
+
+func (h *Handler) GetComparisonReport(c echo.Context) error {
+	report, err := h.scopedComparisonReport(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "comparison report not found"})
+	}
+	return c.JSON(http.StatusOK, report)
+}
+
 func (h *Handler) CreateBaseline(c echo.Context) error {
 	var spec BaselineSpec
 	if err := c.Bind(&spec); err != nil {
@@ -334,6 +445,40 @@ func (h *Handler) CreateBaseline(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusCreated, baseline)
+}
+
+func (h *Handler) EnsureSelectorCuratedAssets(c echo.Context) error {
+	var req struct {
+		OwnerUserID string `json:"owner_user_id,omitempty"`
+	}
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if userID := harnessUserID(c); userID != "" {
+		req.OwnerUserID = userID
+	}
+	assets, err := h.manager.EnsureSelectorCuratedAssets(c.Request().Context(), req.OwnerUserID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, assets)
+}
+
+func (h *Handler) EnsureBatch1ExecutionAssets(c echo.Context) error {
+	var req struct {
+		OwnerUserID string `json:"owner_user_id,omitempty"`
+	}
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if userID := harnessUserID(c); userID != "" {
+		req.OwnerUserID = userID
+	}
+	assets, err := h.manager.EnsureBatch1ExecutionAssets(c.Request().Context(), req.OwnerUserID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, assets)
 }
 
 func (h *Handler) ListBaselines(c echo.Context) error {
@@ -468,10 +613,32 @@ func (h *Handler) CancelGroup(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
 	}
-	if err := h.manager.CancelGroup(c.Request().Context(), group.ID, "cancelled by user"); err != nil {
+	if _, err := h.manager.PerformGroupAction(c.Request().Context(), group.ID, "cancel", map[string]interface{}{
+		"reason": "cancelled by user",
+	}); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+func (h *Handler) PerformGroupAction(c echo.Context) error {
+	group, err := h.scopedGroup(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
+	}
+	action := strings.TrimSpace(c.Param("action"))
+	if action == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "action is required"})
+	}
+	var input map[string]interface{}
+	if err := c.Bind(&input); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	updated, err := h.manager.PerformGroupAction(c.Request().Context(), group.ID, action, input)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, updated)
 }
 
 func (h *Handler) RetryFailedGroup(c echo.Context) error {
@@ -528,6 +695,7 @@ func (h *Handler) GetRunDetail(c echo.Context) error {
 	}
 	detail := RunDetail{
 		Run:       run,
+		Actions:   runActionAvailability(run, "/harness/runs/"+run.ID),
 		Events:    events,
 		Artifacts: artifacts,
 	}
@@ -546,10 +714,32 @@ func (h *Handler) CancelRun(c echo.Context) error {
 	if userID := harnessUserID(c); userID != "" && run.UserID != "" && run.UserID != userID {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "run not found"})
 	}
-	if err := h.manager.Cancel(c.Request().Context(), run.ID, "cancelled by user"); err != nil {
+	if _, err := h.manager.PerformAction(c.Request().Context(), run.ID, "cancel", map[string]interface{}{
+		"reason": "cancelled by user",
+	}); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+func (h *Handler) PerformRunAction(c echo.Context) error {
+	run, err := h.scopedRun(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "run not found"})
+	}
+	action := strings.TrimSpace(c.Param("action"))
+	if action == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "action is required"})
+	}
+	var input map[string]interface{}
+	if err := c.Bind(&input); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	updated, err := h.manager.PerformAction(c.Request().Context(), run.ID, action, input)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, updated)
 }
 
 func (h *Handler) ListEvents(c echo.Context) error {
@@ -669,6 +859,20 @@ func (h *Handler) scopedBaselineByID(c echo.Context, id string) (*Baseline, erro
 		return nil, echo.ErrNotFound
 	}
 	return baseline, nil
+}
+
+func (h *Handler) scopedComparisonReport(c echo.Context) (*ComparisonReport, error) {
+	if h == nil || h.manager == nil {
+		return nil, echo.ErrNotFound
+	}
+	report, err := h.manager.GetComparisonReport(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return nil, err
+	}
+	if userID := harnessUserID(c); userID != "" && report.OwnerUserID != "" && report.OwnerUserID != userID {
+		return nil, echo.ErrNotFound
+	}
+	return report, nil
 }
 
 func parseRunKinds(values ...[]string) []RunKind {

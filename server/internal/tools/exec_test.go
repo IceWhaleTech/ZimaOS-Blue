@@ -420,6 +420,40 @@ func TestApprovalTimeout(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Errorf("expected timeout error, got %v", err)
 	}
+	var runtimeErr ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "exec_approval_timeout" {
+		t.Fatalf("code = %q, want exec_approval_timeout", runtimeErr.ToolRuntimeCode())
+	}
+}
+
+func TestApprovalCancellationReturnsStructuredRuntimeError(t *testing.T) {
+	broker := sse.NewBroker()
+	defer broker.Close()
+
+	mgr := NewApprovalManager(broker)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	decision, err := mgr.RequestApproval(ctx, ApprovalRequest{
+		Command: "test",
+		UserID:  "test-user",
+	})
+	if decision != ApprovalDeny {
+		t.Errorf("expected deny on cancel, got %s", decision)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context canceled, got %v", err)
+	}
+	var runtimeErr ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "exec_approval_cancelled" {
+		t.Fatalf("code = %q, want exec_approval_cancelled", runtimeErr.ToolRuntimeCode())
+	}
 }
 
 func TestApprovalSessionIDPropagationAndLookup(t *testing.T) {
@@ -713,6 +747,47 @@ func TestProcessToolPoll(t *testing.T) {
 	json.Unmarshal([]byte(result.(string)), &res)
 	if !strings.Contains(res.Stdout, "test output") {
 		t.Errorf("expected stdout to contain 'test output', got %q", res.Stdout)
+	}
+}
+
+func TestExecToolSessionActionList(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	sessions.Add(&ProcessSession{
+		ID:        "s3",
+		Command:   "sleep 5",
+		StartedAt: time.Now(),
+		Stdout:    NewOutputBuffer(1024),
+		Stderr:    NewOutputBuffer(1024),
+		Status:    ProcessRunning,
+		PID:       4321,
+	})
+
+	tool := NewExecTool(ExecConfig{Security: ExecSecurityFull}, sessions, nil, nil, nil)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"action": "list"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res processListResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if len(res.Running) != 1 || res.Running[0].SessionID != "s3" {
+		t.Fatalf("unexpected running sessions: %+v", res.Running)
+	}
+}
+
+func TestRegisterExecToolsDoesNotRegisterProcessTool(t *testing.T) {
+	registry := NewRegistry()
+	RegisterExecTools(registry, ExecConfig{Security: ExecSecurityFull}, nil, nil, nil)
+
+	if tool := registry.Get("process"); tool != nil {
+		t.Fatalf("expected process tool to be absent from registry, got %T", tool)
+	}
+	if _, ok := registry.LookupDefinition("process"); ok {
+		t.Fatal("expected process definition to be hidden")
 	}
 }
 
@@ -1425,6 +1500,164 @@ func TestExecSkillShortCircuit_DoesNotLeakShortCircuitWarning(t *testing.T) {
 	}
 	if len(res.Warnings) != 0 {
 		t.Fatalf("warnings = %+v, want none", res.Warnings)
+	}
+}
+
+func TestExecSkillShortCircuit_BluePrefixFreeTextMapsToWebSearchQuery(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		if skillID != "web_search" {
+			return nil, fmt.Errorf("unexpected skill: %s", skillID)
+		}
+		if input["query"] != "latest blue release" {
+			t.Fatalf("query = %v, want %q", input["query"], "latest blue release")
+		}
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `blue web_search latest blue release`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := res.Data["status"]; got != "ok" {
+		t.Fatalf("status = %q, want %q", got, "ok")
+	}
+}
+
+func TestExecSkillShortCircuit_BluePrefixStrictShellMapsToSkill(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var calls int
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		calls++
+		if skillID != "web_search" {
+			return nil, fmt.Errorf("unexpected skill: %s", skillID)
+		}
+		if input["query"] != "latest blue release" {
+			t.Fatalf("query = %v, want %q", input["query"], "latest blue release")
+		}
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command":          `blue web_search latest blue release`,
+		execStrictShellArg: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("skill executor calls = %d, want 1", calls)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := res.Data["status"]; got != "ok" {
+		t.Fatalf("status = %q, want %q", got, "ok")
+	}
+}
+
+func TestExecSkillShortCircuit_BluePrefixStrictShellBypassesShellWorkdirValidation(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+		AllowedDirs:    []string{t.TempDir()},
+	}, sessions, nil, nil, nil)
+
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		if skillID != "web_search" {
+			return nil, fmt.Errorf("unexpected skill: %s", skillID)
+		}
+		if input["query"] != "latest blue release" {
+			t.Fatalf("query = %v, want %q", input["query"], "latest blue release")
+		}
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command":          `blue web_search latest blue release`,
+		execStrictShellArg: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := res.Data["status"]; got != "ok" {
+		t.Fatalf("status = %q, want %q", got, "ok")
+	}
+}
+
+func TestCanStrictShellBlueSkillShortCircuit(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		want    bool
+	}{
+		{
+			name:    "simple blue skill command",
+			command: `blue web_search query="latest docs"`,
+			want:    true,
+		},
+		{
+			name:    "cd chained command is not eligible",
+			command: `cd /tmp && blue web_search query="latest docs"`,
+			want:    false,
+		},
+		{
+			name:    "shell operators are rejected",
+			command: `blue web_search query="latest docs" && echo nope`,
+			want:    false,
+		},
+		{
+			name:    "pipes are rejected",
+			command: `blue web_search query="latest docs" | cat`,
+			want:    false,
+		},
+		{
+			name:    "redirects are rejected",
+			command: `blue web_search query="latest docs" > /tmp/out`,
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := canStrictShellBlueSkillShortCircuit(tt.command); got != tt.want {
+				t.Fatalf("canStrictShellBlueSkillShortCircuit(%q) = %v, want %v", tt.command, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -2608,6 +2841,13 @@ func TestExecPipeToInterpreterDeniedByUser(t *testing.T) {
 	case err := <-done:
 		if err == nil || !strings.Contains(err.Error(), "user denied the command") {
 			t.Fatalf("expected user denial error, got %v", err)
+		}
+		var runtimeErr ToolRuntimeError
+		if !errors.As(err, &runtimeErr) {
+			t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+		}
+		if runtimeErr.ToolRuntimeCode() != "exec_approval_denied" {
+			t.Fatalf("code = %q, want exec_approval_denied", runtimeErr.ToolRuntimeCode())
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for exec result")

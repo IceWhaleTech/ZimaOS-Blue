@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"os"
@@ -8,8 +9,9 @@ import (
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -17,12 +19,22 @@ import (
 // UserSkillHandler handles per-user skill enable/disable.
 type UserSkillHandler struct {
 	db        *sql.DB
-	skillsDir string // {dataDir}/workspace/.claude/skills/
+	readDB    *sql.DB
+	skillsDir string // active managed install dir, typically {dataDir}/workspace/.claude/skills/
 }
 
 // NewUserSkillHandler creates a new user skill handler and runs migrations.
 func NewUserSkillHandler(db *sql.DB, skillsDir string) (*UserSkillHandler, error) {
-	h := &UserSkillHandler{db: db, skillsDir: skillsDir}
+	return NewUserSkillHandlerWithReadDB(db, db, skillsDir)
+}
+
+// NewUserSkillHandlerWithReadDB creates a new user skill handler with separate
+// write and read database handles.
+func NewUserSkillHandlerWithReadDB(writeDB, readDB *sql.DB, skillsDir string) (*UserSkillHandler, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	h := &UserSkillHandler{db: writeDB, readDB: readDB, skillsDir: skillsDir}
 	if err := h.migrate(); err != nil {
 		return nil, err
 	}
@@ -52,6 +64,19 @@ func (h *UserSkillHandler) RegisterRoutes(g *echo.Group) {
 	g.PUT("/:id", h.Toggle)
 }
 
+type userSkillConfigRow struct {
+	SkillID string `json:"skill_id" zorm:"skill_id"`
+	Enabled bool   `json:"enabled" zorm:"enabled"`
+}
+
+func (h *UserSkillHandler) writeTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, h.db, "user_skill_configs")
+}
+
+func (h *UserSkillHandler) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, h.readDB, "user_skill_configs")
+}
+
 // UserSkillResponse represents a skill with user-specific enabled state.
 type UserSkillResponse struct {
 	ID          string `json:"id"`
@@ -66,62 +91,129 @@ type UserSkillResponse struct {
 
 // installedSkillInfo holds minimal info parsed from SKILL.md frontmatter.
 type installedSkillInfo struct {
-	ID   string
-	Name string
+	ID      string
+	Name    string
+	Aliases []string
 }
 
-// listInstalledSkills scans the skills directory for installed skills.
-func (h *UserSkillHandler) listInstalledSkills() []installedSkillInfo {
-	if h.skillsDir == "" {
+func (h *UserSkillHandler) skillRoots() []string {
+	if strings.TrimSpace(h.skillsDir) == "" {
 		return nil
 	}
-	entries, err := os.ReadDir(h.skillsDir)
-	if err != nil {
+	return skillmanifest.ResolvePeerRootsForManagedDir(h.skillsDir)
+}
+
+// listInstalledSkills scans the active managed directory plus compatible peer
+// roots for installed skills.
+func (h *UserSkillHandler) listInstalledSkills() []installedSkillInfo {
+	roots := h.skillRoots()
+	if len(roots) == 0 {
 		return nil
 	}
 	var skills []installedSkillInfo
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		skillDir := filepath.Join(h.skillsDir, entry.Name())
-		entryDoc, err := skillbundle.FindEntryDocumentInDir(skillDir)
+	seen := make(map[string]struct{})
+	for _, root := range roots {
+		entries, err := os.ReadDir(root)
 		if err != nil {
 			continue
 		}
-		name := entry.Name()
-		// Try to parse name from frontmatter
-		if data, err := os.ReadFile(entryDoc.Path); err == nil {
-			if parsed := parseFrontmatterField(string(data), "name"); parsed != "" {
-				name = parsed
+		for _, entry := range entries {
+			if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+				continue
 			}
+			skillDir := filepath.Join(root, entry.Name())
+			bundle, err := skillmanifest.ValidateInstalledDir(skillDir, "", skillmanifest.Options{})
+			if err != nil {
+				continue
+			}
+			id := userSkillCanonicalID(bundle.Document, entry.Name())
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			name := firstString(strings.TrimSpace(bundle.Document.Name), id, entry.Name())
+			skills = append(skills, installedSkillInfo{
+				ID:      id,
+				Name:    name,
+				Aliases: userSkillAliases(id, bundle.Document, entry.Name()),
+			})
 		}
-		skills = append(skills, installedSkillInfo{ID: entry.Name(), Name: name})
 	}
 	return skills
 }
 
-// parseFrontmatterField extracts a field value from YAML frontmatter.
-func parseFrontmatterField(content, field string) string {
-	if !strings.HasPrefix(content, "---") {
-		return ""
-	}
-	end := strings.Index(content[3:], "---")
-	if end < 0 {
-		return ""
-	}
-	fm := content[3 : 3+end]
-	for _, line := range strings.Split(fm, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, field+":") {
-			val := strings.TrimSpace(strings.TrimPrefix(line, field+":"))
-			if len(val) >= 2 && (val[0] == '"' || val[0] == '\'') {
-				val = val[1 : len(val)-1]
-			}
-			return val
+func userSkillCanonicalID(doc skillmanifest.Document, dirName string) string {
+	for _, candidate := range []string{
+		strings.TrimSpace(doc.ID),
+		strings.TrimSpace(doc.Name),
+		strings.TrimSpace(dirName),
+	} {
+		if candidate == "" {
+			continue
+		}
+		if normalized, err := normalizedSkillID(candidate); err == nil {
+			return normalized
 		}
 	}
-	return ""
+	return firstString(strings.TrimSpace(doc.ID), strings.TrimSpace(doc.Name), strings.TrimSpace(dirName))
+}
+
+func userSkillAliases(id string, doc skillmanifest.Document, dirName string) []string {
+	seen := make(map[string]struct{}, 8)
+	aliases := make([]string, 0, 8)
+	add := func(values ...string) {
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			aliases = append(aliases, value)
+		}
+	}
+
+	add(id)
+	add(skillIDAliases(id)...)
+	for _, raw := range []string{
+		strings.TrimSpace(doc.ID),
+		strings.TrimSpace(doc.Name),
+		strings.TrimSpace(dirName),
+	} {
+		add(raw)
+		add(skillIDAliases(raw)...)
+	}
+	return aliases
+}
+
+func lookupUserSkillConfig(userConfigs map[string]bool, userToggled map[string]bool, aliases []string) (bool, bool) {
+	for _, alias := range aliases {
+		if enabled, ok := userConfigs[alias]; ok {
+			return enabled, true
+		}
+		if userToggled[alias] {
+			return false, true
+		}
+	}
+	return true, false
+}
+
+func (h *UserSkillHandler) resolveInstalledSkillID(rawID string) (string, bool, error) {
+	rawID = strings.TrimSpace(rawID)
+	roots := h.skillRoots()
+	if rawID == "" || len(roots) == 0 {
+		return rawID, false, nil
+	}
+	resolved, ok, err := skillmanifest.FindAnyByCandidatesStrict(skillmanifest.CandidateIDs(rawID), roots, "", skillmanifest.Options{})
+	if err != nil {
+		return rawID, false, err
+	}
+	if !ok {
+		return rawID, false, nil
+	}
+	return userSkillCanonicalID(resolved.Document, filepath.Base(resolved.EntryDir)), true, nil
 }
 
 // List returns all installed skills with user-specific enabled state.
@@ -137,29 +229,22 @@ func (h *UserSkillHandler) List(c echo.Context) error {
 	// Get user's skill configs
 	userConfigs := make(map[string]bool)
 	userToggled := make(map[string]bool)
-	rows, err := h.db.QueryContext(c.Request().Context(),
-		"SELECT skill_id, enabled FROM user_skill_configs WHERE user_id = ?", userID,
+	var rows []userSkillConfigRow
+	_, err := h.readTable(c.Request().Context()).Select(
+		&rows,
+		z.Fields("skill_id", "enabled"),
+		z.Where(z.Eq("user_id", userID)),
 	)
 	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var skillID string
-			var enabled bool
-			if err := rows.Scan(&skillID, &enabled); err == nil {
-				userConfigs[skillID] = enabled
-				userToggled[skillID] = true
-			}
+		for _, row := range rows {
+			userConfigs[row.SkillID] = row.Enabled
+			userToggled[row.SkillID] = true
 		}
 	}
 
 	result := make([]UserSkillResponse, 0, len(skills))
 	for _, s := range skills {
-		enabled := true // default enabled
-		toggled := false
-		if v, ok := userConfigs[s.ID]; ok {
-			enabled = v
-			toggled = true
-		}
+		enabled, toggled := lookupUserSkillConfig(userConfigs, userToggled, s.Aliases)
 		result = append(result, UserSkillResponse{
 			ID:          s.ID,
 			Name:        s.Name,
@@ -185,6 +270,11 @@ func (h *UserSkillHandler) Toggle(c echo.Context) error {
 	}
 	userID := claims.UserID
 	skillID := c.Param("id")
+	if resolvedID, ok, err := h.resolveInstalledSkillID(skillID); err != nil {
+		return echo.NewHTTPError(http.StatusConflict, err.Error())
+	} else if ok {
+		skillID = resolvedID
+	}
 
 	var req ToggleRequest
 	if err := c.Bind(&req); err != nil {
@@ -194,13 +284,17 @@ func (h *UserSkillHandler) Toggle(c echo.Context) error {
 	now := timeutil.NowTime()
 
 	// Upsert
-	_, err := h.db.ExecContext(c.Request().Context(),
-		`INSERT INTO user_skill_configs (id, user_id, skill_id, enabled, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(user_id, skill_id) DO UPDATE SET enabled = ?, updated_at = ?`,
-		uuid.New().String(), userID, skillID, req.Enabled, now, now,
-		req.Enabled, now,
-	)
+	_, err := h.writeTable(c.Request().Context()).Insert(map[string]interface{}{
+		"id":         uuid.New().String(),
+		"user_id":    userID,
+		"skill_id":   skillID,
+		"enabled":    boolToSQLiteInt(req.Enabled),
+		"created_at": now,
+		"updated_at": now,
+	}, z.OnConflictDoUpdateSet(
+		[]string{"user_id", "skill_id"},
+		[]string{"enabled", "updated_at"},
+	))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to update skill config")
 	}

@@ -39,6 +39,17 @@ func TestParseIPCArgs_OptionWithCommaIsPreservedInJSONArray(t *testing.T) {
 	}
 }
 
+func TestParseIPCArgs_BareBooleanFlagBecomesTrue(t *testing.T) {
+	params, positional := parseIPCArgs([]string{"--full", "openai/responses-api"})
+
+	if len(positional) != 1 || positional[0] != "openai/responses-api" {
+		t.Fatalf("positional = %#v, want %#v", positional, []string{"openai/responses-api"})
+	}
+	if got := params["full"]; got != "true" {
+		t.Fatalf("full = %q, want %q", got, "true")
+	}
+}
+
 func TestInjectIPCContextParams_AddsBlueUserID(t *testing.T) {
 	params := map[string]string{
 		"query": "hello",
@@ -205,6 +216,37 @@ func TestNormalizeIPCCommand_MapsSlashInstallURLToSkillInstallURL(t *testing.T) 
 	}
 	if got := params["name"]; got != "humanizer" {
 		t.Fatalf("name = %q, want %q", got, "humanizer")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsContextSearchToDedicatedIPCCommand(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("context", []string{"search", "responses", "tools"})
+
+	if cmd != "context.search" {
+		t.Fatalf("cmd = %q, want %q", cmd, "context.search")
+	}
+	if got := params["query"]; got != "responses tools" {
+		t.Fatalf("query = %q, want %q", got, "responses tools")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsContextAnnotateFlagsAndNote(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("context", []string{"annotate", "--list", "openai/responses-api"})
+
+	if cmd != "context.annotate" {
+		t.Fatalf("cmd = %q, want %q", cmd, "context.annotate")
+	}
+	if got := params["list"]; got != "true" {
+		t.Fatalf("list = %q, want %q", got, "true")
+	}
+	if got := params["id"]; got != "openai/responses-api" {
+		t.Fatalf("id = %q, want %q", got, "openai/responses-api")
 	}
 	if len(positional) != 0 {
 		t.Fatalf("unexpected positional args: %#v", positional)

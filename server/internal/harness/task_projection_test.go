@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
@@ -34,9 +35,11 @@ func TestUserTaskProjectionService_ListScopesAndBlockers(t *testing.T) {
 	controller := newTestController(t)
 	agentDriver := &stubDriver{kind: RunKindAgentTask}
 	researchDriver := &stubDriver{kind: RunKindResearch}
+	workflowDriver := &stubDriver{kind: RunKindWorkflow}
 	subagentDriver := &stubDriver{kind: RunKindSubagent}
 	controller.RegisterDriver(agentDriver)
 	controller.RegisterDriver(researchDriver)
+	controller.RegisterDriver(workflowDriver)
 	controller.RegisterDriver(subagentDriver)
 
 	ctx := context.Background()
@@ -164,8 +167,20 @@ func TestUserTaskProjectionService_ListScopesAndBlockers(t *testing.T) {
 	if len(current[0].Artifacts) != 1 || current[0].Artifacts[0].Kind != "report" {
 		t.Fatalf("artifacts = %#v, want only visible report", current[0].Artifacts)
 	}
-	if !current[0].Actions.CanSendUpdate {
-		t.Fatalf("expected CanSendUpdate for current agent task")
+	if len(current[0].Actions.Items) != 2 || current[0].Actions.Items[0].Path != "/tasks/"+currentRun.ID+"/actions/cancel" {
+		t.Fatalf("expected current task action descriptors, got %#v", current[0].Actions.Items)
+	}
+	if current[0].Actions.Items[0].Variant != "danger" {
+		t.Fatalf("expected current task cancel variant danger, got %#v", current[0].Actions.Items[0])
+	}
+	if current[0].Actions.Items[1].ID != "send_update" || current[0].Actions.Items[1].Path != "/agent/tasks/"+currentRun.ID+"/message" {
+		t.Fatalf("expected current task send_update descriptor, got %#v", current[0].Actions.Items[1])
+	}
+	if !current[0].Actions.Items[1].RequiresInput {
+		t.Fatalf("expected current task send_update descriptor to require input, got %#v", current[0].Actions.Items[1])
+	}
+	if current[0].Actions.Items[1].Input == nil || len(current[0].Actions.Items[1].Input.Fields) != 1 {
+		t.Fatalf("expected current task send_update input schema, got %#v", current[0].Actions.Items[1].Input)
 	}
 
 	background, err := service.List(ctx, UserTaskProjectionFilter{
@@ -189,8 +204,81 @@ func TestUserTaskProjectionService_ListScopesAndBlockers(t *testing.T) {
 	if len(background[0].ResearchSources) != 1 || background[0].ResearchSources[0].Title != "Primary vendor pricing page" {
 		t.Fatalf("unexpected research sources: %#v", background[0].ResearchSources)
 	}
-	if !background[0].Actions.CanOpenChat {
-		t.Fatalf("expected background task to allow opening chat")
+	if len(background[0].Actions.Items) != 1 || background[0].Actions.Items[0].Path != "/tasks/"+backgroundRun.ID+"/actions/cancel" {
+		t.Fatalf("expected background task action descriptor, got %#v", background[0].Actions.Items)
+	}
+	if background[0].Actions.Items[0].Variant != "danger" {
+		t.Fatalf("expected background task cancel variant danger, got %#v", background[0].Actions.Items[0])
+	}
+}
+
+func TestUserTaskProjectionService_ListsWorkflowRuns(t *testing.T) {
+	controller := newTestController(t)
+	controller.RegisterDriver(&stubDriver{kind: RunKindWorkflow})
+
+	ctx := context.Background()
+	run, err := controller.Submit(ctx, RunSpec{
+		Kind:           RunKindWorkflow,
+		Goal:           "Execute nightly sync",
+		UserID:         "user-1",
+		ConversationID: "conv-workflow",
+		Metadata: map[string]interface{}{
+			"workflow_execution_id":    "exec-workflow-1",
+			"workflow_name":            "Nightly Sync",
+			"workflow_status_reason":   "approval_needed",
+			"workflow_checkpoint_kind": "pause_for_approval",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit workflow run failed: %v", err)
+	}
+	run.Status = RunStatusWaitingInput
+	if err := controller.store.UpdateRun(ctx, run); err != nil {
+		t.Fatalf("UpdateRun workflow failed: %v", err)
+	}
+
+	service := NewUserTaskProjectionService(controller, nil)
+	projections, err := service.List(ctx, UserTaskProjectionFilter{
+		UserID:         "user-1",
+		ConversationID: "conv-workflow",
+		Scope:          "current",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(projections) != 1 {
+		t.Fatalf("len(projections) = %d, want 1", len(projections))
+	}
+	if projections[0].Kind != RunKindWorkflow {
+		t.Fatalf("projection kind = %q, want %q", projections[0].Kind, RunKindWorkflow)
+	}
+	if projections[0].Subtitle != "Nightly Sync • pause_for_approval • approval_needed" {
+		t.Fatalf("subtitle = %q, want workflow subtitle", projections[0].Subtitle)
+	}
+	if len(projections[0].Actions.Items) != 2 {
+		t.Fatalf("expected workflow task descriptors, got %#v", projections[0].Actions.Items)
+	}
+	if projections[0].Actions.Items[1].ID != "resume" || projections[0].Actions.Items[1].Path != "/tasks/"+run.ID+"/actions/resume" {
+		t.Fatalf("expected workflow resume descriptor, got %#v", projections[0].Actions.Items[1])
+	}
+	if projections[0].Actions.Items[0].Variant != "danger" || projections[0].Actions.Items[1].Variant != "primary" {
+		t.Fatalf("expected workflow action variants danger/primary, got %#v", projections[0].Actions.Items)
+	}
+	if !projections[0].Actions.Items[1].RequiresInput {
+		t.Fatalf("expected workflow resume descriptor to require input, got %#v", projections[0].Actions.Items[1])
+	}
+	if projections[0].Actions.Items[1].Input.Title == "" || projections[0].Actions.Items[1].Input.SubmitLabel != "Submit decision" {
+		t.Fatalf("expected workflow resume dialog copy, got %#v", projections[0].Actions.Items[1].Input)
+	}
+	if len(projections[0].Actions.Items[1].Input.Fields) != 2 {
+		t.Fatalf("expected workflow resume input fields, got %#v", projections[0].Actions.Items[1].Input.Fields)
+	}
+	if projections[0].Actions.Items[1].Input.Fields[0].Kind != "choice" || len(projections[0].Actions.Items[1].Input.Fields[0].Options) != 2 || projections[0].Actions.Items[1].Input.Fields[0].Options[0] != "approve" {
+		t.Fatalf("expected workflow resume decision schema, got %#v", projections[0].Actions.Items[1].Input.Fields)
+	}
+	if projections[0].Actions.Items[1].Input.Fields[1].Kind != "textarea" || projections[0].Actions.Items[1].Input.Fields[1].PayloadKey != "comment" {
+		t.Fatalf("expected workflow resume payload schema, got %#v", projections[0].Actions.Items[1].Input.Fields)
 	}
 }
 
@@ -338,8 +426,8 @@ func TestUserTaskProjectionService_ProjectsAutoHarnessGroups(t *testing.T) {
 	if current[0].Stage != "verifying" || current[0].Status != "running" {
 		t.Fatalf("unexpected current projection: %#v", current[0])
 	}
-	if !current[0].Actions.CanCancel {
-		t.Fatalf("expected auto harness group to be cancellable while active")
+	if len(current[0].Actions.Items) != 1 || current[0].Actions.Items[0].ID != "cancel" {
+		t.Fatalf("expected auto harness group cancel descriptor, got %#v", current[0].Actions.Items)
 	}
 	if len(current[0].Artifacts) != 1 || current[0].Artifacts[0].URL != "/harness/"+group.ID {
 		t.Fatalf("artifacts = %#v, want harness report link", current[0].Artifacts)
@@ -470,6 +558,205 @@ func TestUserTaskProjectionHandler_CancelsAutoHarnessGroup(t *testing.T) {
 	var cancelled UserTaskProjection
 	if err := json.Unmarshal(cancelRec.Body.Bytes(), &cancelled); err != nil {
 		t.Fatalf("unmarshal CancelTask response: %v", err)
+	}
+	if cancelled.ID != group.ID || cancelled.Status != "cancelled" || cancelled.Stage != "cancelled" {
+		t.Fatalf("unexpected cancelled projection: %#v", cancelled)
+	}
+}
+
+func TestUserTaskProjectionHandler_ResumesWorkflowTask(t *testing.T) {
+	controller := newTestController(t)
+	driver := &stubDriver{
+		kind: RunKindWorkflow,
+		actionResults: map[string]RunStatus{
+			"resume": RunStatusExecuting,
+		},
+	}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:           RunKindWorkflow,
+		Goal:           "Resume workflow approval",
+		UserID:         "user-1",
+		ConversationID: "conv-1",
+		Metadata: map[string]interface{}{
+			"workflow_name":            "Approval Workflow",
+			"workflow_execution_id":    "exec-1",
+			"workflow_status_reason":   "approval_needed",
+			"workflow_checkpoint_kind": "pause_for_approval",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	run.Status = RunStatusWaitingInput
+	if err := controller.store.UpdateRun(context.Background(), run); err != nil {
+		t.Fatalf("UpdateRun failed: %v", err)
+	}
+
+	handler := NewUserTaskProjectionHandler(controller, nil)
+	e := echo.New()
+
+	body := strings.NewReader(`{"decision":"approve","payload":{"ticket":"A-1"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+run.ID+"/resume?conversation_id=conv-1", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(run.ID)
+
+	if err := handler.ResumeTask(c); err != nil {
+		t.Fatalf("ResumeTask returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ResumeTask status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resumed UserTaskProjection
+	if err := json.Unmarshal(rec.Body.Bytes(), &resumed); err != nil {
+		t.Fatalf("unmarshal ResumeTask response: %v", err)
+	}
+	if resumed.ID != run.ID || resumed.Status != "running" || resumed.Stage != "working" {
+		t.Fatalf("unexpected resumed projection: %#v", resumed)
+	}
+	if len(driver.actions) != 1 || driver.actions[0] != "resume" {
+		t.Fatalf("driver actions = %#v, want [resume]", driver.actions)
+	}
+	if len(driver.actionInputs) != 1 {
+		t.Fatalf("action inputs = %#v, want one payload", driver.actionInputs)
+	}
+	if got, _ := driver.actionInputs[0]["decision"].(string); got != "approve" {
+		t.Fatalf("decision = %q, want approve", got)
+	}
+	payload, _ := driver.actionInputs[0]["payload"].(map[string]interface{})
+	if got, _ := payload["ticket"].(string); got != "A-1" {
+		t.Fatalf("payload.ticket = %q, want A-1", got)
+	}
+}
+
+func TestUserTaskProjectionHandler_PerformTaskActionResumesWorkflowTask(t *testing.T) {
+	controller := newTestController(t)
+	driver := &stubDriver{
+		kind: RunKindWorkflow,
+		actionResults: map[string]RunStatus{
+			"resume": RunStatusExecuting,
+		},
+	}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:           RunKindWorkflow,
+		Goal:           "Resume workflow approval",
+		UserID:         "user-1",
+		ConversationID: "conv-1",
+		Metadata: map[string]interface{}{
+			"workflow_name":            "Approval Workflow",
+			"workflow_execution_id":    "exec-1",
+			"workflow_status_reason":   "approval_needed",
+			"workflow_checkpoint_kind": "pause_for_approval",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	run.Status = RunStatusWaitingInput
+	if err := controller.store.UpdateRun(context.Background(), run); err != nil {
+		t.Fatalf("UpdateRun failed: %v", err)
+	}
+
+	handler := NewUserTaskProjectionHandler(controller, nil)
+	e := echo.New()
+
+	body := strings.NewReader(`{"decision":"approve","payload":{"ticket":"A-2"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+run.ID+"/actions/resume?conversation_id=conv-1", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id", "action")
+	c.SetParamValues(run.ID, "resume")
+
+	if err := handler.PerformTaskAction(c); err != nil {
+		t.Fatalf("PerformTaskAction returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PerformTaskAction status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resumed UserTaskProjection
+	if err := json.Unmarshal(rec.Body.Bytes(), &resumed); err != nil {
+		t.Fatalf("unmarshal PerformTaskAction response: %v", err)
+	}
+	if resumed.ID != run.ID || resumed.Status != "running" || resumed.Stage != "working" {
+		t.Fatalf("unexpected resumed projection: %#v", resumed)
+	}
+	if len(driver.actions) != 1 || driver.actions[0] != "resume" {
+		t.Fatalf("driver actions = %#v, want [resume]", driver.actions)
+	}
+	payload, _ := driver.actionInputs[0]["payload"].(map[string]interface{})
+	if got, _ := payload["ticket"].(string); got != "A-2" {
+		t.Fatalf("payload.ticket = %q, want A-2", got)
+	}
+}
+
+func TestUserTaskProjectionHandler_PerformTaskActionCancelsAutoHarnessGroup(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "Research Auto Harness",
+		Subject:     "research",
+		OwnerUserID: "user-1",
+		Metadata: map[string]interface{}{
+			"auto_harness":      true,
+			"conversation_id":   "conv-1",
+			"quick_eval_preset": "research",
+		},
+		Items: []RunGroupItemSpec{{
+			RunKind: RunKindResearch,
+			Profile: "research",
+			Input: map[string]interface{}{
+				"goal": "Investigate the regression",
+			},
+			Expected: map[string]interface{}{
+				"status": "completed",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+	group.Status = RunGroupStatusRunning
+	group.Summary = map[string]interface{}{
+		"item_count": 1,
+		"counts": map[string]interface{}{
+			"running": 1,
+		},
+	}
+	if err := controller.store.UpdateGroup(ctx, group); err != nil {
+		t.Fatalf("UpdateGroup failed: %v", err)
+	}
+
+	handler := NewUserTaskProjectionHandler(controller, nil)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+group.ID+"/actions/cancel?conversation_id=conv-1", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id", "action")
+	c.SetParamValues(group.ID, "cancel")
+	if err := handler.PerformTaskAction(c); err != nil {
+		t.Fatalf("PerformTaskAction returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PerformTaskAction status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	var cancelled UserTaskProjection
+	if err := json.Unmarshal(rec.Body.Bytes(), &cancelled); err != nil {
+		t.Fatalf("unmarshal PerformTaskAction response: %v", err)
 	}
 	if cancelled.ID != group.ID || cancelled.Status != "cancelled" || cancelled.Stage != "cancelled" {
 		t.Fatalf("unexpected cancelled projection: %#v", cancelled)

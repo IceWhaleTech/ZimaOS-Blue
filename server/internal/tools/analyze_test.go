@@ -105,23 +105,46 @@ func (d *deadlineProbeBridge) Chat(ctx context.Context, _ string, _ int) (string
 
 // mockBrowserBackend is a test double for BrowserBackend.
 type mockBrowserBackend struct {
-	startErr    error
-	navResult   BrowserNavResult
-	navErr      error
-	a11yResult  BrowserA11yTreeResult
-	a11yErr     error
-	cookieValue string
-	cookieErr   error
-	cookieURL   string
-	cookieTabID string
-	closeCalled bool
-	observed    BrowserObservedNetworkResult
-	observeErr  error
-	waitIdleErr error
+	startErr      error
+	navResult     BrowserNavResult
+	navErr        error
+	navResults    []BrowserNavResult
+	navErrs       []error
+	a11yResult    BrowserA11yTreeResult
+	a11yErr       error
+	a11yResults   []BrowserA11yTreeResult
+	a11yErrs      []error
+	cookieValue   string
+	cookieErr     error
+	cookieURL     string
+	cookieTabID   string
+	closeCalled   bool
+	observed      BrowserObservedNetworkResult
+	observeErr    error
+	waitIdleErr   error
+	waitIdleErrs  []error
+	navCalls      int
+	a11yCalls     int
+	waitIdleCalls int
 }
 
 func (m *mockBrowserBackend) Start(_ context.Context) error { return m.startErr }
 func (m *mockBrowserBackend) Navigate(_ context.Context, url, _ string) (BrowserNavResult, error) {
+	idx := m.navCalls
+	m.navCalls++
+	if idx < len(m.navErrs) && m.navErrs[idx] != nil {
+		return BrowserNavResult{}, m.navErrs[idx]
+	}
+	if idx < len(m.navResults) {
+		r := m.navResults[idx]
+		if r.URL == "" {
+			r.URL = url
+		}
+		if r.TargetID == "" {
+			r.TargetID = "tab-1"
+		}
+		return r, nil
+	}
 	if m.navErr != nil {
 		return BrowserNavResult{}, m.navErr
 	}
@@ -143,9 +166,22 @@ func (m *mockBrowserBackend) ObserveNetwork(_ context.Context, _ string, _ int, 
 	return m.observed, m.observeErr
 }
 func (m *mockBrowserBackend) WaitNetworkIdle(_ context.Context, _ string, _ int, _ int) error {
+	idx := m.waitIdleCalls
+	m.waitIdleCalls++
+	if idx < len(m.waitIdleErrs) {
+		return m.waitIdleErrs[idx]
+	}
 	return m.waitIdleErr
 }
 func (m *mockBrowserBackend) AccessibilityTree(_ context.Context, _ string, _ int) (BrowserA11yTreeResult, error) {
+	idx := m.a11yCalls
+	m.a11yCalls++
+	if idx < len(m.a11yErrs) && m.a11yErrs[idx] != nil {
+		return BrowserA11yTreeResult{}, m.a11yErrs[idx]
+	}
+	if idx < len(m.a11yResults) {
+		return m.a11yResults[idx], nil
+	}
 	return m.a11yResult, m.a11yErr
 }
 func (m *mockBrowserBackend) InteractiveElements(_ context.Context, _ string) (BrowserInteractiveResult, error) {
@@ -679,6 +715,93 @@ func TestAnalyzeTool_Execute_FullAnalysis_WithBrowser(t *testing.T) {
 	// LLM should have received the scraped content
 	if !strings.Contains(bridge.calls[0], "Example") {
 		t.Error("LLM should have received scraped page title")
+	}
+}
+
+func TestAnalyzeTool_Execute_PromotesURLFromTopic(t *testing.T) {
+	analysisJSON := `{"summary":"Browser analysis","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	htmlBody := `<div class="hero"><h1>Browser Report</h1></div>`
+
+	bridge := &mockLLMBridge{
+		responses: []string{analysisJSON, htmlBody},
+	}
+	browser := &mockBrowserBackend{
+		navResult: BrowserNavResult{
+			URL:      "https://example.com/blog",
+			Title:    "Example Blog",
+			TargetID: "tab-1",
+		},
+		a11yResult: BrowserA11yTreeResult{
+			Tree: "heading 'Example Blog'\ntext 'Some content here'",
+		},
+	}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetBrowser(browser)
+	tool.SetMediaDir(t.TempDir())
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic": "Summarise https://example.com/blog and extract the key points.",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resultStr, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string result, got %T", result)
+	}
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &resultMap); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+	if resultMap["success"] != true {
+		t.Error("expected success=true")
+	}
+	if !browser.closeCalled {
+		t.Error("expected browser tab to be closed after scraping topic URL")
+	}
+	if browser.navCalls == 0 {
+		t.Fatal("expected browser navigation when topic contains a URL")
+	}
+	if !strings.Contains(bridge.calls[0], "Example Blog") {
+		t.Error("LLM should have received scraped blog content")
+	}
+}
+
+func TestAnalyzeTool_ScrapeURL_RetriesAccessibilityTreeAfterNetworkIdle(t *testing.T) {
+	browser := &mockBrowserBackend{
+		navResult: BrowserNavResult{
+			URL:      "https://example.com/blog",
+			Title:    "Example Blog",
+			TargetID: "tab-1",
+		},
+		a11yErrs: []error{context.DeadlineExceeded, nil},
+		a11yResults: []BrowserA11yTreeResult{
+			{},
+			{
+				URL:   "https://example.com/blog",
+				Title: "Example Blog",
+				Tree:  "heading 'Example Blog'\ntext 'Recovered after retry'",
+			},
+		},
+	}
+
+	tool := NewAnalyzeTool()
+	content := tool.scrapeURL(context.Background(), browser, "https://example.com/blog")
+
+	if !strings.Contains(content, "Recovered after retry") {
+		t.Fatalf("expected retried scrape content, got %q", content)
+	}
+	if browser.a11yCalls != 2 {
+		t.Fatalf("expected 2 accessibility attempts, got %d", browser.a11yCalls)
+	}
+	if browser.waitIdleCalls != 2 {
+		t.Fatalf("expected 2 wait-idle attempts, got %d", browser.waitIdleCalls)
+	}
+	if !browser.closeCalled {
+		t.Fatal("expected browser tab to be closed")
 	}
 }
 

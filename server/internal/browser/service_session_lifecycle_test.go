@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"syscall"
 	"testing"
 	"time"
 
@@ -268,6 +269,97 @@ func TestRodServiceDetachedScreenshotAppearsInMonitorSessionsE2E(t *testing.T) {
 	)
 	require.Equal(t, http.StatusNoContent, closeRec.Code, closeRec.Body.String())
 	assert.Nil(t, service.SessionScreenshotHistory(detachedMonitorTargetID))
+}
+
+func TestRodServiceNavigateRecoversAfterManagedChromiumCrashE2E(t *testing.T) {
+	browserPath := findTestBrowserBinary()
+	if browserPath == "" {
+		t.Skip("no Chrome/Chromium binary found for browser lifecycle test")
+	}
+
+	pageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch r.URL.Path {
+		case "/first":
+			_, _ = fmt.Fprint(
+				w,
+				`<!doctype html><html><head><title>Crash First</title></head><body>FIRST</body></html>`,
+			)
+		case "/second":
+			_, _ = fmt.Fprint(
+				w,
+				`<!doctype html><html><head><title>Crash Second</title></head><body>SECOND</body></html>`,
+			)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer pageServer.Close()
+
+	cfg := DefaultConfig()
+	cfg.BrowserPath = browserPath
+	cfg.PoolSize = 1
+	cfg.Headless = true
+	cfg.Driver = "managed"
+	cfg.RelayEnabled = false
+	cfg.CDPURL = ""
+
+	service, err := NewService(cfg)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	require.NoError(t, service.Start(ctx))
+	defer func() {
+		_ = service.Stop(context.Background())
+	}()
+
+	tab, err := service.OpenTab(ctx, pageServer.URL+"/first")
+	require.NoError(t, err)
+	require.NotEmpty(t, tab.TargetID)
+
+	require.Len(t, service.pool.browsers, 1)
+	instance := service.pool.browsers[0]
+	require.NotNil(t, instance)
+	require.NotNil(t, instance.launcher)
+	oldPID := instance.launcher.PID()
+	require.NotZero(t, oldPID)
+
+	instance.launcher.Kill()
+	require.Eventually(t, func() bool {
+		return !processExists(oldPID)
+	}, 5*time.Second, 100*time.Millisecond)
+
+	nav, err := service.Navigate(ctx, &NavigateRequest{
+		TargetID: tab.TargetID,
+		URL:      pageServer.URL + "/second",
+	})
+	require.NoError(t, err)
+	require.Contains(t, nav.URL, "/second")
+	require.Equal(t, "Crash Second", nav.Title)
+	require.NotEmpty(t, nav.TargetID)
+	require.NotEqual(t, tab.TargetID, nav.TargetID)
+
+	require.Eventually(t, func() bool {
+		if len(service.pool.browsers) != 1 || service.pool.browsers[0] == nil || service.pool.browsers[0].launcher == nil {
+			return false
+		}
+		return service.pool.browsers[0].launcher.PID() != 0 && service.pool.browsers[0].launcher.PID() != oldPID
+	}, 5*time.Second, 100*time.Millisecond)
+
+	url, title, err := service.PageInfo(ctx, nav.TargetID)
+	require.NoError(t, err)
+	require.Contains(t, url, "/second")
+	require.Equal(t, "Crash Second", title)
+}
+
+func processExists(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil
 }
 
 func TestRodServiceAutomatePublishesFinalMonitorFrameE2E(t *testing.T) {

@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { UserTaskProjection } from '@/api/tasks'
+import type { UserTaskActionID, UserTaskProjection } from '@/api/tasks'
 import {
   localizeTaskProjectionSubtitle,
   localizeTaskProjectionTitle,
 } from '@/utils/taskProjectionText'
+import {
+  canOpenTaskConversation,
+  projectTaskControlActions,
+  type ProjectedUserTaskAction,
+} from '@/utils/taskProjectionActions'
 
 const TASK_DOCK_COLLAPSED_KEY = 'zima.chat.task_projection_dock_collapsed.v1'
 
@@ -14,11 +19,11 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  action: [task: UserTaskProjection, actionId: UserTaskActionID, payload?: unknown]
   open: [task: UserTaskProjection]
-  cancel: [taskId: string]
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const collapsed = ref(loadCollapsedState())
 
 const leadTask = computed(() => props.tasks[0] || null)
@@ -43,6 +48,10 @@ function persistCollapsedState(value: boolean) {
   }
 }
 
+function translate(key: string, fallback: string): string {
+  return te(key) ? t(key) : fallback
+}
+
 function stageLabel(stage?: string) {
   switch (String(stage || '').trim()) {
     case 'planning':
@@ -59,11 +68,41 @@ function stageLabel(stage?: string) {
 }
 
 function taskTitle(task: UserTaskProjection): string {
-  return localizeTaskProjectionTitle(task.title, task.kind, t)
+  return localizeTaskProjectionTitle(task.title, task.kind, translate)
 }
 
 function taskSubtitle(task: UserTaskProjection): string {
-  return localizeTaskProjectionSubtitle(task.subtitle, task.kind, t)
+  return localizeTaskProjectionSubtitle(task.subtitle, task.kind, translate)
+}
+
+function kindLabel(task: UserTaskProjection): string {
+  switch (task.kind) {
+    case 'research':
+      return translate('chat.taskKindResearch', 'Deep Research')
+    case 'workflow':
+      return translate('chat.taskKindWorkflow', 'Workflow')
+    default:
+      return translate('chat.taskKindAgent', 'Agent')
+  }
+}
+
+function taskControlActions(task: UserTaskProjection): ProjectedUserTaskAction[] {
+  return projectTaskControlActions(task, translate)
+}
+
+function actionButtonClass(action: ProjectedUserTaskAction): string {
+  switch (String(action.variant || '').trim()) {
+    case 'primary':
+      return 'rounded-full border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-900/60 dark:text-blue-200 dark:hover:bg-blue-950/30'
+    case 'danger':
+      return 'rounded-full border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-900/60 dark:text-amber-200 dark:hover:bg-amber-950/30'
+    default:
+      return 'rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+  }
+}
+
+function emitTaskAction(task: UserTaskProjection, actionID: UserTaskActionID) {
+  emit('action', task, actionID)
 }
 
 watch(
@@ -157,11 +196,7 @@ watch(collapsed, (value) => {
                   {{ stageLabel(task.stage) }}
                 </span>
                 <span>{{ Math.round(task.progress || 0) }}%</span>
-                <span>{{
-                  task.kind === 'research'
-                    ? t('chat.taskKindResearch', 'Research')
-                    : t('chat.taskKindAgent', 'Agent')
-                }}</span>
+                <span>{{ kindLabel(task) }}</span>
               </div>
               <div class="mt-2 break-words text-sm font-medium text-slate-800 dark:text-slate-100">
                 {{ taskTitle(task) }}
@@ -184,7 +219,7 @@ watch(collapsed, (value) => {
 
             <div class="flex items-center gap-2 md:flex-col md:items-end">
               <button
-                v-if="task.actions.can_open_chat"
+                v-if="canOpenTaskConversation(task)"
                 type="button"
                 class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                 @click="emit('open', task)"
@@ -192,12 +227,13 @@ watch(collapsed, (value) => {
                 {{ t('chat.taskBackToConversation', 'Back to task') }}
               </button>
               <button
-                v-if="task.actions.can_cancel"
+                v-for="action in taskControlActions(task)"
+                :key="`${task.id}-${action.id}`"
                 type="button"
-                class="rounded-full border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-900/60 dark:text-amber-200 dark:hover:bg-amber-950/30"
-                @click="emit('cancel', task.id)"
+                :class="actionButtonClass(action)"
+                @click="emitTaskAction(task, action.id)"
               >
-                {{ t('chat.taskCancel', 'Cancel') }}
+                {{ action.label }}
               </button>
             </div>
           </div>

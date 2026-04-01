@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -31,6 +32,11 @@ var removedSettingsKeys = map[string]struct{}{
 	"smart_tool_selection":                    {},
 	"small_model_route_tool_dispatch_enabled": {},
 }
+
+var (
+	errSelectorDryRunQueryRequired = errors.New("query is required")
+	errSelectorDryRunUnavailable   = errors.New("chat handler not configured")
+)
 
 // SettingsHandler handles user settings API endpoints
 type SettingsHandler struct {
@@ -329,13 +335,30 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
-	req.Query = strings.TrimSpace(req.Query)
-	req.Model = strings.TrimSpace(req.Model)
-	if req.Query == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "query is required"})
+	response, err := h.PreviewSelectorDryRun(c.Request().Context(), req.Query, req.Model)
+	if err != nil {
+		switch {
+		case errors.Is(err, errSelectorDryRunQueryRequired):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, errSelectorDryRunUnavailable):
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
 	}
-	if req.Model == "" {
-		req.Model = "auto"
+	return c.JSON(http.StatusOK, response)
+}
+
+// PreviewSelectorDryRun returns the same selector/tool routing preview payload
+// used by the admin dry-run endpoint, without requiring an HTTP context.
+func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query string, model string) (map[string]interface{}, error) {
+	query = strings.TrimSpace(query)
+	model = strings.TrimSpace(model)
+	if query == "" {
+		return nil, errSelectorDryRunQueryRequired
+	}
+	if model == "" {
+		model = "auto"
 	}
 
 	h.mu.RLock()
@@ -343,33 +366,72 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 	advisor := h.skillAdvisor
 	h.mu.RUnlock()
 	if chatHandler == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "chat handler not configured"})
+		return nil, errSelectorDryRunUnavailable
 	}
 
-	selectedDefs, _ := chatHandler.selectToolsDetailed(req.Query, tools.ToolPolicyRequest{
-		Model:     req.Model,
+	policyReq := tools.ToolPolicyRequest{
+		Model:     model,
 		RouteKind: tools.ToolRouteKindChat,
-	})
+	}
+	selection := chatHandler.previewChatToolSurfacesForRequest(ctx, query, policyReq, nil, nil)
+	selectedDefs := selection.RoutedDefs
 	toolNames := make([]string, len(selectedDefs))
 	for i, def := range selectedDefs {
 		toolNames[i] = def.Name
 	}
+	toolSurface := tools.MeasureLLMToolSurface(selectedDefs)
+	selectedNativeNames := make([]string, len(selection.NativeDefs))
+	for i, def := range selection.NativeDefs {
+		selectedNativeNames[i] = def.Name
+	}
+	selectedNativeSurface := tools.MeasureLLMToolSurface(selection.NativeDefs)
+	var toolDebug *tools.ToolSelectionDebug
+	if chatHandler.toolSelector != nil {
+		allDefs := chatHandler.toolDefinitionsForPolicy(policyReq)
+		debug := chatHandler.toolSelector.SelectDetailed(query, allDefs).Debug
+		toolDebug = &debug
+	}
 
 	response := map[string]interface{}{
-		"query":                 req.Query,
-		"model":                 req.Model,
-		"smart_skill_selection": h.GetSmartSkillSelection(),
-		"selected_tools":        toolNames,
+		"query":                        query,
+		"model":                        model,
+		"smart_skill_selection":        h.GetSmartSkillSelection(),
+		"selected_tools":               toolNames,
+		"selected_tool_surface":        toolSurface,
+		"selected_native_tools":        selectedNativeNames,
+		"selected_native_tool_surface": selectedNativeSurface,
+		"selected_native_surface_mode": string(selection.NativeMode),
+	}
+	if toolDebug != nil {
+		response["tool_debug"] = toolDebug
 	}
 
 	var selectedDecision *agentcore.Decision
-	if chatHandler.skillSelector != nil && h.GetSmartSkillSelection() {
+	if selection.SkillDecision != nil {
+		copied := *selection.SkillDecision
+		selectedDecision = &copied
+		decision := copied
+		response["skill_decision"] = decision
+		response["skill_prompt_hint"] = decision.PromptHint(3)
+		response["canonical_skill_id"] = decision.SelectedSkill
+		response["skill_need_clarify"] = decision.NeedClarify
+		response["skill_route_outcome"] = selectorDryRunOutcome(decision)
+		response["decision_reason"] = decision.Reason
+		response["decision_stage"] = decision.Stage
+		if strings.TrimSpace(decision.Reason) != "" {
+			if decision.NeedClarify {
+				response["clarify_reason"] = decision.Reason
+			} else {
+				response["fallback_reason"] = decision.Reason
+			}
+		}
+	} else if chatHandler.skillSelector != nil && h.GetSmartSkillSelection() {
 		opts := agentcore.SelectOptions{
 			Mode:                h.GetSkillSelectorMode(),
 			EnableRerank:        h.GetEffectiveSkillRerankEnabled(),
 			ConfidenceThreshold: h.GetSkillSelectorConfidenceThreshold(),
 		}
-		decision, err := chatHandler.skillSelector.Select(c.Request().Context(), req.Query, opts)
+		decision, err := chatHandler.skillSelector.Select(ctx, query, opts)
 		if err != nil {
 			response["skill_selector_error"] = err.Error()
 		} else {
@@ -377,18 +439,40 @@ func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
 			selectedDecision = &copied
 			response["skill_decision"] = decision
 			response["skill_prompt_hint"] = decision.PromptHint(3)
+			response["canonical_skill_id"] = decision.SelectedSkill
+			response["skill_need_clarify"] = decision.NeedClarify
+			response["skill_route_outcome"] = selectorDryRunOutcome(decision)
+			response["decision_reason"] = decision.Reason
+			response["decision_stage"] = decision.Stage
+			if strings.TrimSpace(decision.Reason) != "" {
+				if decision.NeedClarify {
+					response["clarify_reason"] = decision.Reason
+				} else {
+					response["fallback_reason"] = decision.Reason
+				}
+			}
 		}
 	}
 	if advisor != nil {
-		advice, err := advisor.Advise(c.Request().Context(), req.Query, selectedDecision)
+		advice, err := advisor.Advise(ctx, query, selectedDecision)
 		if err != nil {
 			response["skill_advice_error"] = err.Error()
 		} else if advice != nil {
 			response["skill_advice"] = advice
 		}
 	}
+	return response, nil
+}
 
-	return c.JSON(http.StatusOK, response)
+func selectorDryRunOutcome(decision agentcore.Decision) string {
+	switch {
+	case decision.NeedClarify:
+		return "clarify"
+	case strings.TrimSpace(decision.SelectedSkill) != "":
+		return "selected"
+	default:
+		return "none"
+	}
 }
 
 // Update handles PUT /api/settings (full update)

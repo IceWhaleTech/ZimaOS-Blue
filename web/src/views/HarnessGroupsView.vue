@@ -3573,6 +3573,10 @@ onUnmounted(() => {
   --harness-chip-radius: 999px;
   --harness-shadow: 0 8px 18px rgba(15, 23, 42, 0.045);
   --harness-shadow-strong: 0 10px 24px rgba(15, 23, 42, 0.07);
+  --harness-panel-bg: #f8fafc;
+  --harness-card-bg: #ffffff;
+  --harness-subsurface-bg: rgba(248, 250, 252, 0.96);
+  --harness-selected-card-bg: rgba(239, 246, 255, 0.92);
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
@@ -3644,9 +3648,7 @@ onUnmounted(() => {
   gap: 0.85rem;
   padding: 0.82rem 0.88rem;
   border-radius: 1.05rem;
-  background:
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 32%),
-    linear-gradient(180deg, #fbfdff 0%, #eef3f7 100%);
+  background: var(--harness-panel-bg);
   border: 1px solid rgba(203, 213, 225, 0.96);
   box-shadow:
     0 14px 24px -26px rgba(15, 23, 42, 0.38),
@@ -3748,7 +3750,7 @@ onUnmounted(() => {
 .detail-card {
   border-radius: var(--harness-surface-radius);
   border: 1px solid rgba(15, 23, 42, 0.08);
-  background: #fff;
+  background: var(--harness-card-bg);
   box-shadow: var(--harness-shadow);
 }
 
@@ -3756,7 +3758,7 @@ onUnmounted(() => {
 .state-card {
   border-radius: 1.05rem;
   border-color: rgba(203, 213, 225, 0.96);
-  background: linear-gradient(180deg, #fbfdff 0%, #eef3f7 100%);
+  background: var(--harness-card-bg);
   box-shadow:
     0 14px 24px -26px rgba(15, 23, 42, 0.38),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
@@ -3765,7 +3767,7 @@ onUnmounted(() => {
 .panel {
   border-radius: 1.05rem;
   border: 1px solid rgba(203, 213, 225, 0.96);
-  background: linear-gradient(180deg, #fbfdff 0%, #eef3f7 100%);
+  background: var(--harness-panel-bg);
   box-shadow:
     0 14px 24px -26px rgba(15, 23, 42, 0.38),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
@@ -3851,7 +3853,7 @@ onUnmounted(() => {
   gap: 0.18rem;
   padding: 0.52rem 0.58rem;
   border-radius: 0.62rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 247, 250, 0.98) 100%);
+  background: var(--harness-subsurface-bg);
   border: 1px solid rgba(226, 232, 240, 0.96);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
@@ -4130,7 +4132,7 @@ onUnmounted(() => {
 
 .eval-run-card.selected {
   border-color: rgba(14, 165, 233, 0.34);
-  background: linear-gradient(180deg, rgba(239, 246, 255, 0.9), #fff 42%);
+  background: var(--harness-selected-card-bg);
   box-shadow: 0 16px 36px rgba(14, 165, 233, 0.12);
 }
 
@@ -4158,7 +4160,7 @@ onUnmounted(() => {
   gap: 0.14rem;
   padding: 0.42rem 0.48rem;
   border-radius: 0.56rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 247, 250, 0.98) 100%);
+  background: var(--harness-subsurface-bg);
   border: 1px solid rgba(226, 232, 240, 0.96);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
@@ -4200,7 +4202,7 @@ onUnmounted(() => {
 .empty-panel {
   padding: 0.62rem;
   border-radius: 0.62rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 247, 250, 0.98) 100%);
+  background: var(--harness-subsurface-bg);
   border: 1px solid rgba(226, 232, 240, 0.96);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   color: #475569;
@@ -4254,9 +4256,7 @@ onUnmounted(() => {
   padding: 0.92rem 1rem;
   border-radius: 0.9rem;
   border: 1px solid rgba(14, 165, 233, 0.15);
-  background:
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 30%),
-    linear-gradient(180deg, rgba(248, 250, 252, 0.95), #fff 55%);
+  background: var(--harness-panel-bg);
 }
 
 .report-hero-copy {
@@ -4306,7 +4306,7 @@ onUnmounted(() => {
   padding: 0.72rem 0.76rem;
   border-radius: 0.74rem;
   border: 1px solid rgba(226, 232, 240, 0.96);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 247, 250, 0.98) 100%);
+  background: var(--harness-subsurface-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   display: flex;
   flex-direction: column;
@@ -4349,7 +4349,7 @@ onUnmounted(() => {
 }
 
 .report-outcome-card {
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), #fff 28%);
+  background: var(--harness-subsurface-bg);
 }
 
 .report-outcome-section {

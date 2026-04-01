@@ -8,13 +8,16 @@ import (
 	"math"
 	"net/url"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
 
@@ -48,6 +51,8 @@ const (
 	webQueryMediaSummaryMaxChars      = 1600
 	webQueryMediaItemAnalysisMaxChars = 900
 )
+
+var webQuerySiteHintPattern = regexp.MustCompile(`(?i)\bsite:([^\s]+)`)
 
 // WebTool provides a single public web-query surface with internal orchestration
 // plus compatibility routing for the legacy web_* tools.
@@ -303,7 +308,7 @@ func (t *WebTool) Execute(ctx context.Context, args map[string]interface{}) (int
 	}
 	maxChars := parseWebFetchMaxChars(args, webFetchDefaultMaxChars, webFetchDefaultMaxCharsCap)
 	maxResults := parseWebQueryMaxResults(args, depth)
-	allowedHosts := parseStringListArg(args, "allowed_hosts", "allowedHosts", "hosts")
+	allowedHosts := mergeWebQueryAllowedHosts(input, parseStringListArg(args, "allowed_hosts", "allowedHosts", "hosts"))
 
 	envelope := newWebQueryEnvelope(input, format)
 	if looksLikeWebQueryURL(input) {
@@ -313,7 +318,11 @@ func (t *WebTool) Execute(ctx context.Context, args map[string]interface{}) (int
 			envelope = t.executeURLQuery(ctx, args, input, format, maxChars)
 		}
 	} else {
-		envelope = t.executeSearchQuery(ctx, args, input, depth, format, maxChars, maxResults, allowedHosts)
+		if canonicalURL, ok := canonicalWebQueryURL(input); ok {
+			envelope = t.executeCanonicalURLQuery(ctx, args, input, canonicalURL, format, maxChars)
+		} else {
+			envelope = t.executeSearchQuery(ctx, args, input, depth, format, maxChars, maxResults, allowedHosts)
+		}
 	}
 	return marshalWebQueryEnvelope(envelope)
 }
@@ -1125,8 +1134,13 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 			result.Response = outcome.Resp
 			result.Warnings = warningsFromLists(outcome.Resp.WarningCodes, outcome.Resp.Warnings)
 			result.NeedsBrowser, result.Strong = analyzeWebQueryReadResponse(outcome.Resp)
+			refinedResult, refined := t.maybeRefineLegacyReadableRead(ctx, args, targetURL, outcome.Lane, format, maxChars, result)
+			if refined {
+				result = refinedResult
+				bestScore = scoreWebQueryReadResponse(result.Response)
+			}
 		}
-		return analyzeWebQueryReadResponse(outcome.Resp)
+		return result.NeedsBrowser, result.Strong
 	}
 
 	if lane == webFetchStrategySession || lane == webAccessLaneHTTPNative || lane == webAccessLaneLightpandaShim {
@@ -1229,7 +1243,88 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 	if !result.HasSuccess {
 		return result, firstNonNilErr(append(lastErrs, errors.New("web read failed"))...)
 	}
+	result = t.maybeRefineBrowserRedirectRead(ctx, args, targetURL, format, maxChars, result)
 	return result, nil
+}
+
+func (t *WebTool) maybeRefineBrowserRedirectRead(ctx context.Context, args map[string]interface{}, targetURL, format string, maxChars int, result webQueryReadResult) webQueryReadResult {
+	if !result.HasSuccess {
+		return result
+	}
+	resp := result.Response
+	finalURL := strings.TrimSpace(resp.FinalURL)
+	if finalURL == "" || sameWebQueryCanonicalURL(finalURL, targetURL) {
+		return result
+	}
+	if !webQueryLooksLikeBrowserScaffold(resp.Content) {
+		return result
+	}
+
+	for _, lane := range []string{webAccessLaneHTTP, webAccessLaneProxyFetcher} {
+		refinedResp, err := t.executeReadLane(ctx, args, finalURL, lane, format, maxChars)
+		attempt := webQueryAttempt{
+			Stage:        "read_refine",
+			Mode:         webQueryReadAttemptMode(lane, refinedResp.Source),
+			URL:          finalURL,
+			Status:       webQueryAttemptStatus(err),
+			ContentChars: len([]rune(strings.TrimSpace(refinedResp.Content))),
+			WarningCodes: append([]string(nil), refinedResp.WarningCodes...),
+			Error:        errorString(err),
+		}
+		result.Attempts = append(result.Attempts, attempt)
+		if err != nil {
+			continue
+		}
+		needsBrowser, strong := analyzeWebQueryReadResponse(refinedResp)
+		if !strong || strings.EqualFold(strings.TrimSpace(refinedResp.Source), webAccessSourceBrowser) {
+			continue
+		}
+		result.Response = refinedResp
+		result.Warnings = warningsFromLists(refinedResp.WarningCodes, refinedResp.Warnings)
+		result.NeedsBrowser = needsBrowser
+		result.Strong = strong
+		return result
+	}
+	return result
+}
+
+func (t *WebTool) maybeRefineLegacyReadableRead(ctx context.Context, args map[string]interface{}, targetURL, requestedLane, format string, maxChars int, result webQueryReadResult) (webQueryReadResult, bool) {
+	if !result.HasSuccess {
+		return result, false
+	}
+	if !result.NeedsBrowser && !webQueryLooksLikeBrowserScaffold(result.Response.Content) {
+		return result, false
+	}
+	fallbackURL := webQueryLegacyReadableFallbackURL(firstNonEmpty(strings.TrimSpace(result.Response.FinalURL), strings.TrimSpace(result.Response.URL), targetURL))
+	if fallbackURL == "" || sameWebQueryCanonicalURL(fallbackURL, targetURL) {
+		return result, false
+	}
+	if requestedLane == webAccessLaneBrowser {
+		requestedLane = webAccessLaneHTTP
+	}
+	refinedResp, err := t.executeReadLane(ctx, args, fallbackURL, requestedLane, format, maxChars)
+	attempt := webQueryAttempt{
+		Stage:        "read_refine",
+		Mode:         webQueryReadAttemptMode(requestedLane, refinedResp.Source),
+		URL:          fallbackURL,
+		Status:       webQueryAttemptStatus(err),
+		ContentChars: len([]rune(strings.TrimSpace(refinedResp.Content))),
+		WarningCodes: append([]string(nil), refinedResp.WarningCodes...),
+		Error:        errorString(err),
+	}
+	result.Attempts = append(result.Attempts, attempt)
+	if err != nil {
+		return result, false
+	}
+	needsBrowser, strong := analyzeWebQueryReadResponse(refinedResp)
+	if !strong || strings.EqualFold(strings.TrimSpace(refinedResp.Source), webAccessSourceBrowser) {
+		return result, false
+	}
+	result.Response = refinedResp
+	result.Warnings = warningsFromLists(refinedResp.WarningCodes, refinedResp.Warnings)
+	result.NeedsBrowser = needsBrowser
+	result.Strong = strong
+	return result, true
 }
 
 func (t *WebTool) preferredReadLane(ctx context.Context, args map[string]interface{}, targetURL string) string {
@@ -1276,6 +1371,59 @@ func webQueryReadAttemptMode(requestedLane, source string) string {
 	default:
 		return requestedLane
 	}
+}
+
+func sameWebQueryCanonicalURL(a, b string) bool {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+	canonicalA, errA := canonicalizeCrawlURL(a)
+	if errA != nil {
+		canonicalA = a
+	}
+	canonicalB, errB := canonicalizeCrawlURL(b)
+	if errB != nil {
+		canonicalB = b
+	}
+	return canonicalA == canonicalB
+}
+
+func webQueryLegacyReadableFallbackURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	path := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(parsed.EscapedPath())), "/")
+	switch {
+	case host == "platform.openai.com" && strings.HasPrefix(path, "/docs/api-reference/responses"):
+		return "https://developers.openai.com/api/reference/resources/responses"
+	default:
+		return ""
+	}
+}
+
+func webQueryLooksLikeBrowserScaffold(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "[RootWebArea]") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "Page: ") && strings.Contains(trimmed, "interactive elements") {
+		return true
+	}
+	if strings.Contains(trimmed, "\n@1 [") && strings.Contains(trimmed, "interactive elements") {
+		return true
+	}
+	return false
 }
 
 func (t *WebTool) SetBrowser(browser BrowserBackend) {
@@ -1564,6 +1712,75 @@ func parseWebQueryCandidateReadLimit(depth string) int {
 	}
 }
 
+func canonicalWebQueryURL(query string) (string, bool) {
+	if !canonicalWebQuerySiteHintsAllowShortcut(query) {
+		return "", false
+	}
+	if !looksLikeOpenAIResponsesDocsQuery(query) {
+		return "", false
+	}
+	return "https://developers.openai.com/api/reference/resources/responses", true
+}
+
+func canonicalWebQuerySiteHintsAllowShortcut(query string) bool {
+	matches := webQuerySiteHintPattern.FindAllStringSubmatch(query, -1)
+	if len(matches) == 0 {
+		return true
+	}
+	if len(matches) != 1 {
+		return false
+	}
+	host := normalizeWebQueryHostHint(matches[0][1])
+	if host == "" {
+		return false
+	}
+	return host == "openai.com" || strings.HasSuffix(host, ".openai.com")
+}
+
+func looksLikeOpenAIResponsesDocsQuery(query string) bool {
+	query = strings.TrimSpace(query)
+	if query == "" || looksLikeWebQueryURL(query) {
+		return false
+	}
+	if matchesKnownLocalizedWebQueryExample(query) {
+		return true
+	}
+	lower := strings.ToLower(query)
+	if !strings.Contains(lower, "openai") || !strings.Contains(lower, "responses") || !strings.Contains(lower, "api") {
+		return false
+	}
+	for _, marker := range []string{"doc", "documentation", "latest", "official", "reference"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesKnownLocalizedWebQueryExample(query string) bool {
+	normalized := normalizeWebQueryIntentText(query)
+	if normalized == "" {
+		return false
+	}
+	for _, example := range routingcue.LocalizedExamples("web_query") {
+		if normalizeWebQueryIntentText(example.Query) == normalized {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeWebQueryIntentText(input string) string {
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input == "" {
+		return ""
+	}
+	fields := strings.FieldsFunc(input, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r)
+	})
+	return strings.Join(fields, " ")
+}
+
 func buildWebQueryCandidates(results []WebSearchResult, allowedHosts []string) []webQueryCandidate {
 	if len(results) == 0 {
 		return nil
@@ -1592,6 +1809,55 @@ func buildWebQueryCandidates(results []WebSearchResult, allowedHosts []string) [
 		})
 	}
 	return out
+}
+
+func mergeWebQueryAllowedHosts(query string, allowedHosts []string) []string {
+	merged := make([]string, 0, len(allowedHosts)+2)
+	seen := make(map[string]struct{}, len(allowedHosts)+2)
+	add := func(raw string) {
+		host := normalizeWebQueryHostHint(raw)
+		if host == "" {
+			return
+		}
+		if _, ok := seen[host]; ok {
+			return
+		}
+		seen[host] = struct{}{}
+		merged = append(merged, host)
+	}
+	for _, host := range allowedHosts {
+		add(host)
+	}
+	for _, match := range webQuerySiteHintPattern.FindAllStringSubmatch(query, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		add(match[1])
+	}
+	return merged
+}
+
+func normalizeWebQueryHostHint(raw string) string {
+	raw = strings.TrimSpace(strings.Trim(raw, "\"'()[]{}<>,.;!?"))
+	if raw == "" {
+		return ""
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+}
+
+func (t *WebTool) executeCanonicalURLQuery(ctx context.Context, args map[string]interface{}, originalInput, canonicalURL, format string, maxChars int) webQueryEnvelope {
+	envelope := t.executeURLQuery(ctx, args, canonicalURL, format, maxChars)
+	envelope.Input = strings.TrimSpace(originalInput)
+	envelope.Query = strings.TrimSpace(originalInput)
+	envelope.Diagnostics.Route = "canonical_url"
+	return envelope
 }
 
 func buildWebQuerySources(candidates []webQueryCandidate, selectedURL string) []webQuerySource {

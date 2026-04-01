@@ -155,6 +155,34 @@ func (m *QuestionManager) resolveTimeoutAction() string {
 	return "default"
 }
 
+func questionRuntimeError(code, message string, cause error, req *QuestionRequest, details map[string]interface{}) error {
+	payload := cloneJSONInterfaceMap(details)
+	if req != nil {
+		if payload == nil {
+			payload = map[string]interface{}{}
+		}
+		if req.ID != "" {
+			payload["request_id"] = req.ID
+		}
+		if req.RunID != "" {
+			payload["run_id"] = req.RunID
+		}
+		if req.StepIndex > 0 {
+			payload["step_index"] = req.StepIndex
+		}
+		if req.SessionID != "" {
+			payload["session_id"] = req.SessionID
+		}
+		if req.UserID != "" {
+			payload["user_id"] = req.UserID
+		}
+		if len(req.Questions) > 0 {
+			payload["question_count"] = len(req.Questions)
+		}
+	}
+	return newToolRuntimeError(code, message, cause, payload)
+}
+
 // AskQuestions sends questions to the user via SSE and blocks until answers arrive.
 // In silent mode, returns default answers immediately (first option per question).
 func (m *QuestionManager) AskQuestions(ctx context.Context, userID, sessionID string, questions []QuestionItem) ([]QuestionAnswerResult, bool, error) {
@@ -191,19 +219,31 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 	if userID == "" {
 		userID = "default"
 	}
+	timeout := m.resolveTimeout()
+	timeoutAction := m.resolveTimeoutAction()
 	// If no active SSE consumer exists for this user, do not block on timeout.
 	// Treat it as unattended mode and return deterministic defaults immediately.
 	if m.broker == nil || m.broker.ClientCount(userID) == 0 {
-		if m.resolveTimeoutAction() == "error" {
-			return nil, false, fmt.Errorf("question cannot be delivered: no active SSE client for user %q", userID)
+		if timeoutAction == "error" {
+			return nil, false, questionRuntimeError(
+				"question_delivery_unavailable",
+				fmt.Sprintf("question cannot be delivered: no active SSE client for user %q", userID),
+				nil,
+				nil,
+				map[string]interface{}{
+					"user_id":         userID,
+					"session_id":      sessionID,
+					"question_count":  len(questions),
+					"timeout_action":  timeoutAction,
+					"delivery_target": "sse",
+				},
+			)
 		}
 		return m.defaultAnswers(questions), true, nil
 	}
 
 	reqID := uuid.New().String()
 	answerCh := make(chan []QuestionAnswerResult, 1)
-
-	timeout := m.resolveTimeout()
 	req := QuestionRequest{
 		ID:        reqID,
 		RunID:     GetRunID(ctx),
@@ -244,25 +284,53 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 		return answers, false, nil
 	case <-timer.C:
 		defaultAnswers := m.defaultAnswers(questions)
+		var resolveErr error
+		if timeoutAction == "error" {
+			resolveErr = questionRuntimeError(
+				"question_timeout",
+				fmt.Sprintf("question timed out after %s", timeout),
+				context.DeadlineExceeded,
+				&req,
+				map[string]interface{}{
+					"timeout_ms":     timeout.Milliseconds(),
+					"timeout_action": timeoutAction,
+				},
+			)
+		}
 		if observer != nil {
-			var resolveErr error
-			if m.resolveTimeoutAction() == "error" {
-				resolveErr = fmt.Errorf("question timed out after %s", timeout)
+			if resolveErr != nil {
 				observer.OnQuestionResolved(questionRuntimeEvent(req, nil, false, true, resolveErr))
 			} else {
 				observer.OnQuestionResolved(questionRuntimeEvent(req, defaultAnswers, true, true, nil))
 			}
 		}
-		if m.resolveTimeoutAction() == "error" {
-			return nil, false, fmt.Errorf("question timed out after %s", timeout)
+		if resolveErr != nil {
+			return nil, false, resolveErr
 		}
 		// Timeout: return defaults
 		return defaultAnswers, true, nil
 	case <-ctx.Done():
-		if observer != nil {
-			observer.OnQuestionResolved(questionRuntimeEvent(req, nil, false, false, ctx.Err()))
+		code := "question_aborted"
+		switch ctx.Err() {
+		case context.Canceled:
+			code = "question_cancelled"
+		case context.DeadlineExceeded:
+			code = "question_timeout"
 		}
-		return nil, false, ctx.Err()
+		resolveErr := questionRuntimeError(
+			code,
+			ctx.Err().Error(),
+			ctx.Err(),
+			&req,
+			map[string]interface{}{
+				"timeout_action": timeoutAction,
+				"wait_state":     "pending_user_response",
+			},
+		)
+		if observer != nil {
+			observer.OnQuestionResolved(questionRuntimeEvent(req, nil, false, false, resolveErr))
+		}
+		return nil, false, resolveErr
 	}
 }
 

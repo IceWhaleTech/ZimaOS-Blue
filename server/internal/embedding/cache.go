@@ -10,12 +10,14 @@ import (
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // Cache caches embeddings to avoid redundant API calls.
 type Cache struct {
 	db         *sql.DB
+	readDB     *sql.DB
 	provider   string
 	model      string
 	maxEntries int
@@ -75,6 +77,11 @@ func NewCache(cfg CacheConfig) (*Cache, error) {
 		return nil, fmt.Errorf("failed to open cache database: %w", err)
 	}
 
+	readDB, readErr := openEmbeddingCacheReaderDB(cfg.DBPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+
 	maxEntries := cfg.MaxEntries
 	if maxEntries == 0 {
 		maxEntries = 10000
@@ -82,10 +89,59 @@ func NewCache(cfg CacheConfig) (*Cache, error) {
 
 	return &Cache{
 		db:         db,
+		readDB:     readDB,
 		provider:   cfg.Provider,
 		model:      cfg.Model,
 		maxEntries: maxEntries,
 	}, nil
+}
+
+func (c *Cache) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, c.db, "embedding_cache")
+}
+
+func (c *Cache) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, c.reader(), "embedding_cache")
+}
+
+func (c *Cache) reader() *sql.DB {
+	if c != nil && c.readDB != nil {
+		return c.readDB
+	}
+	if c == nil {
+		return nil
+	}
+	return c.db
+}
+
+func openEmbeddingCacheReaderDB(dbPath string) (*sql.DB, error) {
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("failed to set embedding cache reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+type cacheRow struct {
+	ID         int64  `json:"id" zorm:"id"`
+	Provider   string `json:"provider" zorm:"provider"`
+	Model      string `json:"model" zorm:"model"`
+	TextHash   string `json:"text_hash" zorm:"text_hash"`
+	Embedding  string `json:"embedding" zorm:"embedding"`
+	Dimensions int    `json:"dimensions" zorm:"dimensions"`
+	CreatedAt  string `json:"created_at" zorm:"created_at"`
+	AccessedAt string `json:"accessed_at" zorm:"accessed_at"`
 }
 
 // Get retrieves an embedding from the cache.
@@ -93,27 +149,35 @@ func (c *Cache) Get(ctx context.Context, textHash string) ([]float32, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var embeddingJSON string
-	err := c.db.QueryRowContext(ctx,
-		"SELECT embedding FROM embedding_cache WHERE provider = ? AND model = ? AND text_hash = ?",
-		c.provider, c.model, textHash,
-	).Scan(&embeddingJSON)
-
-	if err == sql.ErrNoRows {
+	var rows []cacheRow
+	_, err := c.readTable(ctx).Select(&rows,
+		z.Where(
+			z.Eq("provider", c.provider),
+			z.Eq("model", c.model),
+			z.Eq("text_hash", textHash),
+		),
+		z.Limit(1),
+	)
+	if err != nil {
 		return nil, false
 	}
-	if err != nil {
+	if len(rows) == 0 {
 		return nil, false
 	}
 
 	// Update accessed_at
-	_, _ = c.db.ExecContext(ctx,
-		"UPDATE embedding_cache SET accessed_at = ? WHERE provider = ? AND model = ? AND text_hash = ?",
-		timeutil.NowTime(), c.provider, c.model, textHash,
+	_, _ = c.table(ctx).Update(
+		z.V{"accessed_at": timeutil.NowTime().UTC().Format(time.RFC3339Nano)},
+		z.Fields("accessed_at"),
+		z.Where(
+			z.Eq("provider", c.provider),
+			z.Eq("model", c.model),
+			z.Eq("text_hash", textHash),
+		),
 	)
 
 	var embedding []float32
-	if err := json.Unmarshal([]byte(embeddingJSON), &embedding); err != nil {
+	if err := json.Unmarshal([]byte(rows[0].Embedding), &embedding); err != nil {
 		return nil, false
 	}
 
@@ -131,13 +195,22 @@ func (c *Cache) Set(ctx context.Context, textHash string, embedding []float32) e
 	}
 
 	now := timeutil.NowTime()
-	_, err = c.db.ExecContext(ctx, `
-		INSERT INTO embedding_cache (provider, model, text_hash, embedding, dimensions, created_at, accessed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(provider, model, text_hash) DO UPDATE SET
-			embedding = excluded.embedding,
-			accessed_at = excluded.accessed_at
-	`, c.provider, c.model, textHash, string(embeddingJSON), len(embedding), now, now)
+	nowStr := now.UTC().Format(time.RFC3339Nano)
+	_, err = c.table(ctx).Insert(
+		map[string]interface{}{
+			"provider":    c.provider,
+			"model":       c.model,
+			"text_hash":   textHash,
+			"embedding":   string(embeddingJSON),
+			"dimensions":  len(embedding),
+			"created_at":  nowStr,
+			"accessed_at": nowStr,
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"provider", "model", "text_hash"},
+			[]string{"embedding", "dimensions", "accessed_at"},
+		),
+	)
 
 	if err != nil {
 		return fmt.Errorf("failed to cache embedding: %w", err)
@@ -155,38 +228,40 @@ func (c *Cache) GetBatch(ctx context.Context, textHashes []string) (map[string][
 	defer c.mu.Unlock()
 
 	result := make(map[string][]float32)
+	if len(textHashes) == 0 {
+		return result, nil
+	}
 
-	for _, hash := range textHashes {
-		var embeddingJSON string
-		err := c.db.QueryRowContext(ctx,
-			"SELECT embedding FROM embedding_cache WHERE provider = ? AND model = ? AND text_hash = ?",
-			c.provider, c.model, hash,
-		).Scan(&embeddingJSON)
-
-		if err == sql.ErrNoRows {
-			continue
-		}
-		if err != nil {
-			continue
-		}
-
+	var rows []cacheRow
+	_, err := c.readTable(ctx).Select(&rows,
+		z.Where(
+			z.Eq("provider", c.provider),
+			z.Eq("model", c.model),
+			z.In("text_hash", stringSliceToInterfaces(textHashes)...),
+		),
+	)
+	if err != nil {
+		return result, nil
+	}
+	for i := range rows {
 		var embedding []float32
-		if err := json.Unmarshal([]byte(embeddingJSON), &embedding); err != nil {
+		if err := json.Unmarshal([]byte(rows[i].Embedding), &embedding); err != nil {
 			continue
 		}
-
-		result[hash] = embedding
+		result[rows[i].TextHash] = embedding
 	}
 
 	// Update accessed_at for found entries
 	if len(result) > 0 {
-		now := timeutil.NowTime()
-		for hash := range result {
-			_, _ = c.db.ExecContext(ctx,
-				"UPDATE embedding_cache SET accessed_at = ? WHERE provider = ? AND model = ? AND text_hash = ?",
-				now, c.provider, c.model, hash,
-			)
-		}
+		_, _ = c.table(ctx).Update(
+			z.V{"accessed_at": timeutil.NowTime().UTC().Format(time.RFC3339Nano)},
+			z.Fields("accessed_at"),
+			z.Where(
+				z.Eq("provider", c.provider),
+				z.Eq("model", c.model),
+				z.In("text_hash", stringSliceToInterfaces(mapKeys(result))...),
+			),
+		)
 	}
 
 	return result, nil
@@ -203,25 +278,29 @@ func (c *Cache) SetBatch(ctx context.Context, embeddings map[string][]float32) e
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO embedding_cache (provider, model, text_hash, embedding, dimensions, created_at, accessed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(provider, model, text_hash) DO UPDATE SET
-			embedding = excluded.embedding,
-			accessed_at = excluded.accessed_at
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
-
 	now := timeutil.NowTime()
+	nowStr := now.UTC().Format(time.RFC3339Nano)
+	table := z.TableContext(ctx, tx, "embedding_cache")
 	for hash, embedding := range embeddings {
 		embeddingJSON, err := json.Marshal(embedding)
 		if err != nil {
 			continue
 		}
-		_, err = stmt.ExecContext(ctx, c.provider, c.model, hash, string(embeddingJSON), len(embedding), now, now)
+		_, err = table.Insert(
+			map[string]interface{}{
+				"provider":    c.provider,
+				"model":       c.model,
+				"text_hash":   hash,
+				"embedding":   string(embeddingJSON),
+				"dimensions":  len(embedding),
+				"created_at":  nowStr,
+				"accessed_at": nowStr,
+			},
+			z.OnConflictDoUpdateSet(
+				[]string{"provider", "model", "text_hash"},
+				[]string{"embedding", "dimensions", "accessed_at"},
+			),
+		)
 		if err != nil {
 			continue
 		}
@@ -247,13 +326,17 @@ func (c *Cache) Prune(ctx context.Context) error {
 
 // pruneIfNeeded prunes if the cache exceeds maxEntries.
 func (c *Cache) pruneIfNeeded(ctx context.Context) {
-	var count int
-	err := c.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM embedding_cache WHERE provider = ? AND model = ?",
-		c.provider, c.model,
-	).Scan(&count)
+	var count int64
+	_, err := c.readTable(ctx).Select(
+		&count,
+		z.Fields("count(1)"),
+		z.Where(
+			z.Eq("provider", c.provider),
+			z.Eq("model", c.model),
+		),
+	)
 
-	if err != nil || count <= c.maxEntries {
+	if err != nil || count <= int64(c.maxEntries) {
 		return
 	}
 
@@ -267,24 +350,28 @@ func (c *Cache) pruneUnsafe(ctx context.Context) error {
 	// Delete oldest entries to get back to 80% of maxEntries
 	targetCount := int(float64(c.maxEntries) * 0.8)
 
-	_, err := c.db.ExecContext(ctx, `
-		DELETE FROM embedding_cache
-		WHERE provider = ? AND model = ? AND id IN (
-			SELECT id FROM embedding_cache
-			WHERE provider = ? AND model = ?
-			ORDER BY accessed_at ASC
-			LIMIT (
-				SELECT MAX(0, COUNT(*) - ?) FROM embedding_cache
+	_, err := c.table(ctx).Delete(
+		z.Where(z.Expr(`
+			provider = ? AND model = ? AND id IN (
+				SELECT id FROM embedding_cache
 				WHERE provider = ? AND model = ?
+				ORDER BY accessed_at ASC
+				LIMIT (
+					SELECT MAX(0, COUNT(*) - ?) FROM embedding_cache
+					WHERE provider = ? AND model = ?
+				)
 			)
-		)
-	`, c.provider, c.model, c.provider, c.model, targetCount, c.provider, c.model)
+		`, c.provider, c.model, c.provider, c.model, targetCount, c.provider, c.model)),
+	)
 
 	return err
 }
 
 // Close closes the cache database.
 func (c *Cache) Close() error {
+	if c.readDB != nil && c.readDB != c.db {
+		_ = c.readDB.Close()
+	}
 	return c.db.Close()
 }
 
@@ -294,21 +381,35 @@ func (c *Cache) Stats(ctx context.Context) (CacheStats, error) {
 	defer c.mu.Unlock()
 
 	var stats CacheStats
+	var entryCount int64
 
-	err := c.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM embedding_cache WHERE provider = ? AND model = ?",
-		c.provider, c.model,
-	).Scan(&stats.EntryCount)
-	if err != nil {
+	if _, err := c.readTable(ctx).Select(
+		&entryCount,
+		z.Fields("count(1)"),
+		z.Where(
+			z.Eq("provider", c.provider),
+			z.Eq("model", c.model),
+		),
+	); err != nil {
 		return stats, err
 	}
+	stats.EntryCount = int(entryCount)
 
-	err = c.db.QueryRowContext(ctx,
-		"SELECT MIN(created_at), MAX(accessed_at) FROM embedding_cache WHERE provider = ? AND model = ?",
-		c.provider, c.model,
-	).Scan(&stats.OldestEntry, &stats.NewestAccess)
-	if err != nil && err != sql.ErrNoRows {
+	var rows []z.V
+	if _, err := c.readTable(ctx).Select(
+		&rows,
+		z.Fields("min(created_at)", "max(accessed_at)"),
+		z.Where(
+			z.Eq("provider", c.provider),
+			z.Eq("model", c.model),
+		),
+		z.Limit(1),
+	); err != nil {
 		return stats, err
+	}
+	if len(rows) > 0 {
+		stats.OldestEntry = parseCacheStatsTime(rows[0], "min(created_at)")
+		stats.NewestAccess = parseCacheStatsTime(rows[0], "max(accessed_at)")
 	}
 
 	stats.MaxEntries = c.maxEntries
@@ -429,4 +530,51 @@ func (p *CachedProvider) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	}
 
 	return result, nil
+}
+
+func stringSliceToInterfaces(values []string) []interface{} {
+	args := make([]interface{}, 0, len(values))
+	for _, value := range values {
+		args = append(args, value)
+	}
+	return args
+}
+
+func mapKeys(values map[string][]float32) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func parseCacheStatsTime(values z.V, key string) time.Time {
+	raw, ok := values[key]
+	if !ok || raw == nil {
+		return time.Time{}
+	}
+	switch typed := raw.(type) {
+	case string:
+		return parseEmbeddingCacheTime(typed)
+	case []byte:
+		return parseEmbeddingCacheTime(string(typed))
+	default:
+		return time.Time{}
+	}
+}
+
+func parseEmbeddingCacheTime(raw string) time.Time {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }

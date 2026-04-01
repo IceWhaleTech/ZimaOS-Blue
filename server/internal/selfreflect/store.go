@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 type ProposalStatus string
@@ -76,7 +77,31 @@ type ProposalStore interface {
 }
 
 type SQLiteProposalStore struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
+}
+
+type proposalRow struct {
+	ID                     string  `json:"id" zorm:"id"`
+	OwnerUserID            string  `json:"owner_user_id" zorm:"owner_user_id"`
+	SourceKind             string  `json:"source_kind" zorm:"source_kind"`
+	SourceID               string  `json:"source_id" zorm:"source_id"`
+	ProposalMode           string  `json:"proposal_mode" zorm:"proposal_mode"`
+	TargetFile             string  `json:"target_file" zorm:"target_file"`
+	TargetSection          string  `json:"target_section" zorm:"target_section"`
+	Status                 string  `json:"status" zorm:"status"`
+	DedupKey               string  `json:"dedup_key" zorm:"dedup_key"`
+	Lesson                 string  `json:"lesson" zorm:"lesson"`
+	WhenToApply            string  `json:"when_to_apply" zorm:"when_to_apply"`
+	Evidence               string  `json:"evidence" zorm:"evidence"`
+	EvidenceIDsJSON        string  `json:"evidence_ids_json" zorm:"evidence_ids_json"`
+	EvaluationSummaryJSON  string  `json:"evaluation_summary_json" zorm:"evaluation_summary_json"`
+	CalibrationSummaryJSON string  `json:"calibration_summary_json" zorm:"calibration_summary_json"`
+	PatchPreview           string  `json:"patch_preview" zorm:"patch_preview"`
+	ReviewNote             string  `json:"review_note" zorm:"review_note"`
+	CreatedAt              string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt              string  `json:"updated_at" zorm:"updated_at"`
+	ReviewedAt             *string `json:"reviewed_at" zorm:"reviewed_at"`
 }
 
 const proposalSchemaSQL = `
@@ -108,13 +133,116 @@ CREATE INDEX IF NOT EXISTS idx_self_reflect_proposals_source ON self_reflect_pro
 `
 
 func NewSQLiteProposalStore(db *sql.DB) (*SQLiteProposalStore, error) {
-	if db == nil {
+	return NewSQLiteProposalStoreWithReadDB(db, db)
+}
+
+// NewSQLiteProposalStoreWithReadDB creates a proposal store with separate
+// write and read database handles.
+func NewSQLiteProposalStoreWithReadDB(writeDB, readDB *sql.DB) (*SQLiteProposalStore, error) {
+	if writeDB == nil {
 		return nil, fmt.Errorf("db is required")
 	}
-	if _, err := db.Exec(proposalSchemaSQL); err != nil {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	if _, err := writeDB.Exec(proposalSchemaSQL); err != nil {
 		return nil, err
 	}
-	return &SQLiteProposalStore{db: db}, nil
+	return &SQLiteProposalStore{db: writeDB, readDB: readDB}, nil
+}
+
+func (s *SQLiteProposalStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *SQLiteProposalStore) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "self_reflect_proposals")
+}
+
+func (s *SQLiteProposalStore) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "self_reflect_proposals")
+}
+
+func proposalToValues(proposal *Proposal) z.V {
+	return z.V{
+		"id":                       proposal.ID,
+		"owner_user_id":            strings.TrimSpace(proposal.OwnerUserID),
+		"source_kind":              strings.TrimSpace(proposal.SourceKind),
+		"source_id":                strings.TrimSpace(proposal.SourceID),
+		"proposal_mode":            string(proposal.ProposalMode),
+		"target_file":              strings.TrimSpace(proposal.TargetFile),
+		"target_section":           strings.TrimSpace(proposal.TargetSection),
+		"status":                   string(proposal.Status),
+		"dedup_key":                strings.TrimSpace(proposal.DedupKey),
+		"lesson":                   strings.TrimSpace(proposal.Lesson),
+		"when_to_apply":            strings.TrimSpace(proposal.WhenToApply),
+		"evidence":                 strings.TrimSpace(proposal.Evidence),
+		"evidence_ids_json":        marshalProposalJSON(proposal.EvidenceIDs, "[]"),
+		"evaluation_summary_json":  marshalProposalJSON(proposal.EvaluationSummary, "{}"),
+		"calibration_summary_json": marshalProposalJSON(proposal.CalibrationSummary, "{}"),
+		"patch_preview":            proposal.PatchPreview,
+		"review_note":              strings.TrimSpace(proposal.ReviewNote),
+		"created_at":               proposal.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updated_at":               proposal.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		"reviewed_at":              nullableTimeString(proposal.ReviewedAt),
+	}
+}
+
+func proposalFromRow(row proposalRow) *Proposal {
+	proposal := &Proposal{
+		ID:                 row.ID,
+		OwnerUserID:        row.OwnerUserID,
+		SourceKind:         row.SourceKind,
+		SourceID:           row.SourceID,
+		ProposalMode:       ProposalMode(strings.TrimSpace(row.ProposalMode)),
+		TargetFile:         row.TargetFile,
+		TargetSection:      row.TargetSection,
+		Status:             ProposalStatus(strings.TrimSpace(row.Status)),
+		DedupKey:           row.DedupKey,
+		Lesson:             row.Lesson,
+		WhenToApply:        row.WhenToApply,
+		Evidence:           row.Evidence,
+		EvidenceIDs:        unmarshalProposalStringSlice(row.EvidenceIDsJSON),
+		EvaluationSummary:  unmarshalProposalMap(row.EvaluationSummaryJSON),
+		CalibrationSummary: unmarshalProposalMap(row.CalibrationSummaryJSON),
+		PatchPreview:       row.PatchPreview,
+		ReviewNote:         row.ReviewNote,
+	}
+	proposal.CreatedAt = parseProposalTime(row.CreatedAt)
+	proposal.UpdatedAt = parseProposalTime(row.UpdatedAt)
+	if row.ReviewedAt != nil && strings.TrimSpace(*row.ReviewedAt) != "" {
+		ts := parseProposalTime(*row.ReviewedAt)
+		if !ts.IsZero() {
+			proposal.ReviewedAt = &ts
+		}
+	}
+	return proposal
+}
+
+func parseProposalTime(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }
 
 func (s *SQLiteProposalStore) CreateProposal(ctx context.Context, proposal *Proposal) error {
@@ -140,32 +268,7 @@ func (s *SQLiteProposalStore) CreateProposal(ctx context.Context, proposal *Prop
 	if proposal.ProposalMode == "" {
 		proposal.ProposalMode = ProposalModeReviewOnly
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO self_reflect_proposals (
-		id, owner_user_id, source_kind, source_id, proposal_mode, target_file, target_section, status, dedup_key,
-		lesson, when_to_apply, evidence, evidence_ids_json, evaluation_summary_json, calibration_summary_json,
-		patch_preview, review_note, created_at, updated_at, reviewed_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		proposal.ID,
-		strings.TrimSpace(proposal.OwnerUserID),
-		strings.TrimSpace(proposal.SourceKind),
-		strings.TrimSpace(proposal.SourceID),
-		string(proposal.ProposalMode),
-		strings.TrimSpace(proposal.TargetFile),
-		strings.TrimSpace(proposal.TargetSection),
-		string(proposal.Status),
-		strings.TrimSpace(proposal.DedupKey),
-		strings.TrimSpace(proposal.Lesson),
-		strings.TrimSpace(proposal.WhenToApply),
-		strings.TrimSpace(proposal.Evidence),
-		marshalProposalJSON(proposal.EvidenceIDs, "[]"),
-		marshalProposalJSON(proposal.EvaluationSummary, "{}"),
-		marshalProposalJSON(proposal.CalibrationSummary, "{}"),
-		proposal.PatchPreview,
-		strings.TrimSpace(proposal.ReviewNote),
-		proposal.CreatedAt,
-		proposal.UpdatedAt,
-		nullableTime(proposal.ReviewedAt),
-	)
+	_, err := s.table(ctx).Insert(proposalToValues(proposal))
 	return err
 }
 
@@ -176,175 +279,123 @@ func (s *SQLiteProposalStore) UpdateProposal(ctx context.Context, proposal *Prop
 	if proposal == nil {
 		return fmt.Errorf("proposal is required")
 	}
-	proposal.UpdatedAt = timeutil.NowTime()
-	_, err := s.db.ExecContext(ctx, `UPDATE self_reflect_proposals SET
-		owner_user_id=?, source_kind=?, source_id=?, proposal_mode=?, target_file=?, target_section=?, status=?, dedup_key=?,
-		lesson=?, when_to_apply=?, evidence=?, evidence_ids_json=?, evaluation_summary_json=?, calibration_summary_json=?,
-		patch_preview=?, review_note=?, updated_at=?, reviewed_at=?
-		WHERE id=?`,
-		strings.TrimSpace(proposal.OwnerUserID),
-		strings.TrimSpace(proposal.SourceKind),
-		strings.TrimSpace(proposal.SourceID),
-		string(proposal.ProposalMode),
-		strings.TrimSpace(proposal.TargetFile),
-		strings.TrimSpace(proposal.TargetSection),
-		string(proposal.Status),
-		strings.TrimSpace(proposal.DedupKey),
-		strings.TrimSpace(proposal.Lesson),
-		strings.TrimSpace(proposal.WhenToApply),
-		strings.TrimSpace(proposal.Evidence),
-		marshalProposalJSON(proposal.EvidenceIDs, "[]"),
-		marshalProposalJSON(proposal.EvaluationSummary, "{}"),
-		marshalProposalJSON(proposal.CalibrationSummary, "{}"),
-		proposal.PatchPreview,
-		strings.TrimSpace(proposal.ReviewNote),
-		proposal.UpdatedAt,
-		nullableTime(proposal.ReviewedAt),
-		proposal.ID,
+	proposal.UpdatedAt = timeutil.NowTime().UTC()
+	_, err := s.table(ctx).Update(
+		proposalToValues(proposal),
+		z.Fields(
+			"owner_user_id",
+			"source_kind",
+			"source_id",
+			"proposal_mode",
+			"target_file",
+			"target_section",
+			"status",
+			"dedup_key",
+			"lesson",
+			"when_to_apply",
+			"evidence",
+			"evidence_ids_json",
+			"evaluation_summary_json",
+			"calibration_summary_json",
+			"patch_preview",
+			"review_note",
+			"updated_at",
+			"reviewed_at",
+		),
+		z.Where(z.Eq("id", proposal.ID)),
 	)
 	return err
 }
 
 func (s *SQLiteProposalStore) GetProposal(ctx context.Context, id string) (*Proposal, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.reader() == nil {
 		return nil, fmt.Errorf("proposal store is not configured")
 	}
-	row := s.db.QueryRowContext(ctx, `SELECT
-		id, owner_user_id, source_kind, source_id, proposal_mode, target_file, target_section, status, dedup_key,
-		lesson, when_to_apply, evidence, evidence_ids_json, evaluation_summary_json, calibration_summary_json,
-		patch_preview, review_note, created_at, updated_at, reviewed_at
-		FROM self_reflect_proposals
-		WHERE id = ?`, strings.TrimSpace(id))
-	return scanProposal(row)
+	var rows []proposalRow
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Where(z.Eq("id", strings.TrimSpace(id))),
+		z.Limit(1),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return proposalFromRow(rows[0]), nil
 }
 
 func (s *SQLiteProposalStore) ListProposals(ctx context.Context, filter ProposalFilter) ([]Proposal, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.reader() == nil {
 		return nil, fmt.Errorf("proposal store is not configured")
 	}
-	query := `SELECT
-		id, owner_user_id, source_kind, source_id, proposal_mode, target_file, target_section, status, dedup_key,
-		lesson, when_to_apply, evidence, evidence_ids_json, evaluation_summary_json, calibration_summary_json,
-		patch_preview, review_note, created_at, updated_at, reviewed_at
-		FROM self_reflect_proposals`
-	var (
-		clauses []string
-		args    []interface{}
-	)
+	var conds []interface{}
 	if owner := strings.TrimSpace(filter.OwnerUserID); owner != "" {
-		clauses = append(clauses, "owner_user_id = ?")
-		args = append(args, owner)
+		conds = append(conds, z.Eq("owner_user_id", owner))
 	}
 	if sourceKind := strings.TrimSpace(filter.SourceKind); sourceKind != "" {
-		clauses = append(clauses, "source_kind = ?")
-		args = append(args, sourceKind)
+		conds = append(conds, z.Eq("source_kind", sourceKind))
 	}
 	if sourceID := strings.TrimSpace(filter.SourceID); sourceID != "" {
-		clauses = append(clauses, "source_id = ?")
-		args = append(args, sourceID)
+		conds = append(conds, z.Eq("source_id", sourceID))
 	}
 	if len(filter.Statuses) > 0 {
-		parts := make([]string, 0, len(filter.Statuses))
+		statuses := make([]string, 0, len(filter.Statuses))
 		for _, status := range filter.Statuses {
 			if status == "" {
 				continue
 			}
-			parts = append(parts, "?")
-			args = append(args, string(status))
+			statuses = append(statuses, string(status))
 		}
-		if len(parts) > 0 {
-			clauses = append(clauses, "status IN ("+strings.Join(parts, ",")+")")
+		if len(statuses) > 0 {
+			statusVals := make([]interface{}, 0, len(statuses))
+			for _, status := range statuses {
+				statusVals = append(statusVals, status)
+			}
+			conds = append(conds, z.In("status", statusVals...))
 		}
 	}
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
-	}
-	query += " ORDER BY created_at DESC"
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = 50
 	}
-	query += " LIMIT ?"
-	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	opts := []z.ZormItem{
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit),
+	}
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
+	}
+	var rows []proposalRow
+	if _, err := s.readTable(ctx).Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	out := make([]Proposal, 0, limit)
-	for rows.Next() {
-		proposal, err := scanProposal(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *proposal)
+	out := make([]Proposal, 0, len(rows))
+	for i := range rows {
+		out = append(out, *proposalFromRow(rows[i]))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (s *SQLiteProposalStore) FindProposalByDedup(ctx context.Context, dedupKey string, targetFile string) (*Proposal, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.reader() == nil {
 		return nil, fmt.Errorf("proposal store is not configured")
 	}
-	row := s.db.QueryRowContext(ctx, `SELECT
-		id, owner_user_id, source_kind, source_id, proposal_mode, target_file, target_section, status, dedup_key,
-		lesson, when_to_apply, evidence, evidence_ids_json, evaluation_summary_json, calibration_summary_json,
-		patch_preview, review_note, created_at, updated_at, reviewed_at
-		FROM self_reflect_proposals
-		WHERE dedup_key = ? AND target_file = ?
-		LIMIT 1`, strings.TrimSpace(dedupKey), strings.TrimSpace(targetFile))
-	return scanProposal(row)
-}
-
-type proposalRowScanner interface {
-	Scan(dest ...interface{}) error
-}
-
-func scanProposal(scanner proposalRowScanner) (*Proposal, error) {
-	var (
-		proposal               Proposal
-		proposalMode           string
-		status                 string
-		evidenceIDsJSON        string
-		evaluationSummaryJSON  string
-		calibrationSummaryJSON string
-		reviewedAt             sql.NullTime
+	var rows []proposalRow
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Where(
+			z.Eq("dedup_key", strings.TrimSpace(dedupKey)),
+			z.Eq("target_file", strings.TrimSpace(targetFile)),
+		),
+		z.Limit(1),
 	)
-	if err := scanner.Scan(
-		&proposal.ID,
-		&proposal.OwnerUserID,
-		&proposal.SourceKind,
-		&proposal.SourceID,
-		&proposalMode,
-		&proposal.TargetFile,
-		&proposal.TargetSection,
-		&status,
-		&proposal.DedupKey,
-		&proposal.Lesson,
-		&proposal.WhenToApply,
-		&proposal.Evidence,
-		&evidenceIDsJSON,
-		&evaluationSummaryJSON,
-		&calibrationSummaryJSON,
-		&proposal.PatchPreview,
-		&proposal.ReviewNote,
-		&proposal.CreatedAt,
-		&proposal.UpdatedAt,
-		&reviewedAt,
-	); err != nil {
+	if err != nil {
 		return nil, err
 	}
-	proposal.ProposalMode = ProposalMode(strings.TrimSpace(proposalMode))
-	proposal.Status = ProposalStatus(strings.TrimSpace(status))
-	proposal.EvidenceIDs = unmarshalProposalStringSlice(evidenceIDsJSON)
-	proposal.EvaluationSummary = unmarshalProposalMap(evaluationSummaryJSON)
-	proposal.CalibrationSummary = unmarshalProposalMap(calibrationSummaryJSON)
-	if reviewedAt.Valid {
-		ts := reviewedAt.Time
-		proposal.ReviewedAt = &ts
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
 	}
-	return &proposal, nil
+	return proposalFromRow(rows[0]), nil
 }
 
 func marshalProposalJSON(value interface{}, fallback string) string {
@@ -385,9 +436,9 @@ func unmarshalProposalMap(raw string) map[string]interface{} {
 	return out
 }
 
-func nullableTime(ts *time.Time) interface{} {
+func nullableTimeString(ts *time.Time) interface{} {
 	if ts == nil || ts.IsZero() {
 		return nil
 	}
-	return *ts
+	return ts.UTC().Format(time.RFC3339Nano)
 }

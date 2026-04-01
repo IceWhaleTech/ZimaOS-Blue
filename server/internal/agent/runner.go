@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -21,13 +25,20 @@ import (
 )
 
 // MaxConcurrentTasks is the default limit of concurrent agent tasks per user.
-const MaxConcurrentTasks = 3
+const MaxConcurrentTasks = 32
 
 // MaxToolRoundsPerStep is the max tool rounds within a single plan step.
 const MaxToolRoundsPerStep = 50
 
 // defaultAskTimeout is used when Ask timeout is not configured.
 const defaultAskTimeout = 10 * time.Minute
+
+const defaultConcurrentSlotPollInterval = 100 * time.Millisecond
+
+const (
+	agentMaxConcurrentEnv       = "ZIMA_AGENT_MAX_CONCURRENT_TASKS"
+	legacyAgentMaxConcurrentEnv = "BLUE_AGENT_MAX_CONCURRENT_TASKS"
+)
 
 // LLMCaller abstracts LLM calls so the runner doesn't depend on proxybridge directly.
 type LLMCaller interface {
@@ -41,8 +52,9 @@ type MemoryRecaller interface {
 
 // MemoryResult is a simplified memory search result for the agent runner.
 type MemoryResult struct {
-	Content string
-	Score   float32
+	Content  string
+	Score    float32
+	Metadata map[string]string
 }
 
 // RunnerConfig configures the agent runner.
@@ -103,7 +115,7 @@ type TaskEventObserver interface {
 // NewRunner creates a new agent runner.
 func NewRunner(store *Store, llmCaller LLMCaller, registry *tools.Registry, executor *tools.Executor, broker *sse.Broker, config RunnerConfig) *Runner {
 	if config.MaxConcurrent <= 0 {
-		config.MaxConcurrent = MaxConcurrentTasks
+		config.MaxConcurrent = resolveDefaultMaxConcurrentTasks()
 	}
 	if config.TaskTimeout <= 0 {
 		config.TaskTimeout = 30 * time.Minute
@@ -152,6 +164,21 @@ func NewRunner(store *Store, llmCaller LLMCaller, registry *tools.Registry, exec
 		runner.groundedRuntime.executor.SetToolGateway(runner.toolGateway)
 	}
 	return runner
+}
+
+func resolveDefaultMaxConcurrentTasks() int {
+	for _, envName := range []string{agentMaxConcurrentEnv, legacyAgentMaxConcurrentEnv} {
+		raw := strings.TrimSpace(os.Getenv(envName))
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 {
+			continue
+		}
+		return value
+	}
+	return MaxConcurrentTasks
 }
 
 // SetToolApprover wires runtime tool approval enforcement into the agent's shared tool gateway.
@@ -356,6 +383,9 @@ func (r *Runner) SetMemory(m MemoryRecaller) {
 
 // SetReflector sets the post-task reflection engine.
 func (r *Runner) SetReflector(reflector SelfReflector) {
+	if r == nil {
+		return
+	}
 	r.reflector = reflector
 }
 
@@ -423,13 +453,8 @@ func (r *Runner) SubmitTask(ctx context.Context, task *Task, conversationCtx str
 }
 
 func (r *Runner) startTask(ctx context.Context, task *Task, conversationCtx string) error {
-	// Check concurrency limit
-	running, err := r.store.CountRunning(ctx, task.UserID)
-	if err != nil {
-		return fmt.Errorf("failed to check running tasks: %w", err)
-	}
-	if running >= r.config.MaxConcurrent {
-		return fmt.Errorf("max concurrent tasks reached (%d)", r.config.MaxConcurrent)
+	if err := r.waitForAvailableSlot(ctx, task.UserID); err != nil {
+		return err
 	}
 
 	if err := r.store.Create(ctx, task); err != nil {
@@ -456,6 +481,38 @@ func (r *Runner) startTask(ctx context.Context, task *Task, conversationCtx stri
 	}()
 
 	return nil
+}
+
+func (r *Runner) waitForAvailableSlot(ctx context.Context, userID string) error {
+	if r == nil || r.store == nil {
+		return fmt.Errorf("runner store is not configured")
+	}
+	if r.config.MaxConcurrent <= 0 {
+		return nil
+	}
+
+	pollInterval := defaultConcurrentSlotPollInterval
+	for {
+		running, err := r.store.CountRunning(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("failed to check running tasks: %w", err)
+		}
+		if running < r.config.MaxConcurrent {
+			return nil
+		}
+
+		if ctx == nil {
+			time.Sleep(pollInterval)
+			continue
+		}
+		timer := time.NewTimer(pollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("wait for concurrent slot: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
 }
 
 // Cancel cancels a running task.
@@ -1048,7 +1105,11 @@ func defaultQuestionAnswers(questions []AgentQuestion) []QuestionAnswer {
 func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			logger.Error().Str("task_id", task.ID).Interface("panic", rec).Msg("[agent] runner panic")
+			logger.Error().
+				Str("task_id", task.ID).
+				Interface("panic", rec).
+				Str("stack", string(debug.Stack())).
+				Msg("[agent] runner panic")
 			task.Status = TaskStatusFailed
 			task.Error = fmt.Sprintf("internal error: %v", rec)
 			_ = r.store.Update(context.Background(), task)
@@ -1101,7 +1162,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	// Start timeout warning goroutine (warn at 80% of timeout)
 	go r.watchTimeout(ctx, task)
 
-	planSpec, err := r.generatePlan(ctx, task.Goal, conversationCtx)
+	planSpec, err := r.generatePlanForTask(ctx, task, task.Goal, conversationCtx)
 	if err != nil {
 		r.failTask(ctx, task, fmt.Sprintf("planning failed: %v", err))
 		return
@@ -1115,26 +1176,14 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	}
 
 	if planNeedsConfirmation(planSpec.Raw) {
-		if err := r.transitionState(ctx, task, RuntimeStateConfirmGate, "plan requires user confirmation", nil, TaskStatusWaitingInput); err != nil {
-			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at confirm gate: %v", err))
-			return
-		}
-		answers, askErr := r.AskUser(ctx, task.ID, buildPlanConfirmationQuestions(planSpec.Raw), 0)
-		if askErr != nil {
-			r.failTask(ctx, task, fmt.Sprintf("confirm gate failed: %v", askErr))
-			return
-		}
-		decision := "revise"
-		if len(answers) > 0 && len(answers[0].Values) > 0 {
-			decision = answers[0].Values[0]
-		}
-		switch decision {
-		case "revise":
-			if err := r.transitionState(ctx, task, RuntimeStatePlan, "user requested plan revision", nil, TaskStatusPlanning); err != nil {
-				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed when revising plan: %v", err))
-				return
-			}
-			planSpec, err = r.generatePlan(ctx, task.Goal+"\nPlease revise plan to reduce risk and improve determinism.", conversationCtx)
+		if shouldAutoResolvePlanConfirmation(task) {
+			r.publishEvent(task.UserID, TaskEvent{
+				TaskID:    task.ID,
+				EventType: "task_progress",
+				StepIndex: 0,
+				Message:   "Harness mode detected plan confirmation; revising automatically for non-interactive execution.",
+			})
+			planSpec, err = r.generatePlanForTask(ctx, task, task.Goal+"\nPlease revise plan to reduce risk and improve determinism without asking the user for confirmation.", conversationCtx)
 			if err != nil {
 				r.failTask(ctx, task, fmt.Sprintf("replanning failed: %v", err))
 				return
@@ -1142,15 +1191,44 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			task.Plan = planSpec.Steps
 			task.SuccessCriteria = mergeTaskSuccessCriteria(task, planSpec.SuccessCriteria)
 			task.FallbackPlan = mergeTaskFallbackPlan(task, planSpec.FallbackPlan)
-		case "abort":
-			if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted at confirm gate", nil, TaskStatusAborted); err != nil {
-				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed when aborting at confirm gate: %v", err))
+		} else {
+			if err := r.transitionState(ctx, task, RuntimeStateConfirmGate, "plan requires user confirmation", nil, TaskStatusWaitingInput); err != nil {
+				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at confirm gate: %v", err))
 				return
 			}
-			task.Result = "Task aborted by user at confirmation gate."
-			task.Progress = 100
-			_ = r.store.Update(ctx, task)
-			return
+			answers, askErr := r.AskUser(ctx, task.ID, buildPlanConfirmationQuestions(planSpec.Raw), 0)
+			if askErr != nil {
+				r.failTask(ctx, task, fmt.Sprintf("confirm gate failed: %v", askErr))
+				return
+			}
+			decision := "revise"
+			if len(answers) > 0 && len(answers[0].Values) > 0 {
+				decision = answers[0].Values[0]
+			}
+			switch decision {
+			case "revise":
+				if err := r.transitionState(ctx, task, RuntimeStatePlan, "user requested plan revision", nil, TaskStatusPlanning); err != nil {
+					r.failTask(ctx, task, fmt.Sprintf("runtime transition failed when revising plan: %v", err))
+					return
+				}
+				planSpec, err = r.generatePlanForTask(ctx, task, task.Goal+"\nPlease revise plan to reduce risk and improve determinism.", conversationCtx)
+				if err != nil {
+					r.failTask(ctx, task, fmt.Sprintf("replanning failed: %v", err))
+					return
+				}
+				task.Plan = planSpec.Steps
+				task.SuccessCriteria = mergeTaskSuccessCriteria(task, planSpec.SuccessCriteria)
+				task.FallbackPlan = mergeTaskFallbackPlan(task, planSpec.FallbackPlan)
+			case "abort":
+				if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted at confirm gate", nil, TaskStatusAborted); err != nil {
+					r.failTask(ctx, task, fmt.Sprintf("runtime transition failed when aborting at confirm gate: %v", err))
+					return
+				}
+				task.Result = "Task aborted by user at confirmation gate."
+				task.Progress = 100
+				_ = r.store.Update(ctx, task)
+				return
+			}
 		}
 	}
 
@@ -1272,6 +1350,22 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 				return 0
 			}(),
 		})
+		if shouldStopAfterGroundedExecutionEvidence(task) {
+			for j := i + 1; j < len(task.Plan); j++ {
+				if task.Plan[j].Status == StepStatusPending {
+					task.Plan[j].Status = StepStatusSkipped
+				}
+			}
+			_ = r.store.Update(ctx, task)
+			r.publishEvent(task.UserID, TaskEvent{
+				TaskID:    task.ID,
+				EventType: "task_progress",
+				StepIndex: i,
+				Progress:  task.Progress,
+				Message:   "Execution gate evidence satisfied; skipping remaining expansion steps.",
+			})
+			break
+		}
 	}
 	if ctx.Err() != nil {
 		r.cancelTask(task, "task cancelled")
@@ -1548,7 +1642,7 @@ type planResult struct {
 	FallbackPlan    []string
 }
 
-func buildPlanningSystemPrompt(memoryCtx string) string {
+func buildPlanningSystemPrompt() string {
 	var sb strings.Builder
 	sb.WriteString("You are a deterministic task planner for ZimaOS Blue. Plan the work before execution.\n\n")
 	sb.WriteString("## Output Contract\n")
@@ -1578,34 +1672,62 @@ func buildPlanningSystemPrompt(memoryCtx string) string {
 	sb.WriteString("- Each subtask object must contain a non-empty description string.\n")
 	sb.WriteString("- Keep wording concise and execution-oriented.\n")
 
-	if strings.TrimSpace(memoryCtx) != "" {
-		sb.WriteString("\n## Relevant Context\n")
-		sb.WriteString(memoryCtx)
-	}
-
 	return strings.TrimSpace(sb.String())
+}
+
+func buildPlanningUserPrompt(goal, conversationCtx, memoryCtx, routingCtx string) string {
+	var sb strings.Builder
+	if strings.TrimSpace(conversationCtx) != "" {
+		sb.WriteString("Recent conversation context:\n")
+		sb.WriteString(truncate(conversationCtx, 2000))
+		sb.WriteString("\n\n")
+	}
+	if strings.TrimSpace(memoryCtx) != "" {
+		sb.WriteString("Recalled memory (reference only; it may be stale, incomplete, or wrong. Never let it override the goal, the current conversation, workspace evidence, or live web evidence):\n")
+		sb.WriteString(memoryCtx)
+		sb.WriteString("\n\n")
+	}
+	if strings.TrimSpace(routingCtx) != "" {
+		sb.WriteString(routingCtx)
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString("Goal: ")
+	sb.WriteString(goal)
+	return strings.TrimSpace(sb.String())
+}
+
+type plannerMemoryTrace struct {
+	Context                   string
+	SkipReason                string
+	UsedCount                 int
+	UsedSources               []string
+	FilteredSessionCompaction int
+	FilteredLowScore          int
 }
 
 // generatePlan asks the LLM to create a structured plan.
 func (r *Runner) generatePlan(ctx context.Context, goal, conversationCtx string) (*planResult, error) {
+	return r.generatePlanForTask(ctx, nil, goal, conversationCtx)
+}
+
+func (r *Runner) generatePlanForTask(ctx context.Context, task *Task, goal, conversationCtx string) (*planResult, error) {
 	// Recall relevant memories for context
-	memoryCtx := r.recallMemories(ctx, goal)
-
-	systemPrompt := buildPlanningSystemPrompt(memoryCtx)
-
-	userMsg := goal
-	if conversationCtx != "" {
-		userMsg = "Recent conversation context:\n" + truncate(conversationCtx, 2000) + "\n\nGoal: " + goal
+	memoryTrace := r.recallPlannerMemory(ctx, goal, plannerTaskMetadata(task))
+	if task != nil {
+		r.publishPlannerMemoryTrace(task, memoryTrace)
 	}
 
+	systemPrompt := buildPlanningSystemPrompt()
+	userMsg := buildPlanningUserPrompt(goal, conversationCtx, memoryTrace.Context, buildTaskRoutingContractContext(plannerTaskMetadata(task)))
+
 	resp, err := r.llm.Chat(ctx, llm.ChatRequest{
-		Model: "auto",
+		Model: preferredTaskModel(task),
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: systemPrompt},
 			{Role: llm.RoleUser, Content: userMsg},
 		},
 		MaxTokens:   1000,
-		Temperature: 0.2,
+		Temperature: 0,
 	})
 	if err != nil {
 		return nil, err
@@ -1613,6 +1735,9 @@ func (r *Runner) generatePlan(ctx context.Context, goal, conversationCtx string)
 
 	parsed, err := parseRuntimePlan(resp.Message.Content)
 	if err != nil {
+		if fallback := fallbackPlanResult(goal); fallback != nil {
+			return fallback, nil
+		}
 		return nil, fmt.Errorf("failed to parse plan: %w (content: %s)", err, truncate(strings.TrimSpace(resp.Message.Content), 200))
 	}
 	steps := make([]PlanStep, len(parsed.Subtasks))
@@ -1692,6 +1817,10 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 	return "unknown", nil
 }
 
+func shouldStopAfterGroundedExecutionEvidence(task *Task) bool {
+	return groundedShouldCompleteExecutionContract(task)
+}
+
 func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
 	var sb strings.Builder
 	sb.WriteString("You are an autonomous agent executing a single plan step inside ZimaOS Blue. Finish the current step using the available tools, then stop and report the result.\n\n")
@@ -1757,11 +1886,8 @@ func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex
 	}
 
 	var lastContent string
-	var lastToolSig string
-	var repeatCount int
-	const maxRepeats = 3
-
 	progressState := ProgressSignatureState{}
+	loopRecoveryUsed := false
 	maxRounds := r.resolveMaxToolRoundsPerStep()
 	for round := 0; round < maxRounds; round++ {
 		if ctx.Err() != nil {
@@ -1784,7 +1910,7 @@ func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex
 		}
 
 		resp, err := r.llm.Chat(ctx, llm.ChatRequest{
-			Model:       "auto",
+			Model:       preferredTaskModel(task),
 			Messages:    messages,
 			Tools:       cachedTools,
 			MaxTokens:   2000,
@@ -1799,24 +1925,8 @@ func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex
 			break
 		}
 
-		sig := toolCallSignature(resp.Message.ToolCalls)
-		if sig == lastToolSig {
-			repeatCount++
-			if repeatCount >= maxRepeats {
-				r.appendAudit(task, RuntimeAuditEvent{
-					Timestamp: timeutil.NowTime(),
-					Reason:    "no_progress_abort",
-					Error:     "repeated identical tool calls",
-				})
-				lastContent = strings.TrimSpace(lastContent + "\n[Agent stopped: repeated identical tool calls detected]")
-				return lastContent, errNoProgressAbort
-			}
-		} else {
-			lastToolSig = sig
-			repeatCount = 0
-		}
-
 		messages = append(messages, resp.Message)
+		sig := agentToolLoopSignature(resp.Message.ToolCalls)
 		toolSummaries := make([]string, 0, len(resp.Message.ToolCalls))
 		for _, tc := range resp.Message.ToolCalls {
 			capability := classifyCapability(tc.Name, tc.Arguments)
@@ -1902,7 +2012,7 @@ func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex
 				Capability: &capability,
 			})
 			content = truncate(content, 8000)
-			toolSummaries = append(toolSummaries, normalizeProgressSummary(content))
+			toolSummaries = append(toolSummaries, tools.NormalizeToolProgressSummary(content))
 			messages = append(messages, llm.Message{
 				Role:       llm.RoleTool,
 				Content:    content,
@@ -1910,11 +2020,27 @@ func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex
 			})
 		}
 
-		if progressState.Observe(sig, lastContent, toolSummaries) {
+		if detection := progressState.ObserveDetailed(sig, lastContent, toolSummaries); detection.Abort {
+			if !loopRecoveryUsed {
+				loopRecoveryUsed = true
+				messages = append(messages, llm.Message{
+					Role:    llm.RoleUser,
+					Content: buildAgentToolLoopRecoveryNudge(actionDescription, detection),
+				})
+				logger.Warn().
+					Str("task_id", task.ID).
+					Int("step", stepIndex).
+					Int("round", round).
+					Str("reason", detection.Reason).
+					Int("streak", detection.Streak).
+					Str("signature", detection.Signature).
+					Msg("[agent] tool loop detected; injecting recovery nudge before abort")
+				continue
+			}
 			r.appendAudit(task, RuntimeAuditEvent{
 				Timestamp: timeutil.NowTime(),
 				Reason:    "no_progress_abort",
-				Error:     strings.Join(toolSummaries, " | "),
+				Error:     detection.Signature,
 			})
 			lastContent = strings.TrimSpace(lastContent + "\n[Agent stopped: no progress detected after repeated tool rounds]")
 			return lastContent, errNoProgressAbort
@@ -1922,6 +2048,163 @@ func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex
 	}
 
 	return lastContent, nil
+}
+
+func agentToolLoopSignature(calls []llm.ToolCall) string {
+	if len(calls) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i, tc := range calls {
+		if i > 0 {
+			sb.WriteByte('|')
+		}
+		sb.WriteString(agentToolLoopCallSignature(tc))
+	}
+	return sb.String()
+}
+
+func agentToolLoopCallSignature(tc llm.ToolCall) string {
+	name := strings.ToLower(strings.TrimSpace(tc.Name))
+	if name == "" {
+		return strings.TrimSpace(tc.Arguments)
+	}
+	if sig, ok := agentSpecializedToolLoopSignature(name, tc.Arguments); ok {
+		return name + ":" + sig
+	}
+	return name + ":" + strings.TrimSpace(tc.Arguments)
+}
+
+func agentSpecializedToolLoopSignature(name, rawArgs string) (string, bool) {
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(rawArgs), &payload) != nil || len(payload) == 0 {
+		return "", false
+	}
+
+	switch name {
+	case "write", "file_write":
+		path := agentToolLoopArgString(payload, "path", "file_path")
+		if path == "" {
+			return "", false
+		}
+		return fmt.Sprintf("append=%t path=%s", agentToolLoopArgBool(payload, "append"), path), true
+	case "read", "file_read", "write_begin":
+		path := agentToolLoopArgString(payload, "path", "file_path")
+		if path == "" {
+			return "", false
+		}
+		return "path=" + path, true
+	case "write_chunk", "write_commit", "write_abort", "process":
+		sessionID := agentToolLoopArgString(payload, "session_id", "sessionId")
+		action := agentToolLoopArgString(payload, "action")
+		parts := make([]string, 0, 2)
+		if action != "" {
+			parts = append(parts, "action="+action)
+		}
+		if sessionID != "" {
+			parts = append(parts, "session="+sessionID)
+		}
+		if len(parts) == 0 {
+			return "", false
+		}
+		return strings.Join(parts, " "), true
+	case "exec":
+		command := agentToolLoopArgString(payload, "command", "cmd")
+		action := agentToolLoopArgString(payload, "action")
+		sessionID := agentToolLoopArgString(payload, "session_id", "sessionId")
+		parts := make([]string, 0, 3)
+		if action != "" {
+			parts = append(parts, "action="+action)
+		}
+		if sessionID != "" {
+			parts = append(parts, "session="+sessionID)
+		}
+		if command != "" {
+			parts = append(parts, "command="+normalizeProgressText(command))
+		}
+		if len(parts) == 0 {
+			return "", false
+		}
+		return strings.Join(parts, " "), true
+	case "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		target := agentToolLoopArgString(payload, "input", "query", "url", "target_url")
+		mode := agentToolLoopArgString(payload, "mode", "extract_mode", "media_mode")
+		browserTargetID := agentToolLoopArgString(payload, "browser_target_id", "browserTargetID")
+		parts := make([]string, 0, 3)
+		if target != "" {
+			parts = append(parts, "target="+normalizeProgressText(target))
+		}
+		if mode != "" {
+			parts = append(parts, "mode="+normalizeProgressText(mode))
+		}
+		if browserTargetID != "" {
+			parts = append(parts, "browser_target_id="+normalizeProgressText(browserTargetID))
+		}
+		if len(parts) == 0 {
+			return "", false
+		}
+		return strings.Join(parts, " "), true
+	case "browser":
+		action := agentToolLoopArgString(payload, "action", "op")
+		target := agentToolLoopArgString(payload, "url", "target_url", "input")
+		browserTargetID := agentToolLoopArgString(payload, "browser_target_id", "browserTargetID", "target_id", "targetId")
+		parts := make([]string, 0, 3)
+		if action != "" {
+			parts = append(parts, "action="+normalizeProgressText(action))
+		}
+		if target != "" {
+			parts = append(parts, "target="+normalizeProgressText(target))
+		}
+		if browserTargetID != "" {
+			parts = append(parts, "target_id="+normalizeProgressText(browserTargetID))
+		}
+		if len(parts) == 0 {
+			return "", false
+		}
+		return strings.Join(parts, " "), true
+	default:
+		return "", false
+	}
+}
+
+func agentToolLoopArgString(payload map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if raw, ok := payload[key]; ok {
+			if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
+}
+
+func agentToolLoopArgBool(payload map[string]interface{}, keys ...string) bool {
+	for _, key := range keys {
+		if raw, ok := payload[key]; ok {
+			if b, ok := raw.(bool); ok {
+				return b
+			}
+		}
+	}
+	return false
+}
+
+func buildAgentToolLoopRecoveryNudge(actionDescription string, detection tools.ToolLoopDetection) string {
+	var sb strings.Builder
+	sb.WriteString("Tool execution is repeating without clear progress.")
+	if desc := strings.TrimSpace(actionDescription); desc != "" {
+		sb.WriteString(" Focus on finishing this step: ")
+		sb.WriteString(desc)
+		sb.WriteString(".")
+	}
+	if progressToolFamilySignature(detection.Signature) == "web_query_family" || strings.Contains(strings.ToLower(strings.TrimSpace(detection.Signature)), "web_query") {
+		sb.WriteString(" Do not run another near-duplicate web search unless the query angle is materially different.")
+		sb.WriteString(" If the existing evidence is enough, summarize it now with dates and sources.")
+	} else {
+		sb.WriteString(" Do not repeat the same tool call unless the inputs materially change.")
+	}
+	sb.WriteString(" If you are blocked, explain the blocker concisely instead of calling more tools.")
+	return sb.String()
 }
 
 func buildVerificationSystemPrompt(kind TaskKind, tools []llm.Tool) string {
@@ -2194,6 +2477,9 @@ func resolveRuntimeVerificationPolicy(task *Task) runtimeVerificationPolicy {
 }
 
 func mergeTaskSuccessCriteria(task *Task, planned []string) []string {
+	if locked := authoritativeTaskSuccessCriteria(task); len(locked) > 0 {
+		return locked
+	}
 	values := append([]string(nil), planned...)
 	for _, source := range taskMetadataSources(task) {
 		values = append(metadataStringSlice(source, "task_success_criteria"), values...)
@@ -2207,6 +2493,9 @@ func mergeTaskSuccessCriteria(task *Task, planned []string) []string {
 }
 
 func mergeTaskFallbackPlan(task *Task, planned []string) []string {
+	if locked := authoritativeTaskFallbackPlan(task); len(locked) > 0 {
+		return locked
+	}
 	values := append([]string(nil), planned...)
 	for _, source := range taskMetadataSources(task) {
 		values = append(metadataStringSlice(source, "task_fallback_plan"), values...)
@@ -2219,17 +2508,137 @@ func mergeTaskFallbackPlan(task *Task, planned []string) []string {
 	return effectiveFallbackPlan(values)
 }
 
+func authoritativeTaskSuccessCriteria(task *Task) []string {
+	if !taskUsesExecutionEquivalenceGate(task) {
+		return nil
+	}
+	values := append([]string(nil), task.SuccessCriteria...)
+	explicit := false
+	for _, source := range taskMetadataSources(task) {
+		for _, key := range []string{"task_success_criteria", "success_criteria", "deliverables"} {
+			criteria := metadataStringSlice(source, key)
+			if len(criteria) == 0 {
+				continue
+			}
+			explicit = true
+			values = append(values, criteria...)
+		}
+	}
+	if !explicit && len(task.SuccessCriteria) == 0 {
+		return nil
+	}
+	return effectiveSuccessCriteria(values)
+}
+
+func authoritativeTaskFallbackPlan(task *Task) []string {
+	if !taskUsesExecutionEquivalenceGate(task) {
+		return nil
+	}
+	values := append([]string(nil), task.FallbackPlan...)
+	explicit := false
+	for _, source := range taskMetadataSources(task) {
+		for _, key := range []string{"task_fallback_plan", "fallback_order", "fallback_plan"} {
+			items := metadataStringSlice(source, key)
+			if len(items) == 0 {
+				continue
+			}
+			explicit = true
+			values = append(values, items...)
+		}
+	}
+	if !explicit && len(task.FallbackPlan) == 0 {
+		return nil
+	}
+	return effectiveFallbackPlan(values)
+}
+
+func taskUsesExecutionEquivalenceGate(task *Task) bool {
+	if task == nil || len(task.Metadata) == 0 {
+		return false
+	}
+	contract := metadataMapValue(task.Metadata, "routing_contract")
+	gateType := firstNonEmptyString(
+		metadataStringValue(contract, "gate_type"),
+		metadataStringValue(task.Metadata, "gate_type"),
+	)
+	return gateType == "execution_equivalence"
+}
+
+func buildTaskRoutingContractContext(meta map[string]interface{}) string {
+	if len(meta) == 0 {
+		return ""
+	}
+	contract := metadataMapValue(meta, "routing_contract")
+	if len(contract) == 0 {
+		contract = meta
+	}
+
+	gateType := firstNonEmptyString(metadataStringValue(contract, "gate_type"), metadataStringValue(meta, "gate_type"))
+	primaryRoute := firstNonEmptyString(metadataStringValue(contract, "primary_route"), metadataStringValue(meta, "primary_route"))
+	expectedCLIAction := firstNonEmptyString(metadataStringValue(contract, "expected_cli_action"), metadataStringValue(meta, "expected_cli_action"))
+	allowFallback, hasAllowFallback := metadataBoolFromMaps([]map[string]interface{}{contract, meta}, "allow_fallback")
+
+	if gateType != "execution_equivalence" && primaryRoute == "" && expectedCLIAction == "" {
+		return ""
+	}
+	if primaryRoute == "" && expectedCLIAction == "" {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Execution routing contract:\n")
+	if primaryRoute != "" {
+		sb.WriteString("- Primary route: ")
+		sb.WriteString(primaryRoute)
+		sb.WriteByte('\n')
+	}
+	if expectedCLIAction != "" {
+		sb.WriteString("- Canonical CLI action: ")
+		sb.WriteString(expectedCLIAction)
+		sb.WriteByte('\n')
+		sb.WriteString("- Plan around this canonical CLI action as the first execution path.\n")
+	}
+	if gateType == "execution_equivalence" {
+		sb.WriteString("- Do not use blue task, blue session, or other runtime self-inspection commands; rely on grounded state and cited tool_call_ids instead.\n")
+	}
+	if hasAllowFallback && !allowFallback {
+		sb.WriteString("- Do not substitute unrelated tools, shell exploration, or alternate routes when the canonical action is available.\n")
+		sb.WriteString("- If the canonical route fails, stop and report the blocker instead of route-hopping.\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 func taskMetadataSources(task *Task) []map[string]interface{} {
 	if task == nil || len(task.Metadata) == 0 {
 		return nil
 	}
 	sources := []map[string]interface{}{task.Metadata}
-	for _, key := range []string{"runtime_adaptation", "verification_policy", "harness_contract", "resume_checkpoint"} {
+	for _, key := range []string{"runtime_adaptation", "verification_policy", "harness_contract", "resume_checkpoint", "routing_contract"} {
 		if nested := metadataMapValue(task.Metadata, key); len(nested) > 0 {
 			sources = append(sources, nested)
 		}
 	}
 	return sources
+}
+
+func shouldAutoResolvePlanConfirmation(task *Task) bool {
+	if task == nil {
+		return false
+	}
+	sources := taskMetadataSources(task)
+	if decision, ok := metadataBoolFromMaps(sources, "skip_hil", "skip_confirmation", "skip_confirm", "non_interactive"); ok {
+		return decision
+	}
+	if decision, ok := metadataBoolFromMaps(sources, "auto_harness"); ok && decision {
+		return true
+	}
+	if strings.EqualFold(metadataStringValue(task.Metadata, "trigger_kind"), "auto_harness") {
+		return true
+	}
+	if strings.EqualFold(metadataStringValue(metadataMapValue(task.Metadata, "routing_contract"), "gate_type"), "execution_equivalence") {
+		return true
+	}
+	return len(metadataMapValue(task.Metadata, "harness_contract")) > 0
 }
 
 func metadataMapValue(meta map[string]interface{}, key string) map[string]interface{} {
@@ -2245,6 +2654,27 @@ func metadataMapValue(meta map[string]interface{}, key string) map[string]interf
 		return nil
 	}
 	return typed
+}
+
+func metadataStringValue(meta map[string]interface{}, key string) string {
+	if len(meta) == 0 {
+		return ""
+	}
+	raw, ok := meta[key]
+	if !ok {
+		return ""
+	}
+	value, _ := raw.(string)
+	return strings.TrimSpace(value)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func metadataBoolFromMaps(sources []map[string]interface{}, keys ...string) (bool, bool) {
@@ -2480,7 +2910,7 @@ func (r *Runner) generateSummary(ctx context.Context, task *Task, reflection *se
 	}
 
 	resp, err := r.llm.Chat(ctx, llm.ChatRequest{
-		Model: "auto",
+		Model: preferredTaskModel(task),
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: buildSummarySystemPrompt()},
 			{Role: llm.RoleUser, Content: sb.String()},
@@ -2813,26 +3243,330 @@ func (r *Runner) llmTools() []llm.Tool {
 	return out
 }
 
-// recallMemories searches for relevant memories and returns context string.
-func (r *Runner) recallMemories(ctx context.Context, query string) string {
-	if r.memory == nil || query == "" {
-		return ""
+func shouldSkipPlannerMemory(query string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return true
 	}
-	results, err := r.memory.Recall(ctx, query, 5)
+	if strings.Contains(normalized, "http://") || strings.Contains(normalized, "https://") || strings.Contains(normalized, "www.") {
+		return true
+	}
+	allowWorkspaceMemory := shouldUseSessionCompactionPlannerMemory(query)
+	if !allowWorkspaceMemory {
+		if skill, ok := routingcue.InferSkill(query); ok && (skill == "web_query" || skill == "browser") {
+			return true
+		}
+	}
+	webSignals := []string{
+		"search the web", "web search", "browse", "browser", "website", "url", "look up online",
+		"search docs", "search documentation", "official docs", "official documentation",
+		"搜索", "搜尋", "网页", "網頁", "网站", "網站", "浏览器", "瀏覽器", "官网", "官方文档", "官方文件",
+	}
+	freshPublicSignals := []string{
+		"latest", "newest", "recent", "current", "today", "news", "release notes", "documentation", "docs",
+		"最新", "最近", "当前", "今天", "新闻", "更新", "文档", "文件",
+	}
+	return !allowWorkspaceMemory && containsAnyPlannerSignal(normalized, webSignals) && containsAnyPlannerSignal(normalized, freshPublicSignals)
+}
+
+func plannerMemorySkipReason(query string) string {
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return "empty_query"
+	}
+	if strings.Contains(normalized, "http://") || strings.Contains(normalized, "https://") || strings.Contains(normalized, "www.") {
+		return "direct_url"
+	}
+	allowWorkspaceMemory := shouldUseSessionCompactionPlannerMemory(query)
+	if !allowWorkspaceMemory {
+		if skill, ok := routingcue.InferSkill(query); ok && (skill == "web_query" || skill == "browser") {
+			return "public_web"
+		}
+	}
+	webSignals := []string{
+		"search the web", "web search", "browse", "browser", "website", "url", "look up online",
+		"search docs", "search documentation", "official docs", "official documentation",
+		"搜索", "搜尋", "网页", "網頁", "网站", "網站", "浏览器", "瀏覽器", "官网", "官方文档", "官方文件",
+	}
+	freshPublicSignals := []string{
+		"latest", "newest", "recent", "current", "today", "news", "release notes", "documentation", "docs",
+		"最新", "最近", "当前", "今天", "新闻", "更新", "文档", "文件",
+	}
+	if !allowWorkspaceMemory && containsAnyPlannerSignal(normalized, webSignals) && containsAnyPlannerSignal(normalized, freshPublicSignals) {
+		return "public_web"
+	}
+	return ""
+}
+
+func containsAnyPlannerSignal(query string, signals []string) bool {
+	for _, signal := range signals {
+		if strings.Contains(query, signal) {
+			return true
+		}
+	}
+	return false
+}
+
+func plannerMemoryTags(metadata map[string]string) []string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	tags := make([]string, 0, len(metadata))
+	for key, value := range metadata {
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "tag_") {
+			continue
+		}
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			tags = append(tags, strings.ToLower(trimmed))
+		}
+	}
+	return tags
+}
+
+func plannerMemoryHasTag(metadata map[string]string, want string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	if want == "" {
+		return false
+	}
+	for _, tag := range plannerMemoryTags(metadata) {
+		if tag == want {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldUseSessionCompactionPlannerMemory(query string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return false
+	}
+	codingSignals := []string{
+		"workspace", "repo", "repository", "project", "codebase", "build", "fix", "implement", "refactor", "readme",
+		"workspace files", "local file", "local files", "source tree", "test", "tests",
+		"工作区", "仓库", "代码库", "项目", "代码", "实现", "修复", "重构", "测试", "README", "文件",
+	}
+	memoryCueSignals := []string{
+		"remember", "memory", "preference", "profile", "previously said", "as i said",
+		"记得", "记忆", "偏好", "之前说过", "习惯",
+	}
+	return containsAnyPlannerSignal(normalized, codingSignals) || containsAnyPlannerSignal(normalized, memoryCueSignals)
+}
+
+func plannerMemoryMinScore(metadata map[string]string) float32 {
+	if plannerMemoryHasTag(metadata, "session-compaction") {
+		return 0.7
+	}
+	return 0.5
+}
+
+func plannerMemorySourceLabel(metadata map[string]string) string {
+	switch {
+	case plannerMemoryHasTag(metadata, "session-compaction"):
+		return "session_compaction"
+	case plannerMemoryHasTag(metadata, "longterm"):
+		return "long_term"
+	default:
+		return "unspecified"
+	}
+}
+
+func plannerMemoryTrustLabel(metadata map[string]string) string {
+	switch plannerMemorySourceLabel(metadata) {
+	case "session_compaction":
+		return "low"
+	default:
+		return "medium"
+	}
+}
+
+const harnessPlannerMemorySeedKey = "harness_memory_seed"
+
+func plannerTaskMetadata(task *Task) map[string]interface{} {
+	if task == nil || len(task.Metadata) == 0 {
+		return nil
+	}
+	return task.Metadata
+}
+
+type plannerMemorySeedEntry struct {
+	Content  string            `json:"content"`
+	Score    float32           `json:"score"`
+	Tags     []string          `json:"tags"`
+	Metadata map[string]string `json:"metadata"`
+}
+
+func decodeHarnessPlannerMemorySeed(meta map[string]interface{}) ([]MemoryResult, bool) {
+	if len(meta) == 0 {
+		return nil, false
+	}
+	raw, ok := meta[harnessPlannerMemorySeedKey]
+	if !ok {
+		return nil, false
+	}
+	payload, err := json.Marshal(raw)
+	if err != nil {
+		return nil, true
+	}
+	entries := make([]plannerMemorySeedEntry, 0)
+	if err := json.Unmarshal(payload, &entries); err != nil {
+		var single plannerMemorySeedEntry
+		if singleErr := json.Unmarshal(payload, &single); singleErr != nil {
+			return nil, true
+		}
+		entries = append(entries, single)
+	}
+	results := make([]MemoryResult, 0, len(entries))
+	for _, entry := range entries {
+		content := strings.TrimSpace(entry.Content)
+		if content == "" {
+			continue
+		}
+		score := entry.Score
+		if score <= 0 {
+			score = 0.9
+		}
+		metadata := make(map[string]string, len(entry.Metadata)+len(entry.Tags))
+		for key, value := range entry.Metadata {
+			key = strings.TrimSpace(key)
+			value = strings.TrimSpace(value)
+			if key == "" || value == "" {
+				continue
+			}
+			metadata[key] = value
+		}
+		if len(metadata) == 0 {
+			metadata = nil
+		}
+		for i, tag := range entry.Tags {
+			tag = strings.TrimSpace(tag)
+			if tag == "" {
+				continue
+			}
+			if metadata == nil {
+				metadata = make(map[string]string, len(entry.Tags))
+			}
+			metadata[fmt.Sprintf("tag_%d", i)] = tag
+		}
+		results = append(results, MemoryResult{
+			Content:  content,
+			Score:    score,
+			Metadata: metadata,
+		})
+	}
+	return results, true
+}
+
+func plannerMemoryResults(ctx context.Context, query string, recall MemoryRecaller, meta map[string]interface{}) ([]MemoryResult, error) {
+	if seeded, ok := decodeHarnessPlannerMemorySeed(meta); ok {
+		return seeded, nil
+	}
+	if recall == nil {
+		return nil, nil
+	}
+	return recall.Recall(ctx, query, 5)
+}
+
+func appendPlannerMemorySource(sources []string, label string) []string {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return sources
+	}
+	for _, existing := range sources {
+		if existing == label {
+			return sources
+		}
+	}
+	return append(sources, label)
+}
+
+func (r *Runner) recallPlannerMemory(ctx context.Context, query string, meta map[string]interface{}) plannerMemoryTrace {
+	trace := plannerMemoryTrace{}
+	if strings.TrimSpace(query) == "" {
+		return trace
+	}
+	if shouldSkipPlannerMemory(query) {
+		trace.SkipReason = plannerMemorySkipReason(query)
+		if trace.SkipReason == "" {
+			trace.SkipReason = "skipped"
+		}
+		return trace
+	}
+	results, err := plannerMemoryResults(ctx, query, r.memory, meta)
 	if err != nil || len(results) == 0 {
-		return ""
+		return trace
 	}
 	var kept []string
 	for _, res := range results {
-		if res.Score < 0.5 || res.Content == "" {
+		if strings.TrimSpace(res.Content) == "" {
 			continue
 		}
-		kept = append(kept, res.Content)
+		if plannerMemoryHasTag(res.Metadata, "session-compaction") && !shouldUseSessionCompactionPlannerMemory(query) {
+			trace.FilteredSessionCompaction++
+			continue
+		}
+		if res.Score < plannerMemoryMinScore(res.Metadata) {
+			trace.FilteredLowScore++
+			continue
+		}
+		trace.UsedSources = appendPlannerMemorySource(trace.UsedSources, plannerMemorySourceLabel(res.Metadata))
+		kept = append(kept, fmt.Sprintf(
+			"- [memory recall, source=%s, trust=%s, relevance=%.2f] %s",
+			plannerMemorySourceLabel(res.Metadata),
+			plannerMemoryTrustLabel(res.Metadata),
+			res.Score,
+			strings.TrimSpace(res.Content),
+		))
 	}
+	trace.UsedCount = len(kept)
 	if len(kept) == 0 {
-		return ""
+		return trace
 	}
-	return strings.Join(kept, "\n---\n")
+	trace.Context = "<planner_memory>\n" + strings.Join(kept, "\n") + "\n</planner_memory>"
+	return trace
+}
+
+func (r *Runner) publishPlannerMemoryTrace(task *Task, trace plannerMemoryTrace) {
+	if r == nil || task == nil {
+		return
+	}
+	if trace.SkipReason != "" {
+		r.publishEvent(task.UserID, TaskEvent{
+			TaskID:    task.ID,
+			EventType: "task_planner_memory_skipped",
+			Message:   trace.SkipReason,
+		})
+	}
+	if trace.FilteredSessionCompaction > 0 {
+		r.publishEvent(task.UserID, TaskEvent{
+			TaskID:    task.ID,
+			EventType: "task_planner_memory_filtered_session_compaction",
+			Message:   fmt.Sprintf("%d", trace.FilteredSessionCompaction),
+		})
+	}
+	if trace.FilteredLowScore > 0 {
+		r.publishEvent(task.UserID, TaskEvent{
+			TaskID:    task.ID,
+			EventType: "task_planner_memory_filtered_low_score",
+			Message:   fmt.Sprintf("%d", trace.FilteredLowScore),
+		})
+	}
+	if trace.UsedCount > 0 {
+		message := fmt.Sprintf("%d", trace.UsedCount)
+		if len(trace.UsedSources) > 0 {
+			message += ":" + strings.Join(trace.UsedSources, ",")
+		}
+		r.publishEvent(task.UserID, TaskEvent{
+			TaskID:    task.ID,
+			EventType: "task_planner_memory_used",
+			Message:   message,
+		})
+	}
+}
+
+// recallMemories searches for relevant memories and returns context string.
+func (r *Runner) recallMemories(ctx context.Context, query string) string {
+	return r.recallPlannerMemory(ctx, query, nil).Context
 }
 
 // watchTimeout publishes a warning SSE event when the task is near its timeout.

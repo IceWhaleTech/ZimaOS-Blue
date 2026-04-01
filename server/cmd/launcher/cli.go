@@ -18,6 +18,8 @@ type cliFlags struct {
 	noColor bool
 	json    bool
 	verbose bool
+	profile string
+	config  string
 }
 
 func parseCLIFlags(args []string) (positional []string, flags cliFlags) {
@@ -33,6 +35,11 @@ func parseCLIFlags(args []string) (positional []string, flags cliFlags) {
 			flags.verbose = true
 		case "--config", "--profile":
 			if i+1 < len(args) {
+				if args[i] == "--config" {
+					flags.config = args[i+1]
+				} else {
+					flags.profile = args[i+1]
+				}
 				i++ // skip value
 			}
 		case "--":
@@ -43,6 +50,24 @@ func parseCLIFlags(args []string) (positional []string, flags cliFlags) {
 		}
 	}
 	return
+}
+
+func getConfigDir(flags cliFlags) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	if flags.devMode {
+		return filepath.Join(home, ".zimaos-blue-dev")
+	}
+	if strings.TrimSpace(flags.profile) != "" {
+		return filepath.Join(home, ".zimaos-blue-"+strings.TrimSpace(flags.profile))
+	}
+	return filepath.Join(home, ".zimaos-blue")
+}
+
+func getDataDir(flags cliFlags) string {
+	return filepath.Join(getConfigDir(flags), "data")
 }
 
 // tryFastCmd handles commands that can run entirely in the launcher process

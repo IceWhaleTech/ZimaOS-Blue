@@ -60,6 +60,7 @@ export interface SendMessageRequest {
   regenerate?: boolean // True if this is a regenerate request
   web_search_enabled?: boolean
   deep_research_enabled?: boolean
+  research_mode_enabled?: boolean
 }
 
 export interface SendMessageResponse {
@@ -82,7 +83,8 @@ export interface ConversationCommandState {
   selected_model_id?: string
   offline: boolean
   web_search_enabled: boolean
-  deep_research_enabled: boolean
+  deep_research_enabled?: boolean
+  research_mode_enabled?: boolean
 }
 
 export interface ConversationCommandStatePatch {
@@ -91,6 +93,7 @@ export interface ConversationCommandStatePatch {
   offline?: boolean
   web_search_enabled?: boolean
   deep_research_enabled?: boolean
+  research_mode_enabled?: boolean
 }
 
 export interface ConversationActiveStreamState {
@@ -114,6 +117,7 @@ export type StreamProcessEvent =
   | 'continuation_recovery_succeeded'
   | 'continuation_recovery_failed'
   | 'provider_failover'
+  | 'provider_resolved'
   | 'injection_restart'
 
 export type StreamProcessStatus = 'info' | 'pending' | 'active' | 'success' | 'error'
@@ -236,7 +240,9 @@ export const messageApi = {
     ),
 
   getActiveStreamState: (conversationId: string) =>
-    api.get<ConversationActiveStreamState>(`/conversations/${conversationId}/messages/active-stream`),
+    api.get<ConversationActiveStreamState>(
+      `/conversations/${conversationId}/messages/active-stream`
+    ),
 }
 
 // Warmup API - Pre-compute system prompt and context to reduce TTFT

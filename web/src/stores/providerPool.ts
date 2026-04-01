@@ -12,10 +12,12 @@ import type {
   LocationStats,
   TrialQuotaStatus,
   OAuthQuotaInfo,
+  ProviderAccountStatus,
   ProviderVerificationResult,
   VerifyProviderCandidateRequest,
 } from '@/api/providerPool'
 import type { MediaProviderConfig } from '@/api/mediaProviders'
+import { filterProvidersVisibleInUI } from '@/utils/providerVisibility'
 
 type ProviderPoolApiModule = typeof import('@/api/providerPool')
 type MediaProvidersApiModule = typeof import('@/api/mediaProviders')
@@ -76,34 +78,40 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   const trialQuota = ref<TrialQuotaStatus | null>(null)
   const oauthQuota = ref<Record<string, OAuthQuotaInfo>>({})
   const loadingQuota = ref<string | null>(null)
+  const accountStatus = ref<Record<string, ProviderAccountStatus>>({})
+  const loadingAccountStatus = ref<string | null>(null)
 
   // Computed
-  const enabledProviders = computed(() => providers.value.filter((p) => p.enabled))
+  const visibleProviders = computed(() => filterProvidersVisibleInUI(providers.value))
+
+  const enabledProviders = computed(() => visibleProviders.value.filter((p) => p.enabled))
 
   const activeProviders = computed(() =>
-    providers.value.filter((p) => p.enabled && p.status === 'active')
+    visibleProviders.value.filter((p) => p.enabled && p.status === 'active')
   )
 
-  const builtinProviders = computed(() => providers.value.filter((p) => p.type === 'builtin'))
+  const builtinProviders = computed(() => visibleProviders.value.filter((p) => p.type === 'builtin'))
 
-  const platformProviders = computed(() => providers.value.filter((p) => p.type === 'platform'))
+  const platformProviders = computed(() =>
+    visibleProviders.value.filter((p) => p.type === 'platform')
+  )
 
-  const customProviders = computed(() => providers.value.filter((p) => p.type === 'custom'))
+  const customProviders = computed(() => visibleProviders.value.filter((p) => p.type === 'custom'))
 
-  const ideProviders = computed(() => providers.value.filter((p) => p.type === 'ide'))
+  const ideProviders = computed(() => visibleProviders.value.filter((p) => p.type === 'ide'))
 
-  const trialProviders = computed(() => providers.value.filter((p) => p.type === 'trial'))
+  const trialProviders = computed(() => visibleProviders.value.filter((p) => p.type === 'trial'))
 
-  const mediaProviders = computed(() => providers.value.filter((p) => p.type === 'media'))
+  const mediaProviders = computed(() => visibleProviders.value.filter((p) => p.type === 'media'))
 
   const oauthProviders = computed(() => providers.value.filter((p) => !!p.oauth))
 
   const cloudProviders = computed(() =>
-    providers.value.filter((p) => p.enabled && p.location === 'cloud')
+    visibleProviders.value.filter((p) => p.enabled && p.location === 'cloud')
   )
 
   const localProviders = computed(() =>
-    providers.value.filter((p) => p.enabled && p.location === 'local')
+    visibleProviders.value.filter((p) => p.enabled && p.location === 'local')
   )
 
   const hasCloudProviders = computed(() => cloudProviders.value.length > 0)
@@ -111,7 +119,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   // Check if user has configured their own providers (non-trial)
   const hasUserConfiguredProviders = computed(() =>
-    providers.value.some((p) => p.enabled && p.type !== 'trial')
+    visibleProviders.value.some((p) => p.enabled && p.type !== 'trial')
   )
 
   const selectedProvider = computed(() =>
@@ -265,6 +273,23 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     } finally {
       loadingQuota.value = null
     }
+  }
+
+  async function fetchAccountStatus(providerId: string, keyId?: string) {
+    loadingAccountStatus.value = providerId
+    try {
+      const response = await providerPoolApi.getAccountStatus(providerId, keyId)
+      accountStatus.value[providerId] = response.data
+      return response.data
+    } catch {
+      return undefined
+    } finally {
+      loadingAccountStatus.value = null
+    }
+  }
+
+  function clearAccountStatus(providerId: string) {
+    delete accountStatus.value[providerId]
   }
 
   async function fetchModels(providerId?: string) {
@@ -944,6 +969,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     trialQuota,
     oauthQuota,
     loadingQuota,
+    accountStatus,
+    loadingAccountStatus,
 
     // Computed
     enabledProviders,
@@ -1007,6 +1034,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     fetchLocationStats,
     fetchTrialQuota,
     fetchOAuthQuota,
+    fetchAccountStatus,
+    clearAccountStatus,
     updateProviderStatus,
   }
 })

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	launcherflags "github.com/go-rod/rod/lib/launcher/flags"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,4 +51,23 @@ func TestPoolAcquireReturnsErrWhenPoolClosesWhileWaiting(t *testing.T) {
 	res := <-done
 	require.Nil(t, res.browser)
 	require.ErrorIs(t, res.err, ErrBrowserNotRunning)
+}
+
+func TestPoolNewLauncherAddsManagedChromiumStabilityFlags(t *testing.T) {
+	pool := &Pool{config: DefaultConfig()}
+
+	l := pool.newLauncher()
+
+	require.True(t, l.Has(launcherflags.Flag("no-default-browser-check")))
+	require.True(t, l.Has(launcherflags.Flag("disable-extensions")))
+	require.True(t, l.Has(launcherflags.Flag("disable-plugins")))
+	require.True(t, l.Has(launcherflags.Flag("disable-plugins-discovery")))
+	require.True(t, l.Has(launcherflags.Flag("disable-gpu")))
+
+	disableFeatures, ok := l.GetFlags(launcherflags.Flag("disable-features"))
+	require.True(t, ok)
+	require.Contains(t, disableFeatures, "site-per-process")
+	require.Contains(t, disableFeatures, "TranslateUI")
+	require.Contains(t, disableFeatures, "DownloadBubble")
+	require.Contains(t, disableFeatures, "DownloadBubbleV2")
 }

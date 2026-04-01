@@ -15,6 +15,7 @@ type browserCompatBackend struct {
 	lastRouteHint             BrowserRouteHint
 	recipeName                string
 	recipeParams              map[string]string
+	recipeData                map[string]interface{}
 	screenshotData            string
 	screenshotTabData         string
 	lastScreenshotURL         string
@@ -24,6 +25,12 @@ type browserCompatBackend struct {
 	lastActRef                int
 	lastActAction             string
 	lastActValue              string
+	lastA11yTargetID          string
+	lastInteractiveTargetID   string
+	lastCountTargetID         string
+	a11yResult                BrowserA11yTreeResult
+	interactiveResult         BrowserInteractiveResult
+	interactiveCount          int
 	usesRelay                 bool
 }
 
@@ -51,13 +58,33 @@ func (b *browserCompatBackend) ObserveNetwork(context.Context, string, int, bool
 func (b *browserCompatBackend) WaitNetworkIdle(context.Context, string, int, int) error {
 	return nil
 }
-func (b *browserCompatBackend) AccessibilityTree(context.Context, string, int) (BrowserA11yTreeResult, error) {
+func (b *browserCompatBackend) AccessibilityTree(_ context.Context, targetID string, _ int) (BrowserA11yTreeResult, error) {
+	b.lastA11yTargetID = targetID
+	if strings.TrimSpace(b.a11yResult.TargetID) != "" || strings.TrimSpace(b.a11yResult.Tree) != "" || strings.TrimSpace(b.a11yResult.URL) != "" || strings.TrimSpace(b.a11yResult.Title) != "" || len(b.a11yResult.RefMap) > 0 {
+		result := b.a11yResult
+		if result.TargetID == "" {
+			result.TargetID = targetID
+		}
+		return result, nil
+	}
 	return BrowserA11yTreeResult{}, nil
 }
-func (b *browserCompatBackend) InteractiveElements(context.Context, string) (BrowserInteractiveResult, error) {
+func (b *browserCompatBackend) InteractiveElements(_ context.Context, targetID string) (BrowserInteractiveResult, error) {
+	b.lastInteractiveTargetID = targetID
+	if strings.TrimSpace(b.interactiveResult.TargetID) != "" || strings.TrimSpace(b.interactiveResult.Tree) != "" || strings.TrimSpace(b.interactiveResult.URL) != "" || strings.TrimSpace(b.interactiveResult.Title) != "" || len(b.interactiveResult.RefMap) > 0 || b.interactiveResult.Count > 0 {
+		result := b.interactiveResult
+		if result.TargetID == "" {
+			result.TargetID = targetID
+		}
+		return result, nil
+	}
 	return BrowserInteractiveResult{Tree: "[@1] button \"OK\"", URL: "https://example.com", Title: "Example", TargetID: "tab-9", RefMap: map[int]string{1: "button"}, Count: 1}, nil
 }
-func (b *browserCompatBackend) CountInteractiveElements(context.Context, string) (int, error) {
+func (b *browserCompatBackend) CountInteractiveElements(_ context.Context, targetID string) (int, error) {
+	b.lastCountTargetID = targetID
+	if b.interactiveCount > 0 {
+		return b.interactiveCount, nil
+	}
 	return 1, nil
 }
 func (b *browserCompatBackend) ActByRef(_ context.Context, targetID string, ref int, _ map[int]int, action string, value string) error {
@@ -95,6 +122,9 @@ func (b *browserCompatBackend) Tabs(context.Context) ([]BrowserTabResult, error)
 func (b *browserCompatBackend) ExecuteRecipe(_ context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
 	b.recipeName = recipe
 	b.recipeParams = params
+	if b.recipeData != nil {
+		return BrowserRecipeResult{Success: true, Message: "ok", Data: b.recipeData}, nil
+	}
 	return BrowserRecipeResult{Success: true, Message: "ok", Data: map[string]interface{}{"recipe": recipe}}, nil
 }
 func (b *browserCompatBackend) ListRecipes(context.Context) []BrowserRecipeInfo { return nil }
@@ -216,6 +246,149 @@ func TestBrowserToolExecuteCanonicalizesLegacyTopLevelActAction(t *testing.T) {
 	}
 	if got := out["success"]; got != true {
 		t.Fatalf("success = %v, want true", got)
+	}
+}
+
+func TestBrowserToolExecuteCanonicalizesReadWithURLToNavigate(t *testing.T) {
+	backend := &browserCompatBackend{}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "read",
+		"url":    "https://example.com/docs",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.navigateURL != "https://example.com/docs" {
+		t.Fatalf("navigateURL = %q, want https://example.com/docs", backend.navigateURL)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["strategy"]; got != "interactive" {
+		t.Fatalf("strategy = %v, want interactive snapshot output", got)
+	}
+}
+
+func TestBrowserToolSnapshotAutoWithURLNavigatesFirst(t *testing.T) {
+	backend := &browserCompatBackend{}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "snapshot_auto",
+		"url":    "https://example.com/docs",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.navigateURL != "https://example.com/docs" {
+		t.Fatalf("navigateURL = %q, want https://example.com/docs", backend.navigateURL)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["strategy"]; got != "interactive" {
+		t.Fatalf("strategy = %v, want interactive snapshot output after navigate", got)
+	}
+}
+
+func TestBrowserToolSnapshotAutoWithURLIgnoresStaleCachedTarget(t *testing.T) {
+	backend := &browserCompatBackend{}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+	tool.cacheRefs("tab-stale", nil, map[int]string{1: "button"})
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "snapshot_auto",
+		"url":    "https://example.com/fresh",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.navigateURL != "https://example.com/fresh" {
+		t.Fatalf("navigateURL = %q, want https://example.com/fresh", backend.navigateURL)
+	}
+	if backend.lastCountTargetID != "tab-1" {
+		t.Fatalf("lastCountTargetID = %q, want tab-1 from fresh navigation", backend.lastCountTargetID)
+	}
+	if backend.lastInteractiveTargetID != "tab-1" {
+		t.Fatalf("lastInteractiveTargetID = %q, want tab-1 from fresh navigation", backend.lastInteractiveTargetID)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["strategy"]; got != "interactive" {
+		t.Fatalf("strategy = %v, want interactive snapshot output after navigate", got)
+	}
+}
+
+func TestBrowserToolSnapshotAutoAddsReadableContentForDocumentationPages(t *testing.T) {
+	backend := &browserCompatBackend{
+		interactiveCount: 66,
+		a11yResult: BrowserA11yTreeResult{
+			Tree:     strings.Repeat("[RootWebArea] navigation\n", 400),
+			URL:      "https://developers.openai.com/api/reference/resources/responses",
+			Title:    "Responses | OpenAI API Reference",
+			TargetID: "tab-docs",
+			RefMap:   map[int]int{1: 1},
+		},
+		interactiveResult: BrowserInteractiveResult{
+			Tree:     "@1 [a] \"Home\"\n@2 [menuitem] \"API reference\"\n@3 [a] \"Create a model response\"",
+			URL:      "https://developers.openai.com/api/reference/resources/responses",
+			Title:    "Responses | OpenAI API Reference",
+			TargetID: "tab-docs",
+			RefMap:   map[int]string{1: "a", 2: "menuitem", 3: "a"},
+			Count:    66,
+		},
+		recipeData: map[string]interface{}{
+			"extracted": map[string]interface{}{
+				"page_heading": "Responses",
+				"main_content": "Create a model response POST /responses. Get a model response GET /responses/{response_id}. Delete a model response DELETE /responses/{response_id}. This reference explains request fields, authentication, response objects, streaming events, and related examples with enough readable detail for the browser fallback to stop looping on navigation chrome alone.",
+			},
+			"url":   "https://developers.openai.com/api/reference/resources/responses",
+			"title": "Responses | OpenAI API Reference",
+		},
+	}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "snapshot_auto",
+		"url":    "https://platform.openai.com/docs/api-reference/responses",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.recipeName != "extract" {
+		t.Fatalf("recipeName = %q, want extract", backend.recipeName)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["strategy"]; got != "interactive" {
+		t.Fatalf("strategy = %v, want interactive snapshot output", got)
+	}
+	content, _ := out["content"].(string)
+	if !strings.Contains(content, "Create a model response POST /responses") {
+		t.Fatalf("content = %q, want extracted main documentation content", content)
+	}
+	if got := out["content_strategy"]; got != "extract_recipe" {
+		t.Fatalf("content_strategy = %v, want extract_recipe", got)
+	}
+	message, _ := out["message"].(string)
+	if !strings.Contains(message, "Main content:") {
+		t.Fatalf("message = %q, want readable content section", message)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -139,6 +140,7 @@ func DefaultConfig() Config {
 // Store provides task persistence.
 type Store struct {
 	db     *sql.DB
+	readDB *sql.DB
 	config Config
 	mu     sync.RWMutex
 	closed bool
@@ -172,14 +174,53 @@ func NewStore(config Config) (*Store, error) {
 		return nil, err
 	}
 
+	readDB, readErr := openSchedulerReaderDB(config.DBPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+
 	return &Store{
 		db:     db,
+		readDB: readDB,
 		config: config,
 	}, nil
 }
 
 func (s *Store) table() *z.ZormTable {
 	return z.Table(s.db, schedulerTasksTable)
+}
+
+func (s *Store) readTable() *z.ZormTable {
+	return z.Table(s.reader(), schedulerTasksTable)
+}
+
+func (s *Store) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func openSchedulerReaderDB(dbPath string) (*sql.DB, error) {
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("set scheduler reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // migrate creates the necessary tables.
@@ -279,7 +320,7 @@ func (s *Store) Get(id string) (*TaskRecord, error) {
 	}
 
 	var rows []taskRow
-	_, err := s.table().Select(&rows,
+	_, err := s.readTable().Select(&rows,
 		z.Where(z.Eq("id", id)),
 		z.Limit(1),
 	)
@@ -354,7 +395,7 @@ func (s *Store) List(filter TaskFilter) ([]*TaskRecord, error) {
 	}
 
 	var rows []taskRow
-	_, err := s.table().Select(&rows, opts...)
+	_, err := s.readTable().Select(&rows, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -444,20 +485,18 @@ func (s *Store) IncrementRetry(id string) error {
 		return ErrStoreClosed
 	}
 
-	result, err := s.db.Exec(
-		"UPDATE scheduler_tasks SET retry_count = retry_count + 1, status = 'pending', started_at = NULL WHERE id = ?",
-		id,
+	n, err := s.table().Update(z.V{
+		"retry_count": z.U("retry_count+1"),
+		"status":      "pending",
+		"started_at":  z.U("NULL"),
+	},
+		z.Fields("retry_count", "status", "started_at"),
+		z.Where(z.Eq("id", id)),
 	)
 	if err != nil {
 		return err
 	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
+	if n == 0 {
 		return ErrTaskNotFound
 	}
 
@@ -495,37 +534,51 @@ func (s *Store) Stats() (StoreStats, error) {
 
 	var stats StoreStats
 
-	err := s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks").Scan(&stats.TotalTasks)
+	total, err := s.countTasks("")
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalTasks = total
+
+	stats.PendingTasks, err = s.countTasks("pending")
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'pending'").Scan(&stats.PendingTasks)
+	stats.RunningTasks, err = s.countTasks("running")
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'running'").Scan(&stats.RunningTasks)
+	stats.CompletedTasks, err = s.countTasks("completed")
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'completed'").Scan(&stats.CompletedTasks)
+	stats.FailedTasks, err = s.countTasks("failed")
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'failed'").Scan(&stats.FailedTasks)
-	if err != nil {
-		return stats, err
-	}
-
-	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'cancelled'").Scan(&stats.CancelledTasks)
+	stats.CancelledTasks, err = s.countTasks("cancelled")
 	if err != nil {
 		return stats, err
 	}
 
 	return stats, nil
+}
+
+func (s *Store) countTasks(status string) (int, error) {
+	var count int64
+	args := []z.ZormItem{z.Fields("count(1)")}
+	if status != "" {
+		args = append(args, z.Where(z.Eq("status", status)))
+	}
+	_, err := s.readTable().Select(&count, args...)
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
 
 // StoreStats holds store statistics.
@@ -548,5 +601,8 @@ func (s *Store) Close() error {
 	}
 
 	s.closed = true
+	if s.readDB != nil && s.readDB != s.db {
+		_ = s.readDB.Close()
+	}
 	return s.db.Close()
 }

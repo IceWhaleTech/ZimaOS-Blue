@@ -3,9 +3,17 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
 
 // Test Claude provider creation
 func TestNewClaudeProvider(t *testing.T) {
@@ -149,6 +157,56 @@ func TestClaudeProviderChat(t *testing.T) {
 	}
 	if resp.Message.Content != "Hello! How can I help you?" {
 		t.Errorf("expected content 'Hello! How can I help you?', got '%s'", resp.Message.Content)
+	}
+}
+
+func TestClaudeProviderChat_MiniMaxUsesBearerAuth(t *testing.T) {
+	var gotAuth string
+	var gotXAPIKey string
+	var gotVersion string
+	var gotPath string
+
+	provider := NewClaudeProvider("test-api-key", "https://api.minimaxi.com/anthropic")
+	provider.client = &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			gotAuth = r.Header.Get("Authorization")
+			gotXAPIKey = r.Header.Get("x-api-key")
+			gotVersion = r.Header.Get("anthropic-version")
+			gotPath = r.URL.Path
+
+			resp := `{"id":"msg_123","type":"message","role":"assistant","model":"MiniMax-M2.7","content":[{"type":"text","text":"pong"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(resp)),
+				Request:    r,
+			}, nil
+		}),
+	}
+
+	resp, err := provider.Chat(context.Background(), ChatRequest{
+		Model: "MiniMax-M2.7",
+		Messages: []Message{
+			{Role: RoleUser, Content: "ping"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Message.Content != "pong" {
+		t.Fatalf("content = %q, want %q", resp.Message.Content, "pong")
+	}
+	if gotPath != "/anthropic/v1/messages" {
+		t.Fatalf("path = %q, want %q", gotPath, "/anthropic/v1/messages")
+	}
+	if gotAuth != "Bearer test-api-key" {
+		t.Fatalf("Authorization = %q, want %q", gotAuth, "Bearer test-api-key")
+	}
+	if gotXAPIKey != "" {
+		t.Fatalf("x-api-key = %q, want empty", gotXAPIKey)
+	}
+	if gotVersion != claudeAPIVersion {
+		t.Fatalf("anthropic-version = %q, want %q", gotVersion, claudeAPIVersion)
 	}
 }
 

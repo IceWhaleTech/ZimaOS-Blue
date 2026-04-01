@@ -37,9 +37,9 @@ const workerTrendData = computed<SparklinePoint[]>(() => {
     <div class="dashboard-card-footer">
       <div class="dashboard-card-copy">
         <p class="dashboard-card-label">{{ t('system.goroutines') }}</p>
-        <p class="dashboard-card-subtitle mt-2">Scheduler load</p>
+        <p class="dashboard-card-subtitle mt-2">{{ t('system.cards.goroutines.subtitle') }}</p>
       </div>
-      <span class="dashboard-card-chip">Live</span>
+      <span class="dashboard-card-chip">{{ t('system.cards.goroutines.chip') }}</span>
     </div>
 
     <div class="dashboard-card-footer goroutines-card-main">
@@ -50,7 +50,7 @@ const workerTrendData = computed<SparklinePoint[]>(() => {
         <p v-else class="dashboard-card-value text-gray-900 dark:text-white">
           {{ systemStore.health?.goroutines ?? '-' }}
         </p>
-        <p class="dashboard-card-footnote mt-3">Active routines in the current scheduler window</p>
+        <p class="dashboard-card-footnote mt-3">{{ t('system.cards.goroutines.footnote') }}</p>
       </div>
 
       <DashboardSparkline :data="workerTrendData" />

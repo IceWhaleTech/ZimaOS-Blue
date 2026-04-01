@@ -559,7 +559,7 @@ func TestBuildUpstreamRequestWithFormat_AnthropicEndpointConvertsBody(t *testing
 	}
 }
 
-func TestBuildUpstreamRequestWithFormat_CodexModelStaysChatCompletionsOnOpenAICompatProvider(t *testing.T) {
+func TestBuildUpstreamRequestWithFormat_CodexModelUsesResponsesOnOpenAICompatProvider(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
 	result := &providerpool.RouteResult{
@@ -579,25 +579,25 @@ func TestBuildUpstreamRequestWithFormat_CodexModelStaysChatCompletionsOnOpenAICo
 	}
 	defer upstreamReq.Body.Close()
 
-	if upstreamReq.URL.Path != "/v1/chat/completions" {
-		t.Fatalf("upstream path = %q, want %q", upstreamReq.URL.Path, "/v1/chat/completions")
+	if upstreamReq.URL.Path != "/v1/responses" {
+		t.Fatalf("upstream path = %q, want %q", upstreamReq.URL.Path, "/v1/responses")
 	}
 
 	convertedBody, err := io.ReadAll(upstreamReq.Body)
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if !gjson.GetBytes(convertedBody, "messages").Exists() {
-		t.Fatalf("converted body missing messages: %s", string(convertedBody))
+	if !gjson.GetBytes(convertedBody, "input").Exists() {
+		t.Fatalf("converted body missing input: %s", string(convertedBody))
 	}
-	if gjson.GetBytes(convertedBody, "input").Exists() {
-		t.Fatalf("converted body unexpectedly contains input: %s", string(convertedBody))
+	if gjson.GetBytes(convertedBody, "messages").Exists() {
+		t.Fatalf("converted body unexpectedly contains messages: %s", string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "max_tokens").Int(); got != 9 {
-		t.Fatalf("max_tokens = %d, want 9", got)
+	if got := gjson.GetBytes(convertedBody, "max_output_tokens").Int(); got != 9 {
+		t.Fatalf("max_output_tokens = %d, want 9", got)
 	}
-	if got := gjson.GetBytes(convertedBody, "store"); got.Exists() {
-		t.Fatalf("store should not be injected for chat-completions body: %s", string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
 	}
 }
 
@@ -2543,7 +2543,7 @@ func TestBuildUpstreamRequestWithFormat_ResponsesPathClampsMaxOutputTokensByMode
 	}
 }
 
-func TestBuildUpstreamRequestWithFormat_OpenAICompatPathClampsChatCompletionsMaxTokensByModelLimit(t *testing.T) {
+func TestBuildUpstreamRequestWithFormat_OpenAICompatPathClampsResponsesMaxOutputTokensByModelLimit(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
 	result := &providerpool.RouteResult{
@@ -2564,19 +2564,25 @@ func TestBuildUpstreamRequestWithFormat_OpenAICompatPathClampsChatCompletionsMax
 	}
 	defer upstreamReq.Body.Close()
 
-	if upstreamReq.URL.Path != "/v1/chat/completions" {
-		t.Fatalf("upstream path = %q, want %q", upstreamReq.URL.Path, "/v1/chat/completions")
+	if upstreamReq.URL.Path != "/v1/responses" {
+		t.Fatalf("upstream path = %q, want %q", upstreamReq.URL.Path, "/v1/responses")
 	}
 
 	convertedBody, err := io.ReadAll(upstreamReq.Body)
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "max_tokens").Int(); got != 1024 {
-		t.Fatalf("max_tokens = %d, want %d", got, 1024)
+	if got := gjson.GetBytes(convertedBody, "max_output_tokens").Int(); got != 1024 {
+		t.Fatalf("max_output_tokens = %d, want %d", got, 1024)
 	}
-	if got := gjson.GetBytes(convertedBody, "max_output_tokens"); got.Exists() {
-		t.Fatalf("chat-completions body should not be rewritten to responses payload: %s", string(convertedBody))
+	if !gjson.GetBytes(convertedBody, "input").Exists() {
+		t.Fatalf("responses body missing input: %s", string(convertedBody))
+	}
+	if gjson.GetBytes(convertedBody, "messages").Exists() {
+		t.Fatalf("responses body should not contain messages: %s", string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
 	}
 }
 

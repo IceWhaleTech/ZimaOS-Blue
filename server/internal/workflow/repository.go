@@ -15,12 +15,22 @@ import (
 
 // Repository handles workflow persistence.
 type Repository struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // NewRepository creates a new workflow repository.
 func NewRepository(db *sql.DB) (*Repository, error) {
-	r := &Repository{db: db}
+	return NewRepositoryWithReadDB(db, db)
+}
+
+// NewRepositoryWithReadDB creates a new workflow repository with separate
+// write and read database handles.
+func NewRepositoryWithReadDB(writeDB, readDB *sql.DB) (*Repository, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	r := &Repository{db: writeDB, readDB: readDB}
 	if err := r.migrate(); err != nil {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
@@ -83,14 +93,26 @@ func (r *Repository) migrate() error {
 func (r *Repository) wfTable(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "workflows")
 }
+func (r *Repository) wfReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.readDB, "workflows")
+}
 func (r *Repository) execTable(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "workflow_executions")
+}
+func (r *Repository) execReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.readDB, "workflow_executions")
 }
 func (r *Repository) logTable(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "workflow_execution_logs")
 }
+func (r *Repository) logReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.readDB, "workflow_execution_logs")
+}
 func (r *Repository) webhookTable(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "workflow_webhooks")
+}
+func (r *Repository) webhookReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.readDB, "workflow_webhooks")
 }
 
 func marshalJSON(v interface{}) string {
@@ -168,7 +190,7 @@ func (r *Repository) GetWorkflow(ctx context.Context, id string) (*Workflow, err
 	}
 
 	var rows []workflowRow
-	_, err := r.wfTable(ctx).Select(&rows, z.Where(conds...), z.Limit(1))
+	_, err := r.wfReadTable(ctx).Select(&rows, z.Where(conds...), z.Limit(1))
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +257,7 @@ func (r *Repository) ListWorkflows(ctx context.Context, tenantID string, opts *L
 	}
 
 	var total int64
-	_, err := r.wfTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(conds...))
+	_, err := r.wfReadTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(conds...))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -250,7 +272,7 @@ func (r *Repository) ListWorkflows(ctx context.Context, tenantID string, opts *L
 	}
 
 	var rows []workflowRow
-	_, err = r.wfTable(ctx).Select(&rows, z.Where(conds...), z.OrderBy(orderClause), z.Limit(opts.Limit, opts.Offset))
+	_, err = r.wfReadTable(ctx).Select(&rows, z.Where(conds...), z.OrderBy(orderClause), z.Limit(opts.Limit, opts.Offset))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -325,7 +347,7 @@ func (r *Repository) GetExecution(ctx context.Context, id string) (*Execution, e
 	}
 
 	var rows []execRow
-	_, err := r.execTable(ctx).Select(&rows, z.Where(conds...), z.Limit(1))
+	_, err := r.execReadTable(ctx).Select(&rows, z.Where(conds...), z.Limit(1))
 	if err != nil {
 		return nil, err
 	}
@@ -344,13 +366,13 @@ func (r *Repository) ListExecutions(ctx context.Context, workflowID string, opts
 		conds = append(conds, z.Eq("tenant_id", tenantID))
 	}
 	var total int64
-	_, err := r.execTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(conds...))
+	_, err := r.execReadTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(conds...))
 	if err != nil {
 		return nil, 0, err
 	}
 
 	var rows []execRow
-	_, err = r.execTable(ctx).Select(&rows,
+	_, err = r.execReadTable(ctx).Select(&rows,
 		z.Where(conds...),
 		z.OrderBy("started_at DESC"), z.Limit(opts.Limit, opts.Offset),
 	)
@@ -396,13 +418,13 @@ func (r *Repository) GetExecutionLogs(ctx context.Context, executionID string, o
 		}
 	}
 	var total int64
-	_, err := r.logTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(z.Eq("execution_id", executionID)))
+	_, err := r.logReadTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(z.Eq("execution_id", executionID)))
 	if err != nil {
 		return nil, 0, err
 	}
 
 	var rows []logRow
-	_, err = r.logTable(ctx).Select(&rows,
+	_, err = r.logReadTable(ctx).Select(&rows,
 		z.Where(z.Eq("execution_id", executionID)),
 		z.OrderBy("timestamp ASC"), z.Limit(opts.Limit, opts.Offset),
 	)
@@ -431,7 +453,7 @@ func (r *Repository) SaveWebhook(ctx context.Context, workflowID, path, method, 
 
 func (r *Repository) GetWebhookByPath(ctx context.Context, path string) (string, error) {
 	var ids []string
-	_, err := r.webhookTable(ctx).Select(&ids, z.Fields("workflow_id"), z.Where(z.Eq("path", path)), z.Limit(1))
+	_, err := r.webhookReadTable(ctx).Select(&ids, z.Fields("workflow_id"), z.Where(z.Eq("path", path)), z.Limit(1))
 	if err != nil {
 		return "", err
 	}
@@ -450,27 +472,27 @@ func (r *Repository) GetStats(ctx context.Context, tenantID string) (*Stats, err
 	stats := &Stats{}
 	var v int64
 
-	r.wfTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID)))
+	r.wfReadTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID)))
 	stats.TotalWorkflows = int(v)
 
 	v = 0
-	r.wfTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "active")))
+	r.wfReadTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "active")))
 	stats.ActiveWorkflows = int(v)
 
 	v = 0
-	r.execTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID)))
+	r.execReadTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID)))
 	stats.TotalExecutions = int(v)
 
 	v = 0
-	r.execTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "running")))
+	r.execReadTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "running")))
 	stats.RunningExecutions = int(v)
 
 	v = 0
-	r.execTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "completed")))
+	r.execReadTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "completed")))
 	stats.SuccessfulExecutions = int(v)
 
 	v = 0
-	r.execTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "failed")))
+	r.execReadTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "failed")))
 	stats.FailedExecutions = int(v)
 
 	return stats, nil
@@ -479,11 +501,20 @@ func (r *Repository) GetStats(ctx context.Context, tenantID string) (*Stats, err
 func (r *Repository) CleanupOldExecutions(ctx context.Context, retentionDays int) (int64, error) {
 	cutoff := timeutil.NowTime().AddDate(0, 0, -retentionDays)
 
-	// Delete old logs first (subquery not supported in zorm Delete, use raw)
-	r.db.ExecContext(ctx,
-		`DELETE FROM workflow_execution_logs WHERE execution_id IN (
-			SELECT id FROM workflow_executions WHERE completed_at < ?
-		)`, cutoff)
+	var executionIDs []string
+	_, err := r.execReadTable(ctx).Select(&executionIDs,
+		z.Fields("id"),
+		z.Where(z.Lt("completed_at", cutoff)),
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(executionIDs) > 0 {
+		if _, err := r.logTable(ctx).Delete(z.Where(z.In("execution_id", executionIDs))); err != nil {
+			return 0, err
+		}
+	}
 
 	n, err := r.execTable(ctx).Delete(z.Where(z.Lt("completed_at", cutoff)))
 	return int64(n), err

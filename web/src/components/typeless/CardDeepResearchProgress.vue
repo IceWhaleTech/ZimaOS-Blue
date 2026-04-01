@@ -3,7 +3,12 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardDeepResearchProgress } from '@/types/typeless'
 import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
-import { localizeDeepResearchGap, localizeDeepResearchMode } from '@/utils/deepResearchText'
+import {
+  localizeDeepResearchGap,
+  localizeDeepResearchMode,
+  localizeResearchProgressLabel,
+  localizeResearchRunningElsewhereLabel,
+} from '@/utils/deepResearchText'
 
 const { t, te } = useI18n()
 const deepResearchJobs = useDeepResearchJobsStore()
@@ -55,6 +60,8 @@ const isDone = computed(() => status.value === 'completed')
 const isFailed = computed(() => status.value === 'failed')
 const isCancelled = computed(() => status.value === 'cancelled')
 const isTerminal = computed(() => isDone.value || isFailed.value || isCancelled.value)
+const researchProgressLabel = computed(() => localizeResearchProgressLabel(tr))
+const runningElsewhereLabel = computed(() => localizeResearchRunningElsewhereLabel(tr))
 
 const stageLabel = computed(() => {
   const stageMap: Record<string, string> = {
@@ -140,7 +147,7 @@ async function handleCancel() {
             <span
               class="rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
-              {{ t('chat.deepResearchProgress', 'Deep Research Running') }}
+              {{ researchProgressLabel }}
             </span>
             <span class="rounded-full px-2 py-0.5" :class="statusClass">{{ stageLabel }}</span>
             <span
@@ -219,9 +226,7 @@ async function handleCancel() {
       </div>
 
       <div v-if="!conversationId" class="text-xs text-slate-500 dark:text-slate-400">
-        {{
-          t('chat.deepResearchRunningElsewhere', 'This research task is running in the background.')
-        }}
+        {{ runningElsewhereLabel }}
       </div>
     </div>
   </div>

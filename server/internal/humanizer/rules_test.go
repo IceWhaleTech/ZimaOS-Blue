@@ -210,6 +210,12 @@ func TestStripFunctionCalls(t *testing.T) {
 </invoke>
 </function_calls>`
 
+	webQueryCall := `<function_calls>
+<invoke name="web_query">
+<parameter name="query">OpenAI Responses API docs</parameter>
+</invoke>
+</function_calls>`
+
 	calcCall := `<function_calls>
 <invoke name="calculator">
 <parameter name="expression">2+2</parameter>
@@ -249,6 +255,12 @@ func TestStripFunctionCalls(t *testing.T) {
 			webSearchCall,
 			ModeVoice,
 			"(工具调用已省略)",
+		},
+		{
+			"web query IM",
+			webQueryCall,
+			ModeIM,
+			"🔧 网页查询（OpenAI Responses API docs）",
 		},
 		{
 			"calculator IM",

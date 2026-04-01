@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,10 +15,12 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 type Store struct {
 	db         *sql.DB
+	readDB     *sql.DB
 	ftsEnabled bool
 }
 
@@ -35,8 +38,14 @@ type SkillBatchUpsertResult struct {
 	Skipped  int
 }
 
-func NewStore(db *sql.DB) (*Store, error) {
-	s := &Store{db: db}
+func newStoreWithDB(writeDB, readDB *sql.DB) (*Store, error) {
+	if writeDB == nil {
+		return nil, fmt.Errorf("skillmarket db is nil")
+	}
+	if readDB == nil {
+		readDB = writeDB
+	}
+	s := &Store{db: writeDB, readDB: readDB}
 	if err := s.initSchema(); err != nil {
 		return nil, err
 	}
@@ -44,6 +53,673 @@ func NewStore(db *sql.DB) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+func NewStore(db *sql.DB) (*Store, error) {
+	return NewStoreWithReadDB(db, db)
+}
+
+func NewStoreWithReadDB(writeDB, readDB *sql.DB) (*Store, error) {
+	return newStoreWithDB(writeDB, readDB)
+}
+
+func (s *Store) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *Store) table(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, s.db, name)
+}
+
+func (s *Store) readTable(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), name)
+}
+
+type skillCategoryNormalizationRow struct {
+	ID           string  `zorm:"id"`
+	Category     *string `zorm:"category"`
+	Tags         *string `zorm:"tags"`
+	SkillContent *string `zorm:"skill_content"`
+}
+
+type skillCurationRow struct {
+	Hidden       int     `zorm:"hidden"`
+	FeaturedRank int     `zorm:"featured_rank"`
+	BoostWeight  float64 `zorm:"boost_weight"`
+	Label        *string `zorm:"label"`
+	Reason       *string `zorm:"reason"`
+}
+
+type skillIDRow struct {
+	ID string `zorm:"id"`
+}
+
+type skillVersionLookupRow struct {
+	ID      string `zorm:"id"`
+	SkillID string `zorm:"skill_id"`
+	Version string `zorm:"version"`
+}
+
+type skillReportLookupRow struct {
+	ID             string `zorm:"id"`
+	SkillVersionID string `zorm:"skill_version_id"`
+}
+
+type skillSourceIDRow struct {
+	SourceID *string `zorm:"source_id"`
+}
+
+type sourcePriorityRow struct {
+	Priority int `zorm:"priority"`
+}
+
+type skillLatestVersionRow struct {
+	LatestVersion *string `zorm:"latest_version"`
+}
+
+type skillDocumentRow struct {
+	ID                  string  `zorm:"id"`
+	Slug                string  `zorm:"slug"`
+	Name                string  `zorm:"name"`
+	Description         *string `zorm:"description"`
+	Author              *string `zorm:"author"`
+	RepoURL             *string `zorm:"repo_url"`
+	Homepage            *string `zorm:"homepage"`
+	DownloadURL         *string `zorm:"download_url"`
+	Stars               int     `zorm:"stars"`
+	Downloads           int     `zorm:"downloads"`
+	Tags                *string `zorm:"tags"`
+	Category            *string `zorm:"category"`
+	SecurityScore       int     `zorm:"security_score"`
+	Permissions         *string `zorm:"permissions"`
+	LatestVersion       *string `zorm:"latest_version"`
+	RiskLevel           *string `zorm:"risk_level"`
+	SecurityBadge       *string `zorm:"security_badge"`
+	Installable         int     `zorm:"installable"`
+	InstallType         *string `zorm:"install_type"`
+	ArtifactKind        *string `zorm:"artifact_kind"`
+	VulnerabilityStatus *string `zorm:"vulnerability_status"`
+	HasVulnerabilities  int     `zorm:"has_vulnerabilities"`
+	HasPromptInjection  int     `zorm:"has_prompt_injection"`
+	HasShellInjection   int     `zorm:"has_shell_injection"`
+	HasDataExfiltration int     `zorm:"has_data_exfiltration"`
+	HasBinary           int     `zorm:"has_binary"`
+	HasScripts          int     `zorm:"has_scripts"`
+	PopularityScore     float64 `zorm:"popularity_score"`
+	TrendingScore       float64 `zorm:"trending_score"`
+	ScanStatus          *string `zorm:"scan_status"`
+	ContentSHA256       *string `zorm:"content_sha256"`
+	Published           int     `zorm:"published"`
+	SourceID            *string `zorm:"source_id"`
+	SourceName          *string `zorm:"source_name"`
+	SourceGroup         *string `zorm:"source_group"`
+	SourceType          *string `zorm:"source_type"`
+	SkillPath           *string `zorm:"skill_path"`
+	SkillContent        *string `zorm:"skill_content"`
+	EmbeddingJSON       *string `zorm:"embedding_json"`
+	EmbeddingModel      *string `zorm:"embedding_model"`
+	CuratedRank         int     `zorm:"curated_rank"`
+	CuratedBoost        float64 `zorm:"curated_boost"`
+	CuratedLabel        *string `zorm:"curated_label"`
+	CuratedReason       *string `zorm:"curated_reason"`
+	LastUpdated         *string `zorm:"last_updated"`
+	LastCrawledAt       *string `zorm:"last_crawled_at"`
+	CreatedAt           *string `zorm:"created_at"`
+	UpdatedAt           *string `zorm:"updated_at"`
+}
+
+type skillDocumentWriteRow struct {
+	ID                  string    `zorm:"id"`
+	Slug                string    `zorm:"slug"`
+	Name                string    `zorm:"name"`
+	Description         string    `zorm:"description"`
+	Author              string    `zorm:"author"`
+	RepoURL             string    `zorm:"repo_url"`
+	Homepage            string    `zorm:"homepage"`
+	DownloadURL         string    `zorm:"download_url"`
+	Stars               int       `zorm:"stars"`
+	Downloads           int       `zorm:"downloads"`
+	Tags                string    `zorm:"tags"`
+	Category            string    `zorm:"category"`
+	SecurityScore       int       `zorm:"security_score"`
+	Permissions         string    `zorm:"permissions"`
+	LatestVersion       string    `zorm:"latest_version"`
+	RiskLevel           string    `zorm:"risk_level"`
+	SecurityBadge       string    `zorm:"security_badge"`
+	Installable         int       `zorm:"installable"`
+	InstallType         string    `zorm:"install_type"`
+	ArtifactKind        string    `zorm:"artifact_kind"`
+	VulnerabilityStatus string    `zorm:"vulnerability_status"`
+	HasVulnerabilities  int       `zorm:"has_vulnerabilities"`
+	HasPromptInjection  int       `zorm:"has_prompt_injection"`
+	HasShellInjection   int       `zorm:"has_shell_injection"`
+	HasDataExfiltration int       `zorm:"has_data_exfiltration"`
+	HasBinary           int       `zorm:"has_binary"`
+	HasScripts          int       `zorm:"has_scripts"`
+	PopularityScore     float64   `zorm:"popularity_score"`
+	TrendingScore       float64   `zorm:"trending_score"`
+	ScanStatus          string    `zorm:"scan_status"`
+	ContentSHA256       string    `zorm:"content_sha256"`
+	Published           int       `zorm:"published"`
+	SourceID            string    `zorm:"source_id"`
+	SourceName          string    `zorm:"source_name"`
+	SourceGroup         string    `zorm:"source_group"`
+	SourceType          string    `zorm:"source_type"`
+	SkillPath           string    `zorm:"skill_path"`
+	SkillContent        string    `zorm:"skill_content"`
+	EmbeddingJSON       string    `zorm:"embedding_json"`
+	EmbeddingModel      string    `zorm:"embedding_model"`
+	CuratedRank         int       `zorm:"curated_rank"`
+	CuratedBoost        float64   `zorm:"curated_boost"`
+	CuratedLabel        string    `zorm:"curated_label"`
+	CuratedReason       string    `zorm:"curated_reason"`
+	LastUpdated         time.Time `zorm:"last_updated"`
+	LastCrawledAt       time.Time `zorm:"last_crawled_at"`
+	CreatedAt           time.Time `zorm:"created_at"`
+	UpdatedAt           time.Time `zorm:"updated_at"`
+}
+
+type skillVersionRow struct {
+	ID           string  `zorm:"id"`
+	SkillID      string  `zorm:"skill_id"`
+	Version      string  `zorm:"version"`
+	CommitHash   *string `zorm:"commit_hash"`
+	SourceURL    *string `zorm:"source_url"`
+	Checksum     *string `zorm:"checksum"`
+	SkillPath    *string `zorm:"skill_path"`
+	RawSkillMD   *string `zorm:"raw_skill_md"`
+	ManifestJSON *string `zorm:"manifest_json"`
+	ReleasedAt   *string `zorm:"released_at"`
+	ScannedAt    *string `zorm:"scanned_at"`
+	CreatedAt    *string `zorm:"created_at"`
+	UpdatedAt    *string `zorm:"updated_at"`
+}
+
+type skillVersionWriteRow struct {
+	ID           string    `zorm:"id"`
+	SkillID      string    `zorm:"skill_id"`
+	Version      string    `zorm:"version"`
+	CommitHash   string    `zorm:"commit_hash"`
+	SourceURL    string    `zorm:"source_url"`
+	Checksum     string    `zorm:"checksum"`
+	SkillPath    string    `zorm:"skill_path"`
+	RawSkillMD   string    `zorm:"raw_skill_md"`
+	ManifestJSON string    `zorm:"manifest_json"`
+	ReleasedAt   time.Time `zorm:"released_at"`
+	ScannedAt    time.Time `zorm:"scanned_at"`
+	CreatedAt    time.Time `zorm:"created_at"`
+	UpdatedAt    time.Time `zorm:"updated_at"`
+}
+
+type securityReportRow struct {
+	ID                  string  `zorm:"id"`
+	SkillVersionID      string  `zorm:"skill_version_id"`
+	SkillID             string  `zorm:"skill_id"`
+	Version             string  `zorm:"version"`
+	Score               int     `zorm:"score"`
+	RiskLevel           *string `zorm:"risk_level"`
+	SecurityBadge       *string `zorm:"security_badge"`
+	VulnerabilityStatus *string `zorm:"vulnerability_status"`
+	RisksJSON           *string `zorm:"risks_json"`
+	PermissionsJSON     *string `zorm:"permissions_json"`
+	SecretsJSON         *string `zorm:"secrets_json"`
+	VulnerabilitiesJSON *string `zorm:"vulnerabilities_json"`
+	InstallSurfaceJSON  *string `zorm:"install_surface_json"`
+	EvidenceJSON        *string `zorm:"evidence_json"`
+	ArtifactKind        *string `zorm:"artifact_kind"`
+	HasPromptInjection  int     `zorm:"has_prompt_injection"`
+	HasShellInjection   int     `zorm:"has_shell_injection"`
+	HasDataExfiltration int     `zorm:"has_data_exfiltration"`
+	ScannerVersion      *string `zorm:"scanner_version"`
+	LLMStatus           *string `zorm:"llm_status"`
+	LLMVerdictJSON      *string `zorm:"llm_verdict_json"`
+	CreatedAt           *string `zorm:"created_at"`
+	UpdatedAt           *string `zorm:"updated_at"`
+}
+
+type securityReportWriteRow struct {
+	ID                  string    `zorm:"id"`
+	SkillVersionID      string    `zorm:"skill_version_id"`
+	SkillID             string    `zorm:"skill_id"`
+	Version             string    `zorm:"version"`
+	Score               int       `zorm:"score"`
+	RiskLevel           string    `zorm:"risk_level"`
+	SecurityBadge       string    `zorm:"security_badge"`
+	VulnerabilityStatus string    `zorm:"vulnerability_status"`
+	RisksJSON           string    `zorm:"risks_json"`
+	PermissionsJSON     string    `zorm:"permissions_json"`
+	SecretsJSON         string    `zorm:"secrets_json"`
+	VulnerabilitiesJSON string    `zorm:"vulnerabilities_json"`
+	InstallSurfaceJSON  string    `zorm:"install_surface_json"`
+	EvidenceJSON        string    `zorm:"evidence_json"`
+	ArtifactKind        string    `zorm:"artifact_kind"`
+	HasPromptInjection  int       `zorm:"has_prompt_injection"`
+	HasShellInjection   int       `zorm:"has_shell_injection"`
+	HasDataExfiltration int       `zorm:"has_data_exfiltration"`
+	ScannerVersion      string    `zorm:"scanner_version"`
+	LLMStatus           string    `zorm:"llm_status"`
+	LLMVerdictJSON      string    `zorm:"llm_verdict_json"`
+	CreatedAt           time.Time `zorm:"created_at"`
+	UpdatedAt           time.Time `zorm:"updated_at"`
+}
+
+type sourceRow struct {
+	ID                 string  `zorm:"id"`
+	Type               string  `zorm:"type"`
+	BaseURL            string  `zorm:"base_url"`
+	DisplayName        *string `zorm:"display_name"`
+	SourceGroup        *string `zorm:"source_group"`
+	MirrorOf           *string `zorm:"mirror_of"`
+	AuthMode           *string `zorm:"auth_mode"`
+	HeadersJSON        *string `zorm:"headers_json"`
+	Enabled            int     `zorm:"enabled"`
+	LastCursor         *string `zorm:"last_cursor"`
+	ETag               *string `zorm:"etag"`
+	RateLimitPerMinute int     `zorm:"rate_limit_per_minute"`
+	Priority           int     `zorm:"priority"`
+	LastSuccessAt      *string `zorm:"last_success_at"`
+	CreatedAt          *string `zorm:"created_at"`
+	UpdatedAt          *string `zorm:"updated_at"`
+}
+
+type installedSkillRow struct {
+	SkillID           string  `zorm:"skill_id"`
+	InstalledVersion  string  `zorm:"installed_version"`
+	Checksum          *string `zorm:"checksum"`
+	SourceURL         *string `zorm:"source_url"`
+	Enabled           int     `zorm:"enabled"`
+	AutoUpdate        int     `zorm:"auto_update"`
+	InstalledAt       *string `zorm:"installed_at"`
+	UpdatedAt         *string `zorm:"updated_at"`
+	LastSecurityScore int     `zorm:"last_security_score"`
+}
+
+type installedSkillListRow struct {
+	SkillID            string  `zorm:"skill_id"`
+	InstalledVersion   string  `zorm:"installed_version"`
+	Checksum           *string `zorm:"checksum"`
+	SourceURL          *string `zorm:"source_url"`
+	Enabled            int     `zorm:"enabled"`
+	AutoUpdate         int     `zorm:"auto_update"`
+	InstalledAt        *string `zorm:"installed_at"`
+	UpdatedAt          *string `zorm:"updated_at"`
+	LastSecurityScore  int     `zorm:"last_security_score"`
+	Name               *string `zorm:"name"`
+	LatestVersion      *string `zorm:"latest_version"`
+	LatestChecksum     *string `zorm:"latest_checksum"`
+	PendingUpdateState *string `zorm:"pending_update_state"`
+	SecurityBadge      *string `zorm:"security_badge"`
+}
+
+type availableUpdateRow struct {
+	SkillID         string  `zorm:"skill_id"`
+	CurrentVersion  string  `zorm:"current_version"`
+	LatestVersion   *string `zorm:"latest_version"`
+	CurrentChecksum *string `zorm:"current_checksum"`
+	LatestChecksum  *string `zorm:"latest_checksum"`
+	Action          *string `zorm:"action"`
+	CheckedAt       *string `zorm:"checked_at"`
+}
+
+type filterBucketRow struct {
+	Value string `zorm:"value"`
+	Count int    `zorm:"count"`
+}
+
+type categoryBucketRow struct {
+	Category string `zorm:"category"`
+	Count    int    `zorm:"count"`
+}
+
+type securityBadgeBucketRow struct {
+	SecurityBadge string `zorm:"security_badge"`
+	Count         int    `zorm:"count"`
+}
+
+type installTypeBucketRow struct {
+	InstallType string `zorm:"install_type"`
+	Count       int    `zorm:"count"`
+}
+
+type artifactKindBucketRow struct {
+	ArtifactKind string `zorm:"artifact_kind"`
+	Count        int    `zorm:"count"`
+}
+
+type filterSignalsRow struct {
+	Installable     int `zorm:"installable"`
+	ManualOnly      int `zorm:"manual_only"`
+	Vulnerabilities int `zorm:"vulnerabilities"`
+	Prompt          int `zorm:"prompt"`
+	Shell           int `zorm:"shell"`
+	Exfil           int `zorm:"exfil"`
+}
+
+type curationSyncStateRow struct {
+	ID            string  `zorm:"id"`
+	SourceURL     *string `zorm:"source_url"`
+	Checksum      *string `zorm:"checksum"`
+	LastSuccessAt *string `zorm:"last_success_at"`
+	LastError     *string `zorm:"last_error"`
+	UpdatedAt     *string `zorm:"updated_at"`
+}
+
+func nullableStringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func sourceFromRow(row sourceRow) Source {
+	src := Source{
+		ID:                 row.ID,
+		Type:               row.Type,
+		BaseURL:            row.BaseURL,
+		DisplayName:        nullableStringValue(row.DisplayName),
+		SourceGroup:        nullableStringValue(row.SourceGroup),
+		MirrorOf:           nullableStringValue(row.MirrorOf),
+		AuthMode:           nullableStringValue(row.AuthMode),
+		Enabled:            row.Enabled == 1,
+		LastCursor:         nullableStringValue(row.LastCursor),
+		ETag:               nullableStringValue(row.ETag),
+		RateLimitPerMinute: row.RateLimitPerMinute,
+		Priority:           row.Priority,
+		LastSuccessAt:      parseTime(nullableStringValue(row.LastSuccessAt)),
+		CreatedAt:          parseTime(nullableStringValue(row.CreatedAt)),
+		UpdatedAt:          parseTime(nullableStringValue(row.UpdatedAt)),
+	}
+	if raw := strings.TrimSpace(nullableStringValue(row.HeadersJSON)); raw != "" {
+		_ = json.Unmarshal([]byte(raw), &src.Headers)
+	}
+	return src
+}
+
+func skillDocumentFromRow(row skillDocumentRow) SkillDocument {
+	return SkillDocument{
+		ID:                  row.ID,
+		Slug:                row.Slug,
+		Name:                row.Name,
+		Description:         nullableStringValue(row.Description),
+		Author:              nullableStringValue(row.Author),
+		RepoURL:             nullableStringValue(row.RepoURL),
+		Homepage:            nullableStringValue(row.Homepage),
+		DownloadURL:         nullableStringValue(row.DownloadURL),
+		Stars:               row.Stars,
+		Downloads:           row.Downloads,
+		Tags:                decodeStrings(nullableStringValue(row.Tags)),
+		Category:            nullableStringValue(row.Category),
+		SecurityScore:       row.SecurityScore,
+		Permissions:         decodeStrings(nullableStringValue(row.Permissions)),
+		LatestVersion:       nullableStringValue(row.LatestVersion),
+		RiskLevel:           nullableStringValue(row.RiskLevel),
+		SecurityBadge:       nullableStringValue(row.SecurityBadge),
+		Installable:         row.Installable == 1,
+		InstallType:         nullableStringValue(row.InstallType),
+		ArtifactKind:        nullableStringValue(row.ArtifactKind),
+		VulnerabilityStatus: nullableStringValue(row.VulnerabilityStatus),
+		HasVulnerabilities:  row.HasVulnerabilities == 1,
+		HasPromptInjection:  row.HasPromptInjection == 1,
+		HasShellInjection:   row.HasShellInjection == 1,
+		HasDataExfiltration: row.HasDataExfiltration == 1,
+		HasBinary:           row.HasBinary == 1,
+		HasScripts:          row.HasScripts == 1,
+		PopularityScore:     row.PopularityScore,
+		TrendingScore:       row.TrendingScore,
+		ScanStatus:          nullableStringValue(row.ScanStatus),
+		ContentSHA256:       nullableStringValue(row.ContentSHA256),
+		Published:           row.Published == 1,
+		SourceID:            nullableStringValue(row.SourceID),
+		SourceName:          nullableStringValue(row.SourceName),
+		SourceGroup:         nullableStringValue(row.SourceGroup),
+		SourceType:          nullableStringValue(row.SourceType),
+		SkillPath:           nullableStringValue(row.SkillPath),
+		SkillContent:        nullableStringValue(row.SkillContent),
+		EmbeddingJSON:       nullableStringValue(row.EmbeddingJSON),
+		EmbeddingModel:      nullableStringValue(row.EmbeddingModel),
+		CuratedRank:         row.CuratedRank,
+		CuratedBoost:        row.CuratedBoost,
+		CuratedLabel:        nullableStringValue(row.CuratedLabel),
+		CuratedReason:       nullableStringValue(row.CuratedReason),
+		LastUpdated:         parseTime(nullableStringValue(row.LastUpdated)),
+		LastCrawledAt:       parseTime(nullableStringValue(row.LastCrawledAt)),
+		CreatedAt:           parseTime(nullableStringValue(row.CreatedAt)),
+		UpdatedAt:           parseTime(nullableStringValue(row.UpdatedAt)),
+	}
+}
+
+func skillDocumentWriteRowFromDoc(doc *SkillDocument) skillDocumentWriteRow {
+	return skillDocumentWriteRow{
+		ID:                  doc.ID,
+		Slug:                doc.Slug,
+		Name:                doc.Name,
+		Description:         doc.Description,
+		Author:              doc.Author,
+		RepoURL:             doc.RepoURL,
+		Homepage:            doc.Homepage,
+		DownloadURL:         doc.DownloadURL,
+		Stars:               doc.Stars,
+		Downloads:           doc.Downloads,
+		Tags:                encodeStrings(doc.Tags),
+		Category:            doc.Category,
+		SecurityScore:       doc.SecurityScore,
+		Permissions:         encodeStrings(doc.Permissions),
+		LatestVersion:       doc.LatestVersion,
+		RiskLevel:           doc.RiskLevel,
+		SecurityBadge:       doc.SecurityBadge,
+		Installable:         boolToInt(doc.Installable),
+		InstallType:         doc.InstallType,
+		ArtifactKind:        doc.ArtifactKind,
+		VulnerabilityStatus: doc.VulnerabilityStatus,
+		HasVulnerabilities:  boolToInt(doc.HasVulnerabilities),
+		HasPromptInjection:  boolToInt(doc.HasPromptInjection),
+		HasShellInjection:   boolToInt(doc.HasShellInjection),
+		HasDataExfiltration: boolToInt(doc.HasDataExfiltration),
+		HasBinary:           boolToInt(doc.HasBinary),
+		HasScripts:          boolToInt(doc.HasScripts),
+		PopularityScore:     doc.PopularityScore,
+		TrendingScore:       doc.TrendingScore,
+		ScanStatus:          doc.ScanStatus,
+		ContentSHA256:       doc.ContentSHA256,
+		Published:           boolToInt(doc.Published),
+		SourceID:            doc.SourceID,
+		SourceName:          doc.SourceName,
+		SourceGroup:         doc.SourceGroup,
+		SourceType:          doc.SourceType,
+		SkillPath:           doc.SkillPath,
+		SkillContent:        doc.SkillContent,
+		EmbeddingJSON:       doc.EmbeddingJSON,
+		EmbeddingModel:      doc.EmbeddingModel,
+		CuratedRank:         doc.CuratedRank,
+		CuratedBoost:        doc.CuratedBoost,
+		CuratedLabel:        doc.CuratedLabel,
+		CuratedReason:       doc.CuratedReason,
+		LastUpdated:         doc.LastUpdated,
+		LastCrawledAt:       doc.LastCrawledAt,
+		CreatedAt:           doc.CreatedAt,
+		UpdatedAt:           doc.UpdatedAt,
+	}
+}
+
+func skillVersionFromRow(row skillVersionRow) SkillVersion {
+	return SkillVersion{
+		ID:           row.ID,
+		SkillID:      row.SkillID,
+		Version:      row.Version,
+		CommitHash:   nullableStringValue(row.CommitHash),
+		SourceURL:    nullableStringValue(row.SourceURL),
+		Checksum:     nullableStringValue(row.Checksum),
+		SkillPath:    nullableStringValue(row.SkillPath),
+		RawSkillMD:   nullableStringValue(row.RawSkillMD),
+		ManifestJSON: nullableStringValue(row.ManifestJSON),
+		ReleasedAt:   parseTime(nullableStringValue(row.ReleasedAt)),
+		ScannedAt:    parseTime(nullableStringValue(row.ScannedAt)),
+		CreatedAt:    parseTime(nullableStringValue(row.CreatedAt)),
+		UpdatedAt:    parseTime(nullableStringValue(row.UpdatedAt)),
+	}
+}
+
+func skillVersionWriteRowFromVersion(version *SkillVersion) skillVersionWriteRow {
+	return skillVersionWriteRow{
+		ID:           version.ID,
+		SkillID:      version.SkillID,
+		Version:      version.Version,
+		CommitHash:   version.CommitHash,
+		SourceURL:    version.SourceURL,
+		Checksum:     version.Checksum,
+		SkillPath:    version.SkillPath,
+		RawSkillMD:   version.RawSkillMD,
+		ManifestJSON: version.ManifestJSON,
+		ReleasedAt:   version.ReleasedAt,
+		ScannedAt:    version.ScannedAt,
+		CreatedAt:    version.CreatedAt,
+		UpdatedAt:    version.UpdatedAt,
+	}
+}
+
+func securityReportFromRow(row securityReportRow) SecurityReport {
+	report := SecurityReport{
+		ID:                  row.ID,
+		SkillVersionID:      row.SkillVersionID,
+		SkillID:             row.SkillID,
+		Version:             row.Version,
+		Score:               row.Score,
+		RiskLevel:           nullableStringValue(row.RiskLevel),
+		SecurityBadge:       nullableStringValue(row.SecurityBadge),
+		VulnerabilityStatus: nullableStringValue(row.VulnerabilityStatus),
+		Risks:               decodeFindings(nullableStringValue(row.RisksJSON)),
+		Permissions:         decodeStrings(nullableStringValue(row.PermissionsJSON)),
+		Secrets:             decodeStrings(nullableStringValue(row.SecretsJSON)),
+		Vulnerabilities:     decodeStrings(nullableStringValue(row.VulnerabilitiesJSON)),
+		HasPromptInjection:  row.HasPromptInjection == 1,
+		HasShellInjection:   row.HasShellInjection == 1,
+		HasDataExfiltration: row.HasDataExfiltration == 1,
+		ScannerVersion:      nullableStringValue(row.ScannerVersion),
+		LLMStatus:           nullableStringValue(row.LLMStatus),
+		LLMVerdictJSON:      nullableStringValue(row.LLMVerdictJSON),
+		CreatedAt:           parseTime(nullableStringValue(row.CreatedAt)),
+		UpdatedAt:           parseTime(nullableStringValue(row.UpdatedAt)),
+	}
+	_ = json.Unmarshal([]byte(nullableStringValue(row.InstallSurfaceJSON)), &report.InstallSurface)
+	_ = json.Unmarshal([]byte(nullableStringValue(row.EvidenceJSON)), &report.Evidence)
+	if report.InstallSurface.ArtifactKind == "" {
+		report.InstallSurface.ArtifactKind = nullableStringValue(row.ArtifactKind)
+	}
+	return report
+}
+
+func securityReportWriteRowFromReport(report *SecurityReport) securityReportWriteRow {
+	return securityReportWriteRow{
+		ID:                  report.ID,
+		SkillVersionID:      report.SkillVersionID,
+		SkillID:             report.SkillID,
+		Version:             report.Version,
+		Score:               report.Score,
+		RiskLevel:           report.RiskLevel,
+		SecurityBadge:       report.SecurityBadge,
+		VulnerabilityStatus: report.VulnerabilityStatus,
+		RisksJSON:           encodeJSON(report.Risks),
+		PermissionsJSON:     encodeStrings(report.Permissions),
+		SecretsJSON:         encodeStrings(report.Secrets),
+		VulnerabilitiesJSON: encodeStrings(report.Vulnerabilities),
+		InstallSurfaceJSON:  encodeJSON(report.InstallSurface),
+		EvidenceJSON:        encodeJSON(report.Evidence),
+		ArtifactKind:        report.InstallSurface.ArtifactKind,
+		HasPromptInjection:  boolToInt(report.HasPromptInjection),
+		HasShellInjection:   boolToInt(report.HasShellInjection),
+		HasDataExfiltration: boolToInt(report.HasDataExfiltration),
+		ScannerVersion:      report.ScannerVersion,
+		LLMStatus:           report.LLMStatus,
+		LLMVerdictJSON:      report.LLMVerdictJSON,
+		CreatedAt:           report.CreatedAt,
+		UpdatedAt:           report.UpdatedAt,
+	}
+}
+
+func installedSkillFromRow(row installedSkillRow) InstalledSkill {
+	return InstalledSkill{
+		SkillID:           row.SkillID,
+		InstalledVersion:  row.InstalledVersion,
+		Checksum:          nullableStringValue(row.Checksum),
+		SourceURL:         nullableStringValue(row.SourceURL),
+		Enabled:           row.Enabled == 1,
+		AutoUpdate:        row.AutoUpdate == 1,
+		InstalledAt:       parseTime(nullableStringValue(row.InstalledAt)),
+		UpdatedAt:         parseTime(nullableStringValue(row.UpdatedAt)),
+		LastSecurityScore: row.LastSecurityScore,
+	}
+}
+
+func installedSkillListFromRow(row installedSkillListRow) InstalledSkill {
+	skill := InstalledSkill{
+		SkillID:            row.SkillID,
+		Name:               nullableStringValue(row.Name),
+		InstalledVersion:   row.InstalledVersion,
+		Checksum:           nullableStringValue(row.Checksum),
+		SourceURL:          nullableStringValue(row.SourceURL),
+		Enabled:            row.Enabled == 1,
+		AutoUpdate:         row.AutoUpdate == 1,
+		InstalledAt:        parseTime(nullableStringValue(row.InstalledAt)),
+		UpdatedAt:          parseTime(nullableStringValue(row.UpdatedAt)),
+		LastSecurityScore:  row.LastSecurityScore,
+		LatestVersion:      nullableStringValue(row.LatestVersion),
+		LatestChecksum:     nullableStringValue(row.LatestChecksum),
+		PendingUpdateState: nullableStringValue(row.PendingUpdateState),
+		SecurityBadge:      nullableStringValue(row.SecurityBadge),
+	}
+	skill.UpdateAvailable = skill.LatestVersion != "" && skill.LatestVersion != skill.InstalledVersion
+	return skill
+}
+
+func installedSkillListFromMapRow(row z.V) InstalledSkill {
+	skill := InstalledSkill{
+		SkillID:            skillmarketStringFromMapValue(row, "skill_id"),
+		Name:               skillmarketStringFromMapValue(row, "name"),
+		InstalledVersion:   skillmarketStringFromMapValue(row, "installed_version"),
+		Checksum:           skillmarketStringFromMapValue(row, "checksum"),
+		SourceURL:          skillmarketStringFromMapValue(row, "source_url"),
+		Enabled:            skillmarketIntFromMapValue(row, "enabled") == 1,
+		AutoUpdate:         skillmarketIntFromMapValue(row, "auto_update") == 1,
+		InstalledAt:        parseTime(skillmarketStringFromMapValue(row, "installed_at")),
+		UpdatedAt:          parseTime(skillmarketStringFromMapValue(row, "updated_at")),
+		LastSecurityScore:  skillmarketIntFromMapValue(row, "last_security_score"),
+		LatestVersion:      skillmarketStringFromMapValue(row, "latest_version"),
+		LatestChecksum:     skillmarketStringFromMapValue(row, "latest_checksum"),
+		PendingUpdateState: skillmarketStringFromMapValue(row, "pending_update_state"),
+		SecurityBadge:      skillmarketStringFromMapValue(row, "security_badge"),
+	}
+	skill.UpdateAvailable = skill.LatestVersion != "" && skill.LatestVersion != skill.InstalledVersion
+	return skill
+}
+
+func availableUpdateFromRow(row availableUpdateRow) AvailableUpdate {
+	return AvailableUpdate{
+		SkillID:         row.SkillID,
+		CurrentVersion:  row.CurrentVersion,
+		LatestVersion:   nullableStringValue(row.LatestVersion),
+		CurrentChecksum: nullableStringValue(row.CurrentChecksum),
+		LatestChecksum:  nullableStringValue(row.LatestChecksum),
+		Action:          nullableStringValue(row.Action),
+		CheckedAt:       parseTime(nullableStringValue(row.CheckedAt)),
+	}
+}
+
+func availableUpdateFromMapRow(row z.V) AvailableUpdate {
+	return AvailableUpdate{
+		SkillID:         skillmarketStringFromMapValue(row, "skill_id"),
+		CurrentVersion:  skillmarketStringFromMapValue(row, "current_version"),
+		LatestVersion:   skillmarketStringFromMapValue(row, "latest_version"),
+		CurrentChecksum: skillmarketStringFromMapValue(row, "current_checksum"),
+		LatestChecksum:  skillmarketStringFromMapValue(row, "latest_checksum"),
+		Action:          skillmarketStringFromMapValue(row, "action"),
+		CheckedAt:       parseTime(skillmarketStringFromMapValue(row, "checked_at")),
+	}
 }
 
 func supportsFTS5(db *sql.DB) bool {
@@ -438,30 +1114,28 @@ func (s *Store) initSchema() error {
 }
 
 func (s *Store) normalizeLegacyCategories(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(category, ''), COALESCE(tags, '[]'), COALESCE(skill_content, '') FROM skills`)
-	if err != nil {
+	var rows []skillCategoryNormalizationRow
+	if _, err := s.readTable(ctx, "skills").Select(&rows,
+		z.Fields("id", "category", "tags", "skill_content"),
+	); err != nil {
 		return err
 	}
-	defer rows.Close()
-
 	type update struct {
 		id       string
 		category string
 	}
-	updates := make([]update, 0)
-	for rows.Next() {
-		var id, category, tagsJSON, content string
-		if err := rows.Scan(&id, &category, &tagsJSON, &content); err != nil {
-			return err
-		}
-		normalized := normalizeCategory(category, content, decodeStrings(tagsJSON))
-		if normalized == "" || normalized == category {
+	updates := make([]update, 0, len(rows))
+	for i := range rows {
+		normalized := normalizeCategory(
+			nullableStringValue(rows[i].Category),
+			nullableStringValue(rows[i].SkillContent),
+			decodeStrings(nullableStringValue(rows[i].Tags)),
+		)
+		currentCategory := nullableStringValue(rows[i].Category)
+		if normalized == "" || normalized == currentCategory {
 			continue
 		}
-		updates = append(updates, update{id: id, category: normalized})
-	}
-	if err := rows.Err(); err != nil {
-		return err
+		updates = append(updates, update{id: rows[i].ID, category: normalized})
 	}
 	if len(updates) == 0 {
 		return nil
@@ -472,7 +1146,14 @@ func (s *Store) normalizeLegacyCategories(ctx context.Context) error {
 	}
 	defer tx.Rollback()
 	for _, item := range updates {
-		if _, err := tx.ExecContext(ctx, `UPDATE skills SET category = ?, updated_at = ? WHERE id = ?`, item.category, timeutil.NowTime(), item.id); err != nil {
+		if _, err := z.TableContext(ctx, tx, "skills").Update(
+			z.V{
+				"category":   item.category,
+				"updated_at": timeutil.NowTime(),
+			},
+			z.Fields("category", "updated_at"),
+			z.Where(z.Eq("id", item.id)),
+		); err != nil {
 			return err
 		}
 	}
@@ -780,27 +1461,23 @@ func (s *Store) applySkillCuration(ctx context.Context, tx *sql.Tx, doc *SkillDo
 	if doc == nil {
 		return nil
 	}
-	var hidden int
-	var featuredRank int
-	var boostWeight float64
-	var label, reason string
-	switch err := tx.QueryRowContext(ctx, `
-		SELECT hidden, featured_rank, boost_weight, COALESCE(label, ''), COALESCE(reason, '')
-		FROM skill_curations
-		WHERE skill_id = ?
-	`, doc.ID).Scan(&hidden, &featuredRank, &boostWeight, &label, &reason); err {
-	case nil:
-		doc.CuratedRank = featuredRank
-		doc.CuratedBoost = boostWeight
-		doc.CuratedLabel = label
-		doc.CuratedReason = reason
-		if hidden == 1 {
-			doc.Published = false
-		}
-	case sql.ErrNoRows:
-		return nil
-	default:
+	var rows []skillCurationRow
+	if _, err := z.TableContext(ctx, tx, "skill_curations").Select(&rows,
+		z.Fields("hidden", "featured_rank", "boost_weight", "label", "reason"),
+		z.Where(z.Eq("skill_id", doc.ID)),
+		z.Limit(1),
+	); err != nil {
 		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	doc.CuratedRank = rows[0].FeaturedRank
+	doc.CuratedBoost = rows[0].BoostWeight
+	doc.CuratedLabel = nullableStringValue(rows[0].Label)
+	doc.CuratedReason = nullableStringValue(rows[0].Reason)
+	if rows[0].Hidden == 1 {
+		doc.Published = false
 	}
 	return nil
 }
@@ -834,32 +1511,16 @@ func (s *Store) fetchExistingSkillIDs(ctx context.Context, tx *sql.Tx, records [
 			end = len(ids)
 		}
 		chunk := ids[start:end]
-		args := make([]interface{}, len(chunk))
-		for i, id := range chunk {
-			args[i] = id
-		}
-		rows, err := tx.QueryContext(ctx, `
-			SELECT id
-			FROM skills
-			WHERE id IN (`+placeholders(len(chunk))+`)`,
-			args...,
-		)
-		if err != nil {
+		var rows []skillIDRow
+		if _, err := z.TableContext(ctx, tx, "skills").Select(&rows,
+			z.Fields("id"),
+			z.Where(z.In("id", chunk)),
+		); err != nil {
 			return nil, err
 		}
-		for rows.Next() {
-			var id string
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			result[id] = struct{}{}
+		for i := range rows {
+			result[rows[i].ID] = struct{}{}
 		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		rows.Close()
 	}
 	return result, nil
 }
@@ -887,81 +1548,127 @@ func (s *Store) insertSkillDocsIgnore(ctx context.Context, tx *sql.Tx, records [
 	if len(records) == 0 {
 		return nil
 	}
-	const columnsPerRow = 48
-	for start := 0; start < len(records); start += maxRowsPerInsert(columnsPerRow) {
-		end := start + maxRowsPerInsert(columnsPerRow)
-		if end > len(records) {
-			end = len(records)
+	rows := make([]skillDocumentWriteRow, 0, len(records))
+	for _, record := range records {
+		if record == nil || record.Doc == nil {
+			continue
 		}
-		chunk := records[start:end]
-		args := make([]interface{}, 0, len(chunk)*columnsPerRow)
-		for _, record := range chunk {
-			doc := record.Doc
-			args = append(args,
-				doc.ID, doc.Slug, doc.Name, doc.Description, doc.Author, doc.RepoURL, doc.Homepage,
-				doc.DownloadURL, doc.Stars, doc.Downloads, encodeStrings(doc.Tags), doc.Category,
-				doc.SecurityScore, encodeStrings(doc.Permissions), doc.LatestVersion, doc.RiskLevel,
-				doc.SecurityBadge, boolToInt(doc.Installable), doc.InstallType, doc.ArtifactKind,
-				doc.VulnerabilityStatus, boolToInt(doc.HasVulnerabilities), boolToInt(doc.HasPromptInjection),
-				boolToInt(doc.HasShellInjection), boolToInt(doc.HasDataExfiltration), boolToInt(doc.HasBinary),
-				boolToInt(doc.HasScripts), doc.PopularityScore, doc.TrendingScore, doc.ScanStatus,
-				doc.ContentSHA256, boolToInt(doc.Published), doc.SourceID, doc.SourceName, doc.SourceGroup,
-				doc.SourceType, doc.SkillPath, doc.SkillContent, doc.EmbeddingJSON, doc.EmbeddingModel,
-				doc.CuratedRank, doc.CuratedBoost, doc.CuratedLabel, doc.CuratedReason, doc.LastUpdated,
-				doc.LastCrawledAt, doc.CreatedAt, doc.UpdatedAt,
-			)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT OR IGNORE INTO skills (
-				id, slug, name, description, author, repo_url, homepage, download_url, stars, downloads, tags, category,
-				security_score, permissions, latest_version, risk_level, security_badge, installable, install_type,
-				artifact_kind, vulnerability_status, has_vulnerabilities, has_prompt_injection, has_shell_injection,
-				has_data_exfiltration, has_binary, has_scripts, popularity_score, trending_score, scan_status,
-				content_sha256, published, source_id, source_name, source_group, source_type, skill_path,
-				skill_content, embedding_json, embedding_model, curated_rank, curated_boost, curated_label,
-				curated_reason, last_updated, last_crawled_at, created_at, updated_at
-			) VALUES `+groupedPlaceholders(len(chunk), columnsPerRow),
-			args...,
-		); err != nil {
-			return err
-		}
+		rows = append(rows, skillDocumentWriteRowFromDoc(record.Doc))
 	}
-	return nil
+	if len(rows) == 0 {
+		return nil
+	}
+	_, err := z.TableContext(ctx, tx, "skills").InsertIgnore(&rows)
+	return err
 }
 
 func (s *Store) updateSkillDocs(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
 	if len(records) == 0 {
 		return nil
 	}
-	stmt, err := tx.PrepareContext(ctx, `
-		UPDATE skills SET
-			slug=?, name=?, description=?, author=?, repo_url=?, homepage=?, download_url=?, stars=?, downloads=?, tags=?, category=?,
-			security_score=?, permissions=?, latest_version=?, risk_level=?, security_badge=?, installable=?, install_type=?,
-			artifact_kind=?, vulnerability_status=?, has_vulnerabilities=?, has_prompt_injection=?, has_shell_injection=?,
-			has_data_exfiltration=?, has_binary=?, has_scripts=?, popularity_score=?, trending_score=?, scan_status=?,
-			content_sha256=?, published=?, source_id=?, source_name=?, source_group=?, source_type=?, skill_path=?,
-			skill_content=?, embedding_json=?, embedding_model=?, curated_rank=?, curated_boost=?, curated_label=?,
-			curated_reason=?, last_updated=?, last_crawled_at=?, updated_at=?
-		WHERE id = ?
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
 	for _, record := range records {
+		if record == nil || record.Doc == nil {
+			continue
+		}
 		doc := record.Doc
-		if _, err := stmt.ExecContext(ctx,
-			doc.Slug, doc.Name, doc.Description, doc.Author, doc.RepoURL, doc.Homepage, doc.DownloadURL,
-			doc.Stars, doc.Downloads, encodeStrings(doc.Tags), doc.Category, doc.SecurityScore,
-			encodeStrings(doc.Permissions), doc.LatestVersion, doc.RiskLevel, doc.SecurityBadge,
-			boolToInt(doc.Installable), doc.InstallType, doc.ArtifactKind, doc.VulnerabilityStatus,
-			boolToInt(doc.HasVulnerabilities), boolToInt(doc.HasPromptInjection), boolToInt(doc.HasShellInjection),
-			boolToInt(doc.HasDataExfiltration), boolToInt(doc.HasBinary), boolToInt(doc.HasScripts),
-			doc.PopularityScore, doc.TrendingScore, doc.ScanStatus, doc.ContentSHA256, boolToInt(doc.Published),
-			doc.SourceID, doc.SourceName, doc.SourceGroup, doc.SourceType, doc.SkillPath, doc.SkillContent,
-			doc.EmbeddingJSON, doc.EmbeddingModel, doc.CuratedRank, doc.CuratedBoost, doc.CuratedLabel,
-			doc.CuratedReason, doc.LastUpdated, doc.LastCrawledAt, doc.UpdatedAt, doc.ID,
+		if _, err := z.TableContext(ctx, tx, "skills").Update(
+			z.V{
+				"slug":                  doc.Slug,
+				"name":                  doc.Name,
+				"description":           doc.Description,
+				"author":                doc.Author,
+				"repo_url":              doc.RepoURL,
+				"homepage":              doc.Homepage,
+				"download_url":          doc.DownloadURL,
+				"stars":                 doc.Stars,
+				"downloads":             doc.Downloads,
+				"tags":                  encodeStrings(doc.Tags),
+				"category":              doc.Category,
+				"security_score":        doc.SecurityScore,
+				"permissions":           encodeStrings(doc.Permissions),
+				"latest_version":        doc.LatestVersion,
+				"risk_level":            doc.RiskLevel,
+				"security_badge":        doc.SecurityBadge,
+				"installable":           boolToInt(doc.Installable),
+				"install_type":          doc.InstallType,
+				"artifact_kind":         doc.ArtifactKind,
+				"vulnerability_status":  doc.VulnerabilityStatus,
+				"has_vulnerabilities":   boolToInt(doc.HasVulnerabilities),
+				"has_prompt_injection":  boolToInt(doc.HasPromptInjection),
+				"has_shell_injection":   boolToInt(doc.HasShellInjection),
+				"has_data_exfiltration": boolToInt(doc.HasDataExfiltration),
+				"has_binary":            boolToInt(doc.HasBinary),
+				"has_scripts":           boolToInt(doc.HasScripts),
+				"popularity_score":      doc.PopularityScore,
+				"trending_score":        doc.TrendingScore,
+				"scan_status":           doc.ScanStatus,
+				"content_sha256":        doc.ContentSHA256,
+				"published":             boolToInt(doc.Published),
+				"source_id":             doc.SourceID,
+				"source_name":           doc.SourceName,
+				"source_group":          doc.SourceGroup,
+				"source_type":           doc.SourceType,
+				"skill_path":            doc.SkillPath,
+				"skill_content":         doc.SkillContent,
+				"embedding_json":        doc.EmbeddingJSON,
+				"embedding_model":       doc.EmbeddingModel,
+				"curated_rank":          doc.CuratedRank,
+				"curated_boost":         doc.CuratedBoost,
+				"curated_label":         doc.CuratedLabel,
+				"curated_reason":        doc.CuratedReason,
+				"last_updated":          doc.LastUpdated,
+				"last_crawled_at":       doc.LastCrawledAt,
+				"updated_at":            doc.UpdatedAt,
+			},
+			z.Fields(
+				"slug",
+				"name",
+				"description",
+				"author",
+				"repo_url",
+				"homepage",
+				"download_url",
+				"stars",
+				"downloads",
+				"tags",
+				"category",
+				"security_score",
+				"permissions",
+				"latest_version",
+				"risk_level",
+				"security_badge",
+				"installable",
+				"install_type",
+				"artifact_kind",
+				"vulnerability_status",
+				"has_vulnerabilities",
+				"has_prompt_injection",
+				"has_shell_injection",
+				"has_data_exfiltration",
+				"has_binary",
+				"has_scripts",
+				"popularity_score",
+				"trending_score",
+				"scan_status",
+				"content_sha256",
+				"published",
+				"source_id",
+				"source_name",
+				"source_group",
+				"source_type",
+				"skill_path",
+				"skill_content",
+				"embedding_json",
+				"embedding_model",
+				"curated_rank",
+				"curated_boost",
+				"curated_label",
+				"curated_reason",
+				"last_updated",
+				"last_crawled_at",
+				"updated_at",
+			),
+			z.Where(z.Eq("id", doc.ID)),
 		); err != nil {
 			return err
 		}
@@ -997,32 +1704,16 @@ func (s *Store) fetchExistingVersionIDs(ctx context.Context, tx *sql.Tx, records
 			end = len(skillIDs)
 		}
 		chunk := skillIDs[start:end]
-		args := make([]interface{}, len(chunk))
-		for i, id := range chunk {
-			args[i] = id
-		}
-		rows, err := tx.QueryContext(ctx, `
-			SELECT id, skill_id, version
-			FROM skill_versions
-			WHERE skill_id IN (`+placeholders(len(chunk))+`)`,
-			args...,
-		)
-		if err != nil {
+		var rows []skillVersionLookupRow
+		if _, err := z.TableContext(ctx, tx, "skill_versions").Select(&rows,
+			z.Fields("id", "skill_id", "version"),
+			z.Where(z.In("skill_id", chunk)),
+		); err != nil {
 			return nil, err
 		}
-		for rows.Next() {
-			var id, skillID, version string
-			if err := rows.Scan(&id, &skillID, &version); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			result[skillVersionKey(skillID, version)] = id
+		for i := range rows {
+			result[skillVersionKey(rows[i].SkillID, rows[i].Version)] = rows[i].ID
 		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		rows.Close()
 	}
 	return result, nil
 }
@@ -1031,56 +1722,53 @@ func (s *Store) insertSkillVersionsIgnore(ctx context.Context, tx *sql.Tx, recor
 	if len(records) == 0 {
 		return nil
 	}
-	const columnsPerRow = 13
-	for start := 0; start < len(records); start += maxRowsPerInsert(columnsPerRow) {
-		end := start + maxRowsPerInsert(columnsPerRow)
-		if end > len(records) {
-			end = len(records)
+	rows := make([]skillVersionWriteRow, 0, len(records))
+	for _, record := range records {
+		if record == nil || record.Version == nil {
+			continue
 		}
-		chunk := records[start:end]
-		args := make([]interface{}, 0, len(chunk)*columnsPerRow)
-		for _, record := range chunk {
-			version := record.Version
-			args = append(args,
-				version.ID, version.SkillID, version.Version, version.CommitHash, version.SourceURL,
-				version.Checksum, version.SkillPath, version.RawSkillMD, version.ManifestJSON,
-				version.ReleasedAt, version.ScannedAt, version.CreatedAt, version.UpdatedAt,
-			)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT OR IGNORE INTO skill_versions (
-				id, skill_id, version, commit_hash, source_url, checksum, skill_path,
-				raw_skill_md, manifest_json, released_at, scanned_at, created_at, updated_at
-			) VALUES `+groupedPlaceholders(len(chunk), columnsPerRow),
-			args...,
-		); err != nil {
-			return err
-		}
+		rows = append(rows, skillVersionWriteRowFromVersion(record.Version))
 	}
-	return nil
+	if len(rows) == 0 {
+		return nil
+	}
+	_, err := z.TableContext(ctx, tx, "skill_versions").InsertIgnore(&rows)
+	return err
 }
 
 func (s *Store) updateSkillVersions(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
 	if len(records) == 0 {
 		return nil
 	}
-	stmt, err := tx.PrepareContext(ctx, `
-		UPDATE skill_versions SET
-			commit_hash=?, source_url=?, checksum=?, skill_path=?, raw_skill_md=?, manifest_json=?,
-			released_at=?, scanned_at=?, updated_at=?
-		WHERE skill_id = ? AND version = ?
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
 	for _, record := range records {
+		if record == nil || record.Version == nil {
+			continue
+		}
 		version := record.Version
-		if _, err := stmt.ExecContext(ctx,
-			version.CommitHash, version.SourceURL, version.Checksum, version.SkillPath,
-			version.RawSkillMD, version.ManifestJSON, version.ReleasedAt, version.ScannedAt,
-			version.UpdatedAt, version.SkillID, version.Version,
+		if _, err := z.TableContext(ctx, tx, "skill_versions").Update(
+			z.V{
+				"commit_hash":   version.CommitHash,
+				"source_url":    version.SourceURL,
+				"checksum":      version.Checksum,
+				"skill_path":    version.SkillPath,
+				"raw_skill_md":  version.RawSkillMD,
+				"manifest_json": version.ManifestJSON,
+				"released_at":   version.ReleasedAt,
+				"scanned_at":    version.ScannedAt,
+				"updated_at":    version.UpdatedAt,
+			},
+			z.Fields(
+				"commit_hash",
+				"source_url",
+				"checksum",
+				"skill_path",
+				"raw_skill_md",
+				"manifest_json",
+				"released_at",
+				"scanned_at",
+				"updated_at",
+			),
+			z.Where(z.Eq("skill_id", version.SkillID), z.Eq("version", version.Version)),
 		); err != nil {
 			return err
 		}
@@ -1112,32 +1800,16 @@ func (s *Store) fetchExistingReportIDs(ctx context.Context, tx *sql.Tx, records 
 			end = len(versionIDs)
 		}
 		chunk := versionIDs[start:end]
-		args := make([]interface{}, len(chunk))
-		for i, id := range chunk {
-			args[i] = id
-		}
-		rows, err := tx.QueryContext(ctx, `
-			SELECT id, skill_version_id
-			FROM skill_security_reports
-			WHERE skill_version_id IN (`+placeholders(len(chunk))+`)`,
-			args...,
-		)
-		if err != nil {
+		var rows []skillReportLookupRow
+		if _, err := z.TableContext(ctx, tx, "skill_security_reports").Select(&rows,
+			z.Fields("id", "skill_version_id"),
+			z.Where(z.In("skill_version_id", chunk)),
+		); err != nil {
 			return nil, err
 		}
-		for rows.Next() {
-			var id, skillVersionID string
-			if err := rows.Scan(&id, &skillVersionID); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			result[skillVersionID] = id
+		for i := range rows {
+			result[rows[i].SkillVersionID] = rows[i].ID
 		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		rows.Close()
 	}
 	return result, nil
 }
@@ -1146,67 +1818,71 @@ func (s *Store) insertSkillReportsIgnore(ctx context.Context, tx *sql.Tx, record
 	if len(records) == 0 {
 		return nil
 	}
-	const columnsPerRow = 23
-	for start := 0; start < len(records); start += maxRowsPerInsert(columnsPerRow) {
-		end := start + maxRowsPerInsert(columnsPerRow)
-		if end > len(records) {
-			end = len(records)
+	rows := make([]securityReportWriteRow, 0, len(records))
+	for _, record := range records {
+		if record == nil || record.Report == nil {
+			continue
 		}
-		chunk := records[start:end]
-		args := make([]interface{}, 0, len(chunk)*columnsPerRow)
-		for _, record := range chunk {
-			report := record.Report
-			args = append(args,
-				report.ID, report.SkillVersionID, report.SkillID, report.Version, report.Score,
-				report.RiskLevel, report.SecurityBadge, report.VulnerabilityStatus, encodeJSON(report.Risks),
-				encodeStrings(report.Permissions), encodeStrings(report.Secrets), encodeStrings(report.Vulnerabilities),
-				encodeJSON(report.InstallSurface), encodeJSON(report.Evidence), report.InstallSurface.ArtifactKind,
-				boolToInt(report.HasPromptInjection), boolToInt(report.HasShellInjection), boolToInt(report.HasDataExfiltration),
-				report.ScannerVersion, report.LLMStatus, report.LLMVerdictJSON, report.CreatedAt, report.UpdatedAt,
-			)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT OR IGNORE INTO skill_security_reports (
-				id, skill_version_id, skill_id, version, score, risk_level, security_badge,
-				vulnerability_status, risks_json, permissions_json, secrets_json, vulnerabilities_json,
-				install_surface_json, evidence_json, artifact_kind, has_prompt_injection,
-				has_shell_injection, has_data_exfiltration, scanner_version,
-				llm_status, llm_verdict_json, created_at, updated_at
-			) VALUES `+groupedPlaceholders(len(chunk), columnsPerRow),
-			args...,
-		); err != nil {
-			return err
-		}
+		rows = append(rows, securityReportWriteRowFromReport(record.Report))
 	}
-	return nil
+	if len(rows) == 0 {
+		return nil
+	}
+	_, err := z.TableContext(ctx, tx, "skill_security_reports").InsertIgnore(&rows)
+	return err
 }
 
 func (s *Store) updateSkillReports(ctx context.Context, tx *sql.Tx, records []*SkillUpsertRecord) error {
 	if len(records) == 0 {
 		return nil
 	}
-	stmt, err := tx.PrepareContext(ctx, `
-		UPDATE skill_security_reports SET
-			score=?, risk_level=?, security_badge=?, vulnerability_status=?, risks_json=?, permissions_json=?,
-			secrets_json=?, vulnerabilities_json=?, install_surface_json=?, evidence_json=?, artifact_kind=?,
-			has_prompt_injection=?, has_shell_injection=?, has_data_exfiltration=?, scanner_version=?,
-			llm_status=?, llm_verdict_json=?, updated_at=?
-		WHERE skill_version_id = ?
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
 	for _, record := range records {
+		if record == nil || record.Report == nil {
+			continue
+		}
 		report := record.Report
-		if _, err := stmt.ExecContext(ctx,
-			report.Score, report.RiskLevel, report.SecurityBadge, report.VulnerabilityStatus,
-			encodeJSON(report.Risks), encodeStrings(report.Permissions), encodeStrings(report.Secrets),
-			encodeStrings(report.Vulnerabilities), encodeJSON(report.InstallSurface), encodeJSON(report.Evidence),
-			report.InstallSurface.ArtifactKind, boolToInt(report.HasPromptInjection), boolToInt(report.HasShellInjection),
-			boolToInt(report.HasDataExfiltration), report.ScannerVersion, report.LLMStatus,
-			report.LLMVerdictJSON, report.UpdatedAt, report.SkillVersionID,
+		if _, err := z.TableContext(ctx, tx, "skill_security_reports").Update(
+			z.V{
+				"score":                 report.Score,
+				"risk_level":            report.RiskLevel,
+				"security_badge":        report.SecurityBadge,
+				"vulnerability_status":  report.VulnerabilityStatus,
+				"risks_json":            encodeJSON(report.Risks),
+				"permissions_json":      encodeStrings(report.Permissions),
+				"secrets_json":          encodeStrings(report.Secrets),
+				"vulnerabilities_json":  encodeStrings(report.Vulnerabilities),
+				"install_surface_json":  encodeJSON(report.InstallSurface),
+				"evidence_json":         encodeJSON(report.Evidence),
+				"artifact_kind":         report.InstallSurface.ArtifactKind,
+				"has_prompt_injection":  boolToInt(report.HasPromptInjection),
+				"has_shell_injection":   boolToInt(report.HasShellInjection),
+				"has_data_exfiltration": boolToInt(report.HasDataExfiltration),
+				"scanner_version":       report.ScannerVersion,
+				"llm_status":            report.LLMStatus,
+				"llm_verdict_json":      report.LLMVerdictJSON,
+				"updated_at":            report.UpdatedAt,
+			},
+			z.Fields(
+				"score",
+				"risk_level",
+				"security_badge",
+				"vulnerability_status",
+				"risks_json",
+				"permissions_json",
+				"secrets_json",
+				"vulnerabilities_json",
+				"install_surface_json",
+				"evidence_json",
+				"artifact_kind",
+				"has_prompt_injection",
+				"has_shell_injection",
+				"has_data_exfiltration",
+				"scanner_version",
+				"llm_status",
+				"llm_verdict_json",
+				"updated_at",
+			),
+			z.Where(z.Eq("skill_version_id", report.SkillVersionID)),
 		); err != nil {
 			return err
 		}
@@ -1218,20 +1894,18 @@ func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomi
 	if strings.TrimSpace(skillID) == "" {
 		return true, nil
 	}
-	var existingSourceID string
-	err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(source_id, '')
-		FROM skills
-		WHERE id = ?
-		LIMIT 1
-	`, skillID).Scan(&existingSourceID)
-	if err == sql.ErrNoRows {
-		return true, nil
-	}
-	if err != nil {
+	var rows []skillSourceIDRow
+	if _, err := z.TableContext(ctx, tx, "skills").Select(&rows,
+		z.Fields("source_id"),
+		z.Where(z.Eq("id", skillID)),
+		z.Limit(1),
+	); err != nil {
 		return false, err
 	}
-	existingSourceID = strings.TrimSpace(existingSourceID)
+	if len(rows) == 0 {
+		return true, nil
+	}
+	existingSourceID := strings.TrimSpace(nullableStringValue(rows[0].SourceID))
 	incomingSourceID = strings.TrimSpace(incomingSourceID)
 	if existingSourceID == "" || incomingSourceID == "" || existingSourceID == incomingSourceID {
 		return true, nil
@@ -1252,20 +1926,18 @@ func lookupSourcePriority(ctx context.Context, tx *sql.Tx, sourceID string) (int
 	if strings.TrimSpace(sourceID) == "" {
 		return math.MaxInt32, nil
 	}
-	var priority int
-	err := tx.QueryRowContext(ctx, `
-		SELECT priority
-		FROM skill_sources
-		WHERE id = ?
-		LIMIT 1
-	`, sourceID).Scan(&priority)
-	if err == sql.ErrNoRows {
-		return math.MaxInt32, nil
-	}
-	if err != nil {
+	var rows []sourcePriorityRow
+	if _, err := z.TableContext(ctx, tx, "skill_sources").Select(&rows,
+		z.Fields("priority"),
+		z.Where(z.Eq("id", sourceID)),
+		z.Limit(1),
+	); err != nil {
 		return 0, err
 	}
-	return priority, nil
+	if len(rows) == 0 {
+		return math.MaxInt32, nil
+	}
+	return rows[0].Priority, nil
 }
 
 func (s *Store) UpsertSource(ctx context.Context, source Source) error {
@@ -1274,64 +1946,77 @@ func (s *Store) UpsertSource(ctx context.Context, source Source) error {
 		source.CreatedAt = now
 	}
 	source.UpdatedAt = now
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO skill_sources (
-			id, type, base_url, display_name, source_group, mirror_of, auth_mode, headers_json, enabled, last_cursor, etag,
-			rate_limit_per_minute, priority, last_success_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			type=excluded.type,
-			base_url=excluded.base_url,
-			display_name=excluded.display_name,
-			source_group=excluded.source_group,
-			mirror_of=excluded.mirror_of,
-			auth_mode=excluded.auth_mode,
-			headers_json=excluded.headers_json,
-			enabled=excluded.enabled,
-			last_cursor=excluded.last_cursor,
-			etag=excluded.etag,
-			rate_limit_per_minute=excluded.rate_limit_per_minute,
-			priority=excluded.priority,
-			last_success_at=excluded.last_success_at,
-			updated_at=excluded.updated_at
-	`, source.ID, source.Type, source.BaseURL, source.DisplayName, source.SourceGroup, source.MirrorOf,
-		source.AuthMode, encodeJSON(source.Headers), boolToInt(source.Enabled), source.LastCursor, source.ETag,
-		source.RateLimitPerMinute, source.Priority, nullTime(source.LastSuccessAt), source.CreatedAt, source.UpdatedAt,
+	_, err := s.table(ctx, "skill_sources").Insert(
+		z.V{
+			"id":                    source.ID,
+			"type":                  source.Type,
+			"base_url":              source.BaseURL,
+			"display_name":          source.DisplayName,
+			"source_group":          source.SourceGroup,
+			"mirror_of":             source.MirrorOf,
+			"auth_mode":             source.AuthMode,
+			"headers_json":          encodeJSON(source.Headers),
+			"enabled":               boolToInt(source.Enabled),
+			"last_cursor":           source.LastCursor,
+			"etag":                  source.ETag,
+			"rate_limit_per_minute": source.RateLimitPerMinute,
+			"priority":              source.Priority,
+			"last_success_at":       nullTime(source.LastSuccessAt),
+			"created_at":            source.CreatedAt,
+			"updated_at":            source.UpdatedAt,
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"id"},
+			[]string{
+				"type",
+				"base_url",
+				"display_name",
+				"source_group",
+				"mirror_of",
+				"auth_mode",
+				"headers_json",
+				"enabled",
+				"last_cursor",
+				"etag",
+				"rate_limit_per_minute",
+				"priority",
+				"last_success_at",
+				"updated_at",
+			},
+		),
 	)
 	return err
 }
 
 func (s *Store) ListSources(ctx context.Context) ([]Source, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, type, base_url, COALESCE(display_name, ''), COALESCE(source_group, ''), COALESCE(mirror_of, ''),
-			auth_mode, COALESCE(headers_json, '{}'), enabled, last_cursor, etag,
-			rate_limit_per_minute, priority, COALESCE(last_success_at, ''), created_at, updated_at
-		FROM skill_sources
-		WHERE enabled = 1
-		ORDER BY priority ASC, id ASC
-	`)
-	if err != nil {
+	var rows []sourceRow
+	if _, err := s.readTable(ctx, "skill_sources").Select(&rows,
+		z.Fields(
+			"id",
+			"type",
+			"base_url",
+			"display_name",
+			"source_group",
+			"mirror_of",
+			"auth_mode",
+			"headers_json",
+			"enabled",
+			"last_cursor",
+			"etag",
+			"rate_limit_per_minute",
+			"priority",
+			"last_success_at",
+			"created_at",
+			"updated_at",
+		),
+		z.Where(z.Eq("enabled", 1)),
+		z.OrderBy("priority ASC", "id ASC"),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var result []Source
-	for rows.Next() {
-		var src Source
-		var enabled int
-		var headersJSON, lastSuccess, createdAt, updatedAt string
-		if err := rows.Scan(&src.ID, &src.Type, &src.BaseURL, &src.DisplayName, &src.SourceGroup, &src.MirrorOf,
-			&src.AuthMode, &headersJSON, &enabled, &src.LastCursor, &src.ETag, &src.RateLimitPerMinute, &src.Priority,
-			&lastSuccess, &createdAt, &updatedAt,
-		); err != nil {
-			return nil, err
-		}
-		src.Enabled = enabled == 1
-		_ = json.Unmarshal([]byte(headersJSON), &src.Headers)
-		src.LastSuccessAt = parseTime(lastSuccess)
-		src.CreatedAt = parseTime(createdAt)
-		src.UpdatedAt = parseTime(updatedAt)
-		result = append(result, src)
+	result := make([]Source, 0, len(rows))
+	for i := range rows {
+		result = append(result, sourceFromRow(rows[i]))
 	}
 	return result, nil
 }
@@ -1343,10 +2028,15 @@ func (s *Store) BeginCrawlRun(ctx context.Context, sourceID string) (*CrawlRun, 
 		Status:    "in_progress",
 		StartedAt: timeutil.NowTime(),
 	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO crawl_runs (id, source_id, status, discovered, updated, failed, started_at)
-		VALUES (?, ?, ?, 0, 0, 0, ?)
-	`, run.ID, run.SourceID, run.Status, run.StartedAt)
+	_, err := s.table(ctx, "crawl_runs").Insert(z.V{
+		"id":         run.ID,
+		"source_id":  run.SourceID,
+		"status":     run.Status,
+		"discovered": 0,
+		"updated":    0,
+		"failed":     0,
+		"started_at": run.StartedAt,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1355,20 +2045,30 @@ func (s *Store) BeginCrawlRun(ctx context.Context, sourceID string) (*CrawlRun, 
 
 func (s *Store) CompleteCrawlRun(ctx context.Context, run *CrawlRun) error {
 	run.FinishedAt = timeutil.NowTime()
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE crawl_runs
-		SET status = ?, discovered = ?, updated = ?, failed = ?, finished_at = ?, error_text = ?
-		WHERE id = ?
-	`, run.Status, run.Discovered, run.Updated, run.Failed, run.FinishedAt, run.ErrorText, run.ID)
+	_, err := s.table(ctx, "crawl_runs").Update(
+		z.V{
+			"status":      run.Status,
+			"discovered":  run.Discovered,
+			"updated":     run.Updated,
+			"failed":      run.Failed,
+			"finished_at": run.FinishedAt,
+			"error_text":  run.ErrorText,
+		},
+		z.Fields("status", "discovered", "updated", "failed", "finished_at", "error_text"),
+		z.Where(z.Eq("id", run.ID)),
+	)
 	if err != nil {
 		return err
 	}
 	if run.Status == "success" {
-		_, _ = s.db.ExecContext(ctx, `
-			UPDATE skill_sources
-			SET last_success_at = ?, updated_at = ?
-			WHERE id = ?
-		`, run.FinishedAt, run.FinishedAt, run.SourceID)
+		_, _ = s.table(ctx, "skill_sources").Update(
+			z.V{
+				"last_success_at": run.FinishedAt,
+				"updated_at":      run.FinishedAt,
+			},
+			z.Fields("last_success_at", "updated_at"),
+			z.Where(z.Eq("id", run.SourceID)),
+		)
 	}
 	return nil
 }
@@ -1386,21 +2086,34 @@ func (s *Store) Search(ctx context.Context, query SearchQuery) (*SearchResponse,
 	var total int
 	switch {
 	case searching && s.ftsEnabled:
-		countArgs := []interface{}{escapeFTSQuery(query.Query)}
-		countArgs = append(countArgs, args...)
-		countSQL := `SELECT COUNT(*) FROM skills s JOIN skillmarket_fts ON skillmarket_fts.rowid = s.rowid WHERE skillmarket_fts MATCH ?` + strings.TrimPrefix(whereClause, " WHERE s.published = 1")
-		if err := s.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		var rows []z.V
+		if _, err := s.readTable(ctx, "skills s").Select(&rows,
+			z.Fields("COUNT(*) AS total"),
+			z.InnerJoin("skillmarket_fts", z.Expr("skillmarket_fts.rowid = s.rowid")),
+			buildSkillFTSWhere(whereClause, args, escapeFTSQuery(query.Query)),
+			z.Limit(1),
+		); err != nil {
 			return nil, err
 		}
+		if len(rows) > 0 {
+			total = skillmarketIntFromMapValue(rows[0], "total")
+		}
 	case searching:
-		countArgs := fallbackSearchFilterArgs(args, query.Query)
-		countSQL := `SELECT COUNT(*) FROM skills s` + whereClause + fallbackSearchFilter("s")
-		if err := s.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		countWhere, countArgs := buildSearchWhereClause("s", whereClause, args, true, query.Query)
+		countOpts := []z.ZormItem{z.Fields("count(1)")}
+		if countWhere != "" {
+			countOpts = append(countOpts, z.Where(append([]interface{}{countWhere}, countArgs...)...))
+		}
+		if _, err := s.readTable(ctx, "skills s").Select(&total, countOpts...); err != nil {
 			return nil, err
 		}
 	default:
-		countSQL := `SELECT COUNT(*) FROM skills s` + whereClause
-		if err := s.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+		countWhere, countArgs := buildSearchWhereClause("s", whereClause, args, false, query.Query)
+		countOpts := []z.ZormItem{z.Fields("count(1)")}
+		if countWhere != "" {
+			countOpts = append(countOpts, z.Where(append([]interface{}{countWhere}, countArgs...)...))
+		}
+		if _, err := s.readTable(ctx, "skills s").Select(&total, countOpts...); err != nil {
 			return nil, err
 		}
 	}
@@ -1411,47 +2124,36 @@ func (s *Store) Search(ctx context.Context, query SearchQuery) (*SearchResponse,
 	results := make([]SearchResult, 0, query.PageSize)
 
 	if !searching || !s.ftsEnabled {
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT `+skillSelectColumns("s")+`
-			FROM skills s`+whereClause+fallbackSearchFilterMaybe("s", searching)+` ORDER BY `+fallbackSearchOrder("s", searching, sortBy)+` LIMIT ? OFFSET ?`,
-			append(fallbackSearchArgs(args, query.Query), query.PageSize, offset)...,
-		)
-		if err != nil {
+		searchWhere, searchArgs := buildSearchWhereClause("s", whereClause, args, searching, query.Query)
+		searchOpts := []z.ZormItem{
+			z.OrderBy(fallbackSearchOrder("s", searching, sortBy, query.Query)),
+			z.Limit(query.PageSize, offset),
+		}
+		if searchWhere != "" {
+			searchOpts = append([]z.ZormItem{z.Where(append([]interface{}{searchWhere}, searchArgs...)...)}, searchOpts...)
+		}
+		var rows []skillDocumentRow
+		if _, err := s.readTable(ctx, "skills s").Select(&rows, searchOpts...); err != nil {
 			return nil, err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			doc, err := scanSkillDocument(rows)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, SearchResult{Skill: *doc, Score: doc.TrendingScore, MatchSource: "rank"})
+		for i := range rows {
+			doc := skillDocumentFromRow(rows[i])
+			results = append(results, SearchResult{Skill: doc, Score: doc.TrendingScore, MatchSource: "rank"})
 		}
 	} else {
 		ftsQuery := escapeFTSQuery(query.Query)
-		ftsArgs := []interface{}{ftsQuery}
-		ftsArgs = append(ftsArgs, args...)
-		ftsArgs = append(ftsArgs, query.PageSize, offset)
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT `+skillSelectColumns("s")+`,
-				-bm25(skillmarket_fts, 10.0, 6.0, 2.0, 1.0, 1.0, 1.0, 0.5) +
-				((s.trending_score + s.curated_boost) * 0.05) AS score
-			FROM skills s
-			JOIN skillmarket_fts ON skillmarket_fts.rowid = s.rowid
-			WHERE skillmarket_fts MATCH ?`+strings.TrimPrefix(whereClause, " WHERE s.published = 1")+`
-			ORDER BY score DESC LIMIT ? OFFSET ?`,
-			ftsArgs...,
-		)
-		if err != nil {
+		var rows []z.V
+		if _, err := s.readTable(ctx, "skills s").Select(&rows,
+			z.Fields(append(skillSelectMapFields("s"), skillFTSScoreExpr("s")+" AS score")...),
+			z.InnerJoin("skillmarket_fts", z.Expr("skillmarket_fts.rowid = s.rowid")),
+			buildSkillFTSWhere(whereClause, args, ftsQuery),
+			z.OrderBy("score DESC"),
+			z.Limit(query.PageSize, offset),
+		); err != nil {
 			return nil, err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			doc, score, err := scanSkillDocumentWithScore(rows)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, SearchResult{Skill: *doc, Score: score, KeywordScore: score, MatchSource: "fts5"})
+		for _, row := range rows {
+			results = append(results, searchResultFromMapScoreRow(row))
 		}
 	}
 
@@ -1470,27 +2172,25 @@ func (s *Store) SearchKeywordCandidates(ctx context.Context, query SearchQuery) 
 	}
 
 	whereClause, args := buildSkillFilters("s", query)
-	sortBy := skillSortClause(query.Sort)
 	results := make([]SearchResult, 0, DefaultSearchLimit)
 
 	if !s.ftsEnabled {
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT `+skillSelectColumns("s")+`
-			FROM skills s`+whereClause+fallbackSearchFilter("s")+`
-			ORDER BY `+fallbackSearchOrder("s", true, sortBy),
-			fallbackSearchArgs(args, query.Query)...,
-		)
-		if err != nil {
+		sortBy := skillSortClause(query.Sort)
+		searchWhere, searchArgs := buildSearchWhereClause("s", whereClause, args, true, query.Query)
+		searchOpts := []z.ZormItem{
+			z.OrderBy(fallbackSearchOrder("s", true, sortBy, query.Query)),
+		}
+		if searchWhere != "" {
+			searchOpts = append([]z.ZormItem{z.Where(append([]interface{}{searchWhere}, searchArgs...)...)}, searchOpts...)
+		}
+		var rows []skillDocumentRow
+		if _, err := s.readTable(ctx, "skills s").Select(&rows, searchOpts...); err != nil {
 			return nil, err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			doc, err := scanSkillDocument(rows)
-			if err != nil {
-				return nil, err
-			}
+		for i := range rows {
+			doc := skillDocumentFromRow(rows[i])
 			results = append(results, SearchResult{
-				Skill:        *doc,
+				Skill:        doc,
 				Score:        doc.TrendingScore,
 				KeywordScore: doc.TrendingScore,
 				MatchSource:  "rank",
@@ -1500,62 +2200,52 @@ func (s *Store) SearchKeywordCandidates(ctx context.Context, query SearchQuery) 
 	}
 
 	ftsQuery := escapeFTSQuery(query.Query)
-	ftsArgs := []interface{}{ftsQuery}
-	ftsArgs = append(ftsArgs, args...)
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+skillSelectColumns("s")+`,
-			-bm25(skillmarket_fts, 10.0, 6.0, 2.0, 1.0, 1.0, 1.0, 0.5) +
-			((s.trending_score + s.curated_boost) * 0.05) AS score
-		FROM skills s
-		JOIN skillmarket_fts ON skillmarket_fts.rowid = s.rowid
-		WHERE skillmarket_fts MATCH ?`+strings.TrimPrefix(whereClause, " WHERE s.published = 1")+`
-		ORDER BY score DESC`,
-		ftsArgs...,
-	)
-	if err != nil {
+	var rows []z.V
+	if _, err := s.readTable(ctx, "skills s").Select(&rows,
+		z.Fields(append(skillSelectMapFields("s"), skillFTSScoreExpr("s")+" AS score")...),
+		z.InnerJoin("skillmarket_fts", z.Expr("skillmarket_fts.rowid = s.rowid")),
+		buildSkillFTSWhere(whereClause, args, ftsQuery),
+		z.OrderBy("score DESC"),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		doc, score, err := scanSkillDocumentWithScore(rows)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, SearchResult{Skill: *doc, Score: score, KeywordScore: score, MatchSource: "fts5"})
+	for _, row := range rows {
+		results = append(results, searchResultFromMapScoreRow(row))
 	}
 	return results, nil
 }
 
 func (s *Store) ListFilteredSkills(ctx context.Context, query SearchQuery) ([]SkillDocument, error) {
 	whereClause, args := buildSkillFilters("skills", query)
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+skillSelectColumns("skills")+`
-		FROM skills`+whereClause+`
-		ORDER BY `+skillSortClause(query.Sort),
-		args...,
-	)
-	if err != nil {
+	whereClause = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(whereClause), "WHERE"))
+	opts := []z.ZormItem{
+		z.OrderBy(skillSortClause(query.Sort)),
+	}
+	if whereClause != "" {
+		whereArgs := append([]interface{}{whereClause}, args...)
+		opts = append([]z.ZormItem{z.Where(whereArgs...)}, opts...)
+	}
+	var rows []skillDocumentRow
+	if _, err := s.readTable(ctx, "skills").Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	result := make([]SkillDocument, 0, DefaultSearchLimit)
-	for rows.Next() {
-		doc, err := scanSkillDocument(rows)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, *doc)
+	result := make([]SkillDocument, 0, len(rows))
+	for i := range rows {
+		result = append(result, skillDocumentFromRow(rows[i]))
 	}
 	return result, nil
 }
 
 func (s *Store) UpdateSkillEmbedding(ctx context.Context, skillID, embeddingJSON, embeddingModel string) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE skills
-		SET embedding_json = ?, embedding_model = ?, updated_at = ?
-		WHERE id = ?
-	`, embeddingJSON, embeddingModel, timeutil.NowTime(), skillID)
+	_, err := s.table(ctx, "skills").Update(
+		z.V{
+			"embedding_json":  embeddingJSON,
+			"embedding_model": embeddingModel,
+			"updated_at":      timeutil.NowTime(),
+		},
+		z.Fields("embedding_json", "embedding_model", "updated_at"),
+		z.Where(z.Eq("id", skillID)),
+	)
 	return err
 }
 
@@ -1644,6 +2334,107 @@ func buildSkillFilters(alias string, query SearchQuery) (string, []interface{}) 
 	return " WHERE " + strings.Join(where, " AND "), args
 }
 
+func trimSQLClausePrefix(clause, prefix string) string {
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(clause), prefix))
+}
+
+func appendSQLClause(base, extra string) string {
+	base = strings.TrimSpace(base)
+	extra = strings.TrimSpace(extra)
+	switch {
+	case base == "":
+		return extra
+	case extra == "":
+		return base
+	default:
+		return base + " AND " + extra
+	}
+}
+
+func buildSearchWhereClause(alias, whereClause string, args []interface{}, searching bool, rawQuery string) (string, []interface{}) {
+	clause := trimSQLClausePrefix(whereClause, "WHERE")
+	queryArgs := append([]interface{}{}, args...)
+	if !searching {
+		return clause, queryArgs
+	}
+	clause = appendSQLClause(clause, trimSQLClausePrefix(fallbackSearchFilter(alias), "AND"))
+	return clause, fallbackSearchFilterArgs(queryArgs, rawQuery)
+}
+
+func buildSkillFTSWhere(whereClause string, args []interface{}, ftsQuery string) z.ZormItem {
+	trimmedWhere := trimSQLClausePrefix(whereClause, "WHERE")
+	conds := []interface{}{z.Expr("skillmarket_fts MATCH ?", ftsQuery)}
+	if trimmedWhere != "" {
+		conds = append(conds, z.Expr(trimmedWhere, args...))
+	}
+	return z.Where(conds...)
+}
+
+func skillFTSScoreExpr(alias string) string {
+	return `-bm25(skillmarket_fts, 10.0, 6.0, 2.0, 1.0, 1.0, 1.0, 0.5) + ((` + alias + `.trending_score + ` + alias + `.curated_boost) * 0.05)`
+}
+
+func skillSelectMapFields(alias string) []string {
+	fields := []string{
+		"id",
+		"slug",
+		"name",
+		"description",
+		"author",
+		"repo_url",
+		"homepage",
+		"download_url",
+		"stars",
+		"downloads",
+		"tags",
+		"category",
+		"security_score",
+		"permissions",
+		"latest_version",
+		"risk_level",
+		"security_badge",
+		"installable",
+		"install_type",
+		"artifact_kind",
+		"vulnerability_status",
+		"has_vulnerabilities",
+		"has_prompt_injection",
+		"has_shell_injection",
+		"has_data_exfiltration",
+		"has_binary",
+		"has_scripts",
+		"popularity_score",
+		"trending_score",
+		"scan_status",
+		"content_sha256",
+		"published",
+		"source_id",
+		"source_name",
+		"source_group",
+		"source_type",
+		"skill_path",
+		"skill_content",
+		"embedding_json",
+		"embedding_model",
+		"curated_rank",
+		"curated_boost",
+		"curated_label",
+		"curated_reason",
+		"last_updated",
+		"last_crawled_at",
+		"created_at",
+		"updated_at",
+	}
+	if strings.TrimSpace(alias) == "" {
+		return fields
+	}
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		result = append(result, alias+"."+field+" AS "+field)
+	}
+	return result
+}
+
 func skillSelectColumns(alias string) string {
 	return strings.Join([]string{
 		`COALESCE(` + alias + `.id, '')`,
@@ -1703,22 +2494,16 @@ func fallbackSearchFilter(alias string) string {
 	)`
 }
 
-func fallbackSearchFilterMaybe(alias string, searching bool) string {
-	if !searching {
-		return ""
-	}
-	return fallbackSearchFilter(alias)
-}
-
-func fallbackSearchOrder(alias string, searching bool, defaultOrder string) string {
+func fallbackSearchOrder(alias string, searching bool, defaultOrder, rawQuery string) string {
 	if !searching {
 		return defaultOrder
 	}
+	pattern := sqlStringLiteral("%" + strings.ToLower(strings.TrimSpace(rawQuery)) + "%")
 	return `(
-		CASE WHEN LOWER(` + alias + `.name) LIKE ? THEN 40 ELSE 0 END +
-		CASE WHEN LOWER(` + alias + `.description) LIKE ? THEN 20 ELSE 0 END +
-		CASE WHEN LOWER(` + alias + `.skill_content) LIKE ? THEN 25 ELSE 0 END +
-		CASE WHEN LOWER(` + alias + `.tags) LIKE ? THEN 15 ELSE 0 END +
+		CASE WHEN LOWER(` + alias + `.name) LIKE ` + pattern + ` THEN 40 ELSE 0 END +
+		CASE WHEN LOWER(` + alias + `.description) LIKE ` + pattern + ` THEN 20 ELSE 0 END +
+		CASE WHEN LOWER(` + alias + `.skill_content) LIKE ` + pattern + ` THEN 25 ELSE 0 END +
+		CASE WHEN LOWER(` + alias + `.tags) LIKE ` + pattern + ` THEN 15 ELSE 0 END +
 		((` + alias + `.trending_score + ` + alias + `.curated_boost) * 0.05)
 	) DESC`
 }
@@ -1766,17 +2551,6 @@ func placeholders(n int) string {
 	return strings.Join(items, ",")
 }
 
-func fallbackSearchArgs(base []interface{}, rawQuery string) []interface{} {
-	args := append([]interface{}{}, base...)
-	if strings.TrimSpace(rawQuery) == "" {
-		return args
-	}
-	pattern := "%" + strings.ToLower(strings.TrimSpace(rawQuery)) + "%"
-	args = append(args, pattern, pattern, pattern, pattern)
-	args = append(args, pattern, pattern, pattern, pattern)
-	return args
-}
-
 func fallbackSearchFilterArgs(base []interface{}, rawQuery string) []interface{} {
 	args := append([]interface{}{}, base...)
 	if strings.TrimSpace(rawQuery) == "" {
@@ -1785,6 +2559,10 @@ func fallbackSearchFilterArgs(base []interface{}, rawQuery string) []interface{}
 	pattern := "%" + strings.ToLower(strings.TrimSpace(rawQuery)) + "%"
 	args = append(args, pattern, pattern, pattern, pattern)
 	return args
+}
+
+func sqlStringLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func escapeFTSQuery(raw string) string {
@@ -1804,18 +2582,18 @@ func escapeFTSQuery(raw string) string {
 }
 
 func (s *Store) GetSkill(ctx context.Context, id string) (*SkillDetail, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT `+skillSelectColumns("skills")+`
-		FROM skills WHERE id = ?
-	`, id)
-	doc, err := scanSkillDocument(row)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
+	var rows []skillDocumentRow
+	if _, err := s.readTable(ctx, "skills").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
 		return nil, err
 	}
-	detail := &SkillDetail{Skill: *doc}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	doc := skillDocumentFromRow(rows[0])
+	detail := &SkillDetail{Skill: doc}
 	version, _ := s.GetLatestVersion(ctx, id)
 	detail.Version = version
 	if version != nil {
@@ -1831,68 +2609,69 @@ func (s *Store) GetSkill(ctx context.Context, id string) (*SkillDetail, error) {
 }
 
 func (s *Store) GetLatestVersion(ctx context.Context, skillID string) (*SkillVersion, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, skill_id, version, commit_hash, source_url, checksum, skill_path,
-			raw_skill_md, manifest_json, released_at, scanned_at, created_at, updated_at
-		FROM skill_versions
-		WHERE skill_id = ?
-		ORDER BY CASE
-			WHEN version = COALESCE((SELECT latest_version FROM skills WHERE id = ?), '') THEN 0
-			ELSE 1
-		END,
-		released_at DESC, created_at DESC
-		LIMIT 1
-	`, skillID, skillID)
-	return scanSkillVersion(row)
-}
-
-func (s *Store) GetSkillVersion(ctx context.Context, skillID, version string) (*SkillVersion, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, skill_id, version, commit_hash, source_url, checksum, skill_path,
-			raw_skill_md, manifest_json, released_at, scanned_at, created_at, updated_at
-		FROM skill_versions
-		WHERE skill_id = ? AND version = ?
-		LIMIT 1
-	`, skillID, version)
-	return scanSkillVersion(row)
-}
-
-func (s *Store) GetSecurityReport(ctx context.Context, skillID, version string) (*SecurityReport, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, skill_version_id, skill_id, version, score, risk_level, security_badge,
-			vulnerability_status, risks_json, permissions_json, secrets_json, vulnerabilities_json,
-			install_surface_json, evidence_json, artifact_kind, has_prompt_injection,
-			has_shell_injection, has_data_exfiltration, scanner_version,
-			llm_status, llm_verdict_json, created_at, updated_at
-		FROM skill_security_reports
-		WHERE skill_id = ? AND version = ?
-		LIMIT 1
-	`, skillID, version)
-	var report SecurityReport
-	var risksJSON, permissionsJSON, secretsJSON, vulnerabilitiesJSON, installSurfaceJSON, evidenceJSON, artifactKind, createdAt, updatedAt string
-	var hasPromptInjection, hasShellInjection, hasDataExfiltration int
-	if err := row.Scan(&report.ID, &report.SkillVersionID, &report.SkillID, &report.Version,
-		&report.Score, &report.RiskLevel, &report.SecurityBadge, &report.VulnerabilityStatus,
-		&risksJSON, &permissionsJSON, &secretsJSON, &vulnerabilitiesJSON, &installSurfaceJSON,
-		&evidenceJSON, &artifactKind, &hasPromptInjection, &hasShellInjection, &hasDataExfiltration,
-		&report.ScannerVersion, &report.LLMStatus, &report.LLMVerdictJSON, &createdAt, &updatedAt,
+	var preferredRows []skillLatestVersionRow
+	if _, err := s.readTable(ctx, "skills").Select(&preferredRows,
+		z.Fields("latest_version"),
+		z.Where(z.Eq("id", skillID)),
+		z.Limit(1),
 	); err != nil {
 		return nil, err
 	}
-	report.Risks = decodeFindings(risksJSON)
-	report.Permissions = decodeStrings(permissionsJSON)
-	report.Secrets = decodeStrings(secretsJSON)
-	report.Vulnerabilities = decodeStrings(vulnerabilitiesJSON)
-	_ = json.Unmarshal([]byte(installSurfaceJSON), &report.InstallSurface)
-	_ = json.Unmarshal([]byte(evidenceJSON), &report.Evidence)
-	if report.InstallSurface.ArtifactKind == "" {
-		report.InstallSurface.ArtifactKind = artifactKind
+	if len(preferredRows) > 0 {
+		preferredVersion := strings.TrimSpace(nullableStringValue(preferredRows[0].LatestVersion))
+		if preferredVersion != "" {
+			version, err := s.GetSkillVersion(ctx, skillID, preferredVersion)
+			if err == nil {
+				return version, nil
+			}
+			if err != sql.ErrNoRows {
+				return nil, err
+			}
+		}
 	}
-	report.HasPromptInjection = hasPromptInjection == 1
-	report.HasShellInjection = hasShellInjection == 1
-	report.HasDataExfiltration = hasDataExfiltration == 1
-	report.CreatedAt = parseTime(createdAt)
-	report.UpdatedAt = parseTime(updatedAt)
+
+	var rows []skillVersionRow
+	if _, err := s.readTable(ctx, "skill_versions").Select(&rows,
+		z.Where(z.Eq("skill_id", skillID)),
+		z.OrderBy("released_at DESC", "created_at DESC"),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	version := skillVersionFromRow(rows[0])
+	return &version, nil
+}
+
+func (s *Store) GetSkillVersion(ctx context.Context, skillID, version string) (*SkillVersion, error) {
+	var rows []skillVersionRow
+	if _, err := s.readTable(ctx, "skill_versions").Select(&rows,
+		z.Where(z.Eq("skill_id", skillID), z.Eq("version", version)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	skillVersion := skillVersionFromRow(rows[0])
+	return &skillVersion, nil
+}
+
+func (s *Store) GetSecurityReport(ctx context.Context, skillID, version string) (*SecurityReport, error) {
+	var rows []securityReportRow
+	if _, err := s.readTable(ctx, "skill_security_reports").Select(&rows,
+		z.Where(z.Eq("skill_id", skillID), z.Eq("version", version)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	report := securityReportFromRow(rows[0])
 	return &report, nil
 }
 
@@ -1902,114 +2681,139 @@ func (s *Store) SetInstalledSkill(ctx context.Context, installed InstalledSkill)
 		installed.InstalledAt = now
 	}
 	installed.UpdatedAt = now
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO installed_skills (
-			skill_id, installed_version, checksum, source_url, enabled, auto_update,
-			installed_at, updated_at, last_security_score
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(skill_id) DO UPDATE SET
-			installed_version=excluded.installed_version,
-			checksum=excluded.checksum,
-			source_url=excluded.source_url,
-			enabled=excluded.enabled,
-			auto_update=excluded.auto_update,
-			updated_at=excluded.updated_at,
-			last_security_score=excluded.last_security_score
-	`, installed.SkillID, installed.InstalledVersion, installed.Checksum, installed.SourceURL,
-		boolToInt(installed.Enabled), boolToInt(installed.AutoUpdate), installed.InstalledAt,
-		installed.UpdatedAt, installed.LastSecurityScore,
+	_, err := s.table(ctx, "installed_skills").Insert(
+		z.V{
+			"skill_id":            installed.SkillID,
+			"installed_version":   installed.InstalledVersion,
+			"checksum":            installed.Checksum,
+			"source_url":          installed.SourceURL,
+			"enabled":             boolToInt(installed.Enabled),
+			"auto_update":         boolToInt(installed.AutoUpdate),
+			"installed_at":        installed.InstalledAt,
+			"updated_at":          installed.UpdatedAt,
+			"last_security_score": installed.LastSecurityScore,
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"skill_id"},
+			[]string{
+				"installed_version",
+				"checksum",
+				"source_url",
+				"enabled",
+				"auto_update",
+				"updated_at",
+				"last_security_score",
+			},
+		),
 	)
 	return err
 }
 
 func (s *Store) RemoveInstalledSkill(ctx context.Context, skillID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM installed_skills WHERE skill_id = ?`, skillID)
+	_, err := s.table(ctx, "installed_skills").Delete(z.Where(z.Eq("skill_id", skillID)))
 	return err
 }
 
 func (s *Store) GetInstalledSkill(ctx context.Context, skillID string) (*InstalledSkill, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT skill_id, installed_version, checksum, source_url, enabled, auto_update,
-			installed_at, updated_at, last_security_score
-		FROM installed_skills WHERE skill_id = ?
-	`, skillID)
-	return scanInstalledSkill(row)
+	var rows []installedSkillRow
+	if _, err := s.readTable(ctx, "installed_skills").Select(&rows,
+		z.Fields(
+			"skill_id",
+			"installed_version",
+			"checksum",
+			"source_url",
+			"enabled",
+			"auto_update",
+			"installed_at",
+			"updated_at",
+			"last_security_score",
+		),
+		z.Where(z.Eq("skill_id", skillID)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	skill := installedSkillFromRow(rows[0])
+	return &skill, nil
 }
 
 func (s *Store) ListInstalledSkills(ctx context.Context) ([]InstalledSkill, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT i.skill_id, i.installed_version, i.checksum, i.source_url, i.enabled, i.auto_update,
-			i.installed_at, i.updated_at, i.last_security_score,
-			COALESCE(sk.name, ''), COALESCE(sk.latest_version, ''), COALESCE(u.latest_checksum, ''),
-			COALESCE(u.action, ''), COALESCE(sk.security_badge, '')
-		FROM installed_skills i
-		LEFT JOIN skills sk ON sk.id = i.skill_id
-		LEFT JOIN skill_update_checks u ON u.skill_id = i.skill_id
-		ORDER BY i.updated_at DESC
-	`)
-	if err != nil {
+	var rows []z.V
+	if _, err := s.readTable(ctx, "installed_skills i").Select(&rows,
+		z.Fields(
+			"i.skill_id as skill_id",
+			"i.installed_version as installed_version",
+			"i.checksum as checksum",
+			"i.source_url as source_url",
+			"i.enabled as enabled",
+			"i.auto_update as auto_update",
+			"i.installed_at as installed_at",
+			"i.updated_at as updated_at",
+			"i.last_security_score as last_security_score",
+			"COALESCE(sk.name, '') as name",
+			"COALESCE(sk.latest_version, '') as latest_version",
+			"COALESCE(u.latest_checksum, '') as latest_checksum",
+			"COALESCE(u.action, '') as pending_update_state",
+			"COALESCE(sk.security_badge, '') as security_badge",
+		),
+		z.LeftJoin("skills sk", z.Expr("sk.id = i.skill_id")),
+		z.LeftJoin("skill_update_checks u", z.Expr("u.skill_id = i.skill_id")),
+		z.OrderBy("i.updated_at DESC"),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []InstalledSkill
-	for rows.Next() {
-		var skill InstalledSkill
-		var enabled, autoUpdate int
-		var installedAt, updatedAt string
-		if err := rows.Scan(&skill.SkillID, &skill.InstalledVersion, &skill.Checksum, &skill.SourceURL,
-			&enabled, &autoUpdate, &installedAt, &updatedAt, &skill.LastSecurityScore,
-			&skill.Name, &skill.LatestVersion, &skill.LatestChecksum, &skill.PendingUpdateState, &skill.SecurityBadge,
-		); err != nil {
-			return nil, err
-		}
-		skill.Enabled = enabled == 1
-		skill.AutoUpdate = autoUpdate == 1
-		skill.InstalledAt = parseTime(installedAt)
-		skill.UpdatedAt = parseTime(updatedAt)
-		skill.UpdateAvailable = skill.LatestVersion != "" && skill.LatestVersion != skill.InstalledVersion
-		result = append(result, skill)
+	result := make([]InstalledSkill, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, installedSkillListFromMapRow(row))
 	}
 	return result, nil
 }
 
 func (s *Store) RecordUpdateCheck(ctx context.Context, update AvailableUpdate) error {
 	now := timeutil.NowTime()
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO skill_update_checks (skill_id, checked_at, latest_version, latest_checksum, action)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(skill_id) DO UPDATE SET
-			checked_at=excluded.checked_at,
-			latest_version=excluded.latest_version,
-			latest_checksum=excluded.latest_checksum,
-			action=excluded.action
-	`, update.SkillID, now, update.LatestVersion, update.LatestChecksum, update.Action)
+	_, err := s.table(ctx, "skill_update_checks").Insert(
+		z.V{
+			"skill_id":        update.SkillID,
+			"checked_at":      now,
+			"latest_version":  update.LatestVersion,
+			"latest_checksum": update.LatestChecksum,
+			"action":          update.Action,
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"skill_id"},
+			[]string{"checked_at", "latest_version", "latest_checksum", "action"},
+		),
+	)
 	return err
 }
 
 func (s *Store) ListUpdates(ctx context.Context) ([]AvailableUpdate, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT i.skill_id, i.installed_version, COALESCE(u.latest_version, ''), i.checksum,
-			COALESCE(u.latest_checksum, ''), COALESCE(u.action, ''), COALESCE(u.checked_at, '')
-		FROM installed_skills i
-		LEFT JOIN skill_update_checks u ON u.skill_id = i.skill_id
-		WHERE COALESCE(u.latest_version, '') != '' AND u.latest_version != i.installed_version
-		ORDER BY u.checked_at DESC
-	`)
-	if err != nil {
+	var rows []z.V
+	if _, err := s.readTable(ctx, "installed_skills i").Select(&rows,
+		z.Fields(
+			"i.skill_id as skill_id",
+			"i.installed_version as current_version",
+			"u.latest_version as latest_version",
+			"i.checksum as current_checksum",
+			"u.latest_checksum as latest_checksum",
+			"u.action as action",
+			"u.checked_at as checked_at",
+		),
+		z.LeftJoin("skill_update_checks u", z.Expr("u.skill_id = i.skill_id")),
+		z.Where(
+			z.Expr("COALESCE(u.latest_version, '') != ''"),
+			z.Expr("u.latest_version != i.installed_version"),
+		),
+		z.OrderBy("u.checked_at DESC"),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []AvailableUpdate
-	for rows.Next() {
-		var item AvailableUpdate
-		var checkedAt string
-		if err := rows.Scan(&item.SkillID, &item.CurrentVersion, &item.LatestVersion,
-			&item.CurrentChecksum, &item.LatestChecksum, &item.Action, &checkedAt,
-		); err != nil {
-			return nil, err
-		}
-		item.CheckedAt = parseTime(checkedAt)
-		result = append(result, item)
+	result := make([]AvailableUpdate, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, availableUpdateFromMapRow(row))
 	}
 	return result, nil
 }
@@ -2024,45 +2828,57 @@ func (s *Store) RecordTelemetry(ctx context.Context, skillID, event string) erro
 	case "active":
 		field = "active_skills"
 	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO skill_telemetry_daily (id, skill_id, day, downloads, installs, active_skills, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(skill_id, day) DO UPDATE SET
-			downloads = skill_telemetry_daily.downloads + excluded.downloads,
-			installs = skill_telemetry_daily.installs + excluded.installs,
-			active_skills = skill_telemetry_daily.active_skills + excluded.active_skills,
-			updated_at = excluded.updated_at
-	`, uuid.NewString(), skillID, day,
-		boolCount(field == "downloads"), boolCount(field == "installs"), boolCount(field == "active_skills"),
-		now, now,
-	)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := z.TableContext(ctx, tx, "skill_telemetry_daily").Insert(
+		z.V{
+			"id":            uuid.NewString(),
+			"skill_id":      skillID,
+			"day":           day,
+			"downloads":     0,
+			"installs":      0,
+			"active_skills": 0,
+			"created_at":    now,
+			"updated_at":    now,
+		},
+		z.OnConflictDoUpdateSet([]string{"skill_id", "day"}, []string{"updated_at"}),
+	); err != nil {
+		return err
+	}
+	if _, err := z.TableContext(ctx, tx, "skill_telemetry_daily").Update(
+		z.V{
+			field:        z.U(field + " + 1"),
+			"updated_at": now,
+		},
+		z.Fields(field, "updated_at"),
+		z.Where(z.Eq("skill_id", skillID), z.Eq("day", day)),
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ListTrending(ctx context.Context, category string, limit int) ([]SkillDocument, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	query := `SELECT ` + skillSelectColumns("skills") + ` FROM skills`
-	args := []interface{}{}
-	if strings.TrimSpace(category) != "" {
-		query += ` WHERE category = ?`
-		args = append(args, category)
+	opts := []z.ZormItem{
+		z.OrderBy("CASE WHEN curated_rank > 0 THEN 0 ELSE 1 END ASC", "curated_rank ASC", "(trending_score + curated_boost) DESC"),
+		z.Limit(limit),
 	}
-	query += ` ORDER BY CASE WHEN curated_rank > 0 THEN 0 ELSE 1 END ASC, curated_rank ASC, (trending_score + curated_boost) DESC LIMIT ?`
-	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	if strings.TrimSpace(category) != "" {
+		opts = append([]z.ZormItem{z.Where(z.Eq("category", category))}, opts...)
+	}
+	var rows []skillDocumentRow
+	if _, err := s.readTable(ctx, "skills").Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var docs []SkillDocument
-	for rows.Next() {
-		doc, err := scanSkillDocument(rows)
-		if err != nil {
-			return nil, err
-		}
-		docs = append(docs, *doc)
+	docs := make([]SkillDocument, 0, len(rows))
+	for i := range rows {
+		docs = append(docs, skillDocumentFromRow(rows[i]))
 	}
 	return docs, nil
 }
@@ -2071,31 +2887,31 @@ func (s *Store) ListFeatured(ctx context.Context, category string, source string
 	if limit <= 0 {
 		limit = 20
 	}
-	query := `SELECT ` + skillSelectColumns("skills") + ` FROM skills WHERE published = 1`
-	args := []interface{}{}
+	conds := []interface{}{
+		z.Eq("published", 1),
+		z.Or(z.Gt("curated_rank", 0), z.Gt("curated_boost", 0)),
+	}
 	if strings.TrimSpace(category) != "" {
-		query += ` AND category = ?`
-		args = append(args, category)
+		conds = append(conds, z.Eq("category", category))
 	}
 	if strings.TrimSpace(source) != "" {
-		query += ` AND (source_group = ? OR source_name = ? OR source_id = ?)`
-		args = append(args, source, source, source)
+		conds = append(conds, z.Or(
+			z.Eq("source_group", source),
+			z.Eq("source_name", source),
+			z.Eq("source_id", source),
+		))
 	}
-	query += ` AND (curated_rank > 0 OR curated_boost > 0)`
-	query += ` ORDER BY CASE WHEN curated_rank > 0 THEN 0 ELSE 1 END ASC, curated_rank ASC, (trending_score + curated_boost) DESC LIMIT ?`
-	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	var rows []skillDocumentRow
+	if _, err := s.readTable(ctx, "skills").Select(&rows,
+		z.Where(conds...),
+		z.OrderBy("CASE WHEN curated_rank > 0 THEN 0 ELSE 1 END ASC", "curated_rank ASC", "(trending_score + curated_boost) DESC"),
+		z.Limit(limit),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var docs []SkillDocument
-	for rows.Next() {
-		doc, err := scanSkillDocument(rows)
-		if err != nil {
-			return nil, err
-		}
-		docs = append(docs, *doc)
+	docs := make([]SkillDocument, 0, len(rows))
+	for i := range rows {
+		docs = append(docs, skillDocumentFromRow(rows[i]))
 	}
 	return docs, nil
 }
@@ -2105,18 +2921,24 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 		Installable:     map[string]int{},
 		SecuritySignals: map[string]int{},
 	}
-	buildBuckets := func(query string, dest *[]FilterOption) error {
-		rows, err := s.db.QueryContext(ctx, query)
-		if err != nil {
+	buildBuckets := func(valueExpr, groupExpr string, extraConds []interface{}, orders []string, dest *[]FilterOption) error {
+		conds := []interface{}{z.Eq("published", 1)}
+		conds = append(conds, extraConds...)
+		var rows []z.V
+		opts := []z.ZormItem{
+			z.Fields(valueExpr+" as value", "COUNT(*) as count"),
+			z.Where(conds...),
+			z.GroupBy(groupExpr),
+		}
+		if len(orders) > 0 {
+			opts = append(opts, z.OrderBy(orders...))
+		}
+		if _, err := s.readTable(ctx, "skills").Select(&rows, opts...); err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var value string
-			var count int
-			if err := rows.Scan(&value, &count); err != nil {
-				return err
-			}
+		for _, row := range rows {
+			value := skillmarketStringFromMapValue(row, "value")
+			count := skillmarketIntFromMapValue(row, "count")
 			if strings.TrimSpace(value) == "" {
 				continue
 			}
@@ -2124,7 +2946,7 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 		}
 		return nil
 	}
-	if err := buildBuckets(`SELECT category, COUNT(*) FROM skills WHERE published = 1 AND category != '' GROUP BY category ORDER BY category`, &result.Categories); err != nil {
+	if err := buildBuckets("category", "category", []interface{}{z.Neq("category", "")}, []string{"category"}, &result.Categories); err != nil {
 		return nil, err
 	}
 	sort.Slice(result.Categories, func(i, j int) bool {
@@ -2135,32 +2957,41 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 		}
 		return result.Categories[i].Value < result.Categories[j].Value
 	})
-	if err := buildBuckets(`SELECT COALESCE(source_name, source_group, source_id, ''), COUNT(*) FROM skills WHERE published = 1 GROUP BY COALESCE(source_name, source_group, source_id, '') ORDER BY COUNT(*) DESC, 1 ASC`, &result.Sources); err != nil {
+	if err := buildBuckets("COALESCE(source_name, source_group, source_id, '')", "COALESCE(source_name, source_group, source_id, '')", nil, []string{"COUNT(*) DESC", "value ASC"}, &result.Sources); err != nil {
 		return nil, err
 	}
-	if err := buildBuckets(`SELECT security_badge, COUNT(*) FROM skills WHERE published = 1 GROUP BY security_badge ORDER BY security_badge`, &result.RiskBadges); err != nil {
+	if err := buildBuckets("security_badge", "security_badge", nil, []string{"security_badge"}, &result.RiskBadges); err != nil {
 		return nil, err
 	}
-	if err := buildBuckets(`SELECT install_type, COUNT(*) FROM skills WHERE published = 1 GROUP BY install_type ORDER BY install_type`, &result.InstallTypes); err != nil {
+	if err := buildBuckets("install_type", "install_type", nil, []string{"install_type"}, &result.InstallTypes); err != nil {
 		return nil, err
 	}
-	if err := buildBuckets(`SELECT artifact_kind, COUNT(*) FROM skills WHERE published = 1 GROUP BY artifact_kind ORDER BY artifact_kind`, &result.ArtifactKinds); err != nil {
+	if err := buildBuckets("artifact_kind", "artifact_kind", nil, []string{"artifact_kind"}, &result.ArtifactKinds); err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRowContext(ctx, `
-		SELECT
-			COALESCE(SUM(CASE WHEN installable = 1 THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN installable = 0 THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN has_vulnerabilities = 1 THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN has_prompt_injection = 1 THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN has_shell_injection = 1 THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN has_data_exfiltration = 1 THEN 1 ELSE 0 END), 0)
-		FROM skills
-		WHERE published = 1
-	`)
-	var installable, manualOnly, vulnerabilities, prompt, shell, exfil int
-	if err := row.Scan(&installable, &manualOnly, &vulnerabilities, &prompt, &shell, &exfil); err != nil {
+	var signalRows []z.V
+	if _, err := s.readTable(ctx, "skills").Select(&signalRows,
+		z.Fields(
+			"COALESCE(SUM(CASE WHEN installable = 1 THEN 1 ELSE 0 END), 0) as installable",
+			"COALESCE(SUM(CASE WHEN installable = 0 THEN 1 ELSE 0 END), 0) as manual_only",
+			"COALESCE(SUM(CASE WHEN has_vulnerabilities = 1 THEN 1 ELSE 0 END), 0) as vulnerabilities",
+			"COALESCE(SUM(CASE WHEN has_prompt_injection = 1 THEN 1 ELSE 0 END), 0) as prompt",
+			"COALESCE(SUM(CASE WHEN has_shell_injection = 1 THEN 1 ELSE 0 END), 0) as shell",
+			"COALESCE(SUM(CASE WHEN has_data_exfiltration = 1 THEN 1 ELSE 0 END), 0) as exfil",
+		),
+		z.Where(z.Eq("published", 1)),
+		z.Limit(1),
+	); err != nil {
 		return nil, err
+	}
+	installable, manualOnly, vulnerabilities, prompt, shell, exfil := 0, 0, 0, 0, 0, 0
+	if len(signalRows) > 0 {
+		installable = skillmarketIntFromMapValue(signalRows[0], "installable")
+		manualOnly = skillmarketIntFromMapValue(signalRows[0], "manual_only")
+		vulnerabilities = skillmarketIntFromMapValue(signalRows[0], "vulnerabilities")
+		prompt = skillmarketIntFromMapValue(signalRows[0], "prompt")
+		shell = skillmarketIntFromMapValue(signalRows[0], "shell")
+		exfil = skillmarketIntFromMapValue(signalRows[0], "exfil")
 	}
 	result.Installable["true"] = installable
 	result.Installable["false"] = manualOnly
@@ -2178,13 +3009,23 @@ func (s *Store) ReplaceCurations(ctx context.Context, entries []SkillCuration) e
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM skill_curations`); err != nil {
+	curationsTable := z.TableContext(ctx, tx, "skill_curations")
+	skillsTable := z.TableContext(ctx, tx, "skills")
+
+	if _, err := curationsTable.Delete(z.Where(z.Expr("1=1"))); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE skills
-		SET curated_rank = 0, curated_boost = 0, curated_label = NULL, curated_reason = NULL, published = 1
-	`); err != nil {
+	if _, err := skillsTable.Update(
+		z.V{
+			"curated_rank":   0,
+			"curated_boost":  0,
+			"curated_label":  nil,
+			"curated_reason": nil,
+			"published":      1,
+		},
+		z.Fields("curated_rank", "curated_boost", "curated_label", "curated_reason", "published"),
+		z.Where(z.Expr("1=1")),
+	); err != nil {
 		return err
 	}
 	now := timeutil.NowTime()
@@ -2196,17 +3037,30 @@ func (s *Store) ReplaceCurations(ctx context.Context, entries []SkillCuration) e
 			entry.CreatedAt = now
 		}
 		entry.UpdatedAt = now
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO skill_curations (id, skill_id, hidden, featured_rank, boost_weight, label, reason, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, entry.ID, entry.SkillID, boolToInt(entry.Hidden), entry.FeaturedRank, entry.BoostWeight, entry.Label, entry.Reason, entry.CreatedAt, entry.UpdatedAt); err != nil {
+		if _, err := curationsTable.Insert(z.V{
+			"id":            entry.ID,
+			"skill_id":      entry.SkillID,
+			"hidden":        boolToInt(entry.Hidden),
+			"featured_rank": entry.FeaturedRank,
+			"boost_weight":  entry.BoostWeight,
+			"label":         entry.Label,
+			"reason":        entry.Reason,
+			"created_at":    entry.CreatedAt,
+			"updated_at":    entry.UpdatedAt,
+		}); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE skills
-			SET curated_rank = ?, curated_boost = ?, curated_label = ?, curated_reason = ?, published = CASE WHEN ? = 1 THEN 0 ELSE published END
-			WHERE id = ?
-		`, entry.FeaturedRank, entry.BoostWeight, entry.Label, entry.Reason, boolToInt(entry.Hidden), entry.SkillID); err != nil {
+		if _, err := skillsTable.Update(
+			z.V{
+				"curated_rank":   entry.FeaturedRank,
+				"curated_boost":  entry.BoostWeight,
+				"curated_label":  entry.Label,
+				"curated_reason": entry.Reason,
+				"published":      boolToInt(!entry.Hidden),
+			},
+			z.Fields("curated_rank", "curated_boost", "curated_label", "curated_reason", "published"),
+			z.Where(z.Eq("id", entry.SkillID)),
+		); err != nil {
 			return err
 		}
 	}
@@ -2220,16 +3074,20 @@ func (s *Store) UpsertCurationSyncState(ctx context.Context, state CurationSyncS
 	if state.UpdatedAt.IsZero() {
 		state.UpdatedAt = timeutil.NowTime()
 	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO curation_sync_state (id, source_url, checksum, last_success_at, last_error, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			source_url=excluded.source_url,
-			checksum=excluded.checksum,
-			last_success_at=excluded.last_success_at,
-			last_error=excluded.last_error,
-			updated_at=excluded.updated_at
-	`, state.ID, state.SourceURL, state.Checksum, nullTime(state.LastSuccessAt), state.LastError, state.UpdatedAt)
+	_, err := s.table(ctx, "curation_sync_state").Insert(
+		z.V{
+			"id":              state.ID,
+			"source_url":      state.SourceURL,
+			"checksum":        state.Checksum,
+			"last_success_at": nullTime(state.LastSuccessAt),
+			"last_error":      state.LastError,
+			"updated_at":      state.UpdatedAt,
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"id"},
+			[]string{"source_url", "checksum", "last_success_at", "last_error", "updated_at"},
+		),
+	)
 	return err
 }
 
@@ -2237,19 +3095,26 @@ func (s *Store) GetCurationSyncState(ctx context.Context, id string) (*CurationS
 	if strings.TrimSpace(id) == "" {
 		id = "default"
 	}
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(source_url, ''), COALESCE(checksum, ''), COALESCE(last_success_at, ''), COALESCE(last_error, ''), COALESCE(updated_at, '')
-		FROM curation_sync_state
-		WHERE id = ?
-	`, id)
-	var state CurationSyncState
-	var lastSuccess, updatedAt string
-	if err := row.Scan(&state.ID, &state.SourceURL, &state.Checksum, &lastSuccess, &state.LastError, &updatedAt); err != nil {
+	var rows []curationSyncStateRow
+	if _, err := s.readTable(ctx, "curation_sync_state").Select(&rows,
+		z.Fields("id", "source_url", "checksum", "last_success_at", "last_error", "updated_at"),
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
 		return nil, err
 	}
-	state.LastSuccessAt = parseTime(lastSuccess)
-	state.UpdatedAt = parseTime(updatedAt)
-	return &state, nil
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	state := &CurationSyncState{
+		ID:            rows[0].ID,
+		SourceURL:     nullableStringValue(rows[0].SourceURL),
+		Checksum:      nullableStringValue(rows[0].Checksum),
+		LastSuccessAt: parseTime(nullableStringValue(rows[0].LastSuccessAt)),
+		LastError:     nullableStringValue(rows[0].LastError),
+		UpdatedAt:     parseTime(nullableStringValue(rows[0].UpdatedAt)),
+	}
+	return state, nil
 }
 
 func (s *Store) RerankSemantic(queryVector []float32, results []SearchResult) []SearchResult {
@@ -2404,6 +3269,202 @@ func boolCount(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+func skillmarketStringFromMapValue(row z.V, key string) string {
+	value, ok := skillmarketValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	case time.Time:
+		return typed.Format(time.RFC3339)
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func skillmarketIntFromMapValue(row z.V, key string) int {
+	value, ok := skillmarketValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int8:
+		return int(typed)
+	case int16:
+		return int(typed)
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case uint:
+		return int(typed)
+	case uint8:
+		return int(typed)
+	case uint16:
+		return int(typed)
+	case uint32:
+		return int(typed)
+	case uint64:
+		return int(typed)
+	case float32:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case []byte:
+		n, _ := strconv.Atoi(string(typed))
+		return n
+	case string:
+		n, _ := strconv.Atoi(typed)
+		return n
+	default:
+		return 0
+	}
+}
+
+func skillmarketFloat64FromMapValue(row z.V, key string) float64 {
+	value, ok := skillmarketValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case float32:
+		return float64(typed)
+	case float64:
+		return typed
+	case int:
+		return float64(typed)
+	case int8:
+		return float64(typed)
+	case int16:
+		return float64(typed)
+	case int32:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case uint:
+		return float64(typed)
+	case uint8:
+		return float64(typed)
+	case uint16:
+		return float64(typed)
+	case uint32:
+		return float64(typed)
+	case uint64:
+		return float64(typed)
+	case []byte:
+		n, _ := strconv.ParseFloat(string(typed), 64)
+		return n
+	case string:
+		n, _ := strconv.ParseFloat(typed, 64)
+		return n
+	default:
+		return 0
+	}
+}
+
+func skillDocumentFromMapRow(row z.V) SkillDocument {
+	return SkillDocument{
+		ID:                  skillmarketStringFromMapValue(row, "id"),
+		Slug:                skillmarketStringFromMapValue(row, "slug"),
+		Name:                skillmarketStringFromMapValue(row, "name"),
+		Description:         skillmarketStringFromMapValue(row, "description"),
+		Author:              skillmarketStringFromMapValue(row, "author"),
+		RepoURL:             skillmarketStringFromMapValue(row, "repo_url"),
+		Homepage:            skillmarketStringFromMapValue(row, "homepage"),
+		DownloadURL:         skillmarketStringFromMapValue(row, "download_url"),
+		Stars:               skillmarketIntFromMapValue(row, "stars"),
+		Downloads:           skillmarketIntFromMapValue(row, "downloads"),
+		Tags:                decodeStrings(skillmarketStringFromMapValue(row, "tags")),
+		Category:            skillmarketStringFromMapValue(row, "category"),
+		SecurityScore:       skillmarketIntFromMapValue(row, "security_score"),
+		Permissions:         decodeStrings(skillmarketStringFromMapValue(row, "permissions")),
+		LatestVersion:       skillmarketStringFromMapValue(row, "latest_version"),
+		RiskLevel:           skillmarketStringFromMapValue(row, "risk_level"),
+		SecurityBadge:       skillmarketStringFromMapValue(row, "security_badge"),
+		Installable:         skillmarketIntFromMapValue(row, "installable") == 1,
+		InstallType:         skillmarketStringFromMapValue(row, "install_type"),
+		ArtifactKind:        skillmarketStringFromMapValue(row, "artifact_kind"),
+		VulnerabilityStatus: skillmarketStringFromMapValue(row, "vulnerability_status"),
+		HasVulnerabilities:  skillmarketIntFromMapValue(row, "has_vulnerabilities") == 1,
+		HasPromptInjection:  skillmarketIntFromMapValue(row, "has_prompt_injection") == 1,
+		HasShellInjection:   skillmarketIntFromMapValue(row, "has_shell_injection") == 1,
+		HasDataExfiltration: skillmarketIntFromMapValue(row, "has_data_exfiltration") == 1,
+		HasBinary:           skillmarketIntFromMapValue(row, "has_binary") == 1,
+		HasScripts:          skillmarketIntFromMapValue(row, "has_scripts") == 1,
+		PopularityScore:     skillmarketFloat64FromMapValue(row, "popularity_score"),
+		TrendingScore:       skillmarketFloat64FromMapValue(row, "trending_score"),
+		ScanStatus:          skillmarketStringFromMapValue(row, "scan_status"),
+		ContentSHA256:       skillmarketStringFromMapValue(row, "content_sha256"),
+		Published:           skillmarketIntFromMapValue(row, "published") == 1,
+		SourceID:            skillmarketStringFromMapValue(row, "source_id"),
+		SourceName:          skillmarketStringFromMapValue(row, "source_name"),
+		SourceGroup:         skillmarketStringFromMapValue(row, "source_group"),
+		SourceType:          skillmarketStringFromMapValue(row, "source_type"),
+		SkillPath:           skillmarketStringFromMapValue(row, "skill_path"),
+		SkillContent:        skillmarketStringFromMapValue(row, "skill_content"),
+		EmbeddingJSON:       skillmarketStringFromMapValue(row, "embedding_json"),
+		EmbeddingModel:      skillmarketStringFromMapValue(row, "embedding_model"),
+		CuratedRank:         skillmarketIntFromMapValue(row, "curated_rank"),
+		CuratedBoost:        skillmarketFloat64FromMapValue(row, "curated_boost"),
+		CuratedLabel:        skillmarketStringFromMapValue(row, "curated_label"),
+		CuratedReason:       skillmarketStringFromMapValue(row, "curated_reason"),
+		LastUpdated:         parseTime(skillmarketStringFromMapValue(row, "last_updated")),
+		LastCrawledAt:       parseTime(skillmarketStringFromMapValue(row, "last_crawled_at")),
+		CreatedAt:           parseTime(skillmarketStringFromMapValue(row, "created_at")),
+		UpdatedAt:           parseTime(skillmarketStringFromMapValue(row, "updated_at")),
+	}
+}
+
+func searchResultFromMapScoreRow(row z.V) SearchResult {
+	doc := skillDocumentFromMapRow(row)
+	score := skillmarketFloat64FromMapValue(row, "score")
+	return SearchResult{
+		Skill:        doc,
+		Score:        score,
+		KeywordScore: score,
+		MatchSource:  "fts5",
+	}
+}
+
+func skillmarketValueFromMapKey(row z.V, key string) (interface{}, bool) {
+	if row == nil {
+		return nil, false
+	}
+	if value, ok := row[key]; ok {
+		return value, true
+	}
+	for rawKey, value := range row {
+		if skillmarketNormalizeMapKey(rawKey) == key {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func skillmarketNormalizeMapKey(key string) string {
+	key = strings.TrimSpace(strings.Trim(key, "`"))
+	if key == "" {
+		return ""
+	}
+	fields := strings.Fields(key)
+	if len(fields) >= 3 && strings.EqualFold(fields[len(fields)-2], "as") {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if len(fields) >= 2 {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if dot := strings.LastIndex(key, "."); dot >= 0 {
+		return strings.Trim(key[dot+1:], "`")
+	}
+	return key
 }
 
 func parseTime(raw string) time.Time {

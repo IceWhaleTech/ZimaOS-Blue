@@ -1,33 +1,7 @@
 import type { MediaCategory, MediaIntent } from '@/api/media'
+import { localeKeys, type LocaleKey } from '@/i18n/locale-catalog'
 
-type SupportedLocaleKey =
-  | 'ca-ES'
-  | 'cs-CZ'
-  | 'da-DK'
-  | 'de-DE'
-  | 'el-GR'
-  | 'en-GB'
-  | 'en-US'
-  | 'es-ES'
-  | 'fr-FR'
-  | 'ga-IE'
-  | 'hr-HR'
-  | 'hu-HU'
-  | 'it-IT'
-  | 'ja-JP'
-  | 'ko-KR'
-  | 'ml-IN'
-  | 'nb-NO'
-  | 'nl-NL'
-  | 'pl-PL'
-  | 'pt-BR'
-  | 'pt-PT'
-  | 'ro-RO'
-  | 'ru-RU'
-  | 'sk-SK'
-  | 'sv-SE'
-  | 'zh-CN'
-  | 'zh-TW'
+type SupportedLocaleKey = LocaleKey
 
 type KeywordGroup =
   | 'action'
@@ -103,35 +77,7 @@ const KEYWORD_GROUPS: readonly KeywordGroup[] = [
   'bananaPreset',
 ] as const
 
-export const MEDIA_INTENT_SUPPORTED_LOCALES = [
-  'ca-ES',
-  'cs-CZ',
-  'da-DK',
-  'de-DE',
-  'el-GR',
-  'en-GB',
-  'en-US',
-  'es-ES',
-  'fr-FR',
-  'ga-IE',
-  'hr-HR',
-  'hu-HU',
-  'it-IT',
-  'ja-JP',
-  'ko-KR',
-  'ml-IN',
-  'nb-NO',
-  'nl-NL',
-  'pl-PL',
-  'pt-BR',
-  'pt-PT',
-  'ro-RO',
-  'ru-RU',
-  'sk-SK',
-  'sv-SE',
-  'zh-CN',
-  'zh-TW',
-] as const satisfies readonly SupportedLocaleKey[]
+export const MEDIA_INTENT_SUPPORTED_LOCALES = localeKeys satisfies readonly SupportedLocaleKey[]
 
 const SUPPORTED_LOCALE_LOOKUP = Object.freeze(
   Object.fromEntries(MEDIA_INTENT_SUPPORTED_LOCALES.map((locale) => [locale.toLowerCase(), locale]))

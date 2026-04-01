@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -996,6 +997,285 @@ func TestGetSkillFallbackIncludesMarketplaceCompatibilityFields(t *testing.T) {
 	}
 	if nested["id"] != "compat-skill" {
 		t.Fatalf("nested skill id = %#v, want compat-skill", nested["id"])
+	}
+}
+
+func TestMarketInstallSkillFallbackPreservesConflictStatusForAliasDir(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	skillDir := filepath.Join(handler.skillsDir, "team-browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/install", strings.NewReader(`{"id":"browser"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	if err := handler.MarketInstallSkill(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("MarketInstallSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "already installed as browser") {
+		t.Fatalf("expected canonical conflict message, body=%s", rec.Body.String())
+	}
+}
+
+func TestMarketInstallSkillFallbackPreservesNotFoundStatus(t *testing.T) {
+	handler := newTestSkillHandler(t, skill.NewRegistry())
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/install", strings.NewReader(`{"id":"missing"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	if err := handler.MarketInstallSkill(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("MarketInstallSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
+func TestMarketUninstallSkillFallbackAcceptsCanonicalIDForAliasDir(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	if err := registry.Register(NewRemoteSkillAdapter(&skill.Manifest{
+		ID:          "browser",
+		Name:        "Browser",
+		Version:     "1.0.0",
+		Description: "Browser skill",
+	}), false); err != nil {
+		t.Fatalf("register skill: %v", err)
+	}
+
+	skillDir := filepath.Join(handler.skillsDir, "team-browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/browser/uninstall", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("browser")
+
+	if err := handler.MarketUninstallSkill(c); err != nil {
+		t.Fatalf("MarketUninstallSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Fatalf("expected alias dir removed, stat err=%v", err)
+	}
+	if registry.Get("browser") != nil {
+		t.Fatalf("expected canonical registry entry removed")
+	}
+}
+
+func TestMarketUninstallSkillFallbackPreservesNotFoundStatus(t *testing.T) {
+	handler := newTestSkillHandler(t, skill.NewRegistry())
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/missing/uninstall", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("missing")
+
+	if err := handler.MarketUninstallSkill(c); err != nil {
+		t.Fatalf("MarketUninstallSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
+func TestMarketUpdateSkillFallbackUpdatesAliasDirInPlace(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	if err := registry.Register(NewRemoteSkillAdapter(&skill.Manifest{
+		ID:          "browser",
+		Name:        "Browser",
+		Version:     "1.0.0",
+		Description: "Existing browser skill",
+	}), false); err != nil {
+		t.Fatalf("register skill: %v", err)
+	}
+	if err := registry.Disable("browser"); err != nil {
+		t.Fatalf("disable skill: %v", err)
+	}
+
+	skillDir := filepath.Join(handler.skillsDir, "team-browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+
+old version
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(`---
+id: browser
+name: Browser
+description: Browser skill
+version: 2.0.0
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+
+updated version
+`))
+	}))
+	defer server.Close()
+
+	handler.remoteSkills["browser"] = &RemoteSkill{
+		ID:          "browser",
+		Name:        "Browser",
+		Version:     "2.0.0",
+		Description: "Browser skill",
+		DownloadURL: server.URL + "/browser/SKILL.md",
+		SourceID:    "custom",
+		SourceName:  "Custom",
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/browser/update", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("browser")
+
+	if err := handler.MarketUpdateSkill(c); err != nil {
+		t.Fatalf("MarketUpdateSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	content, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read updated skill file: %v", err)
+	}
+	if !strings.Contains(string(content), "version: 2.0.0") || !strings.Contains(string(content), "updated version") {
+		t.Fatalf("expected updated content in alias dir, got %s", string(content))
+	}
+	if _, err := os.Stat(filepath.Join(handler.skillsDir, "browser")); !os.IsNotExist(err) {
+		t.Fatalf("expected canonical browser dir to stay absent, stat err=%v", err)
+	}
+	info := registry.GetInfo("browser")
+	if info == nil || info.Manifest == nil {
+		t.Fatalf("expected registry browser entry after update")
+	}
+	if info.Manifest.Version != "2.0.0" {
+		t.Fatalf("registry version = %q, want 2.0.0", info.Manifest.Version)
+	}
+	if info.Enabled {
+		t.Fatalf("expected disabled state to be preserved")
+	}
+}
+
+func TestMarketUpdateSkillFallbackPreservesNotFoundStatusForInstalledAliasDir(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	if err := os.MkdirAll(filepath.Join(handler.skillsDir, "team-browser"), 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillPath := filepath.Join(handler.skillsDir, "team-browser", "SKILL.md")
+	original := []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+
+old version
+`)
+	if err := os.WriteFile(skillPath, original, 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/browser/update", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("browser")
+
+	if err := handler.MarketUpdateSkill(c); err != nil {
+		t.Fatalf("MarketUpdateSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("read existing skill file: %v", err)
+	}
+	if string(content) != string(original) {
+		t.Fatalf("expected existing install to stay untouched, got %s", string(content))
 	}
 }
 

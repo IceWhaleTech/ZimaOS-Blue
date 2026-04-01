@@ -1,0 +1,51 @@
+package bootstrap
+
+type routeRuntimePhaseBinding interface {
+	NewRuntimeLLMRef() *runtimeLLMProviderRef
+	BindStartupAuthRuntime(options routeRuntimeContractStartupAuthOptions) routeRuntimeContractStartupAuthResult
+	BindBootstrapPhaseRuntime(options routeRuntimeContractBootstrapPhaseOptions) routeRuntimeContractBootstrapPhaseResult
+	BindInfrastructureRuntime(options routeRuntimeContractInfrastructureOptions) routeRuntimeContractInfrastructureResult
+	BindExperienceRuntime(options routeRuntimeContractExperienceOptions) routeRuntimeContractExperienceResult
+	BindCoreToolingRuntime(options routeRuntimeContractCoreToolingOptions) routeRuntimeContractCoreToolingResult
+	BindCoreSupportRuntime(options routeRuntimeContractCoreSupportOptions) routeRuntimeContractCoreSupportResult
+	BindManagementRuntime(options routeRuntimeContractManagementRuntimeOptions) routeRuntimeContractManagementRuntimeResult
+	BindOperationalRuntime(options routeRuntimeContractOperationalOptions) routeRuntimeContractOperationalResult
+}
+
+var _ routeRuntimePhaseBinding = (*runtimeContractBinding)(nil)
+
+type routeRuntimePhaseContract struct{ binding routeRuntimePhaseBinding }
+
+var _ routeRuntimeContract = (*routeRuntimePhaseContract)(nil)
+
+func newRouteRuntimePhaseContract(binding routeRuntimePhaseBinding) routeRuntimeContract {
+	return &routeRuntimePhaseContract{binding: binding}
+}
+func (contract *routeRuntimePhaseContract) routeRuntimePhaseBoundary() {}
+func (contract *routeRuntimePhaseContract) NewRuntimeLLMRef() *runtimeLLMProviderRef {
+	return contract.binding.NewRuntimeLLMRef()
+}
+func (contract *routeRuntimePhaseContract) BindStartupAuthRuntime(options routeRuntimeContractStartupAuthOptions) routeRuntimeContractStartupAuthResult {
+	return contract.binding.BindStartupAuthRuntime(options)
+}
+func (contract *routeRuntimePhaseContract) BindBootstrapPhaseRuntime(options routeRuntimeContractBootstrapPhaseOptions) routeRuntimeContractBootstrapPhaseResult {
+	return contract.binding.BindBootstrapPhaseRuntime(options)
+}
+func (contract *routeRuntimePhaseContract) BindInfrastructureRuntime(options routeRuntimeContractInfrastructureOptions) routeRuntimeContractInfrastructureResult {
+	return contract.binding.BindInfrastructureRuntime(options)
+}
+func (contract *routeRuntimePhaseContract) BindExperienceRuntime(options routeRuntimeContractExperienceOptions) routeRuntimeContractExperienceResult {
+	return contract.binding.BindExperienceRuntime(options)
+}
+func (contract *routeRuntimePhaseContract) BindCoreToolingRuntime(options routeRuntimeContractCoreToolingOptions) routeRuntimeContractCoreToolingResult {
+	return contract.binding.BindCoreToolingRuntime(options)
+}
+func (contract *routeRuntimePhaseContract) BindCoreSupportRuntime(options routeRuntimeContractCoreSupportOptions) routeRuntimeContractCoreSupportResult {
+	return contract.binding.BindCoreSupportRuntime(options)
+}
+func (contract *routeRuntimePhaseContract) BindManagementRuntime(options routeRuntimeContractManagementRuntimeOptions) routeRuntimeContractManagementRuntimeResult {
+	return contract.binding.BindManagementRuntime(options)
+}
+func (contract *routeRuntimePhaseContract) BindOperationalRuntime(options routeRuntimeContractOperationalOptions) routeRuntimeContractOperationalResult {
+	return contract.binding.BindOperationalRuntime(options)
+}

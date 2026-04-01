@@ -59,6 +59,10 @@ describe('ExternalAgentsSection', () => {
 
     expect(agentSessionsApi.listProfiles).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Codex ACP')
+    expect(wrapper.text()).not.toContain('Generic Remote A2A Agent')
+
+    await wrapper.get('[data-testid="external-agents-protocol-card-a2a"]').trigger('click')
+    await flushPromises()
     expect(wrapper.text()).toContain('Generic Remote A2A Agent')
 
     await wrapper.findAll('[data-testid="external-agents-profile-card"]')[0]!.trigger('click')
@@ -66,11 +70,11 @@ describe('ExternalAgentsSection', () => {
 
     await wrapper.get('[data-testid="external-agents-verify-current"]').trigger('click')
     await flushPromises()
-    expect(agentSessionsApi.verifyProfile).toHaveBeenCalledWith({ id: 'codex' })
+    expect(agentSessionsApi.verifyProfile).toHaveBeenCalledWith({ id: 'generic-a2a' })
 
     await wrapper.get('[data-testid="external-agents-health-current"]').trigger('click')
     await flushPromises()
-    expect(agentSessionsApi.healthProfile).toHaveBeenCalledWith('codex')
+    expect(agentSessionsApi.healthProfile).toHaveBeenCalledWith('generic-a2a')
     expect(wrapper.get('[data-testid="external-agents-notice"]').text()).toContain(
       'profile healthy'
     )
@@ -107,7 +111,6 @@ describe('ExternalAgentsSection', () => {
 
     await wrapper.get('[data-testid="external-agents-new-a2a"]').trigger('click')
     await wrapper.get('[data-testid="external-agents-name"]').setValue('remote-agent')
-    await wrapper.get('[data-testid="external-agents-protocol"]').setValue('a2a')
     await wrapper
       .get('[data-testid="external-agents-endpoint"]')
       .setValue('https://remote.example.com/rpc')
@@ -122,6 +125,40 @@ describe('ExternalAgentsSection', () => {
       })
     )
     expect(wrapper.text()).toContain('Remote Agent')
+
+    wrapper.unmount()
+  })
+
+  it('prefers API error details over generic axios 400 messages when saving fails', async () => {
+    vi.mocked(agentSessionsApi.saveProfile).mockRejectedValue({
+      message: 'Request failed with status code 400',
+      response: {
+        data: {
+          error: 'profile name is required',
+        },
+      },
+    } as never)
+
+    const wrapper = mount(ExternalAgentsSection, {
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+
+    await wrapper.get('[data-testid="external-agents-new-a2a"]').trigger('click')
+    await wrapper.get('[data-testid="external-agents-name"]').setValue('remote-agent')
+    await wrapper
+      .get('[data-testid="external-agents-endpoint"]')
+      .setValue('https://remote.example.com/rpc')
+    await wrapper.get('[data-testid="external-agents-save"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="external-agents-notice"]').text()).toContain(
+      'profile name is required'
+    )
+    expect(wrapper.text()).not.toContain('Request failed with status code 400')
 
     wrapper.unmount()
   })

@@ -1,22 +1,26 @@
 package pruner
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // DiskCache provides SQLite-backed cache persistence with TTL expiration.
 // Reuses the same SQLite driver (mattn/go-sqlite3) as the proxy's CCCache.
 type DiskCache struct {
-	db  *sql.DB
-	ttl time.Duration
-	mu  sync.RWMutex
+	db     *sql.DB
+	readDB *sql.DB
+	ttl    time.Duration
+	mu     sync.RWMutex
 }
 
 // NewDiskCache creates a SQLite-backed disk cache at the given path.
@@ -49,7 +53,12 @@ func NewDiskCache(dbPath string, ttl time.Duration) *DiskCache {
 		return &DiskCache{ttl: ttl}
 	}
 
-	return &DiskCache{db: db, ttl: ttl}
+	readDB, readErr := openPrunerCacheReaderDB(dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+
+	return &DiskCache{db: db, readDB: readDB, ttl: ttl}
 }
 
 func (d *DiskCache) initSchema() error {
@@ -64,6 +73,49 @@ func (d *DiskCache) initSchema() error {
 	return err
 }
 
+func (d *DiskCache) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, d.db, "pruner_cache")
+}
+
+func (d *DiskCache) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, d.reader(), "pruner_cache")
+}
+
+func (d *DiskCache) reader() *sql.DB {
+	if d != nil && d.readDB != nil {
+		return d.readDB
+	}
+	if d == nil {
+		return nil
+	}
+	return d.db
+}
+
+func openPrunerCacheReaderDB(dbPath string) (*sql.DB, error) {
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("set pruner cache reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+type prunerCacheRow struct {
+	Key       string `json:"key" zorm:"key"`
+	Data      string `json:"data" zorm:"data"`
+	CreatedAt string `json:"created_at" zorm:"created_at"`
+}
+
 // Get retrieves scored segments from disk cache.
 func (d *DiskCache) Get(key string) ([]ScoredSegment, bool) {
 	if d.db == nil {
@@ -73,29 +125,30 @@ func (d *DiskCache) Get(key string) ([]ScoredSegment, bool) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	var data []byte
-	var createdAt string
-
-	err := d.db.QueryRow(
-		"SELECT data, created_at FROM pruner_cache WHERE key = ?", key,
-	).Scan(&data, &createdAt)
-	if err != nil {
+	ctx := context.Background()
+	var rows []prunerCacheRow
+	_, err := d.readTable(ctx).Select(&rows,
+		z.Where(z.Eq("key", key)),
+		z.Limit(1),
+	)
+	if err != nil || len(rows) == 0 {
 		return nil, false
 	}
 
 	// Check TTL
-	ca, err := time.Parse(time.RFC3339, createdAt)
-	if err != nil || timeutil.SinceTime(ca) > d.ttl {
+	ca := parsePrunerCacheTime(rows[0].CreatedAt)
+	if ca.IsZero() || timeutil.SinceTime(ca) > d.ttl {
 		go func() {
 			d.mu.Lock()
 			defer d.mu.Unlock()
-			d.db.Exec("DELETE FROM pruner_cache WHERE key = ?", key)
+			deleteCtx := context.Background()
+			_, _ = d.table(deleteCtx).Delete(z.Where(z.Eq("key", key)))
 		}()
 		return nil, false
 	}
 
 	var segments []ScoredSegment
-	if err := json.Unmarshal(data, &segments); err != nil {
+	if err := json.Unmarshal([]byte(rows[0].Data), &segments); err != nil {
 		return nil, false
 	}
 
@@ -116,10 +169,18 @@ func (d *DiskCache) Put(key string, segments []ScoredSegment) {
 		return
 	}
 
-	d.db.Exec(`
-		INSERT OR REPLACE INTO pruner_cache (key, data, created_at)
-		VALUES (?, ?, ?)
-	`, key, data, timeutil.NowTime().UTC().Format(time.RFC3339))
+	ctx := context.Background()
+	_, _ = d.table(ctx).Insert(
+		map[string]interface{}{
+			"key":        key,
+			"data":       string(data),
+			"created_at": timeutil.NowTime().UTC().Format(time.RFC3339),
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"key"},
+			[]string{"data", "created_at"},
+		),
+	)
 }
 
 // Cleanup removes expired entries.
@@ -132,12 +193,12 @@ func (d *DiskCache) Cleanup() int64 {
 	defer d.mu.Unlock()
 
 	cutoff := timeutil.NowTime().Add(-d.ttl).UTC().Format(time.RFC3339)
-	result, err := d.db.Exec("DELETE FROM pruner_cache WHERE created_at <= ?", cutoff)
+	ctx := context.Background()
+	result, err := d.table(ctx).Delete(z.Where(z.Expr("created_at <= ?", cutoff)))
 	if err != nil {
 		return 0
 	}
-	n, _ := result.RowsAffected()
-	return n
+	return int64(result)
 }
 
 // Close closes the database connection.
@@ -145,5 +206,21 @@ func (d *DiskCache) Close() error {
 	if d.db == nil {
 		return nil
 	}
+	if d.readDB != nil && d.readDB != d.db {
+		_ = d.readDB.Close()
+	}
 	return d.db.Close()
+}
+
+func parsePrunerCacheTime(raw string) time.Time {
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err == nil {
+		return parsed
+	}
+	parsed, err = time.Parse(time.RFC3339Nano, raw)
+	if err == nil {
+		return parsed
+	}
+	parsed, _ = time.Parse("2006-01-02 15:04:05", raw)
+	return parsed
 }

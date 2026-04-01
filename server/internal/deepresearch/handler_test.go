@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,13 @@ import (
 func withUserClaims(req *http.Request, userID string) *http.Request {
 	ctx := context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: userID})
 	return req.WithContext(ctx)
+}
+
+type timeoutJobCreator struct{}
+
+func (timeoutJobCreator) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, error) {
+	_ = req
+	return nil, fmt.Errorf("waiting for deep research slot: %w", context.DeadlineExceeded)
 }
 
 func TestHandlerGetJobForbidden(t *testing.T) {
@@ -54,6 +62,38 @@ func TestHandlerGetJobForbidden(t *testing.T) {
 	}
 	if got, _ := body["code"].(string); got != "forbidden" {
 		t.Fatalf("error code = %q, want forbidden", got)
+	}
+}
+
+func TestHandlerCreateJobTimeoutReturnsRequestTimeout(t *testing.T) {
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return nil, nil
+		},
+	})
+	handler := NewHandler(svc)
+	handler.SetJobCreator(timeoutJobCreator{})
+
+	e := echo.New()
+	body := bytes.NewBufferString(`{"query":"test timeout"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/deep-research/jobs", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.CreateJob(c); err != nil {
+		t.Fatalf("CreateJob failed: %v", err)
+	}
+	if rec.Code != http.StatusRequestTimeout {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusRequestTimeout)
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["code"] != "request_timeout" {
+		t.Fatalf("code = %q, want request_timeout", payload["code"])
 	}
 }
 

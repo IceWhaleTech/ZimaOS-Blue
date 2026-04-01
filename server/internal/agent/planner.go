@@ -31,6 +31,7 @@ type PlannerDecision struct {
 }
 
 type PlannerInput struct {
+	Model              string
 	Goal               string
 	PlanSummary        string
 	Step               PlanStep
@@ -40,6 +41,7 @@ type PlannerInput struct {
 	ToolCatalog        []llm.Tool
 	PriorToolCallIDs   []string
 	PreviousViolations []string
+	RoutingContract    string
 }
 
 type GroundedPlanner struct {
@@ -55,7 +57,7 @@ func (p *GroundedPlanner) Decide(ctx context.Context, input PlannerInput) (*Plan
 		return nil, fmt.Errorf("grounded planner is not configured")
 	}
 	resp, err := p.llm.Chat(ctx, llm.ChatRequest{
-		Model: "auto",
+		Model: firstNonEmptyString(input.Model, "auto"),
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: buildGroundedPlannerSystemPrompt(input.ToolCatalog)},
 			{Role: llm.RoleUser, Content: buildGroundedPlannerUserPrompt(input)},
@@ -86,6 +88,7 @@ func buildGroundedPlannerSystemPrompt(tools []llm.Tool) string {
 	sb.WriteString("- status=complete, blocked, or unknown must omit next_tool.\n")
 	sb.WriteString("- Do not claim that files exist, that ls showed something, or that file contents are known unless a tool will verify it.\n")
 	sb.WriteString("- If evidence is insufficient, use unknown instead of guessing.\n")
+	sb.WriteString("- If the execution routing contract provides a canonical CLI action and exec/bash is available, choose that canonical CLI action first instead of substituting direct alternative tools.\n")
 	sb.WriteString("- Assertions are optional and must be limited to file_exists(path) and tool_called(name).\n")
 	sb.WriteString("- Keep reasons concise.\n")
 	if len(tools) > 0 {
@@ -130,6 +133,11 @@ func buildGroundedPlannerUserPrompt(input PlannerInput) string {
 			sb.WriteString(item)
 			sb.WriteByte('\n')
 		}
+	}
+	if strings.TrimSpace(input.RoutingContract) != "" {
+		sb.WriteString("\nExecution routing contract:\n")
+		sb.WriteString(strings.TrimSpace(input.RoutingContract))
+		sb.WriteByte('\n')
 	}
 	sb.WriteString("\nDecide the single next grounded action.")
 	return strings.TrimSpace(sb.String())

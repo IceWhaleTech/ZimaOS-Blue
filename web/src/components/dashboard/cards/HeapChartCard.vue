@@ -52,11 +52,11 @@ const heapSummaryItems = computed(() => [
     value: formatMbValue(currentHeapMb.value),
   },
   {
-    label: t('resourceChart.avg', 'Avg'),
+    label: t('resourceChart.avg'),
     value: formatMbValue(averageHeapMb.value),
   },
   {
-    label: t('metrics.max', 'Max'),
+    label: t('metrics.max'),
     value: formatMbValue(peakHeapMb.value),
   },
 ])
@@ -65,13 +65,13 @@ const heapSummaryItems = computed(() => [
 <template>
   <ResourceChart
     :title="t('system.heapAllocation')"
-    subtitle="Managed heap allocation across the latest 5 minutes"
+    :subtitle="t('system.cards.heapChart.chartSubtitle')"
     :data="heapChartData"
     variant="dashboard"
     unit=""
     color="orange"
     badge="5m"
-    caption="Tracked heap growth and retention inside the most recent runtime window"
+    :caption="t('system.cards.heapChart.chartCaption')"
     :format-value="(v: number) => formatMbValue(v)"
     :summary-items="heapSummaryItems"
   />

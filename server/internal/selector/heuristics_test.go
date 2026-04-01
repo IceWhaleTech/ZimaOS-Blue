@@ -20,6 +20,32 @@ func TestAnalyzeQuery_UsesCompiledStaticCueMatchers(t *testing.T) {
 		}
 	})
 
+	t.Run("workspace summarize query stays local", func(t *testing.T) {
+		signals := AnalyzeQuery("Review files in the workspace and summarize the report.")
+		if !signals.LocalWorkspace {
+			t.Fatalf("expected LocalWorkspace for workspace summarize query, got %+v", signals)
+		}
+		if signals.LiveWeb {
+			t.Fatalf("did not expect LiveWeb for workspace summarize query, got %+v", signals)
+		}
+		if signals.Productivity {
+			t.Fatalf("did not expect Productivity for workspace summarize query, got %+v", signals)
+		}
+	})
+
+	t.Run("email cli query stays productivity", func(t *testing.T) {
+		signals := AnalyzeQuery("Search my IMAP inbox for unread mail from Alice and reply from the terminal.")
+		if !signals.Productivity {
+			t.Fatalf("expected Productivity for email CLI query, got %+v", signals)
+		}
+		if signals.LiveWeb {
+			t.Fatalf("did not expect LiveWeb for email CLI query, got %+v", signals)
+		}
+		if signals.LocalWorkspace {
+			t.Fatalf("did not expect LocalWorkspace for email CLI query, got %+v", signals)
+		}
+	})
+
 	t.Run("howto meta", func(t *testing.T) {
 		signals := AnalyzeQuery("How to use this tool mode?")
 		if !signals.QuestionPrefix || !signals.HowToQuestion || !signals.MetaIntent {

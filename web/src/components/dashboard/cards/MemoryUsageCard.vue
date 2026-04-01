@@ -46,9 +46,9 @@ const allocationTrendData = computed<SparklinePoint[]>(() => {
     <div class="dashboard-card-footer">
       <div class="dashboard-card-copy">
         <p class="dashboard-card-label">{{ t('system.heapAllocation') }}</p>
-        <p class="dashboard-card-subtitle mt-2">Current heap alloc</p>
+        <p class="dashboard-card-subtitle mt-2">{{ t('system.cards.heap.subtitle') }}</p>
       </div>
-      <span class="dashboard-card-chip">Now</span>
+      <span class="dashboard-card-chip">{{ t('system.cards.heap.chip') }}</span>
     </div>
 
     <div class="dashboard-card-footer memory-card-main">
@@ -59,7 +59,7 @@ const allocationTrendData = computed<SparklinePoint[]>(() => {
         <p v-else class="dashboard-card-value text-gray-900 dark:text-white">
           {{ formatBytes(systemStore.health?.mem_alloc_bytes) }}
         </p>
-        <p class="dashboard-card-footnote mt-3">Live heap allocator footprint</p>
+        <p class="dashboard-card-footnote mt-3">{{ t('system.cards.heap.footnote') }}</p>
       </div>
 
       <DashboardSparkline :data="allocationTrendData" />

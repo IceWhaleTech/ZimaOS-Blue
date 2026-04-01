@@ -61,6 +61,24 @@ func TestBuildProviderVerificationURLs(t *testing.T) {
 			wantResponsesV1:  "http://127.0.0.1:11434/v1/responses",
 			wantResponsesRaw: "http://127.0.0.1:11434/responses",
 		},
+		{
+			name:             "minimax anthropic base",
+			baseURL:          "https://api.minimaxi.com/anthropic",
+			wantModelsURL:    "https://api.minimaxi.com/v1/models",
+			wantAnthropicURL: "https://api.minimaxi.com/anthropic/v1/messages",
+			wantChatURL:      "https://api.minimaxi.com/v1/chat/completions",
+			wantResponsesV1:  "https://api.minimaxi.com/v1/responses",
+			wantResponsesRaw: "https://api.minimaxi.com/responses",
+		},
+		{
+			name:             "minimax anthropic messages endpoint",
+			baseURL:          "https://api.minimaxi.com/anthropic/v1/messages",
+			wantModelsURL:    "https://api.minimaxi.com/v1/models",
+			wantAnthropicURL: "https://api.minimaxi.com/anthropic/v1/messages",
+			wantChatURL:      "https://api.minimaxi.com/v1/chat/completions",
+			wantResponsesV1:  "https://api.minimaxi.com/v1/responses",
+			wantResponsesRaw: "https://api.minimaxi.com/responses",
+		},
 	}
 
 	for _, tt := range tests {
@@ -82,6 +100,82 @@ func TestBuildProviderVerificationURLs(t *testing.T) {
 				t.Fatalf("responsesRaw = %q, want %q", got.responsesRaw, tt.wantResponsesRaw)
 			}
 		})
+	}
+}
+
+func TestVerifyProviderCandidate_MiniMaxAnthropicBaseUsesBearerAndKeepsAnthropicBase(t *testing.T) {
+	type seenHeaders struct {
+		Authorization    string
+		XAPIKey          string
+		AnthropicVersion string
+	}
+
+	verifyHeaders := map[string]seenHeaders{}
+
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		verifyHeaders[r.URL.Path] = seenHeaders{
+			Authorization:    r.Header.Get("Authorization"),
+			XAPIKey:          r.Header.Get("x-api-key"),
+			AnthropicVersion: r.Header.Get("anthropic-version"),
+		}
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusNotFound, `{"error":"not found"}`
+		case "/v1/chat/completions":
+			return http.StatusNotFound, `{"error":"not found"}`
+		case "/anthropic/v1/messages":
+			return http.StatusUnauthorized, `{"error":{"message":"auth checked"}}`
+		case "/v1/responses", "/responses":
+			return http.StatusNotFound, `{"error":"not found"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/anthropic/v1/messages":
+			return http.StatusUnauthorized, `{"error":"probe"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	result, err := verifyProviderCandidate(context.Background(), providerVerificationRequest{
+		BaseURL: "https://api.minimaxi.com/anthropic",
+		APIKey:  "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("verifyProviderCandidate returned error: %v", err)
+	}
+
+	if result.RecommendedAPIFormat != APIFormatAnthropic {
+		t.Fatalf("RecommendedAPIFormat = %q, want %q", result.RecommendedAPIFormat, APIFormatAnthropic)
+	}
+	if result.RecommendedBaseURL != "https://api.minimaxi.com/anthropic" {
+		t.Fatalf("RecommendedBaseURL = %q, want %q", result.RecommendedBaseURL, "https://api.minimaxi.com/anthropic")
+	}
+	if probe := result.Probes["anthropic_messages"]; probe.URL != "https://api.minimaxi.com/anthropic/v1/messages" {
+		t.Fatalf("anthropic probe URL = %q, want %q", probe.URL, "https://api.minimaxi.com/anthropic/v1/messages")
+	}
+
+	anthropic := verifyHeaders["/anthropic/v1/messages"]
+	if anthropic.Authorization != "Bearer sk-test" {
+		t.Fatalf("anthropic Authorization = %q, want %q", anthropic.Authorization, "Bearer sk-test")
+	}
+	if anthropic.XAPIKey != "" {
+		t.Fatalf("anthropic x-api-key = %q, want empty", anthropic.XAPIKey)
+	}
+	if anthropic.AnthropicVersion != "2023-06-01" {
+		t.Fatalf("anthropic-version = %q, want %q", anthropic.AnthropicVersion, "2023-06-01")
+	}
+	if got := verifyHeaders["/v1/chat/completions"].Authorization; got != "Bearer sk-test" {
+		t.Fatalf("chat Authorization = %q, want %q", got, "Bearer sk-test")
+	}
+	if got := verifyHeaders["/v1/models"].Authorization; got != "Bearer sk-test" {
+		t.Fatalf("models Authorization = %q, want %q", got, "Bearer sk-test")
 	}
 }
 
@@ -244,10 +338,7 @@ func TestVerifyProviderCandidate_ResponsesOnly(t *testing.T) {
 	}
 }
 
-func TestVerifyProviderCandidate_IgnoresResponsesWhenIntegrationDisabled(t *testing.T) {
-	SetResponsesIntegrationEnabled(false)
-	defer SetResponsesIntegrationEnabled(true)
-
+func TestVerifyProviderCandidate_StillProbesResponsesWhenDisableRequested(t *testing.T) {
 	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
 		switch r.URL.Path {
 		case "/v1/models":
@@ -281,8 +372,8 @@ func TestVerifyProviderCandidate_IgnoresResponsesWhenIntegrationDisabled(t *test
 	if err != nil {
 		t.Fatalf("verifyProviderCandidate returned error: %v", err)
 	}
-	if result.DetectedFormat != APIFormatOpenAI {
-		t.Fatalf("DetectedFormat = %q, want %q", result.DetectedFormat, APIFormatOpenAI)
+	if result.DetectedFormat != APIFormatResponses {
+		t.Fatalf("DetectedFormat = %q, want %q", result.DetectedFormat, APIFormatResponses)
 	}
 	if result.RecommendedAPIFormat != APIFormatOpenAI {
 		t.Fatalf("RecommendedAPIFormat = %q, want %q", result.RecommendedAPIFormat, APIFormatOpenAI)
@@ -293,11 +384,65 @@ func TestVerifyProviderCandidate_IgnoresResponsesWhenIntegrationDisabled(t *test
 	if result.ResponsesOnly {
 		t.Fatal("ResponsesOnly = true, want false")
 	}
-	if _, ok := result.Probes["responses_v1"]; ok {
-		t.Fatal("responses_v1 probe should be omitted when integration is disabled")
+	if got := result.Probes["responses_v1"].StatusCode; got != http.StatusOK {
+		t.Fatalf("responses_v1.status = %d, want 200", got)
 	}
-	if _, ok := result.Probes["responses_plain"]; ok {
-		t.Fatal("responses_plain probe should be omitted when integration is disabled")
+	if got := result.Probes["responses_plain"].StatusCode; got != http.StatusOK {
+		t.Fatalf("responses_plain.status = %d, want 200", got)
+	}
+}
+
+func TestVerifyProviderCandidate_IgnoresHTMLResponsesScaffold(t *testing.T) {
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusOK, `{"data":[{"id":"claude-sonnet-4-6"}]}`
+		case "/v1/chat/completions":
+			return http.StatusPaymentRequired, `{"error":{"message":"openai_error","type":"bad_response_status_code"}}`
+		case "/v1/messages":
+			return http.StatusPaymentRequired, `{"error":{"message":"bad_response_status_code"}}`
+		case "/v1/responses":
+			return http.StatusInternalServerError, `{"error":{"message":"not implemented","type":"new_api_error"}}`
+		case "/responses":
+			return http.StatusOK, "<!doctype html><html><head><title>New API</title></head><body><div id=\"root\"></div></body></html>"
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusPaymentRequired, `{"error":{"message":"openai_error","type":"bad_response_status_code"}}`
+		case "/v1/messages":
+			return http.StatusPaymentRequired, `{"error":{"message":"bad_response_status_code"}}`
+		case "/v1/responses":
+			return http.StatusInternalServerError, `{"error":{"message":"not implemented","type":"new_api_error"}}`
+		case "/responses":
+			return http.StatusOK, "<!doctype html><html><head><title>New API</title></head><body><div id=\"root\"></div></body></html>"
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	result, err := verifyProviderCandidate(context.Background(), providerVerificationRequest{
+		BaseURL: "http://relay.example.com",
+		APIKey:  "sk-test",
+		Model:   "claude-sonnet-4-6",
+	})
+	if err != nil {
+		t.Fatalf("verifyProviderCandidate returned error: %v", err)
+	}
+	if result.RecommendedAPIFormat == APIFormatResponses {
+		t.Fatalf("RecommendedAPIFormat = %q, want non-responses fallback", result.RecommendedAPIFormat)
+	}
+	if result.RecommendedBaseURL != "http://relay.example.com" {
+		t.Fatalf("RecommendedBaseURL = %q, want %q", result.RecommendedBaseURL, "http://relay.example.com")
+	}
+	if result.Probes["responses_plain"].Reachable {
+		t.Fatalf("responses_plain.reachable = true, want false for HTML scaffold")
 	}
 }
 

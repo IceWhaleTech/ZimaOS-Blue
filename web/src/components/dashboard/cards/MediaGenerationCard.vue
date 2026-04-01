@@ -64,6 +64,14 @@ function formatCost(n: number): string {
   return '$0.00'
 }
 
+function formatCategoryLabel(category: string): string {
+  const knownCategories = new Set(['t2i', 't2v', 'i2v', 'i2i', 'kf2v'])
+  if (knownCategories.has(category)) {
+    return t(`media.${category}`)
+  }
+  return category.replace(/_/g, ' ')
+}
+
 async function fetchStats() {
   loading.value = true
   try {
@@ -85,8 +93,8 @@ defineExpose({ refresh: fetchStats })
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">Media</p>
-          <p class="dashboard-card-subtitle mt-2">Generation activity</p>
+          <p class="dashboard-card-label">{{ t('dashboard.cards.mediaGeneration') }}</p>
+          <p class="dashboard-card-subtitle mt-2">{{ t('mediaStats.cards.subtitle') }}</p>
         </div>
       </div>
 
@@ -148,7 +156,7 @@ defineExpose({ refresh: fetchStats })
             </div>
             <div class="mt-2 flex items-center justify-between text-xs">
               <span class="text-green-600 dark:text-green-400"
-                >{{ stats?.succeeded ?? 0 }} {{ t('mediaStats.success', 'success') }}</span
+                >{{ stats?.succeeded ?? 0 }} {{ t('mediaStats.success') }}</span
               >
             </div>
           </div>
@@ -205,7 +213,7 @@ defineExpose({ refresh: fetchStats })
               :key="category"
               class="dashboard-card-chip"
             >
-              {{ category }}: {{ count }}
+              {{ formatCategoryLabel(category) }}: {{ count }}
             </span>
           </div>
         </div>

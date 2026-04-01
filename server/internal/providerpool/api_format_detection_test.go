@@ -22,6 +22,49 @@ func TestCanonicalAPIFormatForProvider_NonThirdParty(t *testing.T) {
 	}
 }
 
+func TestProbeThirdPartyAPIFormat_MiniMaxAnthropicUsesBearer(t *testing.T) {
+	var gotAuth string
+	var gotXAPIKey string
+	var gotVersion string
+
+	restore := installProbeTransport(func(r *http.Request) (int, string) {
+		if r.URL.Host == "api.minimaxi.com" && r.URL.Path == "/anthropic/v1/messages" {
+			gotAuth = r.Header.Get("Authorization")
+			gotXAPIKey = r.Header.Get("x-api-key")
+			gotVersion = r.Header.Get("anthropic-version")
+			return http.StatusUnauthorized, `{"error":"auth checked"}`
+		}
+		return http.StatusNotFound, `{}`
+	})
+	defer restore()
+
+	p := &Provider{
+		ID:      "custom-minimax",
+		Type:    ProviderTypeCustom,
+		BaseURL: "https://api.minimaxi.com/anthropic",
+		APIKeys: []APIKey{{
+			Key:     "sk-test",
+			Enabled: true,
+		}},
+	}
+	got, detectedURL := autoDetectAPIFormat(context.Background(), p)
+	if got != APIFormatAnthropic {
+		t.Fatalf("format = %q, want %q", got, APIFormatAnthropic)
+	}
+	if detectedURL != "" {
+		t.Fatalf("detectedURL = %q, want empty", detectedURL)
+	}
+	if gotAuth != "Bearer sk-test" {
+		t.Fatalf("Authorization = %q, want %q", gotAuth, "Bearer sk-test")
+	}
+	if gotXAPIKey != "" {
+		t.Fatalf("x-api-key = %q, want empty", gotXAPIKey)
+	}
+	if gotVersion != "2023-06-01" {
+		t.Fatalf("anthropic-version = %q, want %q", gotVersion, "2023-06-01")
+	}
+}
+
 func TestProbeThirdPartyAPIFormat_OpenAIWins(t *testing.T) {
 	restore := installProbeTransport(func(r *http.Request) (int, string) {
 		switch r.URL.Path {
@@ -161,10 +204,7 @@ func TestProbeThirdPartyAPIFormat_CodexBackendPathOnNonOfficialHostKeepsBaseURL(
 	}
 }
 
-func TestProbeThirdPartyAPIFormat_IgnoresResponsesWhenIntegrationDisabled(t *testing.T) {
-	SetResponsesIntegrationEnabled(false)
-	defer SetResponsesIntegrationEnabled(true)
-
+func TestProbeThirdPartyAPIFormat_PrefersOpenAIWhenChatAndResponsesBothSucceed(t *testing.T) {
 	restore := installProbeTransport(func(r *http.Request) (int, string) {
 		switch r.URL.Path {
 		case "/v1/chat/completions":
@@ -183,11 +223,11 @@ func TestProbeThirdPartyAPIFormat_IgnoresResponsesWhenIntegrationDisabled(t *tes
 		BaseURL: "https://relay.example.com",
 	}
 	got, detectedURL := autoDetectAPIFormat(context.Background(), p)
-	if got != APIFormatOpenAI {
-		t.Fatalf("format = %q, want %q", got, APIFormatOpenAI)
+	if got != APIFormatResponses {
+		t.Fatalf("format = %q, want %q", got, APIFormatResponses)
 	}
-	if detectedURL != "" {
-		t.Fatalf("detectedURL = %q, want empty", detectedURL)
+	if detectedURL != "https://relay.example.com" {
+		t.Fatalf("detectedURL = %q, want %q", detectedURL, "https://relay.example.com")
 	}
 }
 

@@ -27,6 +27,7 @@ type SessionStore interface {
 // SQLiteSessionStore implements SessionStore using SQLite.
 type SQLiteSessionStore struct {
 	db        *sql.DB
+	readDB    *sql.DB
 	mu        sync.Mutex
 	maxTokens int
 }
@@ -122,11 +123,53 @@ func NewSQLiteSessionStore(dbPath string, maxTokens int) (*SQLiteSessionStore, e
 		return nil, err
 	}
 
-	return &SQLiteSessionStore{db: db, maxTokens: NormalizeTokenBudget(maxTokens)}, nil
+	readDB, readErr := openSessionReaderDB(dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+
+	return &SQLiteSessionStore{
+		db:        db,
+		readDB:    readDB,
+		maxTokens: NormalizeTokenBudget(maxTokens),
+	}, nil
 }
 
 func (s *SQLiteSessionStore) table() *z.ZormTable {
 	return z.Table(s.db, "sessions")
+}
+
+func (s *SQLiteSessionStore) readTable() *z.ZormTable {
+	return z.Table(s.reader(), "sessions")
+}
+
+func (s *SQLiteSessionStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func openSessionReaderDB(dbPath string) (*sql.DB, error) {
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("failed to set session reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // Save saves a session to the database.
@@ -224,7 +267,7 @@ func (s *SQLiteSessionStore) Load(id SessionID) (*Session, error) {
 	defer s.mu.Unlock()
 
 	var rows []persistenceRow
-	_, err := s.table().Select(&rows,
+	_, err := s.readTable().Select(&rows,
 		z.Where(z.Eq("id", id.String())),
 		z.Limit(1),
 	)
@@ -290,7 +333,7 @@ func (s *SQLiteSessionStore) List(filter SessionFilter) ([]*Session, error) {
 	}
 
 	var rows []persistenceRow
-	_, err := s.table().Select(&rows, opts...)
+	_, err := s.readTable().Select(&rows, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
@@ -312,7 +355,7 @@ func (s *SQLiteSessionStore) Archive(id SessionID) error {
 	defer s.mu.Unlock()
 
 	_, err := s.table().Update(
-		map[string]interface{}{
+		z.V{
 			"state":      int(SessionStateArchived),
 			"updated_at": timeutil.NowTime(),
 		},
@@ -326,6 +369,9 @@ func (s *SQLiteSessionStore) Archive(id SessionID) error {
 
 // Close closes the database connection.
 func (s *SQLiteSessionStore) Close() error {
+	if s.readDB != nil && s.readDB != s.db {
+		_ = s.readDB.Close()
+	}
 	return s.db.Close()
 }
 

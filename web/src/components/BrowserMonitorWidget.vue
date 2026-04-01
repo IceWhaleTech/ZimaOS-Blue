@@ -16,6 +16,7 @@ import {
   localizeTaskProjectionSubtitle,
   localizeTaskProjectionTitle,
 } from '@/utils/taskProjectionText'
+import { canOpenTaskConversation } from '@/utils/taskProjectionActions'
 
 const MONITOR_POSITION_KEY = 'zima.browser.monitor.position.v1'
 const MONITOR_LAUNCHER_POSITION_KEY = 'zima.browser.monitor.launcher.position.v1'
@@ -894,7 +895,7 @@ async function refreshAll() {
 }
 
 async function openTask(task: UserTaskProjection) {
-  if (!task.actions?.can_open_chat || !task.conversation_id) return
+  if (!canOpenTaskConversation(task) || !task.conversation_id) return
   await router.push({ name: 'Chat', query: { conversationId: task.conversation_id } })
 }
 
@@ -1493,7 +1494,7 @@ onUnmounted(() => {
                 :key="task.id"
                 type="button"
                 class="browser-monitor__task"
-                :class="{ 'is-clickable': task.actions.can_open_chat && !!task.conversation_id }"
+                :class="{ 'is-clickable': canOpenTaskConversation(task) && !!task.conversation_id }"
                 @click="openTask(task)"
               >
                 <div class="browser-monitor__task-row">

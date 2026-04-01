@@ -40,7 +40,7 @@ func TestConversationCommandStateAPI(t *testing.T) {
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	e := echo.New()
 
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"web_search_enabled":false,"deep_research_enabled":true}`))
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"web_search_enabled":false,"research_mode_enabled":true}`))
 	patchReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	patchRec := httptest.NewRecorder()
 	patchCtx := e.NewContext(patchReq, patchRec)
@@ -71,7 +71,7 @@ func TestConversationCommandStateAPI(t *testing.T) {
 	if state["selected_provider_id"] != "openai" || state["selected_model_id"] != "gpt-5" {
 		t.Fatalf("unexpected command state: %v", state)
 	}
-	if state["web_search_enabled"] != false || state["deep_research_enabled"] != true {
+	if state["web_search_enabled"] != false || state["deep_research_enabled"] != true || state["research_mode_enabled"] != true {
 		t.Fatalf("unexpected preference flags: %v", state)
 	}
 }
@@ -99,7 +99,7 @@ func TestConversationCommandStateAPISharedAcrossConversationsForSameUser(t *test
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	e := echo.New()
 
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv1.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"web_search_enabled":false,"deep_research_enabled":true}`))
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv1.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"web_search_enabled":false,"research_mode_enabled":true}`))
 	patchReq = requestWithUser(patchReq, "user-a")
 	patchReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	patchRec := httptest.NewRecorder()
@@ -132,7 +132,7 @@ func TestConversationCommandStateAPISharedAcrossConversationsForSameUser(t *test
 	if userAState["selected_provider_id"] != "openai" || userAState["selected_model_id"] != "gpt-5" {
 		t.Fatalf("unexpected shared user-a state: %v", userAState)
 	}
-	if userAState["offline"] != true || userAState["web_search_enabled"] != false || userAState["deep_research_enabled"] != true {
+	if userAState["offline"] != true || userAState["web_search_enabled"] != false || userAState["deep_research_enabled"] != true || userAState["research_mode_enabled"] != true {
 		t.Fatalf("unexpected shared user-a flags: %v", userAState)
 	}
 
@@ -196,6 +196,9 @@ func TestApplyCommandStateToRequestLeavesFallbackFlagsNilWithoutPersistedState(t
 	if req.DeepResearchEnabled == nil || !*req.DeepResearchEnabled {
 		t.Fatalf("expected persisted deep flag true, got %v", req.DeepResearchEnabled)
 	}
+	if req.ResearchModeEnabled == nil || !*req.ResearchModeEnabled {
+		t.Fatalf("expected persisted research flag true, got %v", req.ResearchModeEnabled)
+	}
 }
 
 func TestApplyCommandStateToRequestPersistsExplicitCapabilityFlags(t *testing.T) {
@@ -213,10 +216,10 @@ func TestApplyCommandStateToRequestPersistsExplicitCapabilityFlags(t *testing.T)
 
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	webSearchEnabled := false
-	deepResearchEnabled := true
+	researchModeEnabled := true
 	req := &SendMessageRequest{
 		WebSearchEnabled:    &webSearchEnabled,
-		DeepResearchEnabled: &deepResearchEnabled,
+		ResearchModeEnabled: &researchModeEnabled,
 	}
 
 	state := handler.applyCommandStateToRequest(ctx, conv.ID, req)
@@ -228,6 +231,9 @@ func TestApplyCommandStateToRequestPersistsExplicitCapabilityFlags(t *testing.T)
 	}
 	if req.DeepResearchEnabled == nil || !*req.DeepResearchEnabled {
 		t.Fatalf("expected explicit deep flag to be preserved, got %v", req.DeepResearchEnabled)
+	}
+	if req.ResearchModeEnabled == nil || !*req.ResearchModeEnabled {
+		t.Fatalf("expected explicit research flag to be preserved, got %v", req.ResearchModeEnabled)
 	}
 
 	persisted, err := store.GetConversationCommandState(ctx, conv.ID)

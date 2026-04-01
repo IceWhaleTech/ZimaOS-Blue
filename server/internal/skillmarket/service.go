@@ -30,6 +30,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
@@ -70,7 +71,11 @@ type Service struct {
 }
 
 func NewService(db *sql.DB, opts Options) (*Service, error) {
-	return newService(db, opts, false)
+	return NewServiceWithReadDB(db, db, opts)
+}
+
+func NewServiceWithReadDB(writeDB, readDB *sql.DB, opts Options) (*Service, error) {
+	return newService(writeDB, readDB, opts, false)
 }
 
 func NewServiceWithDBPath(dbPath string, opts Options) (*Service, error) {
@@ -86,22 +91,26 @@ func NewServiceWithDBPath(dbPath string, opts Options) (*Service, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("configure skillmarket db: %w", configureErr)
 	}
-	svc, err := newService(db, opts, true)
+	svc, err := newService(db, db, opts, true)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	if configureErr != nil {
 		if err := configureSkillMarketSQLiteDB(db); err != nil {
-			_ = db.Close()
+			_ = svc.Close()
 			return nil, fmt.Errorf("reconfigure skillmarket db after legacy FTS cleanup: %w", err)
 		}
+	}
+	readDB, readErr := openSkillMarketReaderDB(dbPath)
+	if readErr == nil && readDB != nil && svc.store != nil {
+		svc.store.readDB = readDB
 	}
 	return svc, nil
 }
 
-func newService(db *sql.DB, opts Options, ownsDB bool) (*Service, error) {
-	store, err := NewStore(db)
+func newService(writeDB, readDB *sql.DB, opts Options, ownsDB bool) (*Service, error) {
+	store, err := NewStoreWithReadDB(writeDB, readDB)
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +181,29 @@ func configureSkillMarketSQLiteDB(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func openSkillMarketReaderDB(dbPath string) (*sql.DB, error) {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+
+	dsn := fmt.Sprintf("file:%s?mode=ro&_busy_timeout=5000", dbPath)
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open skillmarket reader db: %w", err)
+	}
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(time.Hour)
+	db.SetConnMaxIdleTime(10 * time.Minute)
+
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping skillmarket reader db: %w", err)
+	}
+	return db, nil
 }
 
 func isMissingFTS5ModuleError(err error) bool {
@@ -271,7 +303,17 @@ func (s *Service) Close() error {
 	if !s.ownsDB || s.store == nil || s.store.db == nil {
 		return nil
 	}
-	return s.store.db.Close()
+	return closeSkillMarketDBs(s.store.db, s.store.readDB)
+}
+
+func closeSkillMarketDBs(writeDB, readDB *sql.DB) error {
+	if readDB != nil && readDB != writeDB {
+		_ = readDB.Close()
+	}
+	if writeDB == nil {
+		return nil
+	}
+	return writeDB.Close()
 }
 
 func (s *Service) GetDiscoverStatus() DiscoverStatus {
@@ -2510,14 +2552,12 @@ func (s *Service) materializeArchiveVersion(ctx context.Context, doc SkillDocume
 		return "", SkillVersion{}, err
 	}
 
-	installRoot, skillFile, err := findArchiveInstallRoot(extractDir, doc.ID)
+	bundle, err := skillmanifest.ValidateArchiveInstallRoot(extractDir, doc.ID, skillmanifest.Options{RequireContract: true})
 	if err != nil {
 		return "", SkillVersion{}, err
 	}
-	rawBytes, err := os.ReadFile(skillFile)
-	if err != nil {
-		return "", SkillVersion{}, err
-	}
+	installRoot := bundle.Root
+	rawBytes := bundle.Raw
 	parsed, err := parseSkillMarkdown(string(rawBytes), doc.ID)
 	if err != nil {
 		return "", SkillVersion{}, err
@@ -2693,6 +2733,8 @@ func archiveExtension(primaryURL, fallbackURL, contentType string) string {
 			return ".tar.gz"
 		case strings.Contains(lower, ".tgz"):
 			return ".tgz"
+		case strings.Contains(lower, ".skill"):
+			return ".skill"
 		case strings.Contains(lower, ".zip"):
 			return ".zip"
 		}

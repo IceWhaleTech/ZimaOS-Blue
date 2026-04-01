@@ -1,20 +1,23 @@
 ---
 name: datetime
-description: Get current date time timezone information and perform time formatting or conversion.
+version: "0.1.0"
+description: "Disabled placeholder for date/time/timezone helpers. ZimaOS Blue does not currently register a dedicated builtin datetime skill in the live runtime."
+enabled: false
+category: internal
+tags:
+  - datetime
+  - time
+  - timezone
 ---
 
 # DateTime
 
-Get current date, time, timezone information, and format dates.
+This skill is currently disabled.
 
-## Usage
+Earlier drafts documented `action=now|format|convert` as if `datetime` were a live builtin contract. In the current ZimaOS Blue runtime, there is no dedicated builtin `datetime` skill registration backing that interface.
 
-- "What time is it?"
-- "What's the current date in Tokyo?"
-- "Convert 2026-02-23T10:00:00Z to America/New_York timezone"
+## Use Instead
 
-## Parameters
-
-- `action`: now, format, convert (default: now)
-- `timezone`: IANA timezone (e.g., "Asia/Shanghai", "America/New_York")
-- `format`: Output format (e.g., "2006-01-02", "RFC3339")
+- For exact current time/date values, use normal runtime-aware answers or `blue exec command='date ...'` when a shell-derived value is required.
+- For timezone conversions, use `blue exec` with platform date tooling or another verified source.
+- If a real `datetime` skill is restored later, its invocation contract should be documented explicitly and covered by tests.

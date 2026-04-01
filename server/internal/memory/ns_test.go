@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -90,5 +91,57 @@ func TestNamespaceStore_NotFound(t *testing.T) {
 	err = store.Delete(ctx, "nonexistent")
 	if err == nil {
 		t.Error("Delete nonexistent should return error")
+	}
+}
+
+func TestNamespaceStore_UsesReaderDBForReads(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "namespaces.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open writer db: %v", err)
+	}
+	defer writeDB.Close()
+
+	bootstrapStore, err := NewNamespaceStore(writeDB)
+	if err != nil {
+		t.Fatalf("bootstrap namespace store: %v", err)
+	}
+	if bootstrapStore == nil {
+		t.Fatal("expected bootstrap store")
+	}
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("open reader db: %v", err)
+	}
+	defer readDB.Close()
+
+	store, err := NewNamespaceStoreWithReadDB(writeDB, readDB)
+	if err != nil {
+		t.Fatalf("create namespace store with read db: %v", err)
+	}
+	if store.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if store.readDB == store.db {
+		t.Fatal("expected namespace store to use a separate read db")
+	}
+
+	ctx := context.Background()
+	ns := &Namespace{
+		ID:     "reader-ns",
+		Config: DefaultNamespaceConfig(),
+	}
+	if err := store.Create(ctx, ns); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := store.Get(ctx, "reader-ns")
+	if err != nil {
+		t.Fatalf("Get via reader: %v", err)
+	}
+	if got == nil || got.ID != "reader-ns" {
+		t.Fatalf("unexpected namespace via reader: %+v", got)
 	}
 }

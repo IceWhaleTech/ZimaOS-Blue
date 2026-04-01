@@ -87,7 +87,6 @@ type ProviderConfig struct {
 	APIKey  string `json:"api_key,omitempty"`
 	BaseURL string `json:"base_url,omitempty"`
 	Enabled bool   `json:"enabled"`
-	Region  string `json:"region,omitempty"` // "auto", "cn", or "international"
 }
 
 // ProvidersConfig holds all provider configurations.
@@ -270,7 +269,6 @@ type UpdateProviderConfigRequest struct {
 	APIKey  *string `json:"api_key,omitempty"`
 	BaseURL *string `json:"base_url,omitempty"`
 	Enabled *bool   `json:"enabled,omitempty"`
-	Region  *string `json:"region,omitempty"`
 }
 
 // UpdateProviderConfig updates the configuration for a specific provider.
@@ -305,13 +303,6 @@ func (h *ProviderSettingsHandler) UpdateProviderConfig(c echo.Context) error {
 	if req.Enabled != nil {
 		config.Enabled = *req.Enabled
 	}
-	if req.Region != nil {
-		if !isValidRegion(*req.Region) {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "region must be 'auto', 'cn', or 'international'"})
-		}
-		config.Region = *req.Region
-	}
-
 	h.config.Providers[name] = config
 	h.mu.Unlock()
 
@@ -467,14 +458,4 @@ func maskAPIKey(key string) string {
 		return "****"
 	}
 	return key[:4] + "****" + key[len(key)-4:]
-}
-
-// isValidRegion checks if the region value is valid.
-func isValidRegion(region string) bool {
-	switch region {
-	case "", "auto", "cn", "international":
-		return true
-	default:
-		return false
-	}
 }

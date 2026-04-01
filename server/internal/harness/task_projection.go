@@ -54,9 +54,7 @@ type UserTaskResearchSource struct {
 }
 
 type UserTaskActions struct {
-	CanCancel     bool `json:"can_cancel"`
-	CanOpenChat   bool `json:"can_open_chat"`
-	CanSendUpdate bool `json:"can_send_update"`
+	Items []ActionDescriptor `json:"items,omitempty"`
 }
 
 type UserTaskProjectionFilter struct {
@@ -82,7 +80,7 @@ func NewUserTaskProjectionService(manager *Controller, detailProvider RunDetailP
 }
 
 var (
-	userTaskProjectionKinds = []RunKind{RunKindAgentTask, RunKindResearch}
+	userTaskProjectionKinds = []RunKind{RunKindAgentTask, RunKindResearch, RunKindWorkflow}
 	activeRunStatuses       = []RunStatus{
 		RunStatusPending,
 		RunStatusPlanning,
@@ -355,9 +353,7 @@ func (s *UserTaskProjectionService) projectionForRun(ctx context.Context, run *R
 		Artifacts:       projectUserArtifacts(artifacts),
 		ResearchSources: projectResearchSources(run),
 		Actions: UserTaskActions{
-			CanCancel:     canCancelUserTask(run),
-			CanOpenChat:   scope == "background" && strings.TrimSpace(run.ConversationID) != "",
-			CanSendUpdate: scope == "current" && run.Kind == RunKindAgentTask && canSendUpdate(run),
+			Items: taskActionDescriptors(run, nil, run.ID, scope),
 		},
 		UpdatedAt:  run.UpdatedAt,
 		FinishedAt: run.FinishedAt,
@@ -393,9 +389,7 @@ func (s *UserTaskProjectionService) projectionForGroup(ctx context.Context, grou
 		ErrorPreview:   errorPreview,
 		Artifacts:      projectGroupArtifacts(group),
 		Actions: UserTaskActions{
-			CanCancel:     canCancelUserTaskGroup(group),
-			CanOpenChat:   scope == "background" && conversationID != "",
-			CanSendUpdate: false,
+			Items: taskActionDescriptors(nil, group, group.ID, scope),
 		},
 		UpdatedAt:  group.UpdatedAt,
 		FinishedAt: group.FinishedAt,
@@ -407,7 +401,7 @@ func isVisibleUserTaskRun(run *Run) bool {
 	if run == nil {
 		return false
 	}
-	if run.Kind != RunKindAgentTask && run.Kind != RunKindResearch {
+	if run.Kind != RunKindAgentTask && run.Kind != RunKindResearch && run.Kind != RunKindWorkflow {
 		return false
 	}
 	if strings.TrimSpace(run.ParentRunID) != "" {
@@ -513,6 +507,8 @@ func userTaskTitleAndSubtitle(run *Run) (string, string) {
 		switch run.Kind {
 		case RunKindResearch:
 			title = "Research task"
+		case RunKindWorkflow:
+			title = firstNonEmpty(metadataString(run.Metadata, "workflow_name"), "Workflow run")
 		default:
 			title = "Agent task"
 		}
@@ -535,6 +531,18 @@ func userTaskTitleAndSubtitle(run *Run) (string, string) {
 			parts = append(parts, latestGap)
 		}
 		return title, trimmedPreview(strings.Join(parts, " • "), 180)
+	case RunKindWorkflow:
+		parts := make([]string, 0, 3)
+		if workflowName := metadataString(run.Metadata, "workflow_name"); workflowName != "" && workflowName != title {
+			parts = append(parts, workflowName)
+		}
+		if checkpointKind := metadataString(run.Metadata, "workflow_checkpoint_kind"); checkpointKind != "" {
+			parts = append(parts, checkpointKind)
+		}
+		if statusReason := metadataString(run.Metadata, "workflow_status_reason"); statusReason != "" {
+			parts = append(parts, statusReason)
+		}
+		return title, trimmedPreview(strings.Join(parts, " • "), 180)
 	default:
 		if state := strings.TrimSpace(string(run.RuntimeState)); state != "" {
 			return title, trimmedPreview(strings.ToLower(state), 120)
@@ -548,12 +556,17 @@ func userTaskGroupKind(group *RunGroup, items []RunGroupItem) RunKind {
 		switch item.RunKind {
 		case RunKindResearch:
 			return RunKindResearch
+		case RunKindWorkflow:
+			return RunKindWorkflow
 		case RunKindAgentTask:
 			return RunKindAgentTask
 		}
 	}
 	if strings.EqualFold(strings.TrimSpace(group.Subject), string(RunKindResearch)) {
 		return RunKindResearch
+	}
+	if strings.EqualFold(strings.TrimSpace(group.Subject), string(RunKindWorkflow)) {
+		return RunKindWorkflow
 	}
 	return RunKindAgentTask
 }
@@ -631,15 +644,11 @@ func normalizedGroupProjectionProgress(group *RunGroup) int {
 }
 
 func canCancelUserTask(run *Run) bool {
-	if run == nil {
-		return false
-	}
-	switch run.Status {
-	case RunStatusPending, RunStatusPlanning, RunStatusWaitingInput, RunStatusExecuting, RunStatusVerifying:
-		return true
-	default:
-		return false
-	}
+	return canCancelRun(run)
+}
+
+func canResumeUserTask(run *Run) bool {
+	return canResumeRun(run)
 }
 
 func canCancelUserTaskGroup(group *RunGroup) bool {

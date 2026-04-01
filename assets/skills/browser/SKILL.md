@@ -1,6 +1,17 @@
 ---
 name: browser
+version: "1.0.0"
 description: "Interact with live web pages using the built-in browser tool (navigate, inspect, click/type, screenshot, tab management). Use when the user asks to open/read a URL, extract page content, fill forms, click elements, reproduce web behavior, or capture screenshots."
+invocation: "blue browser.navigate url=https://example.com"
+examples:
+  - "blue browser.navigate url=https://example.com"
+  - "blue browser.screenshot url=https://example.com"
+capability_tags:
+  - browser
+  - web
+  - automation
+interaction_mode: interactive
+card_support: streaming
 ---
 
 # Browser Skill
@@ -80,6 +91,6 @@ blue browser.tabs
 
 - Use `browser` for real page interaction, not keyword discovery.
 - `blue browser.screenshot` without args captures the active tab.
-- For simple keyword lookup, prefer `web_search` first.
-- For known public URLs that only need content, prefer `web_fetch` or `web_read`.
+- For simple keyword lookup or public-page reads, prefer `web_query` first.
+- For known public URLs that only need content, prefer the lighter unified web read/fetch surface first. When exposed, this may appear as compatibility actions such as `web_fetch` or `web_read`.
 - Treat `browser` as the final fallback when lighter web tools are insufficient.

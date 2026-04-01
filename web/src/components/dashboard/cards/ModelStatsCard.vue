@@ -54,7 +54,9 @@ function sortIcon(key: SortKey): string {
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
           <p class="dashboard-card-label">{{ t('metrics.modelStats') }}</p>
-          <p class="dashboard-card-subtitle mt-2">{{ sortedModels.length }} tracked models</p>
+          <p class="dashboard-card-subtitle mt-2">
+            {{ t('metrics.cards.modelStats.subtitle', { count: sortedModels.length }) }}
+          </p>
         </div>
       </div>
 

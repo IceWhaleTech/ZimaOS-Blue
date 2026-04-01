@@ -100,10 +100,10 @@ description: Browser skill loaded from CLAUDE.md
 func TestScanSkillsDir_DisabledSkill(t *testing.T) {
 	dir := t.TempDir()
 
-	skillDir := filepath.Join(dir, "disabled-skill")
+	skillDir := filepath.Join(dir, "disabled_skill")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: disabled-skill
+name: disabled_skill
 description: This skill is disabled
 enabled: false
 ---
@@ -125,10 +125,10 @@ func TestScanSkillsDir_PlatformFilter(t *testing.T) {
 		otherOS = "linux"
 	}
 
-	skillDir := filepath.Join(dir, "platform-skill")
+	skillDir := filepath.Join(dir, "platform_skill")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: platform-skill
+name: platform_skill
 description: Only for another platform
 os: ["`+otherOS+`"]
 ---
@@ -144,10 +144,10 @@ os: ["`+otherOS+`"]
 func TestScanSkillsDir_CurrentPlatform(t *testing.T) {
 	dir := t.TempDir()
 
-	skillDir := filepath.Join(dir, "native-skill")
+	skillDir := filepath.Join(dir, "native_skill")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: native-skill
+name: native_skill
 description: For current platform
 os: ["`+runtime.GOOS+`"]
 ---
@@ -458,7 +458,7 @@ func TestFormatPinnedSkills_FallsBackToEmbeddedBuiltins(t *testing.T) {
 
 func TestParseSkillEntry_StructuredSections(t *testing.T) {
 	md := `---
-name: youtube-video-analyzer
+name: youtube_video_analyzer
 description: "Analyze YouTube videos"
 tags: ["youtube", "video", "sentiment"]
 category: "media"
@@ -503,9 +503,9 @@ python scripts/analyze_video.py <video_id_or_url> --mode comments-only
 | Video unavailable | Suggest checking URL |
 `
 
-	se := parseSkillEntry("youtube-video-analyzer", "/tmp/SKILL.md", []byte(md))
+	se := parseSkillEntry("youtube_video_analyzer", "/tmp/SKILL.md", []byte(md))
 
-	if se.Name != "youtube-video-analyzer" {
+	if se.Name != "youtube_video_analyzer" {
 		t.Fatalf("expected parsed name, got %q", se.Name)
 	}
 	if se.Category != "media" {
@@ -539,7 +539,7 @@ python scripts/analyze_video.py <video_id_or_url> --mode comments-only
 
 func TestParseFrontmatterFields_MultilineLists(t *testing.T) {
 	md := `---
-name: test-skill
+name: test_skill
 os:
   - linux
   - darwin
@@ -560,7 +560,7 @@ python scripts/run.py --mode test
 ` + "```" + `
 `
 
-	se := parseSkillEntry("test-skill", "/tmp/SKILL.md", []byte(md))
+	se := parseSkillEntry("test_skill", "/tmp/SKILL.md", []byte(md))
 	if len(se.OS) != 2 {
 		t.Fatalf("expected 2 os values, got %v", se.OS)
 	}

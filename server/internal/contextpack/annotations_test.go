@@ -53,6 +53,61 @@ func TestAnnotationStoreUpsertListApplicableDelete(t *testing.T) {
 	}
 }
 
+func TestAnnotationStoreOwnedUsesReaderDBForReads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "annotations-reader-owned.db")
+	store, err := NewAnnotationStore(path)
+	if err != nil {
+		t.Fatalf("NewAnnotationStore() error = %v", err)
+	}
+
+	writeDB := store.db
+	readDB := store.readDB
+	t.Cleanup(func() {
+		if readDB != nil && readDB != writeDB {
+			_ = readDB.Close()
+		}
+		if writeDB != nil {
+			_ = writeDB.Close()
+		}
+	})
+
+	if readDB == nil {
+		t.Fatal("expected readDB to be initialized")
+	}
+	if readDB == writeDB {
+		t.Fatal("expected readDB to use a separate connection")
+	}
+
+	ctx := context.Background()
+	ann := Annotation{
+		TenantID: "tenant-1",
+		UserID:   "user-1",
+		EntryID:  "entry-1",
+		File:     "references/tools.md",
+		Note:     "owned reader note",
+	}
+	if err := store.Upsert(ctx, ann); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	if err := writeDB.Close(); err != nil {
+		t.Fatalf("writeDB.Close() error = %v", err)
+	}
+
+	anns, err := store.List(ctx, AnnotationFilter{
+		TenantID: ann.TenantID,
+		UserID:   ann.UserID,
+		EntryID:  ann.EntryID,
+		File:     ann.File,
+	})
+	if err != nil {
+		t.Fatalf("List() error after closing writer = %v", err)
+	}
+	if len(anns) != 1 || anns[0].Note != ann.Note {
+		t.Fatalf("unexpected annotations via owned reader: %+v", anns)
+	}
+}
+
 func TestMigrateLegacyAnnotationsImportsIntoSharedDBAndArchivesLegacyDB(t *testing.T) {
 	dataDir := t.TempDir()
 	legacyPath := LegacyAnnotationDBPath(dataDir)

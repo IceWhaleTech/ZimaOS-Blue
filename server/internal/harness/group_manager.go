@@ -2,7 +2,6 @@ package harness
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -20,6 +19,45 @@ const (
 	defaultGroupRetryBackoff   = 3 * time.Second
 	defaultGroupPassThreshold  = 0.5
 )
+
+type groupReportContext struct {
+	group           *RunGroup
+	items           []RunGroupItem
+	scorecards      []Scorecard
+	latestCards     map[string]Scorecard
+	linkedRuns      []Run
+	runByID         map[string]*Run
+	runtimeEvidence map[string][]RuntimeEvidenceEntry
+	artifacts       []ArtifactRef
+	checkpoints     []CheckpointArtifact
+	itemContracts   map[string]HarnessContract
+	metrics         groupReportMetrics
+}
+
+type groupReportRuntimeBundle struct {
+	linkedRuns      []Run
+	runByID         map[string]*Run
+	runtimeEvidence map[string][]RuntimeEvidenceEntry
+	artifacts       []ArtifactRef
+	checkpoints     []CheckpointArtifact
+}
+
+type groupReportMetrics struct {
+	statusCounts         map[string]int
+	verdictCounts        map[string]int
+	failureLabelCounts   map[string]int
+	failedItems          []map[string]interface{}
+	totalAttempts        int
+	totalScore           float64
+	ratedCount           int
+	passedCount          int
+	verificationPassed   int
+	evidenceBackedPasses int
+	retryRecoveredCount  int
+	activeQueued         int
+	activeRunning        int
+	activeScoring        int
+}
 
 func (c *Controller) SubmitGroup(ctx context.Context, spec RunGroupSpec) (*RunGroup, error) {
 	if c == nil || c.store == nil {
@@ -77,21 +115,24 @@ func (c *Controller) SubmitGroup(ctx context.Context, spec RunGroupSpec) (*RunGr
 		return nil, err
 	}
 	if len(items) > 0 {
-		if _, err := c.refreshGroupSummary(ctx, group.ID); err != nil {
+		refreshed, err := c.refreshGroupSummary(ctx, group.ID)
+		if err != nil {
 			return nil, err
 		}
+		return refreshed, nil
 	}
-	return c.store.GetGroup(ctx, group.ID)
+	return group, nil
 }
 
 func (c *Controller) GetGroup(ctx context.Context, id string) (*RunGroup, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("harness controller is not configured")
 	}
-	if _, err := c.refreshGroupSummary(ctx, id); err != nil && err != sql.ErrNoRows {
+	group, err := c.store.GetGroup(ctx, id)
+	if err != nil {
 		return nil, err
 	}
-	return c.store.GetGroup(ctx, id)
+	return c.projectLoadedGroupSummary(ctx, group)
 }
 
 func (c *Controller) ListGroups(ctx context.Context, filter RunGroupFilter) ([]RunGroup, error) {
@@ -103,7 +144,7 @@ func (c *Controller) ListGroups(ctx context.Context, filter RunGroupFilter) ([]R
 		return nil, err
 	}
 	for i := range groups {
-		refreshed, refreshErr := c.refreshGroupSummary(ctx, groups[i].ID)
+		refreshed, refreshErr := c.projectLoadedGroupSummary(ctx, &groups[i])
 		if refreshErr != nil || refreshed == nil {
 			continue
 		}
@@ -124,6 +165,24 @@ func (c *Controller) GetGroupReport(ctx context.Context, id string) (*RunGroupRe
 	if err != nil {
 		return nil, err
 	}
+	return c.buildGroupReport(ctx, group)
+}
+
+func (c *Controller) buildGroupReport(ctx context.Context, group *RunGroup) (*RunGroupReport, error) {
+	reportCtx, err := c.loadGroupReportContext(ctx, group)
+	if err != nil {
+		return nil, err
+	}
+	return buildGroupReportFromContext(reportCtx)
+}
+
+func (c *Controller) loadGroupReportContext(ctx context.Context, group *RunGroup) (*groupReportContext, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	if group == nil {
+		return nil, fmt.Errorf("group is required")
+	}
 	items, err := c.store.ListGroupItems(ctx, group.ID)
 	if err != nil {
 		return nil, err
@@ -133,100 +192,192 @@ func (c *Controller) GetGroupReport(ctx context.Context, id string) (*RunGroupRe
 		return nil, err
 	}
 	latestCards := latestScorecardsByItem(scorecards)
-
-	linkedRuns, err := c.store.ListRuns(ctx, RunFilter{GroupID: group.ID, Limit: 1000})
+	runtimeBundle, err := c.loadGroupReportRuntimeBundle(ctx, group.ID)
 	if err != nil {
 		return nil, err
 	}
-	runByID := make(map[string]*Run, len(linkedRuns))
-	runtimeEvidence := make(map[string][]RuntimeEvidenceEntry, len(linkedRuns))
-	for i := range linkedRuns {
-		run := linkedRuns[i]
-		runByID[run.ID] = &run
-		if driver, driverErr := c.driverFor(run.Kind); driverErr == nil {
-			if provider, ok := driver.(RuntimeEvidenceProvider); ok {
-				if evidence, evidenceErr := provider.ListRuntimeEvidence(ctx, &run); evidenceErr == nil && len(evidence) > 0 {
-					runtimeEvidence[run.ID] = evidence
-				}
-			}
-		}
-	}
+	metrics := buildGroupReportMetrics(items, latestCards, runtimeBundle.runByID)
+	return &groupReportContext{
+		group:           group,
+		items:           items,
+		scorecards:      scorecards,
+		latestCards:     latestCards,
+		linkedRuns:      runtimeBundle.linkedRuns,
+		runByID:         runtimeBundle.runByID,
+		runtimeEvidence: runtimeBundle.runtimeEvidence,
+		artifacts:       runtimeBundle.artifacts,
+		checkpoints:     runtimeBundle.checkpoints,
+		itemContracts:   buildGroupItemContracts(group, items),
+		metrics:         metrics,
+	}, nil
+}
 
+func buildGroupReportFromContext(reportCtx *groupReportContext) (*RunGroupReport, error) {
+	if reportCtx == nil {
+		return nil, fmt.Errorf("group report context is required")
+	}
+	if reportCtx.group == nil {
+		return nil, fmt.Errorf("group is required")
+	}
 	artifacts := make([]ArtifactRef, 0)
 	checkpoints := make([]CheckpointArtifact, 0)
-	seenArtifacts := make(map[string]struct{})
-	for i := range linkedRuns {
-		runArtifacts, artErr := c.store.ListArtifacts(ctx, linkedRuns[i].ID)
-		if artErr != nil {
-			continue
-		}
-		for _, artifact := range runArtifacts {
-			if _, ok := seenArtifacts[artifact.ID]; ok {
-				continue
-			}
-			seenArtifacts[artifact.ID] = struct{}{}
-			artifacts = append(artifacts, artifact)
-			if strings.TrimSpace(artifact.Kind) == "checkpoint" {
-				checkpoints = append(checkpoints, CheckpointArtifact{
-					RunID:       linkedRuns[i].ID,
-					GroupItemID: linkedRuns[i].GroupItemID,
-					Artifact:    artifact,
-					Payload:     unmarshalMetadata(artifact.MetadataJSON),
-				})
-			}
-		}
+	artifacts = append(artifacts, reportCtx.artifacts...)
+	checkpoints = append(checkpoints, reportCtx.checkpoints...)
+
+	report := &RunGroupReport{
+		Group:           reportCtx.group,
+		Items:           reportCtx.items,
+		VerdictCounts:   cloneIntMap(reportCtx.metrics.verdictCounts),
+		LinkedRuns:      reportCtx.linkedRuns,
+		Artifacts:       artifacts,
+		Scorecards:      reportCtx.scorecards,
+		Breakdown:       cloneMetadataMap(reportCtx.group.Summary),
+		RuntimeEvidence: reportCtx.runtimeEvidence,
+		ItemContracts:   reportCtx.itemContracts,
+		Checkpoints:     checkpoints,
 	}
 
+	report.FailedItems = cloneFailedItemEntries(reportCtx.metrics.failedItems)
+	if reportCtx.metrics.ratedCount > 0 {
+		report.OverallScore = reportCtx.metrics.totalScore / float64(reportCtx.metrics.ratedCount)
+		report.PassRate = float64(reportCtx.metrics.passedCount) / float64(len(reportCtx.items))
+	}
+	return report, nil
+}
+
+func buildGroupReportMetrics(items []RunGroupItem, latestCards map[string]Scorecard, runByID map[string]*Run) groupReportMetrics {
+	metrics := groupReportMetrics{
+		statusCounts:       make(map[string]int),
+		verdictCounts:      make(map[string]int),
+		failureLabelCounts: make(map[string]int),
+		failedItems:        make([]map[string]interface{}, 0),
+	}
+	for _, item := range items {
+		metrics.statusCounts[string(item.Status)]++
+		metrics.totalAttempts += item.AttemptCount
+		switch item.Status {
+		case RunGroupItemStatusQueued, RunGroupItemStatusPending:
+			metrics.activeQueued++
+		case RunGroupItemStatusRunning:
+			metrics.activeRunning++
+		case RunGroupItemStatusScoring:
+			metrics.activeScoring++
+		}
+
+		card, ok := latestCards[item.ID]
+		if !ok {
+			continue
+		}
+		metrics.totalScore += card.Score
+		metrics.ratedCount++
+		metrics.verdictCounts[string(card.Verdict)]++
+		metrics.statusCounts["verdict:"+string(card.Verdict)]++
+
+		breakdown := decodeJSONMap(card.BreakdownJSON)
+		if passed, ok := mapBool(breakdown, "verification_passed"); ok && passed {
+			metrics.verificationPassed++
+		}
+		if label := metadataString(breakdown, "failure_label"); label != "" {
+			metrics.failureLabelCounts[label]++
+		}
+		if card.Verdict == ScoreVerdictPass {
+			metrics.passedCount++
+			if evidenceScore, ok := breakdown["evidence_score"].(float64); ok && evidenceScore >= 0.8 {
+				metrics.evidenceBackedPasses++
+			} else if passed, ok := mapBool(breakdown, "verification_passed"); ok && passed {
+				metrics.evidenceBackedPasses++
+			}
+			if item.AttemptCount > 1 {
+				metrics.retryRecoveredCount++
+			}
+			continue
+		}
+
+		entry := map[string]interface{}{
+			"item":      item,
+			"scorecard": card,
+		}
+		if run, ok := runByID[item.LatestRunID]; ok && run != nil {
+			entry["run"] = run
+		}
+		metrics.failedItems = append(metrics.failedItems, entry)
+	}
+	return metrics
+}
+
+func buildGroupItemContracts(group *RunGroup, items []RunGroupItem) map[string]HarnessContract {
 	itemContracts := make(map[string]HarnessContract, len(items))
+	if group == nil {
+		return itemContracts
+	}
 	for _, item := range items {
 		contract := DecodeHarnessContract(group.Metadata, item.Metadata, item.Expected, item.Input)
 		if contractMeta := HarnessContractMetadata(contract); len(contractMeta) > 0 {
 			itemContracts[item.ID] = contract
 		}
 	}
+	return itemContracts
+}
 
-	report := &RunGroupReport{
-		Group:           group,
-		Items:           items,
-		VerdictCounts:   make(map[string]int),
-		LinkedRuns:      linkedRuns,
-		Artifacts:       artifacts,
-		Scorecards:      scorecards,
-		Breakdown:       cloneMetadataMap(group.Summary),
-		RuntimeEvidence: runtimeEvidence,
-		ItemContracts:   itemContracts,
-		Checkpoints:     checkpoints,
+func (c *Controller) loadGroupReportRuntimeBundle(ctx context.Context, groupID string) (*groupReportRuntimeBundle, error) {
+	linkedRuns, err := c.store.ListRuns(ctx, RunFilter{GroupID: groupID, Limit: 1000})
+	if err != nil {
+		return nil, err
 	}
+	bundle := &groupReportRuntimeBundle{
+		linkedRuns:      linkedRuns,
+		runByID:         make(map[string]*Run, len(linkedRuns)),
+		runtimeEvidence: make(map[string][]RuntimeEvidenceEntry, len(linkedRuns)),
+		artifacts:       make([]ArtifactRef, 0),
+		checkpoints:     make([]CheckpointArtifact, 0),
+	}
+	seenArtifacts := make(map[string]struct{})
+	for i := range linkedRuns {
+		if synced, syncErr := c.syncRun(ctx, &bundle.linkedRuns[i]); syncErr == nil && synced != nil {
+			bundle.linkedRuns[i] = *synced
+		}
+		run := &bundle.linkedRuns[i]
+		bundle.runByID[run.ID] = run
+		if driver, driverErr := c.driverFor(run.Kind); driverErr == nil {
+			if provider, ok := driver.(RuntimeEvidenceProvider); ok {
+				if evidence, evidenceErr := provider.ListRuntimeEvidence(ctx, run); evidenceErr == nil && len(evidence) > 0 {
+					bundle.runtimeEvidence[run.ID] = evidence
+				}
+			}
+		}
+		runArtifacts, checkpoints := c.loadGroupReportRunArtifacts(ctx, run, seenArtifacts)
+		bundle.artifacts = append(bundle.artifacts, runArtifacts...)
+		bundle.checkpoints = append(bundle.checkpoints, checkpoints...)
+	}
+	return bundle, nil
+}
 
-	var totalScore float64
-	var totalRated int
-	var passed int
-	for _, item := range items {
-		card, ok := latestCards[item.ID]
-		if !ok {
+func (c *Controller) loadGroupReportRunArtifacts(ctx context.Context, run *Run, seenArtifacts map[string]struct{}) ([]ArtifactRef, []CheckpointArtifact) {
+	if c == nil || c.store == nil || run == nil {
+		return nil, nil
+	}
+	runArtifacts, err := c.store.ListArtifacts(ctx, run.ID)
+	if err != nil {
+		return nil, nil
+	}
+	artifacts := make([]ArtifactRef, 0, len(runArtifacts))
+	checkpoints := make([]CheckpointArtifact, 0)
+	for _, artifact := range runArtifacts {
+		if _, ok := seenArtifacts[artifact.ID]; ok {
 			continue
 		}
-		report.VerdictCounts[string(card.Verdict)]++
-		totalScore += card.Score
-		totalRated++
-		if card.Verdict == ScoreVerdictPass {
-			passed++
-			continue
+		seenArtifacts[artifact.ID] = struct{}{}
+		artifacts = append(artifacts, artifact)
+		if strings.TrimSpace(artifact.Kind) == "checkpoint" {
+			checkpoints = append(checkpoints, CheckpointArtifact{
+				RunID:       run.ID,
+				GroupItemID: run.GroupItemID,
+				Artifact:    artifact,
+				Payload:     unmarshalMetadata(artifact.MetadataJSON),
+			})
 		}
-		entry := map[string]interface{}{
-			"item":      item,
-			"scorecard": card,
-		}
-		if run, ok := runByID[item.LatestRunID]; ok {
-			entry["run"] = run
-		}
-		report.FailedItems = append(report.FailedItems, entry)
 	}
-	if totalRated > 0 {
-		report.OverallScore = totalScore / float64(totalRated)
-		report.PassRate = float64(passed) / float64(len(items))
-	}
-	return report, nil
+	return artifacts, checkpoints
 }
 
 func (c *Controller) CancelGroup(ctx context.Context, id string, reason string) error {
@@ -261,7 +412,38 @@ func (c *Controller) CancelGroup(ctx context.Context, id string, reason string) 
 		group.Summary = map[string]interface{}{}
 	}
 	group.Summary["cancel_reason"] = strings.TrimSpace(reason)
-	return c.store.UpdateGroup(ctx, group)
+	if err := c.store.UpdateGroup(ctx, group); err != nil {
+		return err
+	}
+	_, err = c.refreshGroupSummary(ctx, group.ID)
+	return err
+}
+
+func (c *Controller) PerformGroupAction(ctx context.Context, id string, action string, input map[string]interface{}) (*RunGroup, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	group, err := c.store.GetGroup(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action == "" {
+		return nil, fmt.Errorf("action is required")
+	}
+	switch action {
+	case "cancel":
+		reason := strings.TrimSpace(runActionMetadataString(input, "reason"))
+		if reason == "" {
+			reason = "cancelled by user"
+		}
+		if err := c.CancelGroup(ctx, group.ID, reason); err != nil {
+			return nil, err
+		}
+		return c.GetGroup(ctx, group.ID)
+	default:
+		return nil, fmt.Errorf("unsupported group action %q", action)
+	}
 }
 
 func (c *Controller) RetryFailedGroup(ctx context.Context, id string) (int, error) {
@@ -285,7 +467,8 @@ func (c *Controller) RetryFailedGroup(ctx context.Context, id string) (int, erro
 		}
 		item.Status = RunGroupItemStatusQueued
 		item.LeaseOwner = ""
-		item.LeaseExpiresAt = &now
+		backoffUntil := now.Add(groupRetryBackoff(group))
+		item.LeaseExpiresAt = &backoffUntil
 		if err := c.store.UpdateGroupItem(ctx, &item); err != nil {
 			return retried, err
 		}
@@ -297,8 +480,24 @@ func (c *Controller) RetryFailedGroup(ctx context.Context, id string) (int, erro
 		if err := c.store.UpdateGroup(ctx, group); err != nil {
 			return retried, err
 		}
+		if _, err := c.refreshGroupSummary(ctx, group.ID); err != nil {
+			return retried, err
+		}
 	}
 	return retried, nil
+}
+
+func (c *Controller) refreshLoadedGroupSummary(ctx context.Context, group *RunGroup) (*RunGroup, error) {
+	refreshed, _, err := c.projectGroupSummary(ctx, group)
+	return refreshed, err
+}
+
+func (c *Controller) projectLoadedGroupSummary(ctx context.Context, group *RunGroup) (*RunGroup, error) {
+	if !shouldRefreshStoredGroupSummary(group) {
+		return group, nil
+	}
+	refreshed, _, err := c.projectGroupSummary(ctx, group)
+	return refreshed, err
 }
 
 func (c *Controller) refreshGroupSummary(ctx context.Context, groupID string) (*RunGroup, error) {
@@ -306,97 +505,182 @@ func (c *Controller) refreshGroupSummary(ctx context.Context, groupID string) (*
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.store.ListGroupItems(ctx, group.ID)
+	refreshed, changed, err := c.projectGroupSummary(ctx, group)
 	if err != nil {
 		return nil, err
+	}
+	if !changed {
+		return refreshed, nil
+	}
+	if err := c.store.UpdateGroup(ctx, refreshed); err != nil {
+		return nil, err
+	}
+	return refreshed, nil
+}
+
+func (c *Controller) projectGroupSummary(ctx context.Context, group *RunGroup) (*RunGroup, bool, error) {
+	if group == nil {
+		return nil, false, nil
+	}
+	items, err := c.store.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		return nil, false, err
 	}
 	scorecards, err := c.store.ListScorecards(ctx, group.ID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	latestCards := latestScorecardsByItem(scorecards)
+	metrics := buildGroupReportMetrics(items, latestCards, nil)
 	summary := map[string]interface{}{
 		"item_count": len(items),
 	}
-	counts := make(map[string]int)
-	var (
-		activeQueued         int
-		activeRunning        int
-		activeScoring        int
-		totalAttempts        int
-		totalScore           float64
-		ratedCount           int
-		passedCount          int
-		verificationPassed   int
-		evidenceBackedPasses int
-		retryRecoveredCount  int
-	)
-	failureLabelCounts := make(map[string]int)
-	for _, item := range items {
-		counts[string(item.Status)]++
-		totalAttempts += item.AttemptCount
-		switch item.Status {
-		case RunGroupItemStatusQueued, RunGroupItemStatusPending:
-			activeQueued++
-		case RunGroupItemStatusRunning:
-			activeRunning++
-		case RunGroupItemStatusScoring:
-			activeScoring++
-		}
-		if card, ok := latestCards[item.ID]; ok {
-			totalScore += card.Score
-			ratedCount++
-			breakdown := decodeJSONMap(card.BreakdownJSON)
-			if passed, ok := mapBool(breakdown, "verification_passed"); ok && passed {
-				verificationPassed++
-			}
-			if label := metadataString(breakdown, "failure_label"); label != "" {
-				failureLabelCounts[label]++
-			}
-			if card.Verdict == ScoreVerdictPass {
-				passedCount++
-				if evidenceScore, ok := breakdown["evidence_score"].(float64); ok && evidenceScore >= 0.8 {
-					evidenceBackedPasses++
-				} else if passed, ok := mapBool(breakdown, "verification_passed"); ok && passed {
-					evidenceBackedPasses++
-				}
-				if item.AttemptCount > 1 {
-					retryRecoveredCount++
-				}
-			}
-			counts["verdict:"+string(card.Verdict)]++
-		}
+	summary["counts"] = intMapToMetadataMap(metrics.statusCounts)
+	summary["total_attempts"] = metrics.totalAttempts
+	if metrics.ratedCount > 0 {
+		summary["overall_score"] = metrics.totalScore / float64(metrics.ratedCount)
+		summary["pass_rate"] = float64(metrics.passedCount) / float64(len(items))
+		summary["verification_pass_rate"] = float64(metrics.verificationPassed) / float64(metrics.ratedCount)
 	}
-	summary["counts"] = counts
-	summary["total_attempts"] = totalAttempts
-	if ratedCount > 0 {
-		summary["overall_score"] = totalScore / float64(ratedCount)
-		summary["pass_rate"] = float64(passedCount) / float64(len(items))
-		summary["verification_pass_rate"] = float64(verificationPassed) / float64(ratedCount)
+	if metrics.passedCount > 0 {
+		summary["evidence_backed_pass_rate"] = float64(metrics.evidenceBackedPasses) / float64(metrics.passedCount)
 	}
-	if passedCount > 0 {
-		summary["evidence_backed_pass_rate"] = float64(evidenceBackedPasses) / float64(passedCount)
+	if metrics.retryRecoveredCount > 0 {
+		summary["retry_recovered_count"] = metrics.retryRecoveredCount
 	}
-	if retryRecoveredCount > 0 {
-		summary["retry_recovered_count"] = retryRecoveredCount
+	if len(metrics.failureLabelCounts) > 0 {
+		summary["failure_label_counts"] = intMapToMetadataMap(metrics.failureLabelCounts)
 	}
-	if len(failureLabelCounts) > 0 {
-		summary["failure_label_counts"] = failureLabelCounts
-	}
-	group.Summary = summary
-	if group.StartedAt == nil && (activeRunning > 0 || activeScoring > 0 || totalAttempts > 0) {
+
+	nextStatus := deriveGroupStatus(group.Status, metrics.statusCounts)
+	summary = preserveGroupSummaryAnnotations(nextStatus, group.Summary, summary)
+	nextStartedAt := group.StartedAt
+	if nextStartedAt == nil && (metrics.activeRunning > 0 || metrics.activeScoring > 0 || metrics.totalAttempts > 0 || (isTerminalGroupStatus(nextStatus) && len(items) > 0)) {
 		now := timeutil.NowTime()
-		group.StartedAt = &now
+		nextStartedAt = &now
 	}
-	group.Status = deriveGroupStatus(group.Status, counts)
-	if isTerminalGroupStatus(group.Status) {
+	nextFinishedAt := group.FinishedAt
+	if isTerminalGroupStatus(nextStatus) && nextFinishedAt == nil {
 		now := timeutil.NowTime()
-		group.FinishedAt = &now
+		nextFinishedAt = &now
 	}
-	if err := c.store.UpdateGroup(ctx, group); err != nil {
-		return nil, err
+	if !isTerminalGroupStatus(nextStatus) {
+		nextFinishedAt = nil
 	}
-	return group, nil
+	if group.Status == nextStatus &&
+		metadataMapsEqual(group.Summary, summary) &&
+		timePointersEqual(group.StartedAt, nextStartedAt) &&
+		timePointersEqual(group.FinishedAt, nextFinishedAt) {
+		projected := *group
+		projected.Summary = summary
+		return &projected, false, nil
+	}
+	projected := *group
+	projected.Summary = summary
+	projected.Status = nextStatus
+	projected.StartedAt = nextStartedAt
+	projected.FinishedAt = nextFinishedAt
+	return &projected, true, nil
+}
+
+func cloneFailedItemEntries(entries []map[string]interface{}) []map[string]interface{} {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(entries))
+	for _, entry := range entries {
+		cloned := make(map[string]interface{}, len(entry))
+		for key, value := range entry {
+			cloned[key] = value
+		}
+		out = append(out, cloned)
+	}
+	return out
+}
+
+func cloneIntMap(values map[string]int) map[string]int {
+	if len(values) == 0 {
+		return map[string]int{}
+	}
+	out := make(map[string]int, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func preserveGroupSummaryAnnotations(status RunGroupStatus, currentSummary map[string]interface{}, nextSummary map[string]interface{}) map[string]interface{} {
+	if len(nextSummary) == 0 {
+		nextSummary = map[string]interface{}{}
+	}
+	if isTerminalGroupStatus(status) {
+		for key, value := range currentSummary {
+			if _, exists := nextSummary[key]; exists {
+				continue
+			}
+			if isDerivedGroupSummaryKey(key) {
+				continue
+			}
+			nextSummary[key] = value
+		}
+	}
+	if status == RunGroupStatusCancelled {
+		if reason := strings.TrimSpace(metadataString(currentSummary, "cancel_reason")); reason != "" {
+			nextSummary["cancel_reason"] = reason
+		}
+	}
+	return nextSummary
+}
+
+func isDerivedGroupSummaryKey(key string) bool {
+	switch strings.TrimSpace(key) {
+	case "item_count", "counts", "total_attempts", "overall_score", "pass_rate", "verification_pass_rate", "evidence_backed_pass_rate", "retry_recovered_count", "failure_label_counts", "cancel_reason":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldRefreshStoredGroupSummary(group *RunGroup) bool {
+	if group == nil {
+		return false
+	}
+	if !isTerminalGroupStatus(group.Status) {
+		return true
+	}
+	itemCount := intMetadata(group.Summary["item_count"])
+	if group.FinishedAt == nil {
+		return true
+	}
+	if group.StartedAt == nil && itemCount > 0 {
+		return true
+	}
+	if itemCount == 0 {
+		return false
+	}
+	return len(metadataMapValue(group.Summary["counts"])) == 0
+}
+
+func intMapToMetadataMap(values map[string]int) map[string]interface{} {
+	if len(values) == 0 {
+		return map[string]interface{}{}
+	}
+	out := make(map[string]interface{}, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func timePointersEqual(left, right *time.Time) bool {
+	switch {
+	case left == nil && right == nil:
+		return true
+	case left == nil || right == nil:
+		return false
+	default:
+		return left.Equal(*right)
+	}
 }
 
 func normalizeGroupSpec(spec RunGroupSpec) RunGroupSpec {
@@ -443,7 +727,7 @@ func validateGroupSpec(spec RunGroupSpec) error {
 	}
 	for i, item := range spec.Items {
 		switch item.RunKind {
-		case RunKindAgentTask, RunKindResearch, RunKindSubagent:
+		case RunKindAgentTask, RunKindResearch, RunKindSubagent, RunKindWorkflow:
 		default:
 			return fmt.Errorf("items[%d].run_kind is invalid", i)
 		}
@@ -470,6 +754,9 @@ func deriveGroupStatus(current RunGroupStatus, counts map[string]int) RunGroupSt
 	cancelled := counts[string(RunGroupItemStatusCancelled)]
 	total := passed + failed + errored + cancelled
 	if total == 0 {
+		if strings.TrimSpace(string(current)) != "" {
+			return current
+		}
 		return RunGroupStatusPending
 	}
 	switch {

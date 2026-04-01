@@ -29,7 +29,14 @@ func (h *UserTaskProjectionHandler) RegisterRoutes(g *echo.Group) {
 	}
 	g.GET("/tasks", h.ListTasks)
 	g.GET("/tasks/:id", h.GetTask)
+	g.POST("/tasks/:id/actions/:action", h.PerformTaskAction)
 	g.POST("/tasks/:id/cancel", h.CancelTask)
+	g.POST("/tasks/:id/resume", h.ResumeTask)
+}
+
+type userTaskResumeRequest struct {
+	Decision string                 `json:"decision,omitempty"`
+	Payload  map[string]interface{} `json:"payload,omitempty"`
 }
 
 func (h *UserTaskProjectionHandler) ListTasks(c echo.Context) error {
@@ -84,24 +91,58 @@ func (h *UserTaskProjectionHandler) GetTask(c echo.Context) error {
 }
 
 func (h *UserTaskProjectionHandler) CancelTask(c echo.Context) error {
-	userID := harnessUserID(c)
 	taskID := strings.TrimSpace(c.Param("id"))
 	if taskID == "" {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
+	return h.performNamedTaskAction(c, taskID, "cancel")
+}
 
+func (h *UserTaskProjectionHandler) ResumeTask(c echo.Context) error {
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+	}
+	return h.performNamedTaskAction(c, taskID, "resume")
+}
+
+func (h *UserTaskProjectionHandler) PerformTaskAction(c echo.Context) error {
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+	}
+	action := strings.ToLower(strings.TrimSpace(c.Param("action")))
+	if action == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "action is required"})
+	}
+	return h.performNamedTaskAction(c, taskID, action)
+}
+
+func (h *UserTaskProjectionHandler) performNamedTaskAction(
+	c echo.Context,
+	taskID string,
+	action string,
+) error {
+	userID := harnessUserID(c)
 	if run, err := h.manager.Get(c.Request().Context(), taskID); err == nil && isVisibleUserTaskRun(run) {
 		if userID != "" && run.UserID != "" && run.UserID != userID {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 		}
-		if err := h.manager.Cancel(c.Request().Context(), run.ID, "cancelled by user"); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		switch action {
+		case "cancel":
+			return h.performTaskRunAction(c, run, "cancel", map[string]interface{}{"reason": "cancelled by user"})
+		case "resume":
+			if !canResumeRun(run) {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "task is not resumable"})
+			}
+			input, bindErr := h.bindResumeTaskInput(c)
+			if bindErr != nil {
+				return bindErr
+			}
+			return h.performTaskRunAction(c, run, "resume", input)
+		default:
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "unsupported task action"})
 		}
-		projection, projectErr := h.service.Get(c.Request().Context(), run.ID, projectionScopeForConversation(strings.TrimSpace(c.QueryParam("conversation_id")), run.ConversationID))
-		if projectErr != nil || projection == nil {
-			return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
-		}
-		return c.JSON(http.StatusOK, projection)
 	}
 
 	group, err := h.manager.GetGroup(c.Request().Context(), taskID)
@@ -111,14 +152,59 @@ func (h *UserTaskProjectionHandler) CancelTask(c echo.Context) error {
 	if userID != "" && group.OwnerUserID != "" && group.OwnerUserID != userID {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
 	}
-	if err := h.manager.CancelGroup(c.Request().Context(), group.ID, "cancelled by user"); err != nil {
+	switch action {
+	case "cancel":
+		if _, err := h.manager.PerformGroupAction(c.Request().Context(), group.ID, "cancel", map[string]interface{}{"reason": "cancelled by user"}); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		projection, projectErr := h.service.Get(c.Request().Context(), group.ID, projectionScopeForConversation(strings.TrimSpace(c.QueryParam("conversation_id")), userTaskGroupConversationID(group)))
+		if projectErr != nil || projection == nil {
+			return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+		}
+		return c.JSON(http.StatusOK, projection)
+	default:
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "unsupported task action"})
+	}
+}
+
+func (h *UserTaskProjectionHandler) performTaskRunAction(
+	c echo.Context,
+	run *Run,
+	action string,
+	input map[string]interface{},
+) error {
+	updated, err := h.manager.PerformAction(c.Request().Context(), run.ID, action, input)
+	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	projection, projectErr := h.service.Get(c.Request().Context(), group.ID, projectionScopeForConversation(strings.TrimSpace(c.QueryParam("conversation_id")), userTaskGroupConversationID(group)))
+	conversationID := run.ConversationID
+	if updated != nil && strings.TrimSpace(updated.ConversationID) != "" {
+		conversationID = updated.ConversationID
+	}
+	projection, projectErr := h.service.Get(c.Request().Context(), run.ID, projectionScopeForConversation(strings.TrimSpace(c.QueryParam("conversation_id")), conversationID))
 	if projectErr != nil || projection == nil {
-		return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+		if updated == nil {
+			return c.JSON(http.StatusOK, map[string]string{"status": strings.ToLower(strings.TrimSpace(action))})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"id":     updated.ID,
+			"status": updated.Status,
+		})
 	}
 	return c.JSON(http.StatusOK, projection)
+}
+
+func (h *UserTaskProjectionHandler) bindResumeTaskInput(c echo.Context) (map[string]interface{}, error) {
+	var req userTaskResumeRequest
+	if c.Request().Body != nil && c.Request().ContentLength != 0 {
+		if err := c.Bind(&req); err != nil {
+			return nil, c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		}
+	}
+	return map[string]interface{}{
+		"decision": strings.TrimSpace(req.Decision),
+		"payload":  cloneMetadataMap(req.Payload),
+	}, nil
 }
 
 func projectionScopeForConversation(requestedConversationID string, taskConversationID string) string {

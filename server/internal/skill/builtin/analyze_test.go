@@ -73,3 +73,21 @@ func TestAnalyzeSkill_ExecuteAcceptsModernAliases(t *testing.T) {
 		t.Fatalf("text = %q, want Some direct notes", got)
 	}
 }
+
+func TestAnalyzeSkill_ValidatePromotesURLFromTopic(t *testing.T) {
+	a := NewAnalyze()
+	input := map[string]any{
+		"topic": "Summarise https://example.com/blog and extract the key points.",
+	}
+	if err := a.Validate(input); err != nil {
+		t.Fatalf("expected topic URL promotion to pass validation: %v", err)
+	}
+
+	urls, ok := input["urls"].([]interface{})
+	if !ok || len(urls) != 1 || urls[0] != "https://example.com/blog" {
+		t.Fatalf("urls = %#v, want promoted topic URL", input["urls"])
+	}
+	if got, _ := input["topic"].(string); got != "Summarise and extract the key points." {
+		t.Fatalf("topic = %q, want cleaned topic without URL", got)
+	}
+}

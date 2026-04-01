@@ -19,10 +19,10 @@ func TestAPIKeyService_CreateKey(t *testing.T) {
 
 	t.Run("create api key", func(t *testing.T) {
 		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
-			UserID:      "user-123",
-			Name:        "test-key",
-			Scopes:      []string{"read", "write"},
-			ExpiresAt:   time.Now().Add(24 * time.Hour),
+			UserID:    "user-123",
+			Name:      "test-key",
+			Scopes:    []string{"read", "write"},
+			ExpiresAt: time.Now().Add(24 * time.Hour),
 		})
 		if err != nil {
 			t.Fatalf("failed to create key: %v", err)
@@ -170,6 +170,52 @@ func TestAPIKeyService_ListKeys(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestAPIKeyService_UsesReaderDBForReads(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_reader_test.db")
+	svc, err := NewAPIKeyService(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	writeDB := svc.db
+	readDB := svc.readDB
+	t.Cleanup(func() {
+		if readDB != nil && readDB != writeDB {
+			_ = readDB.Close()
+		}
+		if writeDB != nil {
+			_ = writeDB.Close()
+		}
+	})
+
+	if readDB == nil {
+		t.Fatal("expected readDB to be initialized")
+	}
+	if readDB == writeDB {
+		t.Fatal("expected readDB to use a separate connection")
+	}
+
+	key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+		UserID: "user-reader",
+		Name:   "reader-key",
+		Scopes: []string{"read"},
+	})
+	if err != nil {
+		t.Fatalf("failed to create key: %v", err)
+	}
+
+	if err := writeDB.Close(); err != nil {
+		t.Fatalf("failed to close write db: %v", err)
+	}
+
+	keys, err := svc.ListKeys(context.Background(), "user-reader")
+	if err != nil {
+		t.Fatalf("ListKeys failed after closing write db: %v", err)
+	}
+	if len(keys) != 1 || keys[0].ID != key.ID {
+		t.Fatalf("ListKeys returned %#v", keys)
+	}
 }
 
 func TestAPIKeyService_RevokeKey(t *testing.T) {

@@ -295,6 +295,15 @@ func (a *RodBrowserBackend) WaitNetworkIdle(ctx context.Context, targetID string
 	return lease.svc.WaitNetworkIdle(ctx, targetID, idleMS, timeoutMS)
 }
 
+func (a *RodBrowserBackend) ExtractText(ctx context.Context, targetID, selector string) (string, error) {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil {
+		return "", err
+	}
+	defer lease.close()
+	return lease.svc.ExtractFirstFromTab(ctx, targetID, selector, "")
+}
+
 func (a *RodBrowserBackend) AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (BrowserA11yTreeResult, error) {
 	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"hash/fnv"
 	"strings"
 	"sync"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 )
 
 // SessionMemoryRefresher adapts MemoryHandler to session.MemoryRefresher.
@@ -34,6 +36,10 @@ func (r *SessionMemoryRefresher) RefreshMemory(ctx context.Context, extracted st
 	if content == "" || content == "NO_MEMORY_NEEDED" {
 		return nil
 	}
+	content = session.NormalizeExtractedMemoryForStorage(content)
+	if content == "" || content == "NO_MEMORY_NEEDED" {
+		return nil
+	}
 	if r.isDuplicate(sessionID, content) {
 		return nil
 	}
@@ -56,6 +62,10 @@ func (r *SessionMemoryRefresher) isDuplicate(scope string, content string) bool 
 	key := strings.TrimSpace(scope)
 	if key == "" {
 		key = "_global"
+	}
+	content = session.NormalizeMemoryFingerprint(content)
+	if content == "" {
+		return false
 	}
 
 	h := fnv.New64a()

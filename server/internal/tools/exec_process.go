@@ -79,26 +79,33 @@ type processKillResult struct {
 
 // Execute performs the requested process management action.
 func (t *ProcessTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	return executeProcessAction(t.sessions, args)
+}
+
+func executeProcessAction(sessions *SessionRegistry, args map[string]interface{}) (interface{}, error) {
+	if sessions == nil {
+		return nil, errors.New("session registry unavailable")
+	}
 	action := strings.TrimSpace(strings.ToLower(firstCompatString(args, "action", "op", "operation", "command")))
 	sessionID := firstCompatString(args, "session_id", "sessionId", "id")
 
 	switch action {
-	case "list":
-		return t.list()
-	case "poll":
-		return t.poll(sessionID)
-	case "log":
-		return t.log(sessionID)
-	case "kill":
-		return t.kill(sessionID)
+	case "list", "list_sessions", "sessions":
+		return listProcessSessions(sessions)
+	case "poll", "poll_session":
+		return pollProcessSession(sessions, sessionID)
+	case "log", "session_log":
+		return logProcessSession(sessions, sessionID)
+	case "kill", "kill_session":
+		return killProcessSession(sessions, sessionID)
 	default:
 		return nil, fmt.Errorf("unknown action %q; use list, poll, log, or kill", action)
 	}
 }
 
-func (t *ProcessTool) list() (interface{}, error) {
-	running := t.sessions.ListRunning()
-	finished := t.sessions.ListFinished()
+func listProcessSessions(sessions *SessionRegistry) (interface{}, error) {
+	running := sessions.ListRunning()
+	finished := sessions.ListFinished()
 
 	result := processListResult{
 		Running:  make([]processListEntry, 0, len(running)),
@@ -129,12 +136,12 @@ func (t *ProcessTool) list() (interface{}, error) {
 	return string(data), nil
 }
 
-func (t *ProcessTool) poll(sessionID string) (interface{}, error) {
+func pollProcessSession(sessions *SessionRegistry, sessionID string) (interface{}, error) {
 	if sessionID == "" {
 		return nil, errors.New("session_id is required for poll")
 	}
 
-	s := t.sessions.Get(sessionID)
+	s := sessions.Get(sessionID)
 	if s != nil {
 		result := processPollResult{
 			SessionID: s.ID,
@@ -147,7 +154,7 @@ func (t *ProcessTool) poll(sessionID string) (interface{}, error) {
 		return string(data), nil
 	}
 
-	f := t.sessions.GetFinished(sessionID)
+	f := sessions.GetFinished(sessionID)
 	if f != nil {
 		result := processPollResult{
 			SessionID: f.ID,
@@ -162,12 +169,12 @@ func (t *ProcessTool) poll(sessionID string) (interface{}, error) {
 	return nil, fmt.Errorf("session %q not found", sessionID)
 }
 
-func (t *ProcessTool) log(sessionID string) (interface{}, error) {
+func logProcessSession(sessions *SessionRegistry, sessionID string) (interface{}, error) {
 	if sessionID == "" {
 		return nil, errors.New("session_id is required for log")
 	}
 
-	s := t.sessions.Get(sessionID)
+	s := sessions.Get(sessionID)
 	if s != nil {
 		result := processLogResult{
 			SessionID: s.ID,
@@ -179,7 +186,7 @@ func (t *ProcessTool) log(sessionID string) (interface{}, error) {
 		return string(data), nil
 	}
 
-	f := t.sessions.GetFinished(sessionID)
+	f := sessions.GetFinished(sessionID)
 	if f != nil {
 		result := processLogResult{
 			SessionID: f.ID,
@@ -195,12 +202,12 @@ func (t *ProcessTool) log(sessionID string) (interface{}, error) {
 	return nil, fmt.Errorf("session %q not found", sessionID)
 }
 
-func (t *ProcessTool) kill(sessionID string) (interface{}, error) {
+func killProcessSession(sessions *SessionRegistry, sessionID string) (interface{}, error) {
 	if sessionID == "" {
 		return nil, errors.New("session_id is required for kill")
 	}
 
-	s := t.sessions.Get(sessionID)
+	s := sessions.Get(sessionID)
 	if s == nil {
 		return nil, fmt.Errorf("session %q not found or already finished", sessionID)
 	}
@@ -210,7 +217,7 @@ func (t *ProcessTool) kill(sessionID string) (interface{}, error) {
 	}
 
 	code := -1
-	t.sessions.MarkExited(sessionID, &code, "SIGKILL", ProcessKilled)
+	sessions.MarkExited(sessionID, &code, "SIGKILL", ProcessKilled)
 
 	result := processKillResult{
 		SessionID: sessionID,

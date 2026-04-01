@@ -123,6 +123,8 @@ declare global {
   const useStorage: typeof import('@vueuse/core').useStorage
   const useSystemStore: typeof import('./stores/system').useSystemStore
   const useTTSStore: typeof import('./stores/tts').useTTSStore
+  const useTaskActionDialog: typeof import('./composables/useTaskActionDialog').useTaskActionDialog
+  const useTaskProjectionActions: typeof import('./composables/useTaskProjectionActions').useTaskProjectionActions
   const useTaskProjectionsStore: typeof import('./stores/taskProjections').useTaskProjectionsStore
   const useTauri: typeof import('./composables/useTauri').useTauri
   const useTemplateRef: typeof import('vue').useTemplateRef
@@ -164,10 +166,13 @@ declare global {
   export type { NetworkInterface, NetworkAddresses, NetworkStatus } from './composables/useNetwork'
   import('./composables/useNetwork')
   // @ts-ignore
+  export type { TaskActionDialogPayload, TaskActionTarget, PendingTaskActionDialog } from './composables/useTaskActionDialog'
+  import('./composables/useTaskActionDialog')
+  // @ts-ignore
   export type { Platform } from './composables/useTauri'
   import('./composables/useTauri')
   // @ts-ignore
-  export type { ToolResultItem, StreamUIPhase } from './stores/chat'
+  export type { ToolResultItem, StreamUIPhase, PendingModelAutoFallback } from './stores/chat'
   import('./stores/chat')
   // @ts-ignore
   export type { EventState, EventStateTransition, TrackedEvent } from './stores/companion'
@@ -305,6 +310,8 @@ declare module 'vue' {
     readonly useStorage: UnwrapRef<typeof import('@vueuse/core')['useStorage']>
     readonly useSystemStore: UnwrapRef<typeof import('./stores/system')['useSystemStore']>
     readonly useTTSStore: UnwrapRef<typeof import('./stores/tts')['useTTSStore']>
+    readonly useTaskActionDialog: UnwrapRef<typeof import('./composables/useTaskActionDialog')['useTaskActionDialog']>
+    readonly useTaskProjectionActions: UnwrapRef<typeof import('./composables/useTaskProjectionActions')['useTaskProjectionActions']>
     readonly useTaskProjectionsStore: UnwrapRef<typeof import('./stores/taskProjections')['useTaskProjectionsStore']>
     readonly useTauri: UnwrapRef<typeof import('./composables/useTauri')['useTauri']>
     readonly useTemplateRef: UnwrapRef<typeof import('vue')['useTemplateRef']>

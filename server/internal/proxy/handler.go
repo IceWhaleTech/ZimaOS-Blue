@@ -419,10 +419,10 @@ func shouldResetIdleConnectionsOnError(err error) bool {
 const (
 	// Total attempts (initial + retries) for generic transient upstream 5xx in
 	// single-provider mode.
-	singleProviderTransientUpstreamMaxAttempts = 3
+	singleProviderTransientUpstreamMaxAttempts = 4
 	// Total attempts (initial + retries) for rate-limit/overload-like upstream
 	// errors in single-provider mode.
-	singleProviderRateLimitLikeMaxAttempts = 5
+	singleProviderRateLimitLikeMaxAttempts = 7
 )
 
 func isRateLimitLikeUpstreamError(statusCode int, body []byte) bool {
@@ -709,11 +709,17 @@ func hasPreviousResponseContinuation(body []byte, cachedPrevID string) bool {
 func transientUpstreamRetryDelay(attempt int) time.Duration {
 	switch attempt {
 	case 0:
-		return 500 * time.Millisecond
+		return 1 * time.Second
 	case 1:
-		return 1500 * time.Millisecond
+		return 2 * time.Second
+	case 2:
+		return 4 * time.Second
+	case 3:
+		return 8 * time.Second
+	case 4:
+		return 12 * time.Second
 	default:
-		return 3 * time.Second
+		return 18 * time.Second
 	}
 }
 
@@ -778,7 +784,6 @@ type ProxyHandler struct {
 	providerRaceMu     sync.Mutex
 	routingEnabled     atomic.Bool       // Toggle for model routing
 	promptCacheEnabled atomic.Bool       // Toggle for Anthropic prompt caching
-	responsesEnabled   atomic.Bool       // Toggle for Responses compatibility/integration
 	promptCacheStats   *PromptCacheStats // Prompt cache effectiveness stats
 
 	// Warm path — accessed conditionally
@@ -829,7 +834,6 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 		responsesComp:                 newResponsesContinuationCompactor(nil),
 	}
 	ph.routingEnabled.Store(true)
-	ph.responsesEnabled.Store(true)
 	ph.authProber = NewAuthProber() // default prober, can be overridden
 	ph.providerMemory = NewProviderMemory()
 	ph.routingStats = NewRoutingStats()
@@ -1154,21 +1158,6 @@ func (ph *ProxyHandler) SetPromptCacheEnabled(enabled bool) {
 	ph.promptCacheEnabled.Store(enabled)
 }
 
-// SetResponsesIntegrationEnabled toggles Responses compatibility/integration on/off at runtime.
-func (ph *ProxyHandler) SetResponsesIntegrationEnabled(enabled bool) {
-	if ph == nil {
-		return
-	}
-	ph.responsesEnabled.Store(enabled)
-}
-
-func (ph *ProxyHandler) responsesIntegrationEnabled() bool {
-	if ph == nil {
-		return true
-	}
-	return ph.responsesEnabled.Load()
-}
-
 // GetPromptCacheStats returns prompt cache stats snapshot.
 func (ph *ProxyHandler) GetPromptCacheStats() PromptCacheSnapshot {
 	if ph.promptCacheStats == nil {
@@ -1223,22 +1212,23 @@ func (ph *ProxyHandler) warmAuthStrategies() {
 
 	providers := pool.Registry.ListEnabled()
 	for _, p := range providers {
+		memoryKey := authStrategyMemoryKey(p.EffectiveBaseURL(), p.APIFormat)
 		// Skip if already cached (e.g. from a previous warmup)
-		if _, ok := ph.authProber.Recall(p.ID, p.BaseURL); ok {
+		if _, ok := ph.authProber.Recall(p.ID, memoryKey); ok {
 			continue
 		}
 
 		apiKey, _ := pool.Registry.GetAPIKey(p.ID)
 		if apiKey == nil || apiKey.Key == "" {
 			// No key → AuthNone, cache it directly
-			ph.authProber.Remember(p.ID, p.BaseURL, AuthNone)
+			ph.authProber.Remember(p.ID, memoryKey, AuthNone)
 			continue
 		}
 
 		// Try a lightweight HEAD/GET on the models endpoint to probe auth
 		strategies := ph.authProber.Strategies(p, apiKey, p.APIFormat)
 		for _, strat := range strategies {
-			probeURL := strings.TrimSuffix(p.BaseURL, "/") + "/v1/models"
+			probeURL := warmAuthProbeModelsURL(p.EffectiveBaseURL())
 			req, err := http.NewRequest(http.MethodGet, probeURL, nil)
 			if err != nil {
 				continue
@@ -1260,7 +1250,7 @@ func (ph *ProxyHandler) warmAuthStrategies() {
 			resp.Body.Close()
 
 			if !isAuthError(resp.StatusCode) {
-				ph.authProber.Remember(p.ID, p.BaseURL, strat)
+				ph.authProber.Remember(p.ID, memoryKey, strat)
 				slog.Debug("[proxy] auth warmup success", "provider", p.ID, "strategy", strat.String())
 				break
 			}
@@ -1270,6 +1260,20 @@ func (ph *ProxyHandler) warmAuthStrategies() {
 
 	// Phase 2: probe tool call support on each provider
 	ph.warmToolCallSupport(providers)
+}
+
+func warmAuthProbeModelsURL(baseURL string) string {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(baseURL), "/")
+	switch {
+	case trimmed == "":
+		return "/v1/models"
+	case strings.HasSuffix(trimmed, "/v1/models"), strings.HasSuffix(trimmed, "/models"):
+		return trimmed
+	case strings.HasSuffix(trimmed, "/v1"):
+		return trimmed + "/models"
+	default:
+		return trimmed + "/v1/models"
+	}
 }
 
 // toolCallProbeBody is a minimal OpenAI chat completion request with a tool definition.
@@ -1323,7 +1327,7 @@ func (ph *ProxyHandler) warmToolCallSupport(providers []*providerpool.Provider) 
 		}
 
 		// Recall auth strategy (just probed in phase 1)
-		authStrat, _ := ph.authProber.Recall(p.ID, burl)
+		authStrat, _ := ph.authProber.Recall(p.ID, authStrategyMemoryKey(burl, p.APIFormat))
 
 		probeURL := strings.TrimSuffix(burl, "/") + "/v1/chat/completions"
 		probeBody := toolCallProbeBody
@@ -1451,10 +1455,6 @@ func (ph *ProxyHandler) executeOnRouteResult(
 	pr *parsedRequest,
 	hasTools bool,
 ) (*providerExecOutcome, error) {
-	if !ph.responsesIntegrationEnabled() && result != nil && providerpool.UsesResponsesIntegration(result.Provider) {
-		return nil, errors.New(providerpool.ResponsesIntegrationDisabledReason())
-	}
-
 	pid := result.Provider.ID
 	burl := result.Provider.EffectiveBaseURL()
 	effectiveSingleProvider := effectiveSingleProviderOnRoute(pr, result)
@@ -1476,9 +1476,22 @@ func (ph *ProxyHandler) executeOnRouteResult(
 	}
 
 	// Throttle check: skip provider if recently 429'd
-	if !effectiveSingleProvider && ph.providerMemory.IsThrottled(pid, burl) {
-		slog.Debug("[proxy] skipping throttled provider", "provider", pid)
-		return nil, fmt.Errorf("provider %s is throttled", pid)
+	if until, throttled := ph.providerMemory.ThrottleUntil(pid, burl); throttled {
+		if !effectiveSingleProvider {
+			slog.Debug("[proxy] skipping throttled provider", "provider", pid, "throttle_until", until)
+			return nil, fmt.Errorf("provider %s is throttled", pid)
+		}
+		wait := time.Until(until)
+		slog.Info("[proxy] waiting for throttled provider in single-provider mode",
+			"provider", pid,
+			"wait", wait)
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case <-r.Context().Done():
+			return nil, r.Context().Err()
+		case <-timer.C:
+		}
 	}
 
 	tryReq := pr
@@ -1744,11 +1757,6 @@ func (ph *ProxyHandler) executeWithProviderRace(
 
 // ServeHTTP implements http.Handler.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !ph.responsesIntegrationEnabled() && strings.HasSuffix(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(r.URL.Path)), "/"), "/responses") {
-		http.Error(w, providerpool.ResponsesIntegrationDisabledReason(), http.StatusNotImplemented)
-		return
-	}
-
 	// Handle /v1/models specially
 	if r.URL.Path == "/v1/models" || strings.HasSuffix(r.URL.Path, "/models") {
 		ph.handleModels(w, r)
@@ -2119,9 +2127,6 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	// URI-based format enforcement: the final URL path is the source of truth.
 	// Ensure the body format matches the endpoint, regardless of effectiveFormat.
 	finalPath := upstreamURL.Path
-	if !ph.responsesIntegrationEnabled() && strings.HasSuffix(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(finalPath)), "/"), "/responses") {
-		return nil, errors.New(providerpool.ResponsesIntegrationDisabledReason())
-	}
 	if strings.HasSuffix(finalPath, "/responses") {
 		body = ph.injectCachedResponsesInstructions(r, body)
 		body = ph.injectCachedResponsesPreviousIDForRoute(r, route, body)
@@ -2465,6 +2470,9 @@ func shouldPersistDetectedFormatForProvider(provider *providerpool.Provider) boo
 	if provider == nil {
 		return false
 	}
+	if providerpool.EffectiveProviderMetadataMode(provider) == providerpool.ProviderMetadataModeCatalog {
+		return false
+	}
 	if _, ok := providerEndpointFixedFormat(provider, provider.EffectiveBaseURL()); ok {
 		return true
 	}
@@ -2496,6 +2504,16 @@ func (ph *ProxyHandler) persistDetectedFormat(provider *providerpool.Provider, f
 // This is called when an alternate base URL works (e.g., international endpoint instead of China).
 // Only updates if the endpoint changed, to avoid unnecessary writes.
 func (ph *ProxyHandler) persistDetectedEndpoint(provider *providerpool.Provider, endpoint string) {
+	if provider == nil {
+		return
+	}
+	if providerpool.EffectiveProviderMetadataMode(provider) == providerpool.ProviderMetadataModeCatalog {
+		if provider.DetectedEndpoint != "" {
+			provider.DetectedEndpoint = ""
+			provider.ResetParsedURL()
+		}
+		return
+	}
 	if provider.DetectedEndpoint == endpoint {
 		return // already persisted
 	}
@@ -2696,11 +2714,12 @@ func (ph *ProxyHandler) allModelsForProvider(provider *providerpool.Provider, pi
 		}
 	}
 
-	// Routing-hint requests ("auto"/"local"/"cloud") need a concrete model
-	// inside the selected provider. For custom relays, expand to additional
-	// preferred models so a stale or unavailable first choice can fall through
-	// to another advertised model on the same relay.
-	if isCustomRelayProvider(provider) && isRoutingHintModel(memoryKey) && ph != nil && ph.providerPool != nil && ph.providerPool.Discovery != nil {
+	// Custom relays may advertise model IDs that are present in /models but not
+	// actually routable right now. When we're on a routing hint ("auto"/"local"/"cloud")
+	// or in HA mode (!ignoreBlacklist), expand to additional discovered chat models
+	// so a stale first choice can fall through to another working model on the
+	// same relay.
+	if isCustomRelayProvider(provider) && (isRoutingHintModel(memoryKey) || !ignoreBlacklist) && ph != nil && ph.providerPool != nil && ph.providerPool.Discovery != nil {
 		if models, err := ph.providerPool.Discovery.GetFilteredModels(provider.ID); err == nil {
 			for _, model := range models {
 				if model == nil || !providerpool.SupportsChatCompletions(model) {
@@ -3317,6 +3336,8 @@ var notConfiguredPatternsEN = [][]byte{
 	[]byte("model unavailable"),
 	[]byte("model not found"),
 	[]byte("model_not_found"),
+	[]byte("no available ai provider for model"),
+	[]byte("no available provider for model"),
 	[]byte("does not exist"),
 	[]byte("invalid model"),
 	[]byte("unknown model"),
@@ -3941,6 +3962,7 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		ph.updateSessionUsage(r, pr, int64(inTokens), int64(outTokens), resp.StatusCode < http.StatusBadRequest)
 	}
 
+	w.Header().Set("Content-Length", strconv.Itoa(len(respBody)))
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
 }

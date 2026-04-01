@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import SettingsView from '@/views/SettingsView.vue'
 import { useSettingsStore } from '@/stores/settings'
-import { i18n } from '@/i18n'
+import { i18n, setLocale } from '@/i18n'
 import { settingsApi } from '@/api/settings'
 import { providerPoolApi } from '@/api/providerPool'
 import { backupApi } from '@/api/index'
@@ -260,12 +260,13 @@ function primeApiMocks() {
 }
 
 describe('SettingsView small-model controls', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorageMock.clear()
     routerReplace.mockReset()
     vi.clearAllMocks()
     tauriState.isTauri = false
     tauriState.platform = 'unknown'
+    await setLocale('en-US')
     primeApiMocks()
   })
 
@@ -425,6 +426,56 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.get('[data-testid="small-model-main-section-header"]').find('h3').exists()).toBe(
       false
     )
+
+    wrapper.unmount()
+  })
+
+  it('renders localized fallback reasons in the small-model stats panel', async () => {
+    routeTab = 'proxy'
+    vi.mocked(settingsApi.getSmallModelStats).mockResolvedValue({
+      data: {
+        short_qa_route_attempts: 12,
+        short_qa_route_success: 10,
+        image_qa_route_attempts: 7,
+        image_qa_route_success: 6,
+        summary_attempts: 4,
+        summary_success: 3,
+        context_compress_attempts: 5,
+        context_compress_success: 4,
+        context_compress_latency_ms: 11,
+        doc_extract_attempts: 2,
+        doc_extract_success: 1,
+        no_provider_deepresearch_total: 2,
+        ir_takeover_total: 3,
+        fallback_reasons: {
+          deepresearch_unavailable: 2,
+          auto_rollback_doc_extract_fallback_rate: 1,
+        },
+      },
+    } as never)
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="small-model-stats-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t('settings.smallModel.fallbackReasonLabels.deepresearch_unavailable')
+    )
+    expect(wrapper.text()).toContain(
+      i18n.global.t('settings.smallModel.fallbackReasonLabels.auto_rollback_doc_extract_fallback_rate')
+    )
+    expect(wrapper.text()).not.toContain('deepresearch_unavailable')
+    expect(wrapper.text()).not.toContain('auto_rollback_doc_extract_fallback_rate')
 
     wrapper.unmount()
   })

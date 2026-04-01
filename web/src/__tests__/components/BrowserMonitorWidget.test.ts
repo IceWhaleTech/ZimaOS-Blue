@@ -196,7 +196,7 @@ describe('BrowserMonitorWidget', () => {
           status: 'running',
           stage: 'planning',
           progress: 42,
-          actions: { can_cancel: false, can_open_chat: true, can_send_update: false },
+          actions: { items: [] },
           updated_at: '2026-03-23T00:00:00.000Z',
         },
         {
@@ -209,7 +209,7 @@ describe('BrowserMonitorWidget', () => {
           status: 'running',
           stage: 'working',
           progress: 67,
-          actions: { can_cancel: false, can_open_chat: true, can_send_update: false },
+          actions: { items: [] },
           updated_at: '2026-03-22T23:59:00.000Z',
         },
       ],

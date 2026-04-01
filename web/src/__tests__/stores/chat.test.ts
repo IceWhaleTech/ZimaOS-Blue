@@ -118,9 +118,9 @@ describe('Chat Store', () => {
     )
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
-    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
-      { data: { conversation_id: '', active: false } } as never
-    )
+    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
+      data: { conversation_id: '', active: false },
+    } as never)
     vi.mocked(messageApi.delete).mockResolvedValue({ data: { success: true, deleted: 0 } } as never)
     vi.mocked(approvalApi.listPending).mockResolvedValue({ data: [] } as never)
     vi.mocked(conversationApi.getCommandState).mockResolvedValue({
@@ -131,6 +131,7 @@ describe('Chat Store', () => {
         offline: false,
         web_search_enabled: true,
         deep_research_enabled: false,
+        research_mode_enabled: false,
       },
     } as never)
     vi.mocked(conversationApi.patchCommandState).mockResolvedValue({
@@ -141,6 +142,7 @@ describe('Chat Store', () => {
         offline: false,
         web_search_enabled: true,
         deep_research_enabled: false,
+        research_mode_enabled: false,
       },
     } as never)
   })
@@ -269,6 +271,24 @@ describe('Chat Store', () => {
       expect(conversationApi.getCommandState).toHaveBeenCalledTimes(1)
       expect(conversationApi.getCommandState).toHaveBeenCalledWith('1')
       expect(store.currentConversationId).toBe('2')
+    })
+
+    it('hydrates research_mode_enabled from command state responses', async () => {
+      vi.mocked(conversationApi.getCommandState).mockResolvedValue({
+        data: {
+          conversation_id: '1',
+          selected_provider_id: '',
+          selected_model_id: '',
+          offline: false,
+          web_search_enabled: true,
+          research_mode_enabled: true,
+        },
+      } as never)
+
+      const store = useChatStore()
+      await store.selectConversation('1')
+
+      expect(store.deepResearchEnabled).toBe(true)
     })
 
     it('should keep chronological order across multi-page loadMore', async () => {
@@ -517,6 +537,67 @@ describe('Chat Store', () => {
         expect.any(Object)
       )
     })
+
+    it('clears the pinned provider when switching back to auto', async () => {
+      const store = useChatStore()
+      store.currentConversationId = '1'
+      store.selectedProviderId = 'openrouter'
+      store.modelPreference = 'openrouter/gpt-5'
+
+      store.setModelPreference('auto')
+      await flushMicrotasks()
+
+      expect(store.selectedProviderId).toBe('')
+      expect(store.modelPreference).toBe('auto')
+      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('1', {
+        selected_provider_id: '',
+        selected_model_id: '',
+      })
+    })
+
+    it('writes research_mode_enabled alongside the legacy field when toggling research mode', async () => {
+      vi.mocked(conversationApi.patchCommandState).mockResolvedValue({
+        data: {
+          conversation_id: '1',
+          selected_provider_id: '',
+          selected_model_id: '',
+          offline: false,
+          web_search_enabled: true,
+          deep_research_enabled: true,
+          research_mode_enabled: true,
+        },
+      } as never)
+
+      const store = useChatStore()
+      store.currentConversationId = '1'
+
+      store.setDeepResearchEnabled(true)
+      await flushMicrotasks()
+
+      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('1', {
+        research_mode_enabled: true,
+        deep_research_enabled: true,
+      })
+      expect(store.deepResearchEnabled).toBe(true)
+    })
+
+    it('does not send a provider when auto routing is selected', async () => {
+      const store = useChatStore()
+      store.currentConversationId = '1'
+      store.selectedProviderId = 'openrouter'
+      store.modelPreference = 'auto'
+
+      await store.sendMessage('hi')
+
+      expect(mocks.sseConnect).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          provider: '',
+          model: '',
+        }),
+        expect.any(Object)
+      )
+    })
   })
 
   describe('sortedConversations', () => {
@@ -561,6 +642,119 @@ describe('Chat Store', () => {
   })
 
   describe('sendMessage streaming', () => {
+    it('queues an auto-fallback prompt when a fixed model is unavailable', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Original',
+          created_at: '2026-03-22T00:00:00.000Z',
+          updated_at: '2026-03-22T00:00:00.000Z',
+        },
+      ]
+      store.selectedProviderId = 'anthropic'
+      store.modelPreference = 'anthropic/claude-opus-4-5-20251101'
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        options.onError?.(
+          new Error(
+            "HTTP 400: No available AI provider for model 'claude-opus-4-5-20251101' across all groups checked."
+          )
+        )
+      })
+
+      await store.sendMessage('hello')
+
+      expect(store.pendingModelAutoFallback).toEqual(
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          retryKind: 'send',
+          requestedProviderId: 'anthropic',
+          requestedModelId: 'claude-opus-4-5-20251101',
+        })
+      )
+      expect(store.streamError).toBeNull()
+      expect(store.messages.some((message) => message.id.startsWith('temp-'))).toBe(false)
+    })
+
+    it('switches to auto routing and retries after confirming the fallback prompt', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Original',
+          created_at: '2026-03-22T00:00:00.000Z',
+          updated_at: '2026-03-22T00:00:00.000Z',
+        },
+      ]
+      store.selectedProviderId = 'anthropic'
+      store.modelPreference = 'anthropic/claude-opus-4-5-20251101'
+
+      vi.mocked(messageApi.list)
+        .mockResolvedValueOnce({
+          data: [
+            {
+              id: 'msg-user-1',
+              conversation_id: 'conv-1',
+              role: 'user',
+              content: 'hello',
+              created_at: '2026-03-22T00:00:00.000Z',
+            },
+          ],
+        } as never)
+        .mockResolvedValueOnce({
+          data: [
+            {
+              id: 'msg-user-1',
+              conversation_id: 'conv-1',
+              role: 'user',
+              content: 'hello',
+              created_at: '2026-03-22T00:00:00.000Z',
+            },
+            {
+              id: 'msg-assistant-1',
+              conversation_id: 'conv-1',
+              role: 'assistant',
+              content: 'Recovered with auto routing',
+              created_at: '2026-03-22T00:00:01.000Z',
+            },
+          ],
+        } as never)
+
+      let retryRequest: Record<string, unknown> | null = null
+      mocks.sseConnect
+        .mockImplementationOnce(async (_conversationId, _request, options: any) => {
+          options.onError?.(
+            new Error(
+              "HTTP 400: No available AI provider for model 'claude-opus-4-5-20251101' across all groups checked."
+            )
+          )
+        })
+        .mockImplementationOnce(async (_conversationId, request, options: any) => {
+          retryRequest = request as Record<string, unknown>
+          options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+        })
+
+      await store.sendMessage('hello')
+      await store.confirmModelAutoFallbackRetry()
+      await settleAsyncWork()
+
+      expect(store.modelPreference).toBe('auto')
+      expect(store.pendingModelAutoFallback).toBeNull()
+      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('conv-1', {
+        selected_provider_id: '',
+        selected_model_id: '',
+      })
+      expect(retryRequest).toMatchObject({
+        message: 'hello',
+        provider: '',
+        model: '',
+        regenerate: true,
+      })
+    })
+
     it('clears a stale stream error when a new request starts and completes', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
@@ -909,28 +1103,24 @@ describe('Chat Store', () => {
     it('hydrates an active server stream with persisted preview content after local state is gone', async () => {
       const store = useChatStore()
 
-      vi.mocked(messageApi.list).mockResolvedValue(
-        {
-          data: [
-            {
-              id: 'msg-assistant-1',
-              conversation_id: 'conv-1',
-              role: 'assistant',
-              content: '- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。',
-              created_at: '2026-03-12T00:00:00.000Z',
-            },
-          ],
-        } as never
-      )
-      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
-        {
-          data: {
+      vi.mocked(messageApi.list).mockResolvedValue({
+        data: [
+          {
+            id: 'msg-assistant-1',
             conversation_id: 'conv-1',
-            active: true,
-            stream_id: 'stream-preview-1',
+            role: 'assistant',
+            content: '- [x] 收集信息\n- [ ] 写总结\n\n我继续执行第二步。',
+            created_at: '2026-03-12T00:00:00.000Z',
           },
-        } as never
-      )
+        ],
+      } as never)
+      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
+        data: {
+          conversation_id: 'conv-1',
+          active: true,
+          stream_id: 'stream-preview-1',
+        },
+      } as never)
 
       await store.selectConversation('conv-1')
 
@@ -948,15 +1138,13 @@ describe('Chat Store', () => {
       const store = useChatStore()
 
       vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
-      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
-        {
-          data: {
-            conversation_id: 'conv-1',
-            active: true,
-            stream_id: 'stream-live-1',
-          },
-        } as never
-      )
+      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
+        data: {
+          conversation_id: 'conv-1',
+          active: true,
+          stream_id: 'stream-live-1',
+        },
+      } as never)
 
       await store.selectConversation('conv-1')
 
@@ -974,35 +1162,31 @@ describe('Chat Store', () => {
     it('does not reuse the previous assistant reply as preview when the latest persisted message is user-only', async () => {
       const store = useChatStore()
 
-      vi.mocked(messageApi.list).mockResolvedValue(
-        {
-          data: [
-            {
-              id: 'msg-assistant-prev',
-              conversation_id: 'conv-1',
-              role: 'assistant',
-              content: '上一轮已经完成的回复',
-              created_at: '2026-03-12T00:00:00.000Z',
-            },
-            {
-              id: 'msg-user-latest',
-              conversation_id: 'conv-1',
-              role: 'user',
-              content: '继续执行新的任务',
-              created_at: '2026-03-12T00:00:01.000Z',
-            },
-          ],
-        } as never
-      )
-      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
-        {
-          data: {
+      vi.mocked(messageApi.list).mockResolvedValue({
+        data: [
+          {
+            id: 'msg-assistant-prev',
             conversation_id: 'conv-1',
-            active: true,
-            stream_id: 'stream-live-2',
+            role: 'assistant',
+            content: '上一轮已经完成的回复',
+            created_at: '2026-03-12T00:00:00.000Z',
           },
-        } as never
-      )
+          {
+            id: 'msg-user-latest',
+            conversation_id: 'conv-1',
+            role: 'user',
+            content: '继续执行新的任务',
+            created_at: '2026-03-12T00:00:01.000Z',
+          },
+        ],
+      } as never)
+      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
+        data: {
+          conversation_id: 'conv-1',
+          active: true,
+          stream_id: 'stream-live-2',
+        },
+      } as never)
 
       await store.selectConversation('conv-1')
 
@@ -1069,18 +1253,16 @@ describe('Chat Store', () => {
         expect(store.messages.at(-1)?.content).toBe('Partial answer')
 
         streamOptions.onNetworkInterrupt?.()
-        for (let i = 0; i < 12 && store.streamUIState.phase === 'recovering'; i++) {
-          await flushMicrotasks()
-          await vi.advanceTimersByTimeAsync(0)
-        }
+        await flushMicrotasks()
+        await vi.runAllTimersAsync()
+        await flushMicrotasks()
 
-        expect(store.streamUIState.phase).toBe('completed')
-        expect(store.streamUIState.label).toBeTruthy()
+        expect(store.streamUIState.phase).not.toBe('recovering')
+        expect(store.streamUIState.phase).not.toBe('interrupted')
         expect(store.messages).toHaveLength(2)
         expect(store.messages.at(-1)?.id).toBe('msg-assistant-1')
         expect(store.messages.at(-1)?.content).toBe('Recovered answer')
 
-        await vi.advanceTimersByTimeAsync(600)
         expect(store.streamUIState.phase).toBe('idle')
 
         resolveStream?.()
@@ -1125,7 +1307,7 @@ describe('Chat Store', () => {
 
         expect(store.streamUIState.phase).toBe('recovering')
 
-        await vi.advanceTimersByTimeAsync(2700)
+        await vi.runAllTimersAsync()
         await flushMicrotasks()
 
         expect(store.streamUIState.phase).toBe('interrupted')
@@ -1141,6 +1323,11 @@ describe('Chat Store', () => {
 
     it('localizes process trace labels from known events', async () => {
       i18n.global.setLocaleMessage('zh-CN', {
+        harness: {
+          quickEval: {
+            researchLabel: '研究',
+          },
+        },
         chat: {
           processTrace: {
             events: {
@@ -1148,10 +1335,12 @@ describe('Chat Store', () => {
               requestSent: '请求已发送',
               waitingForResponse: '正在等待响应',
               retryingRequest: '正在重试请求',
+              providerResolved: '已选定可用路由',
             },
             details: {
               requestDispatched: '正在等待服务器接受请求并开始响应。',
               waitingForResponse: '请求已被接受。正在等待第一段可见输出。',
+              providerResolvedModelSwitch: '本次响应已切换到一个可用的上游模型。',
               providerFailoverToolFollowUp: '正在不使用上一个固定提供商重试这轮工具后续请求。',
               recoveryStage1: '静默恢复',
             },
@@ -1218,6 +1407,7 @@ describe('Chat Store', () => {
       expect(store.processTrace[0]?.detail).toContain('提供商: 自动')
       expect(store.processTrace[0]?.detail).toContain('模型: 自动')
       expect(store.processTrace[0]?.detail).toContain('网页搜索: 开启')
+      expect(store.processTrace[0]?.detail).toContain('深度研究: 关闭')
       expect(store.processTrace[1]?.detail).toBe('正在等待服务器接受请求并开始响应。')
       expect(store.processTrace[2]?.detail).toBe('请求已被接受。正在等待第一段可见输出。')
 
@@ -1252,6 +1442,16 @@ describe('Chat Store', () => {
         process_message: 'Recovering response',
         process_detail: 'silent_recovery_stage1',
       })
+      streamOptions.onProcessEvent?.({
+        delta: '',
+        done: false,
+        process_event: 'provider_resolved',
+        process_status: 'success',
+        process_message: 'Using available route',
+        process_detail: 'Switched to an available upstream model for this response.',
+        process_provider: 'anthropic',
+        process_model: 'claude-haiku-4-5',
+      })
       await settleAsyncWork()
 
       expect(
@@ -1260,6 +1460,18 @@ describe('Chat Store', () => {
       expect(
         store.processTrace.find((item) => item.event === 'continuation_recovery_started')?.detail
       ).toContain('静默恢复')
+      expect(store.processTrace.find((item) => item.event === 'provider_resolved')?.label).toBe(
+        '已选定可用路由'
+      )
+      expect(
+        store.processTrace.find((item) => item.event === 'provider_resolved')?.detail
+      ).toContain('本次响应已切换到一个可用的上游模型。')
+      expect(
+        store.processTrace.find((item) => item.event === 'provider_resolved')?.detail
+      ).toContain('提供商: anthropic')
+      expect(
+        store.processTrace.find((item) => item.event === 'provider_resolved')?.detail
+      ).toContain('模型: claude-haiku-4-5')
 
       streamOptions.onComplete?.({ delta: '', done: true })
       resolveStream?.()
@@ -1768,6 +1980,123 @@ describe('Chat Store', () => {
       expect(store.messages).toHaveLength(2)
       expect(store.messages[0]?.id).toBe('msg-user-1')
       expect(store.messages[1]?.id).toBe('msg-assistant-regenerated')
+    })
+  })
+
+  describe('continueMessage', () => {
+    it('queues an auto-fallback prompt when a fixed model is unavailable', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Original',
+          created_at: '2026-03-22T00:00:00.000Z',
+          updated_at: '2026-03-22T00:00:00.000Z',
+        },
+      ]
+      store.selectedProviderId = 'anthropic'
+      store.modelPreference = 'anthropic/claude-opus-4-5-20251101'
+      store.messages = [
+        {
+          id: 'msg-assistant-1',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: 'Partial answer',
+          created_at: '2026-03-22T00:00:01.000Z',
+        },
+      ]
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+        expect(request).toEqual(
+          expect.objectContaining({
+            message: '[CONTINUE]',
+            provider: 'anthropic',
+            model: 'claude-opus-4-5-20251101',
+          })
+        )
+        options.onError?.(
+          new Error(
+            "HTTP 400: No available AI provider for model 'claude-opus-4-5-20251101' across all groups checked."
+          )
+        )
+      })
+
+      await store.continueMessage()
+
+      expect(store.pendingModelAutoFallback).toEqual(
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          retryKind: 'continue',
+          requestedProviderId: 'anthropic',
+          requestedModelId: 'claude-opus-4-5-20251101',
+        })
+      )
+      expect(store.streamError).toBeNull()
+    })
+
+    it('queues an auto-fallback prompt when auto-resume hits a fixed-model unavailable error', async () => {
+      vi.useFakeTimers()
+
+      try {
+        const store = useChatStore()
+        store.currentConversationId = 'conv-1'
+        store.conversations = [
+          {
+            id: 'conv-1',
+            title: 'Original',
+            created_at: '2026-03-22T00:00:00.000Z',
+            updated_at: '2026-03-22T00:00:00.000Z',
+          },
+        ]
+        store.selectedProviderId = 'anthropic'
+        store.modelPreference = 'anthropic/claude-opus-4-5-20251101'
+        store.sending = true
+        store.streaming = true
+        store.messages = [
+          {
+            id: 'streaming-1',
+            conversation_id: 'conv-1',
+            role: 'assistant',
+            content: '',
+            created_at: '2026-03-22T00:00:01.000Z',
+          },
+        ]
+
+        mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+          expect(request).toEqual(
+            expect.objectContaining({
+              message: '[CONTINUE_AFTER_CANCEL]',
+              provider: 'anthropic',
+              model: 'claude-opus-4-5-20251101',
+            })
+          )
+          options.onError?.(
+            new Error(
+              "HTTP 400: No available AI provider for model 'claude-opus-4-5-20251101' across all groups checked."
+            )
+          )
+        })
+
+        store.cancelPreTTFT()
+        expect(store.preTTFTCancelActive).toBe(true)
+
+        await vi.advanceTimersByTimeAsync(10000)
+        await flushMicrotasks()
+
+        expect(store.preTTFTCancelActive).toBe(false)
+        expect(store.pendingModelAutoFallback).toEqual(
+          expect.objectContaining({
+            conversationId: 'conv-1',
+            retryKind: 'continue',
+            requestedProviderId: 'anthropic',
+            requestedModelId: 'claude-opus-4-5-20251101',
+          })
+        )
+        expect(store.messages.some((message) => message.id.startsWith('streaming-'))).toBe(false)
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 

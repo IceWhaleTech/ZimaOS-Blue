@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
@@ -35,8 +36,9 @@ type UserRoleAssignment struct {
 
 // UserRoleService handles user-role assignments
 type UserRoleService struct {
-	db   *sql.DB
-	rbac *RBAC
+	db     *sql.DB
+	readDB *sql.DB
+	rbac   *RBAC
 }
 
 // NewUserRoleService creates a new user role service
@@ -53,6 +55,11 @@ func NewUserRoleService(dbPath string, rbac *RBAC) (*UserRoleService, error) {
 	}
 
 	svc.db = db
+	readDB, readErr := openUserRoleReaderDB(dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+	svc.readDB = readDB
 	return svc, nil
 }
 
@@ -93,11 +100,50 @@ func (s *UserRoleService) initDB() error {
 
 // Close closes the database connection
 func (s *UserRoleService) Close() error {
+	if s == nil {
+		return nil
+	}
+	if s.readDB != nil && s.readDB != s.db {
+		_ = s.readDB.Close()
+	}
 	return s.db.Close()
 }
 
 func (s *UserRoleService) table(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "user_role_assignments")
+}
+
+func (s *UserRoleService) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "user_role_assignments")
+}
+
+func (s *UserRoleService) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func openUserRoleReaderDB(dbPath string) (*sql.DB, error) {
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+			return fmt.Errorf("set user role reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // AssignRoleRequest represents a request to assign a role to a user
@@ -228,7 +274,7 @@ func rowToAssignment(row assignmentRow) *UserRoleAssignment {
 // GetUserRoles returns all active roles for a user
 func (s *UserRoleService) GetUserRoles(ctx context.Context, userID string) ([]*UserRoleAssignment, error) {
 	var rows []assignmentRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(
 			z.Eq("user_id", userID),
 			z.Eq("revoked", 0),
@@ -250,7 +296,7 @@ func (s *UserRoleService) GetUserRoles(ctx context.Context, userID string) ([]*U
 // GetRoleUsers returns all users with a specific role
 func (s *UserRoleService) GetRoleUsers(ctx context.Context, roleName string) ([]*UserRoleAssignment, error) {
 	var rows []assignmentRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(
 			z.Eq("role_name", roleName),
 			z.Eq("revoked", 0),
@@ -272,7 +318,7 @@ func (s *UserRoleService) GetRoleUsers(ctx context.Context, roleName string) ([]
 // HasRole checks if a user has a specific role
 func (s *UserRoleService) HasRole(ctx context.Context, userID, roleName string) (bool, error) {
 	var count int64
-	_, err := s.table(ctx).Select(&count,
+	_, err := s.readTable(ctx).Select(&count,
 		z.Fields("count(1)"),
 		z.Where(
 			z.Eq("user_id", userID),
@@ -346,7 +392,7 @@ func (s *UserRoleService) CleanupExpiredAssignments(ctx context.Context) (int64,
 // GetAssignmentHistory returns the assignment history for a user
 func (s *UserRoleService) GetAssignmentHistory(ctx context.Context, userID string) ([]*UserRoleAssignment, error) {
 	var rows []assignmentRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(z.Eq("user_id", userID)),
 		z.OrderBy("assigned_at DESC"),
 	)

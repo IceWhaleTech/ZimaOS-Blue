@@ -40,7 +40,11 @@ type Service struct {
 }
 
 func NewService(db *sql.DB, dataDir string) (*Service, error) {
-	store, err := NewStore(db)
+	return NewServiceWithReadDB(db, db, dataDir)
+}
+
+func NewServiceWithReadDB(writeDB, readDB *sql.DB, dataDir string) (*Service, error) {
+	store, err := NewStoreWithReadDB(writeDB, readDB)
 	if err != nil {
 		return nil, err
 	}

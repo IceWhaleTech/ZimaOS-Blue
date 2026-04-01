@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -25,6 +26,9 @@ const (
 	webSearchProviderSettleWindow = 180 * time.Millisecond
 	webSearchDefaultCacheTTL      = 3 * time.Minute
 	webSearchDefaultCacheMax      = 256
+	webSearchProviderRetryBase    = 350 * time.Millisecond
+	webSearchProviderRetryMaxWait = 2 * time.Second
+	webSearchProviderRetryLimit   = 2
 )
 
 var defaultWebSearchProviders = []string{"bing", "duckduckgo"}
@@ -102,6 +106,8 @@ type WebSearchTool struct {
 	cacheMu    sync.Mutex
 	cache      map[string]webSearchCacheEntry
 	inFlight   map[string]*inflightWebSearchCall
+	retryMax   int
+	retrySleep func(context.Context, time.Duration) error
 }
 
 type webSearchCacheEntry struct {
@@ -136,6 +142,33 @@ type webSearchProviderOutcome struct {
 	Provider string
 	Response *WebSearchResponse
 	Err      error
+}
+
+type webSearchProviderError struct {
+	StatusCode int
+	Retryable  bool
+	Message    string
+	Cause      error
+}
+
+func (e *webSearchProviderError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if strings.TrimSpace(e.Message) != "" {
+		return e.Message
+	}
+	if e.Cause != nil {
+		return e.Cause.Error()
+	}
+	return "web search provider error"
+}
+
+func (e *webSearchProviderError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
 }
 
 // NewWebSearchTool creates a new web search tool.
@@ -177,8 +210,10 @@ func NewWebSearchTool(config WebSearchConfig) *WebSearchTool {
 		httpClient: &http.Client{
 			Timeout: config.Timeout,
 		},
-		cache:    make(map[string]webSearchCacheEntry),
-		inFlight: make(map[string]*inflightWebSearchCall),
+		cache:      make(map[string]webSearchCacheEntry),
+		inFlight:   make(map[string]*inflightWebSearchCall),
+		retryMax:   webSearchProviderRetryLimit,
+		retrySleep: sleepWithContext,
 	}
 }
 
@@ -369,6 +404,32 @@ func (w *WebSearchTool) searchWithProvider(ctx context.Context, provider, query 
 	if !w.providerEnabled(provider) {
 		return nil, fmt.Errorf("search provider %s is disabled", provider)
 	}
+	retryMax := w.retryMax
+	if retryMax < 0 {
+		retryMax = 0
+	}
+	wait := w.retrySleep
+	if wait == nil {
+		wait = sleepWithContext
+	}
+	var lastErr error
+	for attempt := 0; attempt <= retryMax; attempt++ {
+		resp, err := w.searchWithProviderOnce(ctx, provider, query, maxResults, region)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if attempt == retryMax || !shouldRetryWebSearchError(err) {
+			return nil, err
+		}
+		if err := wait(ctx, webSearchRetryDelay(attempt)); err != nil {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+func (w *WebSearchTool) searchWithProviderOnce(ctx context.Context, provider, query string, maxResults int, region string) (*WebSearchResponse, error) {
 	switch provider {
 	case "duckduckgo":
 		return w.searchDuckDuckGo(ctx, query, maxResults, region)
@@ -522,6 +583,109 @@ func parseProviderChainArg(raw interface{}) []string {
 		return nil
 	}
 	return normalizeProviderList(strings.Split(value, ","))
+}
+
+func shouldRetryWebSearchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var providerErr *webSearchProviderError
+	if errors.As(err, &providerErr) {
+		return providerErr.Retryable
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	return false
+}
+
+func webSearchRetryDelay(attempt int) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	delay := webSearchProviderRetryBase * time.Duration(1<<uint(attempt))
+	if delay > webSearchProviderRetryMaxWait {
+		return webSearchProviderRetryMaxWait
+	}
+	return delay
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func wrapWebSearchTransportError(err error) error {
+	if err == nil {
+		return nil
+	}
+	retryable := errors.Is(err, context.DeadlineExceeded)
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		retryable = true
+	}
+	return &webSearchProviderError{
+		Retryable: retryable,
+		Message:   fmt.Sprintf("failed to execute search: %v", err),
+		Cause:     err,
+	}
+}
+
+func newWebSearchHTTPStatusError(statusCode int, body string) error {
+	message := fmt.Sprintf("search failed with status: %d", statusCode)
+	if trimmed := strings.TrimSpace(body); trimmed != "" {
+		if len(trimmed) > 256 {
+			trimmed = trimmed[:256] + "...(truncated)"
+		}
+		message = fmt.Sprintf("search failed with status %d: %s", statusCode, trimmed)
+	}
+	return &webSearchProviderError{
+		StatusCode: statusCode,
+		Retryable:  isRetryableWebSearchHTTPStatus(statusCode),
+		Message:    message,
+	}
+}
+
+func isRetryableWebSearchHTTPStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusRequestTimeout,
+		http.StatusTooManyRequests,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+		529:
+		return true
+	default:
+		return false
+	}
+}
+
+func readWebSearchErrorBody(body io.Reader) string {
+	if body == nil {
+		return ""
+	}
+	data, err := io.ReadAll(io.LimitReader(body, 512))
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func normalizeProviderList(providers []string) []string {
@@ -733,12 +897,12 @@ func (w *WebSearchTool) searchDuckDuckGo(ctx context.Context, query string, maxR
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute search: %w", err)
+		return nil, wrapWebSearchTransportError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("search failed with status: %d", resp.StatusCode)
+		return nil, newWebSearchHTTPStatusError(resp.StatusCode, readWebSearchErrorBody(resp.Body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -863,12 +1027,12 @@ func (w *WebSearchTool) searchBingAtURL(ctx context.Context, query string, maxRe
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute search: %w", err)
+		return nil, wrapWebSearchTransportError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("search failed with status: %d", resp.StatusCode)
+		return nil, newWebSearchHTTPStatusError(resp.StatusCode, readWebSearchErrorBody(resp.Body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -1062,12 +1226,12 @@ func (w *WebSearchTool) searchSearXNG(ctx context.Context, query string, maxResu
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute search: %w", err)
+		return nil, wrapWebSearchTransportError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("search failed with status: %d", resp.StatusCode)
+		return nil, newWebSearchHTTPStatusError(resp.StatusCode, readWebSearchErrorBody(resp.Body))
 	}
 
 	var searxResp struct {
@@ -1130,13 +1294,12 @@ func (w *WebSearchTool) searchBrave(ctx context.Context, query string, maxResult
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute search: %w", err)
+		return nil, wrapWebSearchTransportError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("search failed with status %d: %s", resp.StatusCode, string(body))
+		return nil, newWebSearchHTTPStatusError(resp.StatusCode, readWebSearchErrorBody(resp.Body))
 	}
 
 	var braveResp struct {

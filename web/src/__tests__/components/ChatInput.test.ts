@@ -129,6 +129,11 @@ describe('ChatInput cancel affordance', () => {
       ui: {
         deepResearchTitle: 'Deep Research',
       },
+      harness: {
+        quickEval: {
+          researchLabel: 'Research',
+        },
+      },
       uiReview: {
         visual: 'Visual',
         accessibility: 'Accessibility',
@@ -343,7 +348,10 @@ describe('ChatInput cancel affordance', () => {
       },
     })
 
-    await attachDraftFile(wrapper, new File(['draft attachment'], 'draft-notes.txt', { type: 'text/plain' }))
+    await attachDraftFile(
+      wrapper,
+      new File(['draft attachment'], 'draft-notes.txt', { type: 'text/plain' })
+    )
     expect(wrapper.text()).toContain('draft-notes.txt')
 
     wrapper.unmount()
@@ -512,10 +520,7 @@ describe('ChatInput cancel affordance', () => {
       data: {
         query: 'need a github release workflow with changelog generation',
         need_store_search: true,
-        search_queries: [
-          'github actions release automation',
-          'release changelog generator',
-        ],
+        search_queries: ['github actions release automation', 'release changelog generator'],
         capability_tags: ['github-actions', 'release-management'],
         recommended_ids: ['release-bot'],
         results: [
@@ -714,7 +719,7 @@ describe('ChatInput cancel affordance', () => {
     await infoButton.trigger('click')
 
     expect(wrapper.find('.compact-mode-info-card--research').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Deep Research')
+    expect(wrapper.text()).toContain('Research')
     expect(wrapper.text()).toContain('Disabled')
   })
 

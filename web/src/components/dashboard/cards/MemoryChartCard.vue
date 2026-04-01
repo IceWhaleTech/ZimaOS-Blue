@@ -77,11 +77,11 @@ const memorySummaryItems = computed(() => [
     value: formatCompactBytes(memoryCurrentBytes.value),
   },
   {
-    label: t('resourceChart.avg', 'Avg'),
+    label: t('resourceChart.avg'),
     value: formatCompactBytes(memoryAverageBytes.value),
   },
   {
-    label: t('metrics.max', 'Max'),
+    label: t('metrics.max'),
     value: formatCompactBytes(memoryPeakBytes.value),
   },
 ])
@@ -92,9 +92,9 @@ const memorySummaryItems = computed(() => [
     <div class="dashboard-card-footer">
       <div class="dashboard-card-copy">
         <p class="dashboard-card-label">{{ t('system.memoryUsage') }}</p>
-        <p class="dashboard-card-subtitle mt-2">5 minute high-water mark</p>
+        <p class="dashboard-card-subtitle mt-2">{{ t('system.cards.memoryChart.compactSubtitle') }}</p>
       </div>
-      <span class="dashboard-card-chip">Max</span>
+      <span class="dashboard-card-chip">{{ t('metrics.max') }}</span>
     </div>
 
     <div class="dashboard-card-footer">
@@ -105,8 +105,10 @@ const memorySummaryItems = computed(() => [
         <p class="dashboard-card-footnote">
           {{
             memoryCurrentBytes == null
-              ? 'Awaiting recent sample'
-              : `Current ${formatCompactBytes(memoryCurrentBytes)}`
+              ? t('system.cards.memoryChart.awaitingSample')
+              : t('system.cards.memoryChart.currentValue', {
+                  value: formatCompactBytes(memoryCurrentBytes),
+                })
           }}
         </p>
       </div>
@@ -125,13 +127,13 @@ const memorySummaryItems = computed(() => [
   <ResourceChart
     v-else
     :title="t('system.memoryUsage')"
-    subtitle="Allocator footprint over the latest 5 minutes"
+    :subtitle="t('system.cards.memoryChart.chartSubtitle')"
     :data="memoryChartData"
     variant="dashboard"
     unit=""
     color="purple"
     badge="5m"
-    caption="Heap-backed allocation sampled across the most recent runtime window"
+    :caption="t('system.cards.memoryChart.chartCaption')"
     :format-value="formatMbValue"
     :summary-items="memorySummaryItems"
   />

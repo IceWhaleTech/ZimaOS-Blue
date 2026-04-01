@@ -3,9 +3,11 @@ package harness
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -18,8 +20,9 @@ type Controller struct {
 	judgeEvaluator JudgeEvaluator
 	reflector      ProposalReflector
 
-	mu      sync.RWMutex
-	drivers map[RunKind]Driver
+	mu          sync.RWMutex
+	drivers     map[RunKind]Driver
+	middlewares []ExecutionMiddleware
 }
 
 func NewController(store *SQLiteStore, resolver *PolicyResolver) *Controller {
@@ -39,18 +42,61 @@ func (c *Controller) RegisterDriver(driver Driver) {
 	c.drivers[driver.Kind()] = driver
 }
 
+func (c *Controller) GetRegisteredDriver(kind RunKind) Driver {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.drivers[kind]
+}
+
+func (c *Controller) UseExecutionMiddleware(mw ExecutionMiddleware) {
+	if c == nil || mw == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.middlewares = append(c.middlewares, mw)
+}
+
+func (c *Controller) ExecutionMiddlewares() []ExecutionMiddleware {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.middlewares) == 0 {
+		return nil
+	}
+	out := make([]ExecutionMiddleware, len(c.middlewares))
+	copy(out, c.middlewares)
+	return out
+}
+
 func (c *Controller) Submit(ctx context.Context, spec RunSpec) (*Run, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("harness controller is not configured")
 	}
+	if err := validateRunSpec(spec); err != nil {
+		return nil, err
+	}
 	spec = c.resolver.Resolve(spec)
-	if err := validateSpec(spec); err != nil {
+	if err := validateRunSpec(spec); err != nil {
 		return nil, err
 	}
 	driver, err := c.driverFor(spec.Kind)
 	if err != nil {
 		return nil, err
 	}
+	slog.Info("Harness submit driver resolved",
+		"controller", fmt.Sprintf("%p", c),
+		"kind", spec.Kind,
+		"driver_type", fmt.Sprintf("%T", driver),
+		"metadata_driver", strings.TrimSpace(fmt.Sprint(spec.Metadata["driver"])),
+		"group_id", strings.TrimSpace(spec.GroupID),
+		"group_item_id", strings.TrimSpace(spec.GroupItemID),
+	)
 	if err := driver.Validate(spec); err != nil {
 		return nil, err
 	}
@@ -108,12 +154,19 @@ func (c *Controller) Submit(ctx context.Context, spec RunSpec) (*Run, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := driver.Start(ctx, run, RunEnv{Manager: c}); err != nil {
+	_ = c.appendStageEvent(ctx, run, RuntimeStageNormalize, "run normalized", guardStagePayload(run))
+	_ = c.appendStageEvent(ctx, run, RuntimeStagePolicy, "runtime policy resolved", guardStagePayload(run))
+	_ = c.appendStageEvent(ctx, run, RuntimeStageExecute, "driver dispatch started", guardStagePayload(run))
+	if err := c.startRun(ctx, run, nil, driver); err != nil {
 		run.Status = RunStatusFailed
 		run.Error = err.Error()
 		finished := timeutil.NowTime()
 		run.FinishedAt = &finished
 		_ = c.store.UpdateRun(ctx, run)
+		_ = c.appendStageEvent(ctx, run, RuntimeStageFinalize, "run dispatch failed", map[string]interface{}{
+			"status": RunStatusFailed,
+			"error":  strings.TrimSpace(err.Error()),
+		})
 		_ = c.AppendEvent(ctx, RunEvent{
 			RunID:     run.ID,
 			RootRunID: run.RootRunID,
@@ -136,10 +189,19 @@ func (c *Controller) SpawnChild(ctx context.Context, parentID string, spec RunSp
 		return nil, err
 	}
 	if parent.MaxSubagents > 0 && len(children) >= parent.MaxSubagents {
-		return nil, fmt.Errorf("max subagents exceeded")
+		return nil, newGuardPipelineError(RuntimeStagePolicy, "budget_exceeded", "max subagents exceeded", map[string]interface{}{
+			"max_subagents": parent.MaxSubagents,
+			"parent_run_id": parent.ID,
+		})
+	}
+	if err := validateRunSpec(spec); err != nil {
+		return nil, err
 	}
 	spec, err = c.resolver.ResolveChild(parent, spec)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateRunSpec(spec); err != nil {
 		return nil, err
 	}
 	driver, err := c.driverFor(spec.Kind)
@@ -193,12 +255,19 @@ func (c *Controller) SpawnChild(ctx context.Context, parentID string, spec RunSp
 	}
 	_ = c.AppendEvent(ctx, RunEvent{RunID: child.ID, RootRunID: child.RootRunID, ParentRunID: child.ParentRunID, Type: "run_created", Message: "run created", CreatedAt: now})
 	_ = c.AppendEvent(ctx, RunEvent{RunID: parent.ID, RootRunID: parent.RootRunID, ParentRunID: parent.ParentRunID, Type: "child_spawned", Message: child.ID, CreatedAt: now})
-	if err := driver.Start(ctx, child, RunEnv{Manager: c}); err != nil {
+	_ = c.appendStageEvent(ctx, child, RuntimeStageNormalize, "child run normalized", guardStagePayload(child))
+	_ = c.appendStageEvent(ctx, child, RuntimeStagePolicy, "child runtime policy resolved", guardStagePayload(child))
+	_ = c.appendStageEvent(ctx, child, RuntimeStageExecute, "child driver dispatch started", guardStagePayload(child))
+	if err := c.startRun(ctx, child, parent, driver); err != nil {
 		child.Status = RunStatusFailed
 		child.Error = err.Error()
 		finished := timeutil.NowTime()
 		child.FinishedAt = &finished
 		_ = c.store.UpdateRun(ctx, child)
+		_ = c.appendStageEvent(ctx, child, RuntimeStageFinalize, "child run dispatch failed", map[string]interface{}{
+			"status": RunStatusFailed,
+			"error":  strings.TrimSpace(err.Error()),
+		})
 		_ = c.AppendEvent(ctx, RunEvent{RunID: child.ID, RootRunID: child.RootRunID, ParentRunID: child.ParentRunID, Type: "run_failed", Message: err.Error(), CreatedAt: finished})
 		return nil, err
 	}
@@ -235,6 +304,17 @@ func (c *Controller) List(ctx context.Context, filter RunFilter) ([]Run, error) 
 	return runs, nil
 }
 
+func (c *Controller) FindRunByMetadata(ctx context.Context, kind RunKind, key string, value string) (*Run, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	run, err := c.store.FindRunByMetadata(ctx, kind, key, value)
+	if err != nil || run == nil {
+		return run, err
+	}
+	return c.syncRun(ctx, run)
+}
+
 func (c *Controller) ListOne(ctx context.Context, id string) (*Run, error) {
 	return c.GetStored(ctx, id)
 }
@@ -264,6 +344,10 @@ func (c *Controller) Cancel(ctx context.Context, id string, reason string) error
 	if err := c.store.UpdateRun(ctx, run); err != nil {
 		return err
 	}
+	_ = c.appendStageEvent(ctx, run, RuntimeStageFinalize, "run cancellation finalized", map[string]interface{}{
+		"status": RunStatusCancelled,
+		"reason": strings.TrimSpace(reason),
+	})
 	return c.AppendEvent(ctx, RunEvent{
 		RunID:       run.ID,
 		RootRunID:   run.RootRunID,
@@ -272,6 +356,72 @@ func (c *Controller) Cancel(ctx context.Context, id string, reason string) error
 		Message:     strings.TrimSpace(reason),
 		CreatedAt:   now,
 	})
+}
+
+func (c *Controller) PerformAction(ctx context.Context, id string, action string, input map[string]interface{}) (*Run, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	run, err := c.store.GetRun(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return nil, fmt.Errorf("action is required")
+	}
+	if strings.EqualFold(action, "cancel") {
+		reason := strings.TrimSpace(metadataString(input, "reason"))
+		if reason == "" {
+			reason = "cancelled by user"
+		}
+		if err := c.Cancel(ctx, run.ID, reason); err != nil {
+			return nil, err
+		}
+		now := timeutil.NowTime()
+		_ = c.AppendEvent(ctx, RunEvent{
+			RunID:       run.ID,
+			RootRunID:   run.RootRunID,
+			ParentRunID: run.ParentRunID,
+			Type:        "run_action",
+			Message:     "cancel",
+			CreatedAt:   now,
+		})
+		return c.Get(ctx, run.ID)
+	}
+	driver, err := c.driverFor(run.Kind)
+	if err != nil {
+		return nil, err
+	}
+	controller, ok := driver.(ActionDriver)
+	if !ok {
+		return nil, fmt.Errorf("run kind %q does not support action %q", run.Kind, action)
+	}
+	snapshot, err := controller.PerformAction(ctx, run, action, cloneMetadataMap(input))
+	if err != nil {
+		return nil, err
+	}
+	if snapshot != nil {
+		if strings.TrimSpace(snapshot.ID) == "" {
+			snapshot.ID = run.ID
+		}
+		if snapshot.Kind == "" {
+			snapshot.Kind = run.Kind
+		}
+		if err := c.SyncSnapshot(ctx, snapshot); err != nil {
+			return nil, err
+		}
+	}
+	now := timeutil.NowTime()
+	_ = c.AppendEvent(ctx, RunEvent{
+		RunID:       run.ID,
+		RootRunID:   run.RootRunID,
+		ParentRunID: run.ParentRunID,
+		Type:        "run_action",
+		Message:     action,
+		CreatedAt:   now,
+	})
+	return c.Get(ctx, run.ID)
 }
 
 func (c *Controller) AppendEvent(ctx context.Context, event RunEvent) error {
@@ -378,6 +528,7 @@ func (c *Controller) SyncSnapshot(ctx context.Context, snapshot *Run) error {
 	if snapshot.Metadata == nil {
 		snapshot.Metadata = current.Metadata
 	}
+	normalizeRunLifecycleTimes(current, snapshot)
 	return c.store.UpdateRun(ctx, snapshot)
 }
 
@@ -392,27 +543,59 @@ func (c *Controller) driverFor(kind RunKind) (Driver, error) {
 }
 
 func (c *Controller) syncRun(ctx context.Context, run *Run) (*Run, error) {
+	if run == nil {
+		return nil, nil
+	}
 	driver, err := c.driverFor(run.Kind)
 	if err != nil {
+		normalizeRunLifecycleTimes(nil, run)
 		return run, nil
 	}
 	syncer, ok := driver.(SnapshotDriver)
 	if !ok {
+		normalizeRunLifecycleTimes(nil, run)
 		return run, nil
 	}
 	updated, err := syncer.Sync(ctx, run)
 	if err != nil || updated == nil {
+		normalizeRunLifecycleTimes(nil, run)
 		return run, nil
+	}
+	if normalizeRunLifecycleTimes(run, updated) {
+		if updateErr := c.store.UpdateRun(ctx, updated); updateErr != nil {
+			return updated, nil
+		}
 	}
 	return updated, nil
 }
 
-func validateSpec(spec RunSpec) error {
-	if strings.TrimSpace(string(spec.Kind)) == "" {
-		return fmt.Errorf("kind is required")
+func (c *Controller) startRun(ctx context.Context, run *Run, parent *Run, driver Driver) error {
+	runCtx := &RunContext{
+		Run:        run,
+		Parent:     parent,
+		Driver:     driver,
+		Controller: c,
+		Values:     make(map[string]interface{}),
 	}
-	if strings.TrimSpace(spec.Goal) == "" {
-		return fmt.Errorf("goal is required")
+	ctx = WithRunContext(ctx, runCtx)
+	ctx = annotateRunExecutionContext(ctx, run)
+	middlewares := c.ExecutionMiddlewares()
+	for _, mw := range middlewares {
+		if err := mw.BeforeStart(ctx, runCtx); err != nil {
+			for i := len(middlewares) - 1; i >= 0; i-- {
+				middlewares[i].OnStartError(ctx, runCtx, err)
+			}
+			return err
+		}
+	}
+	if err := driver.Start(ctx, run, RunEnv{Manager: c, RunContext: runCtx}); err != nil {
+		for i := len(middlewares) - 1; i >= 0; i-- {
+			middlewares[i].OnStartError(ctx, runCtx, err)
+		}
+		return err
+	}
+	for _, mw := range middlewares {
+		mw.AfterStart(ctx, runCtx)
 	}
 	return nil
 }
@@ -424,6 +607,40 @@ func initialStatusForKind(kind RunKind) RunStatus {
 	default:
 		return RunStatusPending
 	}
+}
+
+func normalizeRunLifecycleTimes(current *Run, snapshot *Run) bool {
+	if snapshot == nil {
+		return false
+	}
+	changed := false
+	if snapshot.Status != RunStatusPending && snapshot.StartedAt == nil {
+		if current != nil && current.StartedAt != nil {
+			snapshot.StartedAt = cloneRunTimePtr(current.StartedAt)
+		} else {
+			now := timeutil.NowTime()
+			snapshot.StartedAt = &now
+		}
+		changed = true
+	}
+	if isTerminalRunStatus(snapshot.Status) && snapshot.FinishedAt == nil {
+		if current != nil && current.FinishedAt != nil {
+			snapshot.FinishedAt = cloneRunTimePtr(current.FinishedAt)
+		} else {
+			now := timeutil.NowTime()
+			snapshot.FinishedAt = &now
+		}
+		changed = true
+	}
+	return changed
+}
+
+func cloneRunTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
 
 func (c *Controller) ensureArtifactRoot(path string) error {

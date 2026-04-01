@@ -52,6 +52,10 @@ type WriterConfig struct {
 	// SharedSQLiteDB reuses an existing SQLite database instead of opening metrics.db.
 	SharedSQLiteDB *sql.DB
 
+	// SharedSQLiteReadDB optionally provides a separate reader when
+	// SharedSQLiteDB points at a writer-only pool.
+	SharedSQLiteReadDB *sql.DB
+
 	// Persistence save interval
 	PersistenceInterval time.Duration
 }
@@ -90,7 +94,7 @@ func NewMetricsWriter(store MetricsStore, config *WriterConfig) *MetricsWriter {
 
 	// Initialize SQLite store if configured.
 	if config.SharedSQLiteDB != nil {
-		sqliteStore, err := NewSQLiteStoreWithDB(config.SharedSQLiteDB)
+		sqliteStore, err := NewSQLiteStoreWithReadDB(config.SharedSQLiteDB, config.SharedSQLiteReadDB)
 		if err == nil {
 			w.sqliteStore = sqliteStore
 			w.loadPersistedData()
@@ -631,6 +635,15 @@ func (w *MetricsWriter) GetDB() *sql.DB {
 		return nil
 	}
 	return w.sqliteStore.db
+}
+
+// GetReadDB returns the underlying read *sql.DB for the metrics SQLite store.
+// Returns nil if no SQLite store is configured.
+func (w *MetricsWriter) GetReadDB() *sql.DB {
+	if w.sqliteStore == nil {
+		return nil
+	}
+	return w.sqliteStore.readDB
 }
 
 // GetCurrentProcessMetrics returns metrics for the current process.

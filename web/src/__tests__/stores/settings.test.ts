@@ -137,7 +137,7 @@ describe('settings store - small model integration', () => {
     expect(store.closeBehavior).toBe('minimize')
   })
 
-  it('prioritizes claude and gpt models in provider-model options', async () => {
+  it('sorts provider-model options by descending model name', async () => {
     const store = useSettingsStore()
     const models = [
       { id: 'o3-mini', enabled: true },
@@ -163,13 +163,15 @@ describe('settings store - small model integration', () => {
 
     await store.fetchProviders()
 
-    expect(store.providerModelOptions.slice(0, 2).map((option) => option.modelId)).toEqual([
-      'claude-haiku-4-5',
-      'gpt-4o-mini',
+    expect(store.providerModelOptions.slice(0, 4).map((option) => option.modelId)).toEqual([
+      'o3-mini',
+      'misc-099',
+      'misc-098',
+      'misc-097',
     ])
   })
 
-  it('hides oauth-backed providers from chat provider options', async () => {
+  it('keeps enabled oauth-backed providers in chat provider options', async () => {
     const store = useSettingsStore()
     vi.mocked(providerPoolApi.listProviders).mockResolvedValue({
       data: {
@@ -193,8 +195,44 @@ describe('settings store - small model integration', () => {
 
     await store.fetchProviders()
 
-    expect(store.providers.map((provider) => provider.id)).toEqual(['anthropic'])
-    expect(store.providerModelOptions.map((option) => option.providerId)).toEqual(['anthropic'])
+    expect(store.providers.map((provider) => provider.id)).toEqual([
+      'google-antigravity',
+      'anthropic',
+    ])
+    expect(store.providerModelOptions.map((option) => option.providerId)).toEqual([
+      'anthropic',
+      'google-antigravity',
+    ])
+  })
+
+  it('hides unsupported official providers from chat provider options', async () => {
+    const store = useSettingsStore()
+    vi.mocked(providerPoolApi.listProviders).mockResolvedValue({
+      data: {
+        providers: [
+          {
+            id: 'bedrock',
+            name: 'Amazon Bedrock',
+            enabled: true,
+            metadata_mode: 'catalog',
+            models: [{ id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', enabled: true }],
+          },
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            enabled: true,
+            metadata_mode: 'catalog',
+            base_url: 'https://api.openai.com/v1',
+            models: [{ id: 'gpt-4o', enabled: true }],
+          },
+        ],
+      },
+    } as never)
+
+    await store.fetchProviders()
+
+    expect(store.providers.map((provider) => provider.id)).toEqual(['openai'])
+    expect(store.providerModelOptions.map((option) => option.providerId)).toEqual(['openai'])
   })
 
   it('updates small-model route toggles in backend settings', async () => {

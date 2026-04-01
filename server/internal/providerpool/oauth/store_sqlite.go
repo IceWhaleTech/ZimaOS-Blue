@@ -19,7 +19,8 @@ import (
 
 // SQLiteTokenStore persists OAuth tokens in a SQLite database.
 type SQLiteTokenStore struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 type oauthTokenRow struct {
@@ -41,10 +42,36 @@ func (s *SQLiteTokenStore) table(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "oauth_tokens")
 }
 
+func (s *SQLiteTokenStore) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "oauth_tokens")
+}
+
+func (s *SQLiteTokenStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
 // NewSQLiteTokenStore creates a new SQLite-backed OAuth token store.
 func NewSQLiteTokenStore(db *sql.DB) (*SQLiteTokenStore, error) {
+	return NewSQLiteTokenStoreWithReadDB(db, db)
+}
+
+// NewSQLiteTokenStoreWithReadDB creates a new SQLite-backed OAuth token store
+// with separate write and read database handles.
+func NewSQLiteTokenStoreWithReadDB(writeDB, readDB *sql.DB) (*SQLiteTokenStore, error) {
+	if writeDB == nil {
+		return nil, fmt.Errorf("oauth db is required")
+	}
+	if readDB == nil {
+		readDB = writeDB
+	}
 	// Create table with composite primary key (provider_id, id)
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS oauth_tokens (
+	_, err := writeDB.Exec(`CREATE TABLE IF NOT EXISTS oauth_tokens (
 		id            TEXT NOT NULL DEFAULT '',
 		provider_id   TEXT NOT NULL DEFAULT '',
 		provider_type TEXT NOT NULL DEFAULT '',
@@ -63,18 +90,20 @@ func NewSQLiteTokenStore(db *sql.DB) (*SQLiteTokenStore, error) {
 		return nil, fmt.Errorf("create oauth_tokens table: %w", err)
 	}
 
-	store := &SQLiteTokenStore{db: db}
-	store.migrateSchema()
+	store := &SQLiteTokenStore{db: writeDB, readDB: readDB}
+	if err := store.migrateSchema(); err != nil {
+		return nil, fmt.Errorf("migrate oauth_tokens schema: %w", err)
+	}
 	return store, nil
 }
 
 // migrateSchema handles schema migration from old single-PK to new composite-PK.
-func (s *SQLiteTokenStore) migrateSchema() {
+func (s *SQLiteTokenStore) migrateSchema() error {
 	// Check if 'id' column exists
 	var hasID bool
 	rows, err := s.db.Query("PRAGMA table_info(oauth_tokens)")
 	if err != nil {
-		return
+		return fmt.Errorf("inspect oauth_tokens schema: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -84,27 +113,32 @@ func (s *SQLiteTokenStore) migrateSchema() {
 		var dflt *string
 		var pk int
 		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
-			continue
+			return fmt.Errorf("scan oauth_tokens schema row: %w", err)
 		}
 		if name == "id" {
 			hasID = true
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate oauth_tokens schema rows: %w", err)
+	}
 
 	if hasID {
-		return // Already migrated
+		return nil // Already migrated
 	}
 
 	// Old schema: provider_id is sole PK, no id column.
 	// Recreate table with new schema and migrate data.
 	tx, err := s.db.Begin()
 	if err != nil {
-		return
+		return fmt.Errorf("begin oauth_tokens migration tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	tx.Exec("ALTER TABLE oauth_tokens RENAME TO oauth_tokens_old")
-	tx.Exec(`CREATE TABLE oauth_tokens (
+	if _, err := tx.Exec("ALTER TABLE oauth_tokens RENAME TO oauth_tokens_old"); err != nil {
+		return fmt.Errorf("rename legacy oauth_tokens table: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE TABLE oauth_tokens (
 		id            TEXT NOT NULL DEFAULT '',
 		provider_id   TEXT NOT NULL DEFAULT '',
 		provider_type TEXT NOT NULL DEFAULT '',
@@ -118,25 +152,38 @@ func (s *SQLiteTokenStore) migrateSchema() {
 		created_at    TEXT NOT NULL DEFAULT '',
 		updated_at    TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (provider_id, id)
-	)`)
+	)`); err != nil {
+		return fmt.Errorf("create migrated oauth_tokens table: %w", err)
+	}
 	// Migrate existing rows — assign generated IDs
 	oldRows, err := tx.Query("SELECT provider_id, provider_type, access_token, refresh_token, token_expiry, scopes, email, project_id, endpoint, created_at, updated_at FROM oauth_tokens_old")
-	if err == nil {
-		defer oldRows.Close()
-		for oldRows.Next() {
-			var pid, ptype, at, rt, te, ca, ua string
-			var scopes, email, projectID, endpoint *string
-			if err := oldRows.Scan(&pid, &ptype, &at, &rt, &te, &scopes, &email, &projectID, &endpoint, &ca, &ua); err != nil {
-				continue
-			}
-			id := generateTokenID()
-			tx.Exec(`INSERT INTO oauth_tokens (id, provider_id, provider_type, access_token, refresh_token, token_expiry, scopes, email, project_id, endpoint, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				id, pid, ptype, at, rt, te, scopes, email, projectID, endpoint, ca, ua)
+	if err != nil {
+		return fmt.Errorf("query legacy oauth_tokens rows: %w", err)
+	}
+	defer oldRows.Close()
+	for oldRows.Next() {
+		var pid, ptype, at, rt, te, ca, ua string
+		var scopes, email, projectID, endpoint *string
+		if err := oldRows.Scan(&pid, &ptype, &at, &rt, &te, &scopes, &email, &projectID, &endpoint, &ca, &ua); err != nil {
+			return fmt.Errorf("scan legacy oauth token row: %w", err)
+		}
+		id := generateTokenID()
+		if _, err := tx.Exec(`INSERT INTO oauth_tokens (id, provider_id, provider_type, access_token, refresh_token, token_expiry, scopes, email, project_id, endpoint, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, pid, ptype, at, rt, te, scopes, email, projectID, endpoint, ca, ua); err != nil {
+			return fmt.Errorf("insert migrated oauth token for provider %s: %w", pid, err)
 		}
 	}
-	tx.Exec("DROP TABLE IF EXISTS oauth_tokens_old")
-	tx.Commit()
+	if err := oldRows.Err(); err != nil {
+		return fmt.Errorf("iterate legacy oauth token rows: %w", err)
+	}
+	if _, err := tx.Exec("DROP TABLE IF EXISTS oauth_tokens_old"); err != nil {
+		return fmt.Errorf("drop legacy oauth_tokens table: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit oauth_tokens migration tx: %w", err)
+	}
+	return nil
 }
 
 func (s *SQLiteTokenStore) SaveToken(providerID string, token *Token) error {
@@ -177,8 +224,8 @@ func (s *SQLiteTokenStore) SaveToken(providerID string, token *Token) error {
 		"email":         nilIfEmpty(token.Email),
 		"project_id":    nilIfEmpty(token.ProjectID),
 		"endpoint":      nilIfEmpty(token.Endpoint),
-		"created_at":   token.CreatedAt.Format(time.RFC3339),
-		"updated_at":   token.UpdatedAt.Format(time.RFC3339),
+		"created_at":    token.CreatedAt.Format(time.RFC3339),
+		"updated_at":    token.UpdatedAt.Format(time.RFC3339),
 	}, z.OnConflictDoUpdateSet(
 		[]string{"provider_id", "id"},
 		[]string{"provider_type", "access_token", "refresh_token", "token_expiry", "scopes", "email", "project_id", "endpoint", "updated_at"},
@@ -189,7 +236,7 @@ func (s *SQLiteTokenStore) SaveToken(providerID string, token *Token) error {
 func (s *SQLiteTokenStore) LoadToken(providerID, tokenID string) (*Token, error) {
 	ctx := context.Background()
 	var rows []oauthTokenRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(z.Eq("provider_id", providerID), z.Eq("id", tokenID)),
 		z.Limit(1),
 	)
@@ -204,7 +251,7 @@ func (s *SQLiteTokenStore) LoadToken(providerID, tokenID string) (*Token, error)
 func (s *SQLiteTokenStore) LoadTokenByEmail(providerID, email string) (*Token, error) {
 	ctx := context.Background()
 	var rows []oauthTokenRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(z.Eq("provider_id", providerID), z.Eq("email", email)),
 		z.Limit(1),
 	)
@@ -223,7 +270,7 @@ func (s *SQLiteTokenStore) LoadTokens(providerID string) ([]*Token, error) {
 
 	// Also load tokens with empty provider_id that might need migration
 	// This handles tokens imported before the provider_id fix
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(z.Or(z.Eq("provider_id", providerID), z.Eq("provider_id", ""))),
 	)
 	if err != nil {
@@ -233,9 +280,11 @@ func (s *SQLiteTokenStore) LoadTokens(providerID string) ([]*Token, error) {
 	// Migrate tokens with empty provider_id to correct provider_id
 	for i := range rows {
 		if rows[i].ProviderID == "" {
-			// Update the provider_id
-			_, err := s.db.Exec("UPDATE oauth_tokens SET provider_id = ? WHERE id = ? AND provider_id = ''",
-				providerID, rows[i].ID)
+			_, err := s.table(ctx).Update(
+				z.V{"provider_id": providerID},
+				z.Fields("provider_id"),
+				z.Where(z.Eq("id", rows[i].ID), z.Eq("provider_id", "")),
+			)
 			if err != nil {
 				slog.Warn("[oauth] failed to migrate token provider_id", "token_id", rows[i].ID, "error", err)
 			}
@@ -259,7 +308,7 @@ func (s *SQLiteTokenStore) DeleteToken(providerID, tokenID string) error {
 func (s *SQLiteTokenStore) ListTokens() (map[string]*Token, error) {
 	ctx := context.Background()
 	var rows []oauthTokenRow
-	_, err := s.table(ctx).Select(&rows)
+	_, err := s.readTable(ctx).Select(&rows)
 	if err != nil {
 		return nil, err
 	}
@@ -276,30 +325,57 @@ func (s *SQLiteTokenStore) ListTokens() (map[string]*Token, error) {
 // This can be called to clean up any duplicates that may have been created due to bugs.
 func (s *SQLiteTokenStore) Deduplicate() error {
 	ctx := context.Background()
+	var rows []oauthTokenRow
+	_, err := s.readTable(ctx).Select(
+		&rows,
+		z.Where(z.IsNotNull("email"), z.Neq("email", "")),
+		z.OrderBy(
+			"provider_id ASC",
+			"email ASC",
+			"token_expiry DESC",
+			"updated_at DESC",
+			"created_at DESC",
+			"id DESC",
+		),
+	)
+	if err != nil {
+		return err
+	}
 
-	// Find duplicates: same provider_id and email (where email is not empty)
-	// Keep the one with the latest token_expiry
-	_, err := s.table(ctx).Exec(`
-		DELETE FROM oauth_tokens WHERE id NOT IN (
-			SELECT ot1.id FROM oauth_tokens ot1
-			WHERE ot1.email IS NOT NULL AND ot1.email != ''
-			AND ot1.token_expiry = (
-				SELECT MAX(ot2.token_expiry)
-				FROM oauth_tokens ot2
-				WHERE ot2.provider_id = ot1.provider_id
-				AND (ot2.email = ot1.email OR (ot2.email IS NULL AND ot1.email IS NULL))
-			)
-			AND EXISTS (
-				SELECT 1 FROM oauth_tokens ot3
-				WHERE ot3.provider_id = ot1.provider_id
-				AND (ot3.email = ot1.email OR (ot3.email IS NULL AND ot1.email IS NULL))
-				GROUP BY ot3.provider_id, ot3.email
-				HAVING COUNT(*) > 1
-			)
-		)
-		AND email IS NOT NULL AND email != ''
-	`)
-	return err
+	idsByProvider := make(map[string][]string)
+	seen := make(map[string]struct{}, len(rows))
+	for i := range rows {
+		email := ""
+		if rows[i].Email != nil {
+			email = *rows[i].Email
+		}
+		dedupKey := rows[i].ProviderID + "\x00" + email
+		if _, ok := seen[dedupKey]; ok {
+			idsByProvider[rows[i].ProviderID] = append(idsByProvider[rows[i].ProviderID], rows[i].ID)
+			continue
+		}
+		seen[dedupKey] = struct{}{}
+	}
+	if len(idsByProvider) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	table := z.TableContext(ctx, tx, "oauth_tokens")
+	for providerID, ids := range idsByProvider {
+		if len(ids) == 0 {
+			continue
+		}
+		if _, err := table.Delete(z.Where(z.Eq("provider_id", providerID), z.In("id", ids))); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // MigrateFromJSON imports tokens from a legacy JSON file into this store.

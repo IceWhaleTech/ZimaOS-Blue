@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/remindertime"
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 )
 
@@ -53,16 +54,26 @@ type CalendarStore interface {
 
 // LocalCalendarService stores events in SQLite and seeds an agenda dataset per user.
 type LocalCalendarService struct {
-	db  *sql.DB
-	now func() time.Time
+	db     *sql.DB
+	readDB *sql.DB
+	now    func() time.Time
 }
 
 // NewLocalCalendarService creates the event table.
 func NewLocalCalendarService(db *sql.DB) (*LocalCalendarService, error) {
-	if db == nil {
+	return NewLocalCalendarServiceWithReadDB(db, db)
+}
+
+// NewLocalCalendarServiceWithReadDB creates the event table with separate
+// write and read database handles.
+func NewLocalCalendarServiceWithReadDB(writeDB, readDB *sql.DB) (*LocalCalendarService, error) {
+	if writeDB == nil {
 		return nil, errors.New("calendar database is required")
 	}
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS tool_calendar_events (
+	if readDB == nil {
+		readDB = writeDB
+	}
+	if _, err := writeDB.Exec(`CREATE TABLE IF NOT EXISTS tool_calendar_events (
 		id             TEXT PRIMARY KEY,
 		owner_id       TEXT NOT NULL,
 		title          TEXT NOT NULL,
@@ -78,13 +89,46 @@ func NewLocalCalendarService(db *sql.DB) (*LocalCalendarService, error) {
 	)`); err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tool_calendar_owner_start ON tool_calendar_events(owner_id, start_at)`); err != nil {
+	if _, err := writeDB.Exec(`CREATE INDEX IF NOT EXISTS idx_tool_calendar_owner_start ON tool_calendar_events(owner_id, start_at)`); err != nil {
 		return nil, err
 	}
 	return &LocalCalendarService{
-		db:  db,
-		now: func() time.Time { return time.Now() },
+		db:     writeDB,
+		readDB: readDB,
+		now:    func() time.Time { return time.Now() },
 	}, nil
+}
+
+func (s *LocalCalendarService) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *LocalCalendarService) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "tool_calendar_events")
+}
+
+func (s *LocalCalendarService) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "tool_calendar_events")
+}
+
+type calendarEventRow struct {
+	ID           string `json:"id" zorm:"id"`
+	Title        string `json:"title" zorm:"title"`
+	Location     string `json:"location" zorm:"location"`
+	Notes        string `json:"notes" zorm:"notes"`
+	CalendarName string `json:"calendar_name" zorm:"calendar_name"`
+	Status       string `json:"status" zorm:"status"`
+	StartAt      string `json:"start_at" zorm:"start_at"`
+	EndAt        string `json:"end_at" zorm:"end_at"`
+	AllDay       int    `json:"all_day" zorm:"all_day"`
+	CreatedAt    string `json:"created_at" zorm:"created_at"`
+	UpdatedAt    string `json:"updated_at" zorm:"updated_at"`
 }
 
 // SetNowFunc overrides the clock for deterministic tests.
@@ -106,7 +150,8 @@ func (s *LocalCalendarService) SeedFixtures(ctx context.Context, ownerID string,
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM tool_calendar_events WHERE owner_id = ?`, ownerID); err != nil {
+	eventTable := z.TableContext(ctx, tx, "tool_calendar_events")
+	if _, err := eventTable.Delete(z.Where(z.Eq("owner_id", ownerID))); err != nil {
 		return err
 	}
 	for _, event := range fixtures {
@@ -119,8 +164,11 @@ func (s *LocalCalendarService) SeedFixtures(ctx context.Context, ownerID string,
 
 func (s *LocalCalendarService) ensureSeeded(ctx context.Context, ownerID string) error {
 	ownerID = normalizeProductivityOwnerID(ownerID)
-	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM tool_calendar_events WHERE owner_id = ?`, ownerID).Scan(&count); err != nil {
+	var count int64
+	if _, err := s.readTable(ctx).Select(&count,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("owner_id", ownerID)),
+	); err != nil {
 		return err
 	}
 	if count > 0 {
@@ -158,25 +206,20 @@ func insertCalendarEvent(ctx context.Context, tx *sql.Tx, ownerID string, event 
 	if event.UpdatedAt.IsZero() {
 		event.UpdatedAt = event.CreatedAt
 	}
-	_, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO tool_calendar_events (
-			id, owner_id, title, location, notes, calendar_name, status,
-			start_at, end_at, all_day, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		event.ID,
-		ownerID,
-		strings.TrimSpace(event.Title),
-		strings.TrimSpace(event.Location),
-		strings.TrimSpace(event.Notes),
-		strings.TrimSpace(event.CalendarName),
-		strings.TrimSpace(event.Status),
-		event.StartAt.UTC().Format(time.RFC3339),
-		event.EndAt.UTC().Format(time.RFC3339),
-		boolToInt(event.AllDay),
-		event.CreatedAt.UTC().Format(time.RFC3339),
-		event.UpdatedAt.UTC().Format(time.RFC3339),
-	)
+	_, err := z.TableContext(ctx, tx, "tool_calendar_events").Insert(z.V{
+		"id":            event.ID,
+		"owner_id":      ownerID,
+		"title":         strings.TrimSpace(event.Title),
+		"location":      strings.TrimSpace(event.Location),
+		"notes":         strings.TrimSpace(event.Notes),
+		"calendar_name": strings.TrimSpace(event.CalendarName),
+		"status":        strings.TrimSpace(event.Status),
+		"start_at":      event.StartAt.UTC().Format(time.RFC3339),
+		"end_at":        event.EndAt.UTC().Format(time.RFC3339),
+		"all_day":       boolToInt(event.AllDay),
+		"created_at":    event.CreatedAt.UTC().Format(time.RFC3339),
+		"updated_at":    event.UpdatedAt.UTC().Format(time.RFC3339),
+	})
 	return err
 }
 
@@ -189,22 +232,18 @@ func (s *LocalCalendarService) List(ctx context.Context, ownerID string, opts Ca
 	if err := s.ensureSeeded(ctx, ownerID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, title, location, notes, calendar_name, status, start_at, end_at, all_day, created_at, updated_at
-		FROM tool_calendar_events
-		WHERE owner_id = ?
-	`, ownerID)
+	var rows []calendarEventRow
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Where(z.Eq("owner_id", ownerID)),
+		z.OrderBy("start_at ASC", "title ASC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	result := make([]CalendarEvent, 0, 8)
-	for rows.Next() {
-		event, scanErr := scanCalendarEvent(rows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
+	for i := range rows {
+		event := rowToCalendarEvent(rows[i])
 		if !calendarMatchesQuery(event, opts) {
 			continue
 		}
@@ -235,18 +274,18 @@ func (s *LocalCalendarService) Get(ctx context.Context, ownerID, id string) (*Ca
 	if err := s.ensureSeeded(ctx, ownerID); err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, title, location, notes, calendar_name, status, start_at, end_at, all_day, created_at, updated_at
-		FROM tool_calendar_events
-		WHERE owner_id = ? AND id = ?
-	`, ownerID, strings.TrimSpace(id))
-	event, err := scanCalendarEvent(row)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+	var rows []calendarEventRow
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Where(z.Eq("owner_id", ownerID), z.Eq("id", strings.TrimSpace(id))),
+		z.Limit(1),
+	)
 	if err != nil {
 		return nil, err
 	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	event := rowToCalendarEvent(rows[0])
 	return &event, nil
 }
 
@@ -291,6 +330,23 @@ func (s *LocalCalendarService) Today(ctx context.Context, ownerID string, day ti
 
 type calendarScanner interface {
 	Scan(dest ...interface{}) error
+}
+
+func rowToCalendarEvent(row calendarEventRow) CalendarEvent {
+	event := CalendarEvent{
+		ID:           row.ID,
+		Title:        row.Title,
+		Location:     row.Location,
+		Notes:        row.Notes,
+		CalendarName: row.CalendarName,
+		Status:       row.Status,
+		AllDay:       row.AllDay != 0,
+	}
+	event.StartAt, _ = time.Parse(time.RFC3339, row.StartAt)
+	event.EndAt, _ = time.Parse(time.RFC3339, row.EndAt)
+	event.CreatedAt, _ = time.Parse(time.RFC3339, row.CreatedAt)
+	event.UpdatedAt, _ = time.Parse(time.RFC3339, row.UpdatedAt)
+	return event
 }
 
 func scanCalendarEvent(scanner calendarScanner) (CalendarEvent, error) {

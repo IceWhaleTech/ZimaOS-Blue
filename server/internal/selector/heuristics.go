@@ -6,6 +6,7 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
 )
 
@@ -58,6 +59,9 @@ func AnalyzeQuery(query string) QueryIntentSignals {
 	signals.Productivity = productivityTermMatcher.ContainsAnyFold(lower)
 	signals.UIArtifact = uiArtifactTermMatcher.ContainsAnyFold(lower)
 	signals.HighRisk = highRiskTermMatcher.ContainsAnyFold(lower)
+	if signals.LiveWeb && signals.Productivity && !signals.URLPresent && !liveWebStrongTermMatcher.ContainsAnyFold(lower) {
+		signals.LiveWeb = false
+	}
 
 	operational := signals.LocalWorkspace || signals.LiveWeb || signals.Productivity ||
 		signals.UIArtifact || signals.URLPresent || operationalTermMatcher.ContainsAnyFold(lower)
@@ -496,31 +500,38 @@ var (
 	followupActionTerms = []string{
 		"search", "open", "run", "use", "create", "delete", "generate", "执行", "搜索", "打开", "运行", "使用", "创建", "删除",
 	}
-	workspaceContainerTerms = []string{
+	workspaceContainerTerms = append([]string{
 		"workspace", "repo", "repository", "folder", "directory", "path", "branch", "commit",
 		"working tree", "working copy", "project", "in my workspace", "in your workspace",
 		"工作区", "仓库", "目录", "文件夹", "路径", "分支", "提交",
-	}
+	}, routingcue.LocalWorkspaceTerms()...)
 	workspaceFileExtTerms = []string{
 		".csv", ".xlsx", ".xls", ".txt", ".md", ".pdf", ".json", ".yaml", ".yml", ".go", ".ts", ".vue",
 	}
-	workspaceFileContextTerms = []string{
+	workspaceFileContextTerms = append([]string{
 		"workspace", "repo", "repository", "folder", "directory", "provided", "read", "review", "analyze", "summarize", "source", "code",
 		"工作区", "仓库", "目录", "文件夹", "提供", "读取", "查看", "分析", "总结", "代码", "源码",
-	}
-	liveWebTerms = []string{
+	}, routingcue.LocalWorkspaceTerms()...)
+	liveWebTerms = append([]string{
 		"latest", "news", "source", "sources", "citation", "citations", "reference", "references",
+		"doc", "docs", "documentation", "manual",
 		"search the web", "web", "website", "web page", "webpage", "browser", "url", "internet", "online",
-		"最新", "新闻", "来源", "引用", "参考", "网页", "网站", "浏览器", "网址", "联网", "在线",
-	}
-	productivityTerms = []string{
+		"最新", "新闻", "来源", "引用", "参考", "文档", "官方文档", "网页", "网站", "浏览器", "网址", "联网", "在线",
+	}, routingcue.LiveWebTerms()...)
+	liveWebStrongTerms = append([]string{
+		"latest", "news", "source", "sources", "citation", "citations", "reference", "references",
+		"doc", "docs", "documentation", "manual",
+		"search the web", "web", "website", "web page", "webpage", "browser", "url", "internet", "online",
+		"最新", "新闻", "来源", "引用", "参考", "文档", "官方文档", "网页", "网站", "浏览器", "网址", "联网", "在线",
+	}, append(routingcue.SkillTerms("web_query").Objects, routingcue.SkillTerms("web_query").Context...)...)
+	productivityTerms = append([]string{
 		"email", "mail", "inbox", "calendar", "agenda", "schedule", "meeting", "event", "appointment",
 		"remind", "reminder", "task", "todo", "notification", "邮件", "邮箱", "收件箱", "日历", "日程", "会议", "事件", "提醒", "任务", "待办", "通知",
-	}
-	uiArtifactTerms = []string{
+	}, routingcue.ProductivityTerms()...)
+	uiArtifactTerms = append([]string{
 		"ui", "ux", "interface", "screen", "screenshot", "design", "figma", "mockup", "wireframe", "layout", "component", "page",
 		"accessibility", "a11y", "界面", "截图", "设计稿", "设计", "页面", "布局", "组件", "原型", "无障碍", "可访问性",
-	}
+	}, routingcue.UIArtifactTerms()...)
 	highRiskTerms = []string{
 		"delete", "remove", "drop", "overwrite", "reset", "destroy", "truncate", "wipe", "生产", "线上", "删", "覆盖", "重置", "清空", "销毁",
 	}

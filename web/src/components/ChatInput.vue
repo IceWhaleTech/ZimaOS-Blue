@@ -274,6 +274,9 @@ const canSend = computed(
 const placeholder = computed(() =>
   isCompact.value ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
 )
+const researchModeTitle = computed(() =>
+  te('ui.deepResearchTitle') ? t('ui.deepResearchTitle') : 'Deep Research'
+)
 
 function normalizeSkillSearchQuery(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
@@ -290,7 +293,9 @@ const normalizedSkillAdviceQuery = computed(() => normalizeSkillSearchQuery(mess
 const activeSkillAdvice = computed<MarketplaceAdviceResponse | null>(() => {
   const advice = skillAdvice.value
   if (!advice) return null
-  return normalizeSkillSearchQuery(advice.query) === normalizedSkillAdviceQuery.value ? advice : null
+  return normalizeSkillSearchQuery(advice.query) === normalizedSkillAdviceQuery.value
+    ? advice
+    : null
 })
 const showFeatureHint = computed(() => {
   if (props.disabled || props.streaming) return false
@@ -417,7 +422,7 @@ const compactModeInfoCardMeta = computed(() => {
   if (compactModeInfoCard.value === 'research') {
     return {
       kind: 'research' as const,
-      title: t('ui.deepResearchTitle'),
+      title: researchModeTitle.value,
       state: chatStore.deepResearchEnabled
         ? t('common.enabled', 'Enabled')
         : t('common.disabled', 'Disabled'),
@@ -538,10 +543,13 @@ function scheduleSkillAdvice(options?: { force?: boolean }) {
     return
   }
 
-  skillAdviceTimer = window.setTimeout(() => {
-    skillAdviceTimer = null
-    void fetchSkillAdvice(options)
-  }, options?.force ? 0 : SKILL_ADVICE_DEBOUNCE_MS)
+  skillAdviceTimer = window.setTimeout(
+    () => {
+      skillAdviceTimer = null
+      void fetchSkillAdvice(options)
+    },
+    options?.force ? 0 : SKILL_ADVICE_DEBOUNCE_MS
+  )
 }
 
 function openSkillStore(query?: string) {
@@ -1625,7 +1633,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
             :checked="chatStore.deepResearchEnabled"
             @change="toggleDeepResearchFromHint"
           />
-          <span>{{ t('ui.deepResearchTitle') }}</span>
+          <span>{{ researchModeTitle }}</span>
         </label>
         <label
           v-if="featureIntent.agentMode && !settingsStore.agentMode"
@@ -1647,13 +1655,10 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
       >
         <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div class="min-w-0">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-600/90 dark:text-amber-300/80">
-              {{
-                chatText(
-                  'chat.skillAdvisorKicker',
-                  'Skill guidance'
-                )
-              }}
+            <p
+              class="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-600/90 dark:text-amber-300/80"
+            >
+              {{ chatText('chat.skillAdvisorKicker', 'Skill guidance') }}
             </p>
             <p class="mt-1 text-xs leading-5 text-amber-900/85 dark:text-amber-100/85">
               {{ skillAdviceDescription }}
@@ -1677,10 +1682,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           <span>{{ skillHintInstalledSkill }}</span>
         </div>
 
-        <div
-          v-if="skillHintQueries.length"
-          class="mt-2.5 flex flex-col gap-1.5"
-        >
+        <div v-if="skillHintQueries.length" class="mt-2.5 flex flex-col gap-1.5">
           <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
             {{ chatText('chat.skillAdvisorSearchQueries', 'Suggested search phrases') }}
           </span>
@@ -1697,10 +1699,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           </div>
         </div>
 
-        <div
-          v-if="skillHintTags.length"
-          class="mt-2.5 flex flex-col gap-1.5"
-        >
+        <div v-if="skillHintTags.length" class="mt-2.5 flex flex-col gap-1.5">
           <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
             {{ chatText('chat.skillAdvisorCapabilityTags', 'Capability tags') }}
           </span>
@@ -1717,10 +1716,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           </div>
         </div>
 
-        <div
-          v-if="skillHintRecommendedSkills.length"
-          class="mt-2.5 flex flex-col gap-1.5"
-        >
+        <div v-if="skillHintRecommendedSkills.length" class="mt-2.5 flex flex-col gap-1.5">
           <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
             {{ chatText('chat.skillAdvisorRecommendedSkills', 'Marketplace matches') }}
           </span>
@@ -1745,7 +1741,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               class="mode-chip mode-chip-research"
               :class="{ 'is-active': chatStore.deepResearchEnabled }"
               :aria-pressed="chatStore.deepResearchEnabled"
-              :title="t('ui.deepResearchTitle')"
+              :title="researchModeTitle"
               @click="toggleDeepResearch"
             >
               <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1757,7 +1753,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
                 />
               </svg>
-              <span class="mode-chip__label">{{ t('ui.deepResearchTitle') }}</span>
+              <span class="mode-chip__label">{{ researchModeTitle }}</span>
             </button>
             <button
               class="compact-mode-info-toggle compact-mode-info-toggle--research"
@@ -2444,7 +2440,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   <button
                     class="mode-chip desktop-mode-chip mode-chip-research"
                     :class="{ 'is-active': chatStore.deepResearchEnabled }"
-                    :aria-label="t('ui.deepResearchTitle')"
+                    :aria-label="researchModeTitle"
                     :aria-pressed="chatStore.deepResearchEnabled"
                     @click="toggleDeepResearch"
                   >
@@ -2462,7 +2458,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                         d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
                       />
                     </svg>
-                    <span class="mode-chip__label">{{ t('ui.deepResearchTitle') }}</span>
+                    <span class="mode-chip__label">{{ researchModeTitle }}</span>
                   </button>
                   <div class="mode-info-card mode-info-card--research" aria-hidden="true">
                     <div class="mode-info-card__hero">
@@ -2490,7 +2486,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                         }}
                       </span>
                     </div>
-                    <div class="mode-info-card__title">{{ t('ui.deepResearchTitle') }}</div>
+                    <div class="mode-info-card__title">{{ researchModeTitle }}</div>
                     <p class="mode-info-card__description">
                       {{
                         t(

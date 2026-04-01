@@ -84,18 +84,7 @@ var thirdPartyFormatCandidates = []formatCandidate{
 }
 
 func activeThirdPartyFormatCandidates() []formatCandidate {
-	if ResponsesIntegrationEnabled() {
-		return thirdPartyFormatCandidates
-	}
-
-	active := make([]formatCandidate, 0, len(thirdPartyFormatCandidates))
-	for _, candidate := range thirdPartyFormatCandidates {
-		if candidate.format == APIFormatResponses {
-			continue
-		}
-		active = append(active, candidate)
-	}
-	return active
+	return thirdPartyFormatCandidates
 }
 
 // canonicalAPIFormatForProvider returns the best single API format for built-in/non-third-party providers.
@@ -319,6 +308,8 @@ func candidateExplicitlyRejected(c formatCandidate, status int, body string) boo
 	switch c.format {
 	case APIFormatOpenAI:
 		return indicatesResponsesOnlyProvider(status, body)
+	case APIFormatResponses:
+		return looksLikeProviderHTMLDocument(body)
 	default:
 		return false
 	}
@@ -339,6 +330,18 @@ func indicatesResponsesOnlyProvider(status int, body string) bool {
 		strings.Contains(lower, "legacy protocol") ||
 		strings.Contains(lower, "/v1/chat/completions") ||
 		strings.Contains(lower, "chat/completions")
+}
+
+func looksLikeProviderHTMLDocument(body string) bool {
+	trimmed := strings.TrimSpace(body)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	return strings.HasPrefix(lower, "<!doctype html") ||
+		strings.HasPrefix(lower, "<html") ||
+		strings.Contains(lower, "<head") ||
+		strings.Contains(lower, "<body")
 }
 
 func probeWithPayload(ctx context.Context, client *http.Client, provider *Provider, c formatCandidate, fullURL string, featureProbe bool) (int, string, error) {
@@ -367,8 +370,11 @@ func applyProbeAuth(req *http.Request, provider *Provider, format APIFormat) {
 	key := provider.APIKeys[0].Key
 	switch format {
 	case APIFormatAnthropic:
-		req.Header.Set("x-api-key", key)
-		req.Header.Set("anthropic-version", "2023-06-01")
+		if usesMiniMaxAnthropicAuth(provider, req.URL.String(), format) {
+			applyMiniMaxAnthropicProbeAuth(req, key)
+		} else {
+			applyAnthropicProbeAuth(req, key)
+		}
 	case APIFormatGoogle:
 		q := req.URL.Query()
 		q.Set("key", key)

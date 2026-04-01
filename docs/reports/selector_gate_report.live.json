@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-03-30T07:54:40.523291Z",
+  "owner_user_id": "preview-user",
+  "candidate_id": "cutover-live-20260330-j",
+  "candidate_label": "cutover-live-20260330-j",
+  "status": "error",
+  "passed": false,
+  "error": "POST /eval-runs/ac55e81f-f5f0-418b-ba5c-bd4b63572434/selector-gate failed: HTTP 400: {\"error\":\"no baseline or base eval run selected\"}\n"
+}

@@ -164,6 +164,93 @@ description: Expert git workflows
 	}
 }
 
+func TestNewServiceWithDBPathUsesReaderPoolForReadQueries(t *testing.T) {
+	tempDir := t.TempDir()
+	activeDir := filepath.Join(tempDir, "active")
+	cacheDir := filepath.Join(tempDir, "cache")
+	dbPath := filepath.Join(tempDir, "skillmarket.db")
+
+	cfg := DefaultConfig(tempDir, activeDir)
+	cfg.DBPath = dbPath
+	cfg.CacheRoot = cacheDir
+	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.SeedURLs = nil
+
+	svc, err := NewServiceWithDBPath(dbPath, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("NewServiceWithDBPath() error = %v", err)
+	}
+	defer svc.Close()
+
+	if svc.store == nil {
+		t.Fatal("expected initialized store")
+	}
+	if svc.store.readDB == nil {
+		t.Fatal("expected initialized reader db")
+	}
+	if svc.store.readDB == svc.store.db {
+		t.Fatal("expected dedicated reader db for file-backed skillmarket")
+	}
+
+	raw := `---
+id: git-expert
+name: Git Expert
+version: 1.2.3
+description: Expert git workflows
+---
+
+# Git Expert`
+	insertSkillFixture(t, svc, "git-expert", "1.2.3", raw, RiskLow, 92)
+	if err := svc.store.SetInstalledSkill(context.Background(), InstalledSkill{
+		SkillID:           "git-expert",
+		InstalledVersion:  "1.2.3",
+		Checksum:          parseChecksum(raw),
+		SourceURL:         "https://example.com/git-expert",
+		Enabled:           true,
+		LastSecurityScore: 92,
+	}); err != nil {
+		t.Fatalf("SetInstalledSkill() error = %v", err)
+	}
+
+	detail, err := svc.GetSkill(context.Background(), "git-expert")
+	if err != nil {
+		t.Fatalf("GetSkill() error = %v", err)
+	}
+	if detail == nil || detail.Version == nil || detail.Security == nil {
+		t.Fatalf("expected populated skill detail, got %+v", detail)
+	}
+
+	trending, err := svc.Trending(context.Background(), "development", 10)
+	if err != nil {
+		t.Fatalf("Trending() error = %v", err)
+	}
+	if len(trending) != 1 || trending[0].ID != "git-expert" {
+		t.Fatalf("unexpected trending results: %+v", trending)
+	}
+
+	filters, err := svc.Filters(context.Background())
+	if err != nil {
+		t.Fatalf("Filters() error = %v", err)
+	}
+	if len(filters.Categories) != 1 || filters.Categories[0].Value != "development" {
+		t.Fatalf("unexpected filter categories: %+v", filters.Categories)
+	}
+
+	installed, err := svc.ListInstalled(context.Background())
+	if err != nil {
+		t.Fatalf("ListInstalled() error = %v", err)
+	}
+	if len(installed) != 1 || installed[0].SkillID != "git-expert" {
+		t.Fatalf("unexpected installed skills: %+v", installed)
+	}
+}
+
 func TestNewServiceWithDBPathMigratesLegacySchemaWithoutFTSModule(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "legacy-market-fts.db")
@@ -1115,19 +1202,27 @@ func TestDiscoverFromLightmakeFollowsPagination(t *testing.T) {
 }
 
 func TestServiceInstallMaterializesArchiveSkill(t *testing.T) {
-	actualRaw := `---
+	actualRaw := strings.TrimSpace(`
+---
 id: archive-skill
 name: Archive Skill
 version: 2.3.4
 description: Extracted from archive
 category: development
 permissions: [filesystem]
+invocation: blue archive-skill action=list
+examples:
+  - blue archive-skill action=list
+capability_tags:
+  - archive
+interaction_mode: stateless
+card_support: none
 ---
 
 # Archive Skill
 
 Install from extracted archive payload.
-`
+`) + "\n"
 	var archive bytes.Buffer
 	zipWriter := zip.NewWriter(&archive)
 	skillFile, err := zipWriter.Create("bundle/SKILL.md")
@@ -1161,18 +1256,26 @@ Install from extracted archive payload.
 	svc, cleanup := newTestServiceWithClient(t, server.Client())
 	defer cleanup()
 
-	syntheticRaw := `---
+	syntheticRaw := strings.TrimSpace(`
+---
 id: archive-skill
 name: Archive Skill
 version: catalog
 description: Catalog listing
 category: development
+invocation: blue archive-skill action=list
+examples:
+  - blue archive-skill action=list
+capability_tags:
+  - archive
+interaction_mode: stateless
+card_support: none
 ---
 
 # Archive Skill
 
 Catalog entry only.
-`
+`) + "\n"
 	doc := &SkillDocument{
 		ID:            "archive-skill",
 		Slug:          "archive-skill",

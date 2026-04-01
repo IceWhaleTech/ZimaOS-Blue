@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cardproto"
 	cardconv "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
+)
+
+var (
+	ipcRoundTripFunc = ipcRoundTrip
+	ipcExit          = os.Exit
 )
 
 // dialSock connects to the blue IPC socket.
@@ -52,6 +58,10 @@ func ipcRoundTrip(req *sockipc.Request) (*sockipc.Response, error) {
 // ipcFallback forwards an unrecognized CLI command as an IPC request.
 // Returns true if handled (even on error), false if server not reachable.
 func ipcFallback(cmd string, args []string) bool {
+	return ipcDispatchCommand(cmd, args, false)
+}
+
+func ipcDispatchCommand(cmd string, args []string, requireServer bool) bool {
 	cmd, params, positional := normalizeIPCCommand(cmd, args)
 
 	// If there are positional args (not key=value), join them as "query" param.
@@ -59,25 +69,56 @@ func ipcFallback(cmd string, args []string) bool {
 	if len(positional) > 0 && len(params) == 0 {
 		params["query"] = strings.Join(positional, " ")
 	}
+	params = prepareIPCParams(params)
+	return ipcDispatchPreparedCommand(cmd, params, requireServer)
+}
+
+func prepareIPCParams(params map[string]string) map[string]string {
+	if params == nil {
+		params = make(map[string]string)
+	}
 	injectIPCContextParams(params, os.Getenv)
 	injectIPCWorkdirParam(params, os.Getwd)
+	injectIPCOutputParams(params)
+	return params
+}
 
+func ipcDispatchPreparedCommand(cmd string, params map[string]string, requireServer bool) bool {
 	req := &sockipc.Request{Cmd: cmd, Params: params}
-	resp, err := ipcRoundTrip(req)
+	resp, err := ipcRoundTripFunc(req)
 	if err != nil {
 		// If we can't connect, let cobra handle it (might be a typo)
 		if isConnectionError(err) {
+			if requireServer {
+				if jsonOutput {
+					printJSON(map[string]string{"error": fmt.Sprintf("running Blue service is required for %s: %v", cmd, err)})
+				} else {
+					fmt.Fprintf(os.Stdout, "Error: running Blue service is required for %s: %v\n", cmd, err)
+				}
+				ipcExit(1)
+			}
 			return false
 		}
 		// Print error to stdout so exec tool can capture it as tool result.
 		fmt.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		ipcExit(1)
 	}
 
 	if resp.Status != "ok" {
 		// Print error to stdout so exec tool can capture it.
-		fmt.Fprintf(os.Stdout, "Error: %s\n", resp.Error)
-		os.Exit(1)
+		if jsonOutput {
+			printJSON(map[string]string{"error": resp.Error})
+		} else {
+			fmt.Fprintf(os.Stdout, "Error: %s\n", resp.Error)
+		}
+		ipcExit(1)
+	}
+
+	if printed, exitCode := printIPCStdout(resp); printed {
+		if exitCode != 0 {
+			ipcExit(exitCode)
+		}
+		return true
 	}
 
 	// Emit a typeless card via __CARD__ protocol so the exec tool's
@@ -92,7 +133,7 @@ func ipcFallback(cmd string, args []string) bool {
 		// separately for the UI — the LLM only sees plain stdout.
 		for k, v := range resp.Data {
 			// Skip internal hints — not useful for the LLM.
-			if k == "_card" || k == "success" {
+			if strings.HasPrefix(k, "__") || k == "_card" || k == "success" {
 				continue
 			}
 			fmt.Printf("%s: %s\n", k, v)
@@ -104,6 +145,8 @@ func ipcFallback(cmd string, args []string) bool {
 func normalizeIPCCommand(cmd string, args []string) (string, map[string]string, []string) {
 	params, positional := parseIPCArgs(args)
 	switch strings.TrimSpace(cmd) {
+	case "context":
+		return normalizeContextIPCCommand(params, positional)
 	case "/install":
 		return normalizeSlashSkillCommand("skill.install", "id", params, positional)
 	case "/install-url", "/install_url":
@@ -130,6 +173,42 @@ func normalizeIPCCommand(cmd string, args []string) (string, map[string]string, 
 		return "skill.search", params, positional
 	default:
 		return cmd, params, positional
+	}
+}
+
+func normalizeContextIPCCommand(params map[string]string, positional []string) (string, map[string]string, []string) {
+	if len(positional) == 0 {
+		return "context", params, positional
+	}
+
+	subcommand := strings.TrimSpace(positional[0])
+	positional = append([]string(nil), positional[1:]...)
+
+	switch subcommand {
+	case "search":
+		if strings.TrimSpace(params["query"]) == "" && len(positional) > 0 {
+			params["query"] = strings.Join(positional, " ")
+			positional = nil
+		}
+		return "context.search", params, positional
+	case "get":
+		positional = promotePositionalIPCParam(params, positional, "id")
+		return "context.get", params, positional
+	case "annotate":
+		positional = promotePositionalIPCParam(params, positional, "id")
+		if strings.TrimSpace(params["note"]) == "" && len(positional) > 0 {
+			params["note"] = strings.Join(positional, " ")
+			positional = nil
+		}
+		return "context.annotate", params, positional
+	case "import":
+		positional = promotePositionalIPCParam(params, positional, "path")
+		return "context.import", params, positional
+	case "validate":
+		positional = promotePositionalIPCParam(params, positional, "path")
+		return "context.validate", params, positional
+	default:
+		return "context", params, append([]string{subcommand}, positional...)
 	}
 }
 
@@ -185,6 +264,15 @@ func injectIPCWorkdirParam(params map[string]string, getwd func() (string, error
 	params["__blue_workdir"] = workdir
 }
 
+func injectIPCOutputParams(params map[string]string) {
+	if params == nil {
+		return
+	}
+	params["__blue_json"] = strconv.FormatBool(jsonOutput)
+	params["__blue_no_color"] = strconv.FormatBool(noColor)
+	params["__blue_verbose"] = strconv.FormatBool(verbose)
+}
+
 func parseIPCArgs(args []string) (map[string]string, []string) {
 	params := make(map[string]string)
 	var positional []string
@@ -195,9 +283,13 @@ func parseIPCArgs(args []string) (map[string]string, []string) {
 		// --key value or -key value
 		if strings.HasPrefix(a, "--") || strings.HasPrefix(a, "-") {
 			key := strings.TrimLeft(a, "-")
-			if key != "" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			if isBooleanIPCFlag(key) {
+				appendIPCParam(params, key, "true")
+			} else if key != "" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 				appendIPCParam(params, key, args[i+1])
 				i++ // consume next arg as value
+			} else if key != "" {
+				appendIPCParam(params, key, "true")
 			}
 			continue
 		}
@@ -209,6 +301,15 @@ func parseIPCArgs(args []string) (map[string]string, []string) {
 		}
 	}
 	return params, positional
+}
+
+func isBooleanIPCFlag(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "active", "clear", "fix", "follow", "full", "list", "poll", "silent", "verbose", "wait":
+		return true
+	default:
+		return false
+	}
 }
 
 func appendIPCParam(params map[string]string, key, value string) {
@@ -260,6 +361,24 @@ func isConnectionError(err error) bool {
 	return strings.Contains(s, "cannot connect") ||
 		strings.Contains(s, "connection refused") ||
 		strings.Contains(s, "no such file")
+}
+
+func printIPCStdout(resp *sockipc.Response) (bool, int) {
+	if resp == nil || resp.Data == nil {
+		return false, 0
+	}
+	stdout, ok := resp.Data["__stdout"]
+	if !ok {
+		return false, 0
+	}
+	fmt.Print(stdout)
+	exitCode := 0
+	if raw := strings.TrimSpace(resp.Data["__exit_code"]); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			exitCode = parsed
+		}
+	}
+	return true, exitCode
 }
 
 // emitIPCCard converts an IPC response into a __CARD__ line on stdout.
@@ -330,7 +449,7 @@ func emitIPCCard(cmd string, resp *sockipc.Response) bool {
 func parseIPCResponsePayload(data map[string]string) map[string]interface{} {
 	payload := make(map[string]interface{}, len(data))
 	for k, v := range data {
-		if k == "_card" || k == "success" {
+		if strings.HasPrefix(k, "__") || k == "_card" || k == "success" {
 			continue
 		}
 

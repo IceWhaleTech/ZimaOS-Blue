@@ -15,7 +15,8 @@ import (
 
 // SQLiteConfigStore persists media provider configurations in SQLite.
 type SQLiteConfigStore struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 type mediagenProviderRow struct {
@@ -30,7 +31,13 @@ type mediagenProviderRow struct {
 
 // NewSQLiteConfigStore creates a new SQLite-backed media config store.
 func NewSQLiteConfigStore(db *sql.DB) (*SQLiteConfigStore, error) {
-	s := &SQLiteConfigStore{db: db}
+	return NewSQLiteConfigStoreWithReadDB(db, db)
+}
+
+// NewSQLiteConfigStoreWithReadDB creates a new SQLite-backed media config store
+// with separate write and read database handles.
+func NewSQLiteConfigStoreWithReadDB(writeDB, readDB *sql.DB) (*SQLiteConfigStore, error) {
+	s := &SQLiteConfigStore{db: writeDB, readDB: readDB}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate mediagen tables: %w", err)
 	}
@@ -38,6 +45,13 @@ func NewSQLiteConfigStore(db *sql.DB) (*SQLiteConfigStore, error) {
 }
 
 func (s *SQLiteConfigStore) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "mediagen_providers")
+}
+
+func (s *SQLiteConfigStore) readTable(ctx context.Context) *z.ZormTable {
+	if s != nil && s.readDB != nil {
+		return z.TableContext(ctx, s.readDB, "mediagen_providers")
+	}
 	return z.TableContext(ctx, s.db, "mediagen_providers")
 }
 
@@ -58,7 +72,7 @@ func (s *SQLiteConfigStore) migrate() error {
 func (s *SQLiteConfigStore) Load() (map[string]*configOnDisk, error) {
 	ctx := context.Background()
 	var rows []mediagenProviderRow
-	_, err := s.table(ctx).Select(&rows)
+	_, err := s.readTable(ctx).Select(&rows)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +147,7 @@ func (s *SQLiteConfigStore) MigrateFromJSON(dir string) error {
 	// Skip if DB already has data
 	ctx := context.Background()
 	var rows []mediagenProviderRow
-	s.table(ctx).Select(&rows, z.Limit(1))
+	s.readTable(ctx).Select(&rows, z.Limit(1))
 	if len(rows) > 0 {
 		return nil // Already migrated
 	}

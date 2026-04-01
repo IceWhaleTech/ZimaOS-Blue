@@ -225,7 +225,7 @@ func TestBuildDeepSearchExecutionHint(t *testing.T) {
 	if !strings.Contains(hint, "at least 2 diverse retrieval rounds") {
 		t.Fatalf("expected hint to require multi-round search, got=%q", hint)
 	}
-	if !strings.Contains(hint, "Knowledge-base-grade deep research") {
+	if !strings.Contains(hint, "Knowledge-base-grade research") {
 		t.Fatalf("expected hint to enforce knowledge-base research workflow, got=%q", hint)
 	}
 	if !strings.Contains(hint, "<phase id=\"4\" name=\"audit\">") {
@@ -1329,6 +1329,15 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	}
 	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "do not run `blue reminder --help`") {
 		t.Fatalf("expected non-agent toolless nudge to block reminder help fallback, got=%q", got)
+	}
+	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "blue exec command='...'") || !strings.Contains(got, "instead of inventing commands like `blue summarize`") {
+		t.Fatalf("expected non-agent toolless nudge to steer external CLIs through blue exec, got=%q", got)
+	}
+	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "`timer`, `datetime`, `unit_converter`, and deprecated `search`") {
+		t.Fatalf("expected non-agent toolless nudge to mention disabled placeholder skills, got=%q", got)
+	}
+	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "Prefer `web_query` as the unified public-web tool") || !strings.Contains(got, "`web_search`, `web_fetch`, and `web_read` are compatibility aliases") {
+		t.Fatalf("expected non-agent toolless nudge to mention unified web_query routing, got=%q", got)
 	}
 
 	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "append=true") || !strings.Contains(got, "large file writes") {

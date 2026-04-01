@@ -15,6 +15,7 @@ import {
 } from '@/api/skill'
 import SemanticSearchField from '@/components/ui/SemanticSearchField.vue'
 import { formatVersionLabel } from '@/utils/version-label'
+import { getErrorMessage } from '@/utils/error'
 import {
   skillStoreSortTranslationPath,
   type SkillStoreSortMode,
@@ -69,7 +70,8 @@ const searchQuery = ref(normalizeSearchQuery(props.initialSearchQuery || ''))
 const selectedCategory = ref('all')
 const selectedSource = ref('all')
 const selectedRisk = ref('all')
-const sortMode = ref<SkillStoreSortMode>('featured')
+const defaultSortMode: SkillStoreSortMode = 'trending'
+const sortMode = ref<SkillStoreSortMode>(defaultSortMode)
 
 const page = ref(1)
 const totalPages = ref(1)
@@ -395,7 +397,6 @@ const embeddingProgressCaption = computed(
     marketplaceText('embedding.caption', 'Embeddings improve semantic search quality over time')
 )
 const sortPillOptions = computed(() => [
-  { value: 'featured' as const, label: sortModeLabel('featured') },
   { value: 'trending' as const, label: sortModeLabel('trending') },
   { value: 'newest' as const, label: sortModeLabel('newest') },
   { value: 'most_used' as const, label: sortModeLabel('most_used') },
@@ -648,14 +649,14 @@ function sourceLabel(skill?: RemoteSkill | null): string {
 
 function badgeLabelByValue(badge?: SecurityBadge | string): string {
   const normalized = (badge || 'yellow') as SecurityBadge | string
-  if (normalized === 'green') return marketplaceText('badges.green', 'Green shield')
+  if (normalized === 'green') return marketplaceText('badges.green', 'Security')
   if (normalized === 'red') return marketplaceText('badges.red', 'Blocked')
   return marketplaceText('badges.yellow', 'Warning')
 }
 
 function badgeLabel(skill?: RemoteSkill | null): string {
   const badge = (skill?.security_badge || 'yellow') as SecurityBadge | string
-  if (badge === 'green') return marketplaceText('badges.green', 'Green shield')
+  if (badge === 'green') return marketplaceText('badges.green', 'Security')
   if (badge === 'red') return marketplaceText('badges.red', 'Blocked')
   return marketplaceText('badges.yellow', 'Warning')
 }
@@ -1483,7 +1484,7 @@ function resetFilters() {
   selectedCategory.value = 'all'
   selectedSource.value = 'all'
   selectedRisk.value = 'all'
-  sortMode.value = 'featured'
+  sortMode.value = defaultSortMode
   clearSkillAdvice()
   handleSearch()
 }
@@ -1500,14 +1501,15 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
     openSkillSource(skill)
     return
   }
-  if (skill.security_badge === 'red') {
+  const badge = skill.security_badge ?? 'yellow'
+  if (badge === 'red') {
     error.value = marketplaceText(
       'messages.blockedByPolicy',
       'This skill is blocked by the security policy.'
     )
     return
   }
-  if (skill.security_badge === 'yellow' && !ackRisk) {
+  if (badge === 'yellow' && !ackRisk) {
     pendingRiskSkill.value = skill
     return
   }
@@ -1518,7 +1520,7 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
   try {
     await skillApi.installMarket({
       id: skill.id,
-      ack_risk: ackRisk || skill.security_badge === 'yellow',
+      ack_risk: ackRisk || badge === 'yellow',
     })
     const current = skills.value.find((item) => item.id === skill.id)
     if (current) current.installed = true
@@ -1534,9 +1536,13 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
     }
     pendingRiskSkill.value = null
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : skillStoreText('installError', 'Failed to install skill')
-    if (message.toLowerCase().includes('risk acknowledgement')) {
+    const message = getErrorMessage(err) || skillStoreText('installError', 'Failed to install skill')
+    const normalized = message.toLowerCase()
+    if (
+      normalized.includes('risk acknowledgement') ||
+      normalized.includes('ack_risk') ||
+      normalized.includes('ack risk')
+    ) {
       pendingRiskSkill.value = skill
     } else {
       error.value = message
@@ -1674,7 +1680,7 @@ const activeFilterLabels = computed(() => {
       `${marketplaceText('filters.security', 'Security')}: ${badgeLabelByValue(selectedRisk.value)}`
     )
   }
-  if (sortMode.value !== 'featured') {
+  if (sortMode.value !== defaultSortMode) {
     labels.push(`${commonText('filter', 'Filter')}: ${sortModeLabel(sortMode.value)}`)
   }
 
@@ -1813,7 +1819,7 @@ onBeforeUnmount(() => {
         </span>
         <span v-if="!isInitialCatalogLoad && greenBadgeCount > 0" class="summary-pill">
           {{
-            marketplaceText('results.safeCount', '{count} green shield', {
+            marketplaceText('results.safeCount', 'Security {count}', {
               count: greenBadgeCount,
             })
           }}
@@ -2386,7 +2392,7 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <div
         v-if="showDetailModal && detailSkill"
-        class="store-detail-modal-backdrop"
+        class="skill-tab skill-store-aggregator store-detail-modal-backdrop"
         @click.self="closeSkillDetail"
       >
         <div
@@ -2705,127 +2711,142 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
-    <div v-if="pendingRiskSkill" class="risk-modal-backdrop" @click.self="closeRiskModal">
-      <div class="risk-modal" :style="skillAccentStyle(pendingRiskSkill)">
-        <button
-          class="risk-modal__close"
-          type="button"
-          :aria-label="commonText('close', 'Close')"
-          @click="closeRiskModal"
-        >
-          <span aria-hidden="true">&times;</span>
-        </button>
+    <Teleport to="body">
+      <div
+        v-if="pendingRiskSkill"
+        class="skill-store-aggregator risk-modal-backdrop"
+        @click.self="closeRiskModal"
+      >
+        <div class="risk-modal" :style="skillAccentStyle(pendingRiskSkill)">
+          <button
+            class="risk-modal__close"
+            type="button"
+            :aria-label="commonText('close', 'Close')"
+            @click="closeRiskModal"
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
 
-        <header class="risk-modal__header">
-          <div class="risk-modal__hero">
-            <div class="risk-modal__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path
-                  d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
-                />
-                <path d="M12 8v5" />
-                <path d="M12 17h.01" />
-              </svg>
-            </div>
-            <div class="risk-modal__copy">
-              <div class="risk-modal__eyebrow">
-                <span class="shield-chip badge-yellow">{{ commonText('warning', 'Warning') }}</span>
-                <span :class="['shield-chip', detailBadgeClass(pendingRiskSkill.security_badge)]">
-                  {{ badgeLabel(pendingRiskSkill) }}
-                </span>
+          <header class="risk-modal__header">
+            <div class="risk-modal__hero">
+              <div class="risk-modal__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path
+                    d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+                  />
+                  <path d="M12 8v5" />
+                  <path d="M12 17h.01" />
+                </svg>
               </div>
-              <h3>
-                {{
-                  marketplaceText('modal.riskAcknowledgementTitle', 'Risk acknowledgement required')
-                }}
-              </h3>
-              <p>
-                {{
-                  marketplaceText(
-                    'modal.riskAcknowledgementBody',
-                    '{name} is marked yellow. It can still be installed, but you should review the security summary first.',
-                    { name: pendingRiskSkill.name }
-                  )
-                }}
-              </p>
+              <div class="risk-modal__copy">
+                <div class="risk-modal__eyebrow">
+                  <span class="shield-chip badge-yellow">{{
+                    commonText('warning', 'Warning')
+                  }}</span>
+                  <span :class="['shield-chip', detailBadgeClass(pendingRiskSkill.security_badge)]">
+                    {{ badgeLabel(pendingRiskSkill) }}
+                  </span>
+                </div>
+                <h3>
+                  {{
+                    marketplaceText(
+                      'modal.riskAcknowledgementTitle',
+                      'Risk acknowledgement required'
+                    )
+                  }}
+                </h3>
+                <p>
+                  {{
+                    marketplaceText(
+                      'modal.riskAcknowledgementBody',
+                      '{name} requires acknowledgement before installing. Review the security summary first.',
+                      { name: pendingRiskSkill.name }
+                    )
+                  }}
+                </p>
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
 
-        <section class="risk-modal__subject">
-          <div class="risk-modal__subject-icon" aria-hidden="true">
-            <span>{{ skillMonogram(pendingRiskSkill) }}</span>
-          </div>
-          <div class="risk-modal__subject-copy">
-            <strong>{{ pendingRiskSkill.name }}</strong>
-            <div class="chip-row">
-              <span class="meta-chip meta-chip-soft">{{ sourceLabel(pendingRiskSkill) }}</span>
-              <span class="meta-chip meta-chip-soft">{{
-                skillVersionLabel(pendingRiskSkill)
+          <section class="risk-modal__subject">
+            <div class="risk-modal__subject-icon" aria-hidden="true">
+              <span>{{ skillMonogram(pendingRiskSkill) }}</span>
+            </div>
+            <div class="risk-modal__subject-copy">
+              <strong>{{ pendingRiskSkill.name }}</strong>
+              <div class="chip-row">
+                <span class="meta-chip meta-chip-soft">{{ sourceLabel(pendingRiskSkill) }}</span>
+                <span class="meta-chip meta-chip-soft">{{
+                  skillVersionLabel(pendingRiskSkill)
+                }}</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="risk-modal__summary">
+            <article class="risk-modal__stat">
+              <span class="section-label">{{
+                marketplaceText('detail.riskLevel', 'Risk level')
               }}</span>
+              <strong>{{ riskLabel(pendingRiskSkill) }}</strong>
+            </article>
+            <article class="risk-modal__stat">
+              <span class="section-label">{{ marketplaceText('security.badge', 'Badge') }}</span>
+              <strong>{{ badgeLabel(pendingRiskSkill) }}</strong>
+            </article>
+            <article v-if="pendingRiskSkill.install_type" class="risk-modal__stat">
+              <span class="section-label">{{
+                marketplaceText('security.installSurface', 'Install surface')
+              }}</span>
+              <strong>{{ installTypeLabel(pendingRiskSkill.install_type) }}</strong>
+            </article>
+            <article
+              v-if="typeof pendingRiskSkill.security_score === 'number'"
+              class="risk-modal__stat"
+            >
+              <span class="section-label">{{ marketplaceText('security.score', 'Score') }}</span>
+              <strong>{{ pendingRiskSkill.security_score }}</strong>
+            </article>
+          </section>
+
+          <div v-if="pendingRiskSignals.length" class="modal-signal-block">
+            <span class="section-label">{{
+              marketplaceText('modal.reviewSignals', 'Review these signals')
+            }}</span>
+            <div class="risk-modal__signal-list">
+              <article
+                v-for="signal in pendingRiskSignals"
+                :key="signal"
+                class="risk-modal__signal"
+              >
+                <span class="risk-modal__signal-dot" aria-hidden="true"></span>
+                <span>{{ signal }}</span>
+              </article>
             </div>
           </div>
-        </section>
 
-        <section class="risk-modal__summary">
-          <article class="risk-modal__stat">
-            <span class="section-label">{{
-              marketplaceText('detail.riskLevel', 'Risk level')
-            }}</span>
-            <strong>{{ riskLabel(pendingRiskSkill) }}</strong>
-          </article>
-          <article class="risk-modal__stat">
-            <span class="section-label">{{ marketplaceText('security.badge', 'Badge') }}</span>
-            <strong>{{ badgeLabel(pendingRiskSkill) }}</strong>
-          </article>
-          <article v-if="pendingRiskSkill.install_type" class="risk-modal__stat">
-            <span class="section-label">{{
-              marketplaceText('security.installSurface', 'Install surface')
-            }}</span>
-            <strong>{{ installTypeLabel(pendingRiskSkill.install_type) }}</strong>
-          </article>
-          <article
-            v-if="typeof pendingRiskSkill.security_score === 'number'"
-            class="risk-modal__stat"
-          >
-            <span class="section-label">{{ marketplaceText('security.score', 'Score') }}</span>
-            <strong>{{ pendingRiskSkill.security_score }}</strong>
-          </article>
-        </section>
-
-        <div v-if="pendingRiskSignals.length" class="modal-signal-block">
-          <span class="section-label">{{
-            marketplaceText('modal.reviewSignals', 'Review these signals')
-          }}</span>
-          <div class="risk-modal__signal-list">
-            <article v-for="signal in pendingRiskSignals" :key="signal" class="risk-modal__signal">
-              <span class="risk-modal__signal-dot" aria-hidden="true"></span>
-              <span>{{ signal }}</span>
-            </article>
+          <div class="modal-actions risk-modal__actions">
+            <button class="btn-ghost" type="button" @click="closeRiskModal">
+              {{ commonText('cancel', 'Cancel') }}
+            </button>
+            <button
+              class="btn-ghost risk-modal__review-button"
+              type="button"
+              @click="reviewRiskSkill"
+            >
+              {{ marketplaceText('modal.reviewSummary', 'Review security summary') }}
+            </button>
+            <button
+              class="btn-primary risk-modal__confirm-button"
+              type="button"
+              @click="confirmRiskInstall"
+            >
+              {{ marketplaceText('modal.confirmInstall', 'Confirm install') }}
+            </button>
           </div>
-        </div>
-
-        <div class="modal-actions risk-modal__actions">
-          <button class="btn-ghost" type="button" @click="closeRiskModal">
-            {{ commonText('cancel', 'Cancel') }}
-          </button>
-          <button
-            class="btn-ghost risk-modal__review-button"
-            type="button"
-            @click="reviewRiskSkill"
-          >
-            {{ marketplaceText('modal.reviewSummary', 'Review security summary') }}
-          </button>
-          <button
-            class="btn-primary risk-modal__confirm-button"
-            type="button"
-            @click="confirmRiskInstall"
-          >
-            {{ marketplaceText('modal.confirmInstall', 'Confirm install') }}
-          </button>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -3915,8 +3936,10 @@ onBeforeUnmount(() => {
   inset: 0;
   z-index: 30;
   display: flex;
+  flex-direction: row;
   align-items: flex-start;
   justify-content: center;
+  gap: 0;
   padding: 18px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -4324,7 +4347,7 @@ onBeforeUnmount(() => {
 .risk-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 80;
   display: grid;
   place-items: center;
   background: rgba(15, 23, 42, 0.54);

@@ -42,10 +42,16 @@ type UpgradeService struct {
 
 // NewUpgradeService creates a new UpgradeService.
 func NewUpgradeService(userService *user.Service, db *sql.DB) *UpgradeService {
+	return NewUpgradeServiceWithReadDB(userService, db, db)
+}
+
+// NewUpgradeServiceWithReadDB creates a new UpgradeService with separate
+// write and read database handles for preview migration status checks.
+func NewUpgradeServiceWithReadDB(userService *user.Service, writeDB, readDB *sql.DB) *UpgradeService {
 	return &UpgradeService{
 		userService:      userService,
-		db:               db,
-		migrationService: NewMigrationService(db),
+		db:               writeDB,
+		migrationService: NewMigrationServiceWithReadDB(writeDB, readDB),
 	}
 }
 

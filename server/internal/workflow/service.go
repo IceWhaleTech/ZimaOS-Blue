@@ -27,6 +27,7 @@ type WorkflowService struct {
 	webhookMu sync.RWMutex
 	metrics   workflowMetricsRecorder
 	flags     workflowFlagEvaluator
+	launcher  ExecutionLauncher
 }
 
 type workflowMetricsRecorder interface {
@@ -76,6 +77,15 @@ func (s *WorkflowService) SetToolGateway(gateway ToolRuntime) {
 		return
 	}
 	s.engine.SetToolGateway(gateway)
+}
+
+// SetExecutionLauncher wires an optional submission/control runtime for
+// externally initiated workflow executions.
+func (s *WorkflowService) SetExecutionLauncher(launcher ExecutionLauncher) {
+	if s == nil || launcher == nil {
+		return
+	}
+	s.launcher = launcher
 }
 
 // loadActiveTriggers loads and registers triggers for active workflows.
@@ -268,16 +278,24 @@ func (s *WorkflowService) validateDraftWorkflow(workflow *Workflow) error {
 
 // ExecuteWorkflow manually executes a workflow.
 func (s *WorkflowService) ExecuteWorkflow(ctx context.Context, id string, triggerData map[string]interface{}) (*Execution, error) {
+	return s.ExecuteWorkflowWithTrigger(ctx, id, TriggerTypeManual, triggerData)
+}
+
+// ExecuteWorkflowWithTrigger executes a workflow directly with an explicit trigger type.
+func (s *WorkflowService) ExecuteWorkflowWithTrigger(ctx context.Context, id string, triggerType TriggerType, triggerData map[string]interface{}) (*Execution, error) {
 	workflow, err := s.repo.GetWorkflow(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// Allow manual execution even if workflow is inactive
+	// Allow caller-initiated execution even if the workflow is inactive.
 	originalStatus := workflow.Status
 	workflow.Status = WorkflowStatusActive
 
-	execution, err := s.engine.Execute(ctx, workflow, TriggerTypeManual, triggerData)
+	if strings.TrimSpace(string(triggerType)) == "" {
+		triggerType = TriggerTypeManual
+	}
+	execution, err := s.engine.Execute(ctx, workflow, triggerType, triggerData)
 
 	workflow.Status = originalStatus
 
@@ -321,6 +339,27 @@ func (s *WorkflowService) CancelExecution(ctx context.Context, id string) error 
 		return err
 	}
 
+	if controller, ok := s.launcher.(ExecutionCancellationController); ok {
+		handled, err := controller.CancelExecution(ctx, execution.ID, "workflow execution cancelled")
+		if err != nil {
+			return err
+		}
+		if handled {
+			return nil
+		}
+	}
+
+	return s.CancelExecutionDirect(ctx, execution.ID)
+}
+
+// CancelExecutionDirect cancels an execution directly in the workflow runtime.
+// Drivers should use this to avoid routing back through harness control paths.
+func (s *WorkflowService) CancelExecutionDirect(ctx context.Context, id string) error {
+	execution, err := s.GetExecution(ctx, id)
+	if err != nil {
+		return err
+	}
+
 	err = s.engine.CancelExecution(id)
 	if err != nil {
 		return err
@@ -350,12 +389,47 @@ func (s *WorkflowService) RetryExecution(ctx context.Context, id string) (*Execu
 		return nil, fmt.Errorf("can only retry failed executions")
 	}
 
-	// Execute workflow again with same trigger data
-	return s.ExecuteWorkflow(ctx, execution.WorkflowID, execution.TriggerData)
+	return s.launchWorkflowExecution(ctx, ExecutionLaunchRequest{
+		WorkflowID:     execution.WorkflowID,
+		TriggerType:    TriggerTypeManual,
+		TriggerData:    cloneExecutionTriggerData(execution.TriggerData),
+		UserID:         workflowUserFromContext(ctx),
+		ConversationID: workflowConversationFromContext(ctx),
+		TenantID:       firstNonEmptyWorkflowValue(execution.TenantID, workflowTenantFromContext(ctx)),
+	})
 }
 
 // ResumeExecution resumes a paused workflow execution.
 func (s *WorkflowService) ResumeExecution(ctx context.Context, id string, resume ExecutionResumeInput) (*Execution, error) {
+	if !s.workflowCheckpointResumeEnabled(nil) {
+		return nil, fmt.Errorf("workflow checkpoint resume is disabled")
+	}
+	execution, err := s.GetExecution(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if execution.Status != ExecutionStatusPaused {
+		return nil, fmt.Errorf("can only resume paused executions")
+	}
+	if controller, ok := s.launcher.(ExecutionResumeController); ok {
+		handled, resumed, err := controller.ResumeExecution(ctx, execution.ID, cloneExecutionResumeInput(resume))
+		if err != nil {
+			return nil, err
+		}
+		if handled {
+			if resumed == nil {
+				resumed = execution
+			}
+			return resumed, nil
+		}
+	}
+	return s.ResumeExecutionDirect(ctx, execution.ID, resume)
+}
+
+// ResumeExecutionDirect resumes a paused execution directly in the workflow
+// runtime. Drivers and control-plane bridges should use this to avoid routing
+// back through harness launch paths.
+func (s *WorkflowService) ResumeExecutionDirect(ctx context.Context, id string, resume ExecutionResumeInput) (*Execution, error) {
 	if !s.workflowCheckpointResumeEnabled(nil) {
 		return nil, fmt.Errorf("workflow checkpoint resume is disabled")
 	}
@@ -455,7 +529,16 @@ func (s *WorkflowService) HandleWebhook(ctx context.Context, path string, method
 		"path":    path,
 	}
 
-	return s.ExecuteWorkflow(ctx, workflowID, triggerData)
+	item, err := s.repo.GetWorkflow(ctx, workflowID)
+	if err != nil {
+		return nil, err
+	}
+	return s.launchWorkflowExecution(ctx, ExecutionLaunchRequest{
+		WorkflowID:  workflowID,
+		TriggerType: TriggerTypeWebhook,
+		TriggerData: triggerData,
+		TenantID:    firstNonEmptyWorkflowValue(item.TenantID, workflowTenantFromContext(ctx)),
+	})
 }
 
 // GetStats returns workflow statistics.
@@ -537,8 +620,13 @@ func (s *WorkflowService) registerScheduleTrigger(ctx context.Context, workflow 
 			"cron":         cronExpr,
 		}
 
-		ctx := context.Background()
-		execution, err := s.ExecuteWorkflow(ctx, workflow.ID, triggerData)
+		ctx := withWorkflowTenant(context.Background(), workflow.TenantID)
+		execution, err := s.launchWorkflowExecution(ctx, ExecutionLaunchRequest{
+			WorkflowID:  workflow.ID,
+			TriggerType: TriggerTypeSchedule,
+			TriggerData: triggerData,
+			TenantID:    workflow.TenantID,
+		})
 		if err != nil {
 			log.Printf("[WARN] scheduled execution failed for workflow %s: %v", workflow.ID, err)
 			return
@@ -621,6 +709,48 @@ func (s *WorkflowService) persistExecutionUpdate(execution *Execution) {
 	if err := s.repo.SaveExecution(ctx, execution); err != nil {
 		log.Printf("[WARN] failed to persist workflow execution update %s: %v", execution.ID, err)
 	}
+}
+
+func (s *WorkflowService) launchWorkflowExecution(ctx context.Context, req ExecutionLaunchRequest) (*Execution, error) {
+	if s == nil {
+		return nil, fmt.Errorf("workflow service unavailable")
+	}
+	triggerType := req.TriggerType
+	if strings.TrimSpace(string(triggerType)) == "" {
+		triggerType = TriggerTypeManual
+	}
+	tenantID := firstNonEmptyWorkflowValue(strings.TrimSpace(req.TenantID), workflowTenantFromContext(ctx))
+	ctx = withWorkflowTenant(ctx, tenantID)
+	if s.launcher != nil {
+		req.TriggerType = triggerType
+		req.TriggerData = cloneExecutionTriggerData(req.TriggerData)
+		req.UserID = firstNonEmptyWorkflowValue(strings.TrimSpace(req.UserID), workflowUserFromContext(ctx))
+		req.ConversationID = firstNonEmptyWorkflowValue(strings.TrimSpace(req.ConversationID), workflowConversationFromContext(ctx))
+		req.TenantID = tenantID
+		return s.launcher.LaunchExecution(ctx, req)
+	}
+	return s.ExecuteWorkflowWithTrigger(ctx, strings.TrimSpace(req.WorkflowID), triggerType, cloneExecutionTriggerData(req.TriggerData))
+}
+
+func cloneExecutionTriggerData(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func firstNonEmptyWorkflowValue(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func checkpointKindFromExecution(execution *Execution) string {

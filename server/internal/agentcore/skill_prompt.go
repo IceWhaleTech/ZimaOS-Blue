@@ -3,15 +3,12 @@ package agentcore
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 )
 
 var skillScriptPathRegexp = regexp.MustCompile(`(?i)(?:^|[\s` + "`" + `\(\[])((?:\./)?scripts/[a-z0-9._/\-]+)`)
@@ -30,21 +27,27 @@ type SkillError struct {
 
 // SkillEntry holds parsed metadata from a SKILL.md file for prompt injection.
 type SkillEntry struct {
-	Name         string
-	Description  string
-	Location     string // absolute path to SKILL.md
-	Enabled      bool
-	OS           []string // platform filter (empty = all platforms)
-	Environment  []string
-	Tags         []string
-	Category     string
-	Setup        string
-	ScriptPaths  []string
-	InstallSteps []string
-	UsageSteps   []string
-	TaskRoutes   []SkillRoute
-	ErrorRules   []SkillError
-	Example      string
+	ID              string
+	Name            string
+	Description     string
+	Location        string // absolute path to SKILL.md
+	Enabled         bool
+	OS              []string // platform filter (empty = all platforms)
+	Environment     []string
+	Tags            []string
+	Category        string
+	Setup           string
+	ScriptPaths     []string
+	InstallSteps    []string
+	UsageSteps      []string
+	TaskRoutes      []SkillRoute
+	ErrorRules      []SkillError
+	Example         string
+	Invocation      string
+	Examples        []string
+	CapabilityTags  []string
+	InteractionMode string
+	CardSupport     string
 }
 
 // ScanSkillsDir scans a skills directory for skill entry documents and returns
@@ -91,50 +94,67 @@ func ScanSkillsDir(skillsDir string) []SkillEntry {
 }
 
 func readSkillEntryFromDir(skillDir string) (SkillEntry, []byte, error) {
-	entryDoc, err := skillbundle.FindEntryDocumentInDir(skillDir)
+	doc, data, err := skillmanifest.ReadDir(skillDir, skillmanifest.Options{})
 	if err != nil {
 		return SkillEntry{}, nil, err
 	}
-	data, err := os.ReadFile(entryDoc.Path)
-	if err != nil {
-		return SkillEntry{}, nil, err
-	}
-	return parseSkillEntry(filepath.Base(skillDir), entryDoc.Path, data), data, nil
+	return skillEntryFromDocument(doc), data, nil
 }
 
 // parseSkillEntry extracts metadata and structured fields from a SKILL.md file.
 func parseSkillEntry(dirName, mdPath string, data []byte) SkillEntry {
-	se := SkillEntry{
-		Name:     dirName,
-		Location: mdPath,
-		Enabled:  true, // default enabled
-	}
-
-	content := string(data)
-	body := strings.TrimSpace(content)
-
-	// Parse YAML frontmatter if present
-	if strings.HasPrefix(content, "---") {
-		parts := strings.SplitN(content, "---", 3)
-		if len(parts) >= 3 {
-			parseFrontmatterFields(parts[1], &se)
-			body = strings.TrimSpace(parts[2])
+	doc, err := skillmanifest.ParseEntry(dirName, mdPath, data, skillmanifest.Options{})
+	if err != nil {
+		return SkillEntry{
+			ID:       dirName,
+			Name:     dirName,
+			Location: mdPath,
+			Enabled:  true,
 		}
 	}
+	return skillEntryFromDocument(doc)
+}
 
-	parseSkillBodyFields(body, &se)
-
-	// Extract description from first paragraph if not in frontmatter
-	if se.Description == "" {
-		se.Description = extractFirstParagraph(body)
+func skillEntryFromDocument(doc skillmanifest.Document) SkillEntry {
+	return SkillEntry{
+		ID:              strings.TrimSpace(doc.ID),
+		Name:            firstNonBlank(doc.ID, doc.Name),
+		Description:     strings.TrimSpace(doc.Description),
+		Location:        doc.Location,
+		Enabled:         doc.Enabled,
+		OS:              append([]string(nil), doc.OS...),
+		Environment:     append([]string(nil), doc.Environment...),
+		Tags:            append([]string(nil), doc.Tags...),
+		Category:        strings.TrimSpace(doc.Category),
+		Setup:           doc.Setup,
+		ScriptPaths:     append([]string(nil), doc.ScriptPaths...),
+		InstallSteps:    append([]string(nil), doc.InstallSteps...),
+		UsageSteps:      append([]string(nil), doc.UsageSteps...),
+		TaskRoutes:      toSkillRoutes(doc.TaskRoutes),
+		ErrorRules:      toSkillErrors(doc.ErrorRules),
+		Example:         firstNonBlank(doc.Example),
+		Invocation:      strings.TrimSpace(doc.Invocation),
+		Examples:        append([]string(nil), doc.Examples...),
+		CapabilityTags:  append([]string(nil), doc.CapabilityTags...),
+		InteractionMode: strings.TrimSpace(doc.InteractionMode),
+		CardSupport:     strings.TrimSpace(doc.CardSupport),
 	}
+}
 
-	// Use directory name as name if frontmatter didn't provide one
-	if se.Name == "" {
-		se.Name = dirName
+func toSkillRoutes(routes []skillmanifest.Route) []SkillRoute {
+	out := make([]SkillRoute, 0, len(routes))
+	for _, route := range routes {
+		out = append(out, SkillRoute{Intent: route.Intent, Action: route.Action})
 	}
+	return out
+}
 
-	return se
+func toSkillErrors(rules []skillmanifest.ErrorRule) []SkillError {
+	out := make([]SkillError, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, SkillError{Error: rule.Error, Resolution: rule.Resolution})
+	}
+	return out
 }
 
 // parseFrontmatterFields extracts relevant fields from YAML frontmatter.
@@ -598,21 +618,14 @@ func parseSkillOSList(value string) []string {
 // skillPlatformMatch returns true if the current OS matches the skill's os list.
 // Empty list means all platforms.
 func skillPlatformMatch(osList []string) bool {
-	if len(osList) == 0 {
-		return true
-	}
-	for _, os := range osList {
-		if os == runtime.GOOS {
-			return true
-		}
-	}
-	return false
+	return skillmanifest.PlatformMatch(osList)
 }
 
 // skillSortPriority returns sort priority for a skill name.
 // Lower = appears first. Core skills (browser, web search) are pinned to the top.
 var skillPriorityMap = map[string]int{
 	"browser":       0,
+	"web_query":     1,
 	"web_search":    1,
 	"web-search":    1,
 	"websearch":     1,
@@ -650,11 +663,12 @@ func FormatSkillsPrompt(skills []SkillEntry) string {
 
 // pinnedSkills lists the skill names that are always shown in the system prompt.
 // Only these get their description injected — everything else the LLM discovers
-// by reading .claude/skills/<name>/SKILL.md on demand.
+// by reading workspace/user skill roots (for example `.agents/skills/<name>/SKILL.md`
+// or `.claude/skills/<name>/SKILL.md`) on demand.
 var pinnedSkills = []string{
 	"ask",
 	"browser",
-	"web_search",
+	"web_query",
 	"deep_research",
 	"analyze",
 	"ui_reviewer",
@@ -672,37 +686,17 @@ func PinnedSkills() []string {
 // FormatPinnedSkills reads only the pinned skills from disk and formats them
 // as compact XML for the system prompt. Returns empty string if none found.
 func FormatPinnedSkills(workspaceDir string) string {
+	roots := resolveSkillRoots(workspaceDir)
 	foundByName := make(map[string]SkillEntry, len(pinnedSkills))
-	for _, root := range resolveSkillRoots(workspaceDir) {
-		for _, name := range pinnedSkills {
-			// First hit wins: workspace skill overrides default ~/.claude/skills.
-			if _, exists := foundByName[name]; exists {
-				continue
-			}
-			se, _, err := readSkillEntryFromDir(filepath.Join(root, name))
-			if err != nil {
-				continue
-			}
-			if !se.Enabled || !skillPlatformMatch(se.OS) {
-				continue
-			}
-			foundByName[name] = se
-		}
-	}
 	for _, name := range pinnedSkills {
 		if _, exists := foundByName[name]; exists {
 			continue
 		}
-		embeddedPath := path.Join("skills", name, "SKILL.md")
-		data, err := embedded.SkillsFS.ReadFile(embeddedPath)
-		if err != nil {
+		resolved, ok, err := skillmanifest.FindByCandidatesStrict(skillmanifest.CandidateIDs(name), roots, workspaceDir, skillmanifest.Options{})
+		if err != nil || !ok {
 			continue
 		}
-		se := parseSkillEntry(name, "embedded:"+embeddedPath, data)
-		if !se.Enabled || !skillPlatformMatch(se.OS) {
-			continue
-		}
-		foundByName[name] = se
+		foundByName[name] = skillEntryFromDocument(resolved.Document)
 	}
 
 	var found []SkillEntry
@@ -736,29 +730,17 @@ func FormatPinnedSkills(workspaceDir string) string {
 // 3) ~/.agents/skills (user default)
 // 4) ~/.claude/skills (user default)
 func resolveSkillRoots(workspaceDir string) []string {
-	var roots []string
-	seen := map[string]struct{}{}
+	return skillmanifest.ResolveRoots(workspaceDir)
+}
 
-	add := func(dir string) {
-		if dir == "" {
-			return
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
 		}
-		if _, ok := seen[dir]; ok {
-			return
-		}
-		seen[dir] = struct{}{}
-		roots = append(roots, dir)
 	}
-
-	if workspaceDir != "" {
-		add(filepath.Join(workspaceDir, ".agents", "skills"))
-		add(filepath.Join(workspaceDir, ".claude", "skills"))
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		add(filepath.Join(home, ".agents", "skills"))
-		add(filepath.Join(home, ".claude", "skills"))
-	}
-	return roots
+	return ""
 }
 
 // xmlEscape escapes special XML characters.

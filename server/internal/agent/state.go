@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -312,14 +313,7 @@ func EvaluateAssertions(state *GroundTruthState, assertions []PlannerAssertion) 
 				failures = append(failures, "ASSERT tool_called(name) missing tool")
 				continue
 			}
-			found := false
-			for _, call := range state.Calls {
-				if normalizeGroundToolName(call.Tool) == tool {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !groundedToolAssertionSatisfied(state, tool) {
 				failures = append(failures, fmt.Sprintf("ASSERT tool_called(%q) failed", tool))
 			}
 		default:
@@ -334,8 +328,14 @@ func BuildGroundStateSummary(state *GroundTruthState) string {
 		return "No grounded state is available yet."
 	}
 	state.ensureMaps()
-	var fileLines []string
-	for path, fact := range state.Files {
+	var filePaths []string
+	for path := range state.Files {
+		filePaths = append(filePaths, path)
+	}
+	sort.Strings(filePaths)
+	fileLines := make([]string, 0, minInt(len(filePaths), 12))
+	for _, path := range filePaths {
+		fact := state.Files[path]
 		status := "missing"
 		if fact.Exists {
 			status = "exists"
@@ -345,13 +345,28 @@ func BuildGroundStateSummary(state *GroundTruthState) string {
 			break
 		}
 	}
-	var commandLines []string
+	commandFacts := make([]GroundedCommandFact, 0, len(state.Commands))
 	for _, command := range state.Commands {
-		commandLines = append(commandLines, fmt.Sprintf("- %s exit_code=%d", command.Command, command.ExitCode))
+		commandFacts = append(commandFacts, command)
+	}
+	sort.Slice(commandFacts, func(i, j int) bool {
+		if commandFacts[i].ObservedAt.Equal(commandFacts[j].ObservedAt) {
+			return commandFacts[i].ToolCallID < commandFacts[j].ToolCallID
+		}
+		return commandFacts[i].ObservedAt.Before(commandFacts[j].ObservedAt)
+	})
+	commandLines := make([]string, 0, minInt(len(commandFacts), 6))
+	for _, command := range commandFacts {
+		commandText := strings.TrimSpace(command.Command)
+		if commandText == "" {
+			commandText = strings.TrimSpace(command.Tool)
+		}
+		commandLines = append(commandLines, fmt.Sprintf("- %s exit_code=%d", commandText, command.ExitCode))
 		if len(commandLines) >= 6 {
 			break
 		}
 	}
+	resultLines := groundedResultSummaryLines(state)
 	var sb strings.Builder
 	if len(fileLines) == 0 {
 		sb.WriteString("Files:\n- none\n")
@@ -361,12 +376,153 @@ func BuildGroundStateSummary(state *GroundTruthState) string {
 		sb.WriteByte('\n')
 	}
 	if len(commandLines) == 0 {
-		sb.WriteString("Commands:\n- none")
+		sb.WriteString("Commands:\n- none\n")
 	} else {
 		sb.WriteString("Commands:\n")
 		sb.WriteString(strings.Join(commandLines, "\n"))
+		sb.WriteByte('\n')
+	}
+	if len(resultLines) == 0 {
+		sb.WriteString("Tool results:\n- none")
+	} else {
+		sb.WriteString("Tool results:\n")
+		sb.WriteString(strings.Join(resultLines, "\n"))
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+func groundedResultSummaryLines(state *GroundTruthState) []string {
+	if state == nil {
+		return nil
+	}
+	type resultEntry struct {
+		call   GroundedToolCall
+		result GroundedToolResult
+	}
+	entries := make([]resultEntry, 0, len(state.Results))
+	for toolCallID, result := range state.Results {
+		call := state.Calls[toolCallID]
+		entries = append(entries, resultEntry{call: call, result: result})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		left := entries[i].result.FinishedAt
+		right := entries[j].result.FinishedAt
+		if left.Equal(right) {
+			return entries[i].result.ToolCallID < entries[j].result.ToolCallID
+		}
+		if left.IsZero() {
+			return true
+		}
+		if right.IsZero() {
+			return false
+		}
+		return left.Before(right)
+	})
+	lines := make([]string, 0, minInt(len(entries), 6))
+	for _, entry := range entries {
+		lines = append(lines, groundedResultSummaryLine(entry.call, entry.result))
+		if len(lines) >= 6 {
+			break
+		}
+	}
+	return lines
+}
+
+func groundedResultSummaryLine(call GroundedToolCall, result GroundedToolResult) string {
+	toolName := firstNonEmptyString(strings.TrimSpace(call.Tool), strings.TrimSpace(result.Tool), "unknown_tool")
+	status := "ok"
+	if !result.OK || result.ExitCode != 0 {
+		status = fmt.Sprintf("exit=%d", result.ExitCode)
+	}
+	parts := []string{
+		"- id=" + firstNonEmptyString(strings.TrimSpace(result.ToolCallID), strings.TrimSpace(call.ToolCallID), "unknown_call"),
+		toolName,
+		status,
+	}
+	if value := strings.TrimSpace(asString(extractField(result.Result, "status"))); value != "" {
+		parts = append(parts, "status="+groundedCompactSummaryValue(value, 48))
+	}
+	if value := strings.TrimSpace(asString(extractField(result.Result, "mode"))); value != "" {
+		parts = append(parts, "mode="+groundedCompactSummaryValue(value, 32))
+	}
+	if value := groundedResultTitle(result.Result); value != "" {
+		parts = append(parts, fmt.Sprintf("title=%q", groundedCompactSummaryValue(value, 96)))
+	}
+	if value := groundedResultURL(result.Result); value != "" {
+		parts = append(parts, "url="+groundedCompactSummaryValue(value, 180))
+	}
+	if value := groundedResultSnippet(result); value != "" {
+		parts = append(parts, fmt.Sprintf("excerpt=%q", value))
+	}
+	if !result.OK && strings.TrimSpace(result.Stderr) != "" {
+		parts = append(parts, fmt.Sprintf("error=%q", groundedCompactSummaryValue(result.Stderr, 96)))
+	}
+	return strings.Join(parts, " ")
+}
+
+func groundedResultTitle(value any) string {
+	for _, payload := range deterministicStructuredPayloads(value) {
+		if title := firstNonEmptyString(
+			strings.TrimSpace(asString(extractField(payload, "title"))),
+			strings.TrimSpace(asString(extractField(payload, "page_title"))),
+		); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func groundedResultURL(value any) string {
+	for _, payload := range deterministicStructuredPayloads(value) {
+		if url := firstNonEmptyString(
+			strings.TrimSpace(asString(extractField(payload, "final_url"))),
+			strings.TrimSpace(asString(extractField(payload, "target_url"))),
+			strings.TrimSpace(asString(extractField(payload, "url"))),
+			strings.TrimSpace(asString(extractField(payload, "input"))),
+		); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
+func groundedResultSnippet(result GroundedToolResult) string {
+	for _, payload := range deterministicStructuredPayloads(result.Result) {
+		for _, candidate := range []string{
+			strings.TrimSpace(asString(extractField(payload, "summary"))),
+			strings.TrimSpace(asString(extractField(payload, "message"))),
+			strings.TrimSpace(asString(extractField(payload, "stdout"))),
+			strings.TrimSpace(asString(extractField(payload, "content"))),
+			strings.TrimSpace(asString(extractField(payload, "result"))),
+		} {
+			if candidate == "" {
+				continue
+			}
+			return groundedCompactSummaryValue(candidate, 96)
+		}
+	}
+	if candidate := strings.TrimSpace(result.Stderr); candidate != "" {
+		return groundedCompactSummaryValue(candidate, 96)
+	}
+	return ""
+}
+
+func groundedCompactSummaryValue(value string, limit int) string {
+	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if value == "" {
+		return ""
+	}
+	if limit > 0 && len(value) > limit {
+		return value[:limit]
+	}
+	return value
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func hashAny(value any) string {
@@ -398,6 +554,55 @@ func normalizeGroundToolName(name string) string {
 		return "bash"
 	default:
 		return strings.TrimSpace(strings.ToLower(name))
+	}
+}
+
+func groundedToolAssertionSatisfied(state *GroundTruthState, expected string) bool {
+	if state == nil {
+		return false
+	}
+	for _, call := range state.Calls {
+		if groundedToolNamesEquivalent(call.Tool, expected) {
+			return true
+		}
+	}
+	for _, command := range state.Commands {
+		if groundedCommandMatchesToolAssertion(command, expected) {
+			return true
+		}
+	}
+	return false
+}
+
+func groundedCommandMatchesToolAssertion(command GroundedCommandFact, expected string) bool {
+	if normalizeGroundToolName(command.Tool) != "bash" {
+		return false
+	}
+	skillToken := groundedCLICommandSkillToken(command.Command)
+	if skillToken == "" {
+		return false
+	}
+	return groundedToolNamesEquivalent(skillToken, expected)
+}
+
+func groundedToolNamesEquivalent(actual, expected string) bool {
+	actual = normalizeGroundToolName(actual)
+	expected = normalizeGroundToolName(expected)
+	if actual == "" || expected == "" {
+		return false
+	}
+	if actual == expected {
+		return true
+	}
+	return isGroundedWebToolFamily(actual) && isGroundedWebToolFamily(expected)
+}
+
+func isGroundedWebToolFamily(name string) bool {
+	switch normalizeGroundToolName(name) {
+	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -8,25 +8,32 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // SQLiteStore implements MetricsStore using SQLite for persistence.
 type SQLiteStore struct {
 	db     *sql.DB
+	readDB *sql.DB
 	dbPath string
 	ownsDB bool
 	mu     sync.RWMutex
 }
 
-func newStoreWithDB(db *sql.DB, dbPath string, ownsDB bool) (*SQLiteStore, error) {
+func newStoreWithReadDB(writeDB, readDB *sql.DB, dbPath string, ownsDB bool) (*SQLiteStore, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
 	store := &SQLiteStore{
-		db:     db,
+		db:     writeDB,
+		readDB: readDB,
 		dbPath: dbPath,
 		ownsDB: ownsDB,
 	}
@@ -36,7 +43,7 @@ func newStoreWithDB(db *sql.DB, dbPath string, ownsDB bool) (*SQLiteStore, error
 	}
 
 	// Release unused memory after schema init
-	db.Exec("PRAGMA shrink_memory")
+	writeDB.Exec("PRAGMA shrink_memory")
 	return store, nil
 }
 
@@ -74,26 +81,284 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 			}
 		}
 		db.Exec("PRAGMA cache_size=-500") // ~512KB page cache for lower idle memory
-
-		store := &SQLiteStore{db: db}
-		if err := store.initSchema(); err != nil {
-			return fmt.Errorf("failed to initialize schema: %w", err)
-		}
-		db.Exec("PRAGMA shrink_memory")
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open metrics database: %w", err)
 	}
-	return &SQLiteStore{db: db, dbPath: dbPath, ownsDB: true}, nil
+
+	readDB, readErr := openMetricsReaderDB(dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+
+	store, err := newStoreWithReadDB(db, readDB, dbPath, true)
+	if err != nil {
+		if readDB != nil && readDB != db {
+			_ = readDB.Close()
+		}
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
 }
 
 // NewSQLiteStoreWithDB reuses an existing SQLite database for metrics persistence.
 func NewSQLiteStoreWithDB(db *sql.DB) (*SQLiteStore, error) {
-	if db == nil {
+	return NewSQLiteStoreWithReadDB(db, db)
+}
+
+// NewSQLiteStoreWithReadDB reuses existing SQLite write/read handles for
+// metrics persistence.
+func NewSQLiteStoreWithReadDB(writeDB, readDB *sql.DB) (*SQLiteStore, error) {
+	if writeDB == nil {
 		return nil, fmt.Errorf("metrics db is nil")
 	}
-	return newStoreWithDB(db, "", false)
+	return newStoreWithReadDB(writeDB, readDB, "", false)
+}
+
+func (s *SQLiteStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *SQLiteStore) table(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, s.db, name)
+}
+
+func (s *SQLiteStore) readTable(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), name)
+}
+
+func openMetricsReaderDB(dbPath string) (*sql.DB, error) {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("set metrics reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+type metricsPointRow struct {
+	Measurement string `json:"measurement" zorm:"measurement"`
+	Tags        string `json:"tags" zorm:"tags"`
+	Fields      string `json:"fields" zorm:"fields"`
+	Timestamp   string `json:"timestamp" zorm:"timestamp"`
+}
+
+type modelMetricRow struct {
+	Model            string    `json:"model" zorm:"model"`
+	Calls            int64     `json:"calls" zorm:"calls"`
+	SuccessfulCalls  int64     `json:"successful_calls" zorm:"successful_calls"`
+	FailedCalls      int64     `json:"failed_calls" zorm:"failed_calls"`
+	InputTokens      int64     `json:"input_tokens" zorm:"input_tokens"`
+	OutputTokens     int64     `json:"output_tokens" zorm:"output_tokens"`
+	TotalTokens      int64     `json:"total_tokens" zorm:"total_tokens"`
+	CacheReadTokens  int64     `json:"cache_read_tokens" zorm:"cache_read_tokens"`
+	CacheWriteTokens int64     `json:"cache_write_tokens" zorm:"cache_write_tokens"`
+	EstimatedCost    float64   `json:"estimated_cost" zorm:"estimated_cost"`
+	TotalLatencyMS   float64   `json:"total_latency_ms" zorm:"total_latency_ms"`
+	LatencyCount     int64     `json:"latency_count" zorm:"latency_count"`
+	UpdatedAt        time.Time `json:"updated_at" zorm:"updated_at"`
+}
+
+type tokenUsageRow struct {
+	ID               int64     `json:"id" zorm:"id"`
+	InputTokens      int64     `json:"input_tokens" zorm:"input_tokens"`
+	OutputTokens     int64     `json:"output_tokens" zorm:"output_tokens"`
+	TotalTokens      int64     `json:"total_tokens" zorm:"total_tokens"`
+	CacheReadTokens  int64     `json:"cache_read_tokens" zorm:"cache_read_tokens"`
+	CacheWriteTokens int64     `json:"cache_write_tokens" zorm:"cache_write_tokens"`
+	EstimatedCost    float64   `json:"estimated_cost" zorm:"estimated_cost"`
+	UpdatedAt        time.Time `json:"updated_at" zorm:"updated_at"`
+}
+
+type modelTokenUsageRow struct {
+	Model            string    `json:"model" zorm:"model"`
+	InputTokens      int64     `json:"input_tokens" zorm:"input_tokens"`
+	OutputTokens     int64     `json:"output_tokens" zorm:"output_tokens"`
+	TotalTokens      int64     `json:"total_tokens" zorm:"total_tokens"`
+	CacheReadTokens  int64     `json:"cache_read_tokens" zorm:"cache_read_tokens"`
+	CacheWriteTokens int64     `json:"cache_write_tokens" zorm:"cache_write_tokens"`
+	EstimatedCost    float64   `json:"estimated_cost" zorm:"estimated_cost"`
+	UpdatedAt        time.Time `json:"updated_at" zorm:"updated_at"`
+}
+
+type latencySampleRow struct {
+	Model       string    `json:"model" zorm:"model"`
+	SampleType  string    `json:"sample_type" zorm:"sample_type"`
+	Samples     string    `json:"samples" zorm:"samples"`
+	TotalValue  float64   `json:"total_value" zorm:"total_value"`
+	MinValue    float64   `json:"min_value" zorm:"min_value"`
+	MaxValue    float64   `json:"max_value" zorm:"max_value"`
+	SampleCount int64     `json:"sample_count" zorm:"sample_count"`
+	UpdatedAt   time.Time `json:"updated_at" zorm:"updated_at"`
+}
+
+func pointToMetricsPointRow(point *Point) (metricsPointRow, error) {
+	tagsJSON, err := json.Marshal(point.Tags)
+	if err != nil {
+		return metricsPointRow{}, err
+	}
+	fieldsJSON, err := json.Marshal(point.Fields)
+	if err != nil {
+		return metricsPointRow{}, err
+	}
+	return metricsPointRow{
+		Measurement: point.Measurement,
+		Tags:        string(tagsJSON),
+		Fields:      string(fieldsJSON),
+		Timestamp:   point.Timestamp.UTC().Format(time.RFC3339Nano),
+	}, nil
+}
+
+func parseMetricsTime(raw string) time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err == nil {
+		return parsed
+	}
+	parsed, err = time.Parse(time.RFC3339, raw)
+	if err == nil {
+		return parsed
+	}
+	parsed, err = time.Parse("2006-01-02 15:04:05", raw)
+	if err == nil {
+		return parsed
+	}
+	parsed, _ = time.Parse("2006-01-02 15:04:05.999999999-07:00", raw)
+	return parsed
+}
+
+func modelStatsToRows(stats []ModelStats) []modelMetricRow {
+	now := timeutil.NowTime().UTC()
+	rows := make([]modelMetricRow, 0, len(stats))
+	for _, stat := range stats {
+		latencyCount := int64(1)
+		if stat.AvgLatency > 0 {
+			latencyCount = stat.Calls
+		}
+		rows = append(rows, modelMetricRow{
+			Model:            stat.Model,
+			Calls:            stat.Calls,
+			SuccessfulCalls:  stat.SuccessfulCalls,
+			FailedCalls:      stat.FailedCalls,
+			InputTokens:      stat.InputTokens,
+			OutputTokens:     stat.OutputTokens,
+			TotalTokens:      stat.TotalTokens,
+			CacheReadTokens:  stat.CacheReadTokens,
+			CacheWriteTokens: stat.CacheWriteTokens,
+			EstimatedCost:    stat.EstimatedCost,
+			TotalLatencyMS:   stat.AvgLatency * float64(latencyCount),
+			LatencyCount:     latencyCount,
+			UpdatedAt:        now,
+		})
+	}
+	return rows
+}
+
+func rowToModelStats(row modelMetricRow) ModelStats {
+	stat := ModelStats{
+		Model:            row.Model,
+		Calls:            row.Calls,
+		SuccessfulCalls:  row.SuccessfulCalls,
+		FailedCalls:      row.FailedCalls,
+		InputTokens:      row.InputTokens,
+		OutputTokens:     row.OutputTokens,
+		TotalTokens:      row.TotalTokens,
+		CacheReadTokens:  row.CacheReadTokens,
+		CacheWriteTokens: row.CacheWriteTokens,
+		EstimatedCost:    row.EstimatedCost,
+	}
+	if row.LatencyCount > 0 {
+		stat.AvgLatency = row.TotalLatencyMS / float64(row.LatencyCount)
+	}
+	if stat.Calls > 0 {
+		stat.SuccessRate = float64(stat.SuccessfulCalls) / float64(stat.Calls) * 100
+	}
+	return stat
+}
+
+func modelTokenUsageToRows(usages []ModelTokenUsage) []modelTokenUsageRow {
+	now := timeutil.NowTime().UTC()
+	rows := make([]modelTokenUsageRow, 0, len(usages))
+	for _, usage := range usages {
+		rows = append(rows, modelTokenUsageRow{
+			Model:            usage.Model,
+			InputTokens:      usage.InputTokens,
+			OutputTokens:     usage.OutputTokens,
+			TotalTokens:      usage.TotalTokens,
+			CacheReadTokens:  usage.CacheReadTokens,
+			CacheWriteTokens: usage.CacheWriteTokens,
+			EstimatedCost:    usage.EstimatedCost,
+			UpdatedAt:        now,
+		})
+	}
+	return rows
+}
+
+func rowToModelTokenUsage(row modelTokenUsageRow) ModelTokenUsage {
+	return ModelTokenUsage{
+		Model:            row.Model,
+		InputTokens:      row.InputTokens,
+		OutputTokens:     row.OutputTokens,
+		TotalTokens:      row.TotalTokens,
+		CacheReadTokens:  row.CacheReadTokens,
+		CacheWriteTokens: row.CacheWriteTokens,
+		EstimatedCost:    row.EstimatedCost,
+	}
+}
+
+func latencySamplesToRows(samples []LatencySampleData) ([]latencySampleRow, error) {
+	now := timeutil.NowTime().UTC()
+	rows := make([]latencySampleRow, 0, len(samples))
+	for _, sample := range samples {
+		samplesJSON, err := json.Marshal(sample.Samples)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, latencySampleRow{
+			Model:       sample.Model,
+			SampleType:  sample.SampleType,
+			Samples:     string(samplesJSON),
+			TotalValue:  sample.TotalValue,
+			MinValue:    sample.MinValue,
+			MaxValue:    sample.MaxValue,
+			SampleCount: sample.SampleCount,
+			UpdatedAt:   now,
+		})
+	}
+	return rows, nil
+}
+
+func rowToLatencySample(row latencySampleRow) (LatencySampleData, error) {
+	sample := LatencySampleData{
+		Model:       row.Model,
+		SampleType:  row.SampleType,
+		TotalValue:  row.TotalValue,
+		MinValue:    row.MinValue,
+		MaxValue:    row.MaxValue,
+		SampleCount: row.SampleCount,
+	}
+	if err := json.Unmarshal([]byte(row.Samples), &sample.Samples); err != nil {
+		return LatencySampleData{}, err
+	}
+	return sample, nil
 }
 
 // initSchema creates the necessary tables.
@@ -179,21 +444,11 @@ func (s *SQLiteStore) Write(ctx context.Context, point *Point) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tagsJSON, err := json.Marshal(point.Tags)
+	row, err := pointToMetricsPointRow(point)
 	if err != nil {
 		return err
 	}
-
-	fieldsJSON, err := json.Marshal(point.Fields)
-	if err != nil {
-		return err
-	}
-
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO metrics_points (measurement, tags, fields, timestamp) VALUES (?, ?, ?, ?)`,
-		point.Measurement, string(tagsJSON), string(fieldsJSON), point.Timestamp,
-	)
-
+	_, err = s.table(ctx, "metrics_points").Insert(row)
 	return err
 }
 
@@ -201,38 +456,27 @@ func (s *SQLiteStore) Write(ctx context.Context, point *Point) error {
 func (s *SQLiteStore) WriteBatch(ctx context.Context, points []*Point) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(points) == 0 {
+		return nil
+	}
+
+	rows := make([]metricsPointRow, 0, len(points))
+	for _, point := range points {
+		row, err := pointToMetricsPointRow(point)
+		if err != nil {
+			return err
+		}
+		rows = append(rows, row)
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-
-	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO metrics_points (measurement, tags, fields, timestamp) VALUES (?, ?, ?, ?)`,
-	)
-	if err != nil {
+	if _, err := z.TableContext(ctx, tx, "metrics_points").Insert(&rows); err != nil {
 		return err
 	}
-	defer stmt.Close()
-
-	for _, point := range points {
-		tagsJSON, err := json.Marshal(point.Tags)
-		if err != nil {
-			return err
-		}
-
-		fieldsJSON, err := json.Marshal(point.Fields)
-		if err != nil {
-			return err
-		}
-
-		_, err = stmt.ExecContext(ctx, point.Measurement, string(tagsJSON), string(fieldsJSON), point.Timestamp)
-		if err != nil {
-			return err
-		}
-	}
-
 	return tx.Commit()
 }
 
@@ -247,16 +491,17 @@ func (s *SQLiteStore) QueryRange(ctx context.Context, measurement string, start,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT tags, fields, timestamp FROM metrics_points
-		 WHERE measurement = ? AND timestamp BETWEEN ? AND ?
-		 ORDER BY timestamp DESC`,
-		measurement, start, end,
-	)
-	if err != nil {
+	var rows []metricsPointRow
+	if _, err := s.readTable(ctx, "metrics_points").Select(&rows,
+		z.Fields("measurement", "tags", "fields", "timestamp"),
+		z.Where(
+			z.Eq("measurement", measurement),
+			z.Between("timestamp", start.UTC().Format(time.RFC3339Nano), end.UTC().Format(time.RFC3339Nano)),
+		),
+		z.OrderBy("timestamp DESC"),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	result := &QueryResult{
 		Series: []Series{{
@@ -266,13 +511,12 @@ func (s *SQLiteStore) QueryRange(ctx context.Context, measurement string, start,
 		}},
 	}
 
-	for rows.Next() {
-		var tagsJSON, fieldsJSON string
-		var timestamp time.Time
-		if err := rows.Scan(&tagsJSON, &fieldsJSON, &timestamp); err != nil {
-			return nil, err
-		}
-		result.Series[0].Values = append(result.Series[0].Values, []interface{}{timestamp, tagsJSON, fieldsJSON})
+	for i := range rows {
+		result.Series[0].Values = append(result.Series[0].Values, []interface{}{
+			parseMetricsTime(rows[i].Timestamp),
+			rows[i].Tags,
+			rows[i].Fields,
+		})
 	}
 
 	return result, nil
@@ -282,51 +526,37 @@ func (s *SQLiteStore) QueryRange(ctx context.Context, measurement string, start,
 func (s *SQLiteStore) SaveModelMetrics(ctx context.Context, stats []ModelStats) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(stats) == 0 {
+		return nil
+	}
+
+	rows := modelStatsToRows(stats)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO model_metrics (model, calls, successful_calls, failed_calls,
-			input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens,
-			estimated_cost, total_latency_ms, latency_count, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(model) DO UPDATE SET
-			calls = excluded.calls,
-			successful_calls = excluded.successful_calls,
-			failed_calls = excluded.failed_calls,
-			input_tokens = excluded.input_tokens,
-			output_tokens = excluded.output_tokens,
-			total_tokens = excluded.total_tokens,
-			cache_read_tokens = excluded.cache_read_tokens,
-			cache_write_tokens = excluded.cache_write_tokens,
-			estimated_cost = excluded.estimated_cost,
-			total_latency_ms = excluded.total_latency_ms,
-			latency_count = excluded.latency_count,
-			updated_at = CURRENT_TIMESTAMP
-	`)
-	if err != nil {
+	if _, err := z.TableContext(ctx, tx, "model_metrics").Insert(&rows,
+		z.OnConflictDoUpdateSet(
+			[]string{"model"},
+			[]string{
+				"calls",
+				"successful_calls",
+				"failed_calls",
+				"input_tokens",
+				"output_tokens",
+				"total_tokens",
+				"cache_read_tokens",
+				"cache_write_tokens",
+				"estimated_cost",
+				"total_latency_ms",
+				"latency_count",
+				"updated_at",
+			},
+		),
+	); err != nil {
 		return err
-	}
-	defer stmt.Close()
-
-	for _, stat := range stats {
-		latencyCount := int64(1)
-		if stat.AvgLatency > 0 {
-			latencyCount = stat.Calls
-		}
-		_, err = stmt.ExecContext(ctx,
-			stat.Model, stat.Calls, stat.SuccessfulCalls, stat.FailedCalls,
-			stat.InputTokens, stat.OutputTokens, stat.TotalTokens,
-			stat.CacheReadTokens, stat.CacheWriteTokens,
-			stat.EstimatedCost, stat.AvgLatency*float64(latencyCount), latencyCount,
-		)
-		if err != nil {
-			return err
-		}
 	}
 
 	return tx.Commit()
@@ -337,40 +567,29 @@ func (s *SQLiteStore) LoadModelMetrics(ctx context.Context) ([]ModelStats, error
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT model, calls, successful_calls, failed_calls,
-			input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens,
-			estimated_cost, total_latency_ms, latency_count
-		FROM model_metrics
-	`)
-	if err != nil {
+	var rows []modelMetricRow
+	if _, err := s.readTable(ctx, "model_metrics").Select(&rows,
+		z.Fields(
+			"model",
+			"calls",
+			"successful_calls",
+			"failed_calls",
+			"input_tokens",
+			"output_tokens",
+			"total_tokens",
+			"cache_read_tokens",
+			"cache_write_tokens",
+			"estimated_cost",
+			"total_latency_ms",
+			"latency_count",
+		),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var stats []ModelStats
-	for rows.Next() {
-		var stat ModelStats
-		var totalLatency float64
-		var latencyCount int64
-		err := rows.Scan(
-			&stat.Model, &stat.Calls, &stat.SuccessfulCalls, &stat.FailedCalls,
-			&stat.InputTokens, &stat.OutputTokens, &stat.TotalTokens,
-			&stat.CacheReadTokens, &stat.CacheWriteTokens,
-			&stat.EstimatedCost, &totalLatency, &latencyCount,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if latencyCount > 0 {
-			stat.AvgLatency = totalLatency / float64(latencyCount)
-		}
-		if stat.Calls > 0 {
-			stat.SuccessRate = float64(stat.SuccessfulCalls) / float64(stat.Calls) * 100
-		}
-
-		stats = append(stats, stat)
+	stats := make([]ModelStats, 0, len(rows))
+	for i := range rows {
+		stats = append(stats, rowToModelStats(rows[i]))
 	}
 
 	return stats, nil
@@ -381,19 +600,27 @@ func (s *SQLiteStore) SaveTokenUsage(ctx context.Context, usage *TokenUsage) err
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE token_usage SET
-			input_tokens = ?,
-			output_tokens = ?,
-			total_tokens = ?,
-			cache_read_tokens = ?,
-			cache_write_tokens = ?,
-			estimated_cost = ?,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = 1
-	`, usage.InputTokens, usage.OutputTokens, usage.TotalTokens,
-		usage.CacheReadTokens, usage.CacheWriteTokens, usage.EstimatedCost)
-
+	_, err := s.table(ctx, "token_usage").Update(
+		z.V{
+			"input_tokens":       usage.InputTokens,
+			"output_tokens":      usage.OutputTokens,
+			"total_tokens":       usage.TotalTokens,
+			"cache_read_tokens":  usage.CacheReadTokens,
+			"cache_write_tokens": usage.CacheWriteTokens,
+			"estimated_cost":     usage.EstimatedCost,
+			"updated_at":         timeutil.NowTime().UTC(),
+		},
+		z.Fields(
+			"input_tokens",
+			"output_tokens",
+			"total_tokens",
+			"cache_read_tokens",
+			"cache_write_tokens",
+			"estimated_cost",
+			"updated_at",
+		),
+		z.Where(z.Eq("id", 1)),
+	)
 	return err
 }
 
@@ -402,62 +629,56 @@ func (s *SQLiteStore) LoadTokenUsage(ctx context.Context) (*TokenUsage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var usage TokenUsage
-	err := s.db.QueryRowContext(ctx, `
-		SELECT input_tokens, output_tokens, total_tokens,
-			cache_read_tokens, cache_write_tokens, estimated_cost
-		FROM token_usage WHERE id = 1
-	`).Scan(&usage.InputTokens, &usage.OutputTokens, &usage.TotalTokens,
-		&usage.CacheReadTokens, &usage.CacheWriteTokens, &usage.EstimatedCost)
-
-	if err == sql.ErrNoRows {
-		return &TokenUsage{}, nil
-	}
-	if err != nil {
+	var rows []tokenUsageRow
+	if _, err := s.readTable(ctx, "token_usage").Select(&rows,
+		z.Where(z.Eq("id", 1)),
+		z.Limit(1),
+	); err != nil {
 		return nil, err
 	}
-
-	return &usage, nil
+	if len(rows) == 0 {
+		return &TokenUsage{}, nil
+	}
+	return &TokenUsage{
+		InputTokens:      rows[0].InputTokens,
+		OutputTokens:     rows[0].OutputTokens,
+		TotalTokens:      rows[0].TotalTokens,
+		CacheReadTokens:  rows[0].CacheReadTokens,
+		CacheWriteTokens: rows[0].CacheWriteTokens,
+		EstimatedCost:    rows[0].EstimatedCost,
+	}, nil
 }
 
 // SaveModelTokenUsage saves token usage for all models.
 func (s *SQLiteStore) SaveModelTokenUsage(ctx context.Context, usages []ModelTokenUsage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(usages) == 0 {
+		return nil
+	}
+
+	rows := modelTokenUsageToRows(usages)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-
-	// Use model_metrics table for token usage as well
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO model_metrics (model, input_tokens, output_tokens, total_tokens,
-			cache_read_tokens, cache_write_tokens, estimated_cost, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(model) DO UPDATE SET
-			input_tokens = excluded.input_tokens,
-			output_tokens = excluded.output_tokens,
-			total_tokens = excluded.total_tokens,
-			cache_read_tokens = excluded.cache_read_tokens,
-			cache_write_tokens = excluded.cache_write_tokens,
-			estimated_cost = excluded.estimated_cost,
-			updated_at = CURRENT_TIMESTAMP
-	`)
-	if err != nil {
+	if _, err := z.TableContext(ctx, tx, "model_metrics").Insert(&rows,
+		z.OnConflictDoUpdateSet(
+			[]string{"model"},
+			[]string{
+				"input_tokens",
+				"output_tokens",
+				"total_tokens",
+				"cache_read_tokens",
+				"cache_write_tokens",
+				"estimated_cost",
+				"updated_at",
+			},
+		),
+	); err != nil {
 		return err
-	}
-	defer stmt.Close()
-
-	for _, usage := range usages {
-		_, err = stmt.ExecContext(ctx,
-			usage.Model, usage.InputTokens, usage.OutputTokens, usage.TotalTokens,
-			usage.CacheReadTokens, usage.CacheWriteTokens, usage.EstimatedCost,
-		)
-		if err != nil {
-			return err
-		}
 	}
 
 	return tx.Commit()
@@ -468,27 +689,24 @@ func (s *SQLiteStore) LoadModelTokenUsage(ctx context.Context) ([]ModelTokenUsag
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT model, input_tokens, output_tokens, total_tokens,
-			cache_read_tokens, cache_write_tokens, estimated_cost
-		FROM model_metrics
-	`)
-	if err != nil {
+	var rows []modelTokenUsageRow
+	if _, err := s.readTable(ctx, "model_metrics").Select(&rows,
+		z.Fields(
+			"model",
+			"input_tokens",
+			"output_tokens",
+			"total_tokens",
+			"cache_read_tokens",
+			"cache_write_tokens",
+			"estimated_cost",
+		),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var usages []ModelTokenUsage
-	for rows.Next() {
-		var usage ModelTokenUsage
-		err := rows.Scan(
-			&usage.Model, &usage.InputTokens, &usage.OutputTokens, &usage.TotalTokens,
-			&usage.CacheReadTokens, &usage.CacheWriteTokens, &usage.EstimatedCost,
-		)
-		if err != nil {
-			return nil, err
-		}
-		usages = append(usages, usage)
+	usages := make([]ModelTokenUsage, 0, len(rows))
+	for i := range rows {
+		usages = append(usages, rowToModelTokenUsage(rows[i]))
 	}
 
 	return usages, nil
@@ -509,42 +727,34 @@ type LatencySampleData struct {
 func (s *SQLiteStore) SaveLatencySamples(ctx context.Context, samples []LatencySampleData) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(samples) == 0 {
+		return nil
+	}
+
+	rows, err := latencySamplesToRows(samples)
+	if err != nil {
+		return err
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO latency_samples (model, sample_type, samples, total_value, min_value, max_value, sample_count, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(model, sample_type) DO UPDATE SET
-			samples = excluded.samples,
-			total_value = excluded.total_value,
-			min_value = excluded.min_value,
-			max_value = excluded.max_value,
-			sample_count = excluded.sample_count,
-			updated_at = CURRENT_TIMESTAMP
-	`)
-	if err != nil {
+	if _, err := z.TableContext(ctx, tx, "latency_samples").Insert(&rows,
+		z.OnConflictDoUpdateSet(
+			[]string{"model", "sample_type"},
+			[]string{
+				"samples",
+				"total_value",
+				"min_value",
+				"max_value",
+				"sample_count",
+				"updated_at",
+			},
+		),
+	); err != nil {
 		return err
-	}
-	defer stmt.Close()
-
-	for _, sample := range samples {
-		samplesJSON, err := json.Marshal(sample.Samples)
-		if err != nil {
-			return err
-		}
-
-		_, err = stmt.ExecContext(ctx,
-			sample.Model, sample.SampleType, string(samplesJSON),
-			sample.TotalValue, sample.MinValue, sample.MaxValue, sample.SampleCount,
-		)
-		if err != nil {
-			return err
-		}
 	}
 
 	return tx.Commit()
@@ -555,31 +765,27 @@ func (s *SQLiteStore) LoadLatencySamples(ctx context.Context) ([]LatencySampleDa
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT model, sample_type, samples, total_value, min_value, max_value, sample_count
-		FROM latency_samples
-	`)
-	if err != nil {
+	var rows []latencySampleRow
+	if _, err := s.readTable(ctx, "latency_samples").Select(&rows,
+		z.Fields(
+			"model",
+			"sample_type",
+			"samples",
+			"total_value",
+			"min_value",
+			"max_value",
+			"sample_count",
+		),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var samples []LatencySampleData
-	for rows.Next() {
-		var sample LatencySampleData
-		var samplesJSON string
-		err := rows.Scan(
-			&sample.Model, &sample.SampleType, &samplesJSON,
-			&sample.TotalValue, &sample.MinValue, &sample.MaxValue, &sample.SampleCount,
-		)
+	samples := make([]LatencySampleData, 0, len(rows))
+	for i := range rows {
+		sample, err := rowToLatencySample(rows[i])
 		if err != nil {
 			return nil, err
 		}
-
-		if err := json.Unmarshal([]byte(samplesJSON), &sample.Samples); err != nil {
-			return nil, err
-		}
-
 		samples = append(samples, sample)
 	}
 
@@ -592,9 +798,8 @@ func (s *SQLiteStore) Cleanup(ctx context.Context, retention time.Duration) erro
 	defer s.mu.Unlock()
 
 	cutoff := timeutil.NowTime().Add(-retention)
-	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM metrics_points WHERE timestamp < ?`,
-		cutoff,
+	_, err := s.table(ctx, "metrics_points").Delete(
+		z.Where(z.Lt("timestamp", cutoff.UTC().Format(time.RFC3339Nano))),
 	)
 	return err
 }
@@ -603,6 +808,9 @@ func (s *SQLiteStore) Cleanup(ctx context.Context, retention time.Duration) erro
 func (s *SQLiteStore) Close() error {
 	if s == nil || s.db == nil || !s.ownsDB {
 		return nil
+	}
+	if s.readDB != nil && s.readDB != s.db {
+		_ = s.readDB.Close()
 	}
 	return s.db.Close()
 }

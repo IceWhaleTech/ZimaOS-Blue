@@ -116,6 +116,32 @@ func scoreRunByRule(group *RunGroup, item *RunGroupItem, run *Run, threshold flo
 	if expectedStatus := firstMapString(item.Expected, "status"); expectedStatus != "" {
 		addCheck("status", expectedStatus, string(run.Status), strings.EqualFold(string(run.Status), expectedStatus))
 	}
+	structuredResult := structuredRunResult(run)
+	for _, key := range []string{
+		"canonical_skill_id",
+		"skill_route_outcome",
+		"decision_stage",
+		"decision_reason",
+		"clarify_reason",
+		"fallback_reason",
+		"skill_prompt_hint",
+	} {
+		if expected, ok := item.Expected[key]; ok {
+			actual := ""
+			if structuredResult != nil {
+				actual = strings.TrimSpace(fmt.Sprint(structuredResult[key]))
+			}
+			addCheck(key, strings.TrimSpace(fmt.Sprint(expected)), actual, normalizeText(actual) == normalizeText(fmt.Sprint(expected)))
+		}
+	}
+	if expected, ok := item.Expected["skill_need_clarify"]; ok {
+		expectedBool, expectedOK := expected.(bool)
+		actualBool, actualOK := mapBool(structuredResult, "skill_need_clarify")
+		addCheck("skill_need_clarify", expected, actualBool, expectedOK && actualOK && expectedBool == actualBool)
+	}
+	if expected := expectedStrings(item.Expected, "selected_tools"); len(expected) > 0 {
+		addCheck("selected_tools", expected, expectedStrings(structuredResult, "selected_tools"), stringSlicesEqual(expected, expectedStrings(structuredResult, "selected_tools")))
+	}
 	for _, expected := range expectedStrings(item.Expected, "equals", "result_equals") {
 		addCheck("result_equals", expected, run.Result, normalizeText(run.Result) == normalizeText(expected))
 	}
@@ -340,7 +366,7 @@ func scoreRunByVerificationFailure(group *RunGroup, item *RunGroupItem, run *Run
 	}
 	verdict := ScoreVerdictFail
 	switch strings.TrimSpace(verification.FailureLabel) {
-	case "run_missing", "run_failed", "run_cancelled", "run_aborted", "run_not_completed":
+	case "run_missing", "run_failed", "run_cancelled", "run_aborted", "run_not_completed", "infra_provider_auth", "infra_provider_quota", "infra_provider_blocked":
 		verdict = ScoreVerdictError
 	}
 	breakdown := map[string]interface{}{
@@ -641,6 +667,19 @@ func expectedStrings(meta map[string]interface{}, keys ...string) []string {
 	return nil
 }
 
+func structuredRunResult(run *Run) map[string]interface{} {
+	if run == nil {
+		return nil
+	}
+	if structured := nestedMetadataMap(run.Metadata, "selector_dry_run_response"); len(structured) > 0 {
+		return structured
+	}
+	if structured := decodeJSONMap(run.Result); len(structured) > 0 {
+		return structured
+	}
+	return nil
+}
+
 func mapBool(meta map[string]interface{}, keys ...string) (bool, bool) {
 	for _, key := range keys {
 		raw, ok := meta[key]
@@ -653,6 +692,18 @@ func mapBool(meta map[string]interface{}, keys ...string) (bool, bool) {
 		}
 	}
 	return false, false
+}
+
+func stringSlicesEqual(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if normalizeText(a[i]) != normalizeText(b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func containsText(haystack string, needle string) bool {

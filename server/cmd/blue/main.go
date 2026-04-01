@@ -73,7 +73,7 @@ import (
 )
 
 var (
-	version   = "0.10.35"
+	version   = "0.10.36"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -95,7 +95,11 @@ func applyPendingBackupRestore(dataDir string) (bool, error) {
 	return true, err
 }
 
-func applyPrimaryDatabasePoolConfig(db *sql.DB, perfCfg config.DatabasePerfConfig) {
+func applyPrimaryDatabasePoolConfig(conn *dbutil.SQLiteConn, perfCfg config.DatabasePerfConfig) {
+	if conn == nil || conn.Writer == nil {
+		return
+	}
+
 	maxOpen := perfCfg.PoolSize
 	if maxOpen <= 0 {
 		maxOpen = 10
@@ -116,31 +120,53 @@ func applyPrimaryDatabasePoolConfig(db *sql.DB, perfCfg config.DatabasePerfConfi
 		connMaxIdleTime = 10 * time.Minute
 	}
 
-	db.SetMaxOpenConns(maxOpen)
-	db.SetMaxIdleConns(maxIdle)
-	db.SetConnMaxLifetime(connMaxLifetime)
-	db.SetConnMaxIdleTime(connMaxIdleTime)
+	if conn.Reader == nil || conn.Reader == conn.Writer {
+		conn.Writer.SetMaxOpenConns(maxOpen)
+		conn.Writer.SetMaxIdleConns(maxIdle)
+		conn.Writer.SetConnMaxLifetime(connMaxLifetime)
+		conn.Writer.SetConnMaxIdleTime(connMaxIdleTime)
+		return
+	}
+
+	conn.Writer.SetMaxOpenConns(1)
+	conn.Writer.SetMaxIdleConns(1)
+	conn.Writer.SetConnMaxLifetime(connMaxLifetime)
+	conn.Writer.SetConnMaxIdleTime(connMaxIdleTime)
+
+	conn.Reader.SetMaxOpenConns(maxOpen)
+	conn.Reader.SetMaxIdleConns(maxIdle)
+	conn.Reader.SetConnMaxLifetime(connMaxLifetime)
+	conn.Reader.SetConnMaxIdleTime(connMaxIdleTime)
 }
 
-func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.DatabasePerfConfig) (*sql.DB, error) {
+func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.DatabasePerfConfig) (*dbutil.SQLiteConn, error) {
 	dbPath := filepath.Join(dataDir, "blue.db")
 
-	open := func() (*sql.DB, error) {
-		return dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
-			applyPrimaryDatabasePoolConfig(db, perfCfg)
+	open := func() (*dbutil.SQLiteConn, error) {
+		cacheSize := perfCfg.CacheSize
+		if cacheSize == 0 {
+			cacheSize = 2000
+		}
 
-			cacheSize := perfCfg.CacheSize
-			if cacheSize == 0 {
-				cacheSize = 2000
+		if perfCfg.WALMode {
+			conn, err := dbutil.OpenSQLite(dbPath, &dbutil.SQLiteOpenOpts{
+				MaxReaders:  perfCfg.PoolSize,
+				BusyTimeout: 5000,
+				CacheSize:   -cacheSize,
+				ForeignKeys: true,
+			})
+			if err != nil {
+				return nil, err
 			}
-			journalMode := "WAL"
-			if !perfCfg.WALMode {
-				journalMode = "DELETE"
-			}
+			applyPrimaryDatabasePoolConfig(conn, perfCfg)
+			_, _ = conn.Writer.Exec("PRAGMA shrink_memory")
+			return conn, nil
+		}
 
+		db, err := dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
 			pragmas := []string{
 				"PRAGMA busy_timeout=5000",
-				"PRAGMA journal_mode=" + journalMode,
+				"PRAGMA journal_mode=DELETE",
 				"PRAGMA foreign_keys=ON",
 				"PRAGMA synchronous=FULL",
 				fmt.Sprintf("PRAGMA cache_size=-%d", cacheSize),
@@ -160,11 +186,32 @@ func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.Datab
 			db.Exec("PRAGMA shrink_memory")
 			return nil
 		})
+		if err != nil {
+			return nil, err
+		}
+		conn := &dbutil.SQLiteConn{Writer: db, Reader: db}
+		applyPrimaryDatabasePoolConfig(conn, perfCfg)
+		return conn, nil
 	}
 
-	db, err := open()
+	var err error
+	if !dbutil.StartupQuickCheckEnabled() {
+		if quickErr := dbutil.QuickCheckDatabase(dbPath); quickErr != nil {
+			if dbutil.IsSQLiteCorruptionError(quickErr) {
+				err = dbutil.WrapSQLiteOpenError(dbPath, quickErr)
+				logger.Warn().Err(quickErr).Str("db_path", dbPath).Msg("Primary database quick check reported corruption before startup open")
+			} else {
+				logger.Warn().Err(quickErr).Str("db_path", dbPath).Msg("Primary database quick check failed before startup open, falling back to normal open path")
+			}
+		}
+	}
+
+	var dbConn *dbutil.SQLiteConn
 	if err == nil {
-		return db, nil
+		dbConn, err = open()
+	}
+	if err == nil {
+		return dbConn, nil
 	}
 	if !dbutil.IsSQLiteCorruptionError(err) {
 		return nil, err
@@ -196,9 +243,9 @@ func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.Datab
 					Msg("Primary database restored from backup during startup recovery")
 			}
 
-			db, retryErr := open()
+			dbConn, retryErr := open()
 			if retryErr == nil {
-				return db, nil
+				return dbConn, nil
 			}
 			if !dbutil.IsSQLiteCorruptionError(retryErr) {
 				return nil, fmt.Errorf("open database after startup auto-recovery: %w", retryErr)
@@ -219,11 +266,11 @@ func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.Datab
 		Str("backup_path", backupPath).
 		Msg("Rotated corrupt primary database to .bak backup and recreating a fresh database")
 
-	db, retryErr := open()
+	dbConn, retryErr := open()
 	if retryErr != nil {
 		return nil, fmt.Errorf("open database after recreating corrupt primary database: %w", retryErr)
 	}
-	return db, nil
+	return dbConn, nil
 }
 
 func main() {
@@ -231,7 +278,7 @@ func main() {
 	// All init() functions have already run, but we avoid touching cobra's
 	// command tree, flag parsing, and the heavy code paths they pull in.
 	// This must run BEFORE macosRequestSTTAuthorization() so IPC calls
-	// (e.g. `blue web_search ...`) don't trigger CGo/Speech framework
+	// (e.g. `blue web_query ...`) don't trigger CGo/Speech framework
 	// initialization, log output, or any server-side side effects.
 	if len(os.Args) > 1 {
 		if cliDispatch(os.Args[1:]) {
@@ -346,14 +393,16 @@ func runServer() {
 		logger.Warn().Err(err).Msg("Failed to apply pending backup restore before database initialization")
 	}
 
-	db, err := openPrimaryDatabaseWithStartupRecovery(dataDir, cfg.Performance.Database)
+	dbConn, err := openPrimaryDatabaseWithStartupRecovery(dataDir, cfg.Performance.Database)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to open database")
 	}
-	defer db.Close()
+	defer dbConn.Close()
+	db := dbConn.Writer
+	dbReader := dbConn.Reader
 
 	// Shared kvstore for all config persistence (replaces scattered JSON files)
-	sqliteKV, err := kvstore.NewSQLiteStoreWithDB(db)
+	sqliteKV, err := kvstore.NewSQLiteStoreWithReadDB(db, dbReader)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize config kvstore")
 	}
@@ -420,7 +469,7 @@ func runServer() {
 	}
 
 	// Initialize user repository and service
-	userRepo, err := user.NewSQLiteRepository(db)
+	userRepo, err := user.NewSQLiteRepositoryWithReadDB(db, dbReader)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize user repository")
 	}
@@ -447,7 +496,7 @@ func runServer() {
 	userHandler := user.NewHandler(userService)
 
 	// Initialize permission repository and service
-	permissionRepo, err := permission.NewRepository(db)
+	permissionRepo, err := permission.NewRepositoryWithReadDB(db, dbReader)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize permission repository")
 	}
@@ -480,7 +529,8 @@ func runServer() {
 	// OpenAI provider
 	openaiKey := os.Getenv("OPENAI_API_KEY")
 	if openaiKey != "" {
-		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, ""))
+		openaiBaseURL := strings.TrimSpace(os.Getenv("OPENAI_BASE_URL"))
+		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, openaiBaseURL))
 	}
 
 	// Claude provider
@@ -600,7 +650,15 @@ func runServer() {
 	})
 
 	// Initialize API Key service (shares main blue.db)
-	apiKeyService, err := auth.NewAPIKeyServiceWithDB(db)
+	apiKeyServiceFactory := func() (*auth.APIKeyService, error) {
+		return auth.NewAPIKeyServiceWithDB(db)
+	}
+	if dbConn != nil {
+		apiKeyServiceFactory = func() (*auth.APIKeyService, error) {
+			return auth.NewAPIKeyServiceWithReadDB(dbConn.Writer, dbConn.Reader)
+		}
+	}
+	apiKeyService, err := apiKeyServiceFactory()
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize API key service")
 	}
@@ -718,6 +776,7 @@ func runServer() {
 		// Reuse blue.db by default to reduce auxiliary SQLite files.
 		metricsConfig := metrics.DefaultWriterConfig()
 		metricsConfig.SharedSQLiteDB = db
+		metricsConfig.SharedSQLiteReadDB = dbReader
 		metricsWriter = metrics.NewMetricsWriter(nil, metricsConfig)
 		metricsWriter.Start()
 		logger.Info().Msg("Metrics services initialized")
@@ -801,7 +860,7 @@ func runServer() {
 
 	// Workflow service — lazy init on first API call (avoids cron goroutine + DB queries at startup)
 	workflowHandler = workflow.NewLazyHandler(func() *workflow.WorkflowService {
-		repo, err := workflow.NewRepository(db)
+		repo, err := workflow.NewRepositoryWithReadDB(db, dbReader)
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize workflow repository")
 			return nil
@@ -861,11 +920,12 @@ func runServer() {
 	sseBroker := ssePkg.NewBroker()
 
 	// Wire Web Push notification support (shared with bluelib)
-	wpSender := bootstrap.InitWebPushSender(db, configKV, zapLogger)
+	wpSender := bootstrap.InitWebPushSenderWithReadDB(db, dbReader, configKV, zapLogger)
 
 	// Wire push notification service (shared with bluelib)
 	pushResult := bootstrap.InitPushService(&bootstrap.PushServiceDeps{
 		DB:          db,
+		ReadDB:      dbReader,
 		MemoryStore: memoryStore,
 		CronGetSvc:  cronHandler.GetService,
 		SSEBroker:   sseBroker,
@@ -1279,7 +1339,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, lightpandaShimSvc, configKV, configStore)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, dbConn, db, dbReader, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, lightpandaShimSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -1397,7 +1457,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), lightpandaShimSvc *browser.LightpandaService, configKV kvstore.Store, configStore *config.ConfigStore) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, dbConn *dbutil.SQLiteConn, db, dbReader *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), lightpandaShimSvc *browser.LightpandaService, configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -1519,7 +1579,15 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		}
 		logger.Info("Legacy context annotation store imported into blue.db", fields...)
 	}
-	contextAnnotationStore, err := contextpack.NewAnnotationStoreWithDB(db)
+	contextAnnotationStoreFactory := func() (*contextpack.AnnotationStore, error) {
+		return contextpack.NewAnnotationStoreWithDB(db)
+	}
+	if dbConn != nil {
+		contextAnnotationStoreFactory = func() (*contextpack.AnnotationStore, error) {
+			return contextpack.NewAnnotationStoreWithReadDB(dbConn.Writer, dbConn.Reader)
+		}
+	}
+	contextAnnotationStore, err := contextAnnotationStoreFactory()
 	if err != nil {
 		logger.Warn("Failed to initialize context annotation store", zap.Error(err))
 	}
@@ -1586,8 +1654,10 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	var providerPool *providerpool.Pool
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
-	providerpool.SetResponsesIntegrationEnabled(false)
-	ppOpts := []providerpool.PoolOption{providerpool.WithDB(db)}
+	ppOpts := []providerpool.PoolOption{
+		providerpool.WithDB(db),
+		providerpool.WithReadDB(dbReader),
+	}
 	if cfg.Security.Encryption.Enabled {
 		secretEncryptor, encErr := auth.NewEncryptor(&auth.EncryptionConfig{
 			KeyPath:    cfg.Security.Encryption.KeyPath,
@@ -1606,16 +1676,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	if providerPool != nil {
-		if normalized, err := providerPool.NormalizeLegacyCustomResponsesProviders(); err != nil {
-			logger.Warn("Failed to normalize legacy custom responses providers", zap.Error(err))
-		} else if normalized > 0 {
-			logger.Info("Legacy custom responses providers normalized", zap.Int("count", normalized))
-		}
-
-		if disabled := providerPool.DisableResponsesProviders(); disabled > 0 {
-			logger.Info("Responses providers temporarily disabled", zap.Int("count", disabled))
-		}
-
 		// Stop provider pool background goroutines (health checks, usage tracker) on shutdown
 		pp := providerPool
 		lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -1638,7 +1698,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	// Call bootstrap.RegisterAllRoutes with all dependencies
-	routeUserRepo, _ := user.NewSQLiteRepository(db)
+	routeUserRepo, _ := user.NewSQLiteRepositoryWithReadDB(db, dbReader)
 
 	// Initialize gateway runtime + HTTP handler; method handlers are wired in bootstrap routes.
 	gatewayRuntime := gateway.NewGateway(gateway.DefaultConfig(), zapLogger)
@@ -1661,6 +1721,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		},
 		Services: &bootstrap.Services{
 			DB:            db,
+			DBConn:        dbConn,
 			UserService:   userService,
 			UserRepo:      routeUserRepo,
 			JWTService:    jwtService,
@@ -1672,29 +1733,32 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			OCRService:    ocrService,
 			PDFService:    pdfService,
 		},
-		Logger:             zapLogger,
-		Ctx:                lm.Context(),
-		MetricsWriter:      metricsWriter,
-		MetricsCollector:   metricsCollector,
-		ChatHandler:        chatHandler,
-		PluginRegistry:     pluginRegistry,
-		PluginStore:        pluginStore,
-		ExtauthHandler:     extauthHandler,
-		AutoreplyService:   autoreplyService,
-		AutoreplyHandler:   autoreplyHandler,
-		AuthMiddleware:     authMiddleware,
-		APIKeyHandler:      apiKeyHandler,
-		UserHandler:        userHandler,
-		BackupHandler:      backupHandler,
-		SecurityHandler:    securityHandler,
-		SandboxHandler:     sandboxHandler,
-		CronHandler:        cronHandler,
-		BrowserHandler:     browserHandler,
-		BrowserIPC:         browserIPC,
-		UIReviewerIPC:      uiReviewerIPC,
-		PushIPC:            pushIPC,
-		PushService:        pushSvc,
-		CronIPC:            cronIPC,
+		Logger:           zapLogger,
+		Ctx:              lm.Context(),
+		MetricsWriter:    metricsWriter,
+		MetricsCollector: metricsCollector,
+		ChatHandler:      chatHandler,
+		PluginRegistry:   pluginRegistry,
+		PluginStore:      pluginStore,
+		ExtauthHandler:   extauthHandler,
+		AutoreplyService: autoreplyService,
+		AutoreplyHandler: autoreplyHandler,
+		AuthMiddleware:   authMiddleware,
+		APIKeyHandler:    apiKeyHandler,
+		UserHandler:      userHandler,
+		BackupHandler:    backupHandler,
+		SecurityHandler:  securityHandler,
+		SandboxHandler:   sandboxHandler,
+		CronHandler:      cronHandler,
+		BrowserHandler:   browserHandler,
+		BrowserIPC:       browserIPC,
+		UIReviewerIPC:    uiReviewerIPC,
+		PushIPC:          pushIPC,
+		PushService:      pushSvc,
+		CronIPC:          cronIPC,
+		RegisterIPCExtensions: func(ipcSrv *sockipc.Server) {
+			registerCLIIPCHandlers(ipcSrv, workspaceMgr, contextRegistry, contextAnnotationStore, cfg, configStore, zapLogger)
+		},
 		WorkflowHandler:    workflowHandler,
 		VoiceHandler:       voiceHandler,
 		VoiceWSHandler:     voiceWSHandler,

@@ -24,6 +24,7 @@ export type APIFormat =
   | ''
 
 export type APIFormatMode = 'auto' | 'pinned' | ''
+export type ProviderMetadataMode = 'catalog' | 'dynamic'
 
 export type FormatResolutionSource =
   | 'endpoint_lock'
@@ -53,6 +54,7 @@ export interface Provider {
   description?: string
   website?: string
   api_key_url?: string
+  metadata_mode?: ProviderMetadataMode
   beta?: boolean
   created_at?: string
   updated_at?: string
@@ -61,7 +63,6 @@ export interface Provider {
   models?: Model[]
   oauth?: OAuthConfig
   is_builtin?: boolean
-  region?: 'auto' | 'cn' | 'international'
 }
 
 export interface APIKey {
@@ -268,6 +269,25 @@ export interface ModelQuotaInfo {
   reset_time?: string
 }
 
+export type ProviderAccountStatusKind = 'balance' | 'credits' | 'unsupported'
+
+export interface ProviderAccountStatusItem {
+  key: string
+  value: number
+  currency?: string
+}
+
+export interface ProviderAccountStatus {
+  provider_id: string
+  key_id?: string
+  key_hash?: string
+  kind: ProviderAccountStatusKind
+  primary_item_key?: string
+  items?: ProviderAccountStatusItem[]
+  error?: string
+  fetched_at: number
+}
+
 export interface OAuthQuotaInfo {
   provider_type: string
   tier: string
@@ -331,6 +351,13 @@ export interface LocationStats {
   has_local: boolean
 }
 
+export interface ProviderCatalogStatus {
+  etag?: string
+  last_updated_at?: string
+  source_url: string
+  fallback_in_use: boolean
+}
+
 // Failover types
 export interface ProbeResult {
   model_id: string
@@ -387,6 +414,7 @@ export interface FailoverConfig {
 export const providerPoolApi = {
   // Provider operations
   listProviders: () => api.get<{ providers: Provider[]; total: number }>('/providers'),
+  getProviderCatalogStatus: () => api.get<ProviderCatalogStatus>('/providers/catalog/status'),
 
   getProvider: (id: string) =>
     api.get<{ provider: Provider; health?: HealthCheckResult }>(`/providers/${id}`),
@@ -580,6 +608,11 @@ export const providerPoolApi = {
 
   getOAuthQuota: (providerId: string) =>
     api.get<OAuthQuotaInfo>(`/providers/${providerId}/oauth/quota`),
+
+  getAccountStatus: (providerId: string, keyId?: string) =>
+    api.get<ProviderAccountStatus>(`/providers/${providerId}/account/status`, {
+      params: keyId ? { key_id: keyId } : undefined,
+    }),
 
   importOAuthToken: (ideType: string) =>
     api.post<{ message: string; provider_id: string }>(`/ide/import-oauth/${ideType}`),

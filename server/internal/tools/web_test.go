@@ -34,6 +34,8 @@ type scriptedWebQueryBrowserBackend struct {
 	recipeParams map[string]string
 }
 
+type blockingWebQueryBrowserBackend struct{}
+
 func (t *scriptedWebTool) Definition() ToolDefinition {
 	return t.def
 }
@@ -113,6 +115,52 @@ func (b *scriptedWebQueryBrowserBackend) ExecuteRecipe(_ context.Context, recipe
 	return BrowserRecipeResult{}, b.executeErr
 }
 func (b *scriptedWebQueryBrowserBackend) ListRecipes(_ context.Context) []BrowserRecipeInfo {
+	return nil
+}
+
+func (b *blockingWebQueryBrowserBackend) Start(_ context.Context) error { return nil }
+func (b *blockingWebQueryBrowserBackend) Navigate(ctx context.Context, _ string, _ string) (BrowserNavResult, error) {
+	<-ctx.Done()
+	return BrowserNavResult{}, ctx.Err()
+}
+func (b *blockingWebQueryBrowserBackend) CookieHeader(_ context.Context, _ string, _ string) (string, error) {
+	return "", nil
+}
+func (b *blockingWebQueryBrowserBackend) ObserveNetwork(_ context.Context, _ string, _ int, _ bool) (BrowserObservedNetworkResult, error) {
+	return BrowserObservedNetworkResult{}, nil
+}
+func (b *blockingWebQueryBrowserBackend) WaitNetworkIdle(_ context.Context, _ string, _ int, _ int) error {
+	return nil
+}
+func (b *blockingWebQueryBrowserBackend) AccessibilityTree(_ context.Context, _ string, _ int) (BrowserA11yTreeResult, error) {
+	return BrowserA11yTreeResult{}, nil
+}
+func (b *blockingWebQueryBrowserBackend) InteractiveElements(_ context.Context, _ string) (BrowserInteractiveResult, error) {
+	return BrowserInteractiveResult{}, nil
+}
+func (b *blockingWebQueryBrowserBackend) CountInteractiveElements(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+func (b *blockingWebQueryBrowserBackend) ActByRef(_ context.Context, _ string, _ int, _ map[int]int, _ string, _ string) error {
+	return nil
+}
+func (b *blockingWebQueryBrowserBackend) ActByInteractiveRef(_ context.Context, _ string, _ int, _ map[int]string, _ string, _ string) error {
+	return nil
+}
+func (b *blockingWebQueryBrowserBackend) Screenshot(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+func (b *blockingWebQueryBrowserBackend) ScreenshotTab(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+func (b *blockingWebQueryBrowserBackend) CloseTab(_ context.Context, _ string) error { return nil }
+func (b *blockingWebQueryBrowserBackend) Tabs(_ context.Context) ([]BrowserTabResult, error) {
+	return nil, nil
+}
+func (b *blockingWebQueryBrowserBackend) ExecuteRecipe(_ context.Context, _ string, _ map[string]string) (BrowserRecipeResult, error) {
+	return BrowserRecipeResult{}, nil
+}
+func (b *blockingWebQueryBrowserBackend) ListRecipes(_ context.Context) []BrowserRecipeInfo {
 	return nil
 }
 
@@ -219,6 +267,320 @@ func TestWebQueryToolAutoRoutesSearchAndReturnsEnvelope(t *testing.T) {
 	}
 	if len(envelope.Sources) < 2 {
 		t.Fatalf("sources len = %d, want at least 2", len(envelope.Sources))
+	}
+}
+
+func TestWebQueryToolReturnsNeedsBrowserWhenBrowserFallbackTimesOut(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	readTool := NewWebReadTool(WebFetchConfig{
+		Timeout:           75 * time.Millisecond,
+		AllowPrivateHosts: true,
+	})
+	readTool.SetBrowser(&blockingWebQueryBrowserBackend{})
+	tool := NewWebQueryTool(nil, nil, readTool, nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 350*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	raw, err := tool.Execute(ctx, map[string]interface{}{
+		"input":  srv.URL,
+		"format": "text",
+		"lane":   webAccessLaneHTTP,
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if elapsed >= 250*time.Millisecond {
+		t.Fatalf("elapsed = %s, want browser fallback to time out quickly", elapsed)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Status != webQueryStatusNeedsBrowser {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusNeedsBrowser)
+	}
+	if envelope.NextAction != webQueryNextActionRetryBrowser {
+		t.Fatalf("next_action = %q, want %q", envelope.NextAction, webQueryNextActionRetryBrowser)
+	}
+	if len(envelope.Diagnostics.Attempts) < 2 {
+		t.Fatalf("attempts len = %d, want multiple read attempts", len(envelope.Diagnostics.Attempts))
+	}
+	var browserAttempt *webQueryAttempt
+	for idx := range envelope.Diagnostics.Attempts {
+		attempt := envelope.Diagnostics.Attempts[idx]
+		if attempt.Mode == webAccessLaneBrowser {
+			browserAttempt = &attempt
+			break
+		}
+	}
+	if browserAttempt == nil {
+		t.Fatalf("attempts = %+v, want a browser lane attempt", envelope.Diagnostics.Attempts)
+	}
+	if strings.TrimSpace(browserAttempt.Error) == "" {
+		t.Fatalf("browser attempt = %+v, want browser timeout error", browserAttempt)
+	}
+}
+
+func TestWebQueryToolRefinesBrowserRedirectToReadableFinalURL(t *testing.T) {
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			lane := args["lane"].(string)
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+			}
+			switch {
+			case url == "https://platform.openai.com/docs/api-reference/responses" && lane == webAccessLaneHTTP:
+				resp.Title = "Blocked"
+				resp.Content = "Please enable cookies."
+				resp.WarningCodes = []string{webFetchWarningCodeBrowserRequired}
+				resp.Warnings = []string{"page requires a browser session"}
+				resp.InteractiveRequired = true
+			case url == "https://platform.openai.com/docs/api-reference/responses" && lane == webAccessLaneProxyFetcher:
+				resp.Title = "Blocked"
+				resp.Content = "Proxy preview still requires a browser."
+				resp.Source = webAccessSourceProxyFetcher
+				resp.WarningCodes = []string{webFetchWarningCodeBrowserRequired}
+				resp.Warnings = []string{"proxy fetch still requires browser interaction"}
+				resp.InteractiveRequired = true
+			case url == "https://platform.openai.com/docs/api-reference/responses" && lane == webAccessLaneBrowser:
+				resp.Title = "Responses | OpenAI API Reference"
+				resp.FinalURL = "https://developers.openai.com/api/reference/resources/responses"
+				resp.Source = webAccessSourceBrowser
+				resp.Content = "[RootWebArea] \"Responses | OpenAI API Reference\"\n  @1 [link] \"Overview\"\n  @2 [link] \"Create a model response\""
+			case url == "https://developers.openai.com/api/reference/resources/responses" && lane == webAccessLaneHTTP:
+				resp.Title = "Responses | OpenAI API Reference"
+				resp.FinalURL = "https://developers.openai.com/api/reference/resources/responses"
+				resp.Content = "Use the Responses API to create, retrieve, cancel, and delete model responses. This page documents the endpoint shape, authentication requirements, request fields, streaming events, and related examples in readable prose."
+			default:
+				t.Fatalf("unexpected read call url=%q lane=%q", url, lane)
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(nil, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "https://platform.openai.com/docs/api-reference/responses",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Status != webQueryStatusOK {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
+	}
+	if envelope.FinalURL != "https://developers.openai.com/api/reference/resources/responses" {
+		t.Fatalf("final_url = %q, want developers docs URL", envelope.FinalURL)
+	}
+	if strings.HasPrefix(envelope.Content, "[RootWebArea]") {
+		t.Fatalf("content = %q, want refined readable content instead of browser scaffold", envelope.Content)
+	}
+	if !strings.Contains(envelope.Content, "create, retrieve, cancel, and delete model responses") {
+		t.Fatalf("content = %q, want refined readable page body", envelope.Content)
+	}
+	foundRefineAttempt := false
+	for _, attempt := range envelope.Diagnostics.Attempts {
+		if attempt.Stage == "read_refine" && attempt.URL == "https://developers.openai.com/api/reference/resources/responses" {
+			foundRefineAttempt = true
+			break
+		}
+	}
+	if !foundRefineAttempt {
+		t.Fatalf("attempts = %+v, want read_refine attempt for final_url", envelope.Diagnostics.Attempts)
+	}
+	for _, attempt := range envelope.Diagnostics.Attempts {
+		if attempt.Mode == webAccessLaneBrowser {
+			t.Fatalf("attempts = %+v, want readable refinement to avoid browser lane", envelope.Diagnostics.Attempts)
+		}
+	}
+}
+
+func TestWebQueryToolHonorsSiteHintsWhenSelectingCandidates(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{
+				Query: "OpenAI Responses API documentation site:platform.openai.com OR site:openai.com",
+				Results: []WebSearchResult{
+					{Title: "OpenAI_百度百科", URL: "https://baike.baidu.com/item/OpenAI/19758408", Description: "百科结果"},
+					{Title: "Responses | OpenAI API Reference", URL: "https://platform.openai.com/docs/api-reference/responses", Description: "Official responses docs"},
+					{Title: "OpenAI Docs Mirror", URL: "https://developers.openai.com/api/reference/resources/responses", Description: "Developers docs"},
+				},
+				TotalCount: 3,
+				Provider:   "bing",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Responses | OpenAI API Reference",
+				Content:  "Official OpenAI Responses API reference content with endpoint details, parameters, and enough body text to count as a strong read.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "OpenAI Responses API documentation site:platform.openai.com OR site:openai.com",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.TargetURL != "https://platform.openai.com/docs/api-reference/responses" {
+		t.Fatalf("target_url = %q, want official OpenAI docs", envelope.TargetURL)
+	}
+	if len(envelope.Sources) != 2 {
+		t.Fatalf("sources len = %d, want 2 site-filtered candidates", len(envelope.Sources))
+	}
+	for _, source := range envelope.Sources {
+		if strings.Contains(source.URL, "baike.baidu.com") {
+			t.Fatalf("sources = %+v, want site-hinted filtering to exclude Baidu", envelope.Sources)
+		}
+	}
+}
+
+func TestWebQueryToolLocalizedLatestDocsShortcutUsesCanonicalURL(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			t.Fatalf("search should not run for localized latest-docs shortcut, args=%v", args)
+			return nil, nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			if url != "https://developers.openai.com/api/reference/resources/responses" {
+				t.Fatalf("read url = %q, want canonical Responses docs URL", url)
+			}
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Responses | OpenAI API Reference",
+				Content:  "Canonical Responses API documentation with endpoint details, request and response schemas, authentication requirements, supported parameters, streaming events, tool-calling guidance, pagination notes, and enough readable prose to exceed the strong-read threshold for the unified web query pipeline during execution gate verification.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "Suche die neueste Dokumentation zur OpenAI Responses API.",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Status != webQueryStatusOK {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
+	}
+	if envelope.Query != "Suche die neueste Dokumentation zur OpenAI Responses API." {
+		t.Fatalf("query = %q, want original localized query", envelope.Query)
+	}
+	if envelope.FinalURL != "https://developers.openai.com/api/reference/resources/responses" {
+		t.Fatalf("final_url = %q, want canonical Responses docs URL", envelope.FinalURL)
+	}
+	if envelope.Diagnostics.Route != "canonical_url" {
+		t.Fatalf("route = %q, want canonical_url", envelope.Diagnostics.Route)
+	}
+	if len(searchTool.lastArgs) != 0 {
+		t.Fatalf("search calls = %d, want 0", len(searchTool.lastArgs))
+	}
+}
+
+func TestWebQueryToolSingleOpenAISiteHintUsesCanonicalURL(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			t.Fatalf("search should not run for single-site OpenAI docs shortcut, args=%v", args)
+			return nil, nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			if url != "https://developers.openai.com/api/reference/resources/responses" {
+				t.Fatalf("read url = %q, want canonical Responses docs URL", url)
+			}
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Responses | OpenAI API Reference",
+				Content:  "Canonical Responses API documentation reached through the single-site OpenAI shortcut with enough endpoint detail, authentication notes, request and response schema guidance, streaming event descriptions, and tool-calling examples to count as a strong successful read for the unified web query execution path.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "OpenAI Responses API official documentation site:platform.openai.com",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Status != webQueryStatusOK {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
+	}
+	if envelope.FinalURL != "https://developers.openai.com/api/reference/resources/responses" {
+		t.Fatalf("final_url = %q, want canonical Responses docs URL", envelope.FinalURL)
+	}
+	if envelope.Diagnostics.Route != "canonical_url" {
+		t.Fatalf("route = %q, want canonical_url", envelope.Diagnostics.Route)
+	}
+	if len(searchTool.lastArgs) != 0 {
+		t.Fatalf("search calls = %d, want 0", len(searchTool.lastArgs))
 	}
 }
 

@@ -19,11 +19,12 @@ function createTestI18n() {
           taskStageCompleted: 'Completed',
           taskStageFailed: 'Failed',
           taskStageCancelled: 'Cancelled',
-          taskKindResearch: 'Research',
+          taskKindResearch: 'Deep Research',
           taskKindAgent: 'Agent',
+          taskKindWorkflow: 'Workflow',
           taskOpenConversation: 'Open conversation',
+          taskResume: 'Resume',
           taskCancel: 'Cancel',
-          taskSendUpdatePlaceholder: 'Send an update to this task',
           taskSendUpdate: 'Send update',
           taskWaitingForApproval: 'Waiting for your approval',
           taskWaitingForAnswer: 'Waiting for your answer',
@@ -77,9 +78,34 @@ describe('UserTaskProjectionCard', () => {
           result_preview: 'Drafted the plan',
           artifacts: [{ kind: 'report', label: 'Summary', url: 'https://example.com/report' }],
           actions: {
-            can_cancel: true,
-            can_open_chat: false,
-            can_send_update: true,
+            items: [
+              {
+                id: 'cancel',
+                label: 'Cancel',
+                method: 'POST',
+                path: '/tasks/task-1/actions/cancel',
+                variant: 'danger',
+              },
+              {
+                id: 'send_update',
+                label: 'Send update',
+                method: 'POST',
+                path: '/agent/tasks/task-1/message',
+                requires_input: true,
+                input: {
+                  fields: [
+                    {
+                      key: 'message',
+                      label: 'Message',
+                      kind: 'textarea',
+                      target: 'root',
+                      required: true,
+                      placeholder: 'Send an update to this task',
+                    },
+                  ],
+                },
+              },
+            ],
           },
           updated_at: '2026-03-20T12:00:00.000Z',
         },
@@ -95,13 +121,19 @@ describe('UserTaskProjectionCard', () => {
     expect(wrapper.text()).toContain('Waiting for your approval')
     expect(wrapper.text()).toContain('Drafted the plan')
     expect(wrapper.text()).toContain('Summary')
+    expect(wrapper.text()).toContain('Send update')
 
-    await wrapper.get('input').setValue('Keep the final answer concise')
-    await wrapper.get('button[class*="bg-blue-600"]').trigger('click')
+    await wrapper.get('button[class*="border-slate-200"]').trigger('click')
     await wrapper.get('button[class*="border-rose-200"]').trigger('click')
 
-    expect(wrapper.emitted('message')?.[0]).toEqual(['task-1', 'Keep the final answer concise'])
-    expect(wrapper.emitted('cancel')?.[0]).toEqual(['task-1'])
+    expect(wrapper.emitted('action')?.[0]).toEqual([
+      expect.objectContaining({ id: 'task-1' }),
+      'send_update',
+    ])
+    expect(wrapper.emitted('action')?.[1]).toEqual([
+      expect.objectContaining({ id: 'task-1' }),
+      'cancel',
+    ])
   })
 
   it('localizes collapsed research details and shows the source inventory once expanded', async () => {
@@ -133,11 +165,7 @@ describe('UserTaskProjectionCard', () => {
               credibility_score: 0.95,
             },
           ],
-          actions: {
-            can_cancel: false,
-            can_open_chat: true,
-            can_send_update: false,
-          },
+          actions: { items: [] },
           updated_at: '2026-03-20T12:00:00.000Z',
         },
       },
@@ -156,5 +184,49 @@ describe('UserTaskProjectionCard', () => {
     expect(wrapper.get('a[href="https://example.com/memgpt"]').isVisible()).toBe(true)
     expect(wrapper.text()).toContain('MemGPT paper')
     expect(wrapper.text()).toContain('谨慎结论：请结合原始来源再次核验。')
+  })
+
+  it('renders workflow-specific affordances and emits resume', async () => {
+    const wrapper = mount(UserTaskProjectionCard, {
+      props: {
+        task: {
+          id: 'task-workflow-1',
+          kind: 'workflow',
+          scope: 'current',
+          conversation_id: 'conv-9',
+          title: '',
+          subtitle: 'Nightly Sync • pause_for_approval',
+          status: 'waiting_user',
+          stage: 'waiting_user',
+          progress: 63,
+          actions: {
+            items: [
+              {
+                id: 'resume',
+                label: 'Resume workflow',
+                method: 'POST',
+                path: '/tasks/task-workflow-1/actions/resume',
+                requires_input: true,
+              },
+            ],
+          },
+          updated_at: '2026-03-20T12:00:00.000Z',
+        },
+      },
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    expect(wrapper.text()).toContain('Workflow task')
+    expect(wrapper.text()).toContain('Workflow')
+    expect(wrapper.text()).toContain('Resume workflow')
+
+    await wrapper.get('button[class*="border-blue-200"]').trigger('click')
+
+    expect(wrapper.emitted('action')?.[0]).toEqual([
+      expect.objectContaining({ id: 'task-workflow-1' }),
+      'resume',
+    ])
   })
 })

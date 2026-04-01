@@ -8,7 +8,7 @@ import (
 func TestCandidateIPCSocketPaths_Defaults(t *testing.T) {
 	t.Setenv("BLUE_IPC_SOCKET", "")
 	got := candidateIPCSocketPaths()
-	want := []string{"/tmp/blue.sock", getDataDir() + "/blue.sock"}
+	want := []string{getDataDir() + "/blue.sock", "/tmp/blue.sock"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("candidateIPCSocketPaths() = %v, want %v", got, want)
 	}
@@ -20,5 +20,13 @@ func TestCandidateIPCSocketPaths_EnvOverride(t *testing.T) {
 	want := []string{"/tmp/blue-webfetch-test.sock"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("candidateIPCSocketPaths() = %v, want %v", got, want)
+	}
+}
+
+func TestAppendSocketCandidate_DeduplicatesAndSkipsEmpty(t *testing.T) {
+	got := appendSocketCandidate(nil, "", "/tmp/blue.sock", " /tmp/blue.sock ", "/tmp/other.sock")
+	want := []string{"/tmp/blue.sock", "/tmp/other.sock"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("appendSocketCandidate() = %v, want %v", got, want)
 	}
 }

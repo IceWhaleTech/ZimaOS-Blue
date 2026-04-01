@@ -33,7 +33,8 @@ vi.mock('@/api/tasks', () => ({
   taskProjectionApi: {
     listTasks: vi.fn(),
     getTask: vi.fn(),
-    cancelTask: vi.fn(),
+    performTaskAction: vi.fn(),
+    performTaskActionDescriptor: vi.fn(),
   },
 }))
 
@@ -46,7 +47,10 @@ describe('taskProjections store', () => {
     mocks.chatStore.selectConversation.mockResolvedValue(undefined)
     vi.mocked(taskProjectionApi.listTasks).mockResolvedValue({ data: [] } as never)
     vi.mocked(taskProjectionApi.getTask).mockResolvedValue({ data: null } as never)
-    vi.mocked(taskProjectionApi.cancelTask).mockResolvedValue({ data: {} } as never)
+    vi.mocked(taskProjectionApi.performTaskAction).mockResolvedValue({ data: {} } as never)
+    vi.mocked(taskProjectionApi.performTaskActionDescriptor).mockResolvedValue({
+      data: {},
+    } as never)
   })
 
   it('hydrates current and background projections through the unified tasks API', async () => {
@@ -63,7 +67,24 @@ describe('taskProjections store', () => {
               status: 'running',
               stage: 'working',
               progress: 45,
-              actions: { can_cancel: true, can_open_chat: false, can_send_update: true },
+              actions: {
+                items: [
+                  {
+                    id: 'cancel',
+                    label: 'Cancel',
+                    method: 'POST',
+                    path: '/tasks/task-current/actions/cancel',
+                    variant: 'danger',
+                  },
+                  {
+                    id: 'send_update',
+                    label: 'Send update',
+                    method: 'POST',
+                    path: '/agent/tasks/task-current/message',
+                    requires_input: true,
+                  },
+                ],
+              },
               updated_at: '2026-03-20T12:00:00.000Z',
             },
             {
@@ -75,7 +96,7 @@ describe('taskProjections store', () => {
               status: 'completed',
               stage: 'completed',
               progress: 100,
-              actions: { can_cancel: false, can_open_chat: false, can_send_update: false },
+              actions: { items: [] },
               updated_at: '2026-03-20T11:59:00.000Z',
             },
           ],
@@ -92,7 +113,17 @@ describe('taskProjections store', () => {
             status: 'running',
             stage: 'verifying',
             progress: 72,
-            actions: { can_cancel: true, can_open_chat: true, can_send_update: false },
+            actions: {
+              items: [
+                {
+                  id: 'cancel',
+                  label: 'Cancel',
+                  method: 'POST',
+                  path: '/tasks/task-background/actions/cancel',
+                  variant: 'danger',
+                },
+              ],
+            },
             updated_at: '2026-03-20T12:01:00.000Z',
           },
         ],
@@ -130,7 +161,17 @@ describe('taskProjections store', () => {
                 status: 'running',
                 stage: 'working',
                 progress: 60,
-                actions: { can_cancel: true, can_open_chat: true, can_send_update: false },
+                actions: {
+                  items: [
+                    {
+                      id: 'cancel',
+                      label: 'Cancel',
+                      method: 'POST',
+                      path: '/tasks/task-bg-1/actions/cancel',
+                      variant: 'danger',
+                    },
+                  ],
+                },
                 updated_at: '2026-03-20T12:10:00.000Z',
               },
             ]
@@ -147,7 +188,7 @@ describe('taskProjections store', () => {
         status: 'completed',
         stage: 'completed',
         progress: 100,
-        actions: { can_cancel: false, can_open_chat: true, can_send_update: false },
+        actions: { items: [] },
         updated_at: '2026-03-20T12:12:00.000Z',
       },
     } as never)
@@ -174,6 +215,148 @@ describe('taskProjections store', () => {
       query: { conversationId: 'conv-77' },
     })
     expect(mocks.chatStore.selectConversation).toHaveBeenCalledWith('conv-77')
+
+    store.stopPolling()
+  })
+
+  it('performs task actions through descriptors when available', async () => {
+    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
+      if (scope === 'current') {
+        return {
+          data: [
+            {
+              id: 'task-workflow',
+              kind: 'workflow',
+              scope: 'current',
+              conversation_id: 'conv-1',
+              title: 'Workflow gate',
+              status: 'waiting_user',
+              stage: 'waiting_user',
+              progress: 75,
+              actions: {
+                items: [
+                  {
+                    id: 'resume',
+                    label: 'Resume workflow',
+                    method: 'POST',
+                    path: '/tasks/task-workflow/actions/resume',
+                    requires_input: true,
+                    input: {
+                      fields: [
+                        {
+                          key: 'response',
+                          label: 'Response',
+                          kind: 'textarea',
+                          target: 'payload',
+                          payload_key: 'response',
+                          required: true,
+                          placeholder: 'Provide the missing detail',
+                        },
+                      ],
+                      title: 'Provide clarification',
+                      submit_label: 'Send response',
+                    },
+                  },
+                ],
+              },
+              updated_at: '2026-03-20T12:00:00.000Z',
+            },
+          ],
+        } as never
+      }
+      return { data: [] } as never
+    })
+
+    const store = useTaskProjectionsStore()
+    await store.setConversation('conv-1')
+    await store.resumeTask('task-workflow')
+
+    expect(taskProjectionApi.performTaskActionDescriptor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'resume',
+        label: 'Resume workflow',
+        method: 'POST',
+        path: '/tasks/task-workflow/actions/resume',
+        requires_input: true,
+        input: expect.objectContaining({
+          fields: [
+            expect.objectContaining({
+              key: 'response',
+              label: 'Response',
+              kind: 'textarea',
+              target: 'payload',
+              payload_key: 'response',
+              required: true,
+              placeholder: 'Provide the missing detail',
+            }),
+          ],
+          title: 'Provide clarification',
+          submit_label: 'Send response',
+        }),
+      }),
+      undefined
+    )
+
+    store.stopPolling()
+  })
+
+  it('retains legacy input hints on normalized descriptors when schema fields are absent', async () => {
+    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
+      if (scope === 'current') {
+        return {
+          data: [
+            {
+              id: 'task-legacy-workflow',
+              kind: 'workflow',
+              scope: 'current',
+              conversation_id: 'conv-1',
+              title: 'Workflow gate',
+              status: 'waiting_user',
+              stage: 'waiting_user',
+              progress: 75,
+              actions: {
+                items: [
+                  {
+                    id: 'resume',
+                    label: 'Resume workflow',
+                    method: 'POST',
+                    path: '/tasks/task-legacy-workflow/actions/resume',
+                    requires_input: true,
+                    input: {
+                      title: 'Provide clarification',
+                      submit_label: 'Send response',
+                      mode: 'payload',
+                      payload_label: 'Response',
+                      payload_required: true,
+                      payload_format: 'text',
+                      payload_text_key: 'response',
+                      payload_placeholder: 'Provide the missing detail',
+                    },
+                  },
+                ],
+              },
+              updated_at: '2026-03-20T12:00:00.000Z',
+            },
+          ],
+        } as never
+      }
+      return { data: [] } as never
+    })
+
+    const store = useTaskProjectionsStore()
+    await store.setConversation('conv-1')
+
+    const input = store.currentTasks[0]?.actions.items?.[0]?.input as
+      | Record<string, unknown>
+      | undefined
+    expect(input?.title).toBe('Provide clarification')
+    expect(input?.submit_label).toBe('Send response')
+    expect(input?.mode).toBe('payload')
+    expect(input?.payload_label).toBe('Response')
+    expect(input?.payload_required).toBe(true)
+    expect(input?.payload_format).toBe('text')
+    expect(input?.payload_text_key).toBe('response')
+    expect(input?.payload_placeholder).toBe('Provide the missing detail')
 
     store.stopPolling()
   })

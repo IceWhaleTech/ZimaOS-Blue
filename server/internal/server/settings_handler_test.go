@@ -3,17 +3,20 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -22,6 +25,133 @@ import (
 )
 
 func boolPtr(v bool) *bool { return &v }
+
+func writeSettingsSelectorSkillAtRoot(t *testing.T, workspaceDir, rootDir, dirName, manifestName, desc, invocation string, capabilityTags ...string) {
+	t.Helper()
+
+	dir := filepath.Join(workspaceDir, rootDir, "skills", dirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir skill: %v", err)
+	}
+
+	content := strings.Builder{}
+	content.WriteString("---\n")
+	content.WriteString(fmt.Sprintf("name: %s\n", manifestName))
+	content.WriteString("version: \"1.0.0\"\n")
+	content.WriteString(fmt.Sprintf("description: %q\n", desc))
+	if invocation != "" {
+		content.WriteString(fmt.Sprintf("invocation: %q\n", invocation))
+		content.WriteString("examples:\n")
+		content.WriteString(fmt.Sprintf("  - %q\n", invocation))
+	}
+	if len(capabilityTags) > 0 {
+		content.WriteString("capability_tags:\n")
+		for _, tag := range capabilityTags {
+			content.WriteString("  - " + tag + "\n")
+		}
+	}
+	content.WriteString("interaction_mode: stateless\n")
+	content.WriteString("card_support: none\n")
+	content.WriteString("os: [\"" + runtime.GOOS + "\"]\n")
+	content.WriteString("---\n")
+	content.WriteString("# " + manifestName + "\n")
+
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content.String()), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+}
+
+func writeSettingsSelectorSkill(t *testing.T, workspaceDir, id, desc, invocation string, capabilityTags ...string) {
+	t.Helper()
+	writeSettingsSelectorSkillAtRoot(t, workspaceDir, ".claude", id, id, desc, invocation, capabilityTags...)
+}
+
+func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
+	t.Helper()
+
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	smartSkill := true
+	h.settings.SmartSkillSelection = &smartSkill
+
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web for latest sources."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages."})
+
+	chatHandler := NewChatHandler(nil, nil, registry)
+	chatHandler.SetSettingsHandler(h)
+	chatHandler.SetToolSelector(tools.DefaultToolSelector())
+	chatHandler.SetToolRouter(tools.DefaultToolRouter())
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_search query="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
+	writeSettingsSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder.add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
+	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
+	writeSettingsSelectorSkill(t, workspaceDir, "ui_reviewer", "review screenshots and UI layouts for accessibility and visual issues", `blue ui_reviewer target="screenshot.png"`, "ui", "review", "screenshot")
+
+	chatHandler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+	h.SetChatHandler(chatHandler)
+	return h
+}
+
+func runSelectorDryRun(t *testing.T, h *SettingsHandler, query string) map[string]any {
+	t.Helper()
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/selector/dry-run", strings.NewReader(`{"query":`+strconv.Quote(query)+`,"model":"auto"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{
+		UserID:   "admin-1",
+		Username: "admin",
+		Role:     "admin",
+	}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.SelectorDryRun(c); err != nil {
+		t.Fatalf("SelectorDryRun error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v body=%s", err, rec.Body.String())
+	}
+	return body
+}
+
+func assertSelectorDryRunSelected(t *testing.T, body map[string]any, skill string) {
+	t.Helper()
+
+	skillDecision, ok := body["skill_decision"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected skill_decision payload, got=%T", body["skill_decision"])
+	}
+	if skillDecision["selected_skill"] != skill {
+		t.Fatalf("expected skill_decision.selected_skill=%s, got=%v", skill, skillDecision["selected_skill"])
+	}
+	if body["canonical_skill_id"] != skill {
+		t.Fatalf("expected canonical_skill_id=%s, got=%v", skill, body["canonical_skill_id"])
+	}
+	if body["skill_route_outcome"] != "selected" {
+		t.Fatalf("expected skill_route_outcome=selected, got=%v", body["skill_route_outcome"])
+	}
+	if body["skill_need_clarify"] != false {
+		t.Fatalf("expected skill_need_clarify=false, got=%v", body["skill_need_clarify"])
+	}
+	if hint, _ := body["skill_prompt_hint"].(string); strings.TrimSpace(hint) == "" {
+		t.Fatalf("expected skill_prompt_hint, got=%v", body["skill_prompt_hint"])
+	}
+}
 
 func TestGetMemoryRecallMode_DefaultBalanced(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
@@ -227,6 +357,7 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 	h.settings.SmartSkillSelection = &smartSkill
 
 	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web for latest sources."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
@@ -298,8 +429,42 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 			t.Fatalf("expected %q in selected_tools, got=%v", required, body["selected_tools"])
 		}
 	}
-	if _, exists := body["tool_debug"]; exists {
-		t.Fatalf("did not expect tool_debug payload, got=%v", body["tool_debug"])
+	toolSurface, ok := body["selected_tool_surface"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected selected_tool_surface payload, got=%T", body["selected_tool_surface"])
+	}
+	if got, ok := toolSurface["tool_count"].(float64); !ok || int(got) != len(selectedTools) {
+		t.Fatalf("selected_tool_surface.tool_count = %#v, want %d", toolSurface["tool_count"], len(selectedTools))
+	}
+	if got, ok := toolSurface["schema_bytes"].(float64); !ok || int(got) <= 0 {
+		t.Fatalf("selected_tool_surface.schema_bytes = %#v, want > 0", toolSurface["schema_bytes"])
+	}
+	selectedNativeTools, ok := body["selected_native_tools"].([]any)
+	if !ok {
+		t.Fatalf("expected selected_native_tools payload, got=%T", body["selected_native_tools"])
+	}
+	if len(selectedNativeTools) != 1 || selectedNativeTools[0] != "exec" {
+		t.Fatalf("selected_native_tools = %#v, want [exec]", selectedNativeTools)
+	}
+	if body["selected_native_surface_mode"] != "skill_exec" {
+		t.Fatalf("selected_native_surface_mode = %#v, want skill_exec", body["selected_native_surface_mode"])
+	}
+	nativeToolSurface, ok := body["selected_native_tool_surface"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected selected_native_tool_surface payload, got=%T", body["selected_native_tool_surface"])
+	}
+	if got, ok := nativeToolSurface["tool_count"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("selected_native_tool_surface.tool_count = %#v, want 1", nativeToolSurface["tool_count"])
+	}
+	if got, ok := nativeToolSurface["schema_bytes"].(float64); !ok || int(got) <= 0 {
+		t.Fatalf("selected_native_tool_surface.schema_bytes = %#v, want > 0", nativeToolSurface["schema_bytes"])
+	}
+	toolDebug, ok := body["tool_debug"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool_debug payload, got=%T", body["tool_debug"])
+	}
+	if _, ok := toolDebug["query_signals"].(map[string]any); !ok {
+		t.Fatalf("expected tool_debug.query_signals, got=%v", toolDebug["query_signals"])
 	}
 
 	skillDecision, ok := body["skill_decision"].(map[string]any)
@@ -308,6 +473,24 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 	}
 	if skillDecision["selected_skill"] != "web_search" {
 		t.Fatalf("expected skill_decision.selected_skill=web_search, got=%v", skillDecision["selected_skill"])
+	}
+	if body["canonical_skill_id"] != "web_search" {
+		t.Fatalf("expected canonical_skill_id=web_search, got=%v", body["canonical_skill_id"])
+	}
+	if body["skill_need_clarify"] != false {
+		t.Fatalf("expected skill_need_clarify=false, got=%v", body["skill_need_clarify"])
+	}
+	if body["skill_route_outcome"] != "selected" {
+		t.Fatalf("expected skill_route_outcome=selected, got=%v", body["skill_route_outcome"])
+	}
+	if body["decision_reason"] != "ir_ranked" {
+		t.Fatalf("expected decision_reason=ir_ranked, got=%v", body["decision_reason"])
+	}
+	if body["decision_stage"] != "ir" {
+		t.Fatalf("expected decision_stage=ir, got=%v", body["decision_stage"])
+	}
+	if body["fallback_reason"] != "ir_ranked" {
+		t.Fatalf("expected fallback_reason=ir_ranked, got=%v", body["fallback_reason"])
 	}
 	if _, ok := skillDecision["matched_signals"].([]any); !ok {
 		t.Fatalf("expected matched_signals in skill decision, got=%v", skillDecision["matched_signals"])
@@ -377,6 +560,191 @@ func TestSelectorDryRunIncludesSkillAdvice(t *testing.T) {
 	recommended, ok := advice["recommended_ids"].([]any)
 	if !ok || len(recommended) == 0 || recommended[0] != "gh-release-bot" {
 		t.Fatalf("expected recommended_ids with gh-release-bot, got=%v", advice["recommended_ids"])
+	}
+}
+
+func TestSelectorDryRun_MultilingualCuratedRoutes(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+
+	cases := []struct {
+		skill string
+	}{
+		{skill: "web_search"},
+		{skill: "analyze"},
+		{skill: "reminder"},
+		{skill: "browser"},
+		{skill: "ui_reviewer"},
+	}
+
+	for _, tc := range cases {
+		for _, example := range routingcue.LocalizedExamples(tc.skill) {
+			body := runSelectorDryRun(t, h, example.Query)
+			if body["canonical_skill_id"] != tc.skill {
+				t.Fatalf("%s locale=%s expected canonical_skill_id=%s got=%v", tc.skill, example.Locale, tc.skill, body["canonical_skill_id"])
+			}
+			if body["skill_route_outcome"] != "selected" {
+				t.Fatalf("%s locale=%s expected skill_route_outcome=selected got=%v body=%v", tc.skill, example.Locale, body["skill_route_outcome"], body)
+			}
+			if body["skill_need_clarify"] != false {
+				t.Fatalf("%s locale=%s expected skill_need_clarify=false got=%v", tc.skill, example.Locale, body["skill_need_clarify"])
+			}
+			if hint, _ := body["skill_prompt_hint"].(string); strings.TrimSpace(hint) == "" {
+				t.Fatalf("%s locale=%s expected skill_prompt_hint, got=%v", tc.skill, example.Locale, body["skill_prompt_hint"])
+			}
+		}
+	}
+}
+
+func TestSelectorDryRun_CriticalPlanRoutes(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+
+	tests := []struct {
+		name  string
+		query string
+		skill string
+	}{
+		{
+			name:  "latest_openai_docs_go_to_web_search",
+			query: "最新 OpenAI Responses API 文档",
+			skill: "web_search",
+		},
+		{
+			name:  "workspace_readme_stays_local",
+			query: "看下 workspace 里的 README",
+			skill: "exec",
+		},
+		{
+			name:  "reminder_request_goes_to_reminder",
+			query: "帮我明早 9 点提醒",
+			skill: "reminder",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertSelectorDryRunSelected(t, runSelectorDryRun(t, h, tc.query), tc.skill)
+		})
+	}
+}
+
+func TestSelectorDryRun_MultilingualURLBypassRoutes(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+
+	for _, tc := range []struct {
+		skill string
+	}{
+		{skill: "analyze"},
+		{skill: "ui_reviewer"},
+	} {
+		for _, example := range routingcue.LocalizedURLBypassExamples(tc.skill) {
+			t.Run(tc.skill+"_"+example.Locale, func(t *testing.T) {
+				assertSelectorDryRunSelected(t, runSelectorDryRun(t, h, example.Query), tc.skill)
+			})
+		}
+	}
+}
+
+func TestSelectorDryRun_ClarifyMetadataForMixedIntent(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+
+	body := runSelectorDryRun(t, h, "看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？")
+	if body["skill_need_clarify"] != true {
+		t.Fatalf("expected skill_need_clarify=true, got=%v", body["skill_need_clarify"])
+	}
+	if body["skill_route_outcome"] != "clarify" {
+		t.Fatalf("expected skill_route_outcome=clarify, got=%v", body["skill_route_outcome"])
+	}
+	if _, ok := body["clarify_reason"].(string); !ok {
+		t.Fatalf("expected clarify_reason string, got=%T", body["clarify_reason"])
+	}
+	if _, ok := body["canonical_skill_id"].(string); !ok {
+		t.Fatalf("expected canonical_skill_id string, got=%T", body["canonical_skill_id"])
+	}
+	selectedNativeTools, ok := body["selected_native_tools"].([]any)
+	if !ok {
+		t.Fatalf("expected selected_native_tools payload, got=%T", body["selected_native_tools"])
+	}
+	if len(selectedNativeTools) != 0 {
+		t.Fatalf("selected_native_tools = %#v, want empty on clarify", selectedNativeTools)
+	}
+	if body["selected_native_surface_mode"] != "clarify_none" {
+		t.Fatalf("selected_native_surface_mode = %#v, want clarify_none", body["selected_native_surface_mode"])
+	}
+}
+
+func TestSelectorDryRun_ForcesPreviewSkillSelectionWhenSettingDisabled(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web for latest sources."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
+
+	chatHandler := NewChatHandler(nil, nil, registry)
+	chatHandler.SetSettingsHandler(h)
+	chatHandler.SetToolSelector(tools.DefaultToolSelector())
+	chatHandler.SetToolRouter(tools.DefaultToolRouter())
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_search query="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
+
+	chatHandler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+	h.SetChatHandler(chatHandler)
+
+	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
+	assertSelectorDryRunSelected(t, body, "web_search")
+
+	if body["smart_skill_selection"] != false {
+		t.Fatalf("expected stored smart_skill_selection=false, got=%v", body["smart_skill_selection"])
+	}
+	selectedNativeTools, ok := body["selected_native_tools"].([]any)
+	if !ok {
+		t.Fatalf("expected selected_native_tools payload, got=%T", body["selected_native_tools"])
+	}
+	if len(selectedNativeTools) != 1 || selectedNativeTools[0] != "exec" {
+		t.Fatalf("selected_native_tools = %#v, want [exec]", selectedNativeTools)
+	}
+	if body["selected_native_surface_mode"] != "skill_exec" {
+		t.Fatalf("selected_native_surface_mode = %#v, want skill_exec", body["selected_native_surface_mode"])
+	}
+}
+
+func TestSelectorDryRun_SurfacesCanonicalSkillConflict(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	smartSkill := true
+	h.settings.SmartSkillSelection = &smartSkill
+
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages."})
+
+	chatHandler := NewChatHandler(nil, nil, registry)
+	chatHandler.SetSettingsHandler(h)
+	chatHandler.SetToolSelector(tools.DefaultToolSelector())
+	chatHandler.SetToolRouter(tools.DefaultToolRouter())
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSettingsSelectorSkillAtRoot(t, workspaceDir, ".agents", "team-browser", "browser", "browser from workspace agents", "blue browser.navigate url=https://example.com", "browser", "web")
+	writeSettingsSelectorSkillAtRoot(t, workspaceDir, ".agents", "browser", "browser", "browser duplicate from workspace agents", "blue browser.navigate url=https://example.com", "browser", "web")
+
+	chatHandler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+	h.SetChatHandler(chatHandler)
+
+	body := runSelectorDryRun(t, h, "在浏览器里打开 https://example.com")
+	errMsg, ok := body["skill_selector_error"].(string)
+	if !ok || !strings.Contains(errMsg, `workspace/.agents canonical skill "browser"`) {
+		t.Fatalf("expected canonical skill conflict error, got=%v", body["skill_selector_error"])
+	}
+	if _, exists := body["canonical_skill_id"]; exists {
+		t.Fatalf("did not expect canonical_skill_id on selector conflict, got=%v", body["canonical_skill_id"])
 	}
 }
 

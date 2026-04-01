@@ -1,18 +1,21 @@
 package tools
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 )
 
 // BrowserSiteAllowlistStore persists approved browser origins per user.
 type BrowserSiteAllowlistStore struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // BrowserSiteAllowlistEntry represents a single approved browser origin.
@@ -26,7 +29,16 @@ type BrowserSiteAllowlistEntry struct {
 
 // NewBrowserSiteAllowlistStore creates the browser site allowlist table.
 func NewBrowserSiteAllowlistStore(db *sql.DB) (*BrowserSiteAllowlistStore, error) {
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS browser_site_allowlist (
+	return NewBrowserSiteAllowlistStoreWithReadDB(db, db)
+}
+
+// NewBrowserSiteAllowlistStoreWithReadDB creates the browser site allowlist
+// table with separate write and read database handles.
+func NewBrowserSiteAllowlistStoreWithReadDB(writeDB, readDB *sql.DB) (*BrowserSiteAllowlistStore, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	_, err := writeDB.Exec(`CREATE TABLE IF NOT EXISTS browser_site_allowlist (
 		id          TEXT PRIMARY KEY,
 		origin      TEXT NOT NULL,
 		added_at    TEXT NOT NULL,
@@ -37,7 +49,33 @@ func NewBrowserSiteAllowlistStore(db *sql.DB) (*BrowserSiteAllowlistStore, error
 	if err != nil {
 		return nil, err
 	}
-	return &BrowserSiteAllowlistStore{db: db}, nil
+	return &BrowserSiteAllowlistStore{db: writeDB, readDB: readDB}, nil
+}
+
+func (s *BrowserSiteAllowlistStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *BrowserSiteAllowlistStore) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "browser_site_allowlist")
+}
+
+func (s *BrowserSiteAllowlistStore) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "browser_site_allowlist")
+}
+
+type browserSiteAllowlistRow struct {
+	ID         string `json:"id" zorm:"id"`
+	Origin     string `json:"origin" zorm:"origin"`
+	AddedAt    string `json:"added_at" zorm:"added_at"`
+	LastUsed   string `json:"last_used" zorm:"last_used"`
+	ApprovedBy string `json:"approved_by" zorm:"approved_by"`
 }
 
 func normalizeBrowserSiteApprovedBy(userID string) string {
@@ -46,6 +84,17 @@ func normalizeBrowserSiteApprovedBy(userID string) string {
 		return "default"
 	}
 	return userID
+}
+
+func rowToBrowserSiteAllowlistEntry(row browserSiteAllowlistRow) BrowserSiteAllowlistEntry {
+	entry := BrowserSiteAllowlistEntry{
+		ID:         row.ID,
+		Origin:     row.Origin,
+		ApprovedBy: row.ApprovedBy,
+	}
+	entry.AddedAt, _ = time.Parse(time.RFC3339, row.AddedAt)
+	entry.LastUsed, _ = time.Parse(time.RFC3339, row.LastUsed)
+	return entry
 }
 
 // NormalizeBrowserSiteOrigin converts a browser URL into a stable origin
@@ -91,14 +140,13 @@ func (s *BrowserSiteAllowlistStore) Add(rawURLOrOrigin, userID string) error {
 		return fmt.Errorf("invalid browser site origin")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.Exec(
-		`INSERT OR IGNORE INTO browser_site_allowlist (id, origin, added_at, last_used, approved_by) VALUES (?, ?, ?, ?, ?)`,
-		uuid.New().String(),
-		origin,
-		now,
-		now,
-		normalizeBrowserSiteApprovedBy(userID),
-	)
+	_, err := s.table(context.Background()).InsertIgnore(map[string]interface{}{
+		"id":          uuid.New().String(),
+		"origin":      origin,
+		"added_at":    now,
+		"last_used":   now,
+		"approved_by": normalizeBrowserSiteApprovedBy(userID),
+	})
 	return err
 }
 
@@ -113,23 +161,24 @@ func (s *BrowserSiteAllowlistStore) Match(rawURLOrOrigin, userID string) *Browse
 	if candidates[0] != "default" {
 		candidates = append(candidates, "default")
 	}
+	ctx := context.Background()
 	for _, approvedBy := range candidates {
-		row := s.db.QueryRow(
-			`SELECT id, origin, added_at, last_used, approved_by FROM browser_site_allowlist WHERE origin = ? AND approved_by = ? LIMIT 1`,
-			origin,
-			approvedBy,
+		var rows []browserSiteAllowlistRow
+		_, err := s.readTable(ctx).Select(&rows,
+			z.Where(z.Eq("origin", origin), z.Eq("approved_by", approvedBy)),
+			z.Limit(1),
 		)
-		var entry BrowserSiteAllowlistEntry
-		var addedAt string
-		var lastUsed string
-		if err := row.Scan(&entry.ID, &entry.Origin, &addedAt, &lastUsed, &entry.ApprovedBy); err != nil {
+		if err != nil || len(rows) == 0 {
 			continue
 		}
-		entry.AddedAt, _ = time.Parse(time.RFC3339, addedAt)
-		entry.LastUsed, _ = time.Parse(time.RFC3339, lastUsed)
+		entry := rowToBrowserSiteAllowlistEntry(rows[0])
 
 		now := time.Now().UTC().Format(time.RFC3339)
-		_, _ = s.db.Exec(`UPDATE browser_site_allowlist SET last_used = ? WHERE id = ?`, now, entry.ID)
+		_, _ = s.table(ctx).Update(
+			z.V{"last_used": now},
+			z.Fields("last_used"),
+			z.Where(z.Eq("id", entry.ID)),
+		)
 
 		return &entry
 	}
@@ -138,31 +187,21 @@ func (s *BrowserSiteAllowlistStore) Match(rawURLOrOrigin, userID string) *Browse
 
 // List returns all approved browser origins.
 func (s *BrowserSiteAllowlistStore) List() ([]BrowserSiteAllowlistEntry, error) {
-	rows, err := s.db.Query(
-		`SELECT id, origin, added_at, last_used, approved_by FROM browser_site_allowlist ORDER BY added_at`,
-	)
+	var rows []browserSiteAllowlistRow
+	_, err := s.readTable(context.Background()).Select(&rows, z.OrderBy("added_at"))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var entries []BrowserSiteAllowlistEntry
-	for rows.Next() {
-		var entry BrowserSiteAllowlistEntry
-		var addedAt string
-		var lastUsed string
-		if err := rows.Scan(&entry.ID, &entry.Origin, &addedAt, &lastUsed, &entry.ApprovedBy); err != nil {
-			continue
-		}
-		entry.AddedAt, _ = time.Parse(time.RFC3339, addedAt)
-		entry.LastUsed, _ = time.Parse(time.RFC3339, lastUsed)
-		entries = append(entries, entry)
+	entries := make([]BrowserSiteAllowlistEntry, 0, len(rows))
+	for i := range rows {
+		entries = append(entries, rowToBrowserSiteAllowlistEntry(rows[i]))
 	}
 	return entries, nil
 }
 
 // Delete removes an approved browser origin by ID.
 func (s *BrowserSiteAllowlistStore) Delete(id string) error {
-	_, err := s.db.Exec(`DELETE FROM browser_site_allowlist WHERE id = ?`, strings.TrimSpace(id))
+	_, err := s.table(context.Background()).Delete(z.Where(z.Eq("id", strings.TrimSpace(id))))
 	return err
 }

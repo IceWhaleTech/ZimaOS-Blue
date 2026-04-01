@@ -193,3 +193,109 @@ func TestStoreGetRecentMessagesLiteOmitsHeavyFields(t *testing.T) {
 		t.Fatalf("lite attachments = %+v, want empty", lite[0].Attachments)
 	}
 }
+
+func TestStoreUpdateMessageContentFullPreservesExistingProviderModelAndStats(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(filepath.Join(t.TempDir(), "chat.db"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(ctx, "update-content")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	msg, err := store.AddMessageTrusted(ctx, conv.ID, Message{
+		Role:     "assistant",
+		Content:  "draft",
+		Provider: "openai",
+		Model:    "gpt-5",
+		Stats: &MessageStats{
+			InputTokens: 3,
+		},
+	})
+	if err != nil {
+		t.Fatalf("AddMessageTrusted: %v", err)
+	}
+
+	if err := store.UpdateMessageContentFull(ctx, msg.ID, "final", "", "", nil); err != nil {
+		t.Fatalf("UpdateMessageContentFull: %v", err)
+	}
+
+	got, err := store.GetMessages(ctx, conv.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("GetMessages len = %d, want 1", len(got))
+	}
+	if got[0].Content != "final" {
+		t.Fatalf("content = %q, want %q", got[0].Content, "final")
+	}
+	if got[0].Provider != "openai" || got[0].Model != "gpt-5" {
+		t.Fatalf("provider/model changed unexpectedly: %+v", got[0])
+	}
+	if got[0].Stats == nil || got[0].Stats.InputTokens != 3 {
+		t.Fatalf("stats changed unexpectedly: %+v", got[0].Stats)
+	}
+}
+
+func TestStoreUpsertMessageContentFullTrustedInsertsAndPreservesExistingFields(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(filepath.Join(t.TempDir(), "chat.db"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(ctx, "upsert-content")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	msgID := uuid.NewString()
+	if err := store.UpsertMessageContentFullTrusted(ctx, Message{
+		ID:             msgID,
+		ConversationID: conv.ID,
+		Role:           "assistant",
+		Content:        "draft",
+		Provider:       "openai",
+		Model:          "gpt-5",
+		Stats: &MessageStats{
+			InputTokens: 7,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertMessageContentFullTrusted(insert): %v", err)
+	}
+
+	if err := store.UpsertMessageContentFullTrusted(ctx, Message{
+		ID:             msgID,
+		ConversationID: conv.ID,
+		Role:           "assistant",
+		Content:        "final",
+	}); err != nil {
+		t.Fatalf("UpsertMessageContentFullTrusted(update): %v", err)
+	}
+
+	got, err := store.GetMessages(ctx, conv.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("GetMessages len = %d, want 1", len(got))
+	}
+	if got[0].ID != msgID {
+		t.Fatalf("message id = %q, want %q", got[0].ID, msgID)
+	}
+	if got[0].Content != "final" {
+		t.Fatalf("content = %q, want %q", got[0].Content, "final")
+	}
+	if got[0].Provider != "openai" || got[0].Model != "gpt-5" {
+		t.Fatalf("provider/model changed unexpectedly: %+v", got[0])
+	}
+	if got[0].Stats == nil || got[0].Stats.InputTokens != 7 {
+		t.Fatalf("stats changed unexpectedly: %+v", got[0].Stats)
+	}
+}

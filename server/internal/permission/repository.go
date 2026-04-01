@@ -16,12 +16,22 @@ var (
 
 // Repository handles permission persistence
 type Repository struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // NewRepository creates a new permission repository
 func NewRepository(db *sql.DB) (*Repository, error) {
-	repo := &Repository{db: db}
+	return NewRepositoryWithReadDB(db, db)
+}
+
+// NewRepositoryWithReadDB creates a new permission repository with separate
+// write and read database handles.
+func NewRepositoryWithReadDB(writeDB, readDB *sql.DB) (*Repository, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	repo := &Repository{db: writeDB, readDB: readDB}
 	if err := repo.migrate(); err != nil {
 		return nil, err
 	}
@@ -49,10 +59,14 @@ func (r *Repository) table(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "user_permissions")
 }
 
+func (r *Repository) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.readDB, "user_permissions")
+}
+
 // GetUserPermissions returns all permissions for a user
 func (r *Repository) GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	var permissions []string
-	_, err := r.table(ctx).Select(&permissions,
+	_, err := r.readTable(ctx).Select(&permissions,
 		z.Fields("permission"),
 		z.Where(z.Eq("user_id", userID.String())),
 	)
@@ -116,7 +130,7 @@ func (r *Repository) RemovePermission(ctx context.Context, userID uuid.UUID, per
 // HasPermission checks if a user has a specific permission
 func (r *Repository) HasPermission(ctx context.Context, userID uuid.UUID, permission string) (bool, error) {
 	var count int64
-	_, err := r.table(ctx).Select(&count,
+	_, err := r.readTable(ctx).Select(&count,
 		z.Fields("count(1)"),
 		z.Where(z.Eq("user_id", userID.String()), z.Eq("permission", permission)),
 	)
@@ -135,7 +149,7 @@ func (r *Repository) DeleteUserPermissions(ctx context.Context, userID uuid.UUID
 // GetUsersWithPermission returns all user IDs that have a specific permission
 func (r *Repository) GetUsersWithPermission(ctx context.Context, permission string) ([]uuid.UUID, error) {
 	var idStrs []string
-	_, err := r.table(ctx).Select(&idStrs,
+	_, err := r.readTable(ctx).Select(&idStrs,
 		z.Fields("user_id"),
 		z.Where(z.Eq("permission", permission)),
 	)

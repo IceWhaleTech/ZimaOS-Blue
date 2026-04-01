@@ -334,3 +334,107 @@ func TestCalendarTool_Execute_CreateSupportsNaturalLanguageTime(t *testing.T) {
 		t.Fatalf("end_at = %q, want %q", got, "2026-03-21T16:00:00Z")
 	}
 }
+
+func TestLocalEmailService_UsesReaderDBForReads(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "email-reader.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(write): %v", err)
+	}
+	defer writeDB.Close()
+
+	if _, err := NewLocalEmailService(writeDB); err != nil {
+		t.Fatalf("NewLocalEmailService(bootstrap): %v", err)
+	}
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("sql.Open(read): %v", err)
+	}
+	defer readDB.Close()
+
+	svc, err := NewLocalEmailServiceWithReadDB(writeDB, readDB)
+	if err != nil {
+		t.Fatalf("NewLocalEmailServiceWithReadDB: %v", err)
+	}
+	if svc.readDB == nil || svc.readDB == svc.db {
+		t.Fatal("expected separate email reader db")
+	}
+
+	now := time.Date(2026, time.March, 20, 10, 0, 0, 0, time.UTC)
+	svc.SetNowFunc(func() time.Time { return now })
+	if err := svc.SeedFixtures(context.Background(), "user-1", []EmailMessage{
+		{
+			ID:          "mail-r",
+			ThreadID:    "thread-r",
+			Subject:     "Reader email",
+			SenderEmail: "reader@example.com",
+			Unread:      true,
+			ReceivedAt:  now,
+			UpdatedAt:   now,
+		},
+	}); err != nil {
+		t.Fatalf("SeedFixtures: %v", err)
+	}
+
+	got, err := svc.Get(context.Background(), "user-1", "mail-r")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got == nil || got.Subject != "Reader email" {
+		t.Fatalf("unexpected email via reader: %+v", got)
+	}
+}
+
+func TestLocalCalendarService_UsesReaderDBForReads(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "calendar-reader.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(write): %v", err)
+	}
+	defer writeDB.Close()
+
+	if _, err := NewLocalCalendarService(writeDB); err != nil {
+		t.Fatalf("NewLocalCalendarService(bootstrap): %v", err)
+	}
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("sql.Open(read): %v", err)
+	}
+	defer readDB.Close()
+
+	svc, err := NewLocalCalendarServiceWithReadDB(writeDB, readDB)
+	if err != nil {
+		t.Fatalf("NewLocalCalendarServiceWithReadDB: %v", err)
+	}
+	if svc.readDB == nil || svc.readDB == svc.db {
+		t.Fatal("expected separate calendar reader db")
+	}
+
+	now := time.Date(2026, time.March, 20, 9, 0, 0, 0, time.UTC)
+	svc.SetNowFunc(func() time.Time { return now })
+	if err := svc.SeedFixtures(context.Background(), "user-1", []CalendarEvent{
+		{
+			ID:        "event-r",
+			Title:     "Reader event",
+			Status:    "confirmed",
+			StartAt:   now.Add(time.Hour),
+			EndAt:     now.Add(2 * time.Hour),
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}); err != nil {
+		t.Fatalf("SeedFixtures: %v", err)
+	}
+
+	got, err := svc.Get(context.Background(), "user-1", "event-r")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got == nil || got.Title != "Reader event" {
+		t.Fatalf("unexpected event via reader: %+v", got)
+	}
+}

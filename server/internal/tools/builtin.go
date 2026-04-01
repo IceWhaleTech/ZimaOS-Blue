@@ -839,11 +839,10 @@ func newBuiltinRipgrepResolver(runtimeCfg BuiltinRuntimeConfig) ripgrepResolver 
 	return manager
 }
 
-// RegisterExecTools registers exec + process tools with shared session state.
+// RegisterExecTools registers exec with shared session state.
 func RegisterExecTools(registry *Registry, config ExecConfig, approvals *ApprovalManager, broker *sse.Broker, dirStore *DirAllowlistStore, sbx ...SandboxExecutor) {
 	sessions := NewSessionRegistry()
 	registry.Register(NewExecTool(config, sessions, approvals, broker, dirStore, sbx...))
-	registry.Register(NewProcessTool(sessions))
 	registerCanonicalShellSurface(registry)
 }
 

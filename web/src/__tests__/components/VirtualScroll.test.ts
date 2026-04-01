@@ -207,6 +207,53 @@ describe('VirtualScroll', () => {
     expect(scrollContainer.scrollTop).toBe(450)
   })
 
+  it('reuses cached external container offsets during ordinary scroll syncs', async () => {
+    const scrollContainer = document.createElement('div')
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      configurable: true,
+      value: 200,
+    })
+    Object.defineProperty(scrollContainer, 'scrollHeight', {
+      configurable: true,
+      value: 4000,
+    })
+    const scrollRectSpy = vi.fn(() => mockRect({ top: 0 }))
+    scrollContainer.getBoundingClientRect = scrollRectSpy
+
+    const wrapper = mount(VirtualScroll, {
+      props: {
+        itemCount: 100,
+        estimatedItemHeight: 100,
+        overscan: 0,
+        scrollContainer,
+      },
+      slots: {
+        default: '<div style="height: 100px;">row</div>',
+      },
+    })
+
+    const containerRectSpy = vi.fn(() => mockRect({ top: -scrollContainer.scrollTop }))
+    ;(wrapper.element as HTMLElement).getBoundingClientRect = containerRectSpy
+
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+
+    const initialContainerRectCalls = containerRectSpy.mock.calls.length
+    const initialScrollRectCalls = scrollRectSpy.mock.calls.length
+
+    scrollContainer.scrollTop = 250
+    scrollContainer.dispatchEvent(new Event('scroll'))
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+
+    await wrapper.setProps({ overscan: 2 })
+    await wrapper.vm.$nextTick()
+    await flushRafChain()
+
+    expect(containerRectSpy.mock.calls.length).toBe(initialContainerRectCalls)
+    expect(scrollRectSpy.mock.calls.length).toBe(initialScrollRectCalls)
+  })
+
   it('keeps the current viewport anchored when older keyed items are prepended', async () => {
     const scrollContainer = document.createElement('div')
     Object.defineProperty(scrollContainer, 'clientHeight', {

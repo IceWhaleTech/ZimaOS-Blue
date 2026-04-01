@@ -45,6 +45,7 @@ const (
 	webFetchDefaultJinaReaderTimeout = webFetchDefaultTimeout
 	webFetchMinReadableChars         = 240
 	webFetchDefaultUserAgent         = "Mozilla/5.0 (compatible; ZimaOS-Blue/1.0; +https://github.com/IceWhaleTech/ZimaOS-Blue)"
+	webFetchBrowserSessionTimeout    = 8 * time.Second
 
 	webFetchProxyProviderFirecrawl  = "firecrawl"
 	webFetchProxyProviderJinaReader = "jina_reader"
@@ -1059,11 +1060,18 @@ func (w *WebFetchTool) fetchViaBrowserSession(ctx context.Context, targetURL, mo
 }
 
 func (w *WebFetchTool) fetchViaBrowserSessionDetailed(ctx context.Context, targetURL, mode, browserTargetID, reasonCode, reason string) (webFetchBrowserSessionResult, error) {
-	nav, err := w.browser.Navigate(ctx, targetURL, browserTargetID)
+	if w == nil || w.browser == nil {
+		return webFetchBrowserSessionResult{}, errors.New("browser session fallback unavailable")
+	}
+
+	browserCtx, cancel := w.browserSessionContext(ctx)
+	defer cancel()
+
+	nav, err := w.browser.Navigate(browserCtx, targetURL, browserTargetID)
 	if err != nil {
 		return webFetchBrowserSessionResult{}, fmt.Errorf("browser session navigate failed: %w", err)
 	}
-	a11y, err := w.browser.AccessibilityTree(ctx, nav.TargetID, 12)
+	a11y, err := w.browser.AccessibilityTree(browserCtx, nav.TargetID, 12)
 	if err != nil {
 		return webFetchBrowserSessionResult{}, fmt.Errorf("browser session snapshot failed: %w", err)
 	}
@@ -1110,6 +1118,17 @@ func (w *WebFetchTool) fetchViaBrowserSessionDetailed(ctx context.Context, targe
 			SessionReused: strings.TrimSpace(nav.TargetID) == strings.TrimSpace(browserTargetID) && strings.TrimSpace(browserTargetID) != "",
 		},
 	}, nil
+}
+
+func (w *WebFetchTool) browserSessionContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := webFetchBrowserSessionTimeout
+	if w != nil && w.config.Timeout > 0 && w.config.Timeout < timeout {
+		timeout = w.config.Timeout
+	}
+	if timeout <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 func (w *WebFetchTool) fetchViaProxyProvider(ctx context.Context, provider, targetURL, mode string) (webFetchPayload, error) {

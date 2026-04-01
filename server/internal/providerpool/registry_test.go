@@ -360,6 +360,35 @@ func TestBuiltinModels(t *testing.T) {
 	}
 }
 
+func TestBuiltinProvidersMetadataMode(t *testing.T) {
+	providers := BuiltinProviders()
+
+	var openAIProvider *Provider
+	var openRouterProvider *Provider
+	for _, provider := range providers {
+		switch provider.ID {
+		case "openai":
+			openAIProvider = provider
+		case "openrouter":
+			openRouterProvider = provider
+		}
+	}
+
+	if openAIProvider == nil {
+		t.Fatal("expected openai provider")
+	}
+	if openRouterProvider == nil {
+		t.Fatal("expected openrouter provider")
+	}
+
+	if openAIProvider.MetadataMode != ProviderMetadataModeCatalog {
+		t.Fatalf("expected openai metadata_mode=%q, got %q", ProviderMetadataModeCatalog, openAIProvider.MetadataMode)
+	}
+	if openRouterProvider.MetadataMode != ProviderMetadataModeDynamic {
+		t.Fatalf("expected openrouter metadata_mode=%q, got %q", ProviderMetadataModeDynamic, openRouterProvider.MetadataMode)
+	}
+}
+
 func TestGetHealthCheckURLs(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -387,15 +416,15 @@ func TestGetHealthCheckURLs(t *testing.T) {
 		},
 		{
 			name:     "custom-openai-v1",
-			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com/v1", APIFormat: APIFormatOpenAI},
-			method:   "GET",
-			expected: "https://custom.api.com/v1/models",
+			provider: &Provider{ID: "custom", Type: ProviderTypeCustom, BaseURL: "https://custom.api.com/v1", APIFormat: APIFormatOpenAI},
+			method:   "POST",
+			expected: "https://custom.api.com/v1/chat/completions",
 		},
 		{
 			name:     "custom-no-v1",
-			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com/", APIFormat: APIFormatOpenAI},
-			method:   "GET",
-			expected: "https://custom.api.com/v1/models",
+			provider: &Provider{ID: "custom", Type: ProviderTypeCustom, BaseURL: "https://custom.api.com/", APIFormat: APIFormatOpenAI},
+			method:   "POST",
+			expected: "https://custom.api.com/v1/chat/completions",
 		},
 		{
 			name:     "trial-anthropic",

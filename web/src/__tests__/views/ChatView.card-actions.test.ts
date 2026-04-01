@@ -132,7 +132,9 @@ const mocks = vi.hoisted(() => ({
     hasActiveTasks: false,
     refreshNow: vi.fn(),
     setConversation: vi.fn(),
+    performTaskAction: vi.fn(),
     cancelTask: vi.fn(),
+    resumeTask: vi.fn(),
     openTask: vi.fn(),
     stopPolling: vi.fn(),
   },
@@ -363,14 +365,48 @@ vi.mock('@/components/DeepResearchTaskDock.vue', () =>
 vi.mock('@/components/UserTaskProjectionCard.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'UserTaskProjectionCard',
-    template: '<div class="agent-task-panel-stub" />',
+    props: {
+      task: { type: Object, default: null },
+    },
+    emits: ['action', 'open'],
+    template: `
+      <div class="agent-task-panel-stub">
+        <button
+          v-if="task && task.actions && Array.isArray(task.actions.items) && task.actions.items[0]"
+          class="task-projection-card-action-stub"
+          @click="$emit('action', task, task.actions.items[0].id)"
+        >
+          {{ task.actions.items[0].label }}
+        </button>
+      </div>
+    `,
   })
 )
 
 vi.mock('@/components/UserTaskProjectionDock.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'UserTaskProjectionDock',
-    template: '<div class="deep-research-task-dock-stub" />',
+    props: {
+      tasks: { type: Array, default: () => [] },
+    },
+    emits: ['action', 'open'],
+    template: `
+      <div class="deep-research-task-dock-stub">
+        <button
+          v-if="
+            Array.isArray(tasks) &&
+            tasks[0] &&
+            tasks[0].actions &&
+            Array.isArray(tasks[0].actions.items) &&
+            tasks[0].actions.items[0]
+          "
+          class="task-projection-dock-action-stub"
+          @click="$emit('action', tasks[0], tasks[0].actions.items[0].id)"
+        >
+          {{ tasks[0].actions.items[0].label }}
+        </button>
+      </div>
+    `,
   })
 )
 
@@ -618,7 +654,9 @@ describe('ChatView page-level card actions', () => {
     mocks.taskProjectionsStore.backgroundTasks = []
     mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.performTaskAction.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.resumeTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
@@ -1057,6 +1095,164 @@ describe('ChatView page-level card actions', () => {
       .filter(Boolean)
 
     expect(executingIds).toEqual(['conv-streaming', 'conv-agent', 'conv-research'])
+  })
+
+  it('opens a task-action dialog for workflow resume and submits structured input', async () => {
+    const workflowTask = {
+      id: 'task-workflow',
+      kind: 'workflow',
+      scope: 'current',
+      conversation_id: 'conv-1',
+      title: 'Workflow gate',
+      status: 'waiting_user',
+      stage: 'waiting_user',
+      progress: 75,
+      actions: {
+        items: [
+          {
+            id: 'resume',
+            label: 'Resume workflow',
+            method: 'POST',
+            path: '/tasks/task-workflow/actions/resume',
+            requires_input: true,
+          },
+        ],
+      },
+      updated_at: '2026-03-20T12:00:00.000Z',
+    }
+
+    mocks.taskProjectionsStore.currentTasks = [workflowTask]
+    mocks.taskProjectionsStore.currentActiveTasks = [workflowTask]
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-task', content: 'Workflow is waiting for input.' },
+    ])
+
+    const resumeButton = findButtonByText(wrapper, 'Resume workflow')
+    expect(resumeButton?.exists()).toBe(true)
+
+    await resumeButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="task-action-dialog"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="task-action-decision-input"]').setValue('approve')
+    await wrapper.get('[data-testid="task-action-payload-input"]').setValue('{"ticket":"A-9"}')
+    await wrapper.get('[data-testid="task-action-confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.taskProjectionsStore.performTaskAction).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'task-workflow' }),
+      'resume',
+      {
+        decision: 'approve',
+        payload: { ticket: 'A-9' },
+      }
+    )
+  })
+
+  it('opens the same task-action dialog from the background task dock', async () => {
+    const workflowTask = {
+      id: 'task-workflow-bg',
+      kind: 'workflow',
+      scope: 'background',
+      conversation_id: 'conv-2',
+      title: 'Background workflow gate',
+      status: 'waiting_user',
+      stage: 'waiting_user',
+      progress: 63,
+      actions: {
+        items: [
+          {
+            id: 'resume',
+            label: 'Resume workflow',
+            method: 'POST',
+            path: '/tasks/task-workflow-bg/actions/resume',
+            requires_input: true,
+          },
+        ],
+      },
+      updated_at: '2026-03-20T12:00:00.000Z',
+    }
+
+    mocks.taskProjectionsStore.backgroundTasks = [workflowTask]
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-bg-task', content: 'Background workflow is waiting for input.' },
+    ])
+
+    const resumeButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text() === 'Resume workflow')
+    expect(resumeButtons.length).toBeGreaterThan(0)
+
+    await resumeButtons[0]!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="task-action-dialog"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="task-action-decision-input"]').setValue('approve')
+    await wrapper.get('[data-testid="task-action-payload-input"]').setValue('{"ticket":"B-2"}')
+    await wrapper.get('[data-testid="task-action-confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.taskProjectionsStore.performTaskAction).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'task-workflow-bg' }),
+      'resume',
+      {
+        decision: 'approve',
+        payload: { ticket: 'B-2' },
+      }
+    )
+  })
+
+  it('shows a notification when a direct task action fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const task = {
+      id: 'task-cancel-fail',
+      kind: 'agent_task',
+      scope: 'current',
+      conversation_id: 'conv-1',
+      title: 'Cancelable task',
+      status: 'running',
+      stage: 'working',
+      progress: 40,
+      actions: {
+        items: [
+          {
+            id: 'cancel',
+            label: 'Cancel',
+            method: 'POST',
+            path: '/tasks/task-cancel-fail/actions/cancel',
+            requires_input: false,
+          },
+        ],
+      },
+      updated_at: '2026-03-20T12:00:00.000Z',
+    }
+
+    mocks.taskProjectionsStore.currentTasks = [task]
+    mocks.taskProjectionsStore.currentActiveTasks = [task]
+    mocks.taskProjectionsStore.performTaskAction.mockRejectedValueOnce(
+      new Error('permission denied')
+    )
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-cancel-fail', content: 'Task action should fail.' },
+    ])
+
+    const cancelButton = findButtonByText(wrapper, 'Cancel')
+    expect(cancelButton?.exists()).toBe(true)
+
+    await cancelButton!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.notificationStore.error).toHaveBeenCalledWith(
+      'Task action failed',
+      'permission denied'
+    )
+    expect(consoleErrorSpy).toHaveBeenCalled()
+    consoleErrorSpy.mockRestore()
   })
 
   it('submits use_browser from a web-fetch card rendered inside ChatView', async () => {

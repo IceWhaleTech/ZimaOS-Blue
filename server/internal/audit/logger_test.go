@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -274,5 +275,58 @@ func TestDefaultLoggerConfig(t *testing.T) {
 	}
 	if config.BufferSize != 1000 {
 		t.Errorf("BufferSize = %d, want 1000", config.BufferSize)
+	}
+}
+
+func TestSQLiteLogger_UsesReaderDBForQueries(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "audit.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open writer database: %v", err)
+	}
+	defer writeDB.Close()
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("failed to open reader database: %v", err)
+	}
+	defer readDB.Close()
+
+	config := &LoggerConfig{
+		BatchSize:     1,
+		FlushInterval: 50 * time.Millisecond,
+		BufferSize:    10,
+	}
+	logger, err := NewSQLiteLoggerWithReadDB(writeDB, readDB, config)
+	if err != nil {
+		t.Fatalf("failed to create logger with read db: %v", err)
+	}
+	defer logger.Close()
+
+	if logger.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if logger.readDB == logger.db {
+		t.Fatal("expected logger to use a separate read db")
+	}
+
+	ctx := context.Background()
+	entry := NewEntry(ActionLogin, StatusSuccess)
+	if err := logger.Log(ctx, entry); err != nil {
+		t.Fatalf("Log() error = %v", err)
+	}
+
+	time.Sleep(150 * time.Millisecond)
+
+	result, err := logger.Query(ctx, &QueryParams{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	if len(result.Entries) != 1 {
+		t.Fatalf("Query() returned %d entries, want 1", len(result.Entries))
+	}
+	if result.Entries[0].ID != entry.ID {
+		t.Fatalf("Query() returned ID %v, want %v", result.Entries[0].ID, entry.ID)
 	}
 }

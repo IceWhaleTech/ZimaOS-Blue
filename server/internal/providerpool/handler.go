@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -24,16 +23,17 @@ const ideOAuthImportEnabled = false
 
 // Pool is the main entry point for the provider pool functionality
 type Pool struct {
-	Registry          *Registry
-	Discovery         *ModelDiscovery
-	Router            *Router
-	IDEDiscovery      *ide.Discovery
-	UsageTracker      *UsageTracker
-	PricingManager    *PricingManager
-	Storage           Storage
-	Config            *PoolConfig
-	TrialQuotaManager *TrialQuotaManager
-	pricingUpdater    *PricingUpdater
+	Registry               *Registry
+	Discovery              *ModelDiscovery
+	Router                 *Router
+	IDEDiscovery           *ide.Discovery
+	UsageTracker           *UsageTracker
+	PricingManager         *PricingManager
+	Storage                Storage
+	Config                 *PoolConfig
+	TrialQuotaManager      *TrialQuotaManager
+	pricingUpdater         *PricingUpdater
+	providerCatalogUpdater *ProviderCatalogUpdater
 
 	// readyCh is closed once the initial model refresh completes in Start().
 	// WaitReady blocks on this channel so early requests can wait for providers.
@@ -45,6 +45,7 @@ type Pool struct {
 // poolInitOpts collects options before Pool construction.
 type poolInitOpts struct {
 	db              *sql.DB
+	readDB          *sql.DB
 	config          *PoolConfig
 	secretEncryptor SecretEncryptor
 }
@@ -67,6 +68,14 @@ func WithDB(db *sql.DB) PoolOption {
 	}
 }
 
+// WithReadDB provides a dedicated read-only SQLite handle for provider pool
+// storage reads when WithDB is also configured.
+func WithReadDB(readDB *sql.DB) PoolOption {
+	return func(o *poolInitOpts) {
+		o.readDB = readDB
+	}
+}
+
 // WithSecretEncryptor enables at-rest encryption for persisted provider secrets.
 func WithSecretEncryptor(enc SecretEncryptor) PoolOption {
 	return func(o *poolInitOpts) {
@@ -85,7 +94,7 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 	// Create storage: prefer SQLite if DB is provided
 	var storage Storage
 	if initOpts.db != nil {
-		sqliteStorage, err := NewSQLiteStorage(initOpts.db, WithStorageEncryptor(initOpts.secretEncryptor))
+		sqliteStorage, err := NewSQLiteStorageWithReadDB(initOpts.db, initOpts.readDB, WithStorageEncryptor(initOpts.secretEncryptor))
 		if err != nil {
 			return nil, fmt.Errorf("create sqlite storage: %w", err)
 		}
@@ -163,11 +172,15 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 		pool.Config = initOpts.config
 	}
 
-	// Initialize built-in providers synchronously (required for chat to work immediately)
-	pool.initBuiltinProviders()
-
 	// Defer remote pricing polling until Start() so constructor stays light.
 	pool.pricingUpdater = NewPricingUpdater(nil)
+	pool.providerCatalogUpdater = NewProviderCatalogUpdater(nil)
+	pool.providerCatalogUpdater.SetApplyCallback(func() {
+		pool.applyOfficialProviderCatalog()
+	})
+	// Initialize built-in providers and catalog-backed model metadata synchronously
+	// so chat can route immediately, even before background updaters start.
+	pool.applyOfficialProviderCatalog()
 
 	// Remove trial provider if quota is already exhausted (e.g. zero quota, expired, tampered)
 	if pool.TrialQuotaManager != nil && pool.TrialQuotaManager.IsExhausted() {
@@ -191,6 +204,9 @@ func (p *Pool) Start(ctx context.Context) {
 	p.startOnce.Do(func() {
 		if p.pricingUpdater != nil {
 			p.pricingUpdater.Start()
+		}
+		if p.providerCatalogUpdater != nil {
+			p.providerCatalogUpdater.Start()
 		}
 
 		// Start usage tracker
@@ -279,6 +295,9 @@ func (p *Pool) Stop() {
 	if p.pricingUpdater != nil {
 		p.pricingUpdater.Stop()
 	}
+	if p.providerCatalogUpdater != nil {
+		p.providerCatalogUpdater.Stop()
+	}
 }
 
 // fixProviderTypes fixes providers that were incorrectly marked as builtin
@@ -327,107 +346,6 @@ func (p *Pool) fixProviderLocations() {
 func (p *Pool) deduplicateProviders() {
 	// Call the deduplication function from migration.go
 	DeduplicateProviders(p)
-}
-
-// NormalizeLegacyCustomResponsesProviders fixes historical custom providers that were
-// auto-detected or saved as generic `/responses` relays while responses integration is disabled.
-func (p *Pool) NormalizeLegacyCustomResponsesProviders() (int, error) {
-	if p == nil || p.Registry == nil || ResponsesIntegrationEnabled() {
-		return 0, nil
-	}
-
-	normalized := 0
-	for _, provider := range p.Registry.List() {
-		if !shouldNormalizeLegacyCustomResponsesProvider(provider) {
-			continue
-		}
-		if !normalizeLegacyCustomResponsesProvider(provider, timeutil.NowTime()) {
-			continue
-		}
-		if err := p.Registry.Update(provider); err != nil {
-			return normalized, err
-		}
-		normalized++
-	}
-
-	return normalized, nil
-}
-
-func shouldNormalizeLegacyCustomResponsesProvider(provider *Provider) bool {
-	if provider == nil || !isThirdPartyProvider(provider) || UsesResponsesIntegration(provider) {
-		return false
-	}
-	if provider.APIFormat == APIFormatResponses || provider.DetectedFormat == APIFormatResponses {
-		return true
-	}
-	return isGenericResponsesEndpointLock(provider.BaseURL) || isGenericResponsesEndpointLock(provider.DetectedEndpoint)
-}
-
-func normalizeLegacyCustomResponsesProvider(provider *Provider, now time.Time) bool {
-	if provider == nil {
-		return false
-	}
-
-	changed := false
-	if provider.APIFormat == APIFormatResponses {
-		provider.APIFormat = APIFormatOpenAI
-		changed = true
-	}
-	if provider.DetectedFormat == APIFormatResponses {
-		provider.DetectedFormat = ""
-		provider.DetectedAt = time.Time{}
-		changed = true
-	}
-	if normalized := normalizeGenericResponsesBaseURL(strings.TrimSpace(provider.BaseURL)); normalized != "" && normalized != provider.BaseURL {
-		provider.BaseURL = normalized
-		provider.ResetParsedURL()
-		changed = true
-	}
-	if isGenericResponsesEndpointLock(provider.DetectedEndpoint) {
-		provider.DetectedEndpoint = ""
-		provider.ResetParsedURL()
-		changed = true
-	}
-	if changed {
-		provider.UpdatedAt = now
-	}
-	return changed
-}
-
-func normalizeGenericResponsesBaseURL(raw string) string {
-	raw = strings.TrimSuffix(strings.TrimSpace(raw), "/")
-	if raw == "" {
-		return ""
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-	path := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(u.Path)), "/")
-	switch path {
-	case "/responses", "/v1/responses":
-		u.Path = ""
-		u.RawPath = ""
-		u.RawQuery = ""
-		u.Fragment = ""
-		return strings.TrimSuffix(u.String(), "/")
-	default:
-		return raw
-	}
-}
-
-func isGenericResponsesEndpointLock(raw string) bool {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err == nil {
-		raw = u.Path
-	}
-	raw = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), "/")
-	switch raw {
-	case "/responses", "/v1/responses":
-		return true
-	default:
-		return false
-	}
 }
 
 // initBuiltinProviders initializes built-in providers if not already registered
@@ -514,6 +432,15 @@ func (p *Pool) initBuiltinProviders() {
 				needsUpdate = true
 			}
 
+			// Update metadata mode if changed
+			if EffectiveProviderMetadataMode(existingProvider) != builtin.MetadataMode {
+				existingProvider.MetadataMode = builtin.MetadataMode
+				needsUpdate = true
+			}
+			if syncCatalogProviderCanonicalFields(existingProvider) {
+				needsUpdate = true
+			}
+
 			// Update beta marker if changed
 			if existingProvider.Beta != builtin.Beta {
 				existingProvider.Beta = builtin.Beta
@@ -559,8 +486,32 @@ func (p *Pool) initBuiltinProviders() {
 			syncBuiltinModels(p.Storage, builtin.ID)
 		} else {
 			// Register new builtin provider
+			syncCatalogProviderCanonicalFields(builtin)
 			p.Registry.Register(builtin)
 		}
+	}
+}
+
+func (p *Pool) applyOfficialProviderCatalog() {
+	if p == nil {
+		return
+	}
+
+	p.initBuiltinProviders()
+
+	if p.Discovery == nil {
+		return
+	}
+
+	for _, provider := range BuiltinProviders() {
+		if !isCatalogMetadataProvider(provider) {
+			continue
+		}
+		models := sortModelsByPreference(GetBuiltinModels(provider.ID))
+		if len(models) == 0 {
+			continue
+		}
+		p.Discovery.storeResolvedModels(provider.ID, models)
 	}
 }
 
@@ -645,9 +596,10 @@ type Handler struct {
 	sfGroup singleflight.Group
 
 	// cache for frequently accessed data (using ecache2 generic cache)
-	modelsCache *cache.GenericCache[string]
-	ideCache    *cache.GenericCache[string]
-	quotaCache  *cache.GenericCache[string] // OAuth quota, 5-min TTL
+	modelsCache        *cache.GenericCache[string]
+	ideCache           *cache.GenericCache[string]
+	quotaCache         *cache.GenericCache[string] // OAuth quota, 5-min TTL
+	accountStatusCache *cache.GenericCache[string] // Provider account status, 2-min TTL
 
 	// OAuth manager (optional)
 	oauthManager oauth.RuntimeManager
@@ -672,6 +624,10 @@ func NewHandler(pool *Pool) *Handler {
 			MaxSize:    20,
 			DefaultTTL: 5 * time.Minute,
 		}, "providerpool_quota"),
+		accountStatusCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    50,
+			DefaultTTL: 2 * time.Minute,
+		}, "providerpool_account_status"),
 	}
 }
 
@@ -690,6 +646,8 @@ func (h *Handler) poolNotAvailable(c echo.Context) error {
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Provider endpoints
 	g.GET("", h.ListProviders)
+	g.GET("/catalog/status", h.GetProviderCatalogStatus)
+	g.GET("/usage", h.GetUsageStats)
 	g.POST("", h.AddProvider)
 	g.GET("/:id", h.GetProvider)
 	g.PUT("/:id", h.UpdateProvider)
@@ -715,6 +673,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:id/oauth/device-complete", h.CompleteDeviceFlow)
 	g.GET("/:id/oauth/quota", h.GetOAuthQuota)
 	g.GET("/:id/oauth/:accountId/quota", h.GetOAuthQuota)
+	g.GET("/:id/account/status", h.GetProviderAccountStatus)
 
 	// Model endpoints
 	g.GET("/:id/models", h.ListProviderModels)
@@ -726,7 +685,6 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/:id/keys/:keyId", h.RemoveAPIKey)
 
 	// Usage endpoints
-	g.GET("/usage", h.GetUsageStats)
 	g.GET("/:id/usage", h.GetProviderUsage)
 
 	// Trial quota endpoint
@@ -783,13 +741,14 @@ type providerResponse struct {
 	Priority      int      `json:"priority"`
 	AllowedModels []string `json:"allowed_models,omitempty"`
 
-	Icon        string `json:"icon,omitempty"`
-	CustomIcon  string `json:"custom_icon,omitempty"`
-	Description string `json:"description,omitempty"`
-	Website     string `json:"website,omitempty"`
-	APIKeyURL   string `json:"api_key_url,omitempty"`
-	Beta        bool   `json:"beta,omitempty"`
-	IsBuiltin   bool   `json:"is_builtin"`
+	Icon         string               `json:"icon,omitempty"`
+	CustomIcon   string               `json:"custom_icon,omitempty"`
+	Description  string               `json:"description,omitempty"`
+	Website      string               `json:"website,omitempty"`
+	APIKeyURL    string               `json:"api_key_url,omitempty"`
+	MetadataMode ProviderMetadataMode `json:"metadata_mode,omitempty"`
+	Beta         bool                 `json:"beta,omitempty"`
+	IsBuiltin    bool                 `json:"is_builtin"`
 
 	// Health check errors - returned to frontend for display
 	LastError     string    `json:"last_error,omitempty"`
@@ -861,17 +820,100 @@ func capabilitiesToStrings(c ModelCapabilities) []string {
 }
 
 func canEditProviderLocation(provider *Provider) bool {
-	return provider != nil && (provider.Type == ProviderTypeCustom || provider.ID == "ollama")
+	return provider != nil && provider.Type == ProviderTypeCustom
 }
 
 func effectiveProviderLocation(provider *Provider) ProviderLocation {
-	if provider == nil || !canEditProviderLocation(provider) {
+	if provider == nil {
 		return ProviderLocationCloud
 	}
-	if provider.Location == ProviderLocationLocal {
+	if isCatalogMetadataProvider(provider) {
+		if canonical := GetBuiltinProvider(provider.ID); canonical != nil {
+			if canonical.Location == ProviderLocationLocal {
+				return ProviderLocationLocal
+			}
+			return ProviderLocationCloud
+		}
+	}
+	if provider.Location == ProviderLocationLocal &&
+		provider.Type == ProviderTypeCustom {
 		return ProviderLocationLocal
 	}
 	return ProviderLocationCloud
+}
+
+func shouldHideProviderFromList(provider *Provider) bool {
+	if provider == nil {
+		return false
+	}
+	return provider.ID == "bedrock" &&
+		isCatalogMetadataProvider(provider) &&
+		strings.TrimSpace(provider.BaseURL) == ""
+}
+
+func filterProvidersForList(providers []*Provider) []*Provider {
+	filtered := make([]*Provider, 0, len(providers))
+	for _, provider := range providers {
+		if shouldHideProviderFromList(provider) {
+			continue
+		}
+		filtered = append(filtered, provider)
+	}
+	return filtered
+}
+
+func syncCatalogProviderCanonicalFields(provider *Provider) bool {
+	if provider == nil || !isCatalogMetadataProvider(provider) {
+		return false
+	}
+
+	canonical := GetBuiltinProvider(provider.ID)
+	if canonical == nil {
+		return false
+	}
+
+	changed := false
+	resetParsedURL := false
+
+	if provider.BaseURL != canonical.BaseURL {
+		provider.BaseURL = canonical.BaseURL
+		changed = true
+		resetParsedURL = true
+	}
+	if provider.APIFormat != canonical.APIFormat {
+		provider.APIFormat = canonical.APIFormat
+		changed = true
+	}
+	if provider.APIFormatMode != APIFormatModePinned {
+		provider.APIFormatMode = APIFormatModePinned
+		changed = true
+	}
+	if provider.Location != canonical.Location {
+		provider.Location = canonical.Location
+		changed = true
+	}
+	if provider.MetadataMode != canonical.MetadataMode {
+		provider.MetadataMode = canonical.MetadataMode
+		changed = true
+	}
+	if provider.DetectedEndpoint != "" {
+		provider.DetectedEndpoint = ""
+		changed = true
+		resetParsedURL = true
+	}
+	if provider.DetectedFormat != "" {
+		provider.DetectedFormat = ""
+		changed = true
+	}
+	if !provider.DetectedAt.IsZero() {
+		provider.DetectedAt = time.Time{}
+		changed = true
+	}
+	if resetParsedURL {
+		provider.ResetParsedURL()
+	}
+
+	return changed
 }
 
 func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLookup MediaPricingLookup) *providerResponse {
@@ -927,6 +969,7 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 		Description:   p.Description,
 		Website:       p.Website,
 		APIKeyURL:     p.APIKeyURL,
+		MetadataMode:  EffectiveProviderMetadataMode(p),
 		Beta:          p.Beta,
 		IsBuiltin:     GetBuiltinProvider(p.ID) != nil,
 		LastError:     p.LastError,
@@ -977,7 +1020,7 @@ func toModelResponses(models []*Model, pm *PricingManager, mpLookup MediaPricing
 func (h *Handler) ListProviders(c echo.Context) error {
 	if h.pool == nil || h.pool.Registry == nil {
 		builtinProviders := BuiltinProviders()
-		sanitizedProviders := sanitizeTrialProviders(builtinProviders)
+		sanitizedProviders := filterProvidersForList(sanitizeTrialProviders(builtinProviders))
 		result := make([]*providerResponse, len(sanitizedProviders))
 		for i, p := range sanitizedProviders {
 			models := GetBuiltinModels(p.ID)
@@ -993,7 +1036,7 @@ func (h *Handler) ListProviders(c echo.Context) error {
 	}
 
 	providers := h.pool.Registry.List()
-	sanitizedProviders := sanitizeTrialProviders(providers)
+	sanitizedProviders := filterProvidersForList(sanitizeTrialProviders(providers))
 
 	// Fetch models per provider with 1s total timeout.
 	// GetFilteredModels reads cache/storage/builtin — normally instant.
@@ -1151,10 +1194,6 @@ func (h *Handler) AddProvider(c echo.Context) error {
 	if provider.APIFormatMode == "" {
 		provider.APIFormatMode = defaultAPIFormatModeForProvider(&provider)
 	}
-	if err := validateResponsesIntegrationAllowed(&provider); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-
 	if err := h.pool.Registry.Register(&provider); err != nil {
 		if err == ErrProviderExists {
 			return c.JSON(http.StatusConflict, map[string]string{"error": "provider already exists"})
@@ -1179,10 +1218,6 @@ func (h *Handler) GetProvider(c echo.Context) error {
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	if err := validateResponsesIntegrationAllowed(provider); err != nil {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
-	}
-
 	// Get health status
 	health, _ := h.pool.Registry.GetHealth(id)
 
@@ -1212,26 +1247,27 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 	candidate := *existing
+	catalogProvider := isCatalogMetadataProvider(existing)
 
 	// Apply updates
 	if updates.Name != "" {
 		candidate.Name = updates.Name
 	}
 	baseURLChanged := false
-	if updates.BaseURL != "" {
+	if !catalogProvider && updates.BaseURL != "" {
 		baseURLChanged = strings.TrimSpace(updates.BaseURL) != strings.TrimSpace(candidate.BaseURL)
 		candidate.BaseURL = updates.BaseURL
 	}
-	if updates.APIFormat != "" {
+	if !catalogProvider && updates.APIFormat != "" {
 		candidate.APIFormat = updates.APIFormat
 	}
-	if updates.APIFormatMode != "" {
+	if !catalogProvider && updates.APIFormatMode != "" {
 		if !isValidAPIFormatMode(updates.APIFormatMode) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "api_format_mode must be 'auto' or 'pinned'"})
 		}
 		candidate.APIFormatMode = updates.APIFormatMode
 	}
-	if updates.APIFormat != "" && updates.APIFormatMode == "" {
+	if !catalogProvider && updates.APIFormat != "" && updates.APIFormatMode == "" {
 		candidate.APIFormatMode = APIFormatModePinned
 	}
 	if updates.Priority != 0 {
@@ -1244,37 +1280,31 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 		if updates.Location != ProviderLocationCloud && updates.Location != ProviderLocationLocal {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "location must be 'cloud' or 'local'"})
 		}
-		if !canEditProviderLocation(existing) && updates.Location != ProviderLocationCloud {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "location can only be changed for custom providers and ollama"})
+		if !catalogProvider && !canEditProviderLocation(existing) && updates.Location != ProviderLocationCloud {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "location can only be changed for custom providers"})
 		}
-		candidate.Location = updates.Location
+		if !catalogProvider {
+			candidate.Location = updates.Location
+		}
 	}
 	if !canEditProviderLocation(&candidate) {
-		candidate.Location = ProviderLocationCloud
+		candidate.Location = effectiveProviderLocation(&candidate)
 	}
 	if baseURLChanged {
 		candidate.ResetParsedURL()
 	}
-	if (baseURLChanged || updates.APIFormat != "" || updates.APIFormatMode != "") && candidate.DetectedEndpoint != "" {
+	if !catalogProvider &&
+		(baseURLChanged || updates.APIFormat != "" || updates.APIFormatMode != "") &&
+		candidate.DetectedEndpoint != "" {
 		candidate.DetectedEndpoint = ""
 		candidate.ResetParsedURL()
 	}
-	if updates.Region != "" {
-		if !isValidRegion(updates.Region) {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "region must be 'auto', 'cn', or 'international'"})
-		}
-		candidate.Region = updates.Region
-		// When user explicitly sets region, clear DetectedEndpoint so region takes effect
-		if candidate.Region != "auto" {
-			candidate.DetectedEndpoint = ""
-			candidate.ResetParsedURL()
-		}
-	}
-
 	// Non-third-party providers use a single canonical format.
 	// Third-party providers in auto mode re-detect immediately when the format mode
 	// or base URL changes so edits take effect on the next request.
-	if !isThirdPartyProvider(&candidate) {
+	if catalogProvider {
+		syncCatalogProviderCanonicalFields(&candidate)
+	} else if !isThirdPartyProvider(&candidate) {
 		candidate.APIFormat = canonicalAPIFormatForProvider(&candidate)
 		candidate.DetectedFormat = candidate.APIFormat
 		candidate.DetectedAt = timeutil.NowTime()
@@ -1308,10 +1338,6 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 			candidate.APIFormatMode = APIFormatModePinned
 		}
 	}
-	if err := validateResponsesIntegrationAllowed(&candidate); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-
 	*existing = candidate
 
 	if err := h.pool.Registry.Update(existing); err != nil {
@@ -1324,15 +1350,6 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 func isValidAPIFormatMode(mode APIFormatMode) bool {
 	switch mode {
 	case "", APIFormatModeAuto, APIFormatModePinned:
-		return true
-	default:
-		return false
-	}
-}
-
-func isValidRegion(region string) bool {
-	switch region {
-	case "", "auto", "cn", "international":
 		return true
 	default:
 		return false
@@ -1362,15 +1379,6 @@ func (h *Handler) EnableProvider(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	if !ResponsesIntegrationEnabled() {
-		provider, err := h.pool.Registry.Get(id)
-		if err == nil {
-			if err := validateResponsesIntegrationAllowed(provider); err != nil {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
-			}
-		}
-	}
-
 	if err := h.pool.Registry.Enable(id); err != nil {
 		if err == ErrProviderNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
@@ -1412,10 +1420,6 @@ func (h *Handler) TestProvider(c echo.Context) error {
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	if err := validateResponsesIntegrationAllowed(provider); err != nil {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
-	}
-
 	// Optional: test with a specific API key
 	var body struct {
 		KeyID string `json:"key_id"`
@@ -1667,6 +1671,9 @@ func (h *Handler) DetectCapabilities(c echo.Context) error {
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	if isCatalogMetadataProvider(provider) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "capability detection is only available for dynamic providers"})
+	}
 
 	// Get models for this provider to determine max tokens
 	models, err := h.pool.Discovery.GetModels(id)
@@ -1688,20 +1695,10 @@ func (h *Handler) DetectCapabilities(c echo.Context) error {
 		}
 	}
 
-	// If no max output found from models, use a reasonable default based on provider
+	// If discovery produced no model-specific output limit, use a generic
+	// dynamic-provider fallback for max output tokens only.
 	if detectedMaxTokens == 0 {
-		switch provider.ID {
-		case "openai":
-			detectedMaxTokens = 16384
-		case "anthropic":
-			detectedMaxTokens = 8192
-		case "google":
-			detectedMaxTokens = 8192
-		case "deepseek":
-			detectedMaxTokens = 8192
-		default:
-			detectedMaxTokens = 4096
-		}
+		detectedMaxTokens = 4096
 	}
 
 	// Update provider with detected capabilities
@@ -1718,10 +1715,20 @@ func (h *Handler) DetectCapabilities(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"message":             "capabilities detected",
+		"message":             "dynamic provider output limit detected",
 		"detected_max_tokens": detectedMaxTokens,
 		"detected_at":         now,
 	})
+}
+
+func (h *Handler) GetProviderCatalogStatus(c echo.Context) error {
+	if h.pool == nil || h.pool.providerCatalogUpdater == nil {
+		return c.JSON(http.StatusOK, ProviderCatalogStatus{
+			SourceURL:     remoteOfficialProviderCatalogURL,
+			FallbackInUse: true,
+		})
+	}
+	return c.JSON(http.StatusOK, h.pool.providerCatalogUpdater.Status())
 }
 
 // UpdateProviderIcon updates the custom icon for a provider
@@ -1859,6 +1866,17 @@ func (h *Handler) ProbeProviderModels(c echo.Context) error {
 	id, err := validatedProviderIDParam(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	provider, err := h.pool.Registry.Get(id)
+	if err != nil {
+		if err == ErrProviderNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if isCatalogMetadataProvider(provider) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "model probing is only available for dynamic providers"})
 	}
 
 	var req struct {
@@ -2179,9 +2197,6 @@ func (h *Handler) GetImportableConfigs(c echo.Context) error {
 // ImportIDEConfig imports configuration from a specific IDE
 func (h *Handler) ImportIDEConfig(c echo.Context) error {
 	ideType := ide.IDEType(c.Param("type"))
-	if !ResponsesIntegrationEnabled() && ideType == ide.IDETypeCodex {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": ResponsesIntegrationDisabledReason()})
-	}
 
 	// Get the real API key
 	apiKey, err := h.pool.IDEDiscovery.GetRealAPIKey(ideType)
@@ -2230,9 +2245,6 @@ func (h *Handler) ImportIDEConfig(c echo.Context) error {
 				provider.DetectedAt = timeutil.NowTime()
 				if detectedBaseURL != "" {
 					provider.BaseURL = detectedBaseURL
-				}
-				if err := validateResponsesIntegrationAllowed(provider); err != nil {
-					return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 				}
 				if regErr := h.pool.Registry.Register(provider); regErr != nil {
 					return c.JSON(http.StatusInternalServerError, map[string]string{"error": regErr.Error()})
@@ -2860,9 +2872,6 @@ func (h *Handler) SetMediaPricingLookup(fn MediaPricingLookup) {
 // Each provider may have a different callback path (e.g., /oauth-callback, /oauth2callback).
 func (h *Handler) RegisterOAuthCallbackRoute(e *echo.Echo, configs map[string]*oauth.ProviderConfig) {
 	for _, cfg := range configs {
-		if !ResponsesIntegrationEnabled() && cfg != nil && cfg.ID == "codex" {
-			continue
-		}
 		if cfg.RedirectPath != "" {
 			e.GET(cfg.RedirectPath, h.HandleOAuthCallback)
 		}
@@ -2897,10 +2906,6 @@ func (h *Handler) StartOAuth(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "provider_type is required"})
 		}
 	}
-	if !ResponsesIntegrationEnabled() && strings.EqualFold(strings.TrimSpace(req.ProviderType), "codex") {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": ResponsesIntegrationDisabledReason()})
-	}
-
 	result, err := h.oauthManager.StartAuth(c.Request().Context(), providerID, req.ProviderType)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -2928,13 +2933,6 @@ func (h *Handler) HandleOAuthCallback(c echo.Context) error {
 	if err != nil {
 		return c.HTML(http.StatusBadRequest, fmt.Sprintf("<h2>Authorization failed</h2><p>%s</p>", err.Error()))
 	}
-	if !ResponsesIntegrationEnabled() && strings.EqualFold(strings.TrimSpace(token.ProviderType), "codex") {
-		if token.ID != "" {
-			_ = h.oauthManager.Disconnect(token.ProviderID, token.ID)
-		}
-		return c.HTML(http.StatusForbidden, fmt.Sprintf("<h2>Authorization disabled</h2><p>%s</p>", ResponsesIntegrationDisabledReason()))
-	}
-
 	// Update the provider's OAuth config — mark as connected, don't overwrite template
 	provider, getErr := h.pool.Registry.Get(token.ProviderID)
 	if getErr == nil {
@@ -3216,6 +3214,42 @@ func (h *Handler) GetOAuthQuota(c echo.Context) error {
 	return c.JSON(http.StatusOK, quotaInfo)
 }
 
+// GetProviderAccountStatus returns provider-native account telemetry for supported providers.
+func (h *Handler) GetProviderAccountStatus(c echo.Context) error {
+	providerID, err := validatedProviderIDParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if h.pool == nil || h.pool.Registry == nil {
+		return h.poolNotAvailable(c)
+	}
+
+	keyID := strings.TrimSpace(c.QueryParam("key_id"))
+	cacheKey := providerID + ":" + keyID
+	if cached, ok := h.accountStatusCache.Get(cacheKey); ok {
+		if status, ok := cached.(*ProviderAccountStatus); ok {
+			return c.JSON(http.StatusOK, status)
+		}
+	}
+
+	provider, err := h.pool.Registry.Get(providerID)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	sfKey := "provider_account_status:" + cacheKey
+	result, _, _ := h.sfGroup.Do(sfKey, func() (interface{}, error) {
+		return FetchProviderAccountStatus(c.Request().Context(), provider, keyID), nil
+	})
+
+	status := result.(*ProviderAccountStatus)
+	h.accountStatusCache.Put(cacheKey, status)
+	return c.JSON(http.StatusOK, status)
+}
+
 // ImportOAuthToken imports an OAuth token scanned from a local IDE.
 func (h *Handler) ImportOAuthToken(c echo.Context) error {
 	if !ideOAuthImportEnabled {
@@ -3266,10 +3300,6 @@ func (h *Handler) autoImportOAuthToken(ideType ide.IDEType) string {
 	if h.oauthManager == nil || h.pool == nil || h.pool.Registry == nil {
 		return ""
 	}
-	if !ResponsesIntegrationEnabled() && ideType == ide.IDETypeCodex {
-		return ""
-	}
-
 	token, err := ide.ScanOAuthToken(ideType)
 	if err != nil {
 		return ""

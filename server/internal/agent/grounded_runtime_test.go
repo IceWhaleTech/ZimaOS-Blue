@@ -211,6 +211,757 @@ func TestGroundedRuntimeWriteLSReadPasses(t *testing.T) {
 	}
 }
 
+func TestGroundedRuntimeStopsSearchLoopAndRespondsFromGroundedEvidence(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Need the latest docs URL.","next_tool":{"tool":"web_query","args":{"input":"https://platform.openai.com/docs/api-reference/responses","query":"OpenAI Responses API documentation latest 2025","url":"https://platform.openai.com/docs/api-reference/responses"}},"assertions":[]}`,
+			`{"status":"continue","reason":"Double-check latest docs.","next_tool":{"tool":"web_query","args":{"input":"https://platform.openai.com/docs/api-reference/responses","query":"OpenAI Responses API documentation 2025 latest platform.openai.com","url":"https://platform.openai.com/docs/api-reference/responses"}},"assertions":[]}`,
+			`{"status":"continue","reason":"Confirm one more time.","next_tool":{"tool":"web_query","args":{"input":"https://platform.openai.com/docs/api-reference/responses","query":"site:platform.openai.com/docs responses API","url":"https://platform.openai.com/docs/api-reference/responses"}},"assertions":[]}`,
+			`{"status":"continue","reason":"This extra round should never execute.","next_tool":{"tool":"web_query","args":{"input":"https://example.com"}},"assertions":[]}`,
+		},
+		responderResponses: []string{
+			`{"summary":"The latest Responses API docs were retrieved.","claims":[{"type":"tool_output","tool_call_ids":["__FIRST_TOOL_CALL_ID__"],"excerpt":"Responses | OpenAI API Reference"}]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	web := tools.NewMockTool("web_query", "mock web query")
+	web.SetResult(map[string]any{
+		"status":     "ok",
+		"mode":       "read",
+		"target_url": "https://platform.openai.com/docs/api-reference/responses",
+		"final_url":  "https://developers.openai.com/api/reference/resources/responses",
+		"title":      "Responses | OpenAI API Reference",
+		"content":    "Responses | OpenAI API Reference",
+	})
+	registry.Register(web)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     llmStub,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-search-loop-task",
+		UserID:      "u1",
+		Goal:        "find the latest OpenAI Responses API docs",
+		GroundState: NewGroundTruthState(),
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Output, "Responses | OpenAI API Reference") {
+		t.Fatalf("output=%q, want grounded summary from existing evidence", result.Output)
+	}
+	if llmStub.plannerIndex != 3 {
+		t.Fatalf("planner rounds executed = %d, want 3 before loop cutoff", llmStub.plannerIndex)
+	}
+	events, err := store.ListRuntimeEvents(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("ListRuntimeEvents returned error: %v", err)
+	}
+	foundLoopDetection := false
+	for _, event := range events {
+		if event.EventType == "loop_detection" {
+			foundLoopDetection = true
+			break
+		}
+	}
+	if !foundLoopDetection {
+		t.Fatal("expected grounded runtime to persist a loop_detection runtime event")
+	}
+}
+
+func TestGroundedRuntimeEscalatesWebQueryBrowserHintsToBrowserTool(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Try web_query first.","next_tool":{"tool":"web_query","args":{"input":"https://platform.openai.com/docs/api-reference/responses","query":"OpenAI Responses API documentation latest","url":"https://platform.openai.com/docs/api-reference/responses"}},"assertions":[]}`,
+			`{"status":"complete","reason":"Browser evidence collected.","assertions":[]}`,
+		},
+		responderResponses: []string{
+			`{"summary":"Browser fallback reached the latest docs.","claims":[{"type":"tool_output","tool_call_ids":["__SECOND_TOOL_CALL_ID__"],"excerpt":"Responses | OpenAI API Reference"}]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	web := tools.NewMockTool("web_query", "mock web query")
+	web.SetResult(map[string]any{
+		"status":      "needs_browser",
+		"next_action": "retry_browser",
+		"target_url":  "https://platform.openai.com/docs/api-reference/responses",
+		"final_url":   "https://platform.openai.com/docs/api-reference/responses",
+		"warnings":    []any{map[string]any{"code": "browser_required"}},
+	})
+	browser := tools.NewMockTool("browser", "mock browser")
+	browser.SetResult(map[string]any{
+		"status":  "ok",
+		"url":     "https://platform.openai.com/docs/api-reference/responses",
+		"title":   "Responses | OpenAI API Reference",
+		"content": "Responses | OpenAI API Reference",
+	})
+	registry.Register(web)
+	registry.Register(browser)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     llmStub,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-browser-escalation-task",
+		UserID:      "u1",
+		Goal:        "find the latest OpenAI Responses API docs",
+		GroundState: NewGroundTruthState(),
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Output, "Responses | OpenAI API Reference") {
+		t.Fatalf("output=%q, want browser-backed grounded evidence", result.Output)
+	}
+	if len(task.GroundState.Calls) != 2 {
+		t.Fatalf("grounded call count = %d, want 2", len(task.GroundState.Calls))
+	}
+	if got := task.GroundState.Calls["task/grounded-browser-escalation-task/tc/2"].Tool; got != "browser" {
+		t.Fatalf("second tool = %q, want browser", got)
+	}
+	if llmStub.plannerIndex != 2 {
+		t.Fatalf("planner rounds executed = %d, want 2 (initial plan + final complete)", llmStub.plannerIndex)
+	}
+}
+
+func TestGroundedRuntimeEscalatesWrappedWebQueryBrowserHintsToBrowserTool(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Try web_query first.","next_tool":{"tool":"web_query","args":{"input":"https://platform.openai.com/docs/api-reference/responses","query":"OpenAI Responses API documentation latest","url":"https://platform.openai.com/docs/api-reference/responses"}},"assertions":[]}`,
+			`{"status":"complete","reason":"Browser evidence collected.","assertions":[]}`,
+		},
+		responderResponses: []string{
+			`{"summary":"Wrapped browser fallback reached the latest docs.","claims":[{"type":"tool_output","tool_call_ids":["__SECOND_TOOL_CALL_ID__"],"excerpt":"Responses | OpenAI API Reference"}]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	web := tools.NewMockTool("web_query", "mock web query")
+	web.SetResult(map[string]any{
+		"tool_name": "web_query",
+		"result": `{
+			"status":"needs_browser",
+			"next_action":"retry_browser",
+			"target_url":"https://platform.openai.com/docs/api-reference/responses",
+			"final_url":"https://platform.openai.com/docs/api-reference/responses",
+			"warnings":[{"code":"browser_required"}]
+		}`,
+	})
+	browser := tools.NewMockTool("browser", "mock browser")
+	browser.SetResult(map[string]any{
+		"status":  "ok",
+		"url":     "https://platform.openai.com/docs/api-reference/responses",
+		"title":   "Responses | OpenAI API Reference",
+		"content": "Responses | OpenAI API Reference",
+	})
+	registry.Register(web)
+	registry.Register(browser)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     llmStub,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-browser-escalation-wrapped-task",
+		UserID:      "u1",
+		Goal:        "find the latest OpenAI Responses API docs",
+		GroundState: NewGroundTruthState(),
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Output, "Responses | OpenAI API Reference") {
+		t.Fatalf("output=%q, want browser-backed grounded evidence", result.Output)
+	}
+	if len(task.GroundState.Calls) != 2 {
+		t.Fatalf("grounded call count = %d, want 2", len(task.GroundState.Calls))
+	}
+	if got := task.GroundState.Calls["task/grounded-browser-escalation-wrapped-task/tc/2"].Tool; got != "browser" {
+		t.Fatalf("second tool = %q, want browser", got)
+	}
+}
+
+func TestGroundedRuntimeSuppressesBrowserAutoEscalationAfterCanonicalWebSearch(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Try web_query first.","next_tool":{"tool":"web_query","args":{"input":"OpenAI Responses API latest docs","query":"OpenAI Responses API latest docs"}},"assertions":[]}`,
+			`{"status":"continue","reason":"Read the discovered docs URL.","next_tool":{"tool":"web_query","args":{"input":"https://platform.openai.com/docs/api-reference/responses","query":"OpenAI Responses API latest docs","url":"https://platform.openai.com/docs/api-reference/responses"}},"assertions":[]}`,
+			`{"status":"complete","reason":"Canonical web_search evidence is enough for this gate.","assertions":[]}`,
+		},
+		responderResponses: []string{
+			`{"summary":"Canonical web_search evidence is enough for this gate.","claims":[{"type":"command_output_excerpt","tool_call_ids":["__FIRST_TOOL_CALL_ID__"],"excerpt":"format: xml"}]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "format: xml\nresult: <web_search><result>ok</result></web_search>",
+	})
+	web := tools.NewMockTool("web_query", "mock web query")
+	web.SetResult(map[string]any{
+		"status":      "needs_browser",
+		"next_action": "retry_browser",
+		"target_url":  "https://platform.openai.com/docs/api-reference/responses",
+		"final_url":   "https://platform.openai.com/docs/api-reference/responses",
+		"warnings":    []any{map[string]any{"code": "browser_required"}},
+	})
+	browser := tools.NewMockTool("browser", "mock browser")
+	browser.SetResult(map[string]any{
+		"status":  "ok",
+		"url":     "https://platform.openai.com/docs/api-reference/responses",
+		"title":   "Responses | OpenAI API Reference",
+		"content": "Responses | OpenAI API Reference",
+	})
+	registry.Register(execTool)
+	registry.Register(web)
+	registry.Register(browser)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     llmStub,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-canonical-web-search-suppresses-browser-task",
+		UserID:      "u1",
+		Goal:        "find the latest OpenAI Responses API docs",
+		GroundState: NewGroundTruthState(),
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"gate_type":           "execution_equivalence",
+				"primary_route":       "web_search",
+				"expected_cli_action": "blue web_search",
+				"enforce_cli_route":   true,
+				"allow_fallback":      false,
+			},
+			"group_input": map[string]any{
+				"query": "OpenAI Responses API latest docs",
+			},
+		},
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Output, `command excerpt="format: xml"`) {
+		t.Fatalf("output=%q, want grounded command evidence from canonical web_search", result.Output)
+	}
+	if len(task.GroundState.Calls) != 2 {
+		t.Fatalf("grounded call count = %d, want 2", len(task.GroundState.Calls))
+	}
+	if got := task.GroundState.Calls["task/grounded-canonical-web-search-suppresses-browser-task/tc/1"].Tool; got != "bash" {
+		t.Fatalf("first tool = %q, want bash canonical route", got)
+	}
+	if got := task.GroundState.Calls["task/grounded-canonical-web-search-suppresses-browser-task/tc/2"].Tool; got != "web_query" {
+		t.Fatalf("second tool = %q, want web_query", got)
+	}
+	for _, call := range task.GroundState.Calls {
+		if call.Tool == "browser" {
+			t.Fatal("browser should not be auto-escalated after canonical web_search succeeded")
+		}
+	}
+	if llmStub.plannerIndex != 3 {
+		t.Fatalf("planner rounds executed = %d, want 3", llmStub.plannerIndex)
+	}
+}
+
+func TestGroundedRuntimeCompletesExecutionContractAfterGroundedWebEvidence(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Try web_query first.","next_tool":{"tool":"web_query","args":{"input":"OpenAI Responses API latest docs","query":"OpenAI Responses API latest docs"}},"assertions":[]}`,
+			`{"status":"continue","reason":"Read the discovered docs URL.","next_tool":{"tool":"web_query","args":{"input":"https://platform.openai.com/docs/api-reference/responses","query":"OpenAI Responses API latest docs","url":"https://platform.openai.com/docs/api-reference/responses"}},"assertions":[]}`,
+			`{"status":"continue","reason":"Open the docs in browser.","next_tool":{"tool":"browser","args":{"action":"navigate","url":"https://developers.openai.com/api/reference/resources/responses"}},"assertions":[]}`,
+		},
+		responderResponses: []string{
+			`{"summary":"Canonical web_search evidence is enough for this execution gate.","claims":[{"type":"command_output_excerpt","tool_call_ids":["__FIRST_TOOL_CALL_ID__"],"excerpt":"format: xml"}]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "format: xml\nresult: <web_search><result>ok</result></web_search>",
+	})
+	web := tools.NewMockTool("web_query", "mock web query")
+	web.SetResult(map[string]any{
+		"status":    "ok",
+		"mode":      "read",
+		"final_url": "https://developers.openai.com/api/reference/resources/responses",
+		"title":     "Responses | OpenAI API Reference",
+		"content":   "Responses | OpenAI API Reference",
+	})
+	browser := tools.NewMockTool("browser", "mock browser")
+	browser.SetResult(map[string]any{
+		"status":  "ok",
+		"title":   "browser should not run",
+		"content": "browser should not run",
+	})
+	registry.Register(execTool)
+	registry.Register(web)
+	registry.Register(browser)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     llmStub,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-execution-contract-web-evidence-task",
+		UserID:      "u1",
+		Goal:        "搜索 OpenAI Responses API 的最新文档。",
+		GroundState: NewGroundTruthState(),
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"gate_type":           "execution_equivalence",
+				"primary_route":       "web_search",
+				"expected_cli_action": "blue web_search",
+				"enforce_cli_route":   true,
+				"allow_fallback":      false,
+			},
+			"group_input": map[string]any{
+				"query": "搜索 OpenAI Responses API 的最新文档。",
+			},
+			"task_success_criteria": []any{"evidence_tool_used", "planner_memory_skipped"},
+			"harness_contract": map[string]any{
+				"required_observations": []any{"evidence_tool_used", "planner_memory_skipped"},
+			},
+		},
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Output, `command excerpt="format: xml"`) {
+		t.Fatalf("output=%q, want canonical web_search command evidence", result.Output)
+	}
+	if len(task.GroundState.Calls) != 1 {
+		t.Fatalf("grounded call count = %d, want 1", len(task.GroundState.Calls))
+	}
+	if got := task.GroundState.Calls["task/grounded-execution-contract-web-evidence-task/tc/1"].Tool; got != "bash" {
+		t.Fatalf("first tool = %q, want bash canonical route", got)
+	}
+	for _, call := range task.GroundState.Calls {
+		if call.Tool == "web_query" || call.Tool == "browser" {
+			t.Fatalf("unexpected follow-up tool after canonical web_search evidence: %q", call.Tool)
+		}
+	}
+	if llmStub.plannerIndex != 1 {
+		t.Fatalf("planner rounds executed = %d, want 1", llmStub.plannerIndex)
+	}
+}
+
+func TestGroundedRuntimeForcesCanonicalCLIActionBeforeAlternateRoute(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Use the direct web tool first.","next_tool":{"tool":"web_query","args":{"input":"OpenAI Responses API latest docs","query":"OpenAI Responses API latest docs"}},"assertions":[]}`,
+			`{"status":"complete","reason":"Canonical CLI output captured.","assertions":[]}`,
+		},
+		responderResponses: []string{
+			`{"summary":"The canonical CLI route was executed.","claims":[{"type":"tool_output","tool_call_ids":["__FIRST_TOOL_CALL_ID__"],"excerpt":"canonical web query route executed"}]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "canonical web query route executed",
+	})
+	web := tools.NewMockTool("web_query", "mock web query")
+	web.SetResult(map[string]any{
+		"status":  "ok",
+		"content": "direct web tool should not be used first",
+	})
+	registry.Register(execTool)
+	registry.Register(web)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     llmStub,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-canonical-cli-task",
+		UserID:      "u1",
+		Goal:        "find the latest OpenAI Responses API docs",
+		GroundState: NewGroundTruthState(),
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"gate_type":           "execution_equivalence",
+				"primary_route":       "web_search",
+				"expected_cli_action": `blue web_query input="OpenAI Responses API latest docs"`,
+				"enforce_cli_route":   true,
+				"allow_fallback":      false,
+			},
+		},
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Output, "canonical web query route executed") {
+		t.Fatalf("output=%q, want canonical CLI evidence", result.Output)
+	}
+	if len(task.GroundState.Calls) != 1 {
+		t.Fatalf("grounded call count = %d, want 1", len(task.GroundState.Calls))
+	}
+	if got := task.GroundState.Calls["task/grounded-canonical-cli-task/tc/1"].Tool; got != "bash" {
+		t.Fatalf("first tool = %q, want bash/exec canonical route", got)
+	}
+	cmdFact, ok := task.GroundState.Commands["task/grounded-canonical-cli-task/tc/1"]
+	if !ok {
+		t.Fatal("expected canonical CLI command to be recorded in command history")
+	}
+	if cmdFact.Command != `blue web_query input="OpenAI Responses API latest docs"` {
+		t.Fatalf("command=%q, want canonical CLI action", cmdFact.Command)
+	}
+	if llmStub.plannerIndex != 2 {
+		t.Fatalf("planner rounds executed = %d, want 2", llmStub.plannerIndex)
+	}
+}
+
+func TestGroundedRuntimeFallsBackToCanonicalCLIWhenPlannerReturnsEmptyContent(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			"",
+			`{"status":"complete","reason":"Canonical CLI output captured.","assertions":[]}`,
+		},
+		responderResponses: []string{
+			`{"summary":"The canonical CLI route was executed.","claims":[{"type":"tool_output","tool_call_ids":["__FIRST_TOOL_CALL_ID__"],"excerpt":"canonical web query route executed after planner fallback"}]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "canonical web query route executed after planner fallback",
+	})
+	web := tools.NewMockTool("web_query", "mock web query")
+	web.SetResult(map[string]any{
+		"status":  "ok",
+		"content": "direct web tool should not be used first",
+	})
+	registry.Register(execTool)
+	registry.Register(web)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     llmStub,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-canonical-cli-fallback-task",
+		UserID:      "u1",
+		Goal:        "find the latest OpenAI Responses API docs",
+		GroundState: NewGroundTruthState(),
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"gate_type":           "execution_equivalence",
+				"primary_route":       "web_query",
+				"expected_cli_action": `blue web_query input="OpenAI Responses API latest docs"`,
+				"enforce_cli_route":   true,
+				"allow_fallback":      false,
+			},
+		},
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Output, "canonical web query route executed after planner fallback") {
+		t.Fatalf("output=%q, want canonical CLI fallback evidence", result.Output)
+	}
+	if len(task.GroundState.Calls) != 1 {
+		t.Fatalf("grounded call count = %d, want 1", len(task.GroundState.Calls))
+	}
+	if got := task.GroundState.Calls["task/grounded-canonical-cli-fallback-task/tc/1"].Tool; got != "bash" {
+		t.Fatalf("first tool = %q, want bash/exec canonical route", got)
+	}
+	cmdFact, ok := task.GroundState.Commands["task/grounded-canonical-cli-fallback-task/tc/1"]
+	if !ok {
+		t.Fatal("expected canonical CLI fallback command to be recorded in command history")
+	}
+	if cmdFact.Command != `blue web_query input="OpenAI Responses API latest docs"` {
+		t.Fatalf("command=%q, want canonical CLI fallback action", cmdFact.Command)
+	}
+	if llmStub.plannerIndex != 2 {
+		t.Fatalf("planner rounds executed = %d, want 2", llmStub.plannerIndex)
+	}
+}
+
+func TestGroundedRuntimeUsesDeterministicStructuredWebEvidenceForCanonicalExec(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Run the canonical web query route.","next_tool":{"tool":"exec","args":{"command":"blue web_query input=\"OpenAI Responses API latest docs\""}},"assertions":[]}`,
+			`{"status":"complete","reason":"Structured web evidence was collected.","assertions":[]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "status: ok",
+		"data": map[string]any{
+			"status":    "ok",
+			"final_url": "https://developers.openai.com/api/reference/resources/responses",
+			"title":     "Responses | OpenAI API Reference",
+			"content":   "Responses | OpenAI API Reference\nBuild stateful interactions with the Responses API.",
+		},
+	})
+	registry.Register(execTool)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     nil,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-deterministic-canonical-exec-task",
+		UserID:      "u1",
+		Goal:        "find the latest OpenAI Responses API docs",
+		GroundState: NewGroundTruthState(),
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if result.GroundingStatus != GroundingStatusGrounded {
+		t.Fatalf("grounding_status=%q, want %q", result.GroundingStatus, GroundingStatusGrounded)
+	}
+	for _, want := range []string{
+		"Responses | OpenAI API Reference",
+		"https://developers.openai.com/api/reference/resources/responses",
+	} {
+		if !strings.Contains(result.Output, want) {
+			t.Fatalf("expected output to contain %q, got %q", want, result.Output)
+		}
+	}
+	if len(result.VerificationErrors) != 0 {
+		t.Fatalf("verification_errors=%v, want none", result.VerificationErrors)
+	}
+	if llmStub.responderIndex != 0 {
+		t.Fatalf("expected responder LLM to be skipped, got responderIndex=%d", llmStub.responderIndex)
+	}
+}
+
+func TestGroundedRuntimeCompletesExecutionContractAfterCanonicalWebQueryEvidence(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Run the canonical web query route.","next_tool":{"tool":"exec","args":{"command":"blue web_query input=\"OpenAI Responses API latest docs\""}},"assertions":[]}`,
+			`{"status":"continue","reason":"This extra round should not execute.","next_tool":{"tool":"web_query","args":{"input":"https://example.com"}},"assertions":[]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "status: ok",
+		"data": map[string]any{
+			"status":    "ok",
+			"final_url": "https://developers.openai.com/api/reference/resources/responses",
+			"title":     "Responses | OpenAI API Reference",
+			"content":   "Responses | OpenAI API Reference\nBuild stateful interactions with the Responses API.",
+		},
+	})
+	web := tools.NewMockTool("web_query", "mock web query")
+	web.SetResult(map[string]any{
+		"status":  "ok",
+		"title":   "web query should not run",
+		"content": "web query should not run",
+	})
+	registry.Register(execTool)
+	registry.Register(web)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     nil,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-execution-contract-web-query-evidence-task",
+		UserID:      "u1",
+		Goal:        "find the latest OpenAI Responses API docs",
+		GroundState: NewGroundTruthState(),
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"gate_type":           "execution_equivalence",
+				"primary_route":       "web_query",
+				"expected_cli_action": `blue web_query input="OpenAI Responses API latest docs"`,
+				"enforce_cli_route":   true,
+				"allow_fallback":      false,
+			},
+			"task_success_criteria": []any{"evidence_tool_used"},
+			"harness_contract": map[string]any{
+				"required_observations": []any{"evidence_tool_used"},
+			},
+		},
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Responses | OpenAI API Reference",
+		"https://developers.openai.com/api/reference/resources/responses",
+	} {
+		if !strings.Contains(result.Output, want) {
+			t.Fatalf("expected output to contain %q, got %q", want, result.Output)
+		}
+	}
+	if len(task.GroundState.Calls) != 1 {
+		t.Fatalf("grounded call count = %d, want 1", len(task.GroundState.Calls))
+	}
+	if llmStub.plannerIndex != 1 {
+		t.Fatalf("planner rounds executed = %d, want 1", llmStub.plannerIndex)
+	}
+}
+
+func TestGroundedRuntimeCompletesExecutionContractAfterCanonicalAnalyzeEvidence(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			"",
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "answer: Analysis completed for Summarize and extract the key points.",
+		"data": map[string]any{
+			"answer":      "Analysis completed for Summarize and extract the key points.",
+			"message":     "Analysis ready: Summarize and extract the key points",
+			"output_mode": "inline",
+			"topic":       "Summarize and extract the key points",
+		},
+	})
+	registry.Register(execTool)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     nil,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-deterministic-canonical-analyze-task",
+		UserID:      "u1",
+		Goal:        "Summarize https://example.com/blog and extract the key points.",
+		GroundState: NewGroundTruthState(),
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"expected_cli_action": "blue analyze",
+				"enforce_cli_route":   true,
+				"gate_type":           "execution_equivalence",
+			},
+			"group_input": map[string]any{
+				"query": "Summarize https://example.com/blog and extract the key points.",
+			},
+		},
+	}
+	step := PlanStep{Index: 0, Description: "collect and analyze the referenced public URL", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if result.GroundingStatus != GroundingStatusGrounded {
+		t.Fatalf("grounding_status=%q, want %q", result.GroundingStatus, GroundingStatusGrounded)
+	}
+	if !strings.Contains(result.Output, "Analysis completed for Summarize and extract the key points.") {
+		t.Fatalf("expected output to contain deterministic analyze answer, got %q", result.Output)
+	}
+	if len(result.VerificationErrors) != 0 {
+		t.Fatalf("verification_errors=%v, want none", result.VerificationErrors)
+	}
+	if llmStub.responderIndex != 0 {
+		t.Fatalf("expected responder LLM to be skipped, got responderIndex=%d", llmStub.responderIndex)
+	}
+}
+
 func TestGroundedToolCatalogUsesFileReadWriteCanonicalNames(t *testing.T) {
 	registry := tools.NewRegistry()
 	workspaceRoot := t.TempDir()

@@ -30,6 +30,8 @@ func ArchiveExtension(primaryURL, fallbackURL, contentType string) string {
 			return ".tar.gz"
 		case strings.Contains(lower, ".tgz"):
 			return ".tgz"
+		case strings.Contains(lower, ".skill"):
+			return ".skill"
 		case strings.Contains(lower, ".zip"):
 			return ".zip"
 		}

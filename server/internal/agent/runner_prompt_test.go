@@ -20,3 +20,28 @@ func TestBuildStepExecutionSystemPrompt_IncludesCodingDefaults(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTaskRoutingContractContext_IncludesExecutionEquivalenceHints(t *testing.T) {
+	out := buildTaskRoutingContractContext(map[string]interface{}{
+		"gate_type": "execution_equivalence",
+		"routing_contract": map[string]interface{}{
+			"primary_route":       "analyze",
+			"expected_cli_action": "blue analyze",
+			"allow_fallback":      false,
+		},
+	})
+
+	required := []string{
+		"Execution routing contract:",
+		"Primary route: analyze",
+		"Canonical CLI action: blue analyze",
+		"Do not use blue task, blue session",
+		"Do not substitute unrelated tools",
+		"stop and report the blocker",
+	}
+	for _, want := range required {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected routing contract context to include %q, got: %s", want, out)
+		}
+	}
+}

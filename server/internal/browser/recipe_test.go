@@ -115,6 +115,68 @@ func TestSearchRecipe_Validate(t *testing.T) {
 	}
 }
 
+func TestBuildSearchURL(t *testing.T) {
+	tests := []struct {
+		name   string
+		engine string
+		query  string
+		want   string
+	}{
+		{
+			name:   "google",
+			engine: "google",
+			query:  "OpenAI Responses API",
+			want:   "https://www.google.com/search?q=OpenAI+Responses+API",
+		},
+		{
+			name:   "bing",
+			engine: "bing",
+			query:  "OpenAI Responses API",
+			want:   "https://www.bing.com/search?q=OpenAI+Responses+API",
+		},
+		{
+			name:   "duckduckgo",
+			engine: "duckduckgo",
+			query:  "OpenAI Responses API",
+			want:   "https://duckduckgo.com/?q=OpenAI+Responses+API",
+		},
+		{
+			name:   "baidu",
+			engine: "baidu",
+			query:  "OpenAI Responses API",
+			want:   "https://www.baidu.com/s?wd=OpenAI+Responses+API",
+		},
+		{
+			name:   "unknown engine",
+			engine: "yahoo",
+			query:  "OpenAI Responses API",
+			want:   "",
+		},
+		{
+			name:   "empty query",
+			engine: "bing",
+			query:  "  ",
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, buildSearchURL(tt.engine, tt.query))
+		})
+	}
+}
+
+func TestFinalizeSearchRecipeResult_AllowsMissingPageInfo(t *testing.T) {
+	result, err := finalizeSearchRecipeResult(nil, "bing", "OpenAI Responses API", "5", []SearchResult{
+		{Title: "Docs", URL: "https://example.com/docs", Snippet: "latest docs"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.Success)
+	assert.Equal(t, "", result.Data["page_url"])
+}
+
 func TestFillFormRecipe_Validate(t *testing.T) {
 	r := &fillFormRecipe{}
 

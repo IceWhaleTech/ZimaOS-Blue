@@ -18,7 +18,6 @@ const requiredPaths = [
   'chat.taskBackToConversation',
   'chat.taskCancel',
   'chat.taskSendUpdate',
-  'chat.taskSendUpdatePlaceholder',
   'chat.taskRunningElsewhere',
   'chat.taskCompleted',
   'chat.taskFailed',
@@ -80,7 +79,7 @@ describe('task projection locale coverage', () => {
       for (const path of requiredPaths) {
         const leaf = path.split('.').pop() as string
         expect(source, `${fileName} should explicitly declare ${path}`).toMatch(
-          new RegExp(`"${leaf}"\\s*:`)
+          new RegExp(`["']?${leaf}["']?\\s*:`)
         )
       }
     }

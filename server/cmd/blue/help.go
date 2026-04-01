@@ -3,11 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
-	skillEmbed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/spf13/cobra"
 )
 
@@ -35,15 +34,16 @@ func runHelp(cmd *cobra.Command, args []string) error {
 
 		fmt.Println()
 		fmt.Println("Guides:")
-		fmt.Println("  blue help <skill>        Show full SKILL.md manual")
-		fmt.Println("  blue <skill> key=value   Execute a skill")
+		for _, line := range rootHelpGuideLines() {
+			fmt.Println(line)
+		}
 
-		skills := listPinnedSkillSummaries(agentcore.PinnedSkills(), skillEmbed.SkillsFS.ReadFile)
+		skills := listPinnedSkillSummaries(helpWorkspaceDir(), agentcore.PinnedSkills())
 		if len(skills) == 0 {
 			return nil
 		}
 
-		fmt.Printf("\nBuilt-in skills (%d):\n", len(skills))
+		fmt.Printf("\nPinned skills (%d):\n", len(skills))
 		for _, s := range skills {
 			if s.Description == "" {
 				fmt.Printf("  %-22s\n", s.Name)
@@ -59,20 +59,17 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		return target.Help()
 	}
 
-	pinnedSet := buildPinnedSkillSet(agentcore.PinnedSkills())
-	for _, candidate := range candidateSkillIDs(args[0]) {
-		if _, pinned := pinnedSet[candidate]; !pinned {
-			continue
+	manual, source, ok, resolveErr := resolveHelpSkillStrict(args[0], helpWorkspaceDir())
+	if resolveErr != nil {
+		return resolveErr
+	}
+	if ok {
+		fmt.Printf("Source: %s\n\n", source)
+		fmt.Print(manual)
+		if !strings.HasSuffix(manual, "\n") {
+			fmt.Println()
 		}
-		manual, source, ok := findSkillManual(candidate, nil, skillEmbed.SkillsFS.ReadFile)
-		if ok {
-			fmt.Printf("Source: %s\n\n", source)
-			fmt.Print(manual)
-			if !strings.HasSuffix(manual, "\n") {
-				fmt.Println()
-			}
-			return nil
-		}
+		return nil
 	}
 
 	if err != nil {
@@ -81,57 +78,55 @@ func runHelp(cmd *cobra.Command, args []string) error {
 	return fmt.Errorf("unknown help topic %q", strings.Join(args, " "))
 }
 
-func findSkillManual(
-	topic string,
-	roots []string,
-	readEmbedded func(string) ([]byte, error),
-) (manual string, source string, ok bool) {
-	for _, skillID := range candidateSkillIDs(topic) {
-		for _, root := range roots {
-			mdPath := filepath.Join(root, skillID, "SKILL.md")
-			data, err := os.ReadFile(mdPath)
-			if err == nil {
-				return string(data), mdPath, true
-			}
-		}
-
-		if readEmbedded == nil {
-			continue
-		}
-		embedPath := filepath.ToSlash(filepath.Join("skills", skillID, "SKILL.md"))
-		data, err := readEmbedded(embedPath)
-		if err == nil {
-			return string(data), "embedded://" + embedPath, true
-		}
+func rootHelpGuideLines() []string {
+	return []string{
+		"  blue help <skill>                 Show full SKILL.md manual",
+		"  blue <skill> ...                  Execute a built-in skill or skill subcommand",
+		"  blue media generate \"...\"        Run the media generation command group",
+		"  blue exec command='tool ...'      Run external CLIs documented by some skills",
 	}
+}
 
-	return "", "", false
+func resolveHelpSkill(topic, workspaceDir string) (manual string, source string, ok bool, err error) {
+	return findSkillManual(topic, skillmanifest.ResolveRoots(workspaceDir))
+}
+
+func resolveHelpSkillStrict(topic, workspaceDir string) (manual string, source string, ok bool, err error) {
+	return findSkillManualStrict(topic, workspaceDir, skillmanifest.ResolveRoots(workspaceDir))
+}
+
+func helpWorkspaceDir() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return dir
+}
+
+func findSkillManual(topic string, roots []string) (manual string, source string, ok bool, err error) {
+	resolved, found, err := skillmanifest.FindAnyByCandidatesStrict(candidateSkillIDs(topic), roots, "", skillmanifest.Options{})
+	if err != nil {
+		return "", "", false, err
+	}
+	if !found {
+		return "", "", false, nil
+	}
+	return string(resolved.Raw), resolved.Source, true, nil
+}
+
+func findSkillManualStrict(topic, workspaceDir string, roots []string) (manual string, source string, ok bool, err error) {
+	resolved, found, err := skillmanifest.FindAnyByCandidatesStrict(candidateSkillIDs(topic), roots, workspaceDir, skillmanifest.Options{})
+	if err != nil {
+		return "", "", false, err
+	}
+	if !found {
+		return "", "", false, nil
+	}
+	return string(resolved.Raw), resolved.Source, true, nil
 }
 
 func candidateSkillIDs(topic string) []string {
-	topic = strings.TrimSpace(topic)
-	if topic == "" {
-		return nil
-	}
-
-	ids := []string{topic}
-	if dot := strings.IndexByte(topic, '.'); dot > 0 {
-		ids = append(ids, topic[:dot])
-	}
-
-	out := make([]string, 0, len(ids))
-	seen := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	return out
+	return skillmanifest.CandidateIDs(topic)
 }
 
 type skillSummary struct {
@@ -140,44 +135,41 @@ type skillSummary struct {
 }
 
 func listPinnedSkillSummaries(
+	workspaceDir string,
 	pinned []string,
-	readEmbeddedFile func(string) ([]byte, error),
 ) []skillSummary {
-	if readEmbeddedFile == nil {
-		return nil
-	}
+	roots := skillmanifest.ResolveRoots(workspaceDir)
 	out := make([]skillSummary, 0, len(pinned))
 	for _, name := range pinned {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue
 		}
-		embedPath := filepath.ToSlash(filepath.Join("skills", name, "SKILL.md"))
-		data, err := readEmbeddedFile(embedPath)
-		if err != nil {
+		resolved, ok, err := skillmanifest.FindAnyByCandidatesStrict(skillmanifest.CandidateIDs(name), roots, workspaceDir, skillmanifest.Options{})
+		if err != nil || !ok {
 			continue
 		}
+		desc := strings.TrimSpace(resolved.Document.Description)
+		if desc == "" {
+			desc = parseSkillDescription(resolved.Raw)
+		}
+		id := strings.TrimSpace(resolved.Document.ID)
+		if id == "" {
+			id = name
+		}
 		out = append(out, skillSummary{
-			Name:        name,
-			Description: parseSkillDescription(data),
+			Name:        id,
+			Description: desc,
 		})
 	}
 	return out
 }
 
-func buildPinnedSkillSet(pinned []string) map[string]struct{} {
-	set := make(map[string]struct{}, len(pinned))
-	for _, name := range pinned {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		set[name] = struct{}{}
-	}
-	return set
-}
-
 func parseSkillDescription(data []byte) string {
+	if doc, err := skillmanifest.ParseEntry("skill", "memory:SKILL.md", data, skillmanifest.Options{}); err == nil && strings.TrimSpace(doc.Description) != "" {
+		return doc.Description
+	}
+
 	content := string(data)
 	body := content
 

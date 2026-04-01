@@ -24,8 +24,10 @@ The current codebase already proves that Harness is active:
 - deep research HTTP creation is routed through Harness in `server/internal/bootstrap/research_harness_adapter.go`
 - tool-side `research_run` creation is routed through Harness in `server/internal/bootstrap/research_tool_adapter.go`
 - deep research job events, calibration metadata, and takeaway candidates are synced back into Harness in `server/internal/harness/drivers/research.go`
-- the dispatcher and routes are wired from `server/internal/bootstrap/routes.go`
-- subagent execution is injected into the agent runner from `server/internal/bootstrap/routes.go`
+- the bootstrap runtime bundle and binder layer live in `server/internal/bootstrap/runtime_bindings.go`
+- `server/internal/bootstrap/routes.go` now stays focused on dependency assembly and route registration
+- subagent execution, compat handlers, and research-driver wiring are bound through the bootstrap runtime bundle
+- run preflight and stage semantics are normalized in `server/internal/harness/runtime_pipeline.go`
 
 In short: V2 already gives Blue a durable execution ledger and a minimal evaluation loop.
 
@@ -236,6 +238,7 @@ Add:
 - `GET /api/v1/harness/eval-runs/:id/report`
 - `POST /api/v1/harness/eval-runs/:id/cancel`
 - `POST /api/v1/harness/eval-runs/:id/compare`
+- `GET /api/v1/harness/comparison-reports/:id`
 - `POST /api/v1/harness/baselines`
 - `GET /api/v1/harness/baselines`
 
@@ -243,6 +246,385 @@ Compatibility rule:
 
 - `RunGroup` remains visible and directly operable
 - `EvalRun` becomes the preferred platform entrypoint for reproducible evaluations
+
+## Selector Gate Workflow
+
+The first release gate that now exists end-to-end is the curated selector gate.
+
+What it covers:
+
+- a versioned built-in selector dataset with explicit critical cases
+- dry-run route assertions for `selected_tools`, canonical skill id, clarify behavior, and fallback reasons
+- multilingual routing coverage aligned with the 27-locale routing-cue catalog
+- baseline and candidate comparison metrics such as route agreement, route compatibility, critical regressions, and clarify-rate delta
+- locale and primary-route drift breakdowns in selector-gate reports so a passing aggregate does not hide regressions in one language or skill lane
+
+## Cutover Readiness Workflow
+
+Tool-to-skill cutover cannot be judged from one passing selector run or one passing execution run.
+Blue now needs a candidate-scoped readiness view that answers "is this candidate actually safe to cut over?"
+
+The current readiness workflow is:
+
+- attach a stable `candidate_id` to selector and batch-1 execution eval runs
+- evaluate selector, execution, and budget gates per candidate rather than per ad hoc title
+- require consecutive green runs on all evaluated lanes before a candidate is considered gate-ready
+- derive budget checks from selector dry-run `selected_tool_surface` snapshots so the same curated cases cover both routing correctness and first-turn tool-surface shrinkage
+
+The resulting readiness report should separate:
+
+- `evaluated_gates_ready`: selector, execution, and budget lanes all satisfied the required consecutive green count
+- `ready`: all mandatory release requirements are satisfied with no remaining blocking reasons
+
+This distinction matters because migration safety is correctness-first:
+
+- a candidate with two green behavior lanes but a red budget lane is still not cutover-ready
+- a candidate with one recent regression on either lane must have its consecutive counter reset even if earlier runs passed
+
+Relevant APIs:
+
+- `POST /api/v1/harness/selector-curated/ensure`
+- `POST /api/v1/harness/eval-runs`
+- `GET /api/v1/harness/eval-runs/:id`
+- `GET /api/v1/harness/eval-runs/:id/report`
+- `POST /api/v1/harness/eval-runs/:id/budget-gate`
+- `POST /api/v1/harness/eval-runs/:id/selector-gate`
+- `POST /api/v1/harness/cutover-readiness`
+- `GET /api/v1/harness/comparison-reports/:id`
+
+Default gate policy is intentionally truth-first rather than baseline-first:
+
+- curated pass rate must be at least `0.98`
+- critical curated pass rate must be exactly `1.0`
+- route agreement, route compatibility, and clarify delta are always reported, but only fail the gate when thresholds are supplied
+
+Recommended release gate thresholds for cutover candidates:
+
+- `route_compatible_rate >= 0.95`
+- `clarify_rate_delta <= 0.01`
+
+This lets Blue reject real selector regressions without blocking improvements that intentionally disagree with a bad baseline.
+
+CLI automation is now available:
+
+```bash
+blue harness selector ensure --owner release-gate
+
+blue harness budget gate <selector-eval-run-id> \
+  --baseline-id <baseline-id> \
+  --min-median-schema-byte-reduction-rate 0.80 \
+  --max-median-latency-increase-rate 0.10 \
+  --allowed-final-native-tools exec
+
+blue harness selector verify \
+  --owner release-gate \
+  --title candidate-2026-03-28 \
+  --baseline-id <baseline-id>
+
+blue harness selector gate <eval-run-id> \
+  --baseline-id <baseline-id> \
+  --min-route-compatible-rate 0.95 \
+  --max-clarify-rate-delta 0.01
+```
+
+Script automation is also available for CI and nightly jobs:
+
+```bash
+python3 scripts/selector_gate_runner.py \
+  --blue-base-url http://127.0.0.1:18080/api/v1 \
+  --owner release-gate \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --baseline-id <baseline-id> \
+  --min-route-compatible-rate 0.95 \
+  --max-clarify-rate-delta 0.01 \
+  --output-json docs/reports/selector_gate_report.json \
+  --output-md docs/reports/selector_gate_report.md
+
+python3 scripts/budget_gate_runner.py \
+  --blue-base-url http://127.0.0.1:18080/api/v1 \
+  --owner release-gate \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --baseline-id <baseline-id> \
+  --min-median-schema-byte-reduction-rate 0.80 \
+  --max-median-latency-increase-rate 0.10 \
+  --allowed-final-native-tools exec \
+  --output-json docs/reports/budget_gate_report.json \
+  --output-md docs/reports/budget_gate_report.md
+
+# Reuse the selector eval run when you want one candidate attempt to produce
+# one selector trace and one budget assessment without launching a second
+# selector dry-run.
+python3 scripts/budget_gate_runner.py \
+  --blue-base-url http://127.0.0.1:18080/api/v1 \
+  --owner release-gate \
+  --candidate-id batch-1 \
+  --eval-run-id <selector-eval-run-id> \
+  --baseline-id <baseline-id> \
+  --min-median-schema-byte-reduction-rate 0.80 \
+  --max-median-latency-increase-rate 0.10 \
+  --allowed-final-native-tools exec \
+  --output-json docs/reports/budget_gate_report.json \
+  --output-md docs/reports/budget_gate_report.md
+
+python3 scripts/budget_gate_history_report.py \
+  --reports "docs/reports/budget_gate_report*.json" \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --require-consecutive-green 2 \
+  --output-json docs/reports/budget_gate_history_report.json \
+  --output-md docs/reports/budget_gate_history_report.md
+
+python3 scripts/cutover_readiness_runner.py \
+  --blue-base-url http://127.0.0.1:18080/api/v1 \
+  --owner release-gate \
+  --candidate-id batch-1 \
+  --selector-baseline-id <selector-baseline-id> \
+  --execution-baseline-id <execution-baseline-id> \
+  --budget-baseline-id <budget-baseline-id> \
+  --min-route-compatible-rate 0.95 \
+  --max-clarify-rate-delta 0.01 \
+  --max-pass-rate-drop 0.01 \
+  --max-verification-pass-rate-drop 0 \
+  --max-evidence-backed-pass-rate-drop 0 \
+  --min-median-schema-byte-reduction-rate 0.80 \
+  --max-median-latency-increase-rate 0.10 \
+  --allowed-final-native-tools exec \
+  --output-json docs/reports/cutover_readiness_report.json \
+  --output-md docs/reports/cutover_readiness_report.md
+```
+
+To evaluate historical release readiness for one candidate, use the history summarizer:
+
+```bash
+python3 scripts/selector_gate_history_report.py \
+  --reports "docs/reports/selector_gate_report*.json" \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --require-consecutive-green 2 \
+  --output-json docs/reports/selector_gate_history_report.json \
+  --output-md docs/reports/selector_gate_history_report.md
+```
+
+The history summary now highlights recurring locale and primary-route drift hotspots for the focused candidate, so repeated regressions in one of the 27 routing locales are visible even when aggregate pass/fail streaks still look healthy.
+
+For a single candidate-level verdict that matches the readiness API, use `scripts/cutover_readiness_runner.py` or [cutover-readiness.yml](/Users/orca/Documents/GitHub/ZimaOS-Blue/.github/workflows/cutover-readiness.yml). Unlike the per-lane history summaries, this report asks the server to evaluate selector, execution, and budget lanes together under one `candidate_id`.
+
+For a one-command candidate attempt that runs selector, execution, budget, and readiness in sequence, use `scripts/cutover_candidate_pipeline.py` or [cutover-candidate-pipeline.yml](/Users/orca/Documents/GitHub/ZimaOS-Blue/.github/workflows/cutover-candidate-pipeline.yml). This is the preferred path for collecting real cutover evidence because it keeps one shared `candidate_id`, reuses the selector eval run for the budget gate, surfaces selector and execution drift in the single-run report, and now enforces top-level consecutive-green checks across complete candidate attempts instead of only looking at isolated lane reports.
+
+Script automation is available for local or CI candidate attempts:
+
+```bash
+python3 scripts/cutover_candidate_pipeline.py \
+  --blue-base-url http://127.0.0.1:18080/api/v1 \
+  --owner release-gate \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --selector-baseline-id <selector-baseline-id> \
+  --execution-baseline-id <execution-baseline-id> \
+  --budget-baseline-id <budget-baseline-id> \
+  --output-dir docs/reports/cutover_candidate_pipeline
+```
+
+The same script can now enforce top-level candidate history locally when you want one command to answer "is this candidate actually at two complete greens yet?":
+
+```bash
+python3 scripts/cutover_candidate_pipeline.py \
+  --blue-base-url http://127.0.0.1:18080/api/v1 \
+  --owner release-gate \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --selector-baseline-id <selector-baseline-id> \
+  --execution-baseline-id <execution-baseline-id> \
+  --budget-baseline-id <budget-baseline-id> \
+  --require-consecutive-green 2 \
+  --history-reports "docs/reports/cutover_candidate_pipeline_history_artifacts/downloaded/pipeline_reports/*.json" \
+  --output-dir docs/reports/cutover_candidate_pipeline
+```
+
+When `--github-repo` is provided, `scripts/cutover_candidate_pipeline.py` can also download prior workflow artifacts before evaluating the local history gate, so the local command mirrors the GitHub workflow more closely. The aggregate `cutover_candidate_pipeline_report.json` and Markdown summary now include the evaluated history-gate snapshot as well, so one artifact can answer both "did this run pass?" and "does this candidate actually satisfy the consecutive-green rule?"
+
+To evaluate whether complete candidate attempts have gone green often enough to cut over, use the top-level pipeline history tools:
+
+```bash
+python3 scripts/cutover_candidate_pipeline_artifact_fetcher.py \
+  --repo your-org/your-repo \
+  --workflow cutover-candidate-pipeline.yml \
+  --branch main \
+  --exclude-run-id 123456789 \
+  --limit-runs 10 \
+  --output-dir docs/reports/cutover_candidate_pipeline_history_artifacts/downloaded \
+  --output-json docs/reports/cutover_candidate_pipeline_history_artifacts/download-manifest.json
+
+python3 scripts/cutover_candidate_pipeline_history_report.py \
+  --reports \
+    "docs/reports/cutover_candidate_pipeline_history_artifacts/current/*.json" \
+    "docs/reports/cutover_candidate_pipeline_history_artifacts/downloaded/pipeline_reports/*.json" \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --require-consecutive-green 2 \
+  --output-json docs/reports/cutover_candidate_pipeline_history_report.json \
+  --output-md docs/reports/cutover_candidate_pipeline_history_report.md
+```
+
+The pipeline artifact fetcher keeps the raw extracted workflow artifacts, but it also stages only canonical cutover candidate pipeline reports into `downloaded/pipeline_reports/` so the history summarizer ignores prior history summaries and download manifests.
+
+The top-level pipeline history summary now surfaces selector and execution locale or primary-route drift directly from each pipeline attempt, so a candidate does not look "green enough" just because the aggregate streak is healthy while one of the 27 locales is repeatedly regressing inside a nested lane report.
+
+To pull prior workflow artifacts into a local history cache before summarizing, use the GitHub artifact fetcher:
+
+```bash
+python3 scripts/selector_gate_artifact_fetcher.py \
+  --repo your-org/your-repo \
+  --workflow selector-gate.yml \
+  --branch main \
+  --exclude-run-id 123456789 \
+  --limit-runs 10 \
+  --output-dir docs/reports/selector_gate_history_artifacts/downloaded \
+  --output-json docs/reports/selector_gate_history_artifacts/download-manifest.json
+```
+
+The fetcher keeps the raw extracted artifacts, but also stages only selector-gate candidate reports into `downloaded/selector_reports/` so history checks do not accidentally ingest prior history summaries or download manifests as if they were eval results.
+
+GitHub Actions automation is available in [selector-gate.yml](/Users/orca/Documents/GitHub/ZimaOS-Blue/.github/workflows/selector-gate.yml):
+
+- `workflow_dispatch` accepts explicit `server_url`, baseline, and threshold inputs
+- `candidate_id` is the authoritative streak/readiness key and should stay stable across reruns; when omitted it falls back to the resolved `candidate_label`
+- `candidate_label` remains available as a human-readable display label and otherwise falls back to a stable branch-derived value
+- nightly `schedule` can reuse repository secrets such as `BLUE_SELECTOR_GATE_SERVER_URL`, `BLUE_SELECTOR_GATE_BASELINE_ID`, and `BLUE_SELECTOR_GATE_API_KEY`
+- the workflow defaults now enforce `route_compatible_rate >= 0.95` and `clarify_rate_delta <= 0.01`, while still reporting raw route agreement for diagnosis
+- the workflow now downloads prior `selector-gate-report` artifacts from recent runs, computes a consecutive-green history summary, and enforces `require_consecutive_green` before cutover
+- the workflow publishes both the single-run selector gate report and the history summary into the Actions step summary and uploads their JSON/Markdown artifacts
+- the workflow intentionally skips cleanly when no comparison base is configured, instead of failing noisily on an unconfigured repo
+
+GitHub Actions automation is also available in [cutover-candidate-pipeline.yml](/Users/orca/Documents/GitHub/ZimaOS-Blue/.github/workflows/cutover-candidate-pipeline.yml):
+
+- `workflow_dispatch` accepts the candidate baselines plus `require_consecutive_green`, `history_limit_runs`, and history output paths
+- one run now produces both the aggregate single-attempt pipeline report and a candidate-scoped pipeline history summary
+- the workflow downloads prior `cutover-candidate-pipeline-report` artifacts, stages canonical reports into a local history cache, and fails if the focused candidate has not reached the required consecutive-green count
+- the history summary also pulls selector and execution locale or route drift hotspots up to the candidate level, so multilingual regressions remain visible during cutover review
+- this makes the workflow the preferred evidence collection entrypoint when answering "can we switch from tool to skill yet?"
+
+Recommended CI or nightly flow:
+
+1. ensure the curated selector assets exist for the release-gate owner
+2. run `blue harness selector verify` for the candidate
+3. fail the build on a non-zero exit code
+4. only add stricter compatibility thresholds like route agreement after the truth-based gate is stable
+
+## Execution Equivalence Gate Workflow
+
+The second release gate now in place is the batch-1 execution equivalence gate.
+
+What it covers:
+
+- a versioned built-in execution dataset for the first migration batch (`web_search`, `reminder`, and `analyze`)
+- contract-backed verification for expected route, clarify behavior, and observation shape instead of only checking `status=completed`
+- route-equivalence checks that catch `exec` traces which silently ran the wrong skill, such as `blue analyze` when the case expected `blue web_search`
+- locale and primary-route drift breakdowns so regressions stay visible across the 27-locale routing matrix
+- consecutive-green history summaries so old `SkillToolAdapter` fallback paths are not retired after one lucky run
+
+Relevant APIs:
+
+- `POST /api/v1/harness/execution-batch1/ensure`
+- `POST /api/v1/harness/eval-runs`
+- `GET /api/v1/harness/eval-runs/:id`
+- `GET /api/v1/harness/eval-runs/:id/report`
+- `POST /api/v1/harness/eval-runs/:id/execution-gate`
+- `GET /api/v1/harness/comparison-reports/:id`
+
+Default gate policy stays correctness-first:
+
+- pass-rate drop must stay within `0.01`
+- critical regression count must stay at `0`
+- verification and evidence-backed pass-rate deltas are always reported, and can be promoted to hard thresholds for cutover candidates
+
+Recommended release gate thresholds for cutover candidates:
+
+- `max_pass_rate_drop <= 0.01`
+- `max_critical_regressions = 0`
+- `max_verification_pass_rate_drop <= 0`
+- `max_evidence_backed_pass_rate_drop <= 0`
+
+CLI automation is available:
+
+```bash
+blue harness execution ensure --owner release-gate
+
+blue harness execution verify \
+  --owner release-gate \
+  --title candidate-2026-03-28 \
+  --baseline-id <baseline-id> \
+  --max-pass-rate-drop 0.01 \
+  --max-critical-regressions 0 \
+  --max-verification-pass-rate-drop 0 \
+  --max-evidence-backed-pass-rate-drop 0
+
+blue harness execution gate <eval-run-id> \
+  --baseline-id <baseline-id> \
+  --max-pass-rate-drop 0.01 \
+  --max-critical-regressions 0 \
+  --max-verification-pass-rate-drop 0 \
+  --max-evidence-backed-pass-rate-drop 0
+```
+
+Script automation is also available for CI and nightly jobs:
+
+```bash
+python3 scripts/execution_gate_runner.py \
+  --blue-base-url http://127.0.0.1:18080/api/v1 \
+  --owner release-gate \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --baseline-id <baseline-id> \
+  --max-pass-rate-drop 0.01 \
+  --max-critical-regressions 0 \
+  --max-verification-pass-rate-drop 0 \
+  --max-evidence-backed-pass-rate-drop 0 \
+  --output-json docs/reports/execution_gate_report.json \
+  --output-md docs/reports/execution_gate_report.md
+```
+
+To evaluate historical release readiness for one candidate, use the history summarizer:
+
+```bash
+python3 scripts/execution_gate_history_report.py \
+  --reports "docs/reports/execution_gate_report*.json" \
+  --candidate-id batch-1 \
+  --candidate-label batch-1 \
+  --require-consecutive-green 2 \
+  --output-json docs/reports/execution_gate_history_report.json \
+  --output-md docs/reports/execution_gate_history_report.md
+```
+
+The history summary highlights recurring locale and primary-route drift hotspots, so repeated execution regressions in one route lane remain visible even when aggregate pass rate still looks acceptable.
+
+To pull prior workflow artifacts into a local history cache before summarizing, use the GitHub artifact fetcher:
+
+```bash
+python3 scripts/execution_gate_artifact_fetcher.py \
+  --repo your-org/your-repo \
+  --workflow execution-gate.yml \
+  --branch main \
+  --exclude-run-id 123456789 \
+  --limit-runs 10 \
+  --output-dir docs/reports/execution_gate_history_artifacts/downloaded \
+  --output-json docs/reports/execution_gate_history_artifacts/download-manifest.json
+```
+
+The fetcher keeps the raw extracted artifacts, but also stages only execution-gate candidate reports into `downloaded/execution_reports/` so history checks do not accidentally ingest prior history summaries or download manifests as if they were eval results.
+
+GitHub Actions automation is available in [execution-gate.yml](/Users/orca/Documents/GitHub/ZimaOS-Blue/.github/workflows/execution-gate.yml):
+
+- `workflow_dispatch` accepts explicit `server_url`, baseline, and threshold inputs
+- `candidate_id` is the authoritative streak/readiness key and should stay stable across reruns; when omitted it falls back to the resolved `candidate_label`
+- `candidate_label` remains available as a human-readable display label and otherwise falls back to a stable branch-derived value
+- nightly `schedule` can reuse repository secrets such as `BLUE_EXECUTION_GATE_SERVER_URL`, `BLUE_EXECUTION_GATE_BASELINE_ID`, and `BLUE_EXECUTION_GATE_API_KEY`
+- the workflow defaults enforce `max_pass_rate_drop <= 0.01`, `max_critical_regressions = 0`, `max_verification_pass_rate_drop <= 0`, and `max_evidence_backed_pass_rate_drop <= 0`
+- the workflow downloads prior `execution-gate-report` artifacts from recent runs, computes a consecutive-green history summary, and enforces `require_consecutive_green` before cutover
+- the workflow publishes both the single-run execution gate report and the history summary into the Actions step summary and uploads their JSON/Markdown artifacts
+- the workflow intentionally skips cleanly when no comparison base is configured, instead of failing noisily on an unconfigured repo
 
 ## Execution Model
 

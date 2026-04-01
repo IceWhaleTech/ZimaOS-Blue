@@ -1,6 +1,16 @@
 ---
 name: ask
+version: "1.0.0"
 description: "Ask the user one or more questions and wait for their response. Supports both multiple-choice and free-text prompts. Use when the user explicitly asks to be questioned (e.g. 'ask me question(s)'), when intent is ambiguous and clarification is required, or as a confirmation gate in MCP internal Plan mode."
+invocation: "blue ask q=\"Choose a deploy strategy\" a='[\"Canary\",\"Blue-Green\"]'"
+examples:
+  - "blue ask q=\"Choose a deploy strategy\" a='[\"Canary\",\"Blue-Green\"]'"
+capability_tags:
+  - clarify
+  - interactive
+  - questionnaire
+interaction_mode: interactive
+card_support: batch
 ---
 
 # Ask Skill

@@ -2,11 +2,19 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import router from '@/router'
 import { i18n } from '@/i18n'
-import type { UserTaskProjection } from '@/api/tasks'
+import type {
+  UserTaskActionDescriptor,
+  UserTaskActionID,
+  UserTaskActions,
+  UserTaskProjection,
+} from '@/api/tasks'
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
+import { canOpenTaskConversation } from '@/utils/taskProjectionActions'
 
 type TasksApiModule = typeof import('@/api/tasks')
+type UserTaskActionInput = NonNullable<UserTaskActionDescriptor['input']>
+type UserTaskActionInputField = NonNullable<UserTaskActionInput['fields']>[number]
 let tasksApiModulePromise: Promise<TasksApiModule> | null = null
 
 function loadTasksApiModule(): Promise<TasksApiModule> {
@@ -23,6 +31,82 @@ function normalizeString(value: unknown): string {
 function normalizeNumber(value: unknown): number {
   const next = Number(value)
   return Number.isFinite(next) ? next : 0
+}
+
+function normalizeBoolean(value: unknown): boolean {
+  return Boolean(value)
+}
+
+function normalizeTaskActionInputFields(
+  fields: UserTaskActionInput['fields'] | null | undefined
+): UserTaskActionInputField[] | undefined {
+  if (!Array.isArray(fields)) return undefined
+  const normalized: UserTaskActionInputField[] = []
+  for (const field of fields) {
+    const key = normalizeString(field?.key)
+    if (!key) continue
+    normalized.push({
+      key,
+      label: normalizeString(field?.label) || key,
+      kind: normalizeString(field?.kind) || undefined,
+      target: normalizeString(field?.target) || undefined,
+      payload_key: normalizeString(field?.payload_key) || undefined,
+      required: normalizeBoolean(field?.required),
+      placeholder: normalizeString(field?.placeholder) || undefined,
+      options: Array.isArray(field?.options)
+        ? field.options.map((value) => normalizeString(value)).filter(Boolean)
+        : undefined,
+    })
+  }
+  return normalized
+}
+
+function normalizeTaskActionDescriptor(
+  descriptor: Partial<UserTaskActionDescriptor> | null | undefined
+): UserTaskActionDescriptor | null {
+  if (!descriptor) return null
+  const id = normalizeString(descriptor.id)
+  const method = normalizeString(descriptor.method).toUpperCase() || 'POST'
+  const path = normalizeString(descriptor.path)
+  if (!id || !path) return null
+  return {
+    id,
+    label: normalizeString(descriptor.label) || id,
+    method,
+    path,
+    variant: normalizeString(descriptor.variant) || undefined,
+    requires_input: normalizeBoolean(descriptor.requires_input),
+    input: descriptor.input
+      ? {
+          ...descriptor.input,
+          fields: normalizeTaskActionInputFields(descriptor.input.fields),
+          title: normalizeString(descriptor.input.title) || undefined,
+          description: normalizeString(descriptor.input.description) || undefined,
+          submit_label: normalizeString(descriptor.input.submit_label) || undefined,
+        }
+      : undefined,
+  }
+}
+
+function normalizeTaskActions(
+  actions: Partial<UserTaskActions> | null | undefined
+): UserTaskActions {
+  return {
+    items: Array.isArray(actions?.items)
+      ? actions.items
+          .map((descriptor) => normalizeTaskActionDescriptor(descriptor))
+          .filter((descriptor): descriptor is UserTaskActionDescriptor => !!descriptor)
+      : [],
+  }
+}
+
+function findTaskActionDescriptor(
+  actions: Partial<UserTaskActions> | null | undefined,
+  action: UserTaskActionID
+): UserTaskActionDescriptor | null {
+  const actionID = normalizeString(action)
+  if (!actionID || !Array.isArray(actions?.items)) return null
+  return actions.items.find((descriptor) => normalizeString(descriptor?.id) === actionID) || null
 }
 
 function isTaskActive(task: Pick<UserTaskProjection, 'status'> | null | undefined): boolean {
@@ -55,11 +139,7 @@ function normalizeTaskSnapshot(
     error_preview: normalizeString(snapshot.error_preview) || undefined,
     artifacts: Array.isArray(snapshot.artifacts) ? snapshot.artifacts : [],
     research_sources: Array.isArray(snapshot.research_sources) ? snapshot.research_sources : [],
-    actions: snapshot.actions || {
-      can_cancel: false,
-      can_open_chat: false,
-      can_send_update: false,
-    },
+    actions: normalizeTaskActions(snapshot.actions),
     updated_at: normalizeString(snapshot.updated_at) || new Date().toISOString(),
     finished_at: normalizeString(snapshot.finished_at) || undefined,
   }
@@ -141,15 +221,14 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
 
     const t = i18n.global.t.bind(i18n.global)
     const notificationStore = useNotificationStore()
-    const action =
-      task.conversation_id && task.actions?.can_open_chat
-        ? {
-            label: t('chat.taskBackToConversation', 'Back to task'),
-            handler: () => {
-              void openTask(task)
-            },
-          }
-        : undefined
+    const action = canOpenTaskConversation(task)
+      ? {
+          label: t('chat.taskBackToConversation', 'Back to task'),
+          handler: () => {
+            void openTask(task)
+          },
+        }
+      : undefined
 
     const title = task.title || t('chat.taskNotificationTitle', 'Background task')
     if (task.status === 'completed') {
@@ -225,12 +304,53 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     await refreshNow()
   }
 
-  async function cancelTask(taskId: string) {
-    const normalizedTaskID = normalizeString(taskId)
+  function resolveTask(taskOrId: string | Pick<UserTaskProjection, 'id' | 'actions'>) {
+    if (typeof taskOrId !== 'string') {
+      return {
+        id: normalizeString(taskOrId.id),
+        task: taskOrId,
+      }
+    }
+    const id = normalizeString(taskOrId)
+    const task =
+      currentTasks.value.find((candidate) => candidate.id === id) ||
+      backgroundTasks.value.find((candidate) => candidate.id === id)
+    return {
+      id,
+      task,
+    }
+  }
+
+  async function performTaskAction(
+    taskOrId: string | Pick<UserTaskProjection, 'id' | 'actions'>,
+    action: UserTaskActionID,
+    payload?: unknown
+  ) {
+    const actionID = normalizeString(action)
+    const resolved = resolveTask(taskOrId)
+    const normalizedTaskID = normalizeString(resolved.id)
     if (!normalizedTaskID) return
     const { taskProjectionApi } = await loadTasksApiModule()
-    await taskProjectionApi.cancelTask(normalizedTaskID)
+    const descriptor =
+      findTaskActionDescriptor(resolved.task?.actions, actionID) ||
+      (typeof taskOrId !== 'string' ? findTaskActionDescriptor(taskOrId.actions, actionID) : null)
+    if (descriptor?.path) {
+      await taskProjectionApi.performTaskActionDescriptor(descriptor, payload)
+    } else {
+      await taskProjectionApi.performTaskAction(normalizedTaskID, actionID, payload)
+    }
     await refreshNow()
+  }
+
+  async function cancelTask(taskOrId: string | Pick<UserTaskProjection, 'id' | 'actions'>) {
+    await performTaskAction(taskOrId, 'cancel')
+  }
+
+  async function resumeTask(
+    taskOrId: string | Pick<UserTaskProjection, 'id' | 'actions'>,
+    payload?: unknown
+  ) {
+    await performTaskAction(taskOrId, 'resume', payload)
   }
 
   async function openTask(task: Pick<UserTaskProjection, 'conversation_id'>) {
@@ -263,7 +383,9 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     hasActiveTasks,
     refreshNow,
     setConversation,
+    performTaskAction,
     cancelTask,
+    resumeTask,
     openTask,
     reset,
     stopPolling,

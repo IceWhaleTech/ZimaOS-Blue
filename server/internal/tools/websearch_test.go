@@ -424,6 +424,80 @@ func TestWebSearchTool_ProviderFallback(t *testing.T) {
 	}
 }
 
+func TestWebSearchTool_RetriesRetryableProviderFailures(t *testing.T) {
+	var hits atomic.Int32
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{
+				{
+					"title":   "Recovered Result",
+					"url":     "https://example.com/recovered",
+					"content": "Recovered after retry",
+					"engine":  "searxng",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider: "searxng",
+		BaseURL:  server.URL,
+	})
+	tool.retrySleep = func(context.Context, time.Duration) error { return nil }
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":  "retryable provider",
+		"format": "json",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := hits.Load(); got != 2 {
+		t.Fatalf("backend calls = %d, want 2", got)
+	}
+
+	var response WebSearchResponse
+	if err := json.Unmarshal([]byte(result.(string)), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response.Results) != 1 || response.Results[0].URL != "https://example.com/recovered" {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
+func TestWebSearchTool_DoesNotRetryAuthFailures(t *testing.T) {
+	var hits atomic.Int32
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		http.Error(w, "invalid_api_key", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider: "searxng",
+		BaseURL:  server.URL,
+	})
+	tool.retrySleep = func(context.Context, time.Duration) error { return nil }
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":  "auth failure",
+		"format": "json",
+	})
+	if err == nil {
+		t.Fatal("expected auth failure")
+	}
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("backend calls = %d, want 1", got)
+	}
+}
+
 func TestWebSearchTool_ProviderFanoutAggregatesResults(t *testing.T) {
 	started := make(chan string, 2)
 	release := make(chan struct{})

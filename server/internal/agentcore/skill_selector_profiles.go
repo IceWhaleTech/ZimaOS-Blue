@@ -3,6 +3,7 @@ package agentcore
 import (
 	"strings"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
 
@@ -42,14 +43,14 @@ func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 		profile.Objects = compactSelectorTerms(append(profile.Objects, "url", "web", "website", "site", "web page", "webpage", "网页", "网站", "网址")...)
 		profile.ContextCues = compactSelectorTerms(append(profile.ContextCues, "http://", "https://", "www.")...)
 		profile.PreferredDomains = []string{sel.DomainLiveWeb, sel.DomainURLPresent}
-	case "web_search":
+	case "web_query", "web_search":
 		profile.Actions = compactSelectorTerms("search", "look up", "lookup", "find", "check", "latest", "news", "搜索", "检索", "查找", "最新", "新闻")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "web", "news", "sources", "citations", "references", "网页", "新闻", "来源", "引用")...)
+		profile.Objects = compactSelectorTerms(append(profile.Objects, "web", "news", "sources", "citations", "references", "docs", "documentation", "manual", "文档", "官方文档", "网页", "新闻", "来源", "引用")...)
 		profile.PreferredDomains = []string{sel.DomainLiveWeb}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
 	case "deep_research":
-		profile.Actions = compactSelectorTerms("research", "investigate", "compare", "analyze", "study", "timeline", "调研", "研究", "查阅", "梳理", "比较", "分析")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "sources", "citations", "evidence", "references", "views", "timeline", "来源", "引用", "证据", "观点", "时期")...)
+		profile.Actions = compactSelectorTerms("research", "investigate", "compare", "study", "benchmark", "timeline", "调研", "研究", "查阅", "梳理", "比较", "基准", "时间线")
+		profile.Objects = compactSelectorTerms(append(profile.Objects, "sources", "citations", "evidence", "references", "multi-source", "comparison", "tradeoff", "views", "timeline", "benchmark", "来源", "引用", "证据", "多来源", "对比", "权衡", "观点", "时期", "基准")...)
 		profile.PreferredDomains = []string{sel.DomainLiveWeb}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
 	case "ui_reviewer":
@@ -59,9 +60,10 @@ func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 		profile.PreferredDomains = []string{sel.DomainUIArtifact}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace, sel.DomainProductivity}
 	case "analyze":
-		profile.Actions = compactSelectorTerms("analyze", "summarize", "compare", "synthesize", "inspect", "research", "分析", "总结", "比较", "提炼", "查看", "研究", "梳理")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "file", "report", "text", "data", "content", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "source", "sources", "文件", "报告", "文本", "数据", "内容", "网址", "链接", "页面", "网站", "主题", "文章", "来源")...)
-		profile.PreferredDomains = []string{sel.DomainLiveWeb, sel.DomainLocalWorkspace}
+		profile.Actions = compactSelectorTerms("analyze", "summarize", "compare", "synthesize", "inspect", "review", "report", "分析", "总结", "比较", "提炼", "查看", "归纳", "报告")
+		profile.Objects = compactSelectorTerms(append(profile.Objects, "report", "text", "data", "content", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "document", "documents", "http://", "https://", "www.", "报告", "文本", "数据", "内容", "网址", "链接", "页面", "网站", "主题", "文章", "文档")...)
+		profile.PreferredDomains = []string{sel.DomainLiveWeb}
+		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
 	case "himalaya":
 		profile.Actions = compactSelectorTerms("email", "mail", "imap", "smtp", "reply", "forward", "compose", "send", "archive", "search", "triage", "download attachment", "邮件", "邮箱", "回复", "转发", "发送", "归档", "检索", "整理")
 		profile.Objects = compactSelectorTerms(append(profile.Objects, "email", "mail", "inbox", "folder", "message", "attachment", "account", "imap", "smtp", "notmuch", "maildir", "收件箱", "邮件", "附件", "账户")...)
@@ -92,6 +94,19 @@ func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 		profile.ExactAliases = compactSelectorTerms(append(profile.ExactAliases, "plan_create", "plan update", "plan_update", "plan append", "plan_append")...)
 		profile.Actions = compactSelectorTerms("plan", "update", "append", "checklist", "规划", "计划", "更新", "清单")
 		profile.Objects = compactSelectorTerms(append(profile.Objects, "plan", "task", "checklist", "计划", "任务", "清单")...)
+	}
+
+	if terms := routingcue.SkillTerms(name); len(terms.Actions) > 0 || len(terms.Objects) > 0 || len(terms.Context) > 0 || len(terms.Examples) > 0 {
+		profile.ExactAliases = compactSelectorTerms(append(profile.ExactAliases, terms.Examples...)...)
+		profile.Actions = compactSelectorTerms(append(profile.Actions, terms.Actions...)...)
+		profile.Objects = compactSelectorTerms(append(profile.Objects, terms.Objects...)...)
+		profile.ContextCues = compactSelectorTerms(append(profile.ContextCues, terms.Context...)...)
+	}
+	if terms := routingcue.URLBypassTermsForSkill(name); len(terms) > 0 {
+		profile.ExactAliases = compactSelectorTerms(append(profile.ExactAliases, terms...)...)
+		profile.Actions = compactSelectorTerms(append(profile.Actions, terms...)...)
+		profile.Objects = compactSelectorTerms(append(profile.Objects, terms...)...)
+		profile.ContextCues = compactSelectorTerms(append(profile.ContextCues, terms...)...)
 	}
 
 	return profile

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 type TaskKind string
@@ -47,6 +47,8 @@ type ProgressSignatureState struct {
 	stableRounds          int
 	lastErrorSignature    string
 	errorRounds           int
+	lastFamilyOutcomeSig  string
+	familyOutcomeRounds   int
 }
 
 var (
@@ -428,10 +430,98 @@ func normalizeCriterionName(input string) string {
 
 func trimStructuredContent(content string) string {
 	trimmed := strings.TrimSpace(content)
+	trimmed = stripMarkdownCodeFence(trimmed)
+	if extracted := extractBalancedJSONSnippet(trimmed); extracted != "" {
+		return extracted
+	}
+	return strings.TrimSpace(trimmed)
+}
+
+func stripMarkdownCodeFence(content string) string {
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "```") {
+		if newline := strings.IndexByte(trimmed, '\n'); newline >= 0 {
+			body := strings.TrimSpace(trimmed[newline+1:])
+			body = strings.TrimSuffix(body, "```")
+			return strings.TrimSpace(body)
+		}
+	}
 	trimmed = strings.TrimPrefix(trimmed, "```json")
 	trimmed = strings.TrimPrefix(trimmed, "```")
 	trimmed = strings.TrimSuffix(trimmed, "```")
 	return strings.TrimSpace(trimmed)
+}
+
+func extractBalancedJSONSnippet(content string) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return ""
+	}
+	for offset := 0; offset < len(trimmed); {
+		next := strings.IndexAny(trimmed[offset:], "{[")
+		if next < 0 {
+			return ""
+		}
+		start := offset + next
+		if candidate := balancedJSONFromStart(trimmed, start); candidate != "" {
+			return candidate
+		}
+		offset = start + 1
+	}
+	return ""
+}
+
+func balancedJSONFromStart(content string, start int) string {
+	if start < 0 || start >= len(content) {
+		return ""
+	}
+	first := content[start]
+	if first != '{' && first != '[' {
+		return ""
+	}
+
+	stack := make([]byte, 0, 8)
+	inString := false
+	escaped := false
+
+	for i := start; i < len(content); i++ {
+		ch := content[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case ch == '\\':
+				escaped = true
+			case ch == '"':
+				inString = false
+			}
+			continue
+		}
+
+		switch ch {
+		case '"':
+			inString = true
+		case '{', '[':
+			stack = append(stack, ch)
+		case '}', ']':
+			if len(stack) == 0 {
+				return ""
+			}
+			top := stack[len(stack)-1]
+			if (top == '{' && ch != '}') || (top == '[' && ch != ']') {
+				return ""
+			}
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				candidate := strings.TrimSpace(content[start : i+1])
+				if json.Valid([]byte(candidate)) {
+					return candidate
+				}
+				return ""
+			}
+		}
+	}
+	return ""
 }
 
 func toolCallSignature(calls []llm.ToolCall) string {
@@ -451,44 +541,7 @@ func toolCallSignature(calls []llm.ToolCall) string {
 }
 
 func normalizeProgressSummary(content string) string {
-	trimmed := trimStructuredContent(content)
-	if trimmed == "" {
-		return "empty"
-	}
-	var obj map[string]interface{}
-	if err := json.Unmarshal([]byte(trimmed), &obj); err == nil && len(obj) > 0 {
-		if errMsg := extractStringValue(obj, "error"); errMsg != "" {
-			return "error:" + normalizeProgressText(errMsg)
-		}
-		if status := extractStringValue(obj, "status"); status != "" {
-			return "status:" + normalizeProgressText(status)
-		}
-		if summary := extractStringValue(obj, "summary"); summary != "" {
-			return "summary:" + normalizeProgressText(summary)
-		}
-		keys := make([]string, 0, len(obj))
-		for key := range obj {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		if len(keys) > 4 {
-			keys = keys[:4]
-		}
-		return "json:" + strings.Join(keys, ",")
-	}
-	return normalizeProgressText(trimmed)
-}
-
-func extractStringValue(obj map[string]interface{}, key string) string {
-	value, ok := obj[key]
-	if !ok {
-		return ""
-	}
-	s, ok := value.(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(s)
+	return tools.NormalizeToolProgressSummary(content)
 }
 
 func normalizeProgressText(content string) string {
@@ -505,8 +558,60 @@ func isErrorProgressSummary(summary string) bool {
 	return strings.HasPrefix(summary, "error:")
 }
 
-func (s *ProgressSignatureState) Observe(toolSig, decision string, toolSummaries []string) bool {
-	combined := toolSig + "|" + strings.Join(toolSummaries, "|")
+func normalizeProgressSummaries(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if strings.HasPrefix(value, "error:") ||
+			strings.HasPrefix(value, "status:") ||
+			strings.HasPrefix(value, "summary:") ||
+			strings.HasPrefix(value, "json:") ||
+			value == "empty" {
+			out = append(out, value)
+			continue
+		}
+		out = append(out, normalizeProgressSummary(value))
+	}
+	return out
+}
+
+func progressToolFamilySignature(signature string) string {
+	normalized := normalizeProgressText(signature)
+	switch {
+	case strings.Contains(normalized, "web_query:"),
+		strings.Contains(normalized, "web_search:"),
+		strings.Contains(normalized, "web_fetch:"),
+		strings.Contains(normalized, "web_read:"),
+		strings.Contains(normalized, "web_extract:"),
+		strings.Contains(normalized, "web_crawl:"):
+		return "web_query_family"
+	case strings.Contains(normalized, "browser:"):
+		return "browser"
+	case strings.Contains(normalized, "deep_research:"),
+		strings.Contains(normalized, "research_run:"),
+		strings.Contains(normalized, "research_status:"):
+		return "research_family"
+	default:
+		return ""
+	}
+}
+
+func (s *ProgressSignatureState) ObserveDetailed(toolSig, decision string, toolSummaries []string) tools.ToolLoopDetection {
+	normalizedToolSig := normalizeProgressText(toolSig)
+	normalizedDecision := normalizeProgressText(decision)
+	normalizedSummaries := normalizeProgressSummaries(toolSummaries)
+	outcomeSig := strings.Join(normalizedSummaries, "|")
+	if outcomeSig == "" {
+		outcomeSig = "empty"
+	}
+
+	combined := normalizedToolSig + "|" + outcomeSig
 	if combined == s.lastCombinedSignature {
 		s.stableRounds++
 	} else {
@@ -514,15 +619,15 @@ func (s *ProgressSignatureState) Observe(toolSig, decision string, toolSummaries
 		s.stableRounds = 1
 	}
 
-	allErrors := len(toolSummaries) > 0
-	for _, summary := range toolSummaries {
+	allErrors := len(normalizedSummaries) > 0
+	for _, summary := range normalizedSummaries {
 		if !isErrorProgressSummary(summary) {
 			allErrors = false
 			break
 		}
 	}
 	if allErrors {
-		errorSig := normalizeProgressText(decision) + "|" + strings.Join(toolSummaries, "|")
+		errorSig := normalizedDecision + "|" + outcomeSig
 		if errorSig == s.lastErrorSignature {
 			s.errorRounds++
 		} else {
@@ -534,5 +639,47 @@ func (s *ProgressSignatureState) Observe(toolSig, decision string, toolSummaries
 		s.errorRounds = 0
 	}
 
-	return s.stableRounds >= 3 || s.errorRounds >= 3
+	familySig := progressToolFamilySignature(normalizedToolSig)
+	if familySig != "" {
+		familyOutcomeSig := familySig + "|" + outcomeSig
+		if familyOutcomeSig == s.lastFamilyOutcomeSig {
+			s.familyOutcomeRounds++
+		} else {
+			s.lastFamilyOutcomeSig = familyOutcomeSig
+			s.familyOutcomeRounds = 1
+		}
+	} else {
+		s.lastFamilyOutcomeSig = ""
+		s.familyOutcomeRounds = 0
+	}
+
+	switch {
+	case s.errorRounds >= 3:
+		return tools.ToolLoopDetection{
+			Abort:     true,
+			Reason:    tools.ToolLoopReasonErrorRepeat,
+			Streak:    s.errorRounds,
+			Signature: s.lastErrorSignature,
+		}
+	case s.stableRounds >= 3:
+		return tools.ToolLoopDetection{
+			Abort:     true,
+			Reason:    tools.ToolLoopReasonPollingNoProgress,
+			Streak:    s.stableRounds,
+			Signature: s.lastCombinedSignature,
+		}
+	case s.familyOutcomeRounds >= 3:
+		return tools.ToolLoopDetection{
+			Abort:     true,
+			Reason:    tools.ToolLoopReasonPollingNoProgress,
+			Streak:    s.familyOutcomeRounds,
+			Signature: s.lastFamilyOutcomeSig,
+		}
+	default:
+		return tools.ToolLoopDetection{}
+	}
+}
+
+func (s *ProgressSignatureState) Observe(toolSig, decision string, toolSummaries []string) bool {
+	return s.ObserveDetailed(toolSig, decision, toolSummaries).Abort
 }

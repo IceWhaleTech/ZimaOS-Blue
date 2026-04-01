@@ -1733,9 +1733,6 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 1.5rem;
   padding: 1.4rem;
-  background:
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 32%),
-    linear-gradient(135deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.92));
 }
 
 .back-link {
@@ -1920,7 +1917,7 @@ onUnmounted(() => {
 }
 
 .promotion-panel {
-  background: linear-gradient(135deg, rgba(255, 251, 235, 0.92), rgba(255, 255, 255, 0.96)), #fff;
+  background: #fff;
 }
 
 .promotion-form {

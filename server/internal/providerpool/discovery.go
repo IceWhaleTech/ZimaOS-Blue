@@ -89,11 +89,32 @@ func (d *ModelDiscovery) clientFor(provider *Provider) *http.Client {
 	return d.client
 }
 
+func (d *ModelDiscovery) storeResolvedModels(providerID string, models []*Model) {
+	d.mu.Lock()
+	d.cache[providerID] = models
+	d.cacheAt[providerID] = timeutil.NowTime()
+	d.mu.Unlock()
+
+	if err := d.storage.SaveModels(providerID, models); err != nil {
+		// Best effort only.
+	}
+	d.notifyModelsChanged(providerID)
+}
+
 // FetchModels fetches models from a provider
 func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]*Model, error) {
 	provider, err := d.registry.Get(providerID)
 	if err != nil {
 		return nil, err
+	}
+
+	if isCatalogMetadataProvider(provider) {
+		models := sortModelsByPreference(GetBuiltinModels(providerID))
+		if len(models) == 0 {
+			return nil, ErrModelNotFound
+		}
+		d.storeResolvedModels(providerID, models)
+		return models, nil
 	}
 
 	// Try to fetch from API
@@ -108,23 +129,42 @@ func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]
 	}
 	models = sortModelsByPreference(models)
 
-	// Cache the results
-	d.mu.Lock()
-	d.cache[providerID] = models
-	d.cacheAt[providerID] = timeutil.NowTime()
-	d.mu.Unlock()
-
-	// Save to storage
-	if err := d.storage.SaveModels(providerID, models); err != nil {
-		// Log but don't fail
-	}
-	d.notifyModelsChanged(providerID)
+	d.storeResolvedModels(providerID, models)
 
 	return models, nil
 }
 
 // GetModels returns cached models for a provider
 func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
+	provider, providerErr := d.registry.Get(providerID)
+	if providerErr == nil && isCatalogMetadataProvider(provider) {
+		d.mu.RLock()
+		models, exists := d.cache[providerID]
+		cacheTime := d.cacheAt[providerID]
+		d.mu.RUnlock()
+		if exists && len(models) > 0 && timeutil.SinceTime(cacheTime) < d.cacheTTL {
+			return models, nil
+		}
+
+		storedModels, err := d.storage.LoadModels(providerID)
+		if err == nil && len(storedModels) > 0 {
+			mergeBuiltinPricing(providerID, storedModels)
+			mergeBuiltinMetadata(providerID, storedModels)
+			d.mu.Lock()
+			d.cache[providerID] = storedModels
+			d.cacheAt[providerID] = timeutil.NowTime()
+			d.mu.Unlock()
+			return storedModels, nil
+		}
+
+		models = sortModelsByPreference(GetBuiltinModels(providerID))
+		if len(models) == 0 {
+			return nil, ErrModelNotFound
+		}
+		d.storeResolvedModels(providerID, models)
+		return models, nil
+	}
+
 	// Trial providers fetch models from API like other providers
 	d.mu.RLock()
 	models, exists := d.cache[providerID]
@@ -426,6 +466,10 @@ func matchesCapabilities(model, required ModelCapabilities) bool {
 
 // fetchFromAPI fetches models from provider API
 func (d *ModelDiscovery) fetchFromAPI(ctx context.Context, provider *Provider) ([]*Model, error) {
+	if isCatalogMetadataProvider(provider) {
+		return GetBuiltinModels(provider.ID), nil
+	}
+
 	if provider.BaseURL == "" {
 		return nil, fmt.Errorf("no base URL configured")
 	}
@@ -1261,6 +1305,38 @@ func mergeBuiltinPricing(providerID string, models []*Model) {
 	}
 }
 
+func mergeBuiltinMetadata(providerID string, models []*Model) {
+	builtinModels := GetBuiltinModels(providerID)
+	if builtinModels == nil {
+		return
+	}
+
+	builtinMap := make(map[string]*Model, len(builtinModels))
+	for _, builtin := range builtinModels {
+		if builtin == nil {
+			continue
+		}
+		builtinMap[builtin.ID] = builtin
+	}
+
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		builtin := builtinMap[model.ID]
+		if builtin == nil {
+			continue
+		}
+		model.ProviderID = providerID
+		model.Name = builtin.Name
+		model.DisplayName = builtin.DisplayName
+		model.Description = builtin.Description
+		model.ContextWindow = builtin.ContextWindow
+		model.MaxOutput = builtin.MaxOutput
+		model.Capabilities = builtin.Capabilities
+	}
+}
+
 // ProbeResult holds the result of probing a single model.
 type ProbeResult struct {
 	ModelID    string        `json:"model_id"`
@@ -1280,6 +1356,9 @@ func (d *ModelDiscovery) ProbeModels(ctx context.Context, providerID string, con
 	provider, err := d.registry.Get(providerID)
 	if err != nil {
 		return nil, err
+	}
+	if isCatalogMetadataProvider(provider) {
+		return nil, fmt.Errorf("model probing is not supported for catalog providers")
 	}
 
 	models, err := d.GetModels(providerID)

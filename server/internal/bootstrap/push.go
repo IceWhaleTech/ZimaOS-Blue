@@ -20,12 +20,18 @@ import (
 // InitWebPushSender creates a Web Push sender with VAPID keys.
 // Returns nil if initialization fails (non-fatal).
 func InitWebPushSender(db *sql.DB, kv kvstore.Store, logger *zap.Logger) *webpush.Sender {
+	return InitWebPushSenderWithReadDB(db, db, kv, logger)
+}
+
+// InitWebPushSenderWithReadDB creates a Web Push sender with separate write
+// and read database handles.
+func InitWebPushSenderWithReadDB(writeDB, readDB *sql.DB, kv kvstore.Store, logger *zap.Logger) *webpush.Sender {
 	vapidPriv, vapidPub, err := webpush.GetOrCreateVAPIDKeys(kv)
 	if err != nil {
 		logger.Warn("Failed to initialize VAPID keys", zap.Error(err))
 		return nil
 	}
-	wpStore, err := webpush.NewStore(db)
+	wpStore, err := webpush.NewStoreWithReadDB(writeDB, readDB)
 	if err != nil {
 		logger.Warn("Failed to initialize webpush store", zap.Error(err))
 		return nil
@@ -36,6 +42,7 @@ func InitWebPushSender(db *sql.DB, kv kvstore.Store, logger *zap.Logger) *webpus
 // PushServiceDeps holds dependencies for InitPushService.
 type PushServiceDeps struct {
 	DB          *sql.DB
+	ReadDB      *sql.DB
 	MemoryStore *memory.Store
 	CronGetSvc  func() *cron.Service // lazy cron getter (may return nil)
 	SSEBroker   *sse.Broker
@@ -52,7 +59,7 @@ type PushServiceResult struct {
 // InitPushService creates and wires the push notification service.
 // Returns nil if initialization fails.
 func InitPushService(deps *PushServiceDeps) *PushServiceResult {
-	pushStore, err := push.NewStore(deps.DB)
+	pushStore, err := push.NewStoreWithReadDB(deps.DB, deps.ReadDB)
 	if err != nil {
 		deps.Logger.Warn("Failed to initialize push store", zap.Error(err))
 		return nil

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import type { Message } from '@/api/chat'
 import { cardActionApi } from '@/api/chat'
 import { renderMarkdownCached, copyCodeToClipboard } from '@/utils/markdown'
-import { useChatStore } from '@/stores/chat'
+import { useChatStore, type ActiveMessageStreamState } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import type { ToolResultItem } from '@/stores/chat'
@@ -29,6 +29,7 @@ import { isTtsAutoPlayEnabled, isTtsSpeechMuted } from '@/utils/ttsPreferences'
 import { buildChatCardUiStateKey } from '@/utils/chatCardUiState'
 import type { ProcessTraceItem } from '@/utils/processTrace'
 import { getLocalizedToolName } from '@/utils/toolLocalization'
+import { measureChatPerf, recordChatPerfCount } from '@/utils/chatPerf'
 
 const { t, te } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -42,6 +43,8 @@ const props = defineProps<{
   isMultiSelectMode?: boolean
   disableAutoTTS?: boolean
   showExternalStatusRail?: boolean
+  preferImmediateStreamingRender?: boolean
+  streamState?: ActiveMessageStreamState | null
 }>()
 
 const emit = defineEmits<{
@@ -86,6 +89,40 @@ const userBubbleClasses = computed(() => [
   'inline-block',
   'chat-user-bubble',
 ])
+
+const fallbackStreamState = computed<ActiveMessageStreamState | null>(() => {
+  if (!props.isStreaming) return null
+  return {
+    phase: chatStore.streamUIState?.phase || 'streaming',
+    awaitingConfirmation: chatStore.awaitingConfirmation,
+    toolExecuting: chatStore.toolExecuting,
+    toolExecutingCommands: chatStore.toolExecutingCommands,
+    toolExecutingNames: chatStore.toolExecutingNames,
+    toolSandboxAvailable: chatStore.toolSandboxAvailable,
+    statusSummary: chatStore.statusSummary,
+    streamProgress: chatStore.streamProgress,
+    processTrace: chatStore.processTrace,
+    toolResults: chatStore.toolResults,
+    statusStartedAt: chatStore.statusStartedAt,
+    showExternalStatusRail: !!props.showExternalStatusRail,
+  }
+})
+
+const streamState = computed(() => props.streamState ?? fallbackStreamState.value)
+const streamPhase = computed(() => streamState.value?.phase || 'idle')
+const streamAwaitingConfirmation = computed(() => streamState.value?.awaitingConfirmation === true)
+const streamToolExecuting = computed(() => streamState.value?.toolExecuting === true)
+const streamToolExecutingCommands = computed(() => streamState.value?.toolExecutingCommands || [])
+const streamToolExecutingNames = computed(() => streamState.value?.toolExecutingNames || [])
+const streamToolSandboxAvailable = computed(() => streamState.value?.toolSandboxAvailable === true)
+const streamStatusSummary = computed(() => streamState.value?.statusSummary || null)
+const streamProgress = computed(() => streamState.value?.streamProgress || null)
+const streamProcessTrace = computed(() => streamState.value?.processTrace || [])
+const streamToolResults = computed(() => streamState.value?.toolResults || [])
+const streamStatusStartedAt = computed(() => streamState.value?.statusStartedAt || 0)
+const showExternalStatusRail = computed(
+  () => streamState.value?.showExternalStatusRail ?? !!props.showExternalStatusRail
+)
 
 const trackStreamingState = computed(() => isAssistant.value && !!props.isStreaming)
 const hasMediaTask = computed(() => {
@@ -183,14 +220,14 @@ const parsedInlineContent = computed(() => {
 // Adaptive streaming reveal: slow deltas feel closer to per-character typing,
 // while bursty deltas collapse into short word/sentence chunks.
 const revealedStreamingContent = ref(props.message.content)
-let streamingRevealTimer: ReturnType<typeof setTimeout> | null = null
+let streamingRevealRafId: number | null = null
 let streamingRevealTarget = props.message.content
 let lastStreamingTargetAt = Date.now()
 
-const STREAMING_REVEAL_TICK_MS = 18
 const STREAMING_REVEAL_FAST_THRESHOLD_MS = 28
 const STREAMING_REVEAL_MEDIUM_THRESHOLD_MS = 56
 const RE_STREAMING_IMMEDIATE_FLUSH = /```|\n\n|\r\n\r\n|\|\s*[-:]+\s*\|/
+const STREAMING_REVEAL_MAX_CHARS = 280
 const STREAMING_BOUNDARY_CHARS = new Set([
   ' ',
   '\n',
@@ -209,14 +246,29 @@ const STREAMING_BOUNDARY_CHARS = new Set([
   '：',
 ])
 
-function clearStreamingRevealTimer() {
-  if (!streamingRevealTimer) return
-  clearTimeout(streamingRevealTimer)
-  streamingRevealTimer = null
+function scheduleStreamingRevealFrame(callback: FrameRequestCallback): number {
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    return window.requestAnimationFrame(callback)
+  }
+  return window.setTimeout(() => callback(Date.now()), 16)
+}
+
+function cancelStreamingRevealFrame(handle: number): void {
+  if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+    window.cancelAnimationFrame(handle)
+    return
+  }
+  window.clearTimeout(handle)
+}
+
+function clearStreamingRevealRaf() {
+  if (streamingRevealRafId === null) return
+  cancelStreamingRevealFrame(streamingRevealRafId)
+  streamingRevealRafId = null
 }
 
 function flushStreamingReveal(nextContent = streamingRevealTarget) {
-  clearStreamingRevealTimer()
+  clearStreamingRevealRaf()
   streamingRevealTarget = nextContent
   revealedStreamingContent.value = nextContent
 }
@@ -250,10 +302,34 @@ function nextStreamingRevealChunk(delta: string, firstChunk = false): string {
   return glyphs.slice(0, Math.min(2, glyphs.length)).join('')
 }
 
+function hasStreamingRichContentHints(content: string): boolean {
+  return (
+    content.includes('```') ||
+    content.includes('|') ||
+    content.includes('![') ||
+    content.includes('http') ||
+    content.includes('[[TYPELESS_CARD:') ||
+    content.includes('<!-- process-start -->')
+  )
+}
+
+function shouldFlushStreamingRevealImmediately(content: string): boolean {
+  return (
+    !!props.preferImmediateStreamingRender ||
+    content.length >= STREAMING_REVEAL_MAX_CHARS ||
+    hasStreamingRichContentHints(content) ||
+    streamToolExecuting.value ||
+    streamAwaitingConfirmation.value ||
+    streamPhase.value === 'recovering' ||
+    streamPhase.value === 'interrupted' ||
+    streamPhase.value === 'awaiting_confirmation'
+  )
+}
+
 function advanceStreamingReveal() {
-  clearStreamingRevealTimer()
+  streamingRevealRafId = null
   if (revealedStreamingContent.value === streamingRevealTarget) return
-  if (chatStore.toolExecuting || chatStore.awaitingConfirmation) {
+  if (shouldFlushStreamingRevealImmediately(streamingRevealTarget)) {
     flushStreamingReveal()
     return
   }
@@ -268,7 +344,7 @@ function advanceStreamingReveal() {
   revealedStreamingContent.value += nextChunk
 
   if (revealedStreamingContent.value !== streamingRevealTarget) {
-    streamingRevealTimer = setTimeout(advanceStreamingReveal, STREAMING_REVEAL_TICK_MS)
+    streamingRevealRafId = scheduleStreamingRevealFrame(advanceStreamingReveal)
   }
 }
 
@@ -276,7 +352,7 @@ function scheduleStreamingReveal(nextContent: string) {
   streamingRevealTarget = nextContent
   lastStreamingTargetAt = Date.now()
 
-  if (!trackStreamingState.value) {
+  if (!trackStreamingState.value || shouldFlushStreamingRevealImmediately(nextContent)) {
     flushStreamingReveal(nextContent)
     return
   }
@@ -294,12 +370,12 @@ function scheduleStreamingReveal(nextContent: string) {
   }
 
   if (revealedStreamingContent.value === nextContent) {
-    clearStreamingRevealTimer()
+    clearStreamingRevealRaf()
     return
   }
 
-  if (!streamingRevealTimer) {
-    streamingRevealTimer = setTimeout(advanceStreamingReveal, STREAMING_REVEAL_TICK_MS)
+  if (streamingRevealRafId === null) {
+    streamingRevealRafId = scheduleStreamingRevealFrame(advanceStreamingReveal)
   }
 }
 
@@ -330,9 +406,10 @@ watch(
   () =>
     [
       trackStreamingState.value,
-      chatStore.toolExecuting,
-      chatStore.awaitingConfirmation,
-      (chatStore as { streamUIState?: { phase?: string } }).streamUIState?.phase || '',
+      streamToolExecuting.value,
+      streamAwaitingConfirmation.value,
+      streamPhase.value,
+      props.preferImmediateStreamingRender ?? false,
     ] as const,
   ([trackStreaming, toolExecuting, awaitingConfirmation, phase]) => {
     if (
@@ -354,7 +431,7 @@ const renderSourceContent = computed(() =>
 )
 const showStreamingCaret = computed(() => {
   if (!trackStreamingState.value) return false
-  const phase = chatStore.streamUIState?.phase
+  const phase = streamPhase.value
   if (!phase) return true
   return (
     phase === 'connecting' ||
@@ -426,6 +503,38 @@ watch(
   { immediate: true }
 )
 
+function renderMarkdownForMessage(content: string, scope: string): string {
+  if (!trackStreamingState.value) {
+    return renderMarkdownCached(content, scope)
+  }
+  recordChatPerfCount('chat_message.render_markdown_cached.calls')
+  return measureChatPerf('chat_message.render_markdown_cached', () =>
+    renderMarkdownCached(content, scope)
+  )
+}
+
+function hasTypelessCardsForMessage(content: string, useCache = true): boolean {
+  if (!trackStreamingState.value) {
+    return hasTypelessCards(content, useCache)
+  }
+  recordChatPerfCount('chat_message.has_typeless_cards.calls')
+  return measureChatPerf('chat_message.has_typeless_cards', () =>
+    hasTypelessCards(content, useCache)
+  )
+}
+
+function parseTypelessContentIncrementalForMessage(
+  content: string,
+  renderMessageId: string,
+  conversationId?: string,
+  explicitTodoCardId?: string
+) {
+  recordChatPerfCount('chat_message.parse_typeless_content_incremental.calls')
+  return measureChatPerf('chat_message.parse_typeless_content_incremental', () =>
+    parseTypelessContentIncremental(content, renderMessageId, conversationId, explicitTodoCardId)
+  )
+}
+
 // Extract inline markdown images from user message content (e.g. ![image](/api/media/...))
 const inlineImages = computed(() => {
   return parsedInlineContent.value?.images ?? []
@@ -486,7 +595,7 @@ const previewAttachment = ref<AttachmentPreviewState | null>(null)
 
 const previewAttachmentHtml = computed(() => {
   if (previewAttachment.value?.type !== 'markdown') return ''
-  return renderMarkdownCached(
+  return renderMarkdownForMessage(
     previewAttachment.value.content || '',
     `attachment-preview:${previewAttachment.value.name}`
   )
@@ -586,8 +695,8 @@ function voiceBubbleWidth(seconds?: number): string {
 
 // Derive display names for tool pill: extract skill names from "blue <subcommand>" commands
 const toolDisplayNames = computed(() => {
-  if (!trackStreamingState.value || !chatStore.toolExecuting) return []
-  const commands = chatStore.toolExecutingCommands
+  if (!trackStreamingState.value || !streamToolExecuting.value) return []
+  const commands = streamToolExecutingCommands.value
   if (commands.length > 0) {
     // Extract skill name from "blue <subcommand> ..." pattern
     return commands.map((cmd) => {
@@ -596,7 +705,7 @@ const toolDisplayNames = computed(() => {
     })
   }
   // Fallback to tool names
-  return chatStore.toolExecutingNames.map(formatToolName)
+  return streamToolExecutingNames.value.map(formatToolName)
 })
 
 const processDetailsExpanded = ref(settingsStore.showToolDetails)
@@ -612,8 +721,8 @@ function getLatestProcessTraceByPriority(
   categories: Array<ProcessTraceItem['category']>,
   statuses: Array<ProcessTraceItem['status']> = ['active', 'pending', 'error']
 ): ProcessTraceItem | null {
-  for (let i = chatStore.processTrace.length - 1; i >= 0; i--) {
-    const item = chatStore.processTrace[i]
+  for (let i = streamProcessTrace.value.length - 1; i >= 0; i--) {
+    const item = streamProcessTrace.value[i]
     if (!item) continue
     if (!categories.includes(item.category)) continue
     if (!statuses.includes(item.status)) continue
@@ -632,7 +741,7 @@ const activeLifecycleProcessTrace = computed(() =>
 
 const orderedStreamingProcessTrace = computed(() => {
   if (!trackStreamingState.value || !isAssistant.value) return []
-  return [...chatStore.processTrace].sort((a, b) => {
+  return [...streamProcessTrace.value].sort((a, b) => {
     const rankA = a.category === 'summary' ? 0 : 1
     const rankB = b.category === 'summary' ? 0 : 1
     if (rankA !== rankB) return rankA - rankB
@@ -652,7 +761,7 @@ function getProcessTraceToneClass(item: ProcessTraceItem): string {
 const hasStreamingProcessDetails = computed(
   () =>
     trackStreamingState.value &&
-    (orderedStreamingProcessTrace.value.length > 0 || chatStore.toolResults.length > 0)
+    (orderedStreamingProcessTrace.value.length > 0 || streamToolResults.value.length > 0)
 )
 
 const hasPersistedProcessDetails = computed(
@@ -673,15 +782,15 @@ const showPersistedProcessPanel = computed(
 
 const assistantStatusLabel = computed(() => {
   if (!trackStreamingState.value) return ''
-  if (chatStore.awaitingConfirmation) {
+  if (streamAwaitingConfirmation.value) {
     return t('chat.awaitingConfirmation', 'Waiting for your confirmation to continue')
   }
   if (activeRecoveryProcessTrace.value?.label) {
     return activeRecoveryProcessTrace.value.label
   }
-  if (chatStore.toolExecuting && chatStore.statusSummary) return chatStore.statusSummary
-  if (chatStore.statusSummary) return chatStore.statusSummary
-  if (chatStore.streamProgress) return chatStore.streamProgress
+  if (streamToolExecuting.value && streamStatusSummary.value) return streamStatusSummary.value
+  if (streamStatusSummary.value) return streamStatusSummary.value
+  if (streamProgress.value) return streamProgress.value
   if (activeLifecycleProcessTrace.value?.label) {
     return activeLifecycleProcessTrace.value.label
   }
@@ -690,16 +799,16 @@ const assistantStatusLabel = computed(() => {
 
 const showAssistantStatusBar = computed(
   () =>
-    !props.showExternalStatusRail &&
+    !showExternalStatusRail.value &&
     trackStreamingState.value &&
     isAssistant.value &&
     !!assistantStatusLabel.value
 )
 const showAssistantStatusOnly = computed(() => isContentEmpty.value && showAssistantStatusBar.value)
 const assistantStatusVariantClass = computed(() => {
-  if (chatStore.awaitingConfirmation) return 'assistant-status-pill-warn'
+  if (streamAwaitingConfirmation.value) return 'assistant-status-pill-warn'
   if (activeRecoveryProcessTrace.value) return 'assistant-status-pill-active'
-  if (chatStore.toolExecuting) return 'assistant-status-pill-active'
+  if (streamToolExecuting.value) return 'assistant-status-pill-active'
   return 'assistant-status-pill-idle'
 })
 
@@ -711,11 +820,11 @@ const assistantStatusElapsedSeconds = ref('')
 let assistantStatusTimerHandle: ReturnType<typeof setInterval> | null = null
 
 function syncAssistantStatusElapsed() {
-  if (!chatStore.statusStartedAt) {
+  if (!streamStatusStartedAt.value) {
     assistantStatusElapsedSeconds.value = ''
     return
   }
-  assistantStatusElapsedSeconds.value = ((Date.now() - chatStore.statusStartedAt) / 1000).toFixed(1)
+  assistantStatusElapsedSeconds.value = ((Date.now() - streamStatusStartedAt.value) / 1000).toFixed(1)
 }
 
 function stopAssistantStatusTimer() {
@@ -725,7 +834,7 @@ function stopAssistantStatusTimer() {
 }
 
 watch(
-  () => [showAssistantStatusBar.value, chatStore.statusStartedAt] as const,
+  () => [showAssistantStatusBar.value, streamStatusStartedAt.value] as const,
   ([visible, startedAt]) => {
     stopAssistantStatusTimer()
     if (!visible || !startedAt) {
@@ -1083,7 +1192,7 @@ const assistantTextState = computed<AssistantTextState>(() => {
   }
 
   const { content: cleaned, interrupted } = stripInterruptedMarker(text)
-  let html = renderMarkdownCached(cleaned, `chat-message:${props.message.id}`)
+  let html = renderMarkdownForMessage(cleaned, `chat-message:${props.message.id}`)
   if (interrupted) {
     html += interruptedHtml
   }
@@ -1095,7 +1204,7 @@ const isContentEmpty = computed(() => {
   return (
     assistantTextState.value.isEmpty &&
     !showProcessDetailsToggle.value &&
-    (!props.isStreaming || chatStore.toolResults.length === 0)
+    (!props.isStreaming || streamToolResults.value.length === 0)
   )
 })
 
@@ -1120,13 +1229,13 @@ const parsedContent = computed(() => {
     return null
   }
 
-  if (!hasTypelessCards(content, !props.isStreaming)) {
+  if (!hasTypelessCardsForMessage(content, !props.isStreaming)) {
     return null
   }
   // Use incremental parsing for streaming to avoid re-parsing entire content
   // Pass conversation_id to ensure cache key uniqueness across conversations
   if (props.isStreaming) {
-    return parseTypelessContentIncremental(
+    return parseTypelessContentIncrementalForMessage(
       content,
       renderMessageId,
       props.message.conversation_id,
@@ -1723,7 +1832,7 @@ const segmentRenderState = computed(() => {
 
     const effective = showToolDetails ? text : stripProcessContent(text)
     const { content, interrupted } = stripInterruptedMarker(effective)
-    let html = renderMarkdownCached(content, `chat-segment:${segment.key}`)
+    let html = renderMarkdownForMessage(content, `chat-segment:${segment.key}`)
     if (interrupted) {
       html += interruptedHtml
     }
@@ -2063,7 +2172,7 @@ function handleExportMessage() {
 
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
-  clearStreamingRevealTimer()
+  clearStreamingRevealRaf()
   stopAssistantStatusTimer()
   clearIncrementalState(props.message.render_key || props.message.id, props.message.conversation_id)
   clearSplitSegmentsIncrementalState(
@@ -3256,10 +3365,10 @@ async function handleMobileDelete() {
                 </div>
               </div>
               <div
-                v-if="showStreamingProcessPanel && chatStore.toolResults.length > 0"
+                v-if="showStreamingProcessPanel && streamToolResults.length > 0"
                 class="tool-detail-cards my-2 -mx-1"
               >
-                <ToolDetailCard v-for="item in chatStore.toolResults" :key="item.id" :item="item" />
+                <ToolDetailCard v-for="item in streamToolResults" :key="item.id" :item="item" />
               </div>
               <div
                 v-if="showAssistantStatusBar"
@@ -3274,7 +3383,7 @@ async function handleMobileDelete() {
                     >{{ assistantStatusElapsedSeconds }}s</span
                   >
                   <span
-                    v-if="chatStore.toolSandboxAvailable"
+                    v-if="streamToolSandboxAvailable"
                     class="sandbox-badge"
                     :title="t('tools.sandboxProtected')"
                   >
@@ -3293,7 +3402,7 @@ async function handleMobileDelete() {
                   </span>
                 </div>
                 <div
-                  v-if="chatStore.toolExecuting && toolDisplayNames.length > 0"
+                  v-if="streamToolExecuting && toolDisplayNames.length > 0"
                   class="tool-names"
                 >
                   <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{

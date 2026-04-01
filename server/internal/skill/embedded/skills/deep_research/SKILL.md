@@ -1,6 +1,17 @@
 ---
 name: deep_research
-description: Run multi step deep research with planning evidence collection and citation based summaries.
+version: "1.0.0"
+description: "Run a multi-step cited research workflow with planning, evidence collection, and confidence-backed summaries. Use when the user explicitly wants citations, evidence, multiple sources, comparisons, or timeline-oriented research."
+invocation: "blue deep_research query=\"ZimaOS-Blue deep research architecture\" --json"
+examples:
+  - "blue deep_research query=\"ZimaOS-Blue deep research architecture\" --json"
+  - "blue deep_research action=status job_id=job_123"
+capability_tags:
+  - research
+  - citations
+  - web
+interaction_mode: stateless
+card_support: both
 ---
 
 # Deep Research
@@ -40,6 +51,12 @@ Returns structured JSON including:
 - `citations`
 - `confidence`
 - `evidence_count`
+
+## Notes
+
+- Prefer `deep_research` when the user explicitly wants multi-source evidence, citations, comparisons, timelines, or a research workflow that can be resumed via job status.
+- If the task is mainly to synthesize provided text or known URLs into a report, prefer `analyze`.
+- If the task is about local workspace files or README inspection, prefer an explicit local-file route such as `exec`/file tools.
 
 ## Example Triggers
 

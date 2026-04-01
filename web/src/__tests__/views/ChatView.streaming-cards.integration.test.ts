@@ -66,7 +66,9 @@ const mocks = vi.hoisted(() => ({
     hasActiveTasks: false,
     refreshNow: vi.fn(),
     setConversation: vi.fn(),
+    performTaskAction: vi.fn(),
     cancelTask: vi.fn(),
+    resumeTask: vi.fn(),
     openTask: vi.fn(),
     stopPolling: vi.fn(),
   },
@@ -539,7 +541,9 @@ describe('ChatView streaming card chain integration', () => {
     mocks.taskProjectionsStore.backgroundTasks = []
     mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.performTaskAction.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.resumeTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
@@ -688,15 +692,13 @@ describe('ChatView streaming card chain integration', () => {
     ]
 
     vi.mocked(messageApi.list).mockResolvedValue({ data: persistedMessages } as never)
-    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
-      {
-        data: {
-          conversation_id: 'conv-1',
-          active: true,
-          stream_id: 'stream-preview-1',
-        },
-      } as never
-    )
+    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
+      data: {
+        conversation_id: 'conv-1',
+        active: true,
+        stream_id: 'stream-preview-1',
+      },
+    } as never)
 
     const { wrapper, store } = await mountIntegratedChatView()
 
@@ -709,15 +711,13 @@ describe('ChatView streaming card chain integration', () => {
 
   it('shows an executing rail and stop control when the server reports an active stream without preview text', async () => {
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
-    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
-      {
-        data: {
-          conversation_id: 'conv-1',
-          active: true,
-          stream_id: 'stream-live-1',
-        },
-      } as never
-    )
+    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
+      data: {
+        conversation_id: 'conv-1',
+        active: true,
+        stream_id: 'stream-live-1',
+      },
+    } as never)
 
     const { wrapper, store } = await mountIntegratedChatView()
 
@@ -731,35 +731,31 @@ describe('ChatView streaming card chain integration', () => {
   })
 
   it('does not render the previous assistant reply as active preview when only the latest user turn is persisted', async () => {
-    vi.mocked(messageApi.list).mockResolvedValue(
-      {
-        data: [
-          {
-            id: 'msg-assistant-prev',
-            conversation_id: 'conv-1',
-            role: 'assistant',
-            content: '上一轮已经完成的回复',
-            created_at: '2026-03-08T00:00:00.000Z',
-          },
-          {
-            id: 'msg-user-latest',
-            conversation_id: 'conv-1',
-            role: 'user',
-            content: '继续执行新的任务',
-            created_at: '2026-03-08T00:00:01.000Z',
-          },
-        ],
-      } as never
-    )
-    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue(
-      {
-        data: {
+    vi.mocked(messageApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 'msg-assistant-prev',
           conversation_id: 'conv-1',
-          active: true,
-          stream_id: 'stream-live-2',
+          role: 'assistant',
+          content: '上一轮已经完成的回复',
+          created_at: '2026-03-08T00:00:00.000Z',
         },
-      } as never
-    )
+        {
+          id: 'msg-user-latest',
+          conversation_id: 'conv-1',
+          role: 'user',
+          content: '继续执行新的任务',
+          created_at: '2026-03-08T00:00:01.000Z',
+        },
+      ],
+    } as never)
+    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
+      data: {
+        conversation_id: 'conv-1',
+        active: true,
+        stream_id: 'stream-live-2',
+      },
+    } as never)
 
     const { wrapper, store } = await mountIntegratedChatView()
 
@@ -1382,10 +1378,16 @@ describe('ChatView streaming card chain integration', () => {
     expect(store.currentConversationId).toBe('conv-1')
     expect(wrapper.find('#deep-research-kb-1').exists()).toBe(true)
     expect(wrapper.text()).toContain('EU AI Act provider obligations knowledge base')
-    expect(wrapper.get('#deep-research-kb-1 [data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(
+      wrapper
+        .get('#deep-research-kb-1 [data-testid="deep-research-summary-toggle"]')
+        .attributes('aria-expanded')
+    ).toBe('false')
     expect(wrapper.text()).not.toContain('Workflow phases')
 
-    await wrapper.get('#deep-research-kb-1 [data-testid="deep-research-summary-toggle"]').trigger('click')
+    await wrapper
+      .get('#deep-research-kb-1 [data-testid="deep-research-summary-toggle"]')
+      .trigger('click')
     await settleView()
 
     expect(wrapper.text()).toContain('Workflow phases')
@@ -1526,7 +1528,11 @@ describe('ChatView streaming card chain integration', () => {
     expect(wrapper.text()).toContain('Planned 5 research task(s)')
     expect(wrapper.text()).toContain('Collected 3 source(s)')
     expect(wrapper.text()).toContain('Provider obligations are organized by role and timeline.')
-    expect(wrapper.get('#dr-result-1 [data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(
+      wrapper
+        .get('#dr-result-1 [data-testid="deep-research-summary-toggle"]')
+        .attributes('aria-expanded')
+    ).toBe('false')
 
     await wrapper.get('#dr-result-1 [data-testid="deep-research-summary-toggle"]').trigger('click')
     await settleView()

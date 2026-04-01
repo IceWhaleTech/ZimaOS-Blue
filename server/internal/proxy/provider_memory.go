@@ -230,12 +230,30 @@ func (pm *ProviderMemory) ForgetToolCap(providerID, baseURL string) {
 
 // IsThrottled returns true if the provider is currently in a backoff period.
 func (pm *ProviderMemory) IsThrottled(providerID, baseURL string) bool {
+	_, ok := pm.ThrottleUntil(providerID, baseURL)
+	return ok
+}
+
+// ThrottleUntil returns the time until which a provider remains throttled.
+func (pm *ProviderMemory) ThrottleUntil(providerID, baseURL string) (time.Time, bool) {
 	if v, ok := pm.cache.Get(memKey("throttle:", providerID, baseURL)); ok {
-		if until, ok := v.(int64); ok {
-			return time.Now().UnixNano() < until
+		if untilUnix, ok := v.(int64); ok {
+			until := time.Unix(0, untilUnix)
+			if time.Now().Before(until) {
+				return until, true
+			}
 		}
 	}
-	return false
+	return time.Time{}, false
+}
+
+// ThrottleRemaining returns how long the provider should continue backing off.
+func (pm *ProviderMemory) ThrottleRemaining(providerID, baseURL string) time.Duration {
+	until, ok := pm.ThrottleUntil(providerID, baseURL)
+	if !ok {
+		return 0
+	}
+	return time.Until(until)
 }
 
 // RememberThrottle records a 429 backoff for a provider.
@@ -282,18 +300,15 @@ func (pm *ProviderMemory) ClearThrottle(providerID, baseURL string) {
 // GetRestrictions returns all current restrictions (throttles + blacklists) for a provider.
 // Used to show users what's temporarily restricted.
 func (pm *ProviderMemory) GetRestrictions(providerID, baseURL string) map[string]interface{} {
-	throttleKey := memKey("throttle:", providerID, baseURL)
 	restrictions := map[string]interface{}{
 		"throttled":          false,
 		"blacklisted_models": []string{},
 	}
 
 	// Check throttle
-	if v, ok := pm.cache.Get(throttleKey); ok {
-		if until, ok := v.(int64); ok && time.Now().UnixNano() < until {
-			restrictions["throttled"] = true
-			restrictions["throttle_until"] = time.Unix(0, until).Format(time.RFC3339)
-		}
+	if until, ok := pm.ThrottleUntil(providerID, baseURL); ok {
+		restrictions["throttled"] = true
+		restrictions["throttle_until"] = until.Format(time.RFC3339)
 	}
 
 	// Note: ecache doesn't provide iteration, so we can't enumerate all blacklisted models

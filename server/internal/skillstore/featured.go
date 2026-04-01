@@ -260,6 +260,7 @@ type LocalSkill struct {
 // LocalSkillScanner scans local directories for skills
 type LocalSkillScanner struct {
 	basePath string
+	roots    []string
 	skills   map[string]*LocalSkill
 	mu       sync.RWMutex
 	scanned  bool
@@ -267,8 +268,19 @@ type LocalSkillScanner struct {
 
 // NewLocalSkillScanner creates a new local skill scanner
 func NewLocalSkillScanner(basePath string) *LocalSkillScanner {
+	return NewLocalSkillScannerWithRoots([]string{basePath})
+}
+
+// NewLocalSkillScannerWithRoots creates a local skill scanner across multiple
+// roots. Earlier roots win on duplicate skill IDs.
+func NewLocalSkillScannerWithRoots(roots []string) *LocalSkillScanner {
+	basePath := ""
+	if len(roots) > 0 {
+		basePath = roots[0]
+	}
 	return &LocalSkillScanner{
 		basePath: basePath,
+		roots:    append([]string(nil), roots...),
 		skills:   make(map[string]*LocalSkill),
 	}
 }
@@ -280,55 +292,94 @@ func (s *LocalSkillScanner) Scan() error {
 
 	// Clear existing skills
 	s.skills = make(map[string]*LocalSkill)
+	sourcePriority := make(map[string]int)
 
-	// Check if base path exists
-	if _, err := os.Stat(s.basePath); os.IsNotExist(err) {
-		// Create the directory if it doesn't exist
-		if err := os.MkdirAll(s.basePath, 0755); err != nil {
-			return fmt.Errorf("failed to create skills directory: %w", err)
-		}
+	roots := s.scanRootsLocked()
+	if len(roots) == 0 {
 		s.scanned = true
 		return nil
 	}
 
-	// Use queue-based iteration instead of recursive walk
-	queue := []string{s.basePath}
-
-	for len(queue) > 0 {
-		currentDir := queue[0]
-		queue = queue[1:]
-
-		entries, err := os.ReadDir(currentDir)
-		if err != nil {
-			continue // Skip directories we can't read
+	for rootIndex, root := range roots {
+		// Check if base path exists
+		if _, err := os.Stat(root); os.IsNotExist(err) {
+			// Create the directory if it doesn't exist
+			if err := os.MkdirAll(root, 0755); err != nil {
+				return fmt.Errorf("failed to create skills directory: %w", err)
+			}
+			continue
 		}
 
-		for _, entry := range entries {
-			path := filepath.Join(currentDir, entry.Name())
+		// Use queue-based iteration instead of recursive walk
+		queue := []string{root}
 
-			if entry.IsDir() {
-				queue = append(queue, path)
-				continue
-			}
+		for len(queue) > 0 {
+			currentDir := queue[0]
+			queue = queue[1:]
 
-			if !skillbundle.IsEntryDocumentName(entry.Name()) {
-				continue
-			}
-
-			skill, err := s.parseSkillFile(path)
+			entries, err := os.ReadDir(currentDir)
 			if err != nil {
-				// Log error but continue scanning
-				continue
+				continue // Skip directories we can't read
 			}
 
-			if existing := s.skills[skill.ID]; existing == nil || skillbundle.EntryDocumentPriority(filepath.Base(skill.FilePath)) < skillbundle.EntryDocumentPriority(filepath.Base(existing.FilePath)) {
-				s.skills[skill.ID] = skill
+			for _, entry := range entries {
+				path := filepath.Join(currentDir, entry.Name())
+
+				if entry.IsDir() {
+					queue = append(queue, path)
+					continue
+				}
+
+				if !skillbundle.IsEntryDocumentName(entry.Name()) {
+					continue
+				}
+
+				skill, err := s.parseSkillFile(path)
+				if err != nil {
+					// Log error but continue scanning
+					continue
+				}
+
+				existing := s.skills[skill.ID]
+				existingPriority, hasExisting := sourcePriority[skill.ID]
+				switch {
+				case !hasExisting:
+					s.skills[skill.ID] = skill
+					sourcePriority[skill.ID] = rootIndex
+				case rootIndex < existingPriority:
+					s.skills[skill.ID] = skill
+					sourcePriority[skill.ID] = rootIndex
+				case rootIndex == existingPriority && existing != nil &&
+					skillbundle.EntryDocumentPriority(filepath.Base(skill.FilePath)) < skillbundle.EntryDocumentPriority(filepath.Base(existing.FilePath)):
+					s.skills[skill.ID] = skill
+				}
 			}
 		}
 	}
 
 	s.scanned = true
 	return nil
+}
+
+func (s *LocalSkillScanner) scanRootsLocked() []string {
+	seen := make(map[string]struct{}, len(s.roots)+1)
+	roots := make([]string, 0, len(s.roots)+1)
+	add := func(root string) {
+		root = filepath.Clean(strings.TrimSpace(root))
+		if root == "" {
+			return
+		}
+		if _, ok := seen[root]; ok {
+			return
+		}
+		seen[root] = struct{}{}
+		roots = append(roots, root)
+	}
+	for _, root := range s.roots {
+		add(root)
+	}
+	add(s.basePath)
+	return roots
 }
 
 func (s *LocalSkillScanner) ensureScanned() error {

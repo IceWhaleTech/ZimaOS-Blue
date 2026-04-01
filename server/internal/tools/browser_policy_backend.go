@@ -144,6 +144,21 @@ func (b *SitePolicyBrowserBackend) CountInteractiveElements(ctx context.Context,
 	return backend.CountInteractiveElements(ctx, targetID)
 }
 
+func (b *SitePolicyBrowserBackend) ExtractText(ctx context.Context, targetID, selector string) (string, error) {
+	backend := b.backendForTarget(ctx, targetID)
+	if backend == nil {
+		backend = b.defaultBackend
+	}
+	if backend == nil {
+		return "", fmt.Errorf("browser service not available")
+	}
+	extractor, ok := backend.(readableContentBrowserBackend)
+	if !ok {
+		return "", fmt.Errorf("browser text extraction not supported")
+	}
+	return extractor.ExtractText(ctx, targetID, selector)
+}
+
 func (b *SitePolicyBrowserBackend) ActByRef(ctx context.Context, targetID string, ref int, refMap map[int]int, action string, value string) error {
 	backend := b.backendForTarget(ctx, targetID)
 	if backend == nil {

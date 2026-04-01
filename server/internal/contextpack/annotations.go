@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
+	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -31,9 +32,30 @@ CREATE INDEX IF NOT EXISTS idx_context_pack_annotations_entry
 
 type AnnotationStore struct {
 	db      *sql.DB
+	readDB  *sql.DB
 	ownsDB  bool
 	closeMu sync.Mutex
 	closed  bool
+}
+
+func openAnnotationReaderDB(path string) (*sql.DB, error) {
+	path = strings.TrimSpace(path)
+	if path == "" || path == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", path)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, path, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+			return fmt.Errorf("set annotation reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 func NewAnnotationStore(path string) (*AnnotationStore, error) {
@@ -63,17 +85,108 @@ func NewAnnotationStore(path string) (*AnnotationStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &AnnotationStore{db: db, ownsDB: true}, nil
+	readDB, readErr := openAnnotationReaderDB(path)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+	return &AnnotationStore{db: db, readDB: readDB, ownsDB: true}, nil
 }
 
 func NewAnnotationStoreWithDB(db *sql.DB) (*AnnotationStore, error) {
-	if db == nil {
+	return NewAnnotationStoreWithReadDB(db, db)
+}
+
+func NewAnnotationStoreWithReadDB(writeDB, readDB *sql.DB) (*AnnotationStore, error) {
+	if writeDB == nil {
 		return nil, fmt.Errorf("annotation db is nil")
 	}
-	if _, err := db.Exec(annotationSchema); err != nil {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	if _, err := writeDB.Exec(annotationSchema); err != nil {
 		return nil, err
 	}
-	return &AnnotationStore{db: db}, nil
+	return &AnnotationStore{db: writeDB, readDB: readDB}, nil
+}
+
+func (s *AnnotationStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *AnnotationStore) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "context_pack_annotations")
+}
+
+func (s *AnnotationStore) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "context_pack_annotations")
+}
+
+type annotationRow struct {
+	TenantID  string `json:"tenant_id" zorm:"tenant_id"`
+	UserID    string `json:"user_id" zorm:"user_id"`
+	EntryID   string `json:"entry_id" zorm:"entry_id"`
+	Language  string `json:"language" zorm:"language"`
+	Version   string `json:"version" zorm:"version"`
+	File      string `json:"file" zorm:"file"`
+	Note      string `json:"note" zorm:"note"`
+	UpdatedAt string `json:"updated_at" zorm:"updated_at"`
+}
+
+func annotationValues(ann Annotation) z.V {
+	return z.V{
+		"tenant_id":  ann.TenantID,
+		"user_id":    ann.UserID,
+		"entry_id":   ann.EntryID,
+		"language":   ann.Language,
+		"version":    ann.Version,
+		"file":       ann.File,
+		"note":       ann.Note,
+		"updated_at": ann.UpdatedAt.Format(time.RFC3339Nano),
+	}
+}
+
+func parseAnnotationTime(raw string) time.Time {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func rowToAnnotation(row annotationRow) Annotation {
+	return Annotation{
+		TenantID:  row.TenantID,
+		UserID:    row.UserID,
+		EntryID:   row.EntryID,
+		Language:  row.Language,
+		Version:   row.Version,
+		File:      row.File,
+		Note:      row.Note,
+		UpdatedAt: parseAnnotationTime(row.UpdatedAt),
+	}
+}
+
+func rowsToAnnotations(rows []annotationRow) []Annotation {
+	out := make([]Annotation, 0, len(rows))
+	for i := range rows {
+		out = append(out, rowToAnnotation(rows[i]))
+	}
+	return out
 }
 
 func (s *AnnotationStore) Close() error {
@@ -81,12 +194,29 @@ func (s *AnnotationStore) Close() error {
 		return nil
 	}
 	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
 	if s.closed {
+		s.closeMu.Unlock()
 		return nil
 	}
 	s.closed = true
-	return s.db.Close()
+	db := s.db
+	readDB := s.readDB
+	s.db = nil
+	s.readDB = nil
+	s.closeMu.Unlock()
+
+	var firstErr error
+	if readDB != nil && readDB != db {
+		if err := readDB.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if db != nil {
+		if err := db.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func (s *AnnotationStore) Upsert(ctx context.Context, ann Annotation) error {
@@ -103,12 +233,12 @@ func (s *AnnotationStore) Upsert(ctx context.Context, ann Annotation) error {
 	if ann.UpdatedAt.IsZero() {
 		ann.UpdatedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO context_pack_annotations (tenant_id, user_id, entry_id, language, version, file, note, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(tenant_id, user_id, entry_id, language, version, file)
-		 DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at`,
-		ann.TenantID, ann.UserID, ann.EntryID, ann.Language, ann.Version, ann.File, ann.Note, ann.UpdatedAt.Format(time.RFC3339Nano),
+	_, err := s.table(ctx).Insert(
+		annotationValues(ann),
+		z.OnConflictDoUpdateSet(
+			[]string{"tenant_id", "user_id", "entry_id", "language", "version", "file"},
+			[]string{"note", "updated_at"},
+		),
 	)
 	return err
 }
@@ -121,10 +251,15 @@ func (s *AnnotationStore) Delete(ctx context.Context, filter AnnotationFilter) e
 	if filter.EntryID == "" {
 		return fmt.Errorf("entry_id is required")
 	}
-	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM context_pack_annotations
-		 WHERE tenant_id = ? AND user_id = ? AND entry_id = ? AND language = ? AND version = ? AND file = ?`,
-		filter.TenantID, filter.UserID, filter.EntryID, filter.Language, filter.Version, filter.File,
+	_, err := s.table(ctx).Delete(
+		z.Where(
+			z.Eq("tenant_id", filter.TenantID),
+			z.Eq("user_id", filter.UserID),
+			z.Eq("entry_id", filter.EntryID),
+			z.Eq("language", filter.Language),
+			z.Eq("version", filter.Version),
+			z.Eq("file", filter.File),
+		),
 	)
 	return err
 }
@@ -134,50 +269,34 @@ func (s *AnnotationStore) List(ctx context.Context, filter AnnotationFilter) ([]
 		return nil, fmt.Errorf("annotation store is not initialized")
 	}
 	filter = normalizeFilter(filter)
-	query := `SELECT tenant_id, user_id, entry_id, language, version, file, note, updated_at FROM context_pack_annotations WHERE 1=1`
-	args := make([]interface{}, 0, 6)
+	conds := make([]interface{}, 0, 6)
 	if filter.TenantID != "" {
-		query += ` AND tenant_id = ?`
-		args = append(args, filter.TenantID)
+		conds = append(conds, z.Eq("tenant_id", filter.TenantID))
 	}
 	if filter.UserID != "" {
-		query += ` AND user_id = ?`
-		args = append(args, filter.UserID)
+		conds = append(conds, z.Eq("user_id", filter.UserID))
 	}
 	if filter.EntryID != "" {
-		query += ` AND entry_id = ?`
-		args = append(args, filter.EntryID)
+		conds = append(conds, z.Eq("entry_id", filter.EntryID))
 	}
 	if filter.Language != "" {
-		query += ` AND language = ?`
-		args = append(args, filter.Language)
+		conds = append(conds, z.Eq("language", filter.Language))
 	}
 	if filter.Version != "" {
-		query += ` AND version = ?`
-		args = append(args, filter.Version)
+		conds = append(conds, z.Eq("version", filter.Version))
 	}
 	if filter.File != "" {
-		query += ` AND file = ?`
-		args = append(args, filter.File)
+		conds = append(conds, z.Eq("file", filter.File))
 	}
-	query += ` ORDER BY updated_at DESC`
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	opts := []z.ZormItem{z.OrderBy("updated_at DESC")}
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
+	}
+	var rows []annotationRow
+	if _, err := s.readTable(ctx).Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	out := make([]Annotation, 0, 8)
-	for rows.Next() {
-		var ann Annotation
-		var updated string
-		if err := rows.Scan(&ann.TenantID, &ann.UserID, &ann.EntryID, &ann.Language, &ann.Version, &ann.File, &ann.Note, &updated); err != nil {
-			return nil, err
-		}
-		ann.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-		out = append(out, ann)
-	}
-	return out, rows.Err()
+	return rowsToAnnotations(rows), nil
 }
 
 func (s *AnnotationStore) Applicable(ctx context.Context, filter AnnotationFilter) ([]Annotation, error) {

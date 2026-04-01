@@ -13,6 +13,13 @@ type harnessDetailProvider struct {
 	questionMgr     *tools.QuestionManager
 }
 
+func (p *harnessDetailProvider) SetApprovalHandler(handler *networkapi.ApprovalHandler) {
+	if p == nil {
+		return
+	}
+	p.approvalHandler = handler
+}
+
 func (p *harnessDetailProvider) PendingApprovals(runID string) []map[string]interface{} {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {

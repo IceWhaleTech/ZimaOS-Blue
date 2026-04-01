@@ -71,8 +71,29 @@ type CreateKeyRequest struct {
 // APIKeyService handles API key operations
 type APIKeyService struct {
 	db        *sql.DB
+	readDB    *sql.DB
 	encryptor *Encryptor
 	ownsDB    bool
+}
+
+func openAPIKeyReaderDB(dbPath string) (*sql.DB, error) {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+			return fmt.Errorf("set api key reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // APIKeyServiceOption is a functional option for APIKeyService.
@@ -104,14 +125,31 @@ func NewAPIKeyService(dbPath string, opts ...APIKeyServiceOption) (*APIKeyServic
 	}
 
 	svc.db = db
+	readDB, readErr := openAPIKeyReaderDB(dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+	svc.readDB = readDB
 	return svc, nil
 }
 
 // NewAPIKeyServiceWithDB creates an API key service using an existing shared database connection.
 func NewAPIKeyServiceWithDB(db *sql.DB, opts ...APIKeyServiceOption) (*APIKeyService, error) {
-	svc := &APIKeyService{db: db, ownsDB: false}
+	return NewAPIKeyServiceWithReadDB(db, db, opts...)
+}
+
+// NewAPIKeyServiceWithReadDB creates an API key service using existing shared
+// write/read database connections.
+func NewAPIKeyServiceWithReadDB(writeDB, readDB *sql.DB, opts ...APIKeyServiceOption) (*APIKeyService, error) {
+	svc := &APIKeyService{db: writeDB, readDB: readDB, ownsDB: false}
 	for _, opt := range opts {
 		opt(svc)
+	}
+	if svc.db == nil {
+		return nil, fmt.Errorf("api key db is nil")
+	}
+	if svc.readDB == nil {
+		svc.readDB = svc.db
 	}
 
 	if err := svc.initSchema(); err != nil {
@@ -183,12 +221,30 @@ func (s *APIKeyService) initSchema() error {
 // Close closes the database connection if this service owns it.
 func (s *APIKeyService) Close() error {
 	if s.ownsDB {
-		return s.db.Close()
+		var firstErr error
+		if s.readDB != nil && s.readDB != s.db {
+			if err := s.readDB.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		if s.db != nil {
+			if err := s.db.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		return firstErr
 	}
 	return nil
 }
 
 func (s *APIKeyService) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "api_keys")
+}
+
+func (s *APIKeyService) readTable(ctx context.Context) *z.ZormTable {
+	if s != nil && s.readDB != nil {
+		return z.TableContext(ctx, s.readDB, "api_keys")
+	}
 	return z.TableContext(ctx, s.db, "api_keys")
 }
 
@@ -317,7 +373,7 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, key string) (*APIKeyInf
 	keyHash := hashKey(key)
 
 	var rows []apiKeyRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Fields("id", "user_id", "name", "prefix", "scopes", "created_at", "expires_at", "last_used", "revoked"),
 		z.Where(z.Eq("key_hash", keyHash)),
 		z.Limit(1),
@@ -355,7 +411,7 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, key string) (*APIKeyInf
 // ListKeys lists all API keys for a user
 func (s *APIKeyService) ListKeys(ctx context.Context, userID string) ([]*APIKeyInfo, error) {
 	var rows []apiKeyRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Fields("id", "user_id", "name", "prefix", "scopes", "created_at", "expires_at", "last_used", "revoked"),
 		z.Where(z.Eq("user_id", userID), z.Eq("revoked", 0)),
 		// created_at can collide under coarse clocks; rowid makes ordering deterministic.
@@ -403,7 +459,7 @@ type RotateKeyResult struct {
 // RotateKey rotates an API key
 func (s *APIKeyService) RotateKey(ctx context.Context, req *RotateKeyRequest) (*RotateKeyResult, error) {
 	var rows []apiKeyRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Fields("id", "user_id", "name", "prefix", "scopes", "created_at", "expires_at", "last_used", "revoked", "rotated_to"),
 		z.Where(z.Eq("id", req.KeyID), z.Eq("user_id", req.UserID)),
 		z.Limit(1),
@@ -547,7 +603,7 @@ func (s *APIKeyService) GetRotationHistory(ctx context.Context, keyID, userID st
 	rootID := keyID
 	for {
 		var rows []apiKeyRow
-		_, err := s.table(ctx).Select(&rows,
+		_, err := s.readTable(ctx).Select(&rows,
 			z.Fields("rotated_from"),
 			z.Where(z.Eq("id", rootID), z.Eq("user_id", userID)),
 			z.Limit(1),
@@ -570,7 +626,7 @@ func (s *APIKeyService) GetRotationHistory(ctx context.Context, keyID, userID st
 
 	for currentID != "" {
 		var rows []apiKeyRow
-		_, err := s.table(ctx).Select(&rows,
+		_, err := s.readTable(ctx).Select(&rows,
 			z.Where(z.Eq("id", currentID), z.Eq("user_id", userID)),
 			z.Limit(1),
 		)
@@ -601,7 +657,7 @@ func (s *APIKeyService) GetDecryptedKey(ctx context.Context, keyID, userID strin
 	}
 
 	var rows []apiKeyRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Fields("encrypted_key", "revoked"),
 		z.Where(z.Eq("id", keyID), z.Eq("user_id", userID)),
 		z.Limit(1),
@@ -636,7 +692,7 @@ func (s *APIKeyService) ReEncryptAllKeys(ctx context.Context, oldEnc, newEnc *En
 	}
 
 	var rows []apiKeyRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Fields("id", "encrypted_key"),
 		z.Where(z.IsNotNull("encrypted_key"), z.Eq("revoked", 0)),
 	)

@@ -457,6 +457,133 @@ func TestTryOnProvider_RoutingHintFallsThroughToRelayModelAndRemembersAlias(t *t
 	}
 }
 
+func TestTryOnProvider_HAFallsThroughToRelayModelForExplicitModelAndRemembersAlias(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-ha-explicit-model-fallback-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	failingModel := "relay-haiku-broken"
+	workingModel := "claude-haiku-4-5"
+	var attempts []string
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := stdjson.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		model, _ := body["model"].(string)
+		attempts = append(attempts, model)
+		w.Header().Set("Content-Type", "application/json")
+		switch model {
+		case failingModel:
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"No available AI provider for model 'relay-haiku-broken' across all groups checked.","type":"invalid_request_error"}}`))
+		case workingModel:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"chatcmpl-1","object":"chat.completion","model":%q,"choices":[{"message":{"role":"assistant","content":"ok"}}]}`, workingModel)))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"error":{"message":"unexpected model %s","type":"invalid_request_error"}}`, model)))
+		}
+	}))
+	defer upstream.Close()
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	provider := &providerpool.Provider{
+		ID:        "relay-provider",
+		Name:      "Relay Provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Location:  providerpool.ProviderLocationCloud,
+		APIKeys:   []providerpool.APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*providerpool.Model{
+		{
+			ID:           workingModel,
+			ProviderID:   provider.ID,
+			Name:         workingModel,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+		{
+			ID:           failingModel,
+			ProviderID:   provider.ID,
+			Name:         failingModel,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true, Streaming: true},
+		},
+	}); err != nil {
+		t.Fatalf("save models: %v", err)
+	}
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.providerPool = &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+	}
+
+	result := &providerpool.RouteResult{
+		Provider: provider,
+		Model: &providerpool.Model{
+			ID:         failingModel,
+			ProviderID: provider.ID,
+			Name:       failingModel,
+			Enabled:    true,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:                  []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}]}`, failingModel)),
+		model:                 failingModel,
+		requestedModel:        failingModel,
+		singleProvider:        false,
+		routingSingleProvider: false,
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp, _, usedModel, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("first HA request failed: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if usedModel != workingModel {
+		t.Fatalf("first HA request used model %q, want %q", usedModel, workingModel)
+	}
+	if got, ok := ph.providerMemory.RecallModelAlias(provider.ID, upstream.URL, failingModel); !ok || got != workingModel {
+		t.Fatalf("remembered explicit-model alias = %q (ok=%v), want %q", got, ok, workingModel)
+	}
+	if len(attempts) != 2 || attempts[0] != failingModel || attempts[1] != workingModel {
+		t.Fatalf("first request attempts = %v, want [%q %q]", attempts, failingModel, workingModel)
+	}
+
+	attempts = attempts[:0]
+	resp, _, usedModel, err = ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("second HA request failed: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if usedModel != workingModel {
+		t.Fatalf("second HA request used model %q, want %q", usedModel, workingModel)
+	}
+	if len(attempts) != 1 || attempts[0] != workingModel {
+		t.Fatalf("second request attempts = %v, want [%q]", attempts, workingModel)
+	}
+}
+
 func TestTryOnProvider_RoutingHintFallsThroughOnWrapped503ModelNotFound(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "proxy-routing-hint-wrapped-503-*")
 	if err != nil {
@@ -3289,6 +3416,96 @@ func TestExecuteOnRouteResult_LastFallbackBehavesAsSingleProvider(t *testing.T) 
 	outcome.resp.Body.Close()
 	if got := atomic.LoadInt32(&requestCount); got != 2 {
 		t.Fatalf("expected 2 upstream attempts on last fallback provider, got %d", got)
+	}
+}
+
+func TestExecuteOnRouteResult_SingleProviderWaitsForThrottle(t *testing.T) {
+	var requestCount int32
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "throttled-single-provider",
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:           []byte(`{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}]}`),
+		model:          "gpt-5.3-codex",
+		singleProvider: true,
+	}
+
+	ph.providerMemory.RememberThrottle(result.Provider.ID, upstream.URL, 60*time.Millisecond)
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	start := time.Now()
+	outcome, err := ph.executeOnRouteResult(r, result, pr, false)
+	if err != nil {
+		t.Fatalf("expected throttled single-provider path to wait then succeed, got error: %v", err)
+	}
+	if outcome == nil || outcome.resp == nil {
+		t.Fatal("expected non-nil outcome response")
+	}
+	outcome.resp.Body.Close()
+
+	if elapsed := time.Since(start); elapsed < 45*time.Millisecond {
+		t.Fatalf("expected executeOnRouteResult to wait for throttle, elapsed=%v", elapsed)
+	}
+	if got := atomic.LoadInt32(&requestCount); got != 1 {
+		t.Fatalf("expected exactly 1 upstream request after waiting, got %d", got)
+	}
+}
+
+func TestExecuteOnRouteResult_SingleProviderThrottleRespectsContextDeadline(t *testing.T) {
+	var requestCount int32
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "deadline-throttled-provider",
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:           []byte(`{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}]}`),
+		model:          "gpt-5.3-codex",
+		singleProvider: true,
+	}
+
+	ph.providerMemory.RememberThrottle(result.Provider.ID, upstream.URL, 200*time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
+
+	start := time.Now()
+	_, err := ph.executeOnRouteResult(r, result, pr, false)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline exceeded while waiting for throttle, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 150*time.Millisecond {
+		t.Fatalf("expected throttle wait to stop on context deadline, elapsed=%v", elapsed)
+	}
+	if got := atomic.LoadInt32(&requestCount); got != 0 {
+		t.Fatalf("expected no upstream request when context expires during throttle wait, got %d", got)
 	}
 }
 

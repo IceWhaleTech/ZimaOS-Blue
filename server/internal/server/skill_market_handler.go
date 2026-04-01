@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,11 +14,26 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 )
+
+func renderSkillMarketError(c echo.Context, err error, fallbackCode int) error {
+	if err == nil {
+		return nil
+	}
+	if httpErr, ok := err.(*echo.HTTPError); ok {
+		message := strings.TrimSpace(fmt.Sprint(httpErr.Message))
+		if message == "" {
+			message = strings.TrimSpace(err.Error())
+		}
+		return c.JSON(httpErr.Code, map[string]string{"error": message})
+	}
+	return c.JSON(fallbackCode, map[string]string{"error": err.Error()})
+}
 
 func (h *SkillHandler) marketUnavailable(c echo.Context) error {
 	return c.JSON(http.StatusServiceUnavailable, map[string]string{
@@ -238,7 +254,7 @@ func (h *SkillHandler) MarketInstallSkill(c echo.Context) error {
 		}
 		result, err := h.legacyMarketInstall(c.Request().Context(), req.ID, getUserIDFromContext(c))
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return renderSkillMarketError(c, err, http.StatusBadRequest)
 		}
 		return c.JSON(http.StatusOK, result)
 	}
@@ -285,7 +301,7 @@ func (h *SkillHandler) MarketUninstallSkill(c echo.Context) error {
 	market, marketErr := h.ensureMarketplace()
 	if market == nil {
 		if err := h.legacyMarketUninstall(id); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return renderSkillMarketError(c, err, http.StatusBadRequest)
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success":  true,
@@ -311,9 +327,9 @@ func (h *SkillHandler) MarketUpdateSkill(c echo.Context) error {
 	}
 	market, err := h.ensureMarketplace()
 	if market == nil {
-		result, err := h.legacyMarketInstall(c.Request().Context(), id, getUserIDFromContext(c))
+		result, err := h.legacyMarketUpdate(c.Request().Context(), id, getUserIDFromContext(c))
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return renderSkillMarketError(c, err, http.StatusBadRequest)
 		}
 		return c.JSON(http.StatusOK, result)
 	}
@@ -684,14 +700,25 @@ func (h *SkillHandler) fallbackInstalledSkills() []map[string]interface{} {
 	items := make([]map[string]interface{}, 0)
 	if h.localScanner != nil {
 		for _, skill := range h.localScanner.GetAll() {
-			seen[skill.ID] = struct{}{}
+			id := strings.TrimSpace(skill.ID)
+			if info := h.registry.GetInfo(id); info != nil && info.Manifest != nil {
+				id = strings.TrimSpace(info.Manifest.ID)
+			}
+			if id == "" {
+				id = strings.TrimSpace(skill.ID)
+			}
+			seen[id] = struct{}{}
+			enabled := true
+			if info := h.registry.GetInfo(id); info != nil {
+				enabled = info.Enabled
+			}
 			items = append(items, map[string]interface{}{
-				"skill_id":            skill.ID,
-				"name":                skill.Name,
+				"skill_id":            id,
+				"name":                firstNonEmpty(skill.Name, id),
 				"installed_version":   firstNonEmpty(skill.Version, "unknown"),
 				"checksum":            "",
 				"source_url":          "",
-				"enabled":             true,
+				"enabled":             enabled,
 				"auto_update":         false,
 				"installed_at":        skill.DiscoveredAt,
 				"updated_at":          skill.LastModified,
@@ -727,104 +754,11 @@ func (h *SkillHandler) fallbackInstalledSkills() []map[string]interface{} {
 	return items
 }
 
-func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID string) (*skillmarket.InstallResult, error) {
-	var err error
-	id, err = validatedSkillID(id)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	if h.skillsDir == "" {
-		return nil, echo.NewHTTPError(http.StatusInternalServerError, "skills directory not configured")
-	}
-
-	skillDir := filepath.Join(h.skillsDir, id)
-	if skillDirHasInstalledEntry(skillDir) || h.registry.Get(id) != nil {
-		return nil, echo.NewHTTPError(http.StatusConflict, "skill already installed")
-	}
-
-	rs := h.findRemoteSkill(ctx, id)
-	if rs == nil {
-		return nil, echo.NewHTTPError(http.StatusNotFound, "skill not found in store")
-	}
-
-	h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
-		"id": id, "percent": 0, "message": "Starting install...",
-	})
-
-	ghURL := firstString(rs.Homepage, rs.DownloadURL)
-	if isGitHubDirURL(ghURL) {
-		if err := os.MkdirAll(skillDir, 0o755); err != nil {
-			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-			return nil, err
-		}
-		if err := h.downloadGitHubDirectory(ctx, ghURL, skillDir, func(downloaded, total int) {
-			pct := int(float64(downloaded) / float64(maxInt(total, 1)) * 100)
-			h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
-				"id": id, "percent": pct, "message": "Downloading files...",
-			})
-		}); err != nil {
-			_ = os.RemoveAll(skillDir)
-			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-			return nil, err
-		}
-		entryDoc, skillContent, err := readInstalledSkillEntry(skillDir)
-		if err != nil {
-			_ = os.RemoveAll(skillDir)
-			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-			return nil, err
-		}
-		if _, err := skillbundle.EnsureCompatibilitySkillDoc(skillDir, entryDoc.Path); err != nil {
-			_ = os.RemoveAll(skillDir)
-			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-			return nil, err
-		}
-		if _, _, err := h.parseSkillContent(string(skillContent), ghURL, rs.Name, rs.Description); err != nil {
-			_ = os.RemoveAll(skillDir)
-			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-			return nil, err
-		}
-	} else {
-		if err := os.MkdirAll(skillDir, 0o755); err != nil {
-			return nil, err
-		}
-		data, err := h.downloadSkillMD(ctx, id, rs)
-		if err != nil {
-			_ = os.RemoveAll(skillDir)
-			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-			return nil, err
-		}
-		entryName := entryDocumentNameFromURL(firstString(rs.DownloadURL, rs.Homepage))
-		if _, err := writeInstalledSkillDocument(skillDir, entryName, data); err != nil {
-			_ = os.RemoveAll(skillDir)
-			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-			return nil, err
-		}
-	}
-
-	skillContent, err := readInstalledSkillMarkdown(skillDir)
-	if err != nil {
-		_ = os.RemoveAll(skillDir)
-		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-		return nil, err
-	}
-	_, manifest, err := h.parseSkillContent(string(skillContent), firstString(ghURL, rs.DownloadURL), rs.Name, rs.Description)
-	if err != nil {
-		_ = os.RemoveAll(skillDir)
-		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-		return nil, err
-	}
-	manifest.ID = id
-	if err := h.registerInstalledSkill(manifest); err != nil {
-		_ = os.RemoveAll(skillDir)
-		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
-		return nil, err
-	}
-	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
-
+func legacyInstallResult(id, path string, rs *RemoteSkill) *skillmarket.InstallResult {
 	return &skillmarket.InstallResult{
 		SkillID:   id,
 		Version:   firstNonEmpty(rs.Version, "legacy"),
-		Path:      skillDir,
+		Path:      path,
 		CachePath: "",
 		Security: &skillmarket.SecurityReport{
 			SkillID:             id,
@@ -842,7 +776,193 @@ func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID strin
 			LLMStatus:      "skipped",
 		},
 		InstalledAt: time.Now(),
-	}, nil
+	}
+}
+
+func (h *SkillHandler) materializeLegacyRemoteSkill(ctx context.Context, id string, rs *RemoteSkill, destDir string, progressFn func(downloaded, total int)) (*skill.Manifest, error) {
+	ghURL := firstString(rs.Homepage, rs.DownloadURL)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return nil, err
+	}
+	if isGitHubDirURL(ghURL) {
+		if err := h.downloadGitHubDirectory(ctx, ghURL, destDir, progressFn); err != nil {
+			return nil, err
+		}
+		entryDoc, skillContent, err := readInstalledSkillEntry(destDir)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := skillbundle.EnsureCompatibilitySkillDoc(destDir, entryDoc.Path); err != nil {
+			return nil, err
+		}
+		if _, _, err := h.parseSkillContent(string(skillContent), ghURL, rs.Name, rs.Description); err != nil {
+			return nil, err
+		}
+	} else {
+		data, err := h.downloadSkillMD(ctx, id, rs)
+		if err != nil {
+			return nil, err
+		}
+		entryName := entryDocumentNameFromURL(firstString(rs.DownloadURL, rs.Homepage))
+		if _, err := writeInstalledSkillDocument(destDir, entryName, data); err != nil {
+			return nil, err
+		}
+	}
+
+	skillContent, err := readInstalledSkillMarkdown(destDir)
+	if err != nil {
+		return nil, err
+	}
+	_, manifest, err := h.parseSkillContent(string(skillContent), firstString(ghURL, rs.DownloadURL), rs.Name, rs.Description)
+	if err != nil {
+		return nil, err
+	}
+	manifest.ID = id
+	return manifest, nil
+}
+
+func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID string) (*skillmarket.InstallResult, error) {
+	var err error
+	id, err = validatedSkillID(id)
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if h.skillsDir == "" {
+		return nil, echo.NewHTTPError(http.StatusInternalServerError, "skills directory not configured")
+	}
+
+	if err := h.ensureSkillInstallTargetAvailable(id); err != nil {
+		if httpErr, ok := err.(*echo.HTTPError); ok {
+			return nil, httpErr
+		}
+		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	skillDir := filepath.Join(h.skillsDir, id)
+
+	rs := h.findRemoteSkill(ctx, id)
+	if rs == nil {
+		return nil, echo.NewHTTPError(http.StatusNotFound, "skill not found in store")
+	}
+
+	h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+		"id": id, "percent": 0, "message": "Starting install...",
+	})
+
+	tempDir, err := os.MkdirTemp(h.skillsDir, ".skill-install-*")
+	if err != nil {
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	cleanupDir := tempDir
+	defer func() {
+		if cleanupDir != "" {
+			_ = os.RemoveAll(cleanupDir)
+		}
+	}()
+
+	manifest, err := h.materializeLegacyRemoteSkill(ctx, id, rs, tempDir, func(downloaded, total int) {
+		if total <= 0 {
+			return
+		}
+		pct := int(float64(downloaded) / float64(maxInt(total, 1)) * 100)
+		h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+			"id": id, "percent": pct, "message": "Downloading files...",
+		})
+	})
+	if err != nil {
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+
+	if err := os.Rename(tempDir, skillDir); err != nil {
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	cleanupDir = ""
+	if err := h.registerInstalledSkill(manifest); err != nil {
+		_ = os.RemoveAll(skillDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
+
+	return legacyInstallResult(id, skillDir, rs), nil
+}
+
+func (h *SkillHandler) legacyMarketUpdate(ctx context.Context, id, userID string) (*skillmarket.InstallResult, error) {
+	validatedID, err := validatedSkillID(id)
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	id = validatedID
+
+	if h.skillsDir == "" {
+		return nil, echo.NewHTTPError(http.StatusInternalServerError, "skills directory not configured")
+	}
+
+	resolved, installed := h.resolveInstalledSkill(id)
+	if !installed {
+		return h.legacyMarketInstall(ctx, id, userID)
+	}
+	id = resolved.ID
+	targetDir := resolved.EntryDir
+
+	rs := h.findRemoteSkill(ctx, id)
+	if rs == nil {
+		return nil, echo.NewHTTPError(http.StatusNotFound, "skill not found in store")
+	}
+
+	h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+		"id": id, "percent": 0, "message": "Starting update...",
+	})
+
+	tempDir, err := os.MkdirTemp(h.skillsDir, ".skill-update-*")
+	if err != nil {
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	cleanupDir := tempDir
+	defer func() {
+		if cleanupDir != "" {
+			_ = os.RemoveAll(cleanupDir)
+		}
+	}()
+
+	manifest, err := h.materializeLegacyRemoteSkill(ctx, id, rs, tempDir, func(downloaded, total int) {
+		if total <= 0 {
+			return
+		}
+		pct := int(float64(downloaded) / float64(maxInt(total, 1)) * 100)
+		h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+			"id": id, "percent": pct, "message": "Downloading files...",
+		})
+	})
+	if err != nil {
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+
+	backupDir := filepath.Join(filepath.Dir(targetDir), fmt.Sprintf(".%s.backup-%d", filepath.Base(targetDir), time.Now().UnixNano()))
+	if err := os.Rename(targetDir, backupDir); err != nil {
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	if err := os.Rename(tempDir, targetDir); err != nil {
+		_ = os.Rename(backupDir, targetDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	cleanupDir = ""
+	if err := h.syncInstalledSkillRegistration(manifest); err != nil {
+		_ = os.RemoveAll(targetDir)
+		_ = os.Rename(backupDir, targetDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, err
+	}
+	_ = os.RemoveAll(backupDir)
+	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
+
+	return legacyInstallResult(id, targetDir, rs), nil
 }
 
 func (h *SkillHandler) legacyMarketUninstall(id string) error {
@@ -855,10 +975,17 @@ func (h *SkillHandler) legacyMarketUninstall(id string) error {
 	if h.skillsDir == "" {
 		return echo.NewHTTPError(http.StatusInternalServerError, "skills directory not configured")
 	}
+	skillDir := filepath.Join(h.skillsDir, id)
+	if resolved, ok := h.resolveInstalledSkill(id); ok {
+		id = resolved.ID
+		skillDir = resolved.EntryDir
+	} else if resolvedID, ok := h.resolveInstalledSkillID(id); ok {
+		id = resolvedID
+		skillDir = filepath.Join(h.skillsDir, id)
+	}
 	if info := h.registry.GetInfo(id); info != nil && info.Builtin {
 		return echo.NewHTTPError(http.StatusForbidden, "cannot uninstall builtin skill")
 	}
-	skillDir := filepath.Join(h.skillsDir, id)
 	_, dirErr := os.Stat(skillDir)
 	inRegistry := h.registry.Get(id) != nil
 	if os.IsNotExist(dirErr) && !inRegistry {

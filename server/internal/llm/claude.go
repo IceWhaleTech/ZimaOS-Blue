@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,31 @@ func NewClaudeProvider(apiKey, baseURL string) *ClaudeProvider {
 			DisableCompression: true,
 		}),
 	}
+}
+
+func isMiniMaxClaudeBaseURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "api.minimaxi.com", "api.minimax.io":
+	default:
+		return false
+	}
+	path := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(u.Path)), "/")
+	return strings.HasSuffix(path, "/anthropic") || strings.Contains(path, "/anthropic/")
+}
+
+func (p *ClaudeProvider) applyAuthHeaders(req *http.Request) {
+	if isMiniMaxClaudeBaseURL(p.baseURL) {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+		req.Header.Del("x-api-key")
+	} else {
+		req.Header.Set("x-api-key", p.apiKey)
+		req.Header.Del("Authorization")
+	}
+	req.Header.Set("anthropic-version", claudeAPIVersion)
 }
 
 // Name returns the provider name.
@@ -186,8 +212,7 @@ func (p *ClaudeProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", p.apiKey)
-	httpReq.Header.Set("anthropic-version", claudeAPIVersion)
+	p.applyAuthHeaders(httpReq)
 
 	// Send request
 	resp, err := p.client.Do(httpReq)
@@ -254,8 +279,7 @@ func (p *ClaudeProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", p.apiKey)
-	httpReq.Header.Set("anthropic-version", claudeAPIVersion)
+	p.applyAuthHeaders(httpReq)
 	httpReq.Header.Set("Accept", "text/event-stream")
 
 	// Send request
@@ -385,8 +409,7 @@ func (p *ClaudeProvider) doClaudeRequestWithClient(ctx context.Context, claudeRe
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", p.apiKey)
-	httpReq.Header.Set("anthropic-version", claudeAPIVersion)
+	p.applyAuthHeaders(httpReq)
 	httpReq.Header.Set("Accept", "text/event-stream")
 	return client.Do(httpReq)
 }

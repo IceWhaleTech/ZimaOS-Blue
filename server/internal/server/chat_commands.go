@@ -19,6 +19,7 @@ type conversationCommandStateResponse struct {
 	Offline             bool   `json:"offline"`
 	WebSearchEnabled    bool   `json:"web_search_enabled"`
 	DeepResearchEnabled bool   `json:"deep_research_enabled"`
+	ResearchModeEnabled bool   `json:"research_mode_enabled"`
 }
 
 type conversationCommandStatePatchRequest struct {
@@ -27,6 +28,20 @@ type conversationCommandStatePatchRequest struct {
 	Offline             *bool   `json:"offline,omitempty"`
 	WebSearchEnabled    *bool   `json:"web_search_enabled,omitempty"`
 	DeepResearchEnabled *bool   `json:"deep_research_enabled,omitempty"`
+	ResearchModeEnabled *bool   `json:"research_mode_enabled,omitempty"`
+}
+
+func (r *conversationCommandStatePatchRequest) normalizeResearchModeAlias() {
+	if r == nil {
+		return
+	}
+	if r.ResearchModeEnabled != nil {
+		r.DeepResearchEnabled = r.ResearchModeEnabled
+		return
+	}
+	if r.DeepResearchEnabled != nil {
+		r.ResearchModeEnabled = r.DeepResearchEnabled
+	}
 }
 
 func commandStateToResponse(state memory.ConversationCommandState) conversationCommandStateResponse {
@@ -37,6 +52,7 @@ func commandStateToResponse(state memory.ConversationCommandState) conversationC
 		Offline:             state.Offline,
 		WebSearchEnabled:    state.WebSearchEnabled,
 		DeepResearchEnabled: state.DeepResearchEnabled,
+		ResearchModeEnabled: state.DeepResearchEnabled,
 	}
 }
 
@@ -87,6 +103,7 @@ func (h *ChatHandler) applyCommandStateToRequest(ctx context.Context, convID str
 	if req == nil {
 		return state
 	}
+	req.normalizeResearchModeAlias()
 
 	shouldPersist := false
 	if req.WebSearchEnabled != nil && state.WebSearchEnabled != *req.WebSearchEnabled {
@@ -112,8 +129,7 @@ func (h *ChatHandler) applyCommandStateToRequest(ctx context.Context, convID str
 			req.WebSearchEnabled = &value
 		}
 		if req.DeepResearchEnabled == nil {
-			value := state.DeepResearchEnabled
-			req.DeepResearchEnabled = &value
+			req.setResearchModeEnabled(state.DeepResearchEnabled)
 		}
 	}
 	return state
@@ -336,6 +352,7 @@ func (h *ChatHandler) PatchConversationCommandState(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
+	req.normalizeResearchModeAlias()
 	state, err := h.store.GetConversationCommandState(c.Request().Context(), convID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load command state")

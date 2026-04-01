@@ -11,6 +11,7 @@ const messages: Record<string, string> = {
   'chat.taskRuntimeExecute': '执行中',
   'chat.taskDefaultResearchTitle': '研究任务',
   'chat.taskDefaultAgentTitle': '智能体任务',
+  'chat.taskDefaultWorkflowTitle': '工作流任务',
 }
 
 function translate(key: string, fallback: string): string {
@@ -35,5 +36,6 @@ describe('taskProjectionText', () => {
   it('localizes default task titles', () => {
     expect(localizeTaskProjectionTitle('Research task', 'research', translate)).toBe('研究任务')
     expect(localizeTaskProjectionTitle('Agent task', 'agent_task', translate)).toBe('智能体任务')
+    expect(localizeTaskProjectionTitle('', 'workflow', translate)).toBe('工作流任务')
   })
 })

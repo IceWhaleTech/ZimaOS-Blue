@@ -180,9 +180,6 @@ func (d *GroupDispatcher) processClaimedItem(itemID string, groupID string) {
 	if err := d.manager.store.UpdateGroupItem(ctx, item); err != nil {
 		return
 	}
-	if _, err := d.manager.refreshGroupSummary(ctx, group.ID); err != nil {
-		return
-	}
 
 	terminalRun, waitErr := d.waitForRun(ctx, group, item.ID, run.ID)
 	if waitErr != nil {
@@ -495,6 +492,7 @@ func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error)
 			metadata["task_fallback_plan"] = append([]string(nil), fallback...)
 		}
 	}
+	applyExecutionRouteContract(metadata)
 
 	goal := firstMapString(item.Input, "goal", "query", "prompt")
 	if goal == "" {
@@ -568,7 +566,7 @@ func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error)
 	); approval != "" {
 		spec.ApprovalMode = ApprovalMode(strings.TrimSpace(approval))
 	}
-	adaptivePolicy := DeriveHarnessAdaptivePolicy(spec.Model, item.RunKind, contract)
+	adaptivePolicy := DeriveHarnessAdaptivePolicy(adaptivePolicyModelHint(spec.Model, metadata), item.RunKind, contract)
 	if policyMeta := HarnessAdaptivePolicyMetadata(adaptivePolicy); len(policyMeta) > 0 {
 		metadata["runtime_adaptation"] = policyMeta
 	}
@@ -589,6 +587,81 @@ func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error)
 	}
 	spec.Metadata = metadata
 	return spec, nil
+}
+
+func adaptivePolicyModelHint(model string, metadata map[string]interface{}) string {
+	return firstNonEmpty(
+		strings.TrimSpace(model),
+		firstMapString(metadata, "policy_model_hint", "policyModelHint"),
+	)
+}
+
+func applyExecutionRouteContract(metadata map[string]interface{}) {
+	if len(metadata) == 0 {
+		return
+	}
+	contract := buildExecutionRouteContract(metadata)
+	if len(contract) == 0 {
+		return
+	}
+	metadata["routing_contract"] = contract
+	if _, ok := metadata["task_fallback_plan"]; ok {
+		return
+	}
+	if fallback := buildExecutionRouteFallbackPlan(contract); len(fallback) > 0 {
+		metadata["task_fallback_plan"] = fallback
+	}
+}
+
+func buildExecutionRouteContract(metadata map[string]interface{}) map[string]interface{} {
+	if len(metadata) == 0 {
+		return nil
+	}
+	gateType := strings.TrimSpace(metadataString(metadata, "gate_type"))
+	primaryRoute := strings.TrimSpace(metadataString(metadata, "primary_route"))
+	expectedCLIAction := strings.TrimSpace(metadataString(metadata, "expected_cli_action"))
+	allowFallback, hasAllowFallback := mapBool(metadata, "allow_fallback")
+	if gateType != "execution_equivalence" && primaryRoute == "" && expectedCLIAction == "" {
+		return nil
+	}
+	if primaryRoute == "" && expectedCLIAction == "" {
+		return nil
+	}
+	contract := map[string]interface{}{
+		"gate_type": gateType,
+	}
+	if primaryRoute != "" {
+		contract["primary_route"] = primaryRoute
+	}
+	if expectedCLIAction != "" {
+		contract["expected_cli_action"] = expectedCLIAction
+		contract["enforce_cli_route"] = true
+	}
+	if hasAllowFallback {
+		contract["allow_fallback"] = allowFallback
+	}
+	return contract
+}
+
+func buildExecutionRouteFallbackPlan(contract map[string]interface{}) []string {
+	if len(contract) == 0 {
+		return nil
+	}
+	expectedCLIAction := strings.TrimSpace(metadataString(contract, "expected_cli_action"))
+	if expectedCLIAction == "" {
+		return nil
+	}
+	primaryRoute := strings.TrimSpace(metadataString(contract, "primary_route"))
+	allowFallback, hasAllowFallback := mapBool(contract, "allow_fallback")
+	routeLabel := firstNonEmpty(primaryRoute, "the expected route")
+	out := []string{
+		fmt.Sprintf("Execute the canonical CLI action %q as the first and primary route for %s.", expectedCLIAction, routeLabel),
+		fmt.Sprintf("Do not replace %q with unrelated direct tools, shell exploration, or route changes before trying it.", expectedCLIAction),
+	}
+	if hasAllowFallback && !allowFallback {
+		out = append(out, fmt.Sprintf("If %q is unavailable or fails, stop and report the blocker instead of switching routes.", expectedCLIAction))
+	}
+	return dedupeContractStrings(out)
 }
 
 func mergeMetadataMaps(base map[string]interface{}, override map[string]interface{}) map[string]interface{} {

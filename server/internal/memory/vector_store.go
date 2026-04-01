@@ -12,14 +12,17 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 func init() {
@@ -62,6 +65,7 @@ type VectorStoreConfig struct {
 // VectorStore provides SQLite-backed storage with sqlite-vec + FTS5.
 type VectorStore struct {
 	db           *sql.DB
+	readDB       *sql.DB
 	embeddingDim int
 	maxChunks    int
 	enableFTS    bool
@@ -93,6 +97,238 @@ type VectorStoreStats struct {
 	FTSEnabled   bool   `json:"fts_enabled"`
 	OldestChunk  string `json:"oldest_chunk,omitempty"`
 	NewestChunk  string `json:"newest_chunk,omitempty"`
+}
+
+type memoryChunkRow struct {
+	ID        int64     `zorm:"id"`
+	ChunkID   string    `zorm:"chunk_id"`
+	Content   string    `zorm:"content"`
+	Tags      string    `zorm:"tags"`
+	Metadata  string    `zorm:"metadata"`
+	CreatedAt time.Time `zorm:"created_at"`
+	UpdatedAt time.Time `zorm:"updated_at"`
+}
+
+type memoryChunkIDRow struct {
+	ID int64 `zorm:"id"`
+}
+
+func memoryChunkFromRow(row memoryChunkRow) MemoryChunk {
+	chunk := MemoryChunk{
+		ID:        row.ChunkID,
+		Content:   row.Content,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
+	}
+	if strings.TrimSpace(row.Metadata) != "" {
+		_ = json.Unmarshal([]byte(row.Metadata), &chunk.Metadata)
+	}
+	return chunk
+}
+
+func vectorStoreStringFromMapValue(row z.V, key string) string {
+	value, ok := vectorStoreValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	case time.Time:
+		return typed.Format(time.RFC3339Nano)
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func vectorStoreIntFromMapValue(row z.V, key string) int {
+	value, ok := vectorStoreValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int8:
+		return int(typed)
+	case int16:
+		return int(typed)
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case uint:
+		return int(typed)
+	case uint8:
+		return int(typed)
+	case uint16:
+		return int(typed)
+	case uint32:
+		return int(typed)
+	case uint64:
+		return int(typed)
+	case float32:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case []byte:
+		n, _ := strconv.Atoi(string(typed))
+		return n
+	case string:
+		n, _ := strconv.Atoi(typed)
+		return n
+	default:
+		return 0
+	}
+}
+
+func vectorStoreFloat64FromMapValue(row z.V, key string) float64 {
+	value, ok := vectorStoreValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case float32:
+		return float64(typed)
+	case float64:
+		return typed
+	case int:
+		return float64(typed)
+	case int8:
+		return float64(typed)
+	case int16:
+		return float64(typed)
+	case int32:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case uint:
+		return float64(typed)
+	case uint8:
+		return float64(typed)
+	case uint16:
+		return float64(typed)
+	case uint32:
+		return float64(typed)
+	case uint64:
+		return float64(typed)
+	case []byte:
+		n, _ := strconv.ParseFloat(string(typed), 64)
+		return n
+	case string:
+		n, _ := strconv.ParseFloat(typed, 64)
+		return n
+	default:
+		return 0
+	}
+}
+
+func vectorStoreTimeFromMapValue(row z.V, key string) time.Time {
+	value, ok := vectorStoreValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return time.Time{}
+	}
+	switch typed := value.(type) {
+	case time.Time:
+		return typed
+	case string:
+		return parseVectorStoreTime(typed)
+	case []byte:
+		return parseVectorStoreTime(string(typed))
+	default:
+		return parseVectorStoreTime(fmt.Sprint(typed))
+	}
+}
+
+func parseVectorStoreTime(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func vectorSearchResultFromMapRow(row z.V) (VectorSearchResult, float64) {
+	result := VectorSearchResult{
+		Chunk: MemoryChunk{
+			ID:        vectorStoreStringFromMapValue(row, "chunk_id"),
+			Content:   vectorStoreStringFromMapValue(row, "content"),
+			CreatedAt: vectorStoreTimeFromMapValue(row, "created_at"),
+			UpdatedAt: vectorStoreTimeFromMapValue(row, "updated_at"),
+		},
+	}
+	if metadata := strings.TrimSpace(vectorStoreStringFromMapValue(row, "metadata")); metadata != "" {
+		_ = json.Unmarshal([]byte(metadata), &result.Chunk.Metadata)
+	}
+	applySourceIDToChunk(&result.Chunk)
+	rank := vectorStoreFloat64FromMapValue(row, "rank")
+	result.Score = float32(rank)
+	return result, rank
+}
+
+func vectorSearchResultFromDistanceMapRow(row z.V) (VectorSearchResult, float64) {
+	result := VectorSearchResult{
+		Chunk: MemoryChunk{
+			ID:        vectorStoreStringFromMapValue(row, "chunk_id"),
+			Content:   vectorStoreStringFromMapValue(row, "content"),
+			CreatedAt: vectorStoreTimeFromMapValue(row, "created_at"),
+			UpdatedAt: vectorStoreTimeFromMapValue(row, "updated_at"),
+		},
+	}
+	if metadata := strings.TrimSpace(vectorStoreStringFromMapValue(row, "metadata")); metadata != "" {
+		_ = json.Unmarshal([]byte(metadata), &result.Chunk.Metadata)
+	}
+	applySourceIDToChunk(&result.Chunk)
+	distance := vectorStoreFloat64FromMapValue(row, "distance")
+	// cosine distance 0-2 -> similarity 0-1
+	result.Score = float32(1.0 - distance/2.0)
+	return result, distance
+}
+
+func vectorStoreValueFromMapKey(row z.V, key string) (interface{}, bool) {
+	if row == nil {
+		return nil, false
+	}
+	if value, ok := row[key]; ok {
+		return value, true
+	}
+	for rawKey, value := range row {
+		if vectorStoreNormalizeMapKey(rawKey) == key {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func vectorStoreNormalizeMapKey(key string) string {
+	key = strings.TrimSpace(strings.Trim(key, "`"))
+	if key == "" {
+		return ""
+	}
+	fields := strings.Fields(key)
+	if len(fields) >= 3 && strings.EqualFold(fields[len(fields)-2], "as") {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if len(fields) >= 2 {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if dot := strings.LastIndex(key, "."); dot >= 0 {
+		return strings.Trim(key[dot+1:], "`")
+	}
+	return key
 }
 
 const vectorStoreSchema = `
@@ -256,6 +492,26 @@ func ensureVectorStoreParentDir(dbPath string) error {
 	return nil
 }
 
+func openVectorStoreReaderDB(dbPath string) (*sql.DB, error) {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" || dbPath == ":memory:" || strings.HasPrefix(dbPath, "file:") {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("set vector store reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
 // NewVectorStore creates a new vector store.
 func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 	if cfg.EmbeddingDim <= 0 {
@@ -323,12 +579,28 @@ func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 		return nil, fmt.Errorf("open vector store db: %w", err)
 	}
 
+	readDB, readErr := openVectorStoreReaderDB(cfg.DBPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+
 	return &VectorStore{
 		db:           db,
+		readDB:       readDB,
 		embeddingDim: cfg.EmbeddingDim,
 		maxChunks:    cfg.MaxChunks,
 		enableFTS:    ftsEnabled,
 	}, nil
+}
+
+func (s *VectorStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
 }
 
 // Store stores a memory chunk with its embedding.
@@ -352,18 +624,17 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 	defer tx.Rollback()
 
 	// Insert into memory_chunks (FTS trigger fires automatically)
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO memory_chunks (chunk_id, content, tags, metadata, importance, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, 0.5, ?, ?)`,
-		chunkID, content, tagsText, string(metaJSON), now, now,
-	)
+	rowID, err := z.TableContext(ctx, tx, "memory_chunks").Insert(z.V{
+		"chunk_id":   chunkID,
+		"content":    content,
+		"tags":       tagsText,
+		"metadata":   string(metaJSON),
+		"importance": 0.5,
+		"created_at": now,
+		"updated_at": now,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("insert chunk: %w", err)
-	}
-
-	rowID, err := res.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get rowid: %w", err)
 	}
 
 	// Insert into memory_vec (must be manual, vec0 doesn't support triggers)
@@ -371,7 +642,7 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 		serialized := serializeFloat32(emb)
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO memory_vec (rowid, embedding) VALUES (?, vec_quantize_int8(?, 'unit'))`,
-			rowID, serialized,
+			int64(rowID), serialized,
 		); err != nil {
 			return nil, fmt.Errorf("insert vec: %w", err)
 		}
@@ -401,36 +672,32 @@ func (s *VectorStore) SearchVector(ctx context.Context, queryEmb []float32, limi
 
 	serialized := serializeFloat32(queryEmb)
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.chunk_id, c.content, c.metadata, c.created_at, c.updated_at, v.distance
-		FROM memory_vec v
-		JOIN memory_chunks c ON c.id = v.rowid
-		WHERE v.embedding MATCH vec_quantize_int8(vec_f32(?), 'unit') AND k = ?
-		ORDER BY v.distance`,
-		serialized, limit*3,
-	)
-	if err != nil {
+	var rows []z.V
+	if _, err := z.TableContext(ctx, s.reader(), "memory_vec v").Select(&rows,
+		z.Fields(
+			"c.chunk_id as chunk_id",
+			"c.content as content",
+			"c.metadata as metadata",
+			"c.created_at as created_at",
+			"c.updated_at as updated_at",
+			"v.distance as distance",
+		),
+		z.InnerJoin("memory_chunks c", z.Expr("c.id = v.rowid")),
+		z.Where(
+			z.Expr("v.embedding MATCH vec_quantize_int8(vec_f32(?), 'unit')", serialized),
+			z.Expr("k = ?", limit*3),
+		),
+		z.OrderBy("v.distance"),
+	); err != nil {
 		return nil, fmt.Errorf("search vector: %w", err)
 	}
-	defer rows.Close()
 
 	var results []VectorSearchResult
-	for rows.Next() {
-		var r VectorSearchResult
-		var metaStr sql.NullString
-		var distance float64
-		if err := rows.Scan(&r.Chunk.ID, &r.Chunk.Content, &metaStr, &r.Chunk.CreatedAt, &r.Chunk.UpdatedAt, &distance); err != nil {
-			continue
-		}
-		// cosine distance 0-2 → similarity 0-1
-		r.Score = float32(1.0 - distance/2.0)
+	for _, row := range rows {
+		r, _ := vectorSearchResultFromDistanceMapRow(row)
 		if r.Score < minScore {
 			continue
 		}
-		if metaStr.Valid {
-			_ = json.Unmarshal([]byte(metaStr.String), &r.Chunk.Metadata)
-		}
-		applySourceIDToChunk(&r.Chunk)
 		results = append(results, r)
 	}
 
@@ -455,37 +722,32 @@ func (s *VectorStore) SearchKeyword(ctx context.Context, query string, limit int
 		return nil, nil
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.chunk_id, c.content, c.metadata, c.created_at, c.updated_at, f.rank
-		FROM memory_fts f
-		JOIN memory_chunks c ON c.id = f.rowid
-		WHERE memory_fts MATCH ?
-		ORDER BY f.rank
-		LIMIT ?`,
-		ftsQuery, limit*3,
-	)
-	if err != nil {
+	var rows []z.V
+	if _, err := z.TableContext(ctx, s.reader(), "memory_chunks c").Select(&rows,
+		z.Fields(
+			"c.chunk_id as chunk_id",
+			"c.content as content",
+			"c.metadata as metadata",
+			"c.created_at as created_at",
+			"c.updated_at as updated_at",
+			"f.rank as rank",
+		),
+		z.InnerJoin("memory_fts f", z.Expr("c.id = f.rowid")),
+		z.Where(z.Expr("memory_fts MATCH ?", ftsQuery)),
+		z.OrderBy("f.rank"),
+		z.Limit(limit*3),
+	); err != nil {
 		if isMissingFTSModuleError(err) {
 			return s.searchKeywordFallback(ctx, query, limit)
 		}
 		return nil, fmt.Errorf("search keyword: %w", err)
 	}
-	defer rows.Close()
 
 	var results []VectorSearchResult
 	var ranks []float64
-	for rows.Next() {
-		var r VectorSearchResult
-		var metaStr sql.NullString
-		var rank float64
-		if err := rows.Scan(&r.Chunk.ID, &r.Chunk.Content, &metaStr, &r.Chunk.CreatedAt, &r.Chunk.UpdatedAt, &rank); err != nil {
-			continue
-		}
-		if metaStr.Valid {
-			_ = json.Unmarshal([]byte(metaStr.String), &r.Chunk.Metadata)
-		}
-		applySourceIDToChunk(&r.Chunk)
-		r.Score = float32(rank) // raw BM25 rank (negative, lower=better)
+	for _, row := range rows {
+		r, rank := vectorSearchResultFromMapRow(row)
+		// raw BM25 rank (negative, lower=better)
 		results = append(results, r)
 		ranks = append(ranks, rank)
 	}
@@ -533,38 +795,27 @@ func (s *VectorStore) searchKeywordFallback(ctx context.Context, query string, l
 	}
 
 	clauses := make([]string, 0, len(terms))
-	args := make([]interface{}, 0, len(terms)*2+1)
+	args := make([]interface{}, 0, len(terms)*2)
 	for _, term := range terms {
 		pattern := "%" + term + "%"
 		clauses = append(clauses, `(LOWER(content) LIKE ? OR LOWER(tags) LIKE ?)`)
 		args = append(args, pattern, pattern)
 	}
-	args = append(args, candidateLimit)
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT chunk_id, content, metadata, created_at, updated_at, COALESCE(tags, '')
-		FROM memory_chunks
-		WHERE `+strings.Join(clauses, ` OR `)+`
-		ORDER BY updated_at DESC
-		LIMIT ?`, args...)
-	if err != nil {
+	whereArgs := append([]interface{}{strings.Join(clauses, ` OR `)}, args...)
+	var rows []memoryChunkRow
+	if _, err := z.TableContext(ctx, s.reader(), "memory_chunks").Select(&rows,
+		z.Where(whereArgs...),
+		z.OrderBy("updated_at DESC"),
+		z.Limit(candidateLimit),
+	); err != nil {
 		return nil, fmt.Errorf("search keyword fallback: %w", err)
 	}
-	defer rows.Close()
 
 	results := make([]VectorSearchResult, 0, limit)
-	for rows.Next() {
-		var result VectorSearchResult
-		var metaStr sql.NullString
-		var tagsStr string
-		if err := rows.Scan(&result.Chunk.ID, &result.Chunk.Content, &metaStr, &result.Chunk.CreatedAt, &result.Chunk.UpdatedAt, &tagsStr); err != nil {
-			continue
-		}
-		if metaStr.Valid {
-			_ = json.Unmarshal([]byte(metaStr.String), &result.Chunk.Metadata)
-		}
+	for i := range rows {
+		result := VectorSearchResult{Chunk: memoryChunkFromRow(rows[i])}
 		applySourceIDToChunk(&result.Chunk)
-		result.Score = keywordFallbackScore(query, terms, result.Chunk.Content, tagsStr)
+		result.Score = keywordFallbackScore(query, terms, result.Chunk.Content, rows[i].Tags)
 		if result.Score <= 0 {
 			continue
 		}
@@ -674,20 +925,17 @@ func (s *VectorStore) Get(ctx context.Context, id string) (*MemoryChunk, error) 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var chunk MemoryChunk
-	var metaStr sql.NullString
-	err := s.db.QueryRowContext(ctx,
-		`SELECT chunk_id, content, metadata, created_at, updated_at FROM memory_chunks WHERE chunk_id = ?`, id,
-	).Scan(&chunk.ID, &chunk.Content, &metaStr, &chunk.CreatedAt, &chunk.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return nil, ErrNotFound
-	}
-	if err != nil {
+	var rows []memoryChunkRow
+	if _, err := z.TableContext(ctx, s.reader(), "memory_chunks").Select(&rows,
+		z.Where(z.Eq("chunk_id", id)),
+		z.Limit(1),
+	); err != nil {
 		return nil, err
 	}
-	if metaStr.Valid {
-		_ = json.Unmarshal([]byte(metaStr.String), &chunk.Metadata)
+	if len(rows) == 0 {
+		return nil, ErrNotFound
 	}
+	chunk := memoryChunkFromRow(rows[0])
 	return &chunk, nil
 }
 
@@ -702,33 +950,26 @@ func (s *VectorStore) Delete(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback()
 
-	rows, err := tx.QueryContext(ctx, `SELECT id, chunk_id, metadata FROM memory_chunks`)
-	if err != nil {
+	var rows []memoryChunkRow
+	if _, err := z.TableContext(ctx, tx, "memory_chunks").Select(&rows); err != nil {
 		return err
 	}
-	defer rows.Close()
 
 	rowIDs := make([]int64, 0, 4)
-	for rows.Next() {
-		var rowID int64
-		var chunkID string
-		var metaStr sql.NullString
-		if err := rows.Scan(&rowID, &chunkID, &metaStr); err != nil {
+	for i := range rows {
+		if rows[i].ChunkID == id {
+			rowIDs = append(rowIDs, rows[i].ID)
 			continue
 		}
-		if chunkID == id {
-			rowIDs = append(rowIDs, rowID)
-			continue
-		}
-		if !metaStr.Valid {
+		if strings.TrimSpace(rows[i].Metadata) == "" {
 			continue
 		}
 		metadata := map[string]string{}
-		if err := json.Unmarshal([]byte(metaStr.String), &metadata); err != nil {
+		if err := json.Unmarshal([]byte(rows[i].Metadata), &metadata); err != nil {
 			continue
 		}
 		if sourceIDFromMetadata(metadata) == id {
-			rowIDs = append(rowIDs, rowID)
+			rowIDs = append(rowIDs, rows[i].ID)
 		}
 	}
 	if len(rowIDs) == 0 {
@@ -736,8 +977,10 @@ func (s *VectorStore) Delete(ctx context.Context, id string) error {
 	}
 
 	for _, rowID := range rowIDs {
-		_, _ = tx.ExecContext(ctx, `DELETE FROM memory_vec WHERE rowid = ?`, rowID)
-		_, _ = tx.ExecContext(ctx, `DELETE FROM memory_chunks WHERE id = ?`, rowID)
+		_, _ = z.TableContext(ctx, tx, "memory_vec").Delete(z.Where(z.Eq("rowid", rowID)))
+	}
+	if _, err := z.TableContext(ctx, tx, "memory_chunks").Delete(z.Where(z.In("id", rowIDs))); err != nil {
+		return err
 	}
 
 	return tx.Commit()
@@ -754,8 +997,12 @@ func (s *VectorStore) Clear(ctx context.Context) error {
 	}
 	defer tx.Rollback()
 
-	tx.ExecContext(ctx, `DELETE FROM memory_vec`)
-	tx.ExecContext(ctx, `DELETE FROM memory_chunks`)
+	if _, err := z.TableContext(ctx, tx, "memory_vec").Delete(z.Where(z.Expr("1=1"))); err != nil {
+		return err
+	}
+	if _, err := z.TableContext(ctx, tx, "memory_chunks").Delete(z.Where(z.Expr("1=1"))); err != nil {
+		return err
+	}
 
 	return tx.Commit()
 }
@@ -765,9 +1012,16 @@ func (s *VectorStore) Prune(ctx context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM memory_chunks`).Scan(&count); err != nil {
+	var countRows []z.V
+	if _, err := z.TableContext(ctx, s.reader(), "memory_chunks").Select(&countRows,
+		z.Fields("COUNT(*) as chunk_count"),
+		z.Limit(1),
+	); err != nil {
 		return 0, err
+	}
+	count := 0
+	if len(countRows) > 0 {
+		count = vectorStoreIntFromMapValue(countRows[0], "chunk_count")
 	}
 
 	if count <= s.maxChunks {
@@ -782,22 +1036,27 @@ func (s *VectorStore) Prune(ctx context.Context) (int, error) {
 	defer tx.Rollback()
 
 	// Delete oldest chunks (FTS trigger handles FTS, vec manual)
-	rows, err := tx.QueryContext(ctx,
-		`SELECT id FROM memory_chunks ORDER BY created_at ASC LIMIT ?`, toDelete)
-	if err != nil {
+	var rows []memoryChunkIDRow
+	if _, err := z.TableContext(ctx, tx, "memory_chunks").Select(&rows,
+		z.OrderBy("created_at ASC"),
+		z.Limit(toDelete),
+	); err != nil {
 		return 0, err
 	}
 	var ids []int64
-	for rows.Next() {
-		var id int64
-		rows.Scan(&id)
-		ids = append(ids, id)
+	for i := range rows {
+		ids = append(ids, rows[i].ID)
 	}
-	rows.Close()
 
 	for _, id := range ids {
-		tx.ExecContext(ctx, `DELETE FROM memory_vec WHERE rowid = ?`, id)
-		tx.ExecContext(ctx, `DELETE FROM memory_chunks WHERE id = ?`, id)
+		if _, err := z.TableContext(ctx, tx, "memory_vec").Delete(z.Where(z.Eq("rowid", id))); err != nil {
+			return 0, err
+		}
+	}
+	if len(ids) > 0 {
+		if _, err := z.TableContext(ctx, tx, "memory_chunks").Delete(z.Where(z.In("id", ids))); err != nil {
+			return 0, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -816,15 +1075,34 @@ func (s *VectorStore) Stats(ctx context.Context) (VectorStoreStats, error) {
 	stats.EmbeddingDim = s.embeddingDim
 	stats.FTSEnabled = s.enableFTS
 
-	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM memory_chunks`).Scan(&stats.ChunkCount)
-	s.db.QueryRowContext(ctx, `SELECT MIN(created_at) FROM memory_chunks`).Scan(&stats.OldestChunk)
-	s.db.QueryRowContext(ctx, `SELECT MAX(created_at) FROM memory_chunks`).Scan(&stats.NewestChunk)
+	var rows []z.V
+	if _, err := z.TableContext(ctx, s.reader(), "memory_chunks").Select(&rows,
+		z.Fields(
+			"COUNT(*) as chunk_count",
+			"MIN(created_at) as oldest_chunk",
+			"MAX(created_at) as newest_chunk",
+		),
+		z.Limit(1),
+	); err != nil {
+		return stats, err
+	}
+	if len(rows) > 0 {
+		stats.ChunkCount = vectorStoreIntFromMapValue(rows[0], "chunk_count")
+		stats.OldestChunk = vectorStoreStringFromMapValue(rows[0], "oldest_chunk")
+		stats.NewestChunk = vectorStoreStringFromMapValue(rows[0], "newest_chunk")
+	}
 
 	return stats, nil
 }
 
 // Close closes the database.
 func (s *VectorStore) Close() error {
+	if s == nil {
+		return nil
+	}
+	if s.readDB != nil && s.readDB != s.db {
+		_ = s.readDB.Close()
+	}
 	return s.db.Close()
 }
 

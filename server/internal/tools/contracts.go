@@ -55,6 +55,14 @@ type ToolApprovalDecision struct {
 	Approval ToolApprovalEnvelope `json:"approval"`
 }
 
+// ToolRuntimeError exposes stable machine-readable error semantics across
+// tool execution, approvals, and harness-backed runtime adapters.
+type ToolRuntimeError interface {
+	error
+	ToolRuntimeCode() string
+	ToolRuntimeDetails() map[string]interface{}
+}
+
 // ToolApprover decides whether a tool call may proceed at runtime.
 type ToolApprover interface {
 	AuthorizeToolCall(ctx context.Context, req ToolApprovalRequest) (ToolApprovalDecision, error)

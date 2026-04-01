@@ -38,9 +38,11 @@ function createTestI18n() {
           taskStageVerifying: 'Verifying',
           taskStageWaiting: 'Waiting',
           taskRunningElsewhere: 'Track active work running in other conversations.',
-          taskKindResearch: 'Research',
+          taskKindResearch: 'Deep Research',
           taskKindAgent: 'Agent',
+          taskKindWorkflow: 'Workflow',
           taskBackToConversation: 'Back to task',
+          taskResume: 'Resume',
           taskCancel: 'Cancel',
           taskRuntimeExecute: 'Executing',
         },
@@ -60,12 +62,22 @@ function makeTasks() {
       status: 'running',
       stage: 'planning',
       progress: 48,
-      actions: { can_cancel: true, can_open_chat: true, can_send_update: false },
+      actions: {
+        items: [
+          {
+            id: 'cancel',
+            label: 'Cancel',
+            method: 'POST',
+            path: '/tasks/task-1/actions/cancel',
+            variant: 'danger',
+          },
+        ],
+      },
       updated_at: '2026-03-20T12:00:00.000Z',
     },
     {
       id: 'task-2',
-      kind: 'agent_task',
+      kind: 'workflow',
       scope: 'background',
       conversation_id: 'conv-2',
       title: 'Compare routing changes',
@@ -73,7 +85,17 @@ function makeTasks() {
       stage: 'waiting_user',
       progress: 72,
       subtitle: 'execute',
-      actions: { can_cancel: true, can_open_chat: true, can_send_update: false },
+      actions: {
+        items: [
+          {
+            id: 'resume',
+            label: 'Resume workflow',
+            method: 'POST',
+            path: '/tasks/task-2/actions/resume',
+            requires_input: true,
+          },
+        ],
+      },
       updated_at: '2026-03-20T11:58:00.000Z',
     },
   ]
@@ -106,9 +128,10 @@ describe('UserTaskProjectionDock', () => {
     expect(wrapper.get('[aria-expanded]').attributes('aria-expanded')).toBe('true')
     expect(wrapper.text()).toContain('Compare routing changes')
     expect(wrapper.text()).toContain('Back to task')
+    expect(wrapper.text()).toContain('Resume workflow')
   })
 
-  it('restores expanded state and emits open/cancel events', async () => {
+  it('restores expanded state and emits open plus descriptor-driven task actions', async () => {
     localStorage.setItem(TASK_DOCK_COLLAPSED_KEY, '0')
 
     const wrapper = mount(UserTaskProjectionDock, {
@@ -124,9 +147,17 @@ describe('UserTaskProjectionDock', () => {
 
     expect(wrapper.text()).toContain('Executing')
     await wrapper.get('button[class*="border-slate-200"]').trigger('click')
+    await wrapper.get('button[class*="border-blue-200"]').trigger('click')
     await wrapper.get('button[class*="border-amber-200"]').trigger('click')
 
     expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ id: 'task-1' })
-    expect(wrapper.emitted('cancel')?.[0]).toEqual(['task-1'])
+    expect(wrapper.emitted('action')?.[0]).toEqual([
+      expect.objectContaining({ id: 'task-2' }),
+      'resume',
+    ])
+    expect(wrapper.emitted('action')?.[1]).toEqual([
+      expect.objectContaining({ id: 'task-1' }),
+      'cancel',
+    ])
   })
 })

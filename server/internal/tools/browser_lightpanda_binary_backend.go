@@ -122,6 +122,14 @@ func (b *LightpandaBinaryBrowserBackend) CountInteractiveElements(ctx context.Co
 	return svc.CountInteractiveElements(ctx, targetID)
 }
 
+func (b *LightpandaBinaryBrowserBackend) ExtractText(ctx context.Context, targetID, selector string) (string, error) {
+	svc, err := b.ensureService(ctx)
+	if err != nil {
+		return "", err
+	}
+	return svc.ExtractFirstFromTab(ctx, targetID, selector, "")
+}
+
 func (b *LightpandaBinaryBrowserBackend) ActByRef(context.Context, string, int, map[int]int, string, string) error {
 	return unsupportedLightpandaAction("interactive actions")
 }

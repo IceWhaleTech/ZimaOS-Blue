@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -27,12 +29,22 @@ type UserProviderConfig struct {
 // UserProviderHandler handles per-user provider configuration.
 type UserProviderHandler struct {
 	db       *sql.DB
+	readDB   *sql.DB
 	registry *llm.ProviderRegistry
 }
 
 // NewUserProviderHandler creates a new user provider handler and runs migrations.
 func NewUserProviderHandler(db *sql.DB, registry *llm.ProviderRegistry) (*UserProviderHandler, error) {
-	h := &UserProviderHandler{db: db, registry: registry}
+	return NewUserProviderHandlerWithReadDB(db, db, registry)
+}
+
+// NewUserProviderHandlerWithReadDB creates a new user provider handler with
+// separate write and read database handles.
+func NewUserProviderHandlerWithReadDB(writeDB, readDB *sql.DB, registry *llm.ProviderRegistry) (*UserProviderHandler, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	h := &UserProviderHandler{db: writeDB, readDB: readDB, registry: registry}
 	if err := h.migrate(); err != nil {
 		return nil, err
 	}
@@ -67,6 +79,30 @@ func (h *UserProviderHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:name/test", h.Test)
 }
 
+type userProviderConfigRow struct {
+	ID           string `json:"id" zorm:"id"`
+	UserID       string `json:"user_id" zorm:"user_id"`
+	ProviderName string `json:"provider_name" zorm:"provider_name"`
+	APIKey       string `json:"api_key" zorm:"api_key"`
+	BaseURL      string `json:"base_url" zorm:"base_url"`
+	Enabled      bool   `json:"enabled" zorm:"enabled"`
+}
+
+func (h *UserProviderHandler) writeTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, h.db, "user_provider_configs")
+}
+
+func (h *UserProviderHandler) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, h.readDB, "user_provider_configs")
+}
+
+func boolToSQLiteInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
 func getUserIDStrict(c echo.Context) string {
 	if claims := auth.GetUserFromContext(c); claims != nil {
 		return claims.UserID
@@ -81,27 +117,23 @@ func (h *UserProviderHandler) List(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
 
-	rows, err := h.db.QueryContext(c.Request().Context(),
-		"SELECT id, provider_name, api_key, base_url, enabled, created_at, updated_at FROM user_provider_configs WHERE user_id = ?",
-		userID,
+	var rows []userProviderConfigRow
+	_, err := h.readTable(c.Request().Context()).Select(
+		&rows,
+		z.Fields("id", "provider_name", "api_key", "base_url", "enabled"),
+		z.Where(z.Eq("user_id", userID)),
 	)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to list configs")
 	}
-	defer rows.Close()
-
 	userConfigs := make(map[string]*UserProviderConfigResponse)
-	for rows.Next() {
-		var cfg UserProviderConfig
-		if err := rows.Scan(&cfg.ID, &cfg.ProviderName, &cfg.APIKey, &cfg.BaseURL, &cfg.Enabled, &cfg.CreatedAt, &cfg.UpdatedAt); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to scan config")
-		}
-		userConfigs[cfg.ProviderName] = &UserProviderConfigResponse{
-			ProviderName: cfg.ProviderName,
-			HasAPIKey:    cfg.APIKey != "",
-			APIKey:       maskAPIKey(cfg.APIKey),
-			BaseURL:      cfg.BaseURL,
-			Enabled:      cfg.Enabled,
+	for _, row := range rows {
+		userConfigs[row.ProviderName] = &UserProviderConfigResponse{
+			ProviderName: row.ProviderName,
+			HasAPIKey:    row.APIKey != "",
+			APIKey:       maskAPIKey(row.APIKey),
+			BaseURL:      row.BaseURL,
+			Enabled:      row.Enabled,
 			Configured:   true,
 		}
 	}
@@ -141,21 +173,23 @@ func (h *UserProviderHandler) Get(c echo.Context) error {
 	}
 	name := c.Param("name")
 
-	var cfg UserProviderConfig
-	err := h.db.QueryRowContext(c.Request().Context(),
-		"SELECT id, provider_name, api_key, base_url, enabled FROM user_provider_configs WHERE user_id = ? AND provider_name = ?",
-		userID, name,
-	).Scan(&cfg.ID, &cfg.ProviderName, &cfg.APIKey, &cfg.BaseURL, &cfg.Enabled)
-
-	if err == sql.ErrNoRows {
+	var rows []userProviderConfigRow
+	_, err := h.readTable(c.Request().Context()).Select(
+		&rows,
+		z.Fields("id", "provider_name", "api_key", "base_url", "enabled"),
+		z.Where(z.Eq("user_id", userID), z.Eq("provider_name", name)),
+		z.Limit(1),
+	)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get config")
+	}
+	if len(rows) == 0 {
 		return c.JSON(http.StatusOK, UserProviderConfigResponse{
 			ProviderName: name,
 			Enabled:      true,
 		})
 	}
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get config")
-	}
+	cfg := rows[0]
 
 	return c.JSON(http.StatusOK, UserProviderConfigResponse{
 		ProviderName: cfg.ProviderName,
@@ -191,18 +225,25 @@ func (h *UserProviderHandler) Upsert(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	// Read current values for merge
-	var curAPIKey, curBaseURL string
-	var curEnabled bool
-	err := h.db.QueryRowContext(ctx,
-		"SELECT api_key, base_url, enabled FROM user_provider_configs WHERE user_id = ? AND provider_name = ?",
-		userID, name,
-	).Scan(&curAPIKey, &curBaseURL, &curEnabled)
-
-	apiKey, baseURL, enabled := curAPIKey, curBaseURL, curEnabled
-	if err == sql.ErrNoRows {
-		enabled = true // default for new records
-	} else if err != nil {
+	var curRows []userProviderConfigRow
+	_, err := h.readTable(ctx).Select(
+		&curRows,
+		z.Fields("api_key", "base_url", "enabled"),
+		z.Where(z.Eq("user_id", userID), z.Eq("provider_name", name)),
+		z.Limit(1),
+	)
+	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to check config")
+	}
+
+	apiKey, baseURL, enabled := "", "", true
+	if len(curRows) > 0 {
+		apiKey = curRows[0].APIKey
+		baseURL = curRows[0].BaseURL
+		enabled = curRows[0].Enabled
+	}
+	if len(curRows) == 0 {
+		enabled = true // default for new records
 	}
 
 	// Apply provided fields
@@ -216,13 +257,19 @@ func (h *UserProviderHandler) Upsert(c echo.Context) error {
 		enabled = *req.Enabled
 	}
 
-	_, err = h.db.ExecContext(ctx,
-		`INSERT INTO user_provider_configs (id, user_id, provider_name, api_key, base_url, enabled, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(user_id, provider_name) DO UPDATE SET api_key = ?, base_url = ?, enabled = ?, updated_at = ?`,
-		uuid.New().String(), userID, name, apiKey, baseURL, enabled, now, now,
-		apiKey, baseURL, enabled, now,
-	)
+	_, err = h.writeTable(ctx).Insert(map[string]interface{}{
+		"id":            uuid.New().String(),
+		"user_id":       userID,
+		"provider_name": name,
+		"api_key":       apiKey,
+		"base_url":      baseURL,
+		"enabled":       boolToSQLiteInt(enabled),
+		"created_at":    now,
+		"updated_at":    now,
+	}, z.OnConflictDoUpdateSet(
+		[]string{"user_id", "provider_name"},
+		[]string{"api_key", "base_url", "enabled", "updated_at"},
+	))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save config")
 	}
@@ -238,9 +285,8 @@ func (h *UserProviderHandler) Delete(c echo.Context) error {
 	}
 	name := c.Param("name")
 
-	_, err := h.db.ExecContext(c.Request().Context(),
-		"DELETE FROM user_provider_configs WHERE user_id = ? AND provider_name = ?",
-		userID, name,
+	_, err := h.writeTable(c.Request().Context()).Delete(
+		z.Where(z.Eq("user_id", userID), z.Eq("provider_name", name)),
 	)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete config")
@@ -257,21 +303,23 @@ func (h *UserProviderHandler) Test(c echo.Context) error {
 	}
 	name := c.Param("name")
 
-	var apiKey, baseURL string
-	err := h.db.QueryRowContext(c.Request().Context(),
-		"SELECT api_key, base_url FROM user_provider_configs WHERE user_id = ? AND provider_name = ?",
-		userID, name,
-	).Scan(&apiKey, &baseURL)
-
-	if err == sql.ErrNoRows || apiKey == "" {
+	var rows []userProviderConfigRow
+	_, err := h.readTable(c.Request().Context()).Select(
+		&rows,
+		z.Fields("api_key", "base_url"),
+		z.Where(z.Eq("user_id", userID), z.Eq("provider_name", name)),
+		z.Limit(1),
+	)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get config")
+	}
+	if len(rows) == 0 || rows[0].APIKey == "" {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success":    false,
 			"messageKey": "apiKeyRequired",
 		})
 	}
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get config")
-	}
+	apiKey, baseURL := rows[0].APIKey, rows[0].BaseURL
 
 	// Create a temporary provider to test
 	provider := createProviderInstance(name, apiKey, baseURL)
@@ -299,16 +347,17 @@ func (h *UserProviderHandler) Test(c echo.Context) error {
 
 // GetUserProviderKey returns the user's API key for a provider, or empty if not configured.
 func (h *UserProviderHandler) GetUserProviderKey(ctx echo.Context, userID, providerName string) (apiKey, baseURL string, found bool) {
-	var key, url string
-	var enabled bool
-	err := h.db.QueryRowContext(ctx.Request().Context(),
-		"SELECT api_key, base_url, enabled FROM user_provider_configs WHERE user_id = ? AND provider_name = ? AND enabled = 1",
-		userID, providerName,
-	).Scan(&key, &url, &enabled)
-	if err != nil || key == "" {
+	var rows []userProviderConfigRow
+	_, err := h.readTable(ctx.Request().Context()).Select(
+		&rows,
+		z.Fields("api_key", "base_url", "enabled"),
+		z.Where(z.Eq("user_id", userID), z.Eq("provider_name", providerName), z.Eq("enabled", true)),
+		z.Limit(1),
+	)
+	if err != nil || len(rows) == 0 || rows[0].APIKey == "" {
 		return "", "", false
 	}
-	return key, url, true
+	return rows[0].APIKey, rows[0].BaseURL, true
 }
 
 // createProviderInstance creates a temporary LLM provider instance for testing.

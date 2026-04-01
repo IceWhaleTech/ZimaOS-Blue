@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { reactive } from 'vue'
 import ChatView from '@/views/ChatView.vue'
-import { i18n } from '@/i18n'
+import { i18n, setLocale } from '@/i18n'
 
 const mocks = vi.hoisted(() => ({
   chatInputSetInput: vi.fn(),
@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
     loadingMore: false,
     messages: [] as Array<Record<string, unknown>>,
     modelPreference: 'auto',
+    pendingModelAutoFallback: null as null | Record<string, unknown>,
     searching: false,
     securityBlocked: null as null | Record<string, unknown>,
     selectedMessageIds: new Set<string>(),
@@ -52,6 +53,10 @@ const mocks = vi.hoisted(() => ({
     loadMoreMessages: vi.fn(),
     searchConversations: vi.fn(),
     setModelPreference: vi.fn(),
+    splitModelPreference: vi.fn((value: string) => {
+      const [provider_id = '', selected_model_id = value] = value.split('/', 2)
+      return { provider_id, selected_model_id }
+    }),
     setDeepResearchEnabled: vi.fn(),
     createConversation: vi.fn(),
     deleteConversation: vi.fn(),
@@ -68,6 +73,8 @@ const mocks = vi.hoisted(() => ({
     clearSecurityBlocked: vi.fn(),
     cancelStreaming: vi.fn(),
     retryInterruptedStreamRecovery: vi.fn(),
+    confirmModelAutoFallbackRetry: vi.fn(),
+    dismissModelAutoFallbackRetry: vi.fn(),
     cancelPreTTFT: vi.fn(),
     deleteSelectedMessages: vi.fn(),
     enterMultiSelectMode: vi.fn(),
@@ -124,6 +131,7 @@ const mocks = vi.hoisted(() => ({
     hasActiveTasks: false,
     refreshNow: vi.fn(),
     setConversation: vi.fn(),
+    performTaskAction: vi.fn(),
     cancelTask: vi.fn(),
     openTask: vi.fn(),
     stopPolling: vi.fn(),
@@ -245,6 +253,24 @@ const talkModeStub = {
   template: '<div class="talk-mode-stub" />',
 }
 
+const localStorageMock = (() => {
+  let store: Record<string, string> = {}
+  return {
+    getItem: (key: string) => (key in store ? store[key] : null),
+    setItem: (key: string, value: string) => {
+      store[key] = String(value)
+    },
+    removeItem: (key: string) => {
+      delete store[key]
+    },
+    clear: () => {
+      store = {}
+    },
+  }
+})()
+
+vi.stubGlobal('localStorage', localStorageMock)
+
 describe('ChatView provider gating', () => {
   vi.stubGlobal(
     'matchMedia',
@@ -268,8 +294,19 @@ describe('ChatView provider gating', () => {
     }
   )
 
+  beforeAll(async () => {
+    await setLocale('en-US')
+    await setLocale('zh-CN')
+    await setLocale('zh-TW')
+    await setLocale('en-US')
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorageMock.clear()
+    i18n.global.locale.value = 'en-US'
+    mocks.chatStore.currentConversationId = null
+    mocks.chatStore.pendingModelAutoFallback = null
     mocks.providerPoolStore.providers = []
     mocks.providerPoolStore.enabledProviders = []
     mocks.providerPoolStore.activeProviders = []
@@ -277,15 +314,23 @@ describe('ChatView provider gating', () => {
     mocks.chatStore.streamUIState = { phase: 'idle' }
     mocks.providerPoolStore.fetchProviders.mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchRoutingMode.mockResolvedValue(undefined)
+    mocks.providerPoolStore.setRoutingMode.mockImplementation((mode: string) => {
+      mocks.providerPoolStore.routingMode = mode as 'auto' | 'cloud' | 'local'
+    })
     mocks.settingsStore.fetchTools.mockResolvedValue(undefined)
     mocks.chatStore.fetchConversations.mockResolvedValue(undefined)
     mocks.chatStore.selectConversation.mockResolvedValue(undefined)
+    mocks.chatStore.modelPreference = 'auto'
+    mocks.chatStore.setModelPreference.mockImplementation((value: string) => {
+      mocks.chatStore.modelPreference = value
+    })
     mocks.taskProjectionsStore.currentTasks = []
     mocks.taskProjectionsStore.currentActiveTasks = []
     mocks.taskProjectionsStore.currentTerminalTasks = []
     mocks.taskProjectionsStore.backgroundTasks = []
     mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.performTaskAction.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.stopPolling.mockReset()
@@ -352,7 +397,7 @@ describe('ChatView provider gating', () => {
     expect(mocks.chatInputSetInput).toHaveBeenCalledWith('need provider')
     expect(wrapper.text()).toContain('Set up an AI provider to start chatting')
     expect(wrapper.text()).toContain(
-      'Your draft has been kept locally so you can continue after setup.'
+      'Your message has been saved locally. You can continue after setup.'
     )
   })
 
@@ -415,6 +460,13 @@ describe('ChatView provider gating', () => {
         status: 'error',
         last_error: 'auth_error:invalid_api_key',
       } as Record<string, unknown>,
+      {
+        id: 'anthropic',
+        type: 'builtin',
+        enabled: true,
+        status: 'error',
+        last_error: 'auth_error:invalid_api_key',
+      } as Record<string, unknown>,
     ]
     mocks.providerPoolStore.enabledProviders = [...mocks.providerPoolStore.providers]
     mocks.providerPoolStore.activeProviders = []
@@ -450,6 +502,186 @@ describe('ChatView provider gating', () => {
     expect(wrapper.find('[data-onboarding-anchor="enhanced-mode-entry"]').exists()).toBe(false)
     expect(wrapper.find('[data-onboarding-anchor="enhanced-mode-menu"]').exists()).toBe(false)
     expect(wrapper.find('.enhanced-mode-hover-card').exists()).toBe(false)
+  })
+
+  it('shows routing controls when only one provider is enabled', async () => {
+    const provider = {
+      id: 'openai',
+      type: 'builtin',
+      enabled: true,
+      status: 'active',
+      location: 'cloud',
+    } as Record<string, unknown>
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.enabledProviders = [provider]
+    mocks.providerPoolStore.activeProviders = [provider]
+    mocks.providerPoolStore.cloudProviders = [provider]
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.hasCloudProviders = true
+    mocks.providerPoolStore.hasLocalProviders = false
+
+    const wrapper = await mountChatView()
+
+    expect(wrapper.find('.chat-thread-routing-btn').exists()).toBe(true)
+
+    await wrapper.get('.chat-thread-routing-btn').trigger('click')
+    await settleView()
+
+    expect(wrapper.findAll('.routing-option-row')).toHaveLength(1)
+  })
+
+  it('shows the fixed-model fallback dialog and confirms auto retry', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingModelAutoFallback = {
+      conversationId: 'conv-1',
+      retryKind: 'send',
+      requestedProviderId: 'anthropic',
+      requestedModelId: 'claude-opus-4-5-20251101',
+      errorMessage: "No available AI provider for model 'claude-opus-4-5-20251101'",
+    }
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Switch to auto routing and retry?')
+    expect(wrapper.text()).toContain('anthropic/claude-opus-4-5-20251101')
+
+    const actionButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text().includes('Switch and retry'))
+    expect(actionButtons).toHaveLength(1)
+
+    await actionButtons[0]!.trigger('click')
+
+    expect(mocks.chatStore.confirmModelAutoFallbackRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('dismisses the fixed-model fallback dialog without retrying', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingModelAutoFallback = {
+      conversationId: 'conv-1',
+      retryKind: 'send',
+      requestedProviderId: 'anthropic',
+      requestedModelId: 'claude-opus-4-5-20251101',
+      errorMessage: "No available AI provider for model 'claude-opus-4-5-20251101'",
+    }
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    const actionButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text().includes('Keep current model'))
+    expect(actionButtons).toHaveLength(1)
+
+    await actionButtons[0]!.trigger('click')
+
+    expect(mocks.chatStore.dismissModelAutoFallbackRetry).toHaveBeenCalledTimes(1)
+    expect(mocks.chatStore.confirmModelAutoFallbackRetry).not.toHaveBeenCalled()
+  })
+
+  it('localizes the fixed-model fallback dialog in zh-CN', async () => {
+    await setLocale('zh-CN')
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingModelAutoFallback = {
+      conversationId: 'conv-1',
+      retryKind: 'send',
+      requestedProviderId: 'anthropic',
+      requestedModelId: 'claude-opus-4-5-20251101',
+      errorMessage: "No available AI provider for model 'claude-opus-4-5-20251101'",
+    }
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('固定模型不可用')
+    expect(wrapper.text()).toContain('切换到自动路由并重试？')
+    expect(wrapper.text()).toContain('保留当前模型')
+    expect(wrapper.text()).toContain('切换并重试')
+    expect(wrapper.text()).toContain('anthropic/claude-opus-4-5-20251101')
+  })
+
+  it('localizes the fixed-model fallback dialog in zh-TW', async () => {
+    await setLocale('zh-TW')
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingModelAutoFallback = {
+      conversationId: 'conv-1',
+      retryKind: 'send',
+      requestedProviderId: 'anthropic',
+      requestedModelId: 'claude-opus-4-5-20251101',
+      errorMessage: "No available AI provider for model 'claude-opus-4-5-20251101'",
+    }
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('固定模型無法使用')
+    expect(wrapper.text()).toContain('切換到自動路由並重試？')
+    expect(wrapper.text()).toContain('保留目前模型')
+    expect(wrapper.text()).toContain('切換並重試')
+    expect(wrapper.text()).toContain('anthropic/claude-opus-4-5-20251101')
+  })
+
+  it('keeps fixed model options in backend order and hides cloud/local rows when only cloud providers exist', async () => {
+    const providerA = {
+      id: 'provider-a',
+      type: 'custom',
+      enabled: true,
+      status: 'active',
+      location: 'cloud',
+    } as Record<string, unknown>
+    const providerB = {
+      id: 'provider-b',
+      type: 'custom',
+      enabled: true,
+      status: 'active',
+      location: 'cloud',
+    } as Record<string, unknown>
+    mocks.providerPoolStore.providers = [providerA, providerB]
+    mocks.providerPoolStore.enabledProviders = [providerA, providerB]
+    mocks.providerPoolStore.activeProviders = [providerA, providerB]
+    mocks.providerPoolStore.cloudProviders = [providerA, providerB]
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.hasCloudProviders = true
+    mocks.providerPoolStore.hasLocalProviders = false
+    mocks.providerPoolStore.models = [
+      {
+        id: 'zzz-model',
+        provider_id: 'provider-a',
+        display_name: 'ZZZ Model',
+        enabled: true,
+      },
+      {
+        id: 'aaa-model',
+        provider_id: 'provider-a',
+        display_name: 'AAA Model',
+        enabled: true,
+      },
+      {
+        id: 'bbb-model',
+        provider_id: 'provider-b',
+        display_name: 'BBB Model',
+        enabled: true,
+      },
+    ] as Array<Record<string, unknown>>
+
+    const wrapper = await mountChatView()
+    await wrapper.get('.chat-thread-routing-btn').trigger('click')
+    await settleView()
+
+    expect(wrapper.findAll('.routing-option-row')).toHaveLength(1)
+
+    const strategyButtons = wrapper.findAll('.routing-strategy-chip')
+    expect(strategyButtons).toHaveLength(2)
+
+    await strategyButtons[1]!.trigger('click')
+    await settleView()
+
+    const modelRows = wrapper.findAll('.routing-model-row')
+    expect(modelRows).toHaveLength(3)
+    expect(modelRows[0]?.text()).toContain('ZZZ Model')
+    expect(modelRows[1]?.text()).toContain('AAA Model')
+    expect(modelRows[2]?.text()).toContain('BBB Model')
   })
 
   it('routes talk-mode transcripts to sendMessage when no stream is active', async () => {

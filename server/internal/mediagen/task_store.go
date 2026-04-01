@@ -4,25 +4,162 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // TaskStore persists media generation tasks to SQLite for power-failure recovery.
 type TaskStore struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
+}
+
+type mediaTaskRow struct {
+	ID           string  `json:"id" zorm:"id"`
+	UserID       string  `json:"user_id" zorm:"user_id"`
+	MessageID    string  `json:"message_id" zorm:"message_id"`
+	Status       string  `json:"status" zorm:"status"`
+	Type         string  `json:"type" zorm:"type"`
+	Category     string  `json:"category" zorm:"category"`
+	Provider     string  `json:"provider" zorm:"provider"`
+	Model        string  `json:"model" zorm:"model"`
+	UpstreamID   string  `json:"upstream_id" zorm:"upstream_id"`
+	Request      string  `json:"request" zorm:"request"`
+	Response     string  `json:"response" zorm:"response"`
+	FallbackInfo string  `json:"fallback_info" zorm:"fallback_info"`
+	Error        string  `json:"error" zorm:"error"`
+	Progress     float64 `json:"progress" zorm:"progress"`
+	Source       string  `json:"source" zorm:"source"`
+	CreatedAt    string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt    string  `json:"updated_at" zorm:"updated_at"`
+	CompletedAt  *string `json:"completed_at" zorm:"completed_at"`
+}
+
+type mediaTaskBucketRow struct {
+	Value string `json:"value" zorm:"value"`
+	Count int64  `json:"count" zorm:"count"`
+}
+
+type mediaTaskCostRow struct {
+	Model    string `json:"model" zorm:"model"`
+	Provider string `json:"provider" zorm:"provider"`
+	Response string `json:"response" zorm:"response"`
+	Type     string `json:"type" zorm:"type"`
+}
+
+func mediaTaskStringFromMapValue(row z.V, key string) string {
+	value, ok := mediaTaskValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func mediaTaskInt64FromMapValue(row z.V, key string) int64 {
+	value, ok := mediaTaskValueFromMapKey(row, key)
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	case int32:
+		return int64(typed)
+	case float64:
+		return int64(typed)
+	case string:
+		result, _ := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		return result
+	case []byte:
+		result, _ := strconv.ParseInt(strings.TrimSpace(string(typed)), 10, 64)
+		return result
+	default:
+		result, _ := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(typed)), 10, 64)
+		return result
+	}
+}
+
+func mediaTaskValueFromMapKey(row z.V, key string) (interface{}, bool) {
+	if row == nil {
+		return nil, false
+	}
+	if value, ok := row[key]; ok {
+		return value, true
+	}
+	for rawKey, value := range row {
+		if mediaTaskNormalizeMapKey(rawKey) == key {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func mediaTaskNormalizeMapKey(key string) string {
+	key = strings.TrimSpace(strings.Trim(key, "`"))
+	if key == "" {
+		return ""
+	}
+	fields := strings.Fields(key)
+	if len(fields) >= 3 && strings.EqualFold(fields[len(fields)-2], "as") {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if len(fields) >= 2 {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if dot := strings.LastIndex(key, "."); dot >= 0 {
+		return strings.Trim(key[dot+1:], "`")
+	}
+	return key
 }
 
 // NewTaskStore creates a new task store and ensures the schema exists.
 func NewTaskStore(db *sql.DB) (*TaskStore, error) {
-	s := &TaskStore{db: db}
+	return NewTaskStoreWithReadDB(db, db)
+}
+
+// NewTaskStoreWithReadDB creates a new task store with separate write and read
+// database handles.
+func NewTaskStoreWithReadDB(writeDB, readDB *sql.DB) (*TaskStore, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	s := &TaskStore{db: writeDB, readDB: readDB}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("task store migration: %w", err)
 	}
 	return s, nil
+}
+
+func (s *TaskStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *TaskStore) table() *z.ZormTable {
+	return z.Table(s.db, "media_tasks")
+}
+
+func (s *TaskStore) readTable() *z.ZormTable {
+	return z.Table(s.reader(), "media_tasks")
 }
 
 func (s *TaskStore) migrate() error {
@@ -125,15 +262,79 @@ func normalizeMediaTaskScope(userID []string) (string, bool) {
 	return strings.TrimSpace(userID[0]), true
 }
 
-func mediaTaskScopeClause(userID []string, column string) (string, []any) {
+func mediaTaskScopeConds(userID []string, column string) []interface{} {
 	scopedUserID, scoped := normalizeMediaTaskScope(userID)
 	if !scoped {
-		return "", nil
+		return nil
 	}
 	if scopedUserID == "" {
-		return fmt.Sprintf(" AND %s = ''", column), nil
+		return []interface{}{z.Eq(column, "")}
 	}
-	return fmt.Sprintf(" AND %s = ?", column), []any{scopedUserID}
+	return []interface{}{z.Eq(column, scopedUserID)}
+}
+
+func persistentTaskValues(t *PersistentTask) z.V {
+	return z.V{
+		"id":            t.ID,
+		"user_id":       t.UserID,
+		"message_id":    t.MessageID,
+		"status":        string(t.Status),
+		"type":          string(t.Type),
+		"category":      t.Category,
+		"provider":      t.Provider,
+		"model":         t.Model,
+		"upstream_id":   t.UpstreamID,
+		"request":       t.Request,
+		"response":      t.Response,
+		"fallback_info": t.FallbackInfo,
+		"error":         t.Error,
+		"progress":      t.Progress,
+		"source":        t.Source,
+		"created_at":    task.TimeToSQL(t.CreatedAt),
+		"updated_at":    task.TimeToSQL(t.UpdatedAt),
+		"completed_at":  nullableMediaTaskTime(t.CompletedAt),
+	}
+}
+
+func rowToPersistentTask(row mediaTaskRow) *PersistentTask {
+	t := &PersistentTask{
+		ID:           row.ID,
+		UserID:       row.UserID,
+		MessageID:    row.MessageID,
+		Status:       TaskStatus(row.Status),
+		Type:         MediaType(row.Type),
+		Category:     row.Category,
+		Provider:     row.Provider,
+		Model:        row.Model,
+		UpstreamID:   row.UpstreamID,
+		Request:      row.Request,
+		Response:     row.Response,
+		FallbackInfo: row.FallbackInfo,
+		Error:        row.Error,
+		Progress:     row.Progress,
+		Source:       row.Source,
+		CreatedAt:    task.TimeFromSQL(row.CreatedAt),
+		UpdatedAt:    task.TimeFromSQL(row.UpdatedAt),
+	}
+	if row.CompletedAt != nil && strings.TrimSpace(*row.CompletedAt) != "" {
+		t.CompletedAt = task.NullTimeFromSQL(sql.NullString{String: *row.CompletedAt, Valid: true})
+	}
+	return t
+}
+
+func rowsToPersistentTasks(rows []mediaTaskRow) []*PersistentTask {
+	tasks := make([]*PersistentTask, 0, len(rows))
+	for i := range rows {
+		tasks = append(tasks, rowToPersistentTask(rows[i]))
+	}
+	return tasks
+}
+
+func nullableMediaTaskTime(t *time.Time) interface{} {
+	if t == nil || t.IsZero() {
+		return nil
+	}
+	return task.TimeToSQL(*t)
 }
 
 // Create inserts a new task.
@@ -141,43 +342,55 @@ func (s *TaskStore) Create(t *PersistentTask) error {
 	now := timeutil.NowTime().UTC()
 	t.CreatedAt = now
 	t.UpdatedAt = now
-	_, err := s.db.Exec(`
-		INSERT INTO media_tasks (id, user_id, message_id, status, type, category, provider, model,
-			upstream_id, request, response, fallback_info, error, progress, source, created_at, updated_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.UserID, t.MessageID, string(t.Status), string(t.Type), t.Category, t.Provider, t.Model,
-		t.UpstreamID, t.Request, t.Response, t.FallbackInfo, t.Error, t.Progress, t.Source,
-		task.TimeToSQL(t.CreatedAt), task.TimeToSQL(t.UpdatedAt), task.NullTimeToSQL(t.CompletedAt),
-	)
+	_, err := s.table().Insert(persistentTaskValues(t))
 	return err
 }
 
 // UpdateStatus updates task status, progress, error, and response.
 func (s *TaskStore) UpdateStatus(id string, status TaskStatus, progress float64, errMsg string, response string) error {
-	now := task.TimeToSQL(timeutil.NowTime())
-	var completedAt sql.NullString
+	now := timeutil.NowTime().UTC()
+	var completedAt interface{}
 	if status.IsTerminal() {
-		completedAt = sql.NullString{String: now, Valid: true}
+		completedAt = task.TimeToSQL(now)
 	}
-	_, err := s.db.Exec(`
-		UPDATE media_tasks SET status=?, progress=?, error=?, response=?, updated_at=?, completed_at=?
-		WHERE id=?`,
-		string(status), progress, errMsg, response, now, completedAt, id,
+	_, err := s.table().Update(
+		z.V{
+			"status":       string(status),
+			"progress":     progress,
+			"error":        errMsg,
+			"response":     response,
+			"updated_at":   task.TimeToSQL(now),
+			"completed_at": completedAt,
+		},
+		z.Fields("status", "progress", "error", "response", "updated_at", "completed_at"),
+		z.Where(z.Eq("id", id)),
 	)
 	return err
 }
 
 // UpdateUpstreamID sets the upstream (vendor) task ID after generation starts.
 func (s *TaskStore) UpdateUpstreamID(id, upstreamID string) error {
-	_, err := s.db.Exec(`UPDATE media_tasks SET upstream_id=?, updated_at=? WHERE id=?`,
-		upstreamID, task.TimeToSQL(timeutil.NowTime()), id)
+	_, err := s.table().Update(
+		z.V{
+			"upstream_id": upstreamID,
+			"updated_at":  task.TimeToSQL(timeutil.NowTime()),
+		},
+		z.Fields("upstream_id", "updated_at"),
+		z.Where(z.Eq("id", id)),
+	)
 	return err
 }
 
 // UpdateMessageID sets the message_id for a task (used when the assistant message is created after task creation).
 func (s *TaskStore) UpdateMessageID(taskID, messageID string) error {
-	_, err := s.db.Exec(`UPDATE media_tasks SET message_id=?, updated_at=? WHERE id=?`,
-		messageID, task.TimeToSQL(timeutil.NowTime()), taskID)
+	_, err := s.table().Update(
+		z.V{
+			"message_id": messageID,
+			"updated_at": task.TimeToSQL(timeutil.NowTime()),
+		},
+		z.Fields("message_id", "updated_at"),
+		z.Where(z.Eq("id", taskID)),
+	)
 	return err
 }
 
@@ -191,85 +404,58 @@ func (s *TaskStore) UpdateFallbackInfo(taskID string, info *MediaFallbackInfo) e
 		}
 		payload = string(encoded)
 	}
-	_, err := s.db.Exec(`UPDATE media_tasks SET fallback_info=?, updated_at=? WHERE id=?`,
-		payload, task.TimeToSQL(timeutil.NowTime()), taskID)
+	_, err := s.table().Update(
+		z.V{
+			"fallback_info": payload,
+			"updated_at":    task.TimeToSQL(timeutil.NowTime()),
+		},
+		z.Fields("fallback_info", "updated_at"),
+		z.Where(z.Eq("id", taskID)),
+	)
 	return err
 }
 
 // Get retrieves a single task by ID.
 func (s *TaskStore) Get(id string, userID ...string) (*PersistentTask, error) {
-	clause, args := mediaTaskScopeClause(userID, "user_id")
-	query := `SELECT id, user_id, message_id, status, type, category, provider, model,
-		upstream_id, request, response, fallback_info, error, progress, source, created_at, updated_at, completed_at
-		FROM media_tasks WHERE id=?` + clause
-	queryArgs := []any{id}
-	queryArgs = append(queryArgs, args...)
-	row := s.db.QueryRow(query, queryArgs...)
-	return scanTask(row)
+	conds := []interface{}{z.Eq("id", id)}
+	conds = append(conds, mediaTaskScopeConds(userID, "user_id")...)
+	var rows []mediaTaskRow
+	_, err := s.readTable().Select(&rows, z.Where(conds...), z.Limit(1))
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return rowToPersistentTask(rows[0]), nil
 }
 
 // GetByMessageID retrieves tasks associated with a message.
 func (s *TaskStore) GetByMessageID(messageID string, userID ...string) ([]*PersistentTask, error) {
-	clause, args := mediaTaskScopeClause(userID, "user_id")
-	query := `SELECT id, user_id, message_id, status, type, category, provider, model,
-		upstream_id, request, response, fallback_info, error, progress, source, created_at, updated_at, completed_at
-		FROM media_tasks WHERE message_id=?` + clause + ` ORDER BY created_at DESC`
-	queryArgs := []any{messageID}
-	queryArgs = append(queryArgs, args...)
-	rows, err := s.db.Query(query, queryArgs...)
+	conds := []interface{}{z.Eq("message_id", messageID)}
+	conds = append(conds, mediaTaskScopeConds(userID, "user_id")...)
+	var rows []mediaTaskRow
+	_, err := s.readTable().Select(&rows,
+		z.Where(conds...),
+		z.OrderBy("created_at DESC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	return scanTasks(rows)
+	return rowsToPersistentTasks(rows), nil
 }
 
 // ListPending returns all non-terminal tasks (for power-failure recovery).
 func (s *TaskStore) ListPending() ([]*PersistentTask, error) {
-	rows, err := s.db.Query(`SELECT id, user_id, message_id, status, type, category, provider, model,
-		upstream_id, request, response, fallback_info, error, progress, source, created_at, updated_at, completed_at
-		FROM media_tasks WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`)
+	var rows []mediaTaskRow
+	_, err := s.readTable().Select(&rows,
+		z.Where(z.In("status", string(TaskStatusPending), string(TaskStatusProcessing))),
+		z.OrderBy("created_at ASC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	return scanTasks(rows)
-}
-
-func scanTask(row *sql.Row) (*PersistentTask, error) {
-	t := &PersistentTask{}
-	var createdAt, updatedAt string
-	var completedAt sql.NullString
-	err := row.Scan(&t.ID, &t.UserID, &t.MessageID, &t.Status, &t.Type, &t.Category, &t.Provider, &t.Model,
-		&t.UpstreamID, &t.Request, &t.Response, &t.FallbackInfo, &t.Error, &t.Progress, &t.Source,
-		&createdAt, &updatedAt, &completedAt)
-	if err != nil {
-		return nil, err
-	}
-	t.CreatedAt = task.TimeFromSQL(createdAt)
-	t.UpdatedAt = task.TimeFromSQL(updatedAt)
-	t.CompletedAt = task.NullTimeFromSQL(completedAt)
-	return t, nil
-}
-
-func scanTasks(rows *sql.Rows) ([]*PersistentTask, error) {
-	var tasks []*PersistentTask
-	for rows.Next() {
-		t := &PersistentTask{}
-		var createdAt, updatedAt string
-		var completedAt sql.NullString
-		err := rows.Scan(&t.ID, &t.UserID, &t.MessageID, &t.Status, &t.Type, &t.Category, &t.Provider, &t.Model,
-			&t.UpstreamID, &t.Request, &t.Response, &t.FallbackInfo, &t.Error, &t.Progress, &t.Source,
-			&createdAt, &updatedAt, &completedAt)
-		if err != nil {
-			return tasks, err
-		}
-		t.CreatedAt = task.TimeFromSQL(createdAt)
-		t.UpdatedAt = task.TimeFromSQL(updatedAt)
-		t.CompletedAt = task.NullTimeFromSQL(completedAt)
-		tasks = append(tasks, t)
-	}
-	return tasks, rows.Err()
+	return rowsToPersistentTasks(rows), nil
 }
 
 // ToMediaTask converts a PersistentTask to an in-memory MediaTask.
@@ -337,70 +523,66 @@ func (s *TaskStore) GetStats(userID ...string) (*MediaStats, error) {
 		CostByProvider:  make(map[string]float64),
 	}
 
-	clause, args := mediaTaskScopeClause(userID, "user_id")
-	queryRowWithScope := func(base string, dest *int64) {
-		row := s.db.QueryRow(base+clause, args...)
-		_ = row.Scan(dest)
+	withScope := func(conds ...interface{}) []interface{} {
+		result := append([]interface{}{}, conds...)
+		result = append(result, mediaTaskScopeConds(userID, "user_id")...)
+		return result
 	}
-	queryWithScope := func(base string) (*sql.Rows, error) {
-		return s.db.Query(base+clause, args...)
+	countByStatus := func(status TaskStatus) int64 {
+		var total int64
+		opts := []z.ZormItem{
+			z.Fields("count(1)"),
+			z.Where(withScope(z.Eq("status", string(status)))...),
+		}
+		if _, err := s.readTable().Select(&total, opts...); err != nil {
+			return 0
+		}
+		return total
+	}
+	buildBuckets := func(valueExpr string, conds []interface{}, dest map[string]int64) {
+		var rows []z.V
+		opts := []z.ZormItem{
+			z.Fields(valueExpr+" as value", "COUNT(*) as count"),
+			z.Where(conds...),
+			z.GroupBy(valueExpr),
+		}
+		if _, err := s.readTable().Select(&rows, opts...); err != nil {
+			return
+		}
+		for i := range rows {
+			value := strings.TrimSpace(mediaTaskStringFromMapValue(rows[i], "value"))
+			if value == "" {
+				continue
+			}
+			dest[value] = mediaTaskInt64FromMapValue(rows[i], "count")
+		}
 	}
 
+	succeededConds := withScope(z.Eq("status", string(TaskStatusSucceeded)))
+
 	// Count by status
-	queryRowWithScope(`SELECT COUNT(*) FROM media_tasks WHERE status='succeeded'`, &stats.Succeeded)
-	queryRowWithScope(`SELECT COUNT(*) FROM media_tasks WHERE status='failed'`, &stats.Failed)
+	stats.Succeeded = countByStatus(TaskStatusSucceeded)
+	stats.Failed = countByStatus(TaskStatusFailed)
 	stats.TotalTasks = stats.Succeeded + stats.Failed
 
 	// Count by type
-	rows, err := queryWithScope(`SELECT type, COUNT(*) FROM media_tasks WHERE status='succeeded' GROUP BY type`)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var t string
-			var c int64
-			if rows.Scan(&t, &c) == nil {
-				stats.TasksByType[t] = c
-			}
-		}
-	}
+	buildBuckets("type", succeededConds, stats.TasksByType)
 
 	// Count by category
-	rows3, err := queryWithScope(`SELECT category, COUNT(*) FROM media_tasks WHERE status='succeeded' AND category != '' GROUP BY category`)
-	if err == nil {
-		defer rows3.Close()
-		for rows3.Next() {
-			var cat string
-			var c int64
-			if rows3.Scan(&cat, &c) == nil {
-				stats.TasksByCategory[cat] = c
-			}
-		}
-	}
+	buildBuckets("category", append(append([]interface{}{}, succeededConds...), z.Neq("category", "")), stats.TasksByCategory)
 
 	// Count by provider
-	rows4, err := queryWithScope(`SELECT provider, COUNT(*) FROM media_tasks WHERE status='succeeded' AND provider != '' GROUP BY provider`)
-	if err == nil {
-		defer rows4.Close()
-		for rows4.Next() {
-			var prov string
-			var c int64
-			if rows4.Scan(&prov, &c) == nil {
-				stats.TasksByProvider[prov] = c
-			}
-		}
-	}
+	buildBuckets("provider", append(append([]interface{}{}, succeededConds...), z.Neq("provider", "")), stats.TasksByProvider)
 
 	// Calculate cost from succeeded tasks
-	rows2, err := queryWithScope(`SELECT model, provider, response, type FROM media_tasks WHERE status='succeeded' AND response != ''`)
-	if err == nil {
-		defer rows2.Close()
-		for rows2.Next() {
-			var model, provider, respJSON, mediaType string
-			if rows2.Scan(&model, &provider, &respJSON, &mediaType) != nil {
-				continue
-			}
+	var costRows []mediaTaskCostRow
+	if _, err := s.readTable().Select(&costRows,
+		z.Fields("model", "provider", "response", "type"),
+		z.Where(append(append([]interface{}{}, succeededConds...), z.Neq("response", ""))...),
+	); err == nil {
+		for i := range costRows {
 			var resp MediaResponse
-			if json.Unmarshal([]byte(respJSON), &resp) != nil {
+			if json.Unmarshal([]byte(costRows[i].Response), &resp) != nil {
 				continue
 			}
 			imageCount := len(resp.Data)
@@ -408,11 +590,11 @@ func (s *TaskStore) GetStats(userID ...string) (*MediaStats, error) {
 			for _, r := range resp.Data {
 				durationSec += float64(r.DurationSec)
 			}
-			cost := CalculateMediaCost(model, imageCount, durationSec)
+			cost := CalculateMediaCost(costRows[i].Model, imageCount, durationSec)
 			stats.TotalCostUSD += cost
-			stats.CostByModel[model] += cost
-			if provider != "" {
-				stats.CostByProvider[provider] += cost
+			stats.CostByModel[costRows[i].Model] += cost
+			if costRows[i].Provider != "" {
+				stats.CostByProvider[costRows[i].Provider] += cost
 			}
 		}
 	}

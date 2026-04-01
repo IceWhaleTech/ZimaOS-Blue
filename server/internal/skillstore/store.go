@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,20 +16,44 @@ import (
 // Store provides skill storage and search operations.
 type Store struct {
 	db         *sql.DB
+	readDB     *sql.DB
 	zorm       *ZormStore
 	ftsEnabled bool
 }
 
 // NewStore creates a new skill store.
 func NewStore(db *sql.DB) (*Store, error) {
+	return NewStoreWithReadDB(db, db)
+}
+
+// NewStoreWithReadDB creates a new skill store with separate write and read
+// database handles.
+func NewStoreWithReadDB(writeDB, readDB *sql.DB) (*Store, error) {
+	if writeDB == nil {
+		return nil, fmt.Errorf("db is required")
+	}
+	if readDB == nil {
+		readDB = writeDB
+	}
 	store := &Store{
-		db:   db,
-		zorm: NewZormStore(db),
+		db:     writeDB,
+		readDB: readDB,
+		zorm:   NewZormStore(writeDB),
 	}
 	if err := store.initSchema(); err != nil {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 	return store, nil
+}
+
+func (s *Store) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
 }
 
 func supportsFTS5(db *sql.DB) bool {
@@ -232,8 +257,20 @@ func (s *Store) table(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "skills")
 }
 
+func (s *Store) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "skills")
+}
+
+func (s *Store) searchReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "skills s")
+}
+
 func (s *Store) syncTable(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "skill_sync_status")
+}
+
+func (s *Store) syncReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "skill_sync_status")
 }
 
 func skillToMap(skill *Skill) map[string]interface{} {
@@ -354,10 +391,70 @@ func rowToSkill(r skillRow) *Skill {
 	return sk
 }
 
+func searchSkillFields(scoreExpr string) z.ZormItem {
+	return z.Fields(
+		"s.id id",
+		"s.name name",
+		"COALESCE(s.version, '') version",
+		"COALESCE(s.summary, '') summary",
+		"COALESCE(s.description, '') description",
+		"COALESCE(s.author, '') author",
+		"COALESCE(s.category, '') category",
+		"COALESCE(s.tags, '') tags",
+		"s.source_id source_id",
+		"COALESCE(s.source_name, '') source_name",
+		"COALESCE(s.homepage, '') homepage",
+		"COALESCE(s.download_url, '') download_url",
+		"COALESCE(s.stars, 0) stars",
+		"COALESCE(s.downloads, 0) downloads",
+		"COALESCE(s.reviews, 0) reviews",
+		"COALESCE(s.rating, 0) rating",
+		"COALESCE(s.versions, 0) versions",
+		"COALESCE(s.changelog, '') changelog",
+		"COALESCE(s.installed, 0) installed",
+		"COALESCE(s.enabled, 0) enabled",
+		"COALESCE(s.created_at, '') created_at",
+		"COALESCE(s.updated_at, '') updated_at",
+		"COALESCE(s.synced_at, '') synced_at",
+		fmt.Sprintf("%s score", scoreExpr),
+	)
+}
+
+func searchResultFromMapRow(row z.V) SearchResult {
+	return SearchResult{
+		Skill: Skill{
+			ID:          stringFromMapValue(row, "id"),
+			Name:        stringFromMapValue(row, "name"),
+			Version:     stringFromMapValue(row, "version"),
+			Summary:     stringFromMapValue(row, "summary"),
+			Description: stringFromMapValue(row, "description"),
+			Author:      stringFromMapValue(row, "author"),
+			Category:    stringFromMapValue(row, "category"),
+			Tags:        stringFromMapValue(row, "tags"),
+			SourceID:    stringFromMapValue(row, "source_id"),
+			SourceName:  stringFromMapValue(row, "source_name"),
+			Homepage:    stringFromMapValue(row, "homepage"),
+			DownloadURL: stringFromMapValue(row, "download_url"),
+			Stars:       intFromMapValue(row, "stars"),
+			Downloads:   intFromMapValue(row, "downloads"),
+			Reviews:     intFromMapValue(row, "reviews"),
+			Rating:      float64FromMapValue(row, "rating"),
+			Versions:    intFromMapValue(row, "versions"),
+			Changelog:   stringFromMapValue(row, "changelog"),
+			Installed:   boolFromMapValue(row, "installed"),
+			Enabled:     boolFromMapValue(row, "enabled"),
+			CreatedAt:   parseSkillTime(stringFromMapValue(row, "created_at")),
+			UpdatedAt:   parseSkillTime(stringFromMapValue(row, "updated_at")),
+			SyncedAt:    parseSkillTime(stringFromMapValue(row, "synced_at")),
+		},
+		Score: float64FromMapValue(row, "score"),
+	}
+}
+
 // GetSkill retrieves a skill by ID.
 func (s *Store) GetSkill(ctx context.Context, id string) (*Skill, error) {
 	var rows []skillRow
-	_, err := s.table(ctx).Select(&rows, skillFields,
+	_, err := s.readTable(ctx).Select(&rows, skillFields,
 		z.Where(z.Eq("id", id)), z.Limit(1),
 	)
 	if err != nil {
@@ -370,7 +467,6 @@ func (s *Store) GetSkill(ctx context.Context, id string) (*Skill, error) {
 }
 
 // Search performs a full-text search on skills with relevance scoring.
-// Uses raw SQL because FTS5 JOINs and BM25 scoring don't map to zorm's query builder.
 func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse, error) {
 	if opts.Page < 1 {
 		opts.Page = 1
@@ -384,49 +480,26 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	var orderBy string
 	hasQuery := strings.TrimSpace(opts.Query) != ""
 	useFTS := hasQuery && s.ftsEnabled
-	queryScoreArgs := []interface{}{}
 
-	baseQuery := `FROM skills s`
-	scoreSelect := "0.0 as score"
+	scoreExpr := "0.0"
 
 	if useFTS {
-		baseQuery = `FROM skills s INNER JOIN skills_fts fts ON s.rowid = fts.rowid`
 		conditions = append(conditions, "skills_fts MATCH ?")
-		searchQuery := escapeFTS5Query(opts.Query)
-		args = append(args, searchQuery)
-		queryScoreArgs = append(queryScoreArgs, opts.Query, opts.Query, opts.Query, opts.Query)
-		scoreSelect = `(
-			-bm25(skills_fts, 10.0, 5.0, 3.0, 2.0, 1.0, 1.0, 1.0) +
-			CASE WHEN LOWER(s.name) = LOWER(?) THEN 100.0 ELSE 0.0 END +
-			CASE WHEN LOWER(s.name) LIKE LOWER(?) || '%' THEN 50.0 ELSE 0.0 END +
-			CASE WHEN LOWER(s.id) = LOWER(?) THEN 80.0 ELSE 0.0 END +
-			CASE WHEN LOWER(s.id) LIKE LOWER(?) || '%' THEN 40.0 ELSE 0.0 END +
-			(s.stars * 0.01) + (s.downloads * 0.001)
-		) as score`
+		args = append(args, escapeFTS5Query(opts.Query))
+		scoreExpr = ftsSearchScoreExpr("s", opts.Query)
 	} else if hasQuery {
 		terms := searchTerms(opts.Query)
 		if len(terms) == 0 {
 			hasQuery = false
 		} else {
 			likeConditions := make([]string, 0, len(terms))
-			scoreParts := make([]string, 0, len(terms))
-			queryScoreArgs = append(queryScoreArgs, opts.Query, opts.Query, opts.Query, opts.Query)
 			for _, term := range terms {
 				pattern := "%" + term + "%"
 				likeConditions = append(likeConditions, "LOWER(s.search_content) LIKE ?")
 				args = append(args, pattern)
-				scoreParts = append(scoreParts, "CASE WHEN LOWER(s.search_content) LIKE ? THEN 5.0 ELSE 0.0 END")
-				queryScoreArgs = append(queryScoreArgs, pattern)
 			}
 			conditions = append(conditions, "("+strings.Join(likeConditions, " OR ")+")")
-			scoreSelect = fmt.Sprintf(`(
-				CASE WHEN LOWER(s.name) = LOWER(?) THEN 100.0 ELSE 0.0 END +
-				CASE WHEN LOWER(s.name) LIKE LOWER(?) || '%%' THEN 50.0 ELSE 0.0 END +
-				CASE WHEN LOWER(s.id) = LOWER(?) THEN 80.0 ELSE 0.0 END +
-				CASE WHEN LOWER(s.id) LIKE LOWER(?) || '%%' THEN 40.0 ELSE 0.0 END +
-				%s +
-				(s.stars * 0.01) + (s.downloads * 0.001)
-			) as score`, strings.Join(scoreParts, " + "))
+			scoreExpr = fallbackSearchScoreExpr("s", opts.Query)
 		}
 	}
 
@@ -480,64 +553,81 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		orderBy += " DESC"
 	}
 
-	countQuery := "SELECT COUNT(*) " + baseQuery + whereClause
 	var total int64
-	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
-		if useFTS && isFTSUnavailableError(err) {
-			s.disableFTS()
-			return s.Search(ctx, opts)
+	if useFTS {
+		trimmedWhere := trimClausePrefix(whereClause, "WHERE")
+		countOpts := []z.ZormItem{
+			z.Fields("COUNT(*) AS total"),
+			z.InnerJoin("skills_fts", z.Expr("s.rowid = skills_fts.rowid")),
 		}
-		return nil, err
+		if trimmedWhere != "" {
+			countOpts = append(countOpts, z.Where(append([]interface{}{trimmedWhere}, args...)...))
+		}
+		var rows []z.V
+		if _, err := s.searchReadTable(ctx).Select(&rows, countOpts...); err != nil {
+			if isFTSUnavailableError(err) {
+				s.disableFTS()
+				return s.Search(ctx, opts)
+			}
+			return nil, err
+		}
+		if len(rows) > 0 {
+			total = int64FromMapValue(rows[0], "total")
+		}
+	} else {
+		countOpts := []z.ZormItem{z.Fields("count(1)")}
+		trimmedWhere := trimClausePrefix(whereClause, "WHERE")
+		if trimmedWhere != "" {
+			countOpts = append(countOpts, z.Where(append([]interface{}{trimmedWhere}, args...)...))
+		}
+		if _, err := s.searchReadTable(ctx).Select(&total, countOpts...); err != nil {
+			return nil, err
+		}
 	}
 
 	offset := (opts.Page - 1) * opts.PageSize
 	totalPages := int((total + int64(opts.PageSize) - 1) / int64(opts.PageSize))
 
-	var selectQuery string
-	var selectArgs []interface{}
-
-	if hasQuery {
-		selectArgs = append(selectArgs, queryScoreArgs...)
-		selectArgs = append(selectArgs, args...)
-	} else {
-		selectArgs = args
-	}
-
-	selectQuery = fmt.Sprintf(`
-		SELECT s.id, s.name, COALESCE(s.version, ''), COALESCE(s.summary, ''), COALESCE(s.description, ''),
-			COALESCE(s.author, ''), COALESCE(s.category, ''), COALESCE(s.tags, ''),
-			s.source_id, COALESCE(s.source_name, ''), COALESCE(s.homepage, ''), COALESCE(s.download_url, ''),
-			s.stars, s.downloads, s.reviews, s.rating, s.versions, COALESCE(s.changelog, ''),
-			s.installed, s.enabled, s.created_at, s.updated_at, s.synced_at, %s
-		%s %s ORDER BY %s LIMIT ? OFFSET ?
-	`, scoreSelect, baseQuery, whereClause, orderBy)
-	selectArgs = append(selectArgs, opts.PageSize, offset)
-
-	rows, err := s.db.QueryContext(ctx, selectQuery, selectArgs...)
-	if err != nil {
-		if useFTS && isFTSUnavailableError(err) {
-			s.disableFTS()
-			return s.Search(ctx, opts)
-		}
-		return nil, err
-	}
-	defer rows.Close()
-
 	var results []SearchResult
-	for rows.Next() {
-		var skill Skill
-		var score float64
-		err := rows.Scan(
-			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
-			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
-			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
-			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt, &score,
-		)
-		if err != nil {
+	if useFTS {
+		trimmedWhere := trimClausePrefix(whereClause, "WHERE")
+		selectOpts := []z.ZormItem{
+			searchSkillFields(scoreExpr),
+			z.InnerJoin("skills_fts", z.Expr("s.rowid = skills_fts.rowid")),
+		}
+		if trimmedWhere != "" {
+			selectOpts = append(selectOpts, z.Where(append([]interface{}{trimmedWhere}, args...)...))
+		}
+		selectOpts = append(selectOpts, z.OrderBy(orderBy), z.Limit(opts.PageSize, offset))
+		var rows []z.V
+		if _, err := s.searchReadTable(ctx).Select(&rows, selectOpts...); err != nil {
+			if isFTSUnavailableError(err) {
+				s.disableFTS()
+				return s.Search(ctx, opts)
+			}
 			return nil, err
 		}
-		results = append(results, SearchResult{Skill: skill, Score: score})
+		results = make([]SearchResult, 0, len(rows))
+		for _, row := range rows {
+			results = append(results, searchResultFromMapRow(row))
+		}
+	} else {
+		trimmedWhere := trimClausePrefix(whereClause, "WHERE")
+		selectOpts := []z.ZormItem{
+			searchSkillFields(scoreExpr),
+		}
+		if trimmedWhere != "" {
+			selectOpts = append(selectOpts, z.Where(append([]interface{}{trimmedWhere}, args...)...))
+		}
+		selectOpts = append(selectOpts, z.OrderBy(orderBy), z.Limit(opts.PageSize, offset))
+		var rows []z.V
+		if _, err := s.searchReadTable(ctx).Select(&rows, selectOpts...); err != nil {
+			return nil, err
+		}
+		results = make([]SearchResult, 0, len(rows))
+		for _, row := range rows {
+			results = append(results, searchResultFromMapRow(row))
+		}
 	}
 
 	var nextCursor string
@@ -566,7 +656,7 @@ func (s *Store) ListBySource(ctx context.Context, sourceID string, page, pageSiz
 	}
 
 	var total int64
-	_, err := s.table(ctx).Select(&total,
+	_, err := s.readTable(ctx).Select(&total,
 		z.Fields("count(1)"),
 		z.Where(z.Eq("source_id", sourceID)),
 	)
@@ -576,7 +666,7 @@ func (s *Store) ListBySource(ctx context.Context, sourceID string, page, pageSiz
 
 	offset := (page - 1) * pageSize
 	var rows []skillRow
-	_, err = s.table(ctx).Select(&rows, skillFields,
+	_, err = s.readTable(ctx).Select(&rows, skillFields,
 		z.Where(z.Eq("source_id", sourceID)),
 		z.OrderBy("downloads DESC"),
 		z.Limit(pageSize, offset),
@@ -595,7 +685,7 @@ func (s *Store) ListBySource(ctx context.Context, sourceID string, page, pageSiz
 // GetCategories returns all unique categories.
 func (s *Store) GetCategories(ctx context.Context) ([]string, error) {
 	var cats []string
-	_, err := s.table(ctx).Select(&cats,
+	_, err := s.readTable(ctx).Select(&cats,
 		z.Fields("category"),
 		z.Where(z.Neq("category", "")),
 	)
@@ -626,32 +716,29 @@ func (s *Store) GetStats(ctx context.Context) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
 	var total int64
-	_, err := s.table(ctx).Select(&total, z.Fields("count(1)"))
+	_, err := s.readTable(ctx).Select(&total, z.Fields("count(1)"))
 	if err != nil {
 		return nil, err
 	}
 	stats["total_skills"] = total
 
-	// by_source uses GROUP BY which zorm doesn't support well — keep raw SQL
-	rows, err := s.db.QueryContext(ctx, "SELECT source_id, COUNT(*) FROM skills GROUP BY source_id")
+	var sourceRows []z.V
+	_, err = s.readTable(ctx).Select(&sourceRows,
+		z.Fields("source_id", "COUNT(*) as count"),
+		z.GroupBy("source_id"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	bySource := make(map[string]int64)
-	for rows.Next() {
-		var sourceID string
-		var count int64
-		if err := rows.Scan(&sourceID, &count); err != nil {
-			return nil, err
-		}
-		bySource[sourceID] = count
+	bySource := make(map[string]int64, len(sourceRows))
+	for _, row := range sourceRows {
+		bySource[stringFromMapValue(row, "source_id")] = int64FromMapValue(row, "count")
 	}
 	stats["by_source"] = bySource
 
 	var installed int64
-	_, err = s.table(ctx).Select(&installed,
+	_, err = s.readTable(ctx).Select(&installed,
 		z.Fields("count(1)"),
 		z.Where(z.Eq("installed", 1)),
 	)
@@ -698,7 +785,7 @@ type syncStatusRow struct {
 // GetSyncStatus retrieves the sync status for a source.
 func (s *Store) GetSyncStatus(ctx context.Context, sourceID string) (*SyncStatus, error) {
 	var rows []syncStatusRow
-	_, err := s.syncTable(ctx).Select(&rows,
+	_, err := s.syncReadTable(ctx).Select(&rows,
 		z.Where(z.Eq("source_id", sourceID)),
 		z.Limit(1),
 	)
@@ -769,7 +856,7 @@ func (s *Store) GetPopular(ctx context.Context, limit int) ([]*Skill, error) {
 		limit = 20
 	}
 	var rows []skillRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Fields("id", "name", "version", "summary", "description", "author", "category", "tags",
 			"source_id", "source_name", "homepage", "download_url", "stars", "downloads",
 			"reviews", "rating", "versions", "changelog", "installed", "enabled",
@@ -793,7 +880,7 @@ func (s *Store) GetRecent(ctx context.Context, limit int) ([]*Skill, error) {
 		limit = 20
 	}
 	var rows []skillRow
-	_, err := s.table(ctx).Select(&rows,
+	_, err := s.readTable(ctx).Select(&rows,
 		z.Fields("id", "name", "version", "summary", "description", "author", "category", "tags",
 			"source_id", "source_name", "homepage", "download_url", "stars", "downloads",
 			"reviews", "rating", "versions", "changelog", "installed", "enabled",
@@ -820,7 +907,7 @@ func buildSearchContent(skill *Skill) string {
 // GetInstalledSkills retrieves all installed skills from the database.
 func (s *Store) GetInstalledSkills(ctx context.Context) ([]*Skill, error) {
 	var rows []skillRow
-	_, err := s.table(ctx).Select(&rows, skillFields,
+	_, err := s.readTable(ctx).Select(&rows, skillFields,
 		z.Where(z.Eq("installed", 1)),
 		z.OrderBy("name ASC"),
 	)
@@ -846,4 +933,223 @@ func escapeFTS5Query(query string) string {
 		words[i] = "\"" + word + "\"*"
 	}
 	return strings.Join(words, " OR ")
+}
+
+func trimClausePrefix(clause, prefix string) string {
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(clause), prefix))
+}
+
+func sqlStringLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func fallbackSearchScoreExpr(alias, rawQuery string) string {
+	rawQuery = strings.TrimSpace(rawQuery)
+	queryLiteral := sqlStringLiteral(rawQuery)
+	scoreParts := []string{
+		"CASE WHEN LOWER(" + alias + ".name) = LOWER(" + queryLiteral + ") THEN 100.0 ELSE 0.0 END",
+		"CASE WHEN LOWER(" + alias + ".name) LIKE LOWER(" + queryLiteral + ") || '%' THEN 50.0 ELSE 0.0 END",
+		"CASE WHEN LOWER(" + alias + ".id) = LOWER(" + queryLiteral + ") THEN 80.0 ELSE 0.0 END",
+		"CASE WHEN LOWER(" + alias + ".id) LIKE LOWER(" + queryLiteral + ") || '%' THEN 40.0 ELSE 0.0 END",
+	}
+	for _, term := range searchTerms(rawQuery) {
+		scoreParts = append(scoreParts, "CASE WHEN LOWER(COALESCE("+alias+".search_content, '')) LIKE "+sqlStringLiteral("%"+term+"%")+" THEN 5.0 ELSE 0.0 END")
+	}
+	scoreParts = append(scoreParts, "("+alias+".stars * 0.01)", "("+alias+".downloads * 0.001)")
+	return "(" + strings.Join(scoreParts, " + ") + ")"
+}
+
+func ftsSearchScoreExpr(alias, rawQuery string) string {
+	rawQuery = strings.TrimSpace(rawQuery)
+	queryLiteral := sqlStringLiteral(rawQuery)
+	return `(
+		-bm25(skills_fts, 10.0, 5.0, 3.0, 2.0, 1.0, 1.0, 1.0) +
+		CASE WHEN LOWER(` + alias + `.name) = LOWER(` + queryLiteral + `) THEN 100.0 ELSE 0.0 END +
+		CASE WHEN LOWER(` + alias + `.name) LIKE LOWER(` + queryLiteral + `) || '%' THEN 50.0 ELSE 0.0 END +
+		CASE WHEN LOWER(` + alias + `.id) = LOWER(` + queryLiteral + `) THEN 80.0 ELSE 0.0 END +
+		CASE WHEN LOWER(` + alias + `.id) LIKE LOWER(` + queryLiteral + `) || '%' THEN 40.0 ELSE 0.0 END +
+		(` + alias + `.stars * 0.01) + (` + alias + `.downloads * 0.001)
+	)`
+}
+
+func stringFromMapValue(row z.V, key string) string {
+	value, ok := valueFromMapKey(row, key)
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	case time.Time:
+		return typed.Format(time.RFC3339)
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func intFromMapValue(row z.V, key string) int {
+	return int(int64FromMapValue(row, key))
+}
+
+func int64FromMapValue(row z.V, key string) int64 {
+	value, ok := valueFromMapKey(row, key)
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return int64(typed)
+	case int8:
+		return int64(typed)
+	case int16:
+		return int64(typed)
+	case int32:
+		return int64(typed)
+	case int64:
+		return typed
+	case uint:
+		return int64(typed)
+	case uint8:
+		return int64(typed)
+	case uint16:
+		return int64(typed)
+	case uint32:
+		return int64(typed)
+	case uint64:
+		return int64(typed)
+	case float32:
+		return int64(typed)
+	case float64:
+		return int64(typed)
+	case bool:
+		if typed {
+			return 1
+		}
+		return 0
+	case []byte:
+		n, _ := strconv.ParseInt(string(typed), 10, 64)
+		return n
+	case string:
+		n, _ := strconv.ParseInt(typed, 10, 64)
+		return n
+	default:
+		return 0
+	}
+}
+
+func float64FromMapValue(row z.V, key string) float64 {
+	value, ok := valueFromMapKey(row, key)
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case float32:
+		return float64(typed)
+	case float64:
+		return typed
+	case int:
+		return float64(typed)
+	case int8:
+		return float64(typed)
+	case int16:
+		return float64(typed)
+	case int32:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case uint:
+		return float64(typed)
+	case uint8:
+		return float64(typed)
+	case uint16:
+		return float64(typed)
+	case uint32:
+		return float64(typed)
+	case uint64:
+		return float64(typed)
+	case []byte:
+		n, _ := strconv.ParseFloat(string(typed), 64)
+		return n
+	case string:
+		n, _ := strconv.ParseFloat(typed, 64)
+		return n
+	default:
+		return 0
+	}
+}
+
+func boolFromMapValue(row z.V, key string) bool {
+	value, ok := valueFromMapKey(row, key)
+	if !ok || value == nil {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case int:
+		return typed != 0
+	case int8:
+		return typed != 0
+	case int16:
+		return typed != 0
+	case int32:
+		return typed != 0
+	case int64:
+		return typed != 0
+	case uint:
+		return typed != 0
+	case uint8:
+		return typed != 0
+	case uint16:
+		return typed != 0
+	case uint32:
+		return typed != 0
+	case uint64:
+		return typed != 0
+	case float32:
+		return typed != 0
+	case float64:
+		return typed != 0
+	case []byte:
+		return string(typed) == "1" || strings.EqualFold(string(typed), "true")
+	case string:
+		return typed == "1" || strings.EqualFold(typed, "true")
+	default:
+		return false
+	}
+}
+
+func valueFromMapKey(row z.V, key string) (interface{}, bool) {
+	if row == nil {
+		return nil, false
+	}
+	if value, ok := row[key]; ok {
+		return value, true
+	}
+	for rawKey, value := range row {
+		if normalizeMapKey(rawKey) == key {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func normalizeMapKey(key string) string {
+	key = strings.TrimSpace(strings.Trim(key, "`"))
+	if key == "" {
+		return ""
+	}
+	fields := strings.Fields(key)
+	if len(fields) >= 3 && strings.EqualFold(fields[len(fields)-2], "as") {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if len(fields) >= 2 {
+		return strings.Trim(fields[len(fields)-1], "`")
+	}
+	if dot := strings.LastIndex(key, "."); dot >= 0 {
+		return strings.Trim(key[dot+1:], "`")
+	}
+	return key
 }

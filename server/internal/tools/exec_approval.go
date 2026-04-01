@@ -156,7 +156,9 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 	}()
 
 	// Publish SSE event to the user.
-	m.broker.Publish(userID, "exec:approval-request", req)
+	if m.broker != nil {
+		m.broker.Publish(userID, "exec:approval-request", req)
+	}
 	if observer != nil {
 		observer.OnApprovalRequested(execApprovalRuntimeEvent(req))
 	}
@@ -174,7 +176,13 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 		}
 		return decision, nil
 	case <-timer.C:
-		err := fmt.Errorf("approval timed out after %s", m.timeout)
+		err := newToolRuntimeError("exec_approval_timeout", fmt.Sprintf("approval timed out after %s", m.timeout), context.DeadlineExceeded, map[string]interface{}{
+			"approval_id": req.ID,
+			"kind":        strings.TrimSpace(req.Type),
+			"command":     strings.TrimSpace(req.Command),
+			"directory":   strings.TrimSpace(req.Directory),
+			"policy_mode": "ask",
+		})
 		if observer != nil {
 			event := execApprovalRuntimeEvent(req)
 			event.Decision = string(ApprovalDeny)
@@ -183,7 +191,20 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 		}
 		return ApprovalDeny, err
 	case <-ctx.Done():
-		err := ctx.Err()
+		code := "exec_approval_aborted"
+		switch {
+		case context.Canceled == ctx.Err():
+			code = "exec_approval_cancelled"
+		case context.DeadlineExceeded == ctx.Err():
+			code = "exec_approval_timeout"
+		}
+		err := newToolRuntimeError(code, ctx.Err().Error(), ctx.Err(), map[string]interface{}{
+			"approval_id": req.ID,
+			"kind":        strings.TrimSpace(req.Type),
+			"command":     strings.TrimSpace(req.Command),
+			"directory":   strings.TrimSpace(req.Directory),
+			"policy_mode": "ask",
+		})
 		if observer != nil {
 			event := execApprovalRuntimeEvent(req)
 			event.Decision = string(ApprovalDeny)
@@ -215,26 +236,30 @@ func execApprovalRuntimeEvent(req ApprovalRequest) ApprovalRuntimeEvent {
 // ResolveApproval is called by the REST endpoint when the user responds.
 // Returns false if the approval ID is not found (expired or already resolved).
 func (m *ApprovalManager) ResolveApproval(id string, decision ApprovalDecision) bool {
-	return m.ResolveApprovalWithBinding(id, decision, "")
+	return m.resolveApproval(id, decision, "", false) == ApprovalResolveSuccess
 }
 
 // ResolveApprovalWithBinding resolves a pending approval and validates its binding hash.
 func (m *ApprovalManager) ResolveApprovalWithBinding(id string, decision ApprovalDecision, bindingHash string) bool {
-	return m.ResolveApprovalWithBindingStatus(id, decision, bindingHash) == ApprovalResolveSuccess
+	return m.resolveApproval(id, decision, bindingHash, true) == ApprovalResolveSuccess
 }
 
 // ResolveApprovalWithBindingStatus resolves a pending approval and reports why a resolution failed.
 func (m *ApprovalManager) ResolveApprovalWithBindingStatus(id string, decision ApprovalDecision, bindingHash string) ApprovalResolveStatus {
+	return m.resolveApproval(id, decision, bindingHash, true)
+}
+
+func (m *ApprovalManager) resolveApproval(id string, decision ApprovalDecision, bindingHash string, requireBinding bool) ApprovalResolveStatus {
 	m.mu.Lock()
 	p, ok := m.pending[id]
 	if ok {
 		expected := strings.TrimSpace(p.request.BindingHash)
 		got := strings.TrimSpace(bindingHash)
-		if expected != "" && got != "" && expected != got {
+		if requireBinding && expected != "" && got != "" && expected != got {
 			m.mu.Unlock()
 			return ApprovalResolveBindingMismatch
 		}
-		if expected != "" && got == "" {
+		if requireBinding && expected != "" && got == "" {
 			m.mu.Unlock()
 			return ApprovalResolveBindingMismatch
 		}

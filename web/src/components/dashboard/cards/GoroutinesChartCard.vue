@@ -46,11 +46,11 @@ const goroutinesSummaryItems = computed(() => [
     value: currentGoroutines.value == null ? '-' : currentGoroutines.value.toFixed(0),
   },
   {
-    label: t('resourceChart.avg', 'Avg'),
+    label: t('resourceChart.avg'),
     value: averageGoroutines.value == null ? '-' : averageGoroutines.value.toFixed(0),
   },
   {
-    label: t('metrics.max', 'Max'),
+    label: t('metrics.max'),
     value: peakGoroutines.value == null ? '-' : peakGoroutines.value.toFixed(0),
   },
 ])
@@ -59,13 +59,13 @@ const goroutinesSummaryItems = computed(() => [
 <template>
   <ResourceChart
     :title="t('system.goroutines')"
-    subtitle="Scheduler concurrency over the latest 5 minutes"
+    :subtitle="t('system.cards.goroutinesChart.chartSubtitle')"
     :data="goroutinesChartData"
     variant="dashboard"
     unit=""
     color="purple"
     badge="5m"
-    caption="Concurrent runtime work and scheduler pressure across the latest sample window"
+    :caption="t('system.cards.goroutinesChart.chartCaption')"
     :format-value="(v: number) => v.toFixed(0)"
     :summary-items="goroutinesSummaryItems"
   />

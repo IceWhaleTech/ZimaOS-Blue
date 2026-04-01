@@ -3,6 +3,8 @@ package browser
 import (
 	"strings"
 	"testing"
+
+	"github.com/go-rod/rod/lib/proto"
 )
 
 func TestDecodeAccessibilityTreeNodesSupportsNumericNodeIDs(t *testing.T) {
@@ -52,5 +54,31 @@ func TestDecodeAccessibilityTreeNodesSupportsNumericNodeIDs(t *testing.T) {
 	}
 	if !strings.Contains(tree, `@1 [link] "Home"`) {
 		t.Fatalf("tree = %q, want interactive link ref", tree)
+	}
+}
+
+func TestSnapshotPageInfoFromInfoHandlesNil(t *testing.T) {
+	snapshot := snapshotPageInfoFromInfo(nil)
+	if snapshot.URL != "" || snapshot.Title != "" {
+		t.Fatalf("snapshot = %#v, want empty fields", snapshot)
+	}
+}
+
+func TestSnapshotPageInfoFromInfoCopiesFields(t *testing.T) {
+	snapshot := snapshotPageInfoFromInfo(&proto.TargetTargetInfo{
+		URL:   "https://example.com/docs",
+		Title: "Example Docs",
+	})
+	if snapshot.URL != "https://example.com/docs" {
+		t.Fatalf("snapshot.URL = %q, want example URL", snapshot.URL)
+	}
+	if snapshot.Title != "Example Docs" {
+		t.Fatalf("snapshot.Title = %q, want title", snapshot.Title)
+	}
+}
+
+func TestCheckedPageInfoRejectsNilPage(t *testing.T) {
+	if _, err := checkedPageInfo(nil); err == nil {
+		t.Fatal("checkedPageInfo(nil) error = nil, want error")
 	}
 }

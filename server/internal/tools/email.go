@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 )
 
@@ -67,16 +68,26 @@ type EmailService interface {
 // LocalEmailService persists a benchmark-first inbox in SQLite and auto-seeds
 // realistic fixture messages for each user on first access.
 type LocalEmailService struct {
-	db  *sql.DB
-	now func() time.Time
+	db     *sql.DB
+	readDB *sql.DB
+	now    func() time.Time
 }
 
 // NewLocalEmailService creates the email table and returns a local inbox service.
 func NewLocalEmailService(db *sql.DB) (*LocalEmailService, error) {
-	if db == nil {
+	return NewLocalEmailServiceWithReadDB(db, db)
+}
+
+// NewLocalEmailServiceWithReadDB creates the email table and returns a local
+// inbox service with separate write and read database handles.
+func NewLocalEmailServiceWithReadDB(writeDB, readDB *sql.DB) (*LocalEmailService, error) {
+	if writeDB == nil {
 		return nil, errors.New("email database is required")
 	}
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS tool_email_messages (
+	if readDB == nil {
+		readDB = writeDB
+	}
+	if _, err := writeDB.Exec(`CREATE TABLE IF NOT EXISTS tool_email_messages (
 		id            TEXT PRIMARY KEY,
 		owner_id      TEXT NOT NULL,
 		thread_id     TEXT NOT NULL DEFAULT '',
@@ -95,13 +106,49 @@ func NewLocalEmailService(db *sql.DB) (*LocalEmailService, error) {
 	)`); err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tool_email_owner_received ON tool_email_messages(owner_id, received_at DESC)`); err != nil {
+	if _, err := writeDB.Exec(`CREATE INDEX IF NOT EXISTS idx_tool_email_owner_received ON tool_email_messages(owner_id, received_at DESC)`); err != nil {
 		return nil, err
 	}
 	return &LocalEmailService{
-		db:  db,
-		now: func() time.Time { return time.Now().UTC() },
+		db:     writeDB,
+		readDB: readDB,
+		now:    func() time.Time { return time.Now().UTC() },
 	}, nil
+}
+
+func (s *LocalEmailService) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *LocalEmailService) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "tool_email_messages")
+}
+
+func (s *LocalEmailService) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "tool_email_messages")
+}
+
+type emailMessageRow struct {
+	ID          string `json:"id" zorm:"id"`
+	ThreadID    string `json:"thread_id" zorm:"thread_id"`
+	Subject     string `json:"subject" zorm:"subject"`
+	SenderName  string `json:"sender_name" zorm:"sender_name"`
+	SenderEmail string `json:"sender_email" zorm:"sender_email"`
+	Recipients  string `json:"recipients" zorm:"recipients"`
+	Snippet     string `json:"snippet" zorm:"snippet"`
+	Body        string `json:"body" zorm:"body"`
+	Labels      string `json:"labels" zorm:"labels"`
+	Priority    string `json:"priority" zorm:"priority"`
+	Unread      int    `json:"unread" zorm:"unread"`
+	Archived    int    `json:"archived" zorm:"archived"`
+	ReceivedAt  string `json:"received_at" zorm:"received_at"`
+	UpdatedAt   string `json:"updated_at" zorm:"updated_at"`
 }
 
 // SetNowFunc overrides the clock, mainly for tests.
@@ -123,7 +170,8 @@ func (s *LocalEmailService) SeedFixtures(ctx context.Context, ownerID string, fi
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM tool_email_messages WHERE owner_id = ?`, ownerID); err != nil {
+	messageTable := z.TableContext(ctx, tx, "tool_email_messages")
+	if _, err := messageTable.Delete(z.Where(z.Eq("owner_id", ownerID))); err != nil {
 		return err
 	}
 	for _, msg := range fixtures {
@@ -136,8 +184,11 @@ func (s *LocalEmailService) SeedFixtures(ctx context.Context, ownerID string, fi
 
 func (s *LocalEmailService) ensureSeeded(ctx context.Context, ownerID string) error {
 	ownerID = normalizeProductivityOwnerID(ownerID)
-	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM tool_email_messages WHERE owner_id = ?`, ownerID).Scan(&count); err != nil {
+	var count int64
+	if _, err := s.readTable(ctx).Select(&count,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("owner_id", ownerID)),
+	); err != nil {
 		return err
 	}
 	if count > 0 {
@@ -180,28 +231,23 @@ func insertEmailMessage(ctx context.Context, tx *sql.Tx, ownerID string, msg Ema
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(
-		ctx,
-		`INSERT INTO tool_email_messages (
-			id, owner_id, thread_id, subject, sender_name, sender_email, recipients,
-			snippet, body, labels, priority, unread, archived, received_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		msg.ID,
-		ownerID,
-		strings.TrimSpace(msg.ThreadID),
-		strings.TrimSpace(msg.Subject),
-		strings.TrimSpace(msg.SenderName),
-		strings.TrimSpace(msg.SenderEmail),
-		string(recipientsJSON),
-		strings.TrimSpace(msg.Snippet),
-		strings.TrimSpace(msg.Body),
-		string(labelsJSON),
-		normalizeEmailPriority(msg.Priority),
-		boolToInt(msg.Unread),
-		boolToInt(msg.Archived),
-		msg.ReceivedAt.UTC().Format(time.RFC3339),
-		msg.UpdatedAt.UTC().Format(time.RFC3339),
-	)
+	_, err = z.TableContext(ctx, tx, "tool_email_messages").Insert(z.V{
+		"id":           msg.ID,
+		"owner_id":     ownerID,
+		"thread_id":    strings.TrimSpace(msg.ThreadID),
+		"subject":      strings.TrimSpace(msg.Subject),
+		"sender_name":  strings.TrimSpace(msg.SenderName),
+		"sender_email": strings.TrimSpace(msg.SenderEmail),
+		"recipients":   string(recipientsJSON),
+		"snippet":      strings.TrimSpace(msg.Snippet),
+		"body":         strings.TrimSpace(msg.Body),
+		"labels":       string(labelsJSON),
+		"priority":     normalizeEmailPriority(msg.Priority),
+		"unread":       boolToInt(msg.Unread),
+		"archived":     boolToInt(msg.Archived),
+		"received_at":  msg.ReceivedAt.UTC().Format(time.RFC3339),
+		"updated_at":   msg.UpdatedAt.UTC().Format(time.RFC3339),
+	})
 	return err
 }
 
@@ -214,22 +260,18 @@ func (s *LocalEmailService) List(ctx context.Context, ownerID string, opts Email
 	if err := s.ensureSeeded(ctx, ownerID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, thread_id, subject, sender_name, sender_email, recipients, snippet, body, labels, priority, unread, archived, received_at, updated_at
-		FROM tool_email_messages
-		WHERE owner_id = ?
-	`, ownerID)
+	var rows []emailMessageRow
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Where(z.Eq("owner_id", ownerID)),
+		z.OrderBy("received_at DESC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	result := make([]EmailMessage, 0, 8)
-	for rows.Next() {
-		msg, scanErr := scanEmailMessage(rows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
+	for i := range rows {
+		msg := rowToEmailMessage(rows[i])
 		if !emailMatchesQuery(msg, opts) {
 			continue
 		}
@@ -263,18 +305,18 @@ func (s *LocalEmailService) Get(ctx context.Context, ownerID, id string) (*Email
 	if err := s.ensureSeeded(ctx, ownerID); err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, thread_id, subject, sender_name, sender_email, recipients, snippet, body, labels, priority, unread, archived, received_at, updated_at
-		FROM tool_email_messages
-		WHERE owner_id = ? AND id = ?
-	`, ownerID, strings.TrimSpace(id))
-	msg, err := scanEmailMessage(row)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+	var rows []emailMessageRow
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Where(z.Eq("owner_id", ownerID), z.Eq("id", strings.TrimSpace(id))),
+		z.Limit(1),
+	)
 	if err != nil {
 		return nil, err
 	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	msg := rowToEmailMessage(rows[0])
 	return &msg, nil
 }
 
@@ -287,16 +329,19 @@ func (s *LocalEmailService) Archive(ctx context.Context, ownerID, id string, arc
 	if err := s.ensureSeeded(ctx, ownerID); err != nil {
 		return nil, err
 	}
-	now := s.now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE tool_email_messages
-		SET archived = ?, updated_at = ?
-		WHERE owner_id = ? AND id = ?
-	`, boolToInt(archived), now, ownerID, strings.TrimSpace(id))
+	updatedAt := s.now().UTC().Format(time.RFC3339)
+	affected, err := s.table(ctx).Update(
+		z.V{
+			"archived":   boolToInt(archived),
+			"updated_at": updatedAt,
+		},
+		z.Fields("archived", "updated_at"),
+		z.Where(z.Eq("owner_id", ownerID), z.Eq("id", strings.TrimSpace(id))),
+	)
 	if err != nil {
 		return nil, err
 	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
+	if affected == 0 {
 		return nil, nil
 	}
 	return s.Get(ctx, ownerID, id)
@@ -316,11 +361,14 @@ func (s *LocalEmailService) Label(ctx context.Context, ownerID, id string, add, 
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE tool_email_messages
-		SET labels = ?, updated_at = ?
-		WHERE owner_id = ? AND id = ?
-	`, string(labelsJSON), s.now().UTC().Format(time.RFC3339), normalizeProductivityOwnerID(ownerID), strings.TrimSpace(id))
+	_, err = s.table(ctx).Update(
+		z.V{
+			"labels":     string(labelsJSON),
+			"updated_at": s.now().UTC().Format(time.RFC3339),
+		},
+		z.Fields("labels", "updated_at"),
+		z.Where(z.Eq("owner_id", normalizeProductivityOwnerID(ownerID)), z.Eq("id", strings.TrimSpace(id))),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -392,6 +440,28 @@ func (s *LocalEmailService) Summarize(ctx context.Context, ownerID string, opts 
 
 type emailScanner interface {
 	Scan(dest ...interface{}) error
+}
+
+func rowToEmailMessage(row emailMessageRow) EmailMessage {
+	msg := EmailMessage{
+		ID:          row.ID,
+		ThreadID:    row.ThreadID,
+		Subject:     row.Subject,
+		SenderName:  row.SenderName,
+		SenderEmail: row.SenderEmail,
+		Snippet:     row.Snippet,
+		Body:        row.Body,
+		Unread:      row.Unread != 0,
+		Archived:    row.Archived != 0,
+		Priority:    normalizeEmailPriority(row.Priority),
+	}
+	_ = json.Unmarshal([]byte(row.Recipients), &msg.Recipients)
+	_ = json.Unmarshal([]byte(row.Labels), &msg.Labels)
+	msg.ReceivedAt, _ = time.Parse(time.RFC3339, row.ReceivedAt)
+	msg.UpdatedAt, _ = time.Parse(time.RFC3339, row.UpdatedAt)
+	msg.Labels = normalizeStringList(msg.Labels)
+	msg.Recipients = normalizeStringList(msg.Recipients)
+	return msg
 }
 
 func scanEmailMessage(scanner emailScanner) (EmailMessage, error) {

@@ -1,6 +1,6 @@
 import api from './client'
 
-export type UserTaskKind = 'agent_task' | 'research'
+export type UserTaskKind = 'agent_task' | 'research' | 'workflow'
 export type UserTaskScope = 'current' | 'background' | 'all'
 export type UserTaskStatus = 'running' | 'waiting_user' | 'completed' | 'failed' | 'cancelled'
 export type UserTaskStage =
@@ -11,6 +11,9 @@ export type UserTaskStage =
   | 'completed'
   | 'failed'
   | 'cancelled'
+
+export type UserTaskActionID = 'cancel' | 'resume' | 'send_update' | string
+export type UserTaskActionVariant = 'default' | 'primary' | 'danger' | string
 
 export interface UserTaskBlocker {
   kind: 'approval' | 'question' | string
@@ -36,10 +39,33 @@ export interface UserTaskResearchSource {
   credibility_score?: number
 }
 
+export interface UserTaskActionDescriptor {
+  id: UserTaskActionID
+  label: string
+  method: string
+  path: string
+  variant?: UserTaskActionVariant
+  requires_input?: boolean
+  input?: {
+    [key: string]: unknown
+    fields?: Array<{
+      key: string
+      label: string
+      kind?: 'choice' | 'text' | 'textarea' | 'json' | string
+      target?: 'decision' | 'payload' | 'payload_root' | 'root' | string
+      payload_key?: string
+      required?: boolean
+      placeholder?: string
+      options?: string[]
+    }>
+    title?: string
+    description?: string
+    submit_label?: string
+  }
+}
+
 export interface UserTaskActions {
-  can_cancel: boolean
-  can_open_chat: boolean
-  can_send_update: boolean
+  items?: UserTaskActionDescriptor[]
 }
 
 export interface UserTaskProjection {
@@ -71,5 +97,13 @@ export const taskProjectionApi = {
       params: conversationId ? { conversation_id: conversationId } : undefined,
     }),
 
-  cancelTask: (id: string) => api.post<UserTaskProjection>(`/tasks/${id}/cancel`),
+  performTaskAction: (id: string, action: UserTaskActionID, payload?: unknown) =>
+    api.post<UserTaskProjection>(`/tasks/${id}/actions/${action}`, payload),
+
+  performTaskActionDescriptor: (descriptor: UserTaskActionDescriptor, payload?: unknown) =>
+    api.request<UserTaskProjection>({
+      url: descriptor.path,
+      method: descriptor.method || 'POST',
+      data: payload,
+    }),
 }

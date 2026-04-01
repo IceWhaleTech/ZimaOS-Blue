@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -195,6 +196,54 @@ func TestBuildDirectoryWhitelistPromptHintUsesSecuritySettings(t *testing.T) {
 	}
 	if got := aliases["proj"]; got != "/tmp/project" {
 		t.Fatalf("directoryWhitelistScope() alias proj = %q, want /tmp/project", got)
+	}
+}
+
+func TestGetProviderFromPool_MiniMaxKeepsConfiguredBaseURL(t *testing.T) {
+	storage, err := providerpool.NewFileStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+
+	provider := &providerpool.Provider{
+		ID:        "minimax",
+		Name:      "MiniMax",
+		Type:      providerpool.ProviderTypeBuiltin,
+		BaseURL:   "https://api.minimax.io/anthropic",
+		APIFormat: providerpool.APIFormatAnthropic,
+		Enabled:   true,
+		APIKeys: []providerpool.APIKey{{
+			ID:      "key-main",
+			Key:     "sk-test",
+			Enabled: true,
+		}},
+	}
+	if err := storage.SaveProvider(provider); err != nil {
+		t.Fatalf("SaveProvider failed: %v", err)
+	}
+
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+
+	handler := &ChatHandler{
+		providerPool: &providerpool.Pool{Registry: registry},
+	}
+
+	got, err := handler.getProviderFromPool("minimax")
+	if err != nil {
+		t.Fatalf("getProviderFromPool returned error: %v", err)
+	}
+
+	claudeProvider, ok := got.(*llm.ClaudeProvider)
+	if !ok {
+		t.Fatalf("provider type = %T, want *llm.ClaudeProvider", got)
+	}
+
+	baseURL := reflect.ValueOf(claudeProvider).Elem().FieldByName("baseURL").String()
+	if baseURL != "https://api.minimax.io/anthropic" {
+		t.Fatalf("claude baseURL = %q, want %q", baseURL, "https://api.minimax.io/anthropic")
 	}
 }
 
@@ -7462,7 +7511,7 @@ func TestFormatIMCard_FinalUIReviewAndDeepResearch(t *testing.T) {
 		"citations":         []interface{}{map[string]interface{}{"title": "Doc A", "url": "https://example.com/a"}},
 		"open_questions":    []interface{}{"What changed recently?"},
 	}, i18n.LangEnUS)
-	if !strings.Contains(deepResearch, "Deep Research") || !strings.Contains(deepResearch, "Citation Coverage: 85%") || !strings.Contains(deepResearch, "Doc A") {
+	if !strings.Contains(deepResearch, "Research") || !strings.Contains(deepResearch, "Citation Coverage: 85%") || !strings.Contains(deepResearch, "Doc A") {
 		t.Fatalf("unexpected deep research IM card: %q", deepResearch)
 	}
 }
@@ -7507,7 +7556,7 @@ func TestFormatIMCard_DeepResearchProgressIncludesIterationAndGap(t *testing.T) 
 		"latest_gap":    "Need primary evidence",
 		"query":         "ZimaOS market",
 	}, i18n.LangEnUS)
-	for _, token := range []string{"Deep Research Verifying", "62%", "Current iteration: 2", "Latest action: Verification completed", "Latest gap: Need primary evidence"} {
+	for _, token := range []string{"Research Verifying", "62%", "Current iteration: 2", "Latest action: Verification completed", "Latest gap: Need primary evidence"} {
 		if !strings.Contains(progress, token) {
 			t.Fatalf("unexpected deep research progress IM card, missing %q: %q", token, progress)
 		}
@@ -7548,6 +7597,31 @@ func TestFormatIMCard_DeepResearchIncludesVNextSummary(t *testing.T) {
 		if !strings.Contains(deepResearch, token) {
 			t.Fatalf("unexpected deep research IM card, missing %q: %q", token, deepResearch)
 		}
+	}
+}
+
+func TestFormatIMCard_StructuredResearchResultUsesSurfaceTitle(t *testing.T) {
+	result := formatIMCard(map[string]interface{}{
+		"type":    "result",
+		"title":   "deep_research",
+		"message": "Summarized",
+		"details": []interface{}{"Doc A"},
+	}, i18n.LangEnUS)
+
+	if !strings.Contains(result, "Research Update") {
+		t.Fatalf("expected structured research result to use research update title, got %q", result)
+	}
+	if strings.Contains(result, "Deep Research Update") {
+		t.Fatalf("expected structured research result not to use legacy deep research title, got %q", result)
+	}
+}
+
+func TestToolFallbackHumanLabel_ResearchUsesSurfaceLabel(t *testing.T) {
+	if got := toolFallbackHumanLabel("deep_research", false); got != "research" {
+		t.Fatalf("toolFallbackHumanLabel english = %q, want %q", got, "research")
+	}
+	if got := toolFallbackHumanLabel("deep-research", true); got != "研究" {
+		t.Fatalf("toolFallbackHumanLabel chinese = %q, want %q", got, "研究")
 	}
 }
 
@@ -7649,7 +7723,7 @@ func TestSendIMToolResultCards_DeepResearchPreservesVNextSummaryAndMetadata(t *t
 	if got, _ := msg.Metadata["show_details"].(bool); !got {
 		t.Fatalf("expected show_details metadata, got %#v", msg.Metadata)
 	}
-	for _, token := range []string{"Deep Research", "Iterations: 2", "Stop reason: Coverage target reached", "Latest action: Research loop stopped", "Latest gap: Need primary evidence", "Verification:", "Research trace:", "Doc A"} {
+	for _, token := range []string{"Research", "Iterations: 2", "Stop reason: Coverage target reached", "Latest action: Research loop stopped", "Latest gap: Need primary evidence", "Verification:", "Research trace:", "Doc A"} {
 		if !strings.Contains(msg.Content, token) {
 			t.Fatalf("sent content missing %q: %q", token, msg.Content)
 		}
@@ -7683,8 +7757,8 @@ func TestSendIMToolResultCards_SendsStructuredResults(t *testing.T) {
 	if !strings.Contains(sent[0].Content, "UI Review") {
 		t.Fatalf("first IM content = %q, want UI Review summary", sent[0].Content)
 	}
-	if !strings.Contains(sent[1].Content, "Deep Research") {
-		t.Fatalf("second IM content = %q, want Deep Research summary", sent[1].Content)
+	if !strings.Contains(sent[1].Content, "Research") {
+		t.Fatalf("second IM content = %q, want Research summary", sent[1].Content)
 	}
 }
 

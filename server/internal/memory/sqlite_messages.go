@@ -2,90 +2,70 @@ package memory
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
-	"strings"
+
+	z "github.com/IceWhaleTech/zorm"
 )
 
-type scannedMessage struct {
-	message           Message
-	legacyAttachments sql.NullString
-	hasAttachments    bool
-}
-
-func (s *Store) scanMessageRow(scanner interface{ Scan(dest ...any) error }, includeHeavy bool) (scannedMessage, error) {
-	var scanned scannedMessage
-	msg := &scanned.message
-	var toolCallsJSON sql.NullString
-	var toolCallID sql.NullString
-	var toolName sql.NullString
-	var provider sql.NullString
-	var model sql.NullString
-
+func messageSelectFields(includeHeavy bool) []string {
+	fields := []string{
+		"id", "conversation_id", "role", "content", "tool_calls", "tool_call_id",
+		"tool_name", "provider", "model", "created_at",
+	}
 	if includeHeavy {
-		var statsJSON sql.NullString
-		if err := scanner.Scan(
-			&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content,
-			&toolCallsJSON, &toolCallID, &toolName, &provider, &model,
-			&statsJSON, &scanned.legacyAttachments, &scanned.hasAttachments, &msg.CreatedAt,
-		); err != nil {
-			return scanned, err
-		}
-		if statsJSON.Valid && strings.TrimSpace(statsJSON.String) != "" {
-			var stats MessageStats
-			if err := json.Unmarshal([]byte(statsJSON.String), &stats); err != nil {
-				return scanned, fmt.Errorf("failed to unmarshal stats: %w", err)
-			}
-			msg.Stats = &stats
-		}
-	} else {
-		if err := scanner.Scan(
-			&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content,
-			&toolCallsJSON, &toolCallID, &toolName, &provider, &model,
-			&msg.CreatedAt,
-		); err != nil {
-			return scanned, err
+		fields = []string{
+			"id", "conversation_id", "role", "content", "tool_calls", "tool_call_id",
+			"tool_name", "provider", "model", "stats", "attachments", "has_attachments", "created_at",
 		}
 	}
-
-	if toolCallsJSON.Valid && strings.TrimSpace(toolCallsJSON.String) != "" {
-		if err := json.Unmarshal([]byte(toolCallsJSON.String), &msg.ToolCalls); err != nil {
-			return scanned, fmt.Errorf("failed to unmarshal tool calls: %w", err)
-		}
-	}
-	if toolCallID.Valid {
-		msg.ToolCallID = toolCallID.String
-	}
-	if toolName.Valid {
-		msg.ToolName = toolName.String
-	}
-	if provider.Valid {
-		msg.Provider = provider.String
-	}
-	if model.Valid {
-		msg.Model = model.String
-	}
-	return scanned, nil
+	return fields
 }
 
-func (s *Store) queryMessages(ctx context.Context, query string, args []any, includeHeavy bool) ([]Message, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
+func reverseMessageRows(rows []messageRow) {
+	for left, right := 0, len(rows)-1; left < right; left, right = left+1, right-1 {
+		rows[left], rows[right] = rows[right], rows[left]
+	}
+}
+
+func (s *Store) queryMessages(ctx context.Context, conversationID string, limit, offset int, includeHeavy, recent bool) ([]Message, error) {
+	opts := []z.ZormItem{
+		z.Fields(messageSelectFields(includeHeavy)...),
+		z.Where(z.Eq("conversation_id", conversationID)),
+	}
+	if recent {
+		opts = append(opts,
+			z.OrderBy("created_at DESC", "rowid DESC"),
+			z.Limit(limit),
+		)
+	} else {
+		opts = append(opts,
+			z.OrderBy("created_at ASC", "rowid ASC"),
+			z.Limit(limit, offset),
+		)
+	}
+
+	var rows []messageRow
+	_, err := s.messagesRead(ctx).Select(&rows, opts...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	if recent {
+		reverseMessageRows(rows)
+	}
 
-	scannedRows := make([]scannedMessage, 0)
-	for rows.Next() {
-		msg, err := s.scanMessageRow(rows, includeHeavy)
+	scannedRows := make([]scannedMessage, 0, len(rows))
+	for i := range rows {
+		msg, err := rowToScannedMessage(rows[i])
 		if err != nil {
 			return nil, err
 		}
+		if !includeHeavy {
+			msg.message.Stats = nil
+			msg.message.Attachments = nil
+			msg.legacyAttachments = nil
+			msg.hasAttachments = false
+		}
 		scannedRows = append(scannedRows, msg)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 
 	messages := make([]Message, 0, len(scannedRows))
@@ -124,16 +104,7 @@ func (s *Store) GetMessagesLite(ctx context.Context, conversationID string, limi
 	if err := s.ensureConversationAccess(ctx, conversationID, normalizeConversationScope(userID)); err != nil {
 		return nil, err
 	}
-	return s.queryMessages(
-		ctx,
-		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, created_at
-		FROM messages
-		WHERE conversation_id = ?
-		ORDER BY created_at ASC, rowid ASC
-		LIMIT ? OFFSET ?`,
-		[]any{conversationID, limit, offset},
-		false,
-	)
+	return s.queryMessages(ctx, conversationID, limit, offset, false, false)
 }
 
 // GetRecentMessagesLite retrieves recent messages without stats/attachments JSON payloads.
@@ -144,18 +115,33 @@ func (s *Store) GetRecentMessagesLite(ctx context.Context, conversationID string
 	if limit <= 0 {
 		return nil, nil
 	}
-	return s.queryMessages(
-		ctx,
-		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, created_at
-		FROM (
-			SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, created_at, rowid
-			FROM messages
-			WHERE conversation_id = ?
-			ORDER BY created_at DESC, rowid DESC
-			LIMIT ?
-		)
-		ORDER BY created_at ASC, rowid ASC`,
-		[]any{conversationID, limit},
-		false,
-	)
+	return s.queryMessages(ctx, conversationID, limit, 0, false, true)
+}
+
+// GetMessages retrieves messages for a conversation.
+func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, offset int, userID ...string) ([]Message, error) {
+	if err := s.ensureConversationAccess(ctx, conversationID, normalizeConversationScope(userID)); err != nil {
+		return nil, err
+	}
+	messages, err := s.queryMessages(ctx, conversationID, limit, offset, true, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages: %w", err)
+	}
+	return messages, nil
+}
+
+// GetRecentMessages retrieves the latest messages for a conversation and returns
+// them in chronological order.
+func (s *Store) GetRecentMessages(ctx context.Context, conversationID string, limit int, userID ...string) ([]Message, error) {
+	if err := s.ensureConversationAccess(ctx, conversationID, normalizeConversationScope(userID)); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		return nil, nil
+	}
+	messages, err := s.queryMessages(ctx, conversationID, limit, 0, true, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent messages: %w", err)
+	}
+	return messages, nil
 }

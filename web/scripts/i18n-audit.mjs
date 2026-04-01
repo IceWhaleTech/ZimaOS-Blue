@@ -430,6 +430,7 @@ const EXPECTED_SAME_AS_ENGLISH_KEYS = new Set([
   'browserAutomation.security.blockedDomainsPlaceholder',
   'browserAutomation.security.testUrlPlaceholder',
   'cache.ttl',
+  'channels.groupAccessAllowedChatsPlaceholder',
   'channels.instagramDM',
   'channels.qqBot',
   'channels.twitterDM',
@@ -465,26 +466,59 @@ const EXPECTED_SAME_AS_ENGLISH_KEYS = new Set([
   'metrics.p99',
   'metrics.pid',
   'nextcloudtalk',
+  'plugins.skillUrlPlaceholder',
   'qq',
   'resultCard.labels.url',
   'securityAlerts.labels.ip',
+  'sandbox.form.workDirPlaceholder',
   'settings.baseUrlPlaceholder',
+  'settings.providers.claude',
   'settings.providers.grok',
+  'settings.providers.ollama',
   'settings.providers.openai',
   'settings.providers.qwen',
   'settings.providers.siliconflow',
   'signal',
   'skillStore.detail.sections.readme',
+  'skillStore.modal.skillURLPlaceholder',
+  'autoReply.regex',
+  'channels.placeholderServerUrl',
+  'channels.placeholderWebhookUrl',
+  'chat.stats.speed',
+  'claudecode.title',
+  'common.id',
+  'companion.anomalyGuide.types.xss.name',
+  'connections.recv',
+  'extensions.modal.url',
+  'extensions.modal.urlPlaceholder',
+  'ideDiscovery.envVar',
+  'memory.proposalSourceKindUrl',
+  'providerPool.apiFormatOptions.google',
+  'providerPool.beta',
+  'resultCard.labels.ms',
+  'resultCard.titles.grep',
+  'resultCard.titles.rg',
+  'settings.externalAgents.eyebrow',
+  'settings.tts.eta',
+  'skillStore.modal.typeClawdhub',
+  'skillStore.modal.url',
+  'skillStore.modal.urlPlaceholder',
   'slack',
   'speech.asrModelInfo.whisperBase.name',
+  'speech.asrModelInfo.macosNative.name',
+  'speech.asrModelInfo.whisperLargeTurbo.name',
   'speech.asrModelInfo.whisperSmall.name',
   'speech.asrModelInfo.whisperTiny.name',
+  'speech.convertTask.previewKind.pdf',
   'speech.edgeTTSName',
   'speech.kokoroGithub',
   'system.goMaxProcs',
   'system.ipv4Address',
   'system.macAddress',
   'system.mtu',
+  'system.ram',
+  'system.statusOk',
+  'system.vram',
   'teams',
   'telegram',
   'tenants.invite.emailPlaceholder',
@@ -505,10 +539,12 @@ const EXPECTED_SAME_AS_ENGLISH_PATTERNS = [
   /^channels\.placeholder(?:AgentId|AppId|BlueBubblesServerUrl|BotToken|DingtalkAppKey|FeishuAppId|MatrixHomeserver|MatrixUserId|PhoneNumber|QQAppId|RobotCode|SlackAppToken|SlackBotToken|WechatCorpId)$/,
   /^companion\.platforms\.(api|discord|feishu|matrix|slack|telegram|whatsapp)$/,
   /^skills\.builtin\.(discord-skill|docker|github|notion|slack-skill)\.name$/,
+  /^tenants\.settings\.timezones\.(london|shanghai)$/,
   /^tools\.names\.(discord|docker|github|notion|slack)$/,
 ]
 
-function isExpectedSameAsEnglishKey(key) {
+function isExpectedSameAsEnglishKey(key, locale) {
+  if (locale === 'en-GB') return true
   if (EXPECTED_SAME_AS_ENGLISH_KEYS.has(key)) return true
   return EXPECTED_SAME_AS_ENGLISH_PATTERNS.some((pattern) => pattern.test(key))
 }
@@ -714,6 +750,7 @@ function main() {
     const localeBaseObject = locale === 'en-US'
       ? enUSObject
       : deepMergeMessages(enUSObject, loadLocaleObjectByCode(locale, localeCache))
+    const explicitTranslationOverrideMap = flattenStringLeaves(priorityTranslationOverrides[locale] || {})
     const withPriorityOverrides = deepMergeMessages(localeBaseObject, priorityLocaleOverrides[locale] || {})
     const withBillingOverrides = deepMergeMessages(withPriorityOverrides, priorityBillingOverrides[locale] || {})
     const withSettingsOverrides = deepMergeMessages(withBillingOverrides, prioritySettingsOverrides[locale] || {})
@@ -738,7 +775,7 @@ function main() {
         continue
       }
       if (locale !== 'en-US' && enValue !== undefined && localeValue === enValue) {
-        if (isExpectedSameAsEnglishKey(key)) {
+        if (explicitTranslationOverrideMap.has(key) || isExpectedSameAsEnglishKey(key, locale)) {
           expectedSameAsEnglish.push(key)
         } else {
           fallbackToEnglish.push(key)

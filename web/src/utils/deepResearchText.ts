@@ -1,5 +1,8 @@
 type Translate = (key: string, fallback: string) => string
 
+const DEEP_RESEARCH_WRAPPER_PREFIX_RE = /^[\[\(\{<【「『"'`]+/
+const DEEP_RESEARCH_WRAPPER_SUFFIX_RE = /[\]\)\}>】」』"'`]+$/
+
 const DEEP_RESEARCH_STAGE_KEYS: Record<string, [key: string, fallback: string]> = {
   intake: ['chat.deepResearchStageIntake', 'Intake'],
   planning: ['chat.deepResearchStagePlanning', 'Planning'],
@@ -28,7 +31,7 @@ const DEEP_RESEARCH_ACTION_KEYS: Record<string, [key: string, fallback: string]>
 }
 
 const DEEP_RESEARCH_STATUS_KEYS: Record<string, [key: string, fallback: string]> = {
-  running: ['chat.deepResearchProgress', 'Deep Research Running'],
+  running: ['chat.deepResearchProgress', 'Deep Research in progress'],
   pending: ['chat.deepResearchStagePlanning', 'Planning'],
   completed: ['chat.deepResearchStageCompleted', 'Completed'],
   failed: ['chat.deepResearchStageFailed', 'Failed'],
@@ -73,13 +76,28 @@ const DEEP_RESEARCH_GAP_KEYS: Record<string, [key: string, fallback: string]> = 
 }
 
 function humanizeDeepResearchToken(value: string | null | undefined): string {
-  const trimmed = String(value || '').trim()
+  const trimmed = unwrapDeepResearchToken(String(value || ''))
   if (!trimmed) return ''
   return trimmed.replace(/[_-]+/g, ' ').replace(/^./, (char) => char.toUpperCase())
 }
 
+function unwrapDeepResearchToken(value: string): string {
+  let next = value.trim()
+  while (next) {
+    const unwrapped = next
+      .replace(DEEP_RESEARCH_WRAPPER_PREFIX_RE, '')
+      .replace(DEEP_RESEARCH_WRAPPER_SUFFIX_RE, '')
+      .trim()
+    if (!unwrapped || unwrapped === next) {
+      return next
+    }
+    next = unwrapped
+  }
+  return ''
+}
+
 function normalizeDeepResearchToken(value: string): string {
-  return value
+  return unwrapDeepResearchToken(value)
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
@@ -92,6 +110,46 @@ function translateKnownToken(
 ): string {
   const entry = table[token]
   return entry ? translate(entry[0], entry[1]) : ''
+}
+
+function optionalTranslate(key: string, translate: Translate): string {
+  const marker = `__missing__${key}`
+  const value = translate(key, marker)
+  return value === marker ? '' : value
+}
+
+export function localizeResearchSurfaceTitle(translate: Translate): string {
+  return (
+    optionalTranslate('chat.deepResearchTitle', translate) ||
+    optionalTranslate('ui.deepResearchTitle', translate) ||
+    optionalTranslate('chat.researchTitle', translate) ||
+    optionalTranslate('harness.quickEval.researchLabel', translate) ||
+    'Deep Research'
+  )
+}
+
+export function localizeResearchProgressLabel(translate: Translate): string {
+  return (
+    optionalTranslate('chat.deepResearchProgress', translate) ||
+    optionalTranslate('chat.researchProgress', translate) ||
+    `${localizeResearchSurfaceTitle(translate)} in progress`
+  )
+}
+
+export function localizeResearchRunningTasksLabel(translate: Translate): string {
+  return (
+    optionalTranslate('chat.deepResearchRunningTasks', translate) ||
+    optionalTranslate('chat.researchRunningTasks', translate) ||
+    'Running Deep Research tasks'
+  )
+}
+
+export function localizeResearchRunningElsewhereLabel(translate: Translate): string {
+  return (
+    optionalTranslate('chat.deepResearchRunningElsewhere', translate) ||
+    optionalTranslate('chat.researchRunningElsewhere', translate) ||
+    'Track active Deep Research tasks across conversations.'
+  )
 }
 
 export function localizeDeepResearchStage(

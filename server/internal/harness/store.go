@@ -11,6 +11,8 @@ import (
 
 	agentpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agent"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
+	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 const baseSchemaSQL = `
@@ -252,24 +254,426 @@ CREATE INDEX IF NOT EXISTS idx_harness_comparison_reports_spec ON harness_compar
 `
 
 type SQLiteStore struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
+const (
+	harnessSQLiteBusyTimeoutMS      = 5000
+	harnessSQLiteBusyRetryAttempts  = 4
+	harnessSQLiteBusyRetryBaseDelay = 25 * time.Millisecond
+)
+
 func NewSQLiteStore(db *sql.DB) (*SQLiteStore, error) {
-	if db == nil {
+	return NewSQLiteStoreWithReadDB(db, db)
+}
+
+func NewSQLiteStoreWithReadDB(writeDB, readDB *sql.DB) (*SQLiteStore, error) {
+	if writeDB == nil {
 		return nil, fmt.Errorf("db is required")
 	}
-	if _, err := db.Exec(baseSchemaSQL); err != nil {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	configureSQLiteConnectionPool(writeDB)
+	store := &SQLiteStore{db: writeDB, readDB: readDB}
+	if err := store.configureSQLite(context.Background()); err != nil {
 		return nil, err
 	}
-	store := &SQLiteStore{db: db}
+	if _, err := store.execContext(context.Background(), baseSchemaSQL); err != nil {
+		return nil, err
+	}
 	if err := store.migrateSchema(context.Background()); err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(indexSchemaSQL); err != nil {
+	if _, err := store.execContext(context.Background(), indexSchemaSQL); err != nil {
 		return nil, err
 	}
 	return store, nil
+}
+
+func (s *SQLiteStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+type harnessRunRow struct {
+	ID             string       `zorm:"id"`
+	RootRunID      string       `zorm:"root_run_id"`
+	ParentRunID    string       `zorm:"parent_run_id"`
+	GroupID        string       `zorm:"group_id"`
+	GroupItemID    string       `zorm:"group_item_id"`
+	AttemptIndex   int          `zorm:"attempt_index"`
+	Kind           string       `zorm:"kind"`
+	Status         string       `zorm:"status"`
+	RuntimeState   string       `zorm:"runtime_state"`
+	UserID         string       `zorm:"user_id"`
+	ConversationID string       `zorm:"conversation_id"`
+	SessionID      string       `zorm:"session_id"`
+	AgentID        string       `zorm:"agent_id"`
+	Goal           string       `zorm:"goal"`
+	Model          string       `zorm:"model"`
+	Result         string       `zorm:"result"`
+	Error          string       `zorm:"error"`
+	Depth          int          `zorm:"depth"`
+	CurrentStep    int          `zorm:"current_step"`
+	Progress       int          `zorm:"progress"`
+	WorkspaceRoot  string       `zorm:"workspace_root"`
+	ArtifactRoot   string       `zorm:"artifact_root"`
+	SandboxMode    string       `zorm:"sandbox_mode"`
+	ApprovalMode   string       `zorm:"approval_mode"`
+	MaxDurationNS  int64        `zorm:"max_duration_ns"`
+	MaxSteps       int          `zorm:"max_steps"`
+	MaxToolRounds  int          `zorm:"max_tool_rounds"`
+	MaxSubagents   int          `zorm:"max_subagents"`
+	MaxDepth       int          `zorm:"max_depth"`
+	MetadataJSON   string       `zorm:"metadata_json"`
+	CreatedAt      time.Time    `zorm:"created_at"`
+	UpdatedAt      time.Time    `zorm:"updated_at"`
+	StartedAt      sql.NullTime `zorm:"started_at"`
+	FinishedAt     sql.NullTime `zorm:"finished_at"`
+}
+
+type harnessEventRow struct {
+	ID             string    `zorm:"id"`
+	RunID          string    `zorm:"run_id"`
+	RootRunID      string    `zorm:"root_run_id"`
+	ParentRunID    string    `zorm:"parent_run_id"`
+	Type           string    `zorm:"type"`
+	StepIndex      int       `zorm:"step_index"`
+	ToolName       string    `zorm:"tool_name"`
+	CapabilityKind string    `zorm:"capability_kind"`
+	Message        string    `zorm:"message"`
+	PayloadJSON    string    `zorm:"payload_json"`
+	CreatedAt      time.Time `zorm:"created_at"`
+}
+
+type harnessArtifactRow struct {
+	ID           string `zorm:"id"`
+	RunID        string `zorm:"run_id"`
+	Kind         string `zorm:"kind"`
+	Label        string `zorm:"label"`
+	PathOrURL    string `zorm:"path_or_url"`
+	MIMEType     string `zorm:"mime_type"`
+	SizeBytes    int64  `zorm:"size_bytes"`
+	MetadataJSON string `zorm:"metadata_json"`
+}
+
+type harnessGroupRow struct {
+	ID            string       `zorm:"id"`
+	Kind          string       `zorm:"kind"`
+	Title         string       `zorm:"title"`
+	Status        string       `zorm:"status"`
+	OwnerUserID   string       `zorm:"owner_user_id"`
+	Subject       string       `zorm:"subject"`
+	SchedulerJSON string       `zorm:"scheduler_json"`
+	ScoringJSON   string       `zorm:"scoring_json"`
+	MetadataJSON  string       `zorm:"metadata_json"`
+	SummaryJSON   string       `zorm:"summary_json"`
+	CreatedAt     time.Time    `zorm:"created_at"`
+	UpdatedAt     time.Time    `zorm:"updated_at"`
+	StartedAt     sql.NullTime `zorm:"started_at"`
+	FinishedAt    sql.NullTime `zorm:"finished_at"`
+}
+
+type harnessGroupItemRow struct {
+	ID             string       `zorm:"id"`
+	GroupID        string       `zorm:"group_id"`
+	Index          int          `zorm:"item_index"`
+	RunKind        string       `zorm:"run_kind"`
+	Profile        string       `zorm:"profile"`
+	InputJSON      string       `zorm:"input_json"`
+	ExpectedJSON   string       `zorm:"expected_json"`
+	MetadataJSON   string       `zorm:"metadata_json"`
+	Status         string       `zorm:"status"`
+	LatestRunID    string       `zorm:"latest_run_id"`
+	AttemptCount   int          `zorm:"attempt_count"`
+	MaxAttempts    int          `zorm:"max_attempts"`
+	LeaseOwner     string       `zorm:"lease_owner"`
+	LeaseExpiresAt sql.NullTime `zorm:"lease_expires_at"`
+	CreatedAt      time.Time    `zorm:"created_at"`
+	UpdatedAt      time.Time    `zorm:"updated_at"`
+}
+
+type harnessScorecardRow struct {
+	ID             string    `zorm:"id"`
+	GroupID        string    `zorm:"group_id"`
+	GroupItemID    string    `zorm:"group_item_id"`
+	RunID          string    `zorm:"run_id"`
+	Mode           string    `zorm:"mode"`
+	Verdict        string    `zorm:"verdict"`
+	Score          float64   `zorm:"score"`
+	BreakdownJSON  string    `zorm:"breakdown_json"`
+	EvidenceJSON   string    `zorm:"evidence_json"`
+	JudgeTraceJSON string    `zorm:"judge_trace_json"`
+	CreatedAt      time.Time `zorm:"created_at"`
+}
+
+func harnessRunFromRow(row harnessRunRow) Run {
+	run := Run{
+		ID:             row.ID,
+		RootRunID:      row.RootRunID,
+		ParentRunID:    row.ParentRunID,
+		GroupID:        row.GroupID,
+		GroupItemID:    row.GroupItemID,
+		AttemptIndex:   row.AttemptIndex,
+		Kind:           RunKind(row.Kind),
+		Status:         RunStatus(row.Status),
+		RuntimeState:   agentpkg.RuntimeState(row.RuntimeState),
+		UserID:         row.UserID,
+		ConversationID: row.ConversationID,
+		SessionID:      row.SessionID,
+		AgentID:        row.AgentID,
+		Goal:           row.Goal,
+		Model:          row.Model,
+		Result:         row.Result,
+		Error:          row.Error,
+		Depth:          row.Depth,
+		CurrentStep:    row.CurrentStep,
+		Progress:       row.Progress,
+		WorkspaceRoot:  row.WorkspaceRoot,
+		ArtifactRoot:   row.ArtifactRoot,
+		SandboxMode:    row.SandboxMode,
+		ApprovalMode:   ApprovalMode(row.ApprovalMode),
+		MaxDuration:    time.Duration(row.MaxDurationNS),
+		MaxSteps:       row.MaxSteps,
+		MaxToolRounds:  row.MaxToolRounds,
+		MaxSubagents:   row.MaxSubagents,
+		MaxDepth:       row.MaxDepth,
+		Metadata:       unmarshalMetadata(row.MetadataJSON),
+		CreatedAt:      row.CreatedAt,
+		UpdatedAt:      row.UpdatedAt,
+	}
+	if row.StartedAt.Valid {
+		ts := row.StartedAt.Time
+		run.StartedAt = &ts
+	}
+	if row.FinishedAt.Valid {
+		ts := row.FinishedAt.Time
+		run.FinishedAt = &ts
+	}
+	return run
+}
+
+func harnessRunsFromRows(rows []harnessRunRow) []Run {
+	out := make([]Run, 0, len(rows))
+	for i := range rows {
+		out = append(out, harnessRunFromRow(rows[i]))
+	}
+	return out
+}
+
+func harnessEventFromRow(row harnessEventRow) RunEvent {
+	return RunEvent{
+		ID:             row.ID,
+		RunID:          row.RunID,
+		RootRunID:      row.RootRunID,
+		ParentRunID:    row.ParentRunID,
+		Type:           row.Type,
+		StepIndex:      row.StepIndex,
+		ToolName:       row.ToolName,
+		CapabilityKind: row.CapabilityKind,
+		Message:        row.Message,
+		PayloadJSON:    row.PayloadJSON,
+		CreatedAt:      row.CreatedAt,
+	}
+}
+
+func harnessEventsFromRows(rows []harnessEventRow) []RunEvent {
+	out := make([]RunEvent, 0, len(rows))
+	for i := range rows {
+		out = append(out, harnessEventFromRow(rows[i]))
+	}
+	return out
+}
+
+func harnessArtifactFromRow(row harnessArtifactRow) ArtifactRef {
+	return ArtifactRef{
+		ID:           row.ID,
+		RunID:        row.RunID,
+		Kind:         row.Kind,
+		Label:        row.Label,
+		PathOrURL:    row.PathOrURL,
+		MIMEType:     row.MIMEType,
+		SizeBytes:    row.SizeBytes,
+		MetadataJSON: row.MetadataJSON,
+	}
+}
+
+func harnessArtifactsFromRows(rows []harnessArtifactRow) []ArtifactRef {
+	out := make([]ArtifactRef, 0, len(rows))
+	for i := range rows {
+		out = append(out, harnessArtifactFromRow(rows[i]))
+	}
+	return out
+}
+
+func harnessGroupFromRow(row harnessGroupRow) RunGroup {
+	group := RunGroup{
+		ID:          row.ID,
+		Kind:        RunGroupKind(row.Kind),
+		Title:       row.Title,
+		Status:      RunGroupStatus(row.Status),
+		OwnerUserID: row.OwnerUserID,
+		Subject:     row.Subject,
+		Metadata:    unmarshalMetadata(row.MetadataJSON),
+		Summary:     unmarshalMetadata(row.SummaryJSON),
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
+	_ = unmarshalInto(row.SchedulerJSON, &group.SchedulerConfig)
+	_ = unmarshalInto(row.ScoringJSON, &group.ScoringConfig)
+	if row.StartedAt.Valid {
+		ts := row.StartedAt.Time
+		group.StartedAt = &ts
+	}
+	if row.FinishedAt.Valid {
+		ts := row.FinishedAt.Time
+		group.FinishedAt = &ts
+	}
+	return group
+}
+
+func harnessGroupsFromRows(rows []harnessGroupRow) []RunGroup {
+	out := make([]RunGroup, 0, len(rows))
+	for i := range rows {
+		out = append(out, harnessGroupFromRow(rows[i]))
+	}
+	return out
+}
+
+func harnessGroupItemFromRow(row harnessGroupItemRow) RunGroupItem {
+	item := RunGroupItem{
+		ID:           row.ID,
+		GroupID:      row.GroupID,
+		Index:        row.Index,
+		RunKind:      RunKind(row.RunKind),
+		Profile:      row.Profile,
+		Input:        unmarshalMetadata(row.InputJSON),
+		Expected:     unmarshalMetadata(row.ExpectedJSON),
+		Metadata:     unmarshalMetadata(row.MetadataJSON),
+		Status:       RunGroupItemStatus(row.Status),
+		LatestRunID:  row.LatestRunID,
+		AttemptCount: row.AttemptCount,
+		MaxAttempts:  row.MaxAttempts,
+		LeaseOwner:   row.LeaseOwner,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+	}
+	if row.LeaseExpiresAt.Valid {
+		ts := row.LeaseExpiresAt.Time
+		item.LeaseExpiresAt = &ts
+	}
+	return item
+}
+
+func harnessGroupItemsFromRows(rows []harnessGroupItemRow) []RunGroupItem {
+	out := make([]RunGroupItem, 0, len(rows))
+	for i := range rows {
+		out = append(out, harnessGroupItemFromRow(rows[i]))
+	}
+	return out
+}
+
+func harnessScorecardFromRow(row harnessScorecardRow) Scorecard {
+	return Scorecard{
+		ID:             row.ID,
+		GroupID:        row.GroupID,
+		GroupItemID:    row.GroupItemID,
+		RunID:          row.RunID,
+		Mode:           ScoringMode(row.Mode),
+		Verdict:        ScoreVerdict(row.Verdict),
+		Score:          row.Score,
+		BreakdownJSON:  row.BreakdownJSON,
+		EvidenceJSON:   row.EvidenceJSON,
+		JudgeTraceJSON: row.JudgeTraceJSON,
+		CreatedAt:      row.CreatedAt,
+	}
+}
+
+func harnessScorecardsFromRows(rows []harnessScorecardRow) []Scorecard {
+	out := make([]Scorecard, 0, len(rows))
+	for i := range rows {
+		out = append(out, harnessScorecardFromRow(rows[i]))
+	}
+	return out
+}
+
+func configureSQLiteConnectionPool(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	// Harness relies on connection-scoped pragmas such as busy_timeout and
+	// foreign_keys. Keep a single shared SQLite connection so later pooled
+	// operations cannot bypass the configured runtime boundary.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+}
+
+func (s *SQLiteStore) configureSQLite(ctx context.Context) error {
+	pragmas := []string{
+		fmt.Sprintf("PRAGMA busy_timeout=%d", harnessSQLiteBusyTimeoutMS),
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA foreign_keys=ON",
+		"PRAGMA synchronous=FULL",
+		"PRAGMA wal_autocheckpoint=1000",
+	}
+	for _, pragma := range pragmas {
+		if _, err := s.execContext(ctx, pragma); err != nil {
+			return fmt.Errorf("exec %q: %w", pragma, err)
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) execContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	var (
+		result sql.Result
+		err    error
+	)
+	runErr := withSQLiteBusyRetry(ctx, func() error {
+		result, err = s.db.ExecContext(ctx, query, args...)
+		return err
+	})
+	if runErr != nil {
+		return nil, runErr
+	}
+	return result, nil
+}
+
+func (s *SQLiteStore) beginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	var (
+		tx  *sql.Tx
+		err error
+	)
+	runErr := withSQLiteBusyRetry(ctx, func() error {
+		tx, err = s.db.BeginTx(ctx, opts)
+		return err
+	})
+	if runErr != nil {
+		return nil, runErr
+	}
+	return tx, nil
+}
+
+func txExecContextWithBusyRetry(ctx context.Context, tx *sql.Tx, query string, args ...interface{}) (sql.Result, error) {
+	var (
+		result sql.Result
+		err    error
+	)
+	runErr := withSQLiteBusyRetry(ctx, func() error {
+		result, err = tx.ExecContext(ctx, query, args...)
+		return err
+	})
+	if runErr != nil {
+		return nil, runErr
+	}
+	return result, nil
 }
 
 func (s *SQLiteStore) CreateRun(ctx context.Context, run *Run) error {
@@ -283,7 +687,7 @@ func (s *SQLiteStore) CreateRun(ctx context.Context, run *Run) error {
 	if run.UpdatedAt.IsZero() {
 		run.UpdatedAt = run.CreatedAt
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO harness_runs (
+	_, err := s.execContext(ctx, `INSERT INTO harness_runs (
 		id, root_run_id, parent_run_id, group_id, group_item_id, attempt_index, kind, status, runtime_state, user_id, conversation_id, session_id, agent_id,
 		goal, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
 		approval_mode, max_duration_ns, max_steps, max_tool_rounds, max_subagents, max_depth, metadata_json,
@@ -303,7 +707,7 @@ func (s *SQLiteStore) UpdateRun(ctx context.Context, run *Run) error {
 		return fmt.Errorf("run is required")
 	}
 	run.UpdatedAt = timeutil.NowTime()
-	_, err := s.db.ExecContext(ctx, `UPDATE harness_runs SET
+	_, err := s.execContext(ctx, `UPDATE harness_runs SET
 		root_run_id=?, parent_run_id=?, group_id=?, group_item_id=?, attempt_index=?, kind=?, status=?, runtime_state=?, user_id=?, conversation_id=?, session_id=?, agent_id=?,
 		goal=?, model=?, result=?, error=?, depth=?, current_step=?, progress=?, workspace_root=?, artifact_root=?, sandbox_mode=?,
 		approval_mode=?, max_duration_ns=?, max_steps=?, max_tool_rounds=?, max_subagents=?, max_depth=?, metadata_json=?,
@@ -319,107 +723,118 @@ func (s *SQLiteStore) UpdateRun(ctx context.Context, run *Run) error {
 }
 
 func (s *SQLiteStore) GetRun(ctx context.Context, id string) (*Run, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT
-		id, root_run_id, parent_run_id, group_id, group_item_id, attempt_index, kind, status, runtime_state, user_id, conversation_id, session_id, agent_id,
-		goal, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
-		approval_mode, max_duration_ns, max_steps, max_tool_rounds, max_subagents, max_depth, metadata_json,
-		created_at, updated_at, started_at, finished_at
-		FROM harness_runs WHERE id = ?`, id)
-	return scanRun(row)
+	var rows []harnessRunRow
+	if _, err := z.TableContext(ctx, s.reader(), "harness_runs").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	run := harnessRunFromRow(rows[0])
+	return &run, nil
 }
 
 func (s *SQLiteStore) ListRuns(ctx context.Context, filter RunFilter) ([]Run, error) {
+	var conds []interface{}
+	if v := strings.TrimSpace(filter.UserID); v != "" {
+		conds = append(conds, z.Eq("user_id", v))
+	}
+	if filter.Kind != "" {
+		conds = append(conds, z.Eq("kind", string(filter.Kind)))
+	} else if len(filter.Kinds) > 0 {
+		kinds := make([]interface{}, 0, len(filter.Kinds))
+		for _, kind := range filter.Kinds {
+			if kind == "" {
+				continue
+			}
+			kinds = append(kinds, string(kind))
+		}
+		if len(kinds) > 0 {
+			conds = append(conds, z.In("kind", kinds...))
+		}
+	}
+	if len(filter.Statuses) > 0 {
+		statuses := make([]interface{}, 0, len(filter.Statuses))
+		for _, st := range filter.Statuses {
+			if st == "" {
+				continue
+			}
+			statuses = append(statuses, string(st))
+		}
+		if len(statuses) > 0 {
+			conds = append(conds, z.In("status", statuses...))
+		}
+	}
+	if v := strings.TrimSpace(filter.ConversationID); v != "" {
+		conds = append(conds, z.Eq("conversation_id", v))
+	}
+	if v := strings.TrimSpace(filter.GroupID); v != "" {
+		conds = append(conds, z.Eq("group_id", v))
+	}
+	if v := strings.TrimSpace(filter.GroupItemID); v != "" {
+		conds = append(conds, z.Eq("group_item_id", v))
+	}
+	if v := strings.TrimSpace(filter.ParentRunID); v != "" {
+		conds = append(conds, z.Eq("parent_run_id", v))
+	}
+	if v := strings.TrimSpace(filter.RootRunID); v != "" {
+		conds = append(conds, z.Eq("root_run_id", v))
+	}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	opts := []z.ZormItem{
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit),
+	}
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
+	}
+	var rows []harnessRunRow
+	if _, err := z.TableContext(ctx, s.reader(), "harness_runs").Select(&rows, opts...); err != nil {
+		return nil, err
+	}
+	return harnessRunsFromRows(rows), nil
+}
+
+func (s *SQLiteStore) FindRunByMetadata(ctx context.Context, kind RunKind, key, value string) (*Run, error) {
+	if s == nil || s.reader() == nil {
+		return nil, fmt.Errorf("harness store is not configured")
+	}
+	key = strings.TrimSpace(key)
+	value = strings.TrimSpace(value)
+	if key == "" || value == "" {
+		return nil, nil
+	}
 	query := `SELECT
 		id, root_run_id, parent_run_id, group_id, group_item_id, attempt_index, kind, status, runtime_state, user_id, conversation_id, session_id, agent_id,
 		goal, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
 		approval_mode, max_duration_ns, max_steps, max_tool_rounds, max_subagents, max_depth, metadata_json,
 		created_at, updated_at, started_at, finished_at
-		FROM harness_runs`
-	var (
-		clauses []string
-		args    []interface{}
-	)
-	if v := strings.TrimSpace(filter.UserID); v != "" {
-		clauses = append(clauses, "user_id = ?")
-		args = append(args, v)
-	}
-	if filter.Kind != "" {
-		clauses = append(clauses, "kind = ?")
-		args = append(args, string(filter.Kind))
-	} else if len(filter.Kinds) > 0 {
-		parts := make([]string, 0, len(filter.Kinds))
-		for _, kind := range filter.Kinds {
-			if kind == "" {
-				continue
-			}
-			parts = append(parts, "?")
-			args = append(args, string(kind))
-		}
-		if len(parts) > 0 {
-			clauses = append(clauses, "kind IN ("+strings.Join(parts, ",")+")")
-		}
-	}
-	if len(filter.Statuses) > 0 {
-		parts := make([]string, 0, len(filter.Statuses))
-		for _, st := range filter.Statuses {
-			if st == "" {
-				continue
-			}
-			parts = append(parts, "?")
-			args = append(args, string(st))
-		}
-		if len(parts) > 0 {
-			clauses = append(clauses, "status IN ("+strings.Join(parts, ",")+")")
-		}
-	}
-	if v := strings.TrimSpace(filter.ConversationID); v != "" {
-		clauses = append(clauses, "conversation_id = ?")
-		args = append(args, v)
-	}
-	if v := strings.TrimSpace(filter.GroupID); v != "" {
-		clauses = append(clauses, "group_id = ?")
-		args = append(args, v)
-	}
-	if v := strings.TrimSpace(filter.GroupItemID); v != "" {
-		clauses = append(clauses, "group_item_id = ?")
-		args = append(args, v)
-	}
-	if v := strings.TrimSpace(filter.ParentRunID); v != "" {
-		clauses = append(clauses, "parent_run_id = ?")
-		args = append(args, v)
-	}
-	if v := strings.TrimSpace(filter.RootRunID); v != "" {
-		clauses = append(clauses, "root_run_id = ?")
-		args = append(args, v)
-	}
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
-	}
-	query += " ORDER BY created_at DESC"
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	query += " LIMIT ?"
-	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	FROM harness_runs
+	WHERE kind = ? AND json_extract(metadata_json, ?) = ?
+	ORDER BY created_at DESC
+	LIMIT 1`
+	rows, err := s.reader().QueryContext(ctx, query, string(kind), "$."+key, value)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Run
-	for rows.Next() {
-		run, err := scanRunRows(rows)
-		if err != nil {
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		out = append(out, *run)
+		return nil, nil
 	}
-	return out, rows.Err()
+	return scanRunRows(rows)
 }
 
 func (s *SQLiteStore) AppendEvent(ctx context.Context, event RunEvent) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO harness_run_events (
+	_, err := s.execContext(ctx, `INSERT INTO harness_run_events (
 		id, run_id, root_run_id, parent_run_id, type, step_index, tool_name, capability_kind, message, payload_json, created_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.ID, event.RunID, event.RootRunID, event.ParentRunID, event.Type, event.StepIndex, event.ToolName,
@@ -432,25 +847,19 @@ func (s *SQLiteStore) ListEvents(ctx context.Context, runID string, limit int) (
 	if limit <= 0 {
 		limit = defaultEventLimit
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, run_id, root_run_id, parent_run_id, type, step_index, tool_name, capability_kind, message, payload_json, created_at
-		FROM harness_run_events WHERE run_id = ? ORDER BY created_at ASC, id ASC LIMIT ?`, runID, limit)
-	if err != nil {
+	var rows []harnessEventRow
+	if _, err := z.TableContext(ctx, s.reader(), "harness_run_events").Select(&rows,
+		z.Where(z.Eq("run_id", runID)),
+		z.OrderBy("created_at ASC", "id ASC"),
+		z.Limit(limit),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []RunEvent
-	for rows.Next() {
-		var ev RunEvent
-		if err := rows.Scan(&ev.ID, &ev.RunID, &ev.RootRunID, &ev.ParentRunID, &ev.Type, &ev.StepIndex, &ev.ToolName, &ev.CapabilityKind, &ev.Message, &ev.PayloadJSON, &ev.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, ev)
-	}
-	return out, rows.Err()
+	return harnessEventsFromRows(rows), nil
 }
 
 func (s *SQLiteStore) AttachArtifact(ctx context.Context, ref ArtifactRef) error {
-	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO harness_artifacts (
+	_, err := s.execContext(ctx, `INSERT OR REPLACE INTO harness_artifacts (
 		id, run_id, kind, label, path_or_url, mime_type, size_bytes, metadata_json
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		ref.ID, ref.RunID, ref.Kind, ref.Label, ref.PathOrURL, ref.MIMEType, ref.SizeBytes, ref.MetadataJSON,
@@ -459,25 +868,18 @@ func (s *SQLiteStore) AttachArtifact(ctx context.Context, ref ArtifactRef) error
 }
 
 func (s *SQLiteStore) ListArtifacts(ctx context.Context, runID string) ([]ArtifactRef, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, run_id, kind, label, path_or_url, mime_type, size_bytes, metadata_json
-		FROM harness_artifacts WHERE run_id = ? ORDER BY id ASC`, runID)
-	if err != nil {
+	var rows []harnessArtifactRow
+	if _, err := z.TableContext(ctx, s.reader(), "harness_artifacts").Select(&rows,
+		z.Where(z.Eq("run_id", runID)),
+		z.OrderBy("id ASC"),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []ArtifactRef
-	for rows.Next() {
-		var ref ArtifactRef
-		if err := rows.Scan(&ref.ID, &ref.RunID, &ref.Kind, &ref.Label, &ref.PathOrURL, &ref.MIMEType, &ref.SizeBytes, &ref.MetadataJSON); err != nil {
-			return nil, err
-		}
-		out = append(out, ref)
-	}
-	return out, rows.Err()
+	return harnessArtifactsFromRows(rows), nil
 }
 
 func (s *SQLiteStore) DeleteRun(ctx context.Context, id string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -486,13 +888,13 @@ func (s *SQLiteStore) DeleteRun(ctx context.Context, id string) error {
 			_ = tx.Rollback()
 		}
 	}()
-	if _, err = tx.ExecContext(ctx, `DELETE FROM harness_run_events WHERE run_id = ?`, id); err != nil {
+	if _, err = txExecContextWithBusyRetry(ctx, tx, `DELETE FROM harness_run_events WHERE run_id = ?`, id); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM harness_artifacts WHERE run_id = ?`, id); err != nil {
+	if _, err = txExecContextWithBusyRetry(ctx, tx, `DELETE FROM harness_artifacts WHERE run_id = ?`, id); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM harness_runs WHERE id = ?`, id); err != nil {
+	if _, err = txExecContextWithBusyRetry(ctx, tx, `DELETE FROM harness_runs WHERE id = ?`, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -509,7 +911,7 @@ func (s *SQLiteStore) CreateGroup(ctx context.Context, group *RunGroup) error {
 	if group.UpdatedAt.IsZero() {
 		group.UpdatedAt = group.CreatedAt
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO harness_run_groups (
+	_, err := s.execContext(ctx, `INSERT INTO harness_run_groups (
 		id, kind, title, status, owner_user_id, subject, scheduler_json, scoring_json, metadata_json, summary_json,
 		created_at, updated_at, started_at, finished_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -525,7 +927,7 @@ func (s *SQLiteStore) UpdateGroup(ctx context.Context, group *RunGroup) error {
 		return fmt.Errorf("group is required")
 	}
 	group.UpdatedAt = timeutil.NowTime()
-	_, err := s.db.ExecContext(ctx, `UPDATE harness_run_groups SET
+	_, err := s.execContext(ctx, `UPDATE harness_run_groups SET
 		kind=?, title=?, status=?, owner_user_id=?, subject=?, scheduler_json=?, scoring_json=?, metadata_json=?, summary_json=?,
 		updated_at=?, started_at=?, finished_at=?
 		WHERE id=?`,
@@ -537,83 +939,72 @@ func (s *SQLiteStore) UpdateGroup(ctx context.Context, group *RunGroup) error {
 }
 
 func (s *SQLiteStore) GetGroup(ctx context.Context, id string) (*RunGroup, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT
-		id, kind, title, status, owner_user_id, subject, scheduler_json, scoring_json, metadata_json, summary_json,
-		created_at, updated_at, started_at, finished_at
-		FROM harness_run_groups WHERE id = ?`, id)
-	return scanGroup(row)
+	var rows []harnessGroupRow
+	if _, err := z.TableContext(ctx, s.reader(), "harness_run_groups").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	group := harnessGroupFromRow(rows[0])
+	return &group, nil
 }
 
 func (s *SQLiteStore) ListGroups(ctx context.Context, filter RunGroupFilter) ([]RunGroup, error) {
-	query := `SELECT
-		id, kind, title, status, owner_user_id, subject, scheduler_json, scoring_json, metadata_json, summary_json,
-		created_at, updated_at, started_at, finished_at
-		FROM harness_run_groups`
-	var (
-		clauses []string
-		args    []interface{}
-	)
+	var conds []interface{}
 	if v := strings.TrimSpace(filter.OwnerUserID); v != "" {
-		clauses = append(clauses, "owner_user_id = ?")
-		args = append(args, v)
+		conds = append(conds, z.Eq("owner_user_id", v))
 	}
 	if len(filter.Kinds) > 0 {
-		parts := make([]string, 0, len(filter.Kinds))
+		kinds := make([]interface{}, 0, len(filter.Kinds))
 		for _, kind := range filter.Kinds {
 			if kind == "" {
 				continue
 			}
-			parts = append(parts, "?")
-			args = append(args, string(kind))
+			kinds = append(kinds, string(kind))
 		}
-		if len(parts) > 0 {
-			clauses = append(clauses, "kind IN ("+strings.Join(parts, ",")+")")
+		if len(kinds) > 0 {
+			conds = append(conds, z.In("kind", kinds...))
 		}
 	}
 	if len(filter.Statuses) > 0 {
-		parts := make([]string, 0, len(filter.Statuses))
+		statuses := make([]interface{}, 0, len(filter.Statuses))
 		for _, status := range filter.Statuses {
 			if status == "" {
 				continue
 			}
-			parts = append(parts, "?")
-			args = append(args, string(status))
+			statuses = append(statuses, string(status))
 		}
-		if len(parts) > 0 {
-			clauses = append(clauses, "status IN ("+strings.Join(parts, ",")+")")
+		if len(statuses) > 0 {
+			conds = append(conds, z.In("status", statuses...))
 		}
 	}
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
-	}
-	query += " ORDER BY created_at DESC"
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = 50
 	}
-	query += " LIMIT ?"
-	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	opts := []z.ZormItem{
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit),
+	}
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
+	}
+	var rows []harnessGroupRow
+	if _, err := z.TableContext(ctx, s.reader(), "harness_run_groups").Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []RunGroup
-	for rows.Next() {
-		group, scanErr := scanGroupRows(rows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		out = append(out, *group)
-	}
-	return out, rows.Err()
+	return harnessGroupsFromRows(rows), nil
 }
 
 func (s *SQLiteStore) CreateGroupItems(ctx context.Context, items []RunGroupItem) error {
 	if len(items) == 0 {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -631,7 +1022,7 @@ func (s *SQLiteStore) CreateGroupItems(ctx context.Context, items []RunGroupItem
 		if item.UpdatedAt.IsZero() {
 			item.UpdatedAt = item.CreatedAt
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO harness_run_group_items (
+		if _, err = txExecContextWithBusyRetry(ctx, tx, `INSERT INTO harness_run_group_items (
 			id, group_id, item_index, run_kind, profile, input_json, expected_json, metadata_json, status, latest_run_id,
 			attempt_count, max_attempts, lease_owner, lease_expires_at, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -650,7 +1041,7 @@ func (s *SQLiteStore) UpdateGroupItem(ctx context.Context, item *RunGroupItem) e
 		return fmt.Errorf("group item is required")
 	}
 	item.UpdatedAt = timeutil.NowTime()
-	_, err := s.db.ExecContext(ctx, `UPDATE harness_run_group_items SET
+	_, err := s.execContext(ctx, `UPDATE harness_run_group_items SET
 		group_id=?, item_index=?, run_kind=?, profile=?, input_json=?, expected_json=?, metadata_json=?, status=?, latest_run_id=?,
 		attempt_count=?, max_attempts=?, lease_owner=?, lease_expires_at=?, updated_at=?
 		WHERE id=?`,
@@ -662,63 +1053,82 @@ func (s *SQLiteStore) UpdateGroupItem(ctx context.Context, item *RunGroupItem) e
 }
 
 func (s *SQLiteStore) GetGroupItem(ctx context.Context, id string) (*RunGroupItem, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT
+	rows, err := s.reader().QueryContext(ctx, `SELECT
 		id, group_id, item_index, run_kind, profile, input_json, expected_json, metadata_json, status, latest_run_id,
 		attempt_count, max_attempts, lease_owner, lease_expires_at, created_at, updated_at
-		FROM harness_run_group_items WHERE id = ?`, id)
-	return scanGroupItem(row)
-}
-
-func (s *SQLiteStore) ListGroupItems(ctx context.Context, groupID string) ([]RunGroupItem, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, group_id, item_index, run_kind, profile, input_json, expected_json, metadata_json, status, latest_run_id,
-		attempt_count, max_attempts, lease_owner, lease_expires_at, created_at, updated_at
-		FROM harness_run_group_items WHERE group_id = ? ORDER BY item_index ASC`, groupID)
+	FROM harness_run_group_items
+	WHERE id = ?
+	LIMIT 1`, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []RunGroupItem
-	for rows.Next() {
-		item, scanErr := scanGroupItemRows(rows)
-		if scanErr != nil {
-			return nil, scanErr
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
 		}
-		out = append(out, *item)
+		return nil, sql.ErrNoRows
 	}
-	return out, rows.Err()
+	return scanGroupItemRows(rows)
+}
+
+func (s *SQLiteStore) ListGroupItems(ctx context.Context, groupID string) ([]RunGroupItem, error) {
+	rows, err := s.reader().QueryContext(ctx, `SELECT
+		id, group_id, item_index, run_kind, profile, input_json, expected_json, metadata_json, status, latest_run_id,
+		attempt_count, max_attempts, lease_owner, lease_expires_at, created_at, updated_at
+	FROM harness_run_group_items
+	WHERE group_id = ?
+	ORDER BY item_index ASC`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]RunGroupItem, 0)
+	for rows.Next() {
+		item, err := scanGroupItemRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (s *SQLiteStore) CountGroupItemsByStatuses(ctx context.Context, groupID string, statuses []RunGroupItemStatus) (int, error) {
 	if strings.TrimSpace(groupID) == "" || len(statuses) == 0 {
 		return 0, nil
 	}
-	parts := make([]string, 0, len(statuses))
-	args := make([]interface{}, 0, len(statuses)+1)
-	args = append(args, groupID)
+	statusValues := make([]interface{}, 0, len(statuses))
 	for _, status := range statuses {
 		if status == "" {
 			continue
 		}
-		parts = append(parts, "?")
-		args = append(args, string(status))
+		statusValues = append(statusValues, string(status))
 	}
-	if len(parts) == 0 {
+	if len(statusValues) == 0 {
 		return 0, nil
 	}
-	row := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM harness_run_group_items WHERE group_id = ? AND status IN (`+strings.Join(parts, ",")+`)`, args...)
-	var count int
-	if err := row.Scan(&count); err != nil {
+	var count int64
+	if _, err := z.TableContext(ctx, s.reader(), "harness_run_group_items").Select(&count,
+		z.Fields("COUNT(1)"),
+		z.Where(
+			z.Eq("group_id", strings.TrimSpace(groupID)),
+			z.In("status", statusValues...),
+		),
+	); err != nil {
 		return 0, err
 	}
-	return count, nil
+	return int(count), nil
 }
 
 func (s *SQLiteStore) ClaimNextGroupItem(ctx context.Context, groupID, workerID string, leaseTTL time.Duration, now time.Time) (*RunGroupItem, error) {
 	if strings.TrimSpace(groupID) == "" {
 		return nil, sql.ErrNoRows
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -727,41 +1137,49 @@ func (s *SQLiteStore) ClaimNextGroupItem(ctx context.Context, groupID, workerID 
 			_ = tx.Rollback()
 		}
 	}()
-	row := tx.QueryRowContext(ctx, `SELECT
-		id, group_id, item_index, run_kind, profile, input_json, expected_json, metadata_json, status, latest_run_id,
-		attempt_count, max_attempts, lease_owner, lease_expires_at, created_at, updated_at
-		FROM harness_run_group_items
-		WHERE group_id = ?
-			AND status = ?
-			AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-		ORDER BY item_index ASC
-		LIMIT 1`, groupID, string(RunGroupItemStatusQueued), now)
-	item, err := scanGroupItem(row)
-	if err != nil {
-		if errorsIsNoRows(err) {
-			_ = tx.Rollback()
-			return nil, sql.ErrNoRows
-		}
+	var rows []harnessGroupItemRow
+	if _, err = z.TableContext(ctx, tx, "harness_run_group_items").Select(&rows,
+		z.Where(
+			"group_id = ? AND status = ? AND (lease_expires_at IS NULL OR lease_expires_at <= ?)",
+			groupID,
+			string(RunGroupItemStatusQueued),
+			now,
+		),
+		z.OrderBy("item_index ASC"),
+		z.Limit(1),
+	); err != nil {
 		return nil, err
 	}
+	if len(rows) == 0 {
+		_ = tx.Rollback()
+		return nil, sql.ErrNoRows
+	}
+	item := harnessGroupItemFromRow(rows[0])
 	item.Status = RunGroupItemStatusRunning
 	item.LeaseOwner = workerID
 	leaseUntil := now.Add(leaseTTL)
 	item.LeaseExpiresAt = &leaseUntil
 	item.UpdatedAt = now
-	if _, err = tx.ExecContext(ctx, `UPDATE harness_run_group_items SET
-		status=?, lease_owner=?, lease_expires_at=?, updated_at=?
-		WHERE id=?`, string(item.Status), item.LeaseOwner, nullableTime(item.LeaseExpiresAt), item.UpdatedAt, item.ID); err != nil {
+	if _, err = z.TableContext(ctx, tx, "harness_run_group_items").Update(
+		z.V{
+			"status":           string(item.Status),
+			"lease_owner":      item.LeaseOwner,
+			"lease_expires_at": nullableTime(item.LeaseExpiresAt),
+			"updated_at":       item.UpdatedAt,
+		},
+		z.Fields("status", "lease_owner", "lease_expires_at", "updated_at"),
+		z.Where(z.Eq("id", item.ID)),
+	); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
-	return item, nil
+	return &item, nil
 }
 
 func (s *SQLiteStore) AttachScorecard(ctx context.Context, scorecard Scorecard) error {
-	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO harness_scorecards (
+	_, err := s.execContext(ctx, `INSERT OR REPLACE INTO harness_scorecards (
 		id, group_id, group_item_id, run_id, mode, verdict, score, breakdown_json, evidence_json, judge_trace_json, created_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		scorecard.ID, scorecard.GroupID, scorecard.GroupItemID, scorecard.RunID, string(scorecard.Mode), string(scorecard.Verdict),
@@ -771,38 +1189,29 @@ func (s *SQLiteStore) AttachScorecard(ctx context.Context, scorecard Scorecard) 
 }
 
 func (s *SQLiteStore) ListScorecards(ctx context.Context, groupID string) ([]Scorecard, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT
-		id, group_id, group_item_id, run_id, mode, verdict, score, breakdown_json, evidence_json, judge_trace_json, created_at
-		FROM harness_scorecards WHERE group_id = ? ORDER BY created_at DESC, id DESC`, groupID)
-	if err != nil {
+	var rows []harnessScorecardRow
+	if _, err := z.TableContext(ctx, s.reader(), "harness_scorecards").Select(&rows,
+		z.Where(z.Eq("group_id", groupID)),
+		z.OrderBy("created_at DESC", "id DESC"),
+	); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []Scorecard
-	for rows.Next() {
-		var scorecard Scorecard
-		var mode, verdict string
-		if err := rows.Scan(&scorecard.ID, &scorecard.GroupID, &scorecard.GroupItemID, &scorecard.RunID, &mode, &verdict, &scorecard.Score, &scorecard.BreakdownJSON, &scorecard.EvidenceJSON, &scorecard.JudgeTraceJSON, &scorecard.CreatedAt); err != nil {
-			return nil, err
-		}
-		scorecard.Mode = ScoringMode(mode)
-		scorecard.Verdict = ScoreVerdict(verdict)
-		out = append(out, scorecard)
-	}
-	return out, rows.Err()
+	return harnessScorecardsFromRows(rows), nil
 }
 
 func (s *SQLiteStore) LatestScorecardForItem(ctx context.Context, groupItemID string) (*Scorecard, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT
-		id, group_id, group_item_id, run_id, mode, verdict, score, breakdown_json, evidence_json, judge_trace_json, created_at
-		FROM harness_scorecards WHERE group_item_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`, groupItemID)
-	var scorecard Scorecard
-	var mode, verdict string
-	if err := row.Scan(&scorecard.ID, &scorecard.GroupID, &scorecard.GroupItemID, &scorecard.RunID, &mode, &verdict, &scorecard.Score, &scorecard.BreakdownJSON, &scorecard.EvidenceJSON, &scorecard.JudgeTraceJSON, &scorecard.CreatedAt); err != nil {
+	var rows []harnessScorecardRow
+	if _, err := z.TableContext(ctx, s.reader(), "harness_scorecards").Select(&rows,
+		z.Where(z.Eq("group_item_id", groupItemID)),
+		z.OrderBy("created_at DESC", "id DESC"),
+		z.Limit(1),
+	); err != nil {
 		return nil, err
 	}
-	scorecard.Mode = ScoringMode(mode)
-	scorecard.Verdict = ScoreVerdict(verdict)
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	scorecard := harnessScorecardFromRow(rows[0])
 	return &scorecard, nil
 }
 
@@ -844,7 +1253,7 @@ func (s *SQLiteStore) ensureColumn(ctx context.Context, table string, column str
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, ddl)
+	_, err = s.execContext(ctx, ddl)
 	return err
 }
 
@@ -984,4 +1393,49 @@ func unmarshalInto(raw string, dest interface{}) error {
 
 func errorsIsNoRows(err error) bool {
 	return errors.Is(err, sql.ErrNoRows)
+}
+
+func withSQLiteBusyRetry(ctx context.Context, fn func() error) error {
+	if fn == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	delay := harnessSQLiteBusyRetryBaseDelay
+	var lastErr error
+	for attempt := 0; attempt < harnessSQLiteBusyRetryAttempts; attempt++ {
+		lastErr = fn()
+		if lastErr == nil || !isSQLiteBusyError(lastErr) || attempt == harnessSQLiteBusyRetryAttempts-1 {
+			return lastErr
+		}
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return lastErr
+		case <-timer.C:
+		}
+		delay *= 2
+	}
+	return lastErr
+}
+
+func isSQLiteBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code == sqlite3.ErrBusy || sqliteErr.Code == sqlite3.ErrLocked
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "database is locked") ||
+		strings.Contains(message, "database table is locked") ||
+		strings.Contains(message, "database schema is locked")
 }

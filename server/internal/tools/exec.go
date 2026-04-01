@@ -227,7 +227,13 @@ func (t *ExecTool) requestCommandSafetyApproval(ctx context.Context, command, wo
 		return nil
 	}
 	if t.approvals == nil {
-		return fmt.Errorf("exec blocked: %s requires approval and no approval manager is configured", match.Reason)
+		return newToolRuntimeError("exec_approval_unavailable", fmt.Sprintf("exec blocked: %s requires approval and no approval manager is configured", match.Reason), nil, map[string]interface{}{
+			"kind":       "command",
+			"command":    strings.TrimSpace(command),
+			"workdir":    strings.TrimSpace(workdir),
+			"host":       strings.TrimSpace(host),
+			"risk_level": string(match.RiskLevel),
+		})
 	}
 
 	userID := GetUserID(ctx)
@@ -252,7 +258,12 @@ func (t *ExecTool) requestCommandSafetyApproval(ctx context.Context, command, wo
 		t.rememberApprovedCommand(command)
 		return nil
 	default:
-		return errors.New("exec denied: user denied the command")
+		return newToolRuntimeError("exec_approval_denied", "exec denied: user denied the command", nil, map[string]interface{}{
+			"kind":    "command",
+			"command": strings.TrimSpace(command),
+			"workdir": strings.TrimSpace(workdir),
+			"host":    strings.TrimSpace(host),
+		})
 	}
 }
 
@@ -268,12 +279,21 @@ func (t *ExecTool) Policy() ExecPolicy {
 
 // Definition returns the tool definition for the LLM.
 func (t *ExecTool) Definition() ToolDefinition {
-	desc := "Execute shell commands on the host. Returns stdout, stderr, exit code, and session ID. Use the 'process' tool to list/poll/log/kill background sessions."
+	desc := "Execute shell commands on the host. Returns stdout, stderr, exit code, and session ID. Also manages exec sessions via action=list|poll|log|kill with session_id."
 	if t.sandbox != nil {
 		desc += " Sandbox mode is available for isolated execution — set host to 'sandbox' for filesystem-level isolation."
 	}
 
 	props := map[string]interface{}{
+		"action": map[string]interface{}{
+			"type":        "string",
+			"description": "Optional exec session action: list, poll, log, or kill. When set, exec manages existing sessions instead of running a new command.",
+			"enum":        []string{"list", "poll", "log", "kill", "list_sessions", "poll_session", "session_log", "kill_session"},
+		},
+		"session_id": map[string]interface{}{
+			"type":        "string",
+			"description": "Session ID used with action=poll, log, or kill.",
+		},
 		"command": map[string]interface{}{
 			"type":        "string",
 			"description": "Shell command to execute",
@@ -319,7 +339,10 @@ func (t *ExecTool) Definition() ToolDefinition {
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": props,
-			"required":   []string{"command"},
+			"anyOf": []map[string]interface{}{
+				{"required": []string{"command"}},
+				{"required": []string{"action"}},
+			},
 		},
 	}
 }
@@ -341,6 +364,10 @@ type execResult struct {
 
 // Execute runs the shell command.
 func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	if action := strings.TrimSpace(strings.ToLower(firstCompatString(args, "action", "op", "operation"))); action != "" {
+		return executeProcessAction(t.sessions, args)
+	}
+
 	command := strings.TrimSpace(firstCompatString(args, "command", "cmd"))
 	if command == "" {
 		return nil, errors.New("command is required")
@@ -384,6 +411,20 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		"has_rest_args", restArgs != "",
 		"strict_shell", strictShell,
 	)
+
+	// Short-circuit simple `blue <skill> ...` commands before shell-specific
+	// security/path handling. Once we dispatch into the skill executor, the
+	// request is no longer a shell command and should not be blocked by
+	// shell-level PATH or directory validation. In strict-shell mode we only
+	// allow this for single blue CLI invocations without shell operators, so
+	// the public bash surface keeps its shell-hardening boundary.
+	if t.skillExec != nil && isBlueCommand && (!strictShell || canStrictShellBlueSkillShortCircuit(command)) {
+		slog.Info("[exec] trying blue skill short-circuit", "command", truncateStr(command, 200))
+		if result, ok := t.trySkillShortCircuit(ctx, command, nil, workdirArg); ok {
+			return result, nil
+		}
+		slog.Info("[exec] blue skill short-circuit not taken", "command", truncateStr(command, 200))
+	}
 
 	if !strictShell && len(t.toolNames) > 0 {
 		if isToolName {
@@ -600,16 +641,6 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	if hostArg == "sandbox" && strings.HasPrefix(strings.TrimSpace(command), "blue ") {
 		hostArg = "builtin"
 		warnings = append(warnings, "blue subcommand forced to host (IPC)")
-	}
-
-	// Short-circuit `blue <skill> key=value` commands: call the skill executor
-	// directly instead of spawning a subprocess + IPC round-trip.
-	if !strictShell && t.skillExec != nil && isBlueCommand {
-		slog.Info("[exec] trying blue skill short-circuit", "command", truncateStr(command, 200))
-		if result, ok := t.trySkillShortCircuit(ctx, command, warnings, workdirArg); ok {
-			return result, nil
-		}
-		slog.Info("[exec] blue skill short-circuit not taken", "command", truncateStr(command, 200))
 	}
 
 	// Sandbox mode: delegate to sandbox.Manager for filesystem-level isolation.
@@ -1000,7 +1031,15 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 				restArgs = remaining
 			}
 		}
-		parseKeyValuePairs(restArgs, input)
+		if strings.Contains(restArgs, "=") {
+			parseKeyValuePairs(restArgs, input)
+		} else if strings.TrimSpace(restArgs) != "" {
+			if freeTextInput, err := buildPinnedSkillFreeTextInput(skillName, restArgs); err == nil {
+				for key, value := range freeTextInput {
+					input[key] = value
+				}
+			}
+		}
 	}
 	if trimmedWorkdir := strings.TrimSpace(workdirHint); trimmedWorkdir != "" {
 		input["__blue_workdir"] = trimmedWorkdir
@@ -1992,7 +2031,10 @@ func (t *ExecTool) validateWorkdir(ctx context.Context, workdir string) error {
 
 	// 3. Request approval if manager is available.
 	if t.approvals == nil {
-		return fmt.Errorf("exec denied: workdir %q is outside allowed directories", workdir)
+		return newToolRuntimeError("exec_directory_not_allowed", fmt.Sprintf("exec denied: workdir %q is outside allowed directories", workdir), nil, map[string]interface{}{
+			"kind":      "directory",
+			"directory": absWorkdir,
+		})
 	}
 
 	userID := GetUserID(ctx)
@@ -2015,7 +2057,10 @@ func (t *ExecTool) validateWorkdir(ctx context.Context, workdir string) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("exec denied: user denied access to directory %q", workdir)
+		return newToolRuntimeError("exec_directory_denied", fmt.Sprintf("exec denied: user denied access to directory %q", workdir), nil, map[string]interface{}{
+			"kind":      "directory",
+			"directory": absWorkdir,
+		})
 	}
 }
 
@@ -2119,6 +2164,9 @@ func rewriteBlueCLIExecutable(command string) string {
 	if !strings.HasPrefix(trimmed, "blue ") {
 		return command
 	}
+	if bluePath, err := exec.LookPath("blue"); err == nil && strings.EqualFold(filepath.Base(bluePath), "blue") {
+		return command
+	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return command
@@ -2127,6 +2175,22 @@ func rewriteBlueCLIExecutable(command string) string {
 		return command
 	}
 	return strconv.Quote(exePath) + strings.TrimPrefix(trimmed, "blue")
+}
+
+func canStrictShellBlueSkillShortCircuit(command string) bool {
+	trimmed := strings.TrimSpace(command)
+	if !strings.HasPrefix(trimmed, "blue ") {
+		return false
+	}
+	if strings.ContainsAny(trimmed, "\r\n") {
+		return false
+	}
+	for _, token := range []string{"&&", "||", ";", "|", "`", "$(", ">", "<"} {
+		if strings.Contains(trimmed, token) {
+			return false
+		}
+	}
+	return true
 }
 
 func parseEnvArg(v interface{}) map[string]string {
@@ -2481,7 +2545,12 @@ func (t *ExecTool) validateCommandPaths(ctx context.Context, command, workdir st
 
 		// Request approval.
 		if t.approvals == nil {
-			return fmt.Errorf("exec denied: command references path %q which is outside allowed directories", dir)
+			return newToolRuntimeError("exec_path_not_allowed", fmt.Sprintf("exec denied: command references path %q which is outside allowed directories", dir), nil, map[string]interface{}{
+				"kind":      "directory",
+				"directory": dir,
+				"command":   strings.TrimSpace(command),
+				"workdir":   strings.TrimSpace(workdir),
+			})
 		}
 
 		userID := GetUserID(ctx)
@@ -2504,7 +2573,12 @@ func (t *ExecTool) validateCommandPaths(ctx context.Context, command, workdir st
 			}
 			continue
 		default:
-			return fmt.Errorf("exec denied: user denied access to directory %q", dir)
+			return newToolRuntimeError("exec_directory_denied", fmt.Sprintf("exec denied: user denied access to directory %q", dir), nil, map[string]interface{}{
+				"kind":      "directory",
+				"directory": dir,
+				"command":   strings.TrimSpace(command),
+				"workdir":   strings.TrimSpace(workdir),
+			})
 		}
 	}
 	return nil

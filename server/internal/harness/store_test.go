@@ -3,12 +3,13 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	sqlite3 "github.com/mattn/go-sqlite3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
@@ -339,6 +340,94 @@ func TestSQLiteStore_GroupRoundTrip(t *testing.T) {
 	}
 	if len(scorecards) != 1 || scorecards[0].ID != "score-1" {
 		t.Fatalf("ListScorecards returned %#v", scorecards)
+	}
+}
+
+func TestNewSQLiteStore_ConfiguresSQLitePragmas(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "harness-pragmas.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	defer func() { _ = db.Close() }()
+
+	if _, err := NewSQLiteStore(db); err != nil {
+		t.Fatalf("NewSQLiteStore failed: %v", err)
+	}
+
+	var busyTimeout int
+	if err := db.QueryRow(`PRAGMA busy_timeout`).Scan(&busyTimeout); err != nil {
+		t.Fatalf("query busy_timeout: %v", err)
+	}
+	if busyTimeout != harnessSQLiteBusyTimeoutMS {
+		t.Fatalf("busy_timeout = %d, want %d", busyTimeout, harnessSQLiteBusyTimeoutMS)
+	}
+
+	var foreignKeys int
+	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		t.Fatalf("query foreign_keys: %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("foreign_keys = %d, want 1", foreignKeys)
+	}
+
+	var journalMode string
+	if err := db.QueryRow(`PRAGMA journal_mode`).Scan(&journalMode); err != nil {
+		t.Fatalf("query journal_mode: %v", err)
+	}
+	if journalMode != "wal" {
+		t.Fatalf("journal_mode = %q, want wal", journalMode)
+	}
+}
+
+func TestNewSQLiteStore_ConstrainsConnectionPool(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "harness-pool.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if _, err := NewSQLiteStore(db); err != nil {
+		t.Fatalf("NewSQLiteStore failed: %v", err)
+	}
+
+	stats := db.Stats()
+	if stats.MaxOpenConnections != 1 {
+		t.Fatalf("max_open_connections = %d, want 1", stats.MaxOpenConnections)
+	}
+}
+
+func TestWithSQLiteBusyRetryRetriesBusyErrors(t *testing.T) {
+	calls := 0
+	err := withSQLiteBusyRetry(context.Background(), func() error {
+		calls++
+		if calls < 3 {
+			return sqlite3.Error{Code: sqlite3.ErrBusy}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withSQLiteBusyRetry() error = %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("calls = %d, want 3", calls)
+	}
+}
+
+func TestWithSQLiteBusyRetryStopsOnContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	err := withSQLiteBusyRetry(ctx, func() error {
+		calls++
+		cancel()
+		return sqlite3.Error{Code: sqlite3.ErrBusy}
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context canceled", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
 	}
 }
 

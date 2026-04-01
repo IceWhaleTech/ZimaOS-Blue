@@ -16,12 +16,20 @@ const mocks = vi.hoisted(() => ({
     error: null as string | null,
     oauthQuota: {} as Record<string, unknown>,
     loadingQuota: null as string | null,
+    accountStatus: {} as Record<string, unknown>,
+    loadingAccountStatus: null as string | null,
     trialProviders: [] as Array<Record<string, unknown>>,
     trialQuota: null as Record<string, unknown> | null,
     fetchProviders: vi.fn(),
     fetchCustomPricing: vi.fn(),
+    fetchAccountStatus: vi.fn(),
+    clearAccountStatus: vi.fn(),
     refreshModels: vi.fn(),
+    probeModels: vi.fn(),
+    testProvider: vi.fn(),
     updateProvider: vi.fn(),
+    addAPIKey: vi.fn(),
+    clearProviderError: vi.fn(),
   },
   notificationStore: {
     success: vi.fn(),
@@ -102,6 +110,19 @@ function createTestI18n() {
             outputTokens: '输出 Tokens',
             estimatedCost: '预估费用',
           },
+          accountStatus: {
+            title: '账户状态',
+            loading: '加载账户状态中...',
+            unavailable: '账户状态不可用',
+            usingKey: '使用密钥 {key}',
+            items: {
+              remaining: '剩余',
+              used: '已用',
+              limit: '额度',
+              granted: '赠送',
+              toppedUp: '充值',
+            },
+          },
           trial: {
             name: '试用',
           },
@@ -154,13 +175,27 @@ describe('ProviderPoolSection media verification gating', () => {
     mocks.providerPoolStore.customPricing = []
     mocks.providerPoolStore.selectedProviderId = null
     mocks.providerPoolStore.selectedProvider = null
+    mocks.providerPoolStore.accountStatus = {}
+    mocks.providerPoolStore.loadingAccountStatus = null
     mocks.providerPoolStore.fetchProviders.mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchCustomPricing.mockResolvedValue([])
+    mocks.providerPoolStore.fetchAccountStatus.mockResolvedValue(undefined)
+    mocks.providerPoolStore.clearAccountStatus.mockResolvedValue(undefined)
     mocks.providerPoolStore.refreshModels.mockResolvedValue({ success: true, models: [] })
+    mocks.providerPoolStore.probeModels.mockResolvedValue({
+      success: true,
+      total: 0,
+      available: 0,
+      unavailable: 0,
+      results: [],
+    })
+    mocks.providerPoolStore.testProvider.mockResolvedValue({ healthy: true })
     mocks.providerPoolStore.updateProvider.mockImplementation(async (_id, updates) => ({
       ...(mocks.providerPoolStore.selectedProvider || {}),
       ...updates,
     }))
+    mocks.providerPoolStore.addAPIKey.mockResolvedValue({})
+    mocks.providerPoolStore.clearProviderError.mockResolvedValue(undefined)
   })
 
   it('hides verify and recommend for media providers', async () => {
@@ -185,6 +220,40 @@ describe('ProviderPoolSection media verification gating', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('验证与推荐')
+  })
+
+  it('hides verify and recommend for catalog providers', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('验证与推荐')
+  })
+
+  it('hides the base URL section for catalog providers', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="provider-base-url-section"]').exists()).toBe(false)
   })
 
   it('shows custom format selector and saves pinned formats immediately', async () => {
@@ -230,7 +299,7 @@ describe('ProviderPoolSection media verification gating', () => {
     })
   })
 
-  it('keeps non-custom non-ollama providers fixed to cloud location', async () => {
+  it('keeps non-custom providers fixed to cloud location', async () => {
     const provider = {
       ...createProvider('custom'),
       id: 'openai',
@@ -265,13 +334,14 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(wrapper.find('[data-testid="provider-location-local-button"]').exists()).toBe(true)
   })
 
-  it('allows ollama to switch location', async () => {
+  it('shows catalog local providers as fixed local location', async () => {
     const provider = {
       ...createProvider('custom'),
       id: 'ollama',
       name: 'Ollama',
       type: 'builtin',
       location: 'local',
+      metadata_mode: 'catalog',
     }
     mocks.providerPoolStore.providers = [provider]
     mocks.providerPoolStore.selectedProviderId = provider.id
@@ -280,13 +350,235 @@ describe('ProviderPoolSection media verification gating', () => {
     const wrapper = mountSection()
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="provider-location-cloud-button"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="provider-location-local-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="provider-location-cloud-button"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="provider-location-local-button"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="provider-location-fixed-local"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="provider-location-fixed-cloud"]').exists()).toBe(false)
   })
 
-  it('hides oauth-backed providers from the provider management UI', async () => {
+  it('refreshes catalog providers without probing', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    mocks.providerPoolStore.refreshModels.mockClear()
+    mocks.providerPoolStore.probeModels.mockClear()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+    await setupState.refreshModels(provider.id)
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.probeModels).not.toHaveBeenCalled()
+    expect(mocks.providerPoolStore.refreshModels).toHaveBeenCalledWith(provider.id)
+  })
+
+  it('refreshes dynamic providers by probing first', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openrouter',
+      name: 'OpenRouter',
+      type: 'platform',
+      metadata_mode: 'dynamic',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+    mocks.providerPoolStore.probeModels.mockResolvedValue({
+      success: true,
+      total: 2,
+      available: 2,
+      unavailable: 0,
+      results: [],
+    })
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    mocks.providerPoolStore.refreshModels.mockClear()
+    mocks.providerPoolStore.probeModels.mockClear()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+    await setupState.refreshModels(provider.id)
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.probeModels).toHaveBeenCalledWith(provider.id)
+    expect(mocks.providerPoolStore.refreshModels).not.toHaveBeenCalled()
+  })
+
+  it('does not trigger background probing after adding an API key to catalog providers', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    mocks.providerPoolStore.probeModels.mockClear()
+    mocks.providerPoolStore.addAPIKey.mockClear()
+    mocks.providerPoolStore.clearProviderError.mockClear()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+    const newKey = setupState.newKey?.value ?? setupState.newKey
+    newKey.providerId = provider.id
+    newKey.key = 'sk-test'
+    newKey.label = 'Primary'
+
+    await setupState.addAPIKey()
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.addAPIKey).toHaveBeenCalledWith(provider.id, 'sk-test', 'Primary')
+    expect(mocks.providerPoolStore.clearProviderError).toHaveBeenCalledWith(provider.id)
+    expect(mocks.providerPoolStore.probeModels).not.toHaveBeenCalled()
+  })
+
+  it('does not show catalog provider base URLs in official provider chooser cards', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      description: 'Official OpenAI API',
+      base_url: 'https://api.openai.com/v1',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+    setupState.openAddProviderModal()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Official OpenAI API')
+    expect(wrapper.text()).not.toContain('https://api.openai.com/v1')
+  })
+
+  it('fetches provider account status for supported API-key providers', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openrouter',
+      name: 'OpenRouter',
+      type: 'platform',
+      api_keys: [
+        {
+          id: 'key-1',
+          key_hash: 'sk-or-1234',
+          usage_count: 0,
+          created_at: '',
+          enabled: true,
+        },
+      ],
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+
+    mountSection()
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.fetchAccountStatus).toHaveBeenCalledWith(provider.id, 'key-1')
+  })
+
+  it('renders provider account status metrics for supported providers', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'deepseek',
+      name: 'DeepSeek',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      api_keys: [
+        {
+          id: 'key-1',
+          key_hash: 'sk-ds-1234',
+          usage_count: 0,
+          created_at: '',
+          enabled: true,
+        },
+      ],
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+    mocks.providerPoolStore.accountStatus = {
+      deepseek: {
+        provider_id: 'deepseek',
+        key_id: 'key-1',
+        key_hash: 'sk-ds-1234',
+        kind: 'balance',
+        primary_item_key: 'remaining',
+        items: [
+          { key: 'remaining', value: 12.34, currency: 'CNY' },
+          { key: 'granted', value: 2, currency: 'CNY' },
+          { key: 'topped_up', value: 10.34, currency: 'CNY' },
+        ],
+        fetched_at: Date.now(),
+      },
+    }
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="provider-account-status-section"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('账户状态')
+    expect(wrapper.text()).toContain('使用密钥 sk-ds-1234')
+    expect(wrapper.text()).toContain('¥12.34')
+    expect(wrapper.text()).toContain('¥10.34')
+  })
+
+  it('does not show temporarily unsupported official providers in the official chooser', async () => {
     const hiddenProvider = {
+      ...createProvider('custom'),
+      id: 'bedrock',
+      name: 'Amazon Bedrock',
+      type: 'platform',
+      metadata_mode: 'catalog',
+      base_url: '',
+    }
+    const visibleProvider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      base_url: 'https://api.openai.com/v1',
+    }
+    mocks.providerPoolStore.providers = [hiddenProvider, visibleProvider]
+    mocks.providerPoolStore.selectedProviderId = visibleProvider.id
+    mocks.providerPoolStore.selectedProvider = visibleProvider
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+    setupState.openAddProviderModal()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('OpenAI')
+    expect(wrapper.text()).not.toContain('Amazon Bedrock')
+  })
+
+  it('shows oauth-backed official providers in the provider management UI', async () => {
+    const oauthProvider = {
       ...createProvider('custom'),
       id: 'google-antigravity',
       name: 'Google Cloud Code Assist (Antigravity)',
@@ -301,14 +593,18 @@ describe('ProviderPoolSection media verification gating', () => {
       name: 'Anthropic',
       type: 'builtin',
     }
-    mocks.providerPoolStore.providers = [hiddenProvider, visibleProvider]
-    mocks.providerPoolStore.selectedProviderId = hiddenProvider.id
-    mocks.providerPoolStore.selectedProvider = hiddenProvider
+    mocks.providerPoolStore.providers = [oauthProvider, visibleProvider]
+    mocks.providerPoolStore.selectedProviderId = oauthProvider.id
+    mocks.providerPoolStore.selectedProvider = oauthProvider
 
     const wrapper = mountSection()
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('Google Cloud Code Assist (Antigravity)')
+    const setupState = (wrapper.vm.$ as any).setupState
+    setupState.openAddProviderModal()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Google Cloud Code Assist (Antigravity)')
     expect(wrapper.text()).toContain('Anthropic')
   })
 })

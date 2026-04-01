@@ -1,5 +1,7 @@
 import api from './client'
 
+const HARNESS_RESEARCH_BASE = '/harness/research/jobs'
+
 export interface DeepResearchJobSummary {
   id: string
   job_id: string
@@ -24,11 +26,11 @@ export interface DeepResearchJob extends DeepResearchJobSummary {
 
 export const deepResearchApi = {
   listJobs: (status?: 'active') =>
-    api.get<DeepResearchJobSummary[]>('/deep-research/jobs', {
+    api.get<DeepResearchJobSummary[]>(HARNESS_RESEARCH_BASE, {
       params: status ? { status } : undefined,
     }),
 
-  getJob: (id: string) => api.get<DeepResearchJob>(`/deep-research/jobs/${id}`),
+  getJob: (id: string) => api.get<DeepResearchJob>(`${HARNESS_RESEARCH_BASE}/${id}`),
 
-  cancelJob: (id: string) => api.post<{ status: string }>(`/deep-research/jobs/${id}/cancel`),
+  cancelJob: (id: string) => api.post<{ status: string }>(`${HARNESS_RESEARCH_BASE}/${id}/cancel`),
 }

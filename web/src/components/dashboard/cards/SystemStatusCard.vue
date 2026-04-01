@@ -79,13 +79,13 @@ const statusToneClass = computed(() => {
 const statusSummary = computed(() => {
   switch (statusKey.value) {
     case 'ok':
-      return 'Core service responding normally'
+      return t('system.cards.status.summaryOk')
     case 'degraded':
-      return 'Service is up, but checks need attention'
+      return t('system.cards.status.summaryDegraded')
     case 'error':
-      return 'Health checks need immediate attention'
+      return t('system.cards.status.summaryError')
     default:
-      return 'Waiting for runtime health samples'
+      return t('system.cards.status.summaryUnknown')
   }
 })
 
@@ -116,7 +116,11 @@ const statusMetaItems = computed(() => [
       <div class="dashboard-card-copy min-w-0">
         <p class="dashboard-card-label">{{ t('common.status') }}</p>
         <p class="dashboard-card-subtitle mt-2">
-          {{ props.compact ? 'Core service health' : 'Service runtime' }}
+          {{
+            props.compact
+              ? t('system.cards.status.compactSubtitle')
+              : t('system.cards.status.fullSubtitle')
+          }}
         </p>
       </div>
       <span class="dashboard-card-chip status-card-state-pill" :class="statusToneClass">

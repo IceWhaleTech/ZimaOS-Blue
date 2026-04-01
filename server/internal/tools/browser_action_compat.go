@@ -15,6 +15,8 @@ func CanonicalizeBrowserAction(action string, actType string) (string, string) {
 			canonicalActType = canonicalAction
 		}
 		canonicalAction = "act"
+	case "read":
+		canonicalAction = "snapshot_auto"
 	}
 
 	return canonicalAction, canonicalActType

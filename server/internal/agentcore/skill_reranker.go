@@ -148,6 +148,9 @@ func NewAutoSkillReranker(dataDir, modelRepo string, opts AutoSkillRerankerOptio
 }
 
 func (r *AutoSkillReranker) SetSwitchFuncs(onnxEnabledFn, autoDownloadFn func() bool) {
+	if r == nil {
+		return
+	}
 	if onnxEnabledFn != nil {
 		r.onnxEnabled = onnxEnabledFn
 	}
@@ -171,6 +174,13 @@ func (r *AutoSkillReranker) isAutoDownloadEnabled() bool {
 }
 
 func (r *AutoSkillReranker) Rerank(ctx context.Context, query string, cands []SkillDoc) (RerankResult, error) {
+	var fallback SkillReranker = NewHeuristicSkillReranker()
+	if r == nil {
+		return fallback.Rerank(ctx, query, cands)
+	}
+	if r.fallback != nil {
+		fallback = r.fallback
+	}
 	// ONNX model preparation is switch-controlled. If disabled/not-ready, we keep
 	// heuristic fallback to avoid blocking selection.
 	if r.modelManager != nil && r.isONNXEnabled() {
@@ -182,10 +192,13 @@ func (r *AutoSkillReranker) Rerank(ctx context.Context, query string, cands []Sk
 				"auto_download", autoDownload)
 		}
 	}
-	return r.fallback.Rerank(ctx, query, cands)
+	return fallback.Rerank(ctx, query, cands)
 }
 
 func (r *AutoSkillReranker) WarmupAsync() {
+	if r == nil {
+		return
+	}
 	if r.modelManager != nil && r.isONNXEnabled() {
 		r.modelManager.WarmupAsync(r.isAutoDownloadEnabled())
 	}
@@ -193,5 +206,8 @@ func (r *AutoSkillReranker) WarmupAsync() {
 
 // ModelManager returns the underlying ONNX model manager.
 func (r *AutoSkillReranker) ModelManager() *SkillRerankerModelManager {
+	if r == nil {
+		return nil
+	}
 	return r.modelManager
 }

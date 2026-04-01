@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -17,9 +18,12 @@ import (
 )
 
 const (
-	analyzeMaxURLs     = 5
-	analyzeMaxSearches = 3
-	analyzeMaxTextLen  = 50000
+	analyzeMaxURLs           = 5
+	analyzeMaxSearches       = 3
+	analyzeMaxTextLen        = 50000
+	analyzeScrapeMaxAttempts = 3
+	analyzeScrapeIdleMS      = 400
+	analyzeScrapeTimeoutMS   = 2000
 
 	// analyzeLLMRequestTimeout keeps long-form analysis/report calls from being
 	// cut off by bridge fallback timeouts when the parent context has no deadline.
@@ -30,6 +34,8 @@ const (
 	analyzeDocExtractAutoRollbackMaxFailRate = 0.15
 	analyzeFallbackReasonAutoRollbackDoc     = "auto_rollback_doc_extract_fallback_rate"
 )
+
+var analyzeTopicURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
 
 // AnalyzeTool performs deep-dive content analysis and can return either an
 // inline structured answer or an explicit HTML report.
@@ -192,6 +198,10 @@ func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if topic == "" {
 		return nil, errors.New("topic is required")
 	}
+	promoteAnalyzeTopicSources(args, topic)
+	if normalizedTopic := strings.TrimSpace(firstCompatString(args, "topic", "subject")); normalizedTopic != "" {
+		topic = normalizedTopic
+	}
 	lang := firstCompatString(args, "lang", "language")
 	if lang == "" {
 		lang = GetLang(ctx)
@@ -209,6 +219,62 @@ func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) 
 	}
 
 	return t.runFullAnalysis(ctx, topic, args, lang, resolveAnalyzeOutputMode(args), bridge, browser, executor, mediaDir)
+}
+
+func promoteAnalyzeTopicSources(args map[string]interface{}, topic string) {
+	if len(args) == 0 {
+		return
+	}
+	if len(analyzeCollectStringInputs(args["urls"], analyzeMaxURLs)) > 0 {
+		return
+	}
+
+	urls := extractAnalyzeTopicURLs(topic, analyzeMaxURLs)
+	if len(urls) == 0 {
+		return
+	}
+
+	promoted := make([]interface{}, 0, len(urls))
+	for _, url := range urls {
+		promoted = append(promoted, url)
+	}
+	args["urls"] = promoted
+
+	if cleaned := stripAnalyzeTopicURLs(topic); cleaned != "" && cleaned != topic {
+		args["topic"] = cleaned
+	}
+}
+
+func extractAnalyzeTopicURLs(topic string, limit int) []string {
+	matches := analyzeTopicURLPattern.FindAllString(topic, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	if limit <= 0 {
+		limit = len(matches)
+	}
+	seen := make(map[string]struct{}, len(matches))
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		candidate := strings.TrimSpace(match)
+		if candidate == "" {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		out = append(out, candidate)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func stripAnalyzeTopicURLs(topic string) string {
+	cleaned := analyzeTopicURLPattern.ReplaceAllString(topic, " ")
+	return strings.TrimSpace(strings.Join(strings.Fields(cleaned), " "))
 }
 
 // runFullAnalysis gathers data from URLs/search, then generates a report.
@@ -724,21 +790,37 @@ func (t *AnalyzeTool) scrapeURL(ctx context.Context, browser BrowserBackend, url
 	}
 	defer func() { _ = browser.CloseTab(ctx, nav.TargetID) }()
 
-	// Wait for page load
-	time.Sleep(2 * time.Second)
-
-	a11y, err := browser.AccessibilityTree(ctx, nav.TargetID, 8)
-	if err != nil {
-		return ""
+	for attempt := 0; attempt < analyzeScrapeMaxAttempts; attempt++ {
+		_ = browser.WaitNetworkIdle(ctx, nav.TargetID, analyzeScrapeIdleMS, analyzeScrapeTimeoutMS)
+		a11y, err := browser.AccessibilityTree(ctx, nav.TargetID, 8)
+		if err == nil {
+			tree := strings.TrimSpace(a11y.Tree)
+			if tree != "" {
+				if len(tree) > 15000 {
+					tree = tree[:15000] + "\n... (truncated)"
+				}
+				title := strings.TrimSpace(a11y.Title)
+				if title == "" {
+					title = strings.TrimSpace(nav.Title)
+				}
+				finalURL := strings.TrimSpace(a11y.URL)
+				if finalURL == "" {
+					finalURL = strings.TrimSpace(nav.URL)
+				}
+				if finalURL == "" {
+					finalURL = url
+				}
+				return fmt.Sprintf("Title: %s\nURL: %s\n\n%s", title, finalURL, tree)
+			}
+		}
+		if attempt == analyzeScrapeMaxAttempts-1 {
+			break
+		}
+		if sleepErr := sleepWithContext(ctx, time.Duration(attempt+1)*250*time.Millisecond); sleepErr != nil {
+			return ""
+		}
 	}
-
-	// Truncate very large trees
-	tree := a11y.Tree
-	if len(tree) > 15000 {
-		tree = tree[:15000] + "\n... (truncated)"
-	}
-
-	return fmt.Sprintf("Title: %s\nURL: %s\n\n%s", nav.Title, nav.URL, tree)
+	return ""
 }
 
 // webSearch calls the web_search tool via executor.

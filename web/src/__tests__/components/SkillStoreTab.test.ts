@@ -94,7 +94,7 @@ function makeFiltersResponse() {
     data: {
       categories: [{ value: 'development_tools', label: 'Development Tools', count: 1 }],
       sources: [{ value: 'skillhub', label: 'Tencent SkillHub', count: 1 }],
-      risk_badges: [{ value: 'green', label: 'Green shield', count: 1 }],
+      risk_badges: [{ value: 'green', label: 'Security', count: 1 }],
       install_types: [],
       artifact_kinds: [],
       installable: { true: 1 },
@@ -194,8 +194,9 @@ describe('SkillStoreTab', () => {
   it('keeps the toolbar free of curated/installable quick tags', async () => {
     const wrapper = await mountSkillStore()
 
-    expect(wrapper.findAll('.toolbar-controls .sort-pill')).toHaveLength(4)
-    expect(wrapper.findAll('.toolbar-controls button')).toHaveLength(4)
+    expect(wrapper.findAll('.toolbar-controls .sort-pill')).toHaveLength(3)
+    expect(wrapper.findAll('.toolbar-controls button')).toHaveLength(3)
+    expect(wrapper.text()).not.toContain('Featured')
     expect(wrapper.text()).not.toContain('Curated only')
     expect(wrapper.text()).not.toContain('Installable only')
     expect(wrapper.text()).not.toContain('仅精选')
@@ -254,7 +255,7 @@ describe('SkillStoreTab', () => {
 
     expect(wrapper.findAll('.skill-card')).toHaveLength(1)
     expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).toMatchObject({
-      sort: 'featured',
+      sort: 'trending',
       page: 1,
       page_size: 20,
     })
@@ -323,13 +324,13 @@ describe('SkillStoreTab', () => {
 
     expect(skillApi.searchMarket).toHaveBeenCalledTimes(2)
     expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).toMatchObject({
-      sort: 'featured',
+      sort: 'trending',
       page: 1,
       page_size: 20,
     })
     expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).not.toHaveProperty('curated')
     expect(vi.mocked(skillApi.searchMarket).mock.calls[1]?.[0]).toMatchObject({
-      sort: 'featured',
+      sort: 'trending',
       page: 1,
       page_size: 20,
     })
@@ -368,7 +369,7 @@ describe('SkillStoreTab', () => {
       categories: 'development_tools',
       sources: 'skillhub',
       risk_badges: 'green',
-      sort: 'featured',
+      sort: 'trending',
       semantic: true,
       page: 1,
       page_size: 1,
@@ -483,7 +484,7 @@ describe('SkillStoreTab', () => {
     expect(wrapper.text()).not.toContain('Embedding skill search index')
   })
 
-  it('treats the top pills as collection filters and only curates the featured tab', async () => {
+  it('treats the top pills as sort filters without curated requests', async () => {
     const wrapper = await mountSkillStore()
 
     vi.mocked(skillApi.searchMarket).mockClear()
@@ -493,7 +494,7 @@ describe('SkillStoreTab', () => {
 
     expect(skillApi.searchMarket).toHaveBeenCalledTimes(1)
     expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).toMatchObject({
-      sort: 'trending',
+      sort: 'newest',
       page: 1,
       page_size: 20,
     })
@@ -549,12 +550,12 @@ describe('SkillStoreTab', () => {
 
     expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).toMatchObject({
       q: 'release automation changelog',
-      curated: true,
-      sort: 'featured',
+      sort: 'trending',
       page: 1,
       page_size: 20,
       semantic: true,
     })
+    expect(vi.mocked(skillApi.searchMarket).mock.calls[0]?.[0]).not.toHaveProperty('curated')
     expect((wrapper.get('[data-testid="search-input"]').element as HTMLInputElement).value).toBe(
       'release automation changelog'
     )

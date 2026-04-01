@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { nextTick, reactive } from 'vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import { i18n } from '@/i18n'
 
@@ -135,6 +135,24 @@ async function mountStreamingMessage(content = '') {
 
   await flushPromises()
   return wrapper
+}
+
+function makeActiveStreamState(overrides: Record<string, unknown> = {}) {
+  return {
+    phase: 'executing',
+    awaitingConfirmation: false,
+    toolExecuting: false,
+    toolExecutingCommands: [] as string[],
+    toolExecutingNames: [] as string[],
+    toolSandboxAvailable: false,
+    statusSummary: null as string | null,
+    streamProgress: null as string | null,
+    processTrace: [] as Array<Record<string, unknown>>,
+    toolResults: [] as Array<Record<string, unknown>>,
+    statusStartedAt: 0,
+    showExternalStatusRail: false,
+    ...overrides,
+  }
 }
 
 describe('ChatMessage status bar', () => {
@@ -303,5 +321,93 @@ describe('ChatMessage status bar', () => {
     expect(wrapper.text()).toContain('Request ready')
     expect(wrapper.text()).toContain('Request sent')
     expect(wrapper.text()).toContain('Waiting for response')
+  })
+
+  it('ignores global streaming status changes for non-streaming assistant messages', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage('Finished response'),
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: {
+            props: ['item'],
+            template: '<div class="tool-detail-card-stub">{{ item.status }}</div>',
+          },
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    expect(wrapper.find('.assistant-status-bar').exists()).toBe(false)
+
+    chatStore.toolExecuting = true
+    chatStore.statusSummary = 'Searching the web'
+    chatStore.toolResults = [{ id: 'tool-1', status: 'success' }]
+    chatStore.processTrace = [
+      {
+        id: 'trace-1',
+        source: 'server',
+        event: 'waiting_for_response',
+        category: 'lifecycle',
+        status: 'active',
+        label: 'Waiting for response',
+        timestamp: Date.now(),
+      },
+    ]
+    await nextTick()
+    await flushPromises()
+
+    expect(wrapper.find('.assistant-status-bar').exists()).toBe(false)
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('Searching the web')
+  })
+
+  it('prefers explicit streamState props over the global chat store state', async () => {
+    chatStore.awaitingConfirmation = true
+    chatStore.statusSummary = 'Global status'
+
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage(''),
+        isStreaming: true,
+        disableAutoTTS: true,
+        streamState: makeActiveStreamState({
+          toolExecuting: true,
+          toolExecutingCommands: ['blue search --web OpenAI latest'],
+          toolSandboxAvailable: true,
+          statusSummary: 'Searching the web',
+          toolResults: [{ id: 'tool-1', status: 'running' }],
+          statusStartedAt: Date.now() - 1500,
+        }),
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: {
+            props: ['item'],
+            template: '<div class="tool-detail-card-stub">{{ item.status }}</div>',
+          },
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.assistant-status-bar').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Searching the web')
+    expect(wrapper.text()).not.toContain('Waiting for your confirmation to continue')
+    expect(wrapper.text()).toContain('search')
+    expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(1)
   })
 })

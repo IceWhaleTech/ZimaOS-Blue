@@ -256,6 +256,59 @@ func TestSQLiteStorage_LoadProvider_UnparseableTimestampStillLoads(t *testing.T)
 	}
 }
 
+func TestSQLiteStorage_UsesReaderDBForLoads(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "pp-sqlite-reader-*")
+	if err != nil {
+		t.Fatalf("mkdir temp: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dbPath := filepath.Join(tmpDir, "providers.db")
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open writer sqlite: %v", err)
+	}
+	defer writeDB.Close()
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("open reader sqlite: %v", err)
+	}
+	defer readDB.Close()
+
+	storage, err := NewSQLiteStorageWithReadDB(writeDB, readDB)
+	if err != nil {
+		t.Fatalf("new sqlite storage with read db: %v", err)
+	}
+	if storage.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if storage.readDB == storage.db {
+		t.Fatal("expected sqlite storage to use a separate read db")
+	}
+
+	provider := &Provider{
+		ID:       "reader-provider",
+		Name:     "Reader Provider",
+		Type:     ProviderTypeCustom,
+		Location: ProviderLocationCloud,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		BaseURL:  "https://example.com/v1",
+	}
+	if err := storage.SaveProvider(provider); err != nil {
+		t.Fatalf("save provider: %v", err)
+	}
+
+	loaded, err := storage.LoadProvider(provider.ID)
+	if err != nil {
+		t.Fatalf("load provider through reader db: %v", err)
+	}
+	if loaded == nil || loaded.ID != provider.ID {
+		t.Fatalf("expected provider %q via reader db, got %+v", provider.ID, loaded)
+	}
+}
+
 func setRawProviderField(t *testing.T, db *sql.DB, providerID, field, value string) {
 	t.Helper()
 

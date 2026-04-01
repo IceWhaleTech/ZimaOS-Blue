@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -242,6 +243,67 @@ func TestRetentionManager_DeleteBatch(t *testing.T) {
 
 	if deleted != 10 {
 		t.Errorf("deleteBatch() deleted = %d, want 10", deleted)
+	}
+}
+
+func TestRetentionManager_UsesReaderDBForStats(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "audit-retention.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open writer database: %v", err)
+	}
+	defer writeDB.Close()
+
+	if _, err := writeDB.Exec(`CREATE TABLE IF NOT EXISTS audit_logs (
+		id TEXT PRIMARY KEY,
+		timestamp DATETIME NOT NULL,
+		user_id TEXT,
+		username TEXT,
+		action TEXT NOT NULL,
+		resource_type TEXT,
+		resource_id TEXT,
+		ip_address TEXT,
+		user_agent TEXT,
+		request_id TEXT,
+		status TEXT NOT NULL,
+		details TEXT,
+		old_value TEXT,
+		new_value TEXT
+	)`); err != nil {
+		t.Fatalf("failed to create audit_logs table: %v", err)
+	}
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("failed to open reader database: %v", err)
+	}
+	defer readDB.Close()
+
+	manager := NewRetentionManagerWithReadDB(writeDB, readDB, &RetentionConfig{
+		RetentionDays:   7,
+		CleanupInterval: time.Hour,
+		BatchSize:       100,
+	})
+	if manager.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if manager.readDB == manager.db {
+		t.Fatal("expected retention manager to use a separate read db")
+	}
+
+	now := time.Now()
+	if _, err := writeDB.Exec(`INSERT INTO audit_logs (id, timestamp, action, status) VALUES (?, ?, ?, ?)`,
+		"reader-1", now, "login", "success"); err != nil {
+		t.Fatalf("failed to insert audit log: %v", err)
+	}
+
+	stats, err := manager.GetRetentionStats(context.Background())
+	if err != nil {
+		t.Fatalf("GetRetentionStats() error = %v", err)
+	}
+	if stats.TotalCount != 1 {
+		t.Fatalf("GetRetentionStats() TotalCount = %d, want 1", stats.TotalCount)
 	}
 }
 

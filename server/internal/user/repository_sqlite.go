@@ -14,12 +14,22 @@ import (
 
 // SQLiteRepository implements Repository using SQLite.
 type SQLiteRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // NewSQLiteRepository creates a new SQLiteRepository.
 func NewSQLiteRepository(db *sql.DB) (*SQLiteRepository, error) {
-	repo := &SQLiteRepository{db: db}
+	return NewSQLiteRepositoryWithReadDB(db, db)
+}
+
+// NewSQLiteRepositoryWithReadDB creates a new SQLiteRepository with separate
+// write and read database handles.
+func NewSQLiteRepositoryWithReadDB(writeDB, readDB *sql.DB) (*SQLiteRepository, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	repo := &SQLiteRepository{db: writeDB, readDB: readDB}
 	if err := repo.migrate(); err != nil {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
@@ -82,12 +92,24 @@ func (r *SQLiteRepository) usersTable(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "users")
 }
 
+func (r *SQLiteRepository) usersReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.readDB, "users")
+}
+
 func (r *SQLiteRepository) sessionsTable(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "sessions")
 }
 
+func (r *SQLiteRepository) sessionsReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.readDB, "sessions")
+}
+
 func (r *SQLiteRepository) passwordHistoryTable(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, r.db, "password_history")
+}
+
+func (r *SQLiteRepository) passwordHistoryReadTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.readDB, "password_history")
 }
 
 // userRow is the intermediate struct for zorm scanning
@@ -183,7 +205,7 @@ func (r *SQLiteRepository) Create(ctx context.Context, user *User) error {
 func (r *SQLiteRepository) findOneUser(ctx context.Context, opts ...z.ZormItem) (*User, error) {
 	var rows []userRow
 	opts = append(opts, z.Limit(1))
-	_, err := r.usersTable(ctx).Select(&rows, opts...)
+	_, err := r.usersReadTable(ctx).Select(&rows, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
@@ -282,7 +304,7 @@ func (r *SQLiteRepository) List(ctx context.Context, query *ListUsersQuery) (*Li
 
 	// Count total
 	var total int64
-	_, err := r.usersTable(ctx).Select(&total,
+	_, err := r.usersReadTable(ctx).Select(&total,
 		z.Fields("count(1)"),
 		z.Where(conds...),
 	)
@@ -305,7 +327,7 @@ func (r *SQLiteRepository) List(ctx context.Context, query *ListUsersQuery) (*Li
 
 	offset := (query.Page - 1) * query.PageSize
 	var rows []userRow
-	_, err = r.usersTable(ctx).Select(&rows,
+	_, err = r.usersReadTable(ctx).Select(&rows,
 		z.Where(conds...),
 		z.OrderBy(orderBy+" "+orderDir),
 		z.Limit(query.PageSize, offset),
@@ -336,7 +358,7 @@ func (r *SQLiteRepository) List(ctx context.Context, query *ListUsersQuery) (*Li
 // ExistsByUsername checks if a username exists.
 func (r *SQLiteRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
 	var count int64
-	_, err := r.usersTable(ctx).Select(&count,
+	_, err := r.usersReadTable(ctx).Select(&count,
 		z.Fields("count(1)"),
 		z.Where(z.Eq("username", username), z.IsNull("deleted_at")),
 	)
@@ -349,7 +371,7 @@ func (r *SQLiteRepository) ExistsByUsername(ctx context.Context, username string
 // ExistsByEmail checks if an email exists.
 func (r *SQLiteRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	var count int64
-	_, err := r.usersTable(ctx).Select(&count,
+	_, err := r.usersReadTable(ctx).Select(&count,
 		z.Fields("count(1)"),
 		z.Where(z.Eq("email", email), z.IsNull("deleted_at")),
 	)
@@ -362,7 +384,7 @@ func (r *SQLiteRepository) ExistsByEmail(ctx context.Context, email string) (boo
 // AnyUserExists checks if any non-deleted user exists.
 func (r *SQLiteRepository) AnyUserExists(ctx context.Context) (bool, error) {
 	var count int64
-	_, err := r.usersTable(ctx).Select(&count,
+	_, err := r.usersReadTable(ctx).Select(&count,
 		z.Fields("count(1)"),
 		z.Where(z.IsNull("deleted_at")),
 	)
@@ -375,7 +397,7 @@ func (r *SQLiteRepository) AnyUserExists(ctx context.Context) (bool, error) {
 // AdminExists checks if any admin user exists.
 func (r *SQLiteRepository) AdminExists(ctx context.Context) (bool, error) {
 	var count int64
-	_, err := r.usersTable(ctx).Select(&count,
+	_, err := r.usersReadTable(ctx).Select(&count,
 		z.Fields("count(1)"),
 		z.Where(z.Eq("role", "admin"), z.IsNull("deleted_at")),
 	)
@@ -402,7 +424,7 @@ func (r *SQLiteRepository) AddPasswordHistory(ctx context.Context, userID uuid.U
 // GetPasswordHistory retrieves password history for a user.
 func (r *SQLiteRepository) GetPasswordHistory(ctx context.Context, userID uuid.UUID, limit int) ([]string, error) {
 	var hashes []string
-	_, err := r.passwordHistoryTable(ctx).Select(&hashes,
+	_, err := r.passwordHistoryReadTable(ctx).Select(&hashes,
 		z.Fields("password_hash"),
 		z.Where(z.Eq("user_id", userID.String())),
 		z.OrderBy("created_at DESC, rowid DESC"),
@@ -461,7 +483,7 @@ func (r *SQLiteRepository) CreateSession(ctx context.Context, session *Session) 
 func (r *SQLiteRepository) findOneSession(ctx context.Context, opts ...z.ZormItem) (*Session, error) {
 	var rows []sessionRow
 	opts = append(opts, z.Limit(1))
-	_, err := r.sessionsTable(ctx).Select(&rows, opts...)
+	_, err := r.sessionsReadTable(ctx).Select(&rows, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query session: %w", err)
 	}
@@ -484,7 +506,7 @@ func (r *SQLiteRepository) GetSessionByRefreshToken(ctx context.Context, token s
 // GetUserSessions retrieves all sessions for a user.
 func (r *SQLiteRepository) GetUserSessions(ctx context.Context, userID uuid.UUID) ([]*Session, error) {
 	var rows []sessionRow
-	_, err := r.sessionsTable(ctx).Select(&rows,
+	_, err := r.sessionsReadTable(ctx).Select(&rows,
 		z.Where(
 			z.Eq("user_id", userID.String()),
 			z.IsNull("revoked_at"),

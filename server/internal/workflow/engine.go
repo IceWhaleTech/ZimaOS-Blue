@@ -56,6 +56,9 @@ func NewEngine(config *Config) *Engine {
 	if config == nil {
 		config = DefaultConfig()
 	}
+	if config.MaxConcurrentExecutions < 0 {
+		config.MaxConcurrentExecutions = resolveDefaultMaxConcurrentExecutions()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -110,23 +113,8 @@ func (e *Engine) Execute(ctx context.Context, workflow *Workflow, triggerType Tr
 		return nil, ErrWorkflowDisabled
 	}
 
-	// Check concurrent execution limit
-	e.mu.RLock()
-	runningCount := 0
-	for _, state := range e.executions {
-		if state.execution.WorkflowID == workflow.ID && state.execution.Status == ExecutionStatusRunning {
-			runningCount++
-		}
-	}
-	e.mu.RUnlock()
-
-	maxConcurrent := e.config.MaxConcurrentExecutions
-	if workflow.Settings != nil && workflow.Settings.MaxConcurrent > 0 {
-		maxConcurrent = workflow.Settings.MaxConcurrent
-	}
-
-	if runningCount >= maxConcurrent {
-		return nil, ErrMaxExecutionsReached
+	if err := e.waitForAvailableExecutionSlot(ctx, workflow); err != nil {
+		return nil, err
 	}
 
 	// Create execution
@@ -184,6 +172,67 @@ func (e *Engine) Execute(ctx context.Context, workflow *Workflow, triggerType Tr
 	}()
 
 	return execution, nil
+}
+
+func (e *Engine) executionLimitForWorkflow(workflow *Workflow) int {
+	if e == nil || e.config == nil {
+		return 0
+	}
+	maxConcurrent := e.config.MaxConcurrentExecutions
+	if workflow != nil && workflow.Settings != nil && workflow.Settings.MaxConcurrent > 0 {
+		maxConcurrent = workflow.Settings.MaxConcurrent
+	}
+	return maxConcurrent
+}
+
+func (e *Engine) runningExecutionCount(workflowID string) int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	runningCount := 0
+	for _, state := range e.executions {
+		if state.execution.WorkflowID == workflowID && executionConsumesConcurrencySlot(state.execution.Status) {
+			runningCount++
+		}
+	}
+	return runningCount
+}
+
+func (e *Engine) waitForAvailableExecutionSlot(ctx context.Context, workflow *Workflow) error {
+	if e == nil || workflow == nil {
+		return fmt.Errorf("workflow engine is not configured")
+	}
+	maxConcurrent := e.executionLimitForWorkflow(workflow)
+	if maxConcurrent <= 0 {
+		return nil
+	}
+
+	for {
+		if e.runningExecutionCount(workflow.ID) < maxConcurrent {
+			return nil
+		}
+		if ctx == nil {
+			time.Sleep(workflowConcurrentSlotPollInterval)
+			continue
+		}
+
+		timer := time.NewTimer(workflowConcurrentSlotPollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("wait for workflow execution slot: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
+func executionConsumesConcurrencySlot(status ExecutionStatus) bool {
+	switch status {
+	case ExecutionStatusCompleted, ExecutionStatusFailed, ExecutionStatusCancelled:
+		return false
+	default:
+		return true
+	}
 }
 
 // runExecution runs the workflow execution.
@@ -278,6 +327,20 @@ func (e *Engine) runExecution(state *executionState) {
 
 			// Handle node result
 			if result.Status == NodeStatusFailed {
+				if state.ctx.Err() == context.Canceled {
+					state.execution.Status = ExecutionStatusCancelled
+					state.execution.StatusReason = "cancelled"
+					state.execution.Error = ""
+					e.completeExecution(state)
+					return
+				}
+				if state.ctx.Err() == context.DeadlineExceeded {
+					state.execution.Status = ExecutionStatusFailed
+					state.execution.StatusReason = "timeout"
+					state.execution.Error = "execution timed out"
+					e.completeExecution(state)
+					return
+				}
 				continueOnError := false
 				if state.workflow.Settings != nil {
 					continueOnError = state.workflow.Settings.ContinueOnError

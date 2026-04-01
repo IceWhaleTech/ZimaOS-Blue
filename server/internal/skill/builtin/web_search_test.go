@@ -172,3 +172,48 @@ func TestWebSearchSkill_ExecuteAcceptsQueryAlias(t *testing.T) {
 		t.Fatalf("query = %q, want %q", got, "test query")
 	}
 }
+
+func TestWebQuerySkill_ValidatePromotesQueryAliasToInput(t *testing.T) {
+	s := NewWebQuery()
+	input := map[string]any{
+		"query": " OpenAI Responses API docs ",
+	}
+	if err := s.Validate(input); err != nil {
+		t.Fatalf("expected query alias to pass validation: %v", err)
+	}
+	if got, _ := input["input"].(string); got != "OpenAI Responses API docs" {
+		t.Fatalf("input = %q, want %q", got, "OpenAI Responses API docs")
+	}
+}
+
+func TestWebQuerySkill_ExecuteParsesUnifiedEnvelope(t *testing.T) {
+	searcher := &mockWebSearcher{
+		result: `{"status":"ok","mode":"search_read","input":"OpenAI Responses API docs","target_url":"https://developers.openai.com/api/reference/responses/overview","final_url":"https://developers.openai.com/api/reference/responses/overview","title":"Responses Overview | OpenAI API Reference","content":"Canonical docs content"}`,
+	}
+	s := NewWebQuery()
+	s.SetSearcher(searcher)
+
+	res, err := s.Execute(context.Background(), map[string]any{
+		"input": "OpenAI Responses API docs",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got error=%s", res.Error)
+	}
+
+	data, ok := res.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map data, got %T", res.Data)
+	}
+	if got, _ := data["title"].(string); got != "Responses Overview | OpenAI API Reference" {
+		t.Fatalf("title = %q, want canonical docs title", got)
+	}
+	if got, _ := data["final_url"].(string); got != "https://developers.openai.com/api/reference/responses/overview" {
+		t.Fatalf("final_url = %q, want canonical docs url", got)
+	}
+	if got, _ := searcher.lastArgs["input"].(string); got != "OpenAI Responses API docs" {
+		t.Fatalf("input = %q, want %q", got, "OpenAI Responses API docs")
+	}
+}

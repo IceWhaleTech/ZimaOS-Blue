@@ -280,6 +280,246 @@ func TestSkillVisibility_GetSkillAcceptsHyphenAliasForUnderscoreInstall(t *testi
 	}
 }
 
+func TestSkillVisibility_GetSkillAcceptsCanonicalIDForAliasDirInstall(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	if err := registry.Register(NewRemoteSkillAdapter(&skill.Manifest{
+		ID:          "browser",
+		Name:        "Browser",
+		Version:     "1.0.0",
+		Description: "Installed browser skill",
+	}), false); err != nil {
+		t.Fatalf("register skill: %v", err)
+	}
+	if err := registry.Disable("browser"); err != nil {
+		t.Fatalf("disable skill: %v", err)
+	}
+
+	skillDir := filepath.Join(handler.skillsDir, "team-browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/browser", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("browser")
+
+	if err := handler.GetSkill(c); err != nil {
+		t.Fatalf("GetSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload["id"] != "browser" {
+		t.Fatalf("expected canonical id browser, got %#v", payload["id"])
+	}
+	if payload["enabled"] != false {
+		t.Fatalf("expected disabled registry state to be preserved, got %#v", payload["enabled"])
+	}
+}
+
+func TestSkillVisibility_GetSkillResolvesPeerAgentsRootWhenManagedDirIsClaude(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	workspaceDir := t.TempDir()
+	handler.SetSkillsDir(filepath.Join(workspaceDir, ".claude", "skills"))
+
+	agentsSkillDir := filepath.Join(workspaceDir, ".agents", "skills", "browser")
+	if err := os.MkdirAll(agentsSkillDir, 0o755); err != nil {
+		t.Fatalf("mkdir peer agents skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsSkillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill from peer agents root
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+		t.Fatalf("write peer agents skill: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/browser", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("browser")
+
+	if err := handler.GetSkill(c); err != nil {
+		t.Fatalf("GetSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload["id"] != "browser" {
+		t.Fatalf("expected canonical id browser, got %#v", payload["id"])
+	}
+	if payload["description"] != "Browser skill from peer agents root" {
+		t.Fatalf("expected peer root description, got %#v", payload["description"])
+	}
+}
+
+func TestSkillVisibility_GetSkillContentAcceptsCanonicalIDForAliasDir(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	skillDir := filepath.Join(handler.skillsDir, "team-browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/browser/content", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("browser")
+
+	if err := handler.GetSkillContent(c); err != nil {
+		t.Fatalf("GetSkillContent failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload["id"] != "browser" || payload["source"] != "directory" {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+	if !contains(payload["content"].(string), "# Browser") {
+		t.Fatalf("expected skill content, got %#v", payload["content"])
+	}
+}
+
+func TestSkillVisibility_EnableDisableRegistersManifestOnlyAliasDirSkill(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	skillDir := filepath.Join(handler.skillsDir, "team-browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/browser/disable", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("browser")
+
+	if err := handler.DisableSkill(c); err != nil {
+		t.Fatalf("DisableSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if registry.Get("browser") == nil || registry.IsEnabled("browser") {
+		t.Fatalf("expected browser to be registered and disabled")
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/skills/team-browser/enable", nil)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("team-browser")
+
+	if err := handler.EnableSkill(c); err != nil {
+		t.Fatalf("EnableSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if !registry.IsEnabled("browser") {
+		t.Fatalf("expected browser to be enabled")
+	}
+}
+
+func TestSkillVisibility_UninstallAcceptsCanonicalIDForAliasDir(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	skillDir := filepath.Join(handler.skillsDir, "team-browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skill-store/uninstall/browser", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("browser")
+
+	if err := handler.UninstallSkill(c); err != nil {
+		t.Fatalf("UninstallSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Fatalf("expected alias dir to be removed, stat err=%v", err)
+	}
+}
+
 // TestSkillVisibility_RegistrySync verifies that skill registry stays in sync with API operations
 func TestSkillVisibility_RegistrySync(t *testing.T) {
 	registry := skill.NewRegistry()
@@ -880,6 +1120,106 @@ func TestGetFeaturedSkills(t *testing.T) {
 			t.Errorf("expected source_id 'featured', got '%s'", skills[0].SourceID)
 		}
 	})
+
+	t.Run("featured skills use canonical installed state", func(t *testing.T) {
+		skillDir := filepath.Join(handler.skillsDir, "team-featured")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: test-featured
+description: Featured alias install
+version: 1.0.0
+---
+
+# Featured
+`), 0o644); err != nil {
+			t.Fatalf("write skill file: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/skill-store/featured", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.GetFeaturedSkills(c); err != nil {
+			t.Fatalf("GetFeaturedSkills failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+
+		var skills []*RemoteSkill
+		if err := json.Unmarshal(rec.Body.Bytes(), &skills); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		if len(skills) != 1 || !skills[0].Installed {
+			t.Fatalf("expected featured skill to be marked installed, got %#v", skills)
+		}
+	})
+}
+
+func TestMarketInstalledSkills_FallbackUsesCanonicalIDAndRegistryState(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	if err := registry.Register(NewRemoteSkillAdapter(&skill.Manifest{
+		ID:          "browser",
+		Name:        "Browser",
+		Version:     "1.0.0",
+		Description: "Browser skill",
+	}), false); err != nil {
+		t.Fatalf("register skill: %v", err)
+	}
+	if err := registry.Disable("browser"); err != nil {
+		t.Fatalf("disable skill: %v", err)
+	}
+
+	skillDir := filepath.Join(handler.skillsDir, "team-browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	scanner := skillstore.NewLocalSkillScanner(handler.skillsDir)
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("scan skills: %v", err)
+	}
+	handler.SetLocalScanner(scanner)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skill-store/installed", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.MarketInstalledSkills(c); err != nil {
+		t.Fatalf("MarketInstalledSkills failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload struct {
+		Skills []map[string]interface{} `json:"skills"`
+		Count  int                      `json:"count"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload.Count != 1 || len(payload.Skills) != 1 {
+		t.Fatalf("unexpected installed skills payload: %+v", payload)
+	}
+	if payload.Skills[0]["skill_id"] != "browser" || payload.Skills[0]["enabled"] != false {
+		t.Fatalf("unexpected installed skill item: %#v", payload.Skills[0])
+	}
 }
 
 // TestVerifySkill tests the skill verification endpoint
@@ -950,6 +1290,44 @@ func TestVerifySkill(t *testing.T) {
 			t.Error("non-existent skill should not be visible")
 		}
 	})
+
+	t.Run("verify manifest-only alias dir skill", func(t *testing.T) {
+		skillDir := filepath.Join(handler.skillsDir, "team-browser")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+			t.Fatalf("write skill file: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/skills/verify/browser", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues("browser")
+
+		if err := handler.VerifySkill(c); err != nil {
+			t.Fatalf("VerifySkill failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+
+		var result map[string]interface{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		if result["visible"] != true || result["id"] != "browser" {
+			t.Fatalf("unexpected verify payload: %#v", result)
+		}
+	})
 }
 
 // TestListLocalSkills tests the local skills listing endpoint
@@ -1005,6 +1383,56 @@ version: 1.0.0
 		count := result["count"].(float64)
 		if count != 1 {
 			t.Errorf("expected 1 skill, got %v", count)
+		}
+	})
+
+	t.Run("local skills use canonical installed mapping", func(t *testing.T) {
+		registry := skill.NewRegistry()
+		handler := newTestSkillHandler(t, registry)
+
+		skillDir := filepath.Join(handler.skillsDir, "team-browser")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+---
+
+# Browser
+`), 0o644); err != nil {
+			t.Fatalf("write skill file: %v", err)
+		}
+
+		scanner := skillstore.NewLocalSkillScanner(handler.skillsDir)
+		if err := scanner.Scan(); err != nil {
+			t.Fatalf("scan skills: %v", err)
+		}
+		handler.SetLocalScanner(scanner)
+
+		req := httptest.NewRequest(http.MethodGet, "/skills/local", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.ListLocalSkills(c); err != nil {
+			t.Fatalf("ListLocalSkills failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+
+		var result map[string]interface{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		skills := result["skills"].([]interface{})
+		if len(skills) != 1 {
+			t.Fatalf("expected 1 skill, got %d", len(skills))
+		}
+		item := skills[0].(map[string]interface{})
+		if item["id"] != "browser" || item["installed"] != true {
+			t.Fatalf("unexpected local skill payload: %#v", item)
 		}
 	})
 }
@@ -1089,9 +1517,14 @@ func TestParseSkillContent(t *testing.T) {
 name: test-skill
 description: A test skill
 version: 2.0.0
-author: Test Author
-category: testing
-tags: [test, example]
+invocation: blue test_skill action=list
+examples:
+  - blue test_skill action=list
+capability_tags:
+  - test
+  - example
+interaction_mode: stateless
+card_support: none
 ---
 
 # Test Skill
@@ -1108,6 +1541,15 @@ Instructions here.
 			content: `---
 id: my-custom-id
 name: My Custom Skill
+description: Demonstrates explicit IDs
+version: 1.0.0
+invocation: blue my_custom_id action=list
+examples:
+  - blue my_custom_id action=list
+capability_tags:
+  - demo
+interaction_mode: stateless
+card_support: none
 ---
 `,
 			sourceURL:   "https://example.com/skill.md",
@@ -1116,12 +1558,10 @@ name: My Custom Skill
 			expectError: false,
 		},
 		{
-			name:        "no frontmatter - ID from URL",
+			name:        "no frontmatter - rejected by required contract",
 			content:     "# Just a skill\n\nNo frontmatter here.",
 			sourceURL:   "https://example.com/my-skill/SKILL.md",
-			expectID:    "my_skill",
-			expectName:  "my-skill",
-			expectError: false,
+			expectError: true,
 		},
 	}
 

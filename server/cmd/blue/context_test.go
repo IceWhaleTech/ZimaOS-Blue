@@ -1,15 +1,24 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 )
+
+type contextCommandExitPanic struct {
+	code int
+}
 
 func resetContextCLIState(t *testing.T) string {
 	t.Helper()
@@ -283,4 +292,233 @@ Broken pack for validation testing.`)
 	if !foundMissingReference {
 		t.Fatalf("expected missing reference validation issue, got %+v", resp.Issues)
 	}
+}
+
+func TestExecuteContextCLIIPCAction_UsesSharedRuntimeWithoutClosingStore(t *testing.T) {
+	resetContextCLIState(t)
+
+	rt, err := openLocalContextRuntime()
+	if err != nil {
+		t.Fatalf("openLocalContextRuntime() error = %v", err)
+	}
+	defer closeLocalContextRuntime(rt)
+
+	stdout, exitCode, err := executeContextCLIIPCAction(&localContextRuntime{
+		workspace: rt.workspace,
+		registry:  rt.registry,
+		store:     rt.store,
+	}, "annotate", map[string]string{
+		"id":          "openai/responses-api",
+		"note":        "Persist over IPC",
+		"__blue_json": "true",
+	})
+	if err != nil {
+		t.Fatalf("executeContextCLIIPCAction() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("exitCode = %d, want 0; stdout=%s", exitCode, stdout)
+	}
+
+	var resp struct {
+		Saved   bool   `json:"saved"`
+		EntryID string `json:"entry_id"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("decode ipc annotate response: %v\n%s", err, stdout)
+	}
+	if !resp.Saved || resp.EntryID != "openai/responses-api" {
+		t.Fatalf("unexpected annotate response: %+v", resp)
+	}
+
+	anns, err := rt.store.List(context.Background(), contextpack.AnnotationFilter{EntryID: "openai/responses-api"})
+	if err != nil {
+		t.Fatalf("store.List() error = %v", err)
+	}
+	if len(anns) != 1 || anns[0].Note != "Persist over IPC" {
+		t.Fatalf("unexpected annotations after IPC action: %+v", anns)
+	}
+}
+
+func TestContextCommands_UseIPCWrappers(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{name: "search", got: contextSearchCmd.Run, want: runContextSearchCommand},
+		{name: "get", got: contextGetCmd.Run, want: runContextGetCommand},
+		{name: "annotate", got: contextAnnotateCmd.Run, want: runContextAnnotateCommand},
+		{name: "import", got: contextImportCmd.Run, want: runContextImportCommand},
+		{name: "validate", got: contextValidateCmd.Run, want: runContextValidateCommand},
+	} {
+		if tc.got == nil {
+			t.Fatalf("%s command Run is nil", tc.name)
+		}
+		if reflect.ValueOf(tc.got).Pointer() != reflect.ValueOf(tc.want).Pointer() {
+			t.Fatalf("%s command Run does not use IPC wrapper", tc.name)
+		}
+	}
+}
+
+func TestRunContextSearchCommand_UsesIPCAndSkipsLocalRuntime(t *testing.T) {
+	resetContextCLIState(t)
+
+	oldRoundTrip := ipcRoundTripFunc
+	oldIPCExit := ipcExit
+	oldOpener := contextRuntimeOpener
+	defer func() {
+		ipcRoundTripFunc = oldRoundTrip
+		ipcExit = oldIPCExit
+		contextRuntimeOpener = oldOpener
+	}()
+
+	contextRuntimeOpener = func() (*localContextRuntime, error) {
+		return nil, fmt.Errorf("context runtime opener should not be used from cobra command")
+	}
+
+	var capturedReq *sockipc.Request
+	ipcRoundTripFunc = func(req *sockipc.Request) (*sockipc.Response, error) {
+		capturedReq = req
+		return sockipc.OkResponse(map[string]string{
+			"__stdout":    "context ipc ok\n",
+			"__exit_code": "0",
+		}), nil
+	}
+	ipcExit = func(code int) { panic(contextCommandExitPanic{code: code}) }
+
+	exitCode, stdout := runContextCommandForTest(func() {
+		runContextSearchCommand(nil, []string{"responses", "tools"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("exitCode = %d, want 0 (stdout=%q)", exitCode, stdout)
+	}
+	if capturedReq == nil {
+		t.Fatal("expected IPC request to be sent")
+	}
+	if capturedReq.Cmd != "context.search" {
+		t.Fatalf("cmd = %q, want %q", capturedReq.Cmd, "context.search")
+	}
+	if got := capturedReq.Params["query"]; got != "responses tools" {
+		t.Fatalf("query = %q, want %q", got, "responses tools")
+	}
+	if !strings.Contains(stdout, "context ipc ok") {
+		t.Fatalf("stdout = %q, want IPC output", stdout)
+	}
+}
+
+func TestRunContextAnnotateCommand_UsesIPCWithScopeFlags(t *testing.T) {
+	resetContextCLIState(t)
+	contextLang = "en"
+	contextVersion = "v2"
+	contextFile = "DOC.md"
+	contextTenant = "tenant-a"
+	contextUser = "user-a"
+
+	oldRoundTrip := ipcRoundTripFunc
+	oldIPCExit := ipcExit
+	oldOpener := contextRuntimeOpener
+	defer func() {
+		ipcRoundTripFunc = oldRoundTrip
+		ipcExit = oldIPCExit
+		contextRuntimeOpener = oldOpener
+	}()
+
+	contextRuntimeOpener = func() (*localContextRuntime, error) {
+		return nil, fmt.Errorf("context runtime opener should not be used from cobra command")
+	}
+
+	var capturedReq *sockipc.Request
+	ipcRoundTripFunc = func(req *sockipc.Request) (*sockipc.Response, error) {
+		capturedReq = req
+		return sockipc.OkResponse(map[string]string{
+			"__stdout":    "annotate ipc ok\n",
+			"__exit_code": "0",
+		}), nil
+	}
+	ipcExit = func(code int) { panic(contextCommandExitPanic{code: code}) }
+
+	exitCode, stdout := runContextCommandForTest(func() {
+		runContextAnnotateCommand(nil, []string{"openai/responses-api", "Persist over IPC"})
+	})
+	if exitCode != 0 {
+		t.Fatalf("exitCode = %d, want 0 (stdout=%q)", exitCode, stdout)
+	}
+	if capturedReq == nil {
+		t.Fatal("expected IPC request to be sent")
+	}
+	if capturedReq.Cmd != "context.annotate" {
+		t.Fatalf("cmd = %q, want %q", capturedReq.Cmd, "context.annotate")
+	}
+	for key, want := range map[string]string{
+		"id":      "openai/responses-api",
+		"note":    "Persist over IPC",
+		"lang":    "en",
+		"version": "v2",
+		"file":    "DOC.md",
+		"tenant":  "tenant-a",
+		"user":    "user-a",
+	} {
+		if got := capturedReq.Params[key]; got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestRunContextSearchCommand_RequiresRunningServiceWhenIPCUnavailable(t *testing.T) {
+	resetContextCLIState(t)
+
+	oldRoundTrip := ipcRoundTripFunc
+	oldIPCExit := ipcExit
+	oldOpener := contextRuntimeOpener
+	defer func() {
+		ipcRoundTripFunc = oldRoundTrip
+		ipcExit = oldIPCExit
+		contextRuntimeOpener = oldOpener
+	}()
+
+	contextRuntimeOpener = func() (*localContextRuntime, error) {
+		return nil, fmt.Errorf("context runtime opener should not be used from cobra command")
+	}
+	ipcRoundTripFunc = func(req *sockipc.Request) (*sockipc.Response, error) {
+		return nil, fmt.Errorf("dial unix /tmp/missing-blue.sock: connect: no such file or directory")
+	}
+	ipcExit = func(code int) { panic(contextCommandExitPanic{code: code}) }
+
+	exitCode, stdout := runContextCommandForTest(func() {
+		runContextSearchCommand(nil, []string{"responses", "tools"})
+	})
+	if exitCode != 1 {
+		t.Fatalf("exitCode = %d, want 1 (stdout=%q)", exitCode, stdout)
+	}
+	if !strings.Contains(stdout, "running Blue service is required for context.search") {
+		t.Fatalf("stdout = %q, want missing-service IPC error", stdout)
+	}
+}
+
+func runContextCommandForTest(fn func()) (exitCode int, stdout string) {
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		panic(err)
+	}
+	os.Stdout = w
+
+	defer func() {
+		os.Stdout = oldStdout
+		_ = w.Close()
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		_ = r.Close()
+		stdout = buf.String()
+		if rec := recover(); rec != nil {
+			if exit, ok := rec.(contextCommandExitPanic); ok {
+				exitCode = exit.code
+				return
+			}
+			panic(rec)
+		}
+	}()
+
+	fn()
+	return 0, ""
 }

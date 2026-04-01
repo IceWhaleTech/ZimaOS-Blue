@@ -146,3 +146,27 @@ func TestCompactorMemoryIntegration_ShouldCompactOnTransition(t *testing.T) {
 		t.Fatal("should not trigger when already above hard threshold previously")
 	}
 }
+
+func TestNormalizeExtractedMemoryForStorage_FiltersTransientAndDedups(t *testing.T) {
+	input := strings.Join([]string{
+		"- User preference: concise output",
+		"- Project fact: repo uses Go modules",
+		"- Uploaded file available at /tmp/session/upload.md",
+		"- approval requested for browser",
+		"* user preference: concise output   ",
+	}, "\n")
+
+	got := NormalizeExtractedMemoryForStorage(input)
+	if strings.Contains(got, "/tmp/session/upload.md") {
+		t.Fatalf("expected transient upload path to be filtered, got %q", got)
+	}
+	if strings.Contains(strings.ToLower(got), "approval requested") {
+		t.Fatalf("expected approval noise to be filtered, got %q", got)
+	}
+	if strings.Count(strings.ToLower(got), "user preference: concise output") != 1 {
+		t.Fatalf("expected duplicate preference to be collapsed, got %q", got)
+	}
+	if !strings.Contains(got, "Project fact: repo uses Go modules") {
+		t.Fatalf("expected durable project fact to remain, got %q", got)
+	}
+}

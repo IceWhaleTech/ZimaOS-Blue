@@ -5,8 +5,8 @@ import (
 	"context"
 	"database/sql"
 
-	z "github.com/IceWhaleTech/zorm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // ZormStore wraps zorm operations for skill storage.
@@ -26,7 +26,6 @@ func (zs *ZormStore) UpdateReadmeBatchZorm(ctx context.Context, updates []readme
 		return nil
 	}
 
-	// Use database transaction
 	tx, err := zs.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -34,21 +33,23 @@ func (zs *ZormStore) UpdateReadmeBatchZorm(ctx context.Context, updates []readme
 	defer tx.Rollback()
 
 	now := timeutil.NowTime()
-
-	// Prepare update statement
-	stmt, err := tx.PrepareContext(ctx, `
-		UPDATE skills
-		SET readme = ?, readme_hash = ?, updated_at = ?
-		WHERE id = ? AND (readme_hash IS NULL OR readme_hash != ?)
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
+	table := z.TableContext(ctx, tx, "skills")
 
 	for _, u := range updates {
-		_, err := stmt.ExecContext(ctx, u.Readme, u.Hash, now, u.ID, u.Hash)
-		if err != nil {
+		if _, err := table.Update(
+			z.V{
+				"readme":      u.Readme,
+				"readme_hash": u.Hash,
+				"updated_at":  now,
+			},
+			z.Where(
+				z.Eq("id", u.ID),
+				z.Or(
+					z.IsNull("readme_hash"),
+					z.Neq("readme_hash", u.Hash),
+				),
+			),
+		); err != nil {
 			return err
 		}
 	}

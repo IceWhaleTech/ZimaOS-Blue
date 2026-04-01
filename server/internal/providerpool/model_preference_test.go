@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSortModelIDsByPreference_LeavesSmallListsUnchanged(t *testing.T) {
+func TestSortModelIDsByPreference_SortsSmallListsDescending(t *testing.T) {
 	models := []string{
 		"o3-mini",
 		"gemini-2.5-pro",
@@ -15,14 +15,15 @@ func TestSortModelIDsByPreference_LeavesSmallListsUnchanged(t *testing.T) {
 
 	sorted := sortModelIDsByPreference(models)
 
-	for index, want := range models {
-		if got := sorted[index]; got != want {
-			t.Fatalf("expected small list to preserve order at %d: got %q want %q", index, got, want)
+	want := []string{"o3-mini", "gpt-4o-mini", "gemini-2.5-pro", "claude-haiku-4-5"}
+	for index, expected := range want {
+		if got := sorted[index]; got != expected {
+			t.Fatalf("unexpected order at %d: got %q want %q", index, got, expected)
 		}
 	}
 }
 
-func TestSortModelIDsByPreference_PrioritizesClaudeAndGptPrefixesForLargeLists(t *testing.T) {
+func TestSortModelIDsByPreference_SortsLargeListsDescending(t *testing.T) {
 	models := []string{
 		"o3-mini",
 		"gemini-2.5-pro",
@@ -35,15 +36,15 @@ func TestSortModelIDsByPreference_PrioritizesClaudeAndGptPrefixesForLargeLists(t
 
 	sorted := sortModelIDsByPreference(models)
 
-	if got := sorted[0]; got != "claude-haiku-4-5" {
-		t.Fatalf("expected claude prefix model first, got %q", got)
+	if got := sorted[0]; got != "o3-mini" {
+		t.Fatalf("expected descending sort to keep o3-mini first, got %q", got)
 	}
-	if got := sorted[1]; got != "gpt-4o-mini" {
-		t.Fatalf("expected gpt prefix model second, got %q", got)
+	if got := sorted[1]; got != "misc-099" {
+		t.Fatalf("expected highest misc entry second, got %q", got)
 	}
 }
 
-func TestSortModelIDsByPreference_PrioritizesNamespacedClaudeAndGptPrefixesForLargeLists(t *testing.T) {
+func TestSortModelIDsByPreference_SortsNamespacedModelsByNormalizedName(t *testing.T) {
 	models := []string{
 		"openai/o3-mini",
 		"google/gemini-2.5-pro",
@@ -56,10 +57,10 @@ func TestSortModelIDsByPreference_PrioritizesNamespacedClaudeAndGptPrefixesForLa
 
 	sorted := sortModelIDsByPreference(models)
 
-	if got := sorted[0]; got != "anthropic/claude-sonnet-4-5" {
-		t.Fatalf("expected namespaced claude model first, got %q", got)
+	if got := sorted[0]; got != "openai/o3-mini" {
+		t.Fatalf("expected namespaced o3 model first, got %q", got)
 	}
-	if got := sorted[1]; got != "openai/gpt-4.1-mini" {
-		t.Fatalf("expected namespaced gpt model second, got %q", got)
+	if got := sorted[1]; got != "provider/misc-099" {
+		t.Fatalf("expected highest namespaced misc model second, got %q", got)
 	}
 }

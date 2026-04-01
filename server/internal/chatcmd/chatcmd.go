@@ -121,7 +121,7 @@ func DefaultSpecs() []CommandSpec {
 		{Name: "providers", Aliases: []string{"/providers"}, Description: "List enabled providers.", Usage: "/providers"},
 		{Name: "offline", Aliases: []string{"/offline"}, Description: "Toggle offline mode.", Usage: "/offline on|off|status"},
 		{Name: "web", Aliases: []string{"/web"}, Description: "Toggle web search preference.", Usage: "/web on|off|status"},
-		{Name: "deep", Aliases: []string{"/deep"}, Description: "Toggle deep research preference.", Usage: "/deep on|off|status"},
+		{Name: "research", Aliases: []string{"/research", "/deep"}, Description: "Toggle research mode. `/deep` still works.", Usage: "/research on|off|status"},
 		{Name: "stop", Aliases: []string{"/stop"}, Description: "Stop the active stream for this conversation.", Usage: "/stop"},
 		{Name: "clear", Aliases: []string{"/clear", "/reset", "/new"}, Description: "Clear conversation messages and command state.", Usage: "/clear"},
 		{Name: "title", Aliases: []string{"/title", "/rename"}, Description: "Rename the conversation.", Usage: "/title <text>"},
@@ -201,8 +201,8 @@ func (e *Executor) Execute(ctx context.Context, conversationID, message string) 
 		return CommandResult{Content: e.executeToggle(ctx, conversationID, "offline", parsed.Args)}, true
 	case "web":
 		return CommandResult{Content: e.executeToggle(ctx, conversationID, "web", parsed.Args)}, true
-	case "deep":
-		return CommandResult{Content: e.executeToggle(ctx, conversationID, "deep", parsed.Args)}, true
+	case "research":
+		return CommandResult{Content: e.executeToggle(ctx, conversationID, "research", parsed.Args)}, true
 	case "stop":
 		return CommandResult{Content: e.executeStop(conversationID)}, true
 	case "clear":
@@ -245,7 +245,7 @@ func (e *Executor) renderStatus(ctx context.Context, conversationID string) stri
 		fmt.Sprintf("- runtime: `%s`", runtimeLine),
 		fmt.Sprintf("- offline: `%s`", onOff(state.Offline)),
 		fmt.Sprintf("- web: `%s`", onOff(state.WebSearchEnabled)),
-		fmt.Sprintf("- deep: `%s`", onOff(state.DeepResearchEnabled)),
+		fmt.Sprintf("- research_mode: `%s`", onOff(state.DeepResearchEnabled)),
 		fmt.Sprintf("- active_stream: `%s`", activeStream),
 		fmt.Sprintf("- messages: `%d`", messageCount),
 	}
@@ -381,7 +381,7 @@ func (e *Executor) renderModelStatus(ctx context.Context, conversationID string,
 		fmt.Sprintf("Selected model: `%s`", normalizeAuto(selectedModel)),
 		fmt.Sprintf("Offline: `%s`", onOff(state.Offline)),
 		fmt.Sprintf("Web search: `%s`", onOff(state.WebSearchEnabled)),
-		fmt.Sprintf("Deep research: `%s`", onOff(state.DeepResearchEnabled)),
+		fmt.Sprintf("Research mode: `%s`", onOff(state.DeepResearchEnabled)),
 	}
 	if runtime != nil && (runtime.Provider != "" || runtime.Model != "") {
 		lines = append(lines, fmt.Sprintf("Recent runtime: `%s`", strings.Trim(strings.TrimSpace(runtime.Provider+"/"+runtime.Model), "/")))
@@ -552,9 +552,9 @@ func (e *Executor) executeToggle(ctx context.Context, conversationID, kind, rawA
 	case "web":
 		current = state.WebSearchEnabled
 		label = "Web search"
-	case "deep":
+	case "deep", "research":
 		current = state.DeepResearchEnabled
-		label = "Deep research"
+		label = "Research mode"
 	}
 	set := func(value bool) string {
 		switch kind {
@@ -562,7 +562,7 @@ func (e *Executor) executeToggle(ctx context.Context, conversationID, kind, rawA
 			state.Offline = value
 		case "web":
 			state.WebSearchEnabled = value
-		case "deep":
+		case "deep", "research":
 			state.DeepResearchEnabled = value
 		}
 		if err := e.deps.SaveCommandState(ctx, state); err != nil {

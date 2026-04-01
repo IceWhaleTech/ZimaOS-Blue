@@ -5,36 +5,71 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 )
 
 // SkillDoc is a compact, selector-friendly representation of a skill.
 type SkillDoc struct {
-	Name         string
-	Description  string
-	Tags         []string
-	Category     string
-	Environment  []string
-	Example      string
-	Setup        string
-	ScriptPaths  []string
-	InstallSteps []string
-	UsageSteps   []string
-	TaskRoutes   []SkillRoute
-	ErrorRules   []SkillError
-	Body         string
-	SourcePath   string
+	ID              string
+	Name            string
+	Description     string
+	Tags            []string
+	Category        string
+	Environment     []string
+	Example         string
+	Invocation      string
+	Examples        []string
+	InteractionMode string
+	CardSupport     string
+	Setup           string
+	ScriptPaths     []string
+	InstallSteps    []string
+	UsageSteps      []string
+	TaskRoutes      []SkillRoute
+	ErrorRules      []SkillError
+	Body            string
+	SourcePath      string
 }
 
 // BuildSkillIndex scans workspace and user default skill roots and builds a
 // deduplicated index by skill name (workspace root wins on conflicts).
 func BuildSkillIndex(workspaceDir string) ([]SkillDoc, error) {
-	roots := resolveSkillRoots(workspaceDir)
-	if len(roots) == 0 {
-		return nil, nil
+	if err := skillmanifest.ValidateCanonicalConflicts(workspaceDir, skillmanifest.Options{}, true); err != nil {
+		return nil, err
 	}
 
+	roots := resolveSkillRoots(workspaceDir)
 	seen := make(map[string]struct{})
 	docs := make([]SkillDoc, 0, 64)
+	appendDoc := func(doc SkillDoc, aliases ...string) {
+		if strings.TrimSpace(doc.Name) == "" {
+			return
+		}
+		canonicalSeen := false
+		canonicalKeys := []string{doc.Name, doc.ID}
+		for _, alias := range canonicalKeys {
+			key := strings.ToLower(strings.TrimSpace(alias))
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				canonicalSeen = true
+				break
+			}
+		}
+		for _, alias := range append(aliases, canonicalKeys...) {
+			key := strings.ToLower(strings.TrimSpace(alias))
+			if key == "" {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		if canonicalSeen {
+			return
+		}
+		docs = append(docs, doc)
+	}
 
 	for _, root := range roots {
 		entries, err := os.ReadDir(root)
@@ -58,15 +93,25 @@ func BuildSkillIndex(workspaceDir string) ([]SkillDoc, error) {
 			}
 
 			doc := buildSkillDoc(se, data)
-			if doc.Name == "" {
+			appendDoc(doc, skillID)
+		}
+	}
+
+	embeddedIDs, err := skillmanifest.ListEmbeddedIDs()
+	if err == nil {
+		for _, skillID := range embeddedIDs {
+			if _, ok := seen[strings.ToLower(strings.TrimSpace(skillID))]; ok {
 				continue
 			}
-			key := strings.ToLower(doc.Name)
-			if _, ok := seen[key]; ok {
+			doc, _, readErr := skillmanifest.ReadEmbedded(skillID, skillmanifest.Options{})
+			if readErr != nil {
 				continue
 			}
-			seen[key] = struct{}{}
-			docs = append(docs, doc)
+			se := skillEntryFromDocument(doc)
+			if !se.Enabled || !skillPlatformMatch(se.OS) {
+				continue
+			}
+			appendDoc(buildSkillDoc(se, nil), skillID)
 		}
 	}
 
@@ -100,20 +145,25 @@ func buildSkillDoc(se SkillEntry, raw []byte) SkillDoc {
 	}
 
 	return SkillDoc{
-		Name:         strings.TrimSpace(se.Name),
-		Description:  strings.TrimSpace(se.Description),
-		Tags:         append([]string(nil), se.Tags...),
-		Category:     strings.TrimSpace(se.Category),
-		Environment:  append([]string(nil), se.Environment...),
-		Example:      truncateForIndex(example, 180),
-		Setup:        se.Setup,
-		ScriptPaths:  append([]string(nil), se.ScriptPaths...),
-		InstallSteps: append([]string(nil), se.InstallSteps...),
-		UsageSteps:   append([]string(nil), se.UsageSteps...),
-		TaskRoutes:   append([]SkillRoute(nil), se.TaskRoutes...),
-		ErrorRules:   append([]SkillError(nil), se.ErrorRules...),
-		Body:         truncateForIndex(body, 400),
-		SourcePath:   se.Location,
+		ID:              strings.TrimSpace(firstNonBlank(se.ID, se.Name)),
+		Name:            strings.TrimSpace(se.Name),
+		Description:     strings.TrimSpace(se.Description),
+		Tags:            append([]string(nil), se.Tags...),
+		Category:        strings.TrimSpace(se.Category),
+		Environment:     append([]string(nil), se.Environment...),
+		Example:         truncateForIndex(example, 180),
+		Invocation:      strings.TrimSpace(se.Invocation),
+		Examples:        append([]string(nil), se.Examples...),
+		InteractionMode: strings.TrimSpace(se.InteractionMode),
+		CardSupport:     strings.TrimSpace(se.CardSupport),
+		Setup:           se.Setup,
+		ScriptPaths:     append([]string(nil), se.ScriptPaths...),
+		InstallSteps:    append([]string(nil), se.InstallSteps...),
+		UsageSteps:      append([]string(nil), se.UsageSteps...),
+		TaskRoutes:      append([]SkillRoute(nil), se.TaskRoutes...),
+		ErrorRules:      append([]SkillError(nil), se.ErrorRules...),
+		Body:            truncateForIndex(body, 400),
+		SourcePath:      se.Location,
 	}
 }
 

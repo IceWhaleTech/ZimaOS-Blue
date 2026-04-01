@@ -1,7 +1,15 @@
 import { createI18n } from 'vue-i18n'
+import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
+import { localeKeys, localeOptions, type LocaleKey } from './locale-catalog'
+import smallModelFallbackReasonOverrides from './small-model-fallback-reason-overrides'
+import systemDashboardCardOverrides from './system-dashboard-card-overrides'
+
+export { localeKeys, localeOptions }
+export type { LocaleKey }
 
 type LocaleMessages = Record<string, unknown>
 type LocaleModule = { default: LocaleMessages }
+type LocaleOverrideCatalog = Partial<Record<LocaleKey, LocaleMessages>>
 
 // Minimal fallback messages for initial render before the selected locale finishes loading.
 const minimalMessages = {
@@ -9,38 +17,6 @@ const minimalMessages = {
     loading: 'Loading...',
   },
 } satisfies LocaleMessages
-
-export const localeKeys = [
-  'ca-ES',
-  'cs-CZ',
-  'da-DK',
-  'de-DE',
-  'el-GR',
-  'en-GB',
-  'en-US',
-  'es-ES',
-  'fr-FR',
-  'ga-IE',
-  'hr-HR',
-  'hu-HU',
-  'it-IT',
-  'ja-JP',
-  'ko-KR',
-  'ml-IN',
-  'nb-NO',
-  'nl-NL',
-  'pl-PL',
-  'pt-BR',
-  'pt-PT',
-  'ro-RO',
-  'ru-RU',
-  'sk-SK',
-  'sv-SE',
-  'zh-CN',
-  'zh-TW',
-] as const
-
-export type LocaleKey = (typeof localeKeys)[number]
 
 export type LocaleDirection = 'ltr' | 'rtl'
 
@@ -83,36 +59,6 @@ const browserLocaleMap: Record<string, LocaleKey> = {
   'zh-TW': 'zh-TW',
   'zh-HK': 'zh-TW',
 }
-
-export const localeOptions = [
-  { value: 'ca-ES', label: 'Català' },
-  { value: 'cs-CZ', label: 'Čeština' },
-  { value: 'da-DK', label: 'Dansk' },
-  { value: 'de-DE', label: 'Deutsch' },
-  { value: 'el-GR', label: 'Ελληνικά' },
-  { value: 'en-GB', label: 'English (UK)' },
-  { value: 'en-US', label: 'English (US)' },
-  { value: 'es-ES', label: 'Español' },
-  { value: 'fr-FR', label: 'Français' },
-  { value: 'ga-IE', label: 'Gaeilge' },
-  { value: 'hr-HR', label: 'Hrvatski' },
-  { value: 'hu-HU', label: 'Magyar' },
-  { value: 'it-IT', label: 'Italiano' },
-  { value: 'ja-JP', label: '日本語' },
-  { value: 'ko-KR', label: '한국어' },
-  { value: 'ml-IN', label: 'മലയാളം' },
-  { value: 'nb-NO', label: 'Norsk bokmål' },
-  { value: 'nl-NL', label: 'Nederlands' },
-  { value: 'pl-PL', label: 'Polski' },
-  { value: 'pt-BR', label: 'Português (Brasil)' },
-  { value: 'pt-PT', label: 'Português (Portugal)' },
-  { value: 'ro-RO', label: 'Română' },
-  { value: 'ru-RU', label: 'Русский' },
-  { value: 'sk-SK', label: 'Slovenčina' },
-  { value: 'sv-SE', label: 'Svenska' },
-  { value: 'zh-CN', label: '简体中文' },
-  { value: 'zh-TW', label: '繁體中文' },
-] as const satisfies readonly { value: LocaleKey; label: string }[]
 
 export function getLocaleDirection(locale: string): LocaleDirection {
   const normalized = locale.trim().toLowerCase()
@@ -193,6 +139,73 @@ const localeLoaders: Record<LocaleKey, () => Promise<LocaleModule>> = {
 
 const loadedLocales = new Set<LocaleKey>()
 const loadingLocales = new Map<LocaleKey, Promise<LocaleKey>>()
+let localeOverridesPromise: Promise<LocaleOverrideCatalog> | null = null
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function deepMergeMessages(base: LocaleMessages, overrides: LocaleMessages): LocaleMessages {
+  const merged: LocaleMessages = { ...base }
+
+  for (const [key, overrideValue] of Object.entries(overrides)) {
+    const baseValue = merged[key]
+    if (isPlainObject(baseValue) && isPlainObject(overrideValue)) {
+      merged[key] = deepMergeMessages(baseValue, overrideValue)
+      continue
+    }
+    merged[key] = overrideValue
+  }
+
+  return merged
+}
+
+function mergeOverrideCatalogs(
+  base: LocaleOverrideCatalog,
+  overrides: LocaleOverrideCatalog
+): LocaleOverrideCatalog {
+  const merged: LocaleOverrideCatalog = { ...base }
+
+  for (const [localeKey, localeOverrides] of Object.entries(overrides) as Array<
+    [LocaleKey, LocaleMessages]
+  >) {
+    const current = merged[localeKey]
+    merged[localeKey] =
+      current && isPlainObject(current)
+        ? deepMergeMessages(current, localeOverrides)
+        : localeOverrides
+  }
+
+  return merged
+}
+
+async function loadLocaleOverrides(): Promise<LocaleOverrideCatalog> {
+  if (localeOverridesPromise) {
+    return localeOverridesPromise
+  }
+
+  localeOverridesPromise = (async () => {
+    const [priorityModule, translationModule] = await Promise.all([
+      import('./priority-overrides').catch(() => ({ default: {} as LocaleOverrideCatalog })),
+      import('./priority-translation-overrides').catch(
+        () => ({ default: {} as LocaleOverrideCatalog })
+      ),
+    ])
+
+    return mergeOverrideCatalogs(
+      mergeOverrideCatalogs(
+        mergeOverrideCatalogs(
+          mergeOverrideCatalogs(priorityModule.default, translationModule.default),
+          systemDashboardCardOverrides as LocaleOverrideCatalog
+        ),
+        dashboardCardCopyOverrides as LocaleOverrideCatalog
+      ),
+      smallModelFallbackReasonOverrides as LocaleOverrideCatalog
+    )
+  })()
+
+  return localeOverridesPromise
+}
 
 function applyLocaleState(locale: LocaleKey): void {
   const direction = getLocaleDirection(locale)
@@ -225,8 +238,12 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<LocaleKey> {
 
   const pending = (async () => {
     try {
-      const module = await localeLoaders[locale]()
-      ;(i18n.global as unknown as LocaleComposerBridge).setLocaleMessage(locale, module.default)
+      const [module, localeOverrides] = await Promise.all([
+        localeLoaders[locale](),
+        loadLocaleOverrides(),
+      ])
+      const mergedMessages = deepMergeMessages(module.default, localeOverrides[locale] || {})
+      ;(i18n.global as unknown as LocaleComposerBridge).setLocaleMessage(locale, mergedMessages)
       loadedLocales.add(locale)
       return locale
     } catch (error) {

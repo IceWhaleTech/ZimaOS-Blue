@@ -2,12 +2,52 @@ package agentcore
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
+
+func writeSelectorSkill(t *testing.T, workspaceDir, id, desc, invocation string, capabilityTags ...string) {
+	t.Helper()
+
+	dir := filepath.Join(workspaceDir, ".claude", "skills", id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir skill: %v", err)
+	}
+
+	var md strings.Builder
+	md.WriteString("---\n")
+	md.WriteString(fmt.Sprintf("name: %s\n", id))
+	md.WriteString("version: \"1.0.0\"\n")
+	md.WriteString(fmt.Sprintf("description: %q\n", desc))
+	if invocation != "" {
+		md.WriteString(fmt.Sprintf("invocation: %q\n", invocation))
+		md.WriteString("examples:\n")
+		md.WriteString(fmt.Sprintf("  - %q\n", invocation))
+	}
+	if len(capabilityTags) > 0 {
+		md.WriteString("capability_tags:\n")
+		for _, tag := range capabilityTags {
+			md.WriteString(fmt.Sprintf("  - %s\n", tag))
+		}
+	}
+	md.WriteString("interaction_mode: stateless\n")
+	md.WriteString("card_support: none\n")
+	md.WriteString(fmt.Sprintf("os: [%q]\n", runtime.GOOS))
+	md.WriteString("---\n")
+	md.WriteString("# ")
+	md.WriteString(id)
+	md.WriteString("\n")
+
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(md.String()), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+}
 
 func TestBuildSkillIndex_WorkspaceOverridesHome(t *testing.T) {
 	workspaceDir := t.TempDir()
@@ -89,7 +129,7 @@ func TestSkillSelector_Select_IR(t *testing.T) {
 			t.Fatalf("write skill: %v", err)
 		}
 	}
-	mk("web_search", "search the web")
+	mk("web_query", "search the web")
 	mk("browser", "browse urls")
 
 	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
@@ -100,8 +140,8 @@ func TestSkillSelector_Select_IR(t *testing.T) {
 	if decision.SelectedSkill == "" {
 		t.Fatalf("expected selected skill")
 	}
-	if decision.SelectedSkill != "web_search" {
-		t.Fatalf("expected web_search, got %q", decision.SelectedSkill)
+	if decision.SelectedSkill != "web_query" {
+		t.Fatalf("expected web_query, got %q", decision.SelectedSkill)
 	}
 }
 
@@ -110,7 +150,7 @@ func TestSkillSelector_LowConfidenceNeedsClarify(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	for _, id := range []string{"browser", "web_search", "analyze"} {
+	for _, id := range []string{"browser", "web_query", "analyze"} {
 		dir := filepath.Join(workspaceDir, ".claude", "skills", id)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir skill: %v", err)
@@ -131,17 +171,43 @@ func TestSkillSelector_LowConfidenceNeedsClarify(t *testing.T) {
 	}
 }
 
+func TestSkillSelector_LatestDocsRouteToWebQuery(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkill(t, workspaceDir, "web_query", "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
+	writeSelectorSkill(t, workspaceDir, "analyze", "analyze local reports and project files", `blue analyze topic="project report" --json`, "analysis", "report")
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "最新 OpenAI Responses API 文档", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "web_query" {
+		t.Fatalf("expected web_query, got=%+v", decision)
+	}
+	if decision.NeedClarify {
+		t.Fatalf("latest docs query should not need clarify, got=%+v", decision)
+	}
+}
+
 func TestBuildSkillIndex_StructuredFields(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	dir := filepath.Join(workspaceDir, ".claude", "skills", "youtube-video-analyzer")
+	dir := filepath.Join(workspaceDir, ".claude", "skills", "youtube_video_analyzer")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir skill: %v", err)
 	}
 	content := `---
-name: youtube-video-analyzer
+name: youtube_video_analyzer
 description: Analyze YouTube videos
 tags: ["youtube","transcript"]
 category: media
@@ -182,10 +248,10 @@ python scripts/fetch_transcript.py <video_id_or_url> --save
 	if err != nil {
 		t.Fatalf("BuildSkillIndex error: %v", err)
 	}
-	if len(docs) != 1 {
-		t.Fatalf("expected 1 skill doc, got %d", len(docs))
+	doc, ok := findSkillDocByName(docs, "youtube_video_analyzer")
+	if !ok {
+		t.Fatalf("expected youtube_video_analyzer in skill index, got %v", docs)
 	}
-	doc := docs[0]
 	if len(doc.ScriptPaths) < 2 {
 		t.Fatalf("expected parsed script paths, got %v", doc.ScriptPaths)
 	}
@@ -234,6 +300,22 @@ func TestStage0RuleRoute_RoutesPlanOnlyForExplicitPlanCommands(t *testing.T) {
 	}
 }
 
+func TestStage0RuleRoute_RoutesWorkspaceQueryToExec(t *testing.T) {
+	query := "Review files in the workspace and summarize the report."
+	d := stage0RuleRoute(query)
+	if d.SelectedSkill != "exec" {
+		t.Fatalf("expected workspace local rule to route exec, got=%+v signals=%+v", d, sel.AnalyzeQuery(query))
+	}
+}
+
+func TestStage0RuleRoute_RoutesEmailCLIQuery(t *testing.T) {
+	query := "Search my IMAP inbox for unread mail from Alice and reply from the terminal."
+	d := stage0RuleRoute(query)
+	if d.SelectedSkill != "himalaya" {
+		t.Fatalf("expected email CLI rule to route himalaya, got=%+v signals=%+v", d, sel.AnalyzeQuery(query))
+	}
+}
+
 func TestSkillSelector_DefinitionQueryDoesNotAutoRoute(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -243,7 +325,7 @@ func TestSkillSelector_DefinitionQueryDoesNotAutoRoute(t *testing.T) {
 		id   string
 		desc string
 	}{
-		{id: "web_search", desc: "search the web"},
+		{id: "web_query", desc: "search the web"},
 		{id: "deep_research", desc: "research with citations"},
 	} {
 		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
@@ -270,7 +352,7 @@ func TestSkillSelector_DefinitionQueryDoesNotAutoRoute(t *testing.T) {
 	}
 }
 
-func TestSkillSelector_WorkspaceQueryDoesNotRouteWebSearch(t *testing.T) {
+func TestSkillSelector_WorkspaceQueryDoesNotRouteWebQuery(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -279,8 +361,8 @@ func TestSkillSelector_WorkspaceQueryDoesNotRouteWebSearch(t *testing.T) {
 		id   string
 		desc string
 	}{
-		{id: "web_search", desc: "search the web"},
-		{id: "analyze", desc: "analyze workspace files"},
+		{id: "web_query", desc: "search the web"},
+		{id: "analyze", desc: "analyze reports and urls"},
 	} {
 		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -301,11 +383,84 @@ func TestSkillSelector_WorkspaceQueryDoesNotRouteWebSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select error: %v", err)
 	}
-	if decision.SelectedSkill == "web_search" {
-		t.Fatalf("workspace file task should not route to web_search, got=%+v", decision)
+	if decision.SelectedSkill == "web_query" {
+		t.Fatalf("workspace file task should not route to web_query, got=%+v", decision)
 	}
-	if decision.SelectedSkill != "analyze" {
-		t.Fatalf("expected analyze for workspace file task, got=%+v", decision)
+	if decision.SelectedSkill != "exec" {
+		t.Fatalf("expected exec for workspace file task, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_WorkspaceREADMEQueryDoesNotRouteWebQuery(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkill(t, workspaceDir, "web_query", "search the web for latest docs and references", `blue web_query input="latest docs"`, "search", "web")
+	writeSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "看下 workspace 里的 README，顺手总结一下项目在做什么。", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill == "web_query" {
+		t.Fatalf("workspace README query should not route to web_query, got=%+v", decision)
+	}
+	if decision.SelectedSkill != "exec" {
+		t.Fatalf("expected exec for workspace README query, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_ReminderIntentRoutesReminder(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder.add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
+	writeSelectorSkill(t, workspaceDir, "scheduler", "manage recurring cron jobs and automation schedules", `blue cron.create name=uptime_check schedule="*/10 * * * *" command="uptime"`, "cron", "automation")
+	writeSelectorSkill(t, workspaceDir, "web_query", "search the web for docs and references", `blue web_query input="reminder app docs"`, "search", "web")
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "帮我明早 9 点提醒我交周报", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "reminder" {
+		t.Fatalf("expected reminder, got=%+v", decision)
+	}
+	if decision.NeedClarify {
+		t.Fatalf("reminder request should not need clarify, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_MixedLocalAndWebIntentNeedsClarify(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkill(t, workspaceDir, "web_query", "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.90,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if !decision.NeedClarify {
+		t.Fatalf("mixed local/web request should need clarify, got=%+v", decision)
 	}
 }
 
@@ -319,8 +474,8 @@ func TestSkillSelector_RoutesHimalayaForRealEmailCLIQueries(t *testing.T) {
 		desc string
 	}{
 		{id: "himalaya", desc: "real email cli for imap and smtp inbox workflows"},
-		{id: "analyze", desc: "analyze workspace files"},
-		{id: "web_search", desc: "search the web"},
+		{id: "analyze", desc: "analyze reports and urls"},
+		{id: "web_query", desc: "search the web"},
 	} {
 		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -463,5 +618,42 @@ func TestSkillSelector_URLAnalyzeBypassesBrowserRule(t *testing.T) {
 	}
 	if decision.SelectedSkill != "analyze" {
 		t.Fatalf("expected analyze for URL analysis request, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_URLDeepResearchBypassesBrowserRule(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "browser", desc: "browse urls"},
+		{id: "analyze", desc: "analyze reports and urls"},
+		{id: "deep_research", desc: "research with citations and evidence"},
+	} {
+		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir skill: %v", err)
+		}
+		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "Investigate https://example.com/pricing and compare the claims with citations, evidence, and a timeline.", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "deep_research" {
+		t.Fatalf("expected deep_research for URL research request, got=%+v", decision)
 	}
 }

@@ -188,7 +188,7 @@ func NormalizeToolProgressSummary(content string) string {
 		if summary := extractToolLoopStringValue(obj, "summary"); summary != "" {
 			parts = append(parts, "summary:"+normalizeToolLoopText(summary))
 		}
-		for _, key := range []string{"path", "file_path", "url", "query", "session_id", "sessionId"} {
+		for _, key := range []string{"mode", "next_action", "path", "file_path", "url", "target_url", "final_url", "query", "input", "session_id", "sessionId"} {
 			if value := extractToolLoopStringValue(obj, key); value != "" {
 				parts = append(parts, key+":"+normalizeToolLoopText(value))
 			}

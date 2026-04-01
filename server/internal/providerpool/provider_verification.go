@@ -42,6 +42,7 @@ type providerVerificationResult struct {
 }
 
 type providerVerificationURLs struct {
+	rootBaseURL  string
 	modelsURL    string
 	anthropicURL string
 	chatURL      string
@@ -83,7 +84,6 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	if detectedFormat == "" {
 		detectedFormat = APIFormatOpenAI
 	}
-	responsesEnabled := ResponsesIntegrationEnabled()
 
 	client := newProviderVerifyHTTPClient(req.SkipTLSVerify)
 	modelsStatus, modelsBody, modelsErr := doProviderVerificationRequest(ctx, client, http.MethodGet, urls.modelsURL, "", req.APIKey, APIFormatOpenAI)
@@ -108,19 +108,11 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 
 	for _, candidateModel := range modelCandidates {
 		chatStatus, chatBody, chatErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.chatURL, openAIChatProbeBody(candidateModel), req.APIKey, APIFormatOpenAI)
-		if responsesEnabled {
-			respV1Status, respV1Body, respV1Err = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesV1, responsesProbeBody(candidateModel), req.APIKey, APIFormatResponses)
-			respRawStatus, respRawBody, respRawErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesRaw, responsesProbeBody(candidateModel), req.APIKey, APIFormatResponses)
-		} else {
-			respV1Status, respV1Body, respV1Err = 0, "", nil
-			respRawStatus, respRawBody, respRawErr = 0, "", nil
-		}
+		respV1Status, respV1Body, respV1Err = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesV1, responsesProbeBody(candidateModel), req.APIKey, APIFormatResponses)
+		respRawStatus, respRawBody, respRawErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesRaw, responsesProbeBody(candidateModel), req.APIKey, APIFormatResponses)
 		probeModel = candidateModel
 
-		allModelNotFound := isModelNotFoundProbe(chatStatus, chatBody)
-		if responsesEnabled {
-			allModelNotFound = allProbeResultsModelNotFound(chatStatus, chatBody, respV1Status, respV1Body, respRawStatus, respRawBody)
-		}
+		allModelNotFound := allProbeResultsModelNotFound(chatStatus, chatBody, respV1Status, respV1Body, respRawStatus, respRawBody)
 		if candidateModel == "" || !allModelNotFound {
 			break
 		}
@@ -132,15 +124,13 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 		// Model-less probe can trigger expected parameter errors on strict endpoints.
 		chatError = ""
 	}
-	responsesStatus := ""
-	responsesOnly := false
-	if responsesEnabled {
-		responsesStatus = extractFieldOrError(respV1Body, "status")
-		responsesOnly = indicatesResponsesOnlyProvider(chatStatus, chatBody)
-	}
+	responsesStatus := extractFieldOrError(respV1Body, "status")
+	responsesOnly := indicatesResponsesOnlyProvider(chatStatus, chatBody)
 	anthropicReachable := isProviderVerificationReachable(anthropicStatus)
 	openAIReachable := isProviderVerificationReachable(chatStatus)
-	responsesReachable := responsesEnabled && (isProviderVerificationReachable(respV1Status) || isProviderVerificationReachable(respRawStatus))
+	responsesV1Reachable := isProviderVerificationResponsesReachable(respV1Status, respV1Body)
+	responsesRawReachable := isProviderVerificationResponsesReachable(respRawStatus, respRawBody)
+	responsesReachable := responsesV1Reachable || responsesRawReachable
 	resolutionPlan := ResolveAPIFormatPlan(FormatResolutionRequest{
 		Provider:       provider,
 		ModelID:        probeModel,
@@ -155,7 +145,7 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 		responsesOnly,
 	)
 
-	rootBaseURL := strings.TrimSuffix(urls.modelsURL, "/v1/models")
+	rootBaseURL := strings.TrimSpace(urls.rootBaseURL)
 	if strings.TrimSpace(rootBaseURL) == "" {
 		rootBaseURL = baseURL
 	}
@@ -165,13 +155,15 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	}
 	if recommendedFormat == APIFormatResponses {
 		switch {
-		case isProviderVerificationReachable(respV1Status):
+		case responsesV1Reachable:
 			recommendedBaseURL = urls.responsesV1
-		case isProviderVerificationReachable(respRawStatus):
+		case responsesRawReachable:
 			recommendedBaseURL = urls.responsesRaw
 		default:
 			recommendedBaseURL = rootBaseURL
 		}
+	} else if recommendedFormat == APIFormatAnthropic {
+		recommendedBaseURL = preferredAnthropicVerificationBaseURL(baseURL, rootBaseURL)
 	} else {
 		// For non-responses formats, prefer root base URL rather than a /responses suffix.
 		recommendedBaseURL = rootBaseURL
@@ -179,9 +171,9 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	// responses-only providers should prefer a /responses endpoint base.
 	if recommendedFormat == APIFormatResponses && responsesOnly && !strings.HasSuffix(strings.TrimSuffix(recommendedBaseURL, "/"), "/responses") {
 		switch {
-		case isProviderVerificationReachable(respV1Status):
+		case responsesV1Reachable:
 			recommendedBaseURL = urls.responsesV1
-		case isProviderVerificationReachable(respRawStatus):
+		case responsesRawReachable:
 			recommendedBaseURL = urls.responsesRaw
 		}
 	}
@@ -205,20 +197,18 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 			Reachable:  isProviderVerificationReachable(anthropicStatus),
 			Error:      sanitizeProbeError(anthropicErr),
 		},
-	}
-	if responsesEnabled {
-		probes["responses_v1"] = providerVerificationProbe{
+		"responses_v1": {
 			URL:        urls.responsesV1,
 			StatusCode: respV1Status,
-			Reachable:  isProviderVerificationReachable(respV1Status),
+			Reachable:  responsesV1Reachable,
 			Error:      sanitizeProbeError(respV1Err),
-		}
-		probes["responses_plain"] = providerVerificationProbe{
+		},
+		"responses_plain": {
 			URL:        urls.responsesRaw,
 			StatusCode: respRawStatus,
-			Reachable:  isProviderVerificationReachable(respRawStatus),
+			Reachable:  responsesRawReachable,
 			Error:      sanitizeProbeError(respRawErr),
-		}
+		},
 	}
 
 	result := &providerVerificationResult{
@@ -308,15 +298,6 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 }
 
 func recommendedReachableFormatForPlan(plan FormatResolutionPlan, detectedFormat APIFormat, anthropicReachable, openAIReachable, responsesReachable, responsesOnly bool) APIFormat {
-	responsesEnabled := ResponsesIntegrationEnabled()
-	if !responsesEnabled {
-		responsesReachable = false
-		responsesOnly = false
-		if detectedFormat == APIFormatResponses {
-			detectedFormat = ""
-		}
-	}
-
 	if responsesOnly && responsesReachable {
 		return APIFormatResponses
 	}
@@ -402,6 +383,53 @@ func isGenericVerificationEndpointLock(raw string) bool {
 	}
 }
 
+func stripProviderVerificationRootBaseURL(raw string) string {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(raw), "/")
+	if trimmed == "" {
+		return ""
+	}
+	for _, suffix := range []string{
+		"/anthropic/v1/chat/completions",
+		"/anthropic/chat/completions",
+		"/anthropic/v1/messages",
+		"/anthropic/messages",
+		"/anthropic",
+		"/v1/chat/completions",
+		"/chat/completions",
+		"/v1/messages",
+		"/messages",
+		"/v1/models",
+		"/models",
+		"/v1/responses",
+		"/responses",
+		"/v1",
+	} {
+		if strings.HasSuffix(trimmed, suffix) {
+			return strings.TrimSuffix(trimmed, suffix)
+		}
+	}
+	return trimmed
+}
+
+func preferredAnthropicVerificationBaseURL(raw, rootBaseURL string) string {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(raw), "/")
+	if trimmed == "" {
+		return rootBaseURL
+	}
+
+	lower := strings.ToLower(trimmed)
+	switch {
+	case strings.HasSuffix(lower, "/anthropic"):
+		return trimmed
+	case strings.HasSuffix(lower, "/anthropic/v1/messages"):
+		return strings.TrimSuffix(trimmed, "/v1/messages")
+	case strings.HasSuffix(lower, "/anthropic/messages"):
+		return strings.TrimSuffix(trimmed, "/messages")
+	default:
+		return rootBaseURL
+	}
+}
+
 func doProviderVerificationRequest(ctx context.Context, client *http.Client, method, endpoint, body, apiKey string, format APIFormat) (int, string, error) {
 	var reader io.Reader
 	if strings.TrimSpace(body) != "" {
@@ -418,9 +446,11 @@ func doProviderVerificationRequest(ctx context.Context, client *http.Client, met
 	if key := strings.TrimSpace(apiKey); key != "" {
 		switch format {
 		case APIFormatAnthropic:
-			req.Header.Set("x-api-key", key)
-			req.Header.Set("anthropic-version", "2023-06-01")
-			req.Header.Del("Authorization")
+			if isMiniMaxAnthropicEndpoint(endpoint) {
+				applyMiniMaxAnthropicProbeAuth(req, key)
+			} else {
+				applyAnthropicProbeAuth(req, key)
+			}
 		default:
 			req.Header.Set("Authorization", "Bearer "+key)
 			req.Header.Del("x-api-key")
@@ -438,11 +468,36 @@ func doProviderVerificationRequest(ctx context.Context, client *http.Client, met
 }
 
 func buildProviderVerificationURLs(baseURL string) providerVerificationURLs {
-	rootForV1 := baseURL
+	rootForV1 := stripProviderVerificationRootBaseURL(baseURL)
+	if rootForV1 == "" {
+		rootForV1 = baseURL
+	}
+
+	modelsURL := rootForV1 + "/v1/models"
+	anthropicURL := rootForV1 + "/v1/messages"
+	chatURL := rootForV1 + "/v1/chat/completions"
 	respV1URL := baseURL + "/v1/responses"
 	respPlainURL := baseURL + "/responses"
 
 	switch {
+	case strings.HasSuffix(baseURL, "/anthropic"):
+		anthropicURL = baseURL + "/v1/messages"
+		respV1URL = rootForV1 + "/v1/responses"
+		respPlainURL = rootForV1 + "/responses"
+	case strings.HasSuffix(baseURL, "/anthropic/v1/messages"), strings.HasSuffix(baseURL, "/anthropic/messages"),
+		strings.HasSuffix(baseURL, "/v1/messages"), strings.HasSuffix(baseURL, "/messages"):
+		anthropicURL = baseURL
+		respV1URL = rootForV1 + "/v1/responses"
+		respPlainURL = rootForV1 + "/responses"
+	case strings.HasSuffix(baseURL, "/anthropic/v1/chat/completions"), strings.HasSuffix(baseURL, "/anthropic/chat/completions"),
+		strings.HasSuffix(baseURL, "/v1/chat/completions"), strings.HasSuffix(baseURL, "/chat/completions"):
+		chatURL = baseURL
+		respV1URL = rootForV1 + "/v1/responses"
+		respPlainURL = rootForV1 + "/responses"
+	case strings.HasSuffix(baseURL, "/v1/models"), strings.HasSuffix(baseURL, "/models"):
+		modelsURL = baseURL
+		respV1URL = rootForV1 + "/v1/responses"
+		respPlainURL = rootForV1 + "/responses"
 	case strings.HasSuffix(baseURL, "/v1/responses"):
 		rootForV1 = strings.TrimSuffix(baseURL, "/v1/responses")
 		respV1URL = baseURL
@@ -462,9 +517,10 @@ func buildProviderVerificationURLs(baseURL string) providerVerificationURLs {
 	}
 
 	return providerVerificationURLs{
-		modelsURL:    rootForV1 + "/v1/models",
-		anthropicURL: rootForV1 + "/v1/messages",
-		chatURL:      rootForV1 + "/v1/chat/completions",
+		rootBaseURL:  rootForV1,
+		modelsURL:    modelsURL,
+		anthropicURL: anthropicURL,
+		chatURL:      chatURL,
 		responsesV1:  respV1URL,
 		responsesRaw: respPlainURL,
 	}
@@ -476,6 +532,13 @@ func isProviderVerificationReachable(status int) bool {
 		return true
 	}
 	return status >= 200 && status < 300
+}
+
+func isProviderVerificationResponsesReachable(status int, body string) bool {
+	if !isProviderVerificationReachable(status) {
+		return false
+	}
+	return !looksLikeProviderHTMLDocument(body)
 }
 
 func extractErrorMessage(body string) string {

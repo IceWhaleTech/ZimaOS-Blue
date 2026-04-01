@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { UserTaskProjection, UserTaskResearchSource } from '@/api/tasks'
+import type { UserTaskActionID, UserTaskProjection, UserTaskResearchSource } from '@/api/tasks'
 import {
   localizeTaskProjectionSubtitle,
   localizeTaskProjectionTitle,
 } from '@/utils/taskProjectionText'
+import {
+  canOpenTaskConversation,
+  projectTaskControlActions,
+  type ProjectedUserTaskAction,
+} from '@/utils/taskProjectionActions'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -20,12 +25,10 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  cancel: [taskId: string]
+  action: [task: UserTaskProjection, actionId: UserTaskActionID, payload?: unknown]
   open: [task: UserTaskProjection]
-  message: [taskId: string, message: string]
 }>()
 
-const draftMessage = ref('')
 const expanded = ref(true)
 
 const isTerminal = computed(() =>
@@ -95,18 +98,41 @@ const progressClass = computed(() => {
   }
 })
 
-const kindLabel = computed(() =>
-  props.task.kind === 'research'
-    ? t('chat.taskKindResearch', 'Research')
-    : t('chat.taskKindAgent', 'Agent')
-)
+function translate(key: string, fallback: string): string {
+  return te(key) ? t(key) : fallback
+}
 
-const kindIcon = computed(() => (props.task.kind === 'research' ? 'R' : 'A'))
+const controlActions = computed<ProjectedUserTaskAction[]>(() =>
+  projectTaskControlActions(props.task, translate)
+)
+const canOpenConversation = computed(() => canOpenTaskConversation(props.task))
+
+const kindLabel = computed(() => {
+  switch (props.task.kind) {
+    case 'research':
+      return translate('chat.taskKindResearch', 'Deep Research')
+    case 'workflow':
+      return translate('chat.taskKindWorkflow', 'Workflow')
+    default:
+      return translate('chat.taskKindAgent', 'Agent')
+  }
+})
+
+const kindIcon = computed(() => {
+  switch (props.task.kind) {
+    case 'research':
+      return 'R'
+    case 'workflow':
+      return 'W'
+    default:
+      return 'A'
+  }
+})
 const localizedTitle = computed(() =>
-  localizeTaskProjectionTitle(props.task.title, props.task.kind, t)
+  localizeTaskProjectionTitle(props.task.title, props.task.kind, translate)
 )
 const localizedSubtitle = computed(() =>
-  localizeTaskProjectionSubtitle(props.task.subtitle, props.task.kind, t)
+  localizeTaskProjectionSubtitle(props.task.subtitle, props.task.kind, translate)
 )
 
 const previewText = computed(() => props.task.error_preview || props.task.result_preview || '')
@@ -126,13 +152,6 @@ const blockerLabel = computed(() => {
       return props.task.blocker.label || ''
   }
 })
-
-function sendUpdate() {
-  const message = draftMessage.value.trim()
-  if (!message) return
-  emit('message', props.task.id, message)
-  draftMessage.value = ''
-}
 
 function formatDate(value?: string): string {
   if (!value) return ''
@@ -154,6 +173,21 @@ function domainOf(source: UserTaskResearchSource): string {
   } catch {
     return source.url
   }
+}
+
+function actionButtonClass(action: ProjectedUserTaskAction): string {
+  switch (String(action.variant || '').trim()) {
+    case 'primary':
+      return 'rounded-full border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-900/60 dark:text-blue-200 dark:hover:bg-blue-950/30'
+    case 'danger':
+      return 'rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-950/30'
+    default:
+      return 'rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+  }
+}
+
+function emitTaskAction(actionID: UserTaskActionID) {
+  emit('action', props.task, actionID)
 }
 </script>
 
@@ -219,7 +253,7 @@ function domainOf(source: UserTaskResearchSource): string {
 
         <div class="flex shrink-0 items-center gap-2">
           <button
-            v-if="task.actions.can_open_chat"
+            v-if="canOpenConversation"
             type="button"
             class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             @click="emit('open', task)"
@@ -227,12 +261,13 @@ function domainOf(source: UserTaskResearchSource): string {
             {{ t('chat.taskOpenConversation', 'Open conversation') }}
           </button>
           <button
-            v-if="task.actions.can_cancel"
+            v-for="action in controlActions"
+            :key="`${task.id}-${action.id}`"
             type="button"
-            class="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-950/30"
-            @click="emit('cancel', task.id)"
+            :class="actionButtonClass(action)"
+            @click="emitTaskAction(action.id)"
           >
-            {{ t('chat.taskCancel', 'Cancel') }}
+            {{ action.label }}
           </button>
         </div>
       </div>
@@ -245,7 +280,7 @@ function domainOf(source: UserTaskResearchSource): string {
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <button
-            v-if="task.actions.can_open_chat"
+            v-if="canOpenConversation"
             type="button"
             class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             @click="emit('open', task)"
@@ -253,12 +288,13 @@ function domainOf(source: UserTaskResearchSource): string {
             {{ t('chat.taskOpenConversation', 'Open conversation') }}
           </button>
           <button
-            v-if="task.actions.can_cancel"
+            v-for="action in controlActions"
+            :key="`${task.id}-collapsed-${action.id}`"
             type="button"
-            class="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-950/30"
-            @click="emit('cancel', task.id)"
+            :class="actionButtonClass(action)"
+            @click="emitTaskAction(action.id)"
           >
-            {{ t('chat.taskCancel', 'Cancel') }}
+            {{ action.label }}
           </button>
         </div>
       </div>
@@ -361,24 +397,6 @@ function domainOf(source: UserTaskResearchSource): string {
             {{ artifact.label }}
           </span>
         </template>
-      </div>
-
-      <div v-if="task.actions.can_send_update" class="mt-3 flex gap-2">
-        <input
-          v-model="draftMessage"
-          type="text"
-          class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-          :placeholder="t('chat.taskSendUpdatePlaceholder', 'Send an update to this task')"
-          @keydown.enter.prevent="sendUpdate"
-        />
-        <button
-          type="button"
-          class="rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="!draftMessage.trim()"
-          @click="sendUpdate"
-        >
-          {{ t('chat.taskSendUpdate', 'Send update') }}
-        </button>
       </div>
     </div>
   </section>

@@ -19,6 +19,7 @@ func TestRegisterAll(t *testing.T) {
 		NewBrowser(),
 		NewAnalyze(),
 		NewDeepResearch(),
+		NewWebQuery(),
 		NewWebSearch(),
 		NewUIReviewer(),
 		NewHumanizer(),

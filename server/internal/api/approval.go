@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -56,6 +57,58 @@ type PendingRequest struct {
 	CreatedAt    string         `json:"created_at"`
 	ExpiresAt    int64          `json:"expires_at,omitempty"`
 	UserID       string         `json:"-"`
+}
+
+type toolApprovalRuntimeError struct {
+	code    string
+	message string
+	details map[string]interface{}
+	cause   error
+}
+
+func (e *toolApprovalRuntimeError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return strings.TrimSpace(e.message)
+}
+
+func (e *toolApprovalRuntimeError) ToolRuntimeCode() string {
+	if e == nil {
+		return ""
+	}
+	return strings.TrimSpace(e.code)
+}
+
+func (e *toolApprovalRuntimeError) ToolRuntimeDetails() map[string]interface{} {
+	if e == nil || len(e.details) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(e.details))
+	for key, value := range e.details {
+		out[key] = value
+	}
+	return out
+}
+
+func (e *toolApprovalRuntimeError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+func newToolApprovalRuntimeError(code, message string, cause error, details map[string]interface{}) error {
+	cloned := make(map[string]interface{}, len(details))
+	for key, value := range details {
+		cloned[key] = value
+	}
+	return &toolApprovalRuntimeError{
+		code:    strings.TrimSpace(code),
+		message: strings.TrimSpace(message),
+		details: cloned,
+		cause:   cause,
+	}
 }
 
 // ApprovalHandler serves the /api/v1/approval endpoints.
@@ -370,7 +423,11 @@ func (h *ApprovalHandler) waitForApproval(ctx context.Context, userID string, re
 		}
 		return strings.ToLower(strings.TrimSpace(resolution)), nil
 	case <-timer.C:
-		err := fmt.Errorf("tool approval timed out after %s", h.timeout)
+		err := newToolApprovalRuntimeError("tool_approval_timeout", fmt.Sprintf("tool approval timed out after %s", h.timeout), context.DeadlineExceeded, map[string]interface{}{
+			"approval_id": req.ID,
+			"tool":        strings.TrimSpace(req.ToolName),
+			"policy_mode": "ask",
+		})
 		if observer != nil {
 			event := toolApprovalRuntimeEvent(req)
 			event.Decision = "deny"
@@ -379,7 +436,18 @@ func (h *ApprovalHandler) waitForApproval(ctx context.Context, userID string, re
 		}
 		return "deny", err
 	case <-ctx.Done():
-		err := ctx.Err()
+		code := "tool_approval_aborted"
+		switch {
+		case errors.Is(ctx.Err(), context.Canceled):
+			code = "tool_approval_cancelled"
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			code = "tool_approval_timeout"
+		}
+		err := newToolApprovalRuntimeError(code, ctx.Err().Error(), ctx.Err(), map[string]interface{}{
+			"approval_id": req.ID,
+			"tool":        strings.TrimSpace(req.ToolName),
+			"policy_mode": "ask",
+		})
 		if observer != nil {
 			event := toolApprovalRuntimeEvent(req)
 			event.Decision = "deny"

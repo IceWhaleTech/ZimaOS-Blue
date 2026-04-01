@@ -17,6 +17,9 @@ function createTestI18n(locale = 'en-US') {
           loading: 'Loading...',
         },
         chat: {
+          researchTitle: 'Research',
+          researchProgress: 'Research Running',
+          researchRunningElsewhere: 'Track active research tasks across conversations.',
           waitingThinking: 'Thinking...',
           deepResearchTitle: 'Deep Research',
           deepResearchEvidence: 'Evidence',
@@ -58,7 +61,7 @@ function createTestI18n(locale = 'en-US') {
           deepResearchActionCompleted: 'Completed',
           deepResearchExpandDetails: 'Expand research details',
           deepResearchCollapseDetails: 'Collapse research details',
-          deepResearchProgress: 'Deep Research Running',
+          deepResearchProgress: 'Deep Research in progress',
           deepResearchStageIntake: 'Intake',
           deepResearchStagePlanning: 'Planning',
           deepResearchStageRetrieve: 'Retrieving',
@@ -85,7 +88,7 @@ function createTestI18n(locale = 'en-US') {
           deepResearchCitations: 'Citations',
           deepResearchViewTask: 'View task',
           deepResearchCancelTask: 'Cancel',
-          deepResearchRunningElsewhere: 'Track active deep research jobs across conversations.',
+          deepResearchRunningElsewhere: 'Track active Deep Research tasks across conversations.',
         },
       },
       'zh-CN': {
@@ -163,7 +166,7 @@ describe('Deep research cards', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Deep Research')
+    expect(wrapper.text()).toContain('Research')
     expect(
       wrapper.get('[data-testid="deep-research-summary-toggle"]').attributes('aria-expanded')
     ).toBe('false')
@@ -333,7 +336,7 @@ describe('Deep research cards', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Deep Research Running')
+    expect(wrapper.text()).toContain('Deep Research in progress')
     expect(wrapper.text()).toContain('Verifying')
     expect(wrapper.text()).toContain('Iteration 2')
     expect(wrapper.text()).toContain('Verification completed')

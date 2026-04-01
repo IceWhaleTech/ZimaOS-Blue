@@ -43,6 +43,76 @@ func TestNewStore(t *testing.T) {
 	}
 }
 
+func TestNewStoreUsesReaderPoolForFileDB(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "reader.db")
+
+	store, err := NewStore(Config{DBPath: dbPath, Enabled: true, RetentionDays: 7})
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if store.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if store.readDB == store.db {
+		t.Fatal("expected a separate read db for file-backed scheduler store")
+	}
+}
+
+func TestStoreReadsStillWorkAfterWriterClose(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "reader-close.db")
+
+	store, err := NewStore(Config{DBPath: dbPath, Enabled: true, RetentionDays: 7})
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer func() {
+		if store.readDB != nil && store.readDB != store.db {
+			_ = store.readDB.Close()
+		}
+	}()
+
+	if store.readDB == nil || store.readDB == store.db {
+		t.Fatal("expected a separate read db for file-backed scheduler store")
+	}
+
+	task := &TaskRecord{
+		ID:          "task-reader",
+		Name:        "reader-task",
+		Priority:    3,
+		Status:      "pending",
+		ScheduledAt: time.Now(),
+		MaxRetries:  2,
+		HandlerName: "reader-handler",
+	}
+	if err := store.Save(task); err != nil {
+		t.Fatalf("failed to save task: %v", err)
+	}
+
+	if err := store.db.Close(); err != nil {
+		t.Fatalf("close writer db: %v", err)
+	}
+
+	got, err := store.Get(task.ID)
+	if err != nil {
+		t.Fatalf("get task after writer close: %v", err)
+	}
+	if got == nil || got.Name != "reader-task" {
+		t.Fatalf("unexpected task via reader db: %+v", got)
+	}
+
+	tasks, err := store.List(TaskFilter{HandlerName: "reader-handler"})
+	if err != nil {
+		t.Fatalf("list tasks after writer close: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != task.ID {
+		t.Fatalf("unexpected tasks via reader db: %+v", tasks)
+	}
+}
+
 func TestSaveAndGet(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")

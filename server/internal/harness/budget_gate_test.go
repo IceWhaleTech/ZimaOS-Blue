@@ -1,0 +1,277 @@
+package harness
+
+import (
+	"context"
+	"testing"
+)
+
+func TestSkillCutoverIncreaseRate_IgnoresNearZeroLatencyJitter(t *testing.T) {
+	if got := skillCutoverIncreaseRate(0, 27.5); got != 0 {
+		t.Fatalf("skillCutoverIncreaseRate(0, 27.5) = %#v, want 0 within noise floor", got)
+	}
+	if got := skillCutoverIncreaseRate(20, 45); got != 0 {
+		t.Fatalf("skillCutoverIncreaseRate(20, 45) = %#v, want 0 within noise floor", got)
+	}
+	if got := skillCutoverIncreaseRate(0, 80); got <= defaultSkillCutoverMaxMedianLatencyIncreaseRate {
+		t.Fatalf("skillCutoverIncreaseRate(0, 80) = %#v, want failure-sized increase above noise floor", got)
+	}
+}
+
+func TestController_EvaluateSkillCutoverBudgetGate_PassesForExecOnlySurface(t *testing.T) {
+	controller := newTestController(t)
+	items := selectorGateSmokeItems(t)
+	evalSpec := createSelectorEvalSpecForItems(t, controller, "Budget gate pass", items)
+
+	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "budget-baseline", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("analyze", true, "clarify"),
+		},
+	}, len(items))
+	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
+		Name:        "budget-pass-baseline",
+		OwnerUserID: "user-1",
+		EvalRunID:   baselineReport.EvalRun.ID,
+		IsDefault:   true,
+	})
+	if err != nil {
+		t.Fatalf("CreateBaseline failed: %v", err)
+	}
+
+	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "budget-candidate", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseWithTools("web_search", []string{"exec"}, false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponseWithTools("exec", []string{"exec"}, true, "clarify"),
+		},
+	}, len(items))
+
+	report, err := controller.EvaluateSkillCutoverBudgetGate(context.Background(), candidateReport.EvalRun.ID, SkillCutoverBudgetRequest{
+		BaselineID: baseline.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSkillCutoverBudgetGate failed: %v", err)
+	}
+
+	if !report.Passed {
+		t.Fatalf("report = %#v, want pass", report)
+	}
+	if report.Metrics.MedianSchemaByteReductionRate < 0.8 {
+		t.Fatalf("median_schema_byte_reduction_rate = %#v, want >= 0.8", report.Metrics.MedianSchemaByteReductionRate)
+	}
+	if report.Metrics.NonAllowedNativeToolCaseCount != 0 {
+		t.Fatalf("non_allowed_native_tool_case_count = %#v, want 0", report.Metrics.NonAllowedNativeToolCaseCount)
+	}
+}
+
+func TestController_EvaluateSkillCutoverBudgetGate_FailsForNonExecSurface(t *testing.T) {
+	controller := newTestController(t)
+	items := selectorGateSmokeItems(t)
+	evalSpec := createSelectorEvalSpecForItems(t, controller, "Budget gate fail", items)
+
+	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "budget-baseline", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("analyze", true, "clarify"),
+		},
+	}, len(items))
+	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
+		Name:        "budget-fail-baseline",
+		OwnerUserID: "user-1",
+		EvalRunID:   baselineReport.EvalRun.ID,
+		IsDefault:   true,
+	})
+	if err != nil {
+		t.Fatalf("CreateBaseline failed: %v", err)
+	}
+
+	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "budget-candidate", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("analyze", true, "clarify"),
+		},
+	}, len(items))
+
+	report, err := controller.EvaluateSkillCutoverBudgetGate(context.Background(), candidateReport.EvalRun.ID, SkillCutoverBudgetRequest{
+		BaselineID: baseline.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSkillCutoverBudgetGate failed: %v", err)
+	}
+
+	if report.Passed {
+		t.Fatalf("report = %#v, want fail", report)
+	}
+	if report.Metrics.NonAllowedNativeToolCaseCount == 0 {
+		t.Fatalf("non_allowed_native_tool_case_count = %#v, want > 0", report.Metrics.NonAllowedNativeToolCaseCount)
+	}
+	if report.Metrics.MedianSchemaByteReductionRate != 0 {
+		t.Fatalf("median_schema_byte_reduction_rate = %#v, want 0", report.Metrics.MedianSchemaByteReductionRate)
+	}
+}
+
+func TestController_EvaluateSkillCutoverBudgetGate_PrefersSelectedNativeSurface(t *testing.T) {
+	controller := newTestController(t)
+	items := selectorGateSmokeItems(t)
+	evalSpec := createSelectorEvalSpecForItems(t, controller, "Budget gate native surface preference", items)
+
+	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "budget-baseline", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
+		},
+	}, len(items))
+	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
+		Name:        "budget-native-preference-baseline",
+		OwnerUserID: "user-1",
+		EvalRunID:   baselineReport.EvalRun.ID,
+		IsDefault:   true,
+	})
+	if err != nil {
+		t.Fatalf("CreateBaseline failed: %v", err)
+	}
+
+	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "budget-candidate", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.": {
+				"selected_tools":               []interface{}{harnessCanonicalWebQuerySkill},
+				"selected_tool_surface":        selectorEvalToolSurface([]string{harnessCanonicalWebQuerySkill}),
+				"selected_native_tools":        []interface{}{"exec"},
+				"selected_native_tool_surface": selectorEvalToolSurface([]string{"exec"}),
+				"skill_decision":               map[string]interface{}{"selected_skill": harnessCanonicalWebQuerySkill, "need_clarify": false},
+				"skill_prompt_hint":            "Use the curated selector route.",
+				"canonical_skill_id":           harnessCanonicalWebQuerySkill,
+				"skill_need_clarify":           false,
+				"skill_route_outcome":          "selected",
+				"decision_reason":              "curated_test",
+				"decision_stage":               "rerank",
+				"smart_skill_selection":        true,
+			},
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": {
+				"selected_tools":               []interface{}{"exec"},
+				"selected_tool_surface":        selectorEvalToolSurface([]string{"exec"}),
+				"selected_native_tools":        []interface{}{},
+				"selected_native_tool_surface": selectorEvalToolSurface(nil),
+				"skill_decision":               map[string]interface{}{"selected_skill": "exec", "need_clarify": true},
+				"skill_prompt_hint":            "Use the curated selector route.",
+				"canonical_skill_id":           "exec",
+				"skill_need_clarify":           true,
+				"skill_route_outcome":          "clarify",
+				"decision_reason":              "curated_test",
+				"decision_stage":               "rerank",
+				"smart_skill_selection":        true,
+				"clarify_reason":               "The request mixes local-workspace and live-web intents.",
+			},
+		},
+	}, len(items))
+
+	report, err := controller.EvaluateSkillCutoverBudgetGate(context.Background(), candidateReport.EvalRun.ID, SkillCutoverBudgetRequest{
+		BaselineID: baseline.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSkillCutoverBudgetGate failed: %v", err)
+	}
+
+	if !report.Passed {
+		t.Fatalf("report = %#v, want pass when selected_native_tools are exec-only/empty", report)
+	}
+	if report.Metrics.NonAllowedNativeToolCaseCount != 0 {
+		t.Fatalf("non_allowed_native_tool_case_count = %#v, want 0", report.Metrics.NonAllowedNativeToolCaseCount)
+	}
+}
+
+func TestController_EvaluateSkillCutoverBudgetGate_UsesLegacySurfaceForBaselineWhenAvailable(t *testing.T) {
+	controller := newTestController(t)
+	items := selectorGateSmokeItems(t)
+	evalSpec := createSelectorEvalSpecForItems(t, controller, "Budget gate baseline surface preference", items)
+
+	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "budget-baseline", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.": {
+				"selected_tools":               []interface{}{harnessCanonicalWebQuerySkill, "browser", "ask"},
+				"selected_tool_surface":        selectorEvalToolSurface([]string{harnessCanonicalWebQuerySkill, "browser", "ask"}),
+				"selected_native_tools":        []interface{}{"exec"},
+				"selected_native_tool_surface": selectorEvalToolSurface([]string{"exec"}),
+				"skill_decision":               map[string]interface{}{"selected_skill": harnessCanonicalWebQuerySkill, "need_clarify": false},
+				"skill_prompt_hint":            "Use the curated selector route.",
+				"canonical_skill_id":           harnessCanonicalWebQuerySkill,
+				"skill_need_clarify":           false,
+				"skill_route_outcome":          "selected",
+				"decision_reason":              "curated_test",
+				"decision_stage":               "rerank",
+				"smart_skill_selection":        true,
+			},
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": {
+				"selected_tools":               []interface{}{"exec", "browser"},
+				"selected_tool_surface":        selectorEvalToolSurface([]string{"exec", "browser"}),
+				"selected_native_tools":        []interface{}{},
+				"selected_native_tool_surface": selectorEvalToolSurface(nil),
+				"skill_decision":               map[string]interface{}{"selected_skill": "exec", "need_clarify": true},
+				"skill_prompt_hint":            "Use the curated selector route.",
+				"canonical_skill_id":           "exec",
+				"skill_need_clarify":           true,
+				"skill_route_outcome":          "clarify",
+				"decision_reason":              "curated_test",
+				"decision_stage":               "rerank",
+				"smart_skill_selection":        true,
+				"clarify_reason":               "The request mixes local-workspace and live-web intents.",
+			},
+		},
+	}, len(items))
+	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
+		Name:        "budget-baseline-prefers-legacy-surface",
+		OwnerUserID: "user-1",
+		EvalRunID:   baselineReport.EvalRun.ID,
+		IsDefault:   true,
+	})
+	if err != nil {
+		t.Fatalf("CreateBaseline failed: %v", err)
+	}
+
+	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "budget-candidate", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.": {
+				"selected_tools":               []interface{}{harnessCanonicalWebQuerySkill, "browser", "ask"},
+				"selected_tool_surface":        selectorEvalToolSurface([]string{harnessCanonicalWebQuerySkill, "browser", "ask"}),
+				"selected_native_tools":        []interface{}{"exec"},
+				"selected_native_tool_surface": selectorEvalToolSurface([]string{"exec"}),
+				"skill_decision":               map[string]interface{}{"selected_skill": harnessCanonicalWebQuerySkill, "need_clarify": false},
+				"skill_prompt_hint":            "Use the curated selector route.",
+				"canonical_skill_id":           harnessCanonicalWebQuerySkill,
+				"skill_need_clarify":           false,
+				"skill_route_outcome":          "selected",
+				"decision_reason":              "curated_test",
+				"decision_stage":               "rerank",
+				"smart_skill_selection":        true,
+			},
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": {
+				"selected_tools":               []interface{}{"exec", "browser"},
+				"selected_tool_surface":        selectorEvalToolSurface([]string{"exec", "browser"}),
+				"selected_native_tools":        []interface{}{},
+				"selected_native_tool_surface": selectorEvalToolSurface(nil),
+				"skill_decision":               map[string]interface{}{"selected_skill": "exec", "need_clarify": true},
+				"skill_prompt_hint":            "Use the curated selector route.",
+				"canonical_skill_id":           "exec",
+				"skill_need_clarify":           true,
+				"skill_route_outcome":          "clarify",
+				"decision_reason":              "curated_test",
+				"decision_stage":               "rerank",
+				"smart_skill_selection":        true,
+				"clarify_reason":               "The request mixes local-workspace and live-web intents.",
+			},
+		},
+	}, len(items))
+
+	report, err := controller.EvaluateSkillCutoverBudgetGate(context.Background(), candidateReport.EvalRun.ID, SkillCutoverBudgetRequest{
+		BaselineID: baseline.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSkillCutoverBudgetGate failed: %v", err)
+	}
+
+	if !report.Passed {
+		t.Fatalf("report = %#v, want pass when baseline keeps legacy surface and candidate keeps exec-only final surface", report)
+	}
+	if report.Metrics.MedianSchemaByteReductionRate <= 0 {
+		t.Fatalf("median_schema_byte_reduction_rate = %#v, want > 0", report.Metrics.MedianSchemaByteReductionRate)
+	}
+}

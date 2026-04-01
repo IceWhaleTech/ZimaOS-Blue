@@ -136,7 +136,7 @@ func NewService(planner Planner, searcher Searcher) *Service {
 		lastTerminal:          make(map[string]Event),
 		userActiveJobs:        make(map[string]int),
 		userCreateWindow:      make(map[string][]time.Time),
-		maxConcurrentPerUser:  deepResearchMaxConcurrentPerUser,
+		maxConcurrentPerUser:  resolveDefaultMaxConcurrentPerUser(),
 		maxCreatesPerWindow:   deepResearchMaxCreatesPerWindow,
 		createRateWindow:      deepResearchCreateRateWindow,
 		searchCache:           make(map[string]cachedSearchResult),
@@ -226,10 +226,13 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	}
 	budget = clampBudget(mode, budget)
 
-	now := timeutil.NowTime()
 	jobID := strings.TrimSpace(req.RequestedID)
 	if jobID == "" {
 		jobID = uuid.NewString()
+	}
+	now, err := s.waitAndReserveUserCreateSlot(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
 	job := &Job{
 		ID:                 jobID,
@@ -258,11 +261,6 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	runCtx, cancel := context.WithTimeout(context.Background(), timeout)
 
 	s.mu.Lock()
-	if err := s.reserveUserCreateSlotLocked(userID, now); err != nil {
-		s.mu.Unlock()
-		cancel()
-		return nil, err
-	}
 	s.jobs[job.ID] = job
 	s.cancelFuncs[job.ID] = cancel
 	s.pruneJobsLocked(now)
@@ -1323,7 +1321,7 @@ func (s *Service) reserveUserCreateSlotLocked(userID string, now time.Time) erro
 		maxCreates = deepResearchMaxCreatesPerWindow
 	}
 	maxConcurrent := s.maxConcurrentPerUser
-	if maxConcurrent <= 0 {
+	if maxConcurrent < 0 {
 		maxConcurrent = deepResearchMaxConcurrentPerUser
 	}
 
@@ -1339,7 +1337,7 @@ func (s *Service) reserveUserCreateSlotLocked(userID string, now time.Time) erro
 		s.userCreateWindow[userID] = keep
 		return ErrRateLimited
 	}
-	if s.userActiveJobs[userID] >= maxConcurrent {
+	if maxConcurrent > 0 && s.userActiveJobs[userID] >= maxConcurrent {
 		s.userCreateWindow[userID] = keep
 		return ErrTooManyActiveJobs
 	}
@@ -1348,6 +1346,37 @@ func (s *Service) reserveUserCreateSlotLocked(userID string, now time.Time) erro
 	s.userCreateWindow[userID] = keep
 	s.userActiveJobs[userID] = s.userActiveJobs[userID] + 1
 	return nil
+}
+
+func (s *Service) waitAndReserveUserCreateSlot(ctx context.Context, userID string) (time.Time, error) {
+	if s == nil {
+		return time.Time{}, fmt.Errorf("deep research service is not configured")
+	}
+
+	for {
+		now := timeutil.NowTime()
+		s.mu.Lock()
+		err := s.reserveUserCreateSlotLocked(userID, now)
+		s.mu.Unlock()
+		if err == nil {
+			return now, nil
+		}
+		if !errors.Is(err, ErrTooManyActiveJobs) {
+			return time.Time{}, err
+		}
+		if ctx == nil {
+			time.Sleep(deepResearchConcurrentSlotPollInterval)
+			continue
+		}
+
+		timer := time.NewTimer(deepResearchConcurrentSlotPollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return time.Time{}, fmt.Errorf("wait for deep research slot: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
 }
 
 func (s *Service) releaseUserSlotLocked(userID string) {

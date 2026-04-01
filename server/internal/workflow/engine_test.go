@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -397,12 +398,11 @@ func TestEngine_CancelExecution(t *testing.T) {
 	}
 
 	// Wait for cancellation to take effect
-	time.Sleep(100 * time.Millisecond)
+	waitForWorkflowExecutionStatus(t, engine, execution.ID, ExecutionStatusCancelled)
 
 	exec, _ := engine.GetExecution(execution.ID)
-	// Execution should be cancelled or already completed/failed
-	if exec.Status != ExecutionStatusCancelled && exec.Status != ExecutionStatusCompleted && exec.Status != ExecutionStatusFailed {
-		t.Errorf("expected status cancelled/completed/failed, got %s", exec.Status)
+	if exec.Status != ExecutionStatusCancelled {
+		t.Errorf("expected status cancelled, got %s", exec.Status)
 	}
 }
 
@@ -640,6 +640,16 @@ func TestEngine_MaxConcurrentExecutions(t *testing.T) {
 	engine := NewEngine(config)
 	defer engine.Close()
 
+	release := make(chan struct{})
+	engine.RegisterHandler(ActionType("test_block"), func(ctx context.Context, config map[string]interface{}, input map[string]interface{}) (map[string]interface{}, error) {
+		select {
+		case <-release:
+			return map[string]interface{}{"released": true}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	})
+
 	workflow := &Workflow{
 		ID:     "test-workflow",
 		Name:   "Test Workflow",
@@ -647,16 +657,16 @@ func TestEngine_MaxConcurrentExecutions(t *testing.T) {
 		Nodes: []Node{
 			{ID: "trigger-1", Type: NodeTypeTrigger, Name: "Trigger"},
 			{
-				ID:   "delay-1",
-				Type: NodeTypeDelay,
-				Name: "Long Delay",
+				ID:   "action-1",
+				Type: NodeTypeAction,
+				Name: "Blocking Action",
 				Config: map[string]interface{}{
-					"duration": 10, // 10 seconds
+					"type": "test_block",
 				},
 			},
 		},
 		Connections: []Connection{
-			{ID: "conn-1", SourceNode: "trigger-1", TargetNode: "delay-1"},
+			{ID: "conn-1", SourceNode: "trigger-1", TargetNode: "action-1"},
 		},
 	}
 
@@ -668,12 +678,78 @@ func TestEngine_MaxConcurrentExecutions(t *testing.T) {
 		t.Fatalf("failed to start first execution: %v", err)
 	}
 
-	// Wait a bit
-	time.Sleep(50 * time.Millisecond)
+	go func() {
+		time.Sleep(75 * time.Millisecond)
+		close(release)
+	}()
 
-	// Try to start second execution - should fail
-	_, err = engine.Execute(ctx, workflow, TriggerTypeManual, nil)
-	if err != ErrMaxExecutionsReached {
-		t.Errorf("expected ErrMaxExecutionsReached, got %v", err)
+	started := time.Now()
+	second, err := engine.Execute(ctx, workflow, TriggerTypeManual, nil)
+	if err != nil {
+		t.Fatalf("failed to start second execution after waiting: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed < 50*time.Millisecond {
+		t.Fatalf("second execution returned too early, elapsed=%s", elapsed)
+	}
+
+	waitForWorkflowExecutionStatus(t, engine, second.ID, ExecutionStatusCompleted)
+}
+
+func TestEngine_ExecutionWaitHonorsContextCancellation(t *testing.T) {
+	config := DefaultConfig()
+	config.MaxConcurrentExecutions = 1
+	engine := NewEngine(config)
+	defer engine.Close()
+
+	release := make(chan struct{})
+	engine.RegisterHandler(ActionType("test_block"), func(ctx context.Context, config map[string]interface{}, input map[string]interface{}) (map[string]interface{}, error) {
+		select {
+		case <-release:
+			return map[string]interface{}{"released": true}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	})
+
+	workflow := &Workflow{
+		ID:     "test-workflow-cancel",
+		Name:   "Test Workflow Cancel",
+		Status: WorkflowStatusActive,
+		Nodes: []Node{
+			{ID: "trigger-1", Type: NodeTypeTrigger, Name: "Trigger"},
+			{
+				ID:   "action-1",
+				Type: NodeTypeAction,
+				Name: "Blocking Action",
+				Config: map[string]interface{}{
+					"type": "test_block",
+				},
+			},
+		},
+		Connections: []Connection{
+			{ID: "conn-1", SourceNode: "trigger-1", TargetNode: "action-1"},
+		},
+	}
+
+	if _, err := engine.Execute(context.Background(), workflow, TriggerTypeManual, nil); err != nil {
+		t.Fatalf("failed to start first execution: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	if _, err := engine.Execute(ctx, workflow, TriggerTypeManual, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second execution err = %v, want context deadline exceeded", err)
+	}
+
+	close(release)
+}
+
+func TestDefaultConfig_AllowsEnvOverrideForMaxConcurrentExecutions(t *testing.T) {
+	t.Setenv(workflowMaxConcurrentEnv, "24")
+
+	config := DefaultConfig()
+	if config.MaxConcurrentExecutions != 24 {
+		t.Fatalf("MaxConcurrentExecutions = %d, want 24", config.MaxConcurrentExecutions)
 	}
 }

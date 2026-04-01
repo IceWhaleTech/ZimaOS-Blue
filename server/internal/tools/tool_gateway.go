@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -38,6 +39,20 @@ func (e *ToolGatewayError) Error() string {
 		return ""
 	}
 	return strings.TrimSpace(e.Message)
+}
+
+func (e *ToolGatewayError) ToolRuntimeCode() string {
+	if e == nil {
+		return ""
+	}
+	return strings.TrimSpace(e.Code)
+}
+
+func (e *ToolGatewayError) ToolRuntimeDetails() map[string]interface{} {
+	if e == nil {
+		return nil
+	}
+	return cloneJSONInterfaceMap(e.Details)
 }
 
 // ToolGatewayRequest describes a tool execution request flowing through the shared gateway.
@@ -283,11 +298,7 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 	rawResult, execErr := g.executor.Execute(ctx, resolvedName, args)
 	normalizedResult := normalizeGatewayToolResult(rawResult)
 	if execErr != nil {
-		execToolErr := &ToolGatewayError{
-			Code:    "tool_execution_failed",
-			Message: fmt.Sprintf("tool %q execution failed", resolvedName),
-			Details: map[string]interface{}{"tool": resolvedName, "cause": execErr.Error()},
-		}
+		execToolErr := normalizeToolExecutionError(resolvedName, execErr)
 		result.ExecutionResult = normalizedResult
 		result.populateError(req.ToolCallID, resolvedName, args, execToolErr)
 		if result.Approval != nil {
@@ -323,13 +334,13 @@ func ToolErrorPayload(err error) map[string]interface{} {
 	if err == nil {
 		return map[string]interface{}{}
 	}
-	if gatewayErr, ok := err.(*ToolGatewayError); ok {
+	if code, details, ok := toolRuntimeErrorContract(err); ok {
 		payload := map[string]interface{}{
-			"error": gatewayErr.Message,
-			"code":  gatewayErr.Code,
+			"error": err.Error(),
+			"code":  code,
 		}
-		if len(gatewayErr.Details) > 0 {
-			payload["details"] = gatewayErr.Details
+		if len(details) > 0 {
+			payload["details"] = details
 		}
 		return payload
 	}
@@ -988,8 +999,75 @@ func (g *ToolGateway) recordMetric(name string, req ToolGatewayRequest, tags map
 }
 
 func classifyToolGatewayErrorCode(err error) string {
-	if gatewayErr, ok := err.(*ToolGatewayError); ok {
-		return strings.TrimSpace(gatewayErr.Code)
+	if code, _, ok := toolRuntimeErrorContract(err); ok {
+		return code
 	}
 	return "tool_gateway_error"
+}
+
+func normalizeToolExecutionError(toolName string, err error) *ToolGatewayError {
+	if err == nil {
+		return nil
+	}
+	if gatewayErr, ok := err.(*ToolGatewayError); ok {
+		normalized := &ToolGatewayError{
+			Code:    strings.TrimSpace(gatewayErr.Code),
+			Message: strings.TrimSpace(gatewayErr.Message),
+			Details: cloneJSONInterfaceMap(gatewayErr.Details),
+		}
+		if normalized.Message == "" {
+			normalized.Message = fmt.Sprintf("tool %q execution failed", strings.TrimSpace(toolName))
+		}
+		if strings.TrimSpace(toolName) != "" {
+			if normalized.Details == nil {
+				normalized.Details = map[string]interface{}{}
+			}
+			if _, exists := normalized.Details["tool"]; !exists {
+				normalized.Details["tool"] = strings.TrimSpace(toolName)
+			}
+		}
+		return normalized
+	}
+	if code, details, ok := toolRuntimeErrorContract(err); ok {
+		if details == nil {
+			details = map[string]interface{}{}
+		}
+		if strings.TrimSpace(toolName) != "" {
+			if _, exists := details["tool"]; !exists {
+				details["tool"] = strings.TrimSpace(toolName)
+			}
+		}
+		message := strings.TrimSpace(err.Error())
+		if message == "" {
+			message = fmt.Sprintf("tool %q execution failed", strings.TrimSpace(toolName))
+		}
+		return &ToolGatewayError{
+			Code:    nonEmpty(strings.TrimSpace(code), "tool_execution_failed"),
+			Message: message,
+			Details: details,
+		}
+	}
+	return &ToolGatewayError{
+		Code:    "tool_execution_failed",
+		Message: fmt.Sprintf("tool %q execution failed", strings.TrimSpace(toolName)),
+		Details: map[string]interface{}{"tool": strings.TrimSpace(toolName), "cause": err.Error()},
+	}
+}
+
+func toolRuntimeErrorContract(err error) (string, map[string]interface{}, bool) {
+	if err == nil {
+		return "", nil, false
+	}
+	var runtimeErr ToolRuntimeError
+	if errors.As(err, &runtimeErr) {
+		return strings.TrimSpace(runtimeErr.ToolRuntimeCode()), cloneJSONInterfaceMap(runtimeErr.ToolRuntimeDetails()), true
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "tool_execution_cancelled", nil, true
+	case errors.Is(err, context.DeadlineExceeded):
+		return "tool_execution_timeout", nil, true
+	default:
+		return "", nil, false
+	}
 }

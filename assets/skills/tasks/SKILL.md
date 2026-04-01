@@ -1,49 +1,111 @@
 ---
 name: tasks
-description: Create manage and track tasks with optional Things 3 integration on macOS.
+version: "1.0.0"
+description: "Manage a real task list through the external Things 3 CLI on macOS. Use when the user explicitly wants task-app operations rather than reminders, cron automation, or an in-chat checklist."
+invocation: "blue exec command='things today'"
+examples:
+  - "blue exec command='things today'"
+  - "blue exec command='things add \"Buy milk\" --when today'"
+capability_tags:
+  - tasks
+  - productivity
+  - external-cli
+interaction_mode: stateless
+card_support: none
+category: external_cli
+os:
+  - darwin
+environment:
+  - things
+homepage: https://github.com/ossianhempel/things3-cli
+metadata:
+  zimaos-blue:
+    emoji: "✅"
+    requires:
+      bins:
+        - things
+    install:
+      - id: go
+        kind: go
+        module: github.com/ossianhempel/things3-cli/cmd/things@latest
+        bins:
+          - things
+        label: Install things3-cli (go)
 ---
 
 # Tasks
 
-Create, manage, and track tasks with priorities and status.
+Use the external `things` binary via `blue exec` to read and update a real Things 3 task list on macOS.
 
-## macOS: Things 3 via `things`
+## Setup
 
-On macOS with Things 3 installed, use the `things` CLI:
+Install the CLI if needed:
 
 ```bash
-GOBIN=/opt/homebrew/bin go install github.com/ossianhempel/things3-cli/cmd/things@latest
+blue exec command='GOBIN=/opt/homebrew/bin go install github.com/ossianhempel/things3-cli/cmd/things@latest'
 ```
 
-If DB reads fail, grant **Full Disk Access** to the calling app (Terminal / your IDE).
+Sanity-check the install:
 
-### Read (DB)
+```bash
+blue exec command='things --help'
+```
 
-- `things inbox --limit 50`
-- `things today`
-- `things upcoming`
-- `things search "query"`
-- `things projects` / `things areas` / `things tags`
+If database reads fail, grant **Full Disk Access** to the calling app (for example Terminal or your IDE).
 
-### Write (URL scheme)
+Optional environment:
 
-- Add: `things add "Title" --notes "..." --when today --deadline 2026-01-02`
-- Into project: `things add "Book flights" --list "Travel"`
-- With tags: `things add "Call dentist" --tags "health,phone"`
-- Checklist: `things add "Trip prep" --checklist-item "Passport" --checklist-item "Tickets"`
-- Preview: `things --dry-run add "Title"`
+- `THINGSDB` or `--db` to point at a specific `ThingsData-*` folder
+- `THINGS_AUTH_TOKEN` to avoid passing `--auth-token` for update operations
 
-### Modify (needs auth token)
+---
 
-- Get ID: `things search "milk" --limit 5`
-- Set `THINGS_AUTH_TOKEN` or pass `--auth-token <TOKEN>`
-- Complete: `things update --id <UUID> --auth-token <TOKEN> --completed`
+## Task Routing
 
-### Notes
+| User Intent | Action |
+|-------------|--------|
+| Read inbox/today/upcoming/search/projects in Things 3 | `blue exec command='things ...'` |
+| Add or update real tasks in the user's Things database | `blue exec command='things add ...'` / `blue exec command='things update ...'` |
+| User wants a reminder/alert notification | Use `reminder`, not `tasks` |
+| User wants recurring command automation | Use `scheduler`, not `tasks` |
+| User only needs an in-chat checklist or plan | Prefer normal chat output or the plan skills, not `tasks` |
 
-- macOS only
-- `--dry-run` prints the URL without opening Things
+---
 
-## Fallback
+## Command Usage
 
-Without `things`, tasks are stored in-memory (lost on restart). Use the built-in `tasks` tool with actions: `create`, `read`, `update`, `delete`, `list`, `complete`, `reopen`.
+Read from Things:
+
+```bash
+blue exec command='things inbox --limit 50'
+blue exec command='things today'
+blue exec command='things upcoming'
+blue exec command='things search "query"'
+blue exec command='things projects'
+```
+
+Add tasks:
+
+```bash
+blue exec command='things --dry-run add "Title"'
+blue exec command='things add "Title" --notes "..." --when today --deadline 2026-01-02'
+blue exec command='things add "Book flights" --list "Travel"'
+blue exec command='things add "Call dentist" --tags "health,phone"'
+```
+
+Update tasks (auth token required):
+
+```bash
+blue exec command='things search "milk" --limit 5'
+blue exec command='things update --id <UUID> --auth-token <TOKEN> --completed'
+blue exec command='things update --id <UUID> --auth-token <TOKEN> --notes "New notes"'
+```
+
+---
+
+## Notes
+
+- This is an external CLI guide, not a native persistent `blue tasks` builtin.
+- Earlier docs that promised an in-memory built-in `tasks` fallback were outdated and have been removed.
+- `things3-cli` does not currently expose a true delete or trash write command; use the Things UI or mark items completed/canceled instead.
+- macOS only.

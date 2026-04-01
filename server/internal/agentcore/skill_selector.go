@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
 
@@ -230,7 +231,7 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 	}
 	out.Stage = "rerank"
 	out.Reason = rr.ReasonShort
-	out.NeedClarify = rr.NeedClarify || out.Confidence < thres || out.Confidence < skillSelectorNeedClarifyFloor
+	out.NeedClarify = rr.NeedClarify || out.Confidence < thres || out.Confidence < skillSelectorNeedClarifyFloor || len(out.ConflictFlags) > 0
 
 	s.setCachedDecision(cacheKey, out)
 	return out, nil
@@ -353,7 +354,11 @@ func applySkillHardAnchors(signals sel.QueryIntentSignals, doc SkillDoc, match *
 	if match == nil {
 		return
 	}
-	if strings.EqualFold(strings.TrimSpace(doc.Name), "browser") && signals.URLPresent {
+	switch strings.ToLower(strings.TrimSpace(doc.Name)) {
+	case "browser":
+		if !signals.URLPresent || shouldBypassURLBrowserRule(signals.Normalized) {
+			return
+		}
 		match.Eligible = true
 		match.Anchored = true
 		if match.Score < 4.8 {
@@ -362,6 +367,43 @@ func applySkillHardAnchors(signals sel.QueryIntentSignals, doc SkillDoc, match *
 		match.ConfidenceReason = "url_present_rule"
 		match.ConflictFlags = nil
 		match.MatchedSignals = append(match.MatchedSignals, "rule:url_present")
+		sort.Strings(match.MatchedSignals)
+	case "analyze":
+		if signals.LocalWorkspace || signals.Productivity || (!signals.LiveWeb && !signals.URLPresent) {
+			return
+		}
+		if !hasSelectorTerm(signals.Normalized, uniqueStringTerms(append([]string{
+			"analyze", "analysis", "summarize", "summary", "synthesize", "compare", "report", "extract", "inspect", "review",
+			"分析", "总结", "提炼", "比较", "报告", "归纳", "评估",
+		}, routingcue.URLBypassTermsForSkill("analyze")...))) {
+			return
+		}
+		match.Eligible = true
+		match.Anchored = true
+		if match.Score < 5.05 {
+			match.Score = 5.05
+		}
+		if match.ConfidenceReason == "" {
+			match.ConfidenceReason = "web_analysis_rule"
+		}
+		match.MatchedSignals = append(match.MatchedSignals, "rule:web_analysis")
+		sort.Strings(match.MatchedSignals)
+	case "himalaya":
+		if signals.LiveWeb || !hasSelectorTerm(signals.Normalized, []string{
+			"email", "mail", "inbox", "imap", "smtp", "reply", "forward", "attachment",
+			"邮件", "邮箱", "收件箱", "回复", "转发", "附件",
+		}) {
+			return
+		}
+		match.Eligible = true
+		match.Anchored = true
+		if match.Score < 5.15 {
+			match.Score = 5.15
+		}
+		if match.ConfidenceReason == "" {
+			match.ConfidenceReason = "email_cli_rule"
+		}
+		match.MatchedSignals = append(match.MatchedSignals, "rule:email_cli")
 		sort.Strings(match.MatchedSignals)
 	}
 }
@@ -410,6 +452,7 @@ func stage0RuleRoute(query string) Decision {
 	if lower == "" {
 		return Decision{}
 	}
+	signals := sel.AnalyzeQuery(query)
 	selectSkill := func(name, reason string) Decision {
 		return Decision{
 			Query:            query,
@@ -428,6 +471,32 @@ func stage0RuleRoute(query string) Decision {
 	if (strings.Contains(lower, "http://") || strings.Contains(lower, "https://")) && !shouldBypassURLBrowserRule(lower) {
 		return selectSkill("browser", "rule_url")
 	}
+	if (strings.Contains(lower, "http://") || strings.Contains(lower, "https://")) && shouldBypassURLBrowserRule(lower) {
+		if shouldRouteURLBypassToUIReviewer(lower) {
+			return selectSkill("ui_reviewer", "rule_url_ui_review")
+		}
+		if shouldRouteURLBypassToDeepResearch(lower) {
+			return selectSkill("deep_research", "rule_url_deep_research")
+		}
+		if shouldRouteURLBypassToAnalyze(lower) {
+			return selectSkill("analyze", "rule_url_analyze")
+		}
+	}
+	if signals.LocalWorkspace && !signals.LiveWeb && !signals.Productivity &&
+		hasSelectorTerm(lower, []string{
+			"workspace", "repo", "repository", "readme", "file", "files", "report", "reports", "document", "documents",
+			"analyze", "analysis", "summarize", "summary", "compare", "inspect",
+			"工作区", "仓库", "readme", "文件", "报告", "文档", "分析", "总结", "比较", "查看",
+		}) {
+		return selectSkill("exec", "rule_workspace_local_exec")
+	}
+	if !signals.LiveWeb && signals.Productivity &&
+		hasSelectorTerm(lower, []string{
+			"email", "mail", "inbox", "imap", "smtp", "reply", "forward", "attachment",
+			"邮件", "邮箱", "收件箱", "回复", "转发", "附件",
+		}) {
+		return selectSkill("himalaya", "rule_email_cli")
+	}
 	if strings.Contains(lower, "plan_create") || strings.Contains(lower, "plan_update") || strings.Contains(lower, "plan_append") {
 		return selectSkill("plan_create", "rule_plan")
 	}
@@ -441,16 +510,38 @@ func shouldBypassURLBrowserRule(lower string) bool {
 	if lower == "" {
 		return false
 	}
-	if hasSelectorTerm(lower, []string{
+	if hasSelectorTerm(lower, uniqueStringTerms(append([]string{
 		"ui", "ux", "interface", "layout", "design", "mockup", "wireframe", "component", "visual",
 		"accessibility", "a11y", "界面", "布局", "设计", "设计稿", "组件", "视觉", "无障碍", "可访问性",
-	}) {
+	}, routingcue.URLBypassTerms()...))) {
 		return true
 	}
 	return hasSelectorTerm(lower, []string{
 		"analyze", "analysis", "summarize", "summary", "synthesize", "compare", "report", "insight", "insights", "findings", "extract",
-		"research", "investigate", "study", "analyze this", "summarize this", "分析", "总结", "提炼", "比较", "报告", "洞察", "研究", "梳理", "评估",
+		"research", "investigate", "study", "citations", "citation", "evidence", "sources", "source", "timeline", "tradeoff", "benchmark", "analyze this", "summarize this", "分析", "总结", "提炼", "比较", "报告", "洞察", "研究", "梳理", "评估", "引用", "证据", "来源", "时间线", "权衡", "基准",
 	})
+}
+
+func shouldRouteURLBypassToDeepResearch(lower string) bool {
+	return hasSelectorTerm(lower, uniqueStringTerms(append([]string{
+		"research", "investigate", "study", "citations", "citation", "evidence", "sources", "source", "timeline", "tradeoff", "benchmark", "multi-source",
+		"research this", "investigate this", "with citations", "with sources", "分析证据", "研究", "调研", "查阅", "引用", "证据", "来源", "时间线", "权衡", "基准", "多来源",
+	}, routingcue.URLBypassTermsForSkill("deep_research")...)))
+}
+
+func shouldRouteURLBypassToAnalyze(lower string) bool {
+	return hasSelectorTerm(lower, uniqueStringTerms(append([]string{
+		"analyze", "analysis", "summarize", "summary", "synthesize", "compare", "report", "insight", "insights", "findings", "extract",
+		"analyze this", "summarize this", "分析", "总结", "提炼", "比较", "报告", "洞察", "归纳", "评估",
+	}, routingcue.URLBypassTermsForSkill("analyze")...)))
+}
+
+func shouldRouteURLBypassToUIReviewer(lower string) bool {
+	return hasSelectorTerm(lower, uniqueStringTerms(append([]string{
+		"ui", "ux", "interface", "layout", "design", "mockup", "wireframe", "component", "visual",
+		"accessibility", "a11y", "review", "audit", "inspect", "evaluate", "critique", "score", "rate", "assess",
+		"界面", "布局", "设计", "设计稿", "组件", "视觉", "无障碍", "可访问性", "评审", "审查", "检查", "点评", "打分", "评分",
+	}, routingcue.URLBypassTermsForSkill("ui_reviewer")...)))
 }
 
 func hasSelectorTerm(text string, terms []string) bool {
@@ -484,12 +575,22 @@ func shouldTriggerRerank(query string, d Decision) bool {
 func hasActionAlignment(query, skill string) bool {
 	q := strings.ToLower(query)
 	s := strings.ToLower(skill)
+	for _, term := range routingcue.SkillTerms(s).All() {
+		if sel.ContainsTerm(q, term) {
+			return true
+		}
+	}
 	pairs := map[string][]string{
-		"web_search":    {"search", "搜索", "检索", "news", "sources", "citations"},
+		"web_query":     {"search", "搜索", "检索", "news", "sources", "citations", "docs", "documentation", "manual", "文档", "官方文档"},
+		"web_search":    {"search", "搜索", "检索", "news", "sources", "citations", "docs", "documentation", "manual", "文档", "官方文档"},
 		"browser":       {"url", "网页", "open", "navigate", "visit"},
+		"exec":          {"workspace", "repo", "repository", "readme", "file", "files", "folder", "directory", "local", "shell", "terminal", "工作区", "仓库", "文件", "目录", "本地", "终端"},
 		"ask":           {"ask", "询问", "clarify", "question"},
 		"ui_reviewer":   {"ui", "界面", "review", "评审", "screenshot", "design"},
-		"deep_research": {"research", "调研", "深入", "查阅", "观点", "timeline", "sources"},
+		"deep_research": {"research", "investigate", "citations", "evidence", "sources", "source", "timeline", "benchmark", "tradeoff", "调研", "深入", "查阅", "引用", "证据", "来源", "时间线", "基准", "权衡"},
+		"analyze":       {"analyze", "analysis", "summarize", "summary", "report", "url", "urls", "link", "links", "text", "article", "articles", "网页", "链接", "文本", "文章", "分析", "总结", "报告", "文档"},
+		"himalaya":      {"email", "mail", "inbox", "imap", "smtp", "reply", "forward", "attachment", "terminal", "邮件", "邮箱", "收件箱", "回复", "转发", "附件"},
+		"reminder":      {"remind", "reminder", "notify", "提醒", "通知", "tomorrow", "明天", "明早", "later", "稍后", "时间"},
 	}
 	if kws, ok := pairs[s]; ok {
 		for _, kw := range kws {
@@ -499,6 +600,23 @@ func hasActionAlignment(query, skill string) bool {
 		}
 	}
 	return sel.ContainsTerm(q, s) || sel.ContainsTerm(q, sel.HumanizeName(s))
+}
+
+func uniqueStringTerms(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		key := strings.ToLower(strings.TrimSpace(value))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	return out
 }
 
 func hasHighRiskIntent(q string) bool {
@@ -526,9 +644,12 @@ func buildCandidatesFromNames(names string, docs []SkillDoc) []SkillCandidate {
 }
 
 func skillDocTextForIR(d SkillDoc) string {
-	parts := []string{d.Name, d.Description, d.Category, d.Example, d.Setup, d.Body}
+	parts := []string{d.ID, d.Name, d.Description, d.Category, d.Example, d.Invocation, d.InteractionMode, d.CardSupport, d.Setup, d.Body}
 	if len(d.Tags) > 0 {
 		parts = append(parts, strings.Join(d.Tags, " "))
+	}
+	if len(d.Examples) > 0 {
+		parts = append(parts, strings.Join(d.Examples, " "))
 	}
 	if len(d.Environment) > 0 {
 		parts = append(parts, strings.Join(d.Environment, " "))

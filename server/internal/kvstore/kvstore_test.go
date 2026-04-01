@@ -2,6 +2,7 @@ package kvstore
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -185,6 +186,46 @@ func TestNewSQLiteStore(t *testing.T) {
 
 	if store == nil {
 		t.Fatal("expected store, got nil")
+	}
+}
+
+func TestNewSQLiteStoreUsesReaderPoolForFileDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "kvstore.db")
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create file-backed store: %v", err)
+	}
+	defer store.Close()
+
+	if store.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if store.readDB == store.db {
+		t.Fatal("expected file-backed store to use a separate read db")
+	}
+
+	if err := store.Set(context.Background(), "key1", "value1", 0); err != nil {
+		t.Fatalf("failed to set key: %v", err)
+	}
+
+	if err := store.db.Close(); err != nil {
+		t.Fatalf("failed to close writer db: %v", err)
+	}
+
+	value, err := store.Get(context.Background(), "key1")
+	if err != nil {
+		t.Fatalf("failed to read through reader db: %v", err)
+	}
+	if value != "value1" {
+		t.Fatalf("expected value1, got %v", value)
+	}
+
+	keys, err := store.Keys(context.Background(), "key%")
+	if err != nil {
+		t.Fatalf("failed to list keys through reader db: %v", err)
+	}
+	if len(keys) != 1 || keys[0] != "key1" {
+		t.Fatalf("unexpected keys through reader db: %+v", keys)
 	}
 }
 

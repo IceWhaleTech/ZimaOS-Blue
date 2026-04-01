@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -66,10 +67,18 @@ func (c *HTTPHealthChecker) Check(ctx context.Context, provider *Provider) *Heal
 
 	var lastErr string
 	for i, healthURL := range healthURLs {
-		req, err := http.NewRequestWithContext(ctx, method, healthURL, nil)
+		reqBody := healthCheckBody(provider)
+		var bodyReader io.Reader
+		if reqBody != "" {
+			bodyReader = strings.NewReader(reqBody)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, healthURL, bodyReader)
 		if err != nil {
 			lastErr = fmt.Sprintf("failed to create request: %v", err)
 			continue
+		}
+		if reqBody != "" {
+			req.Header.Set("Content-Type", "application/json")
 		}
 
 		// Always add authentication if available
@@ -180,13 +189,15 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 		}
 		return http.MethodGet, urls
 	case "minimax":
-		// MiniMax uses OpenAI-compatible /v1/chat/completions endpoint.
-		// Has domestic (.com) and international (.io) domains.
-		urls := []string{baseURL + "/v1/chat/completions"}
+		// MiniMax supports both Anthropic-compatible and OpenAI-compatible endpoints.
+		// Keep health checks aligned with the configured endpoint family so
+		// built-in /anthropic bases are probed via /v1/messages.
+		method, urls := minimaxHealthCheckTargets(baseURL, provider.APIFormat)
 		if alt := alternateRegionURL(baseURL); alt != "" {
-			urls = append(urls, alt+"/v1/chat/completions")
+			_, altURLs := minimaxHealthCheckTargets(alt, provider.APIFormat)
+			urls = append(urls, altURLs...)
 		}
-		return http.MethodPost, urls
+		return method, urls
 	case "google":
 		return http.MethodGet, []string{baseURL + "/v1beta/models"}
 	case "ollama":
@@ -221,11 +232,77 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 		// Google Cloud Code Assist (Antigravity/Gemini CLI) uses /v1internal endpoints
 		return http.MethodPost, []string{baseURL + "/v1internal:loadCodeAssist"}
 	default:
-		// OpenAI-compatible: most providers have /models endpoint
+		// Custom OpenAI relays are considered healthy only if a chat-completions
+		// style endpoint is reachable. This catches HTML edge blocks and auth
+		// errors that /models can mask.
+		if provider.Type == ProviderTypeCustom {
+			return http.MethodPost, openAIChatHealthCheckTargets(baseURL)
+		}
+		// OpenAI-compatible built-ins/platforms: prefer /models to avoid
+		// unnecessary probe cost when the provider catalog is stable.
 		if strings.HasSuffix(baseURL, "/v1") || strings.HasSuffix(baseURL, "/v4") {
 			return http.MethodGet, []string{baseURL + "/models"}
 		}
 		return http.MethodGet, []string{baseURL + "/v1/models", baseURL + "/models"}
+	}
+}
+
+func healthCheckBody(provider *Provider) string {
+	if provider == nil {
+		return ""
+	}
+	if provider.Type != ProviderTypeCustom {
+		return ""
+	}
+	if provider.APIFormat != "" && provider.APIFormat != APIFormatOpenAI {
+		return ""
+	}
+	return `{}`
+}
+
+func minimaxHealthCheckTargets(baseURL string, configuredFormat APIFormat) (string, []string) {
+	if format, ok := DetectEndpointFixedFormat(baseURL); ok {
+		switch format {
+		case APIFormatAnthropic:
+			return http.MethodPost, anthropicHealthCheckTargets(baseURL)
+		case APIFormatResponses:
+			return http.MethodPost, responsesHealthCheckTargets(baseURL)
+		}
+	}
+	if configuredFormat == APIFormatAnthropic {
+		return http.MethodPost, anthropicHealthCheckTargets(baseURL)
+	}
+	return http.MethodPost, openAIChatHealthCheckTargets(baseURL)
+}
+
+func anthropicHealthCheckTargets(baseURL string) []string {
+	switch {
+	case strings.HasSuffix(baseURL, "/messages"), strings.HasSuffix(baseURL, "/v1/messages"):
+		return []string{baseURL}
+	default:
+		return []string{baseURL + "/v1/messages"}
+	}
+}
+
+func responsesHealthCheckTargets(baseURL string) []string {
+	switch {
+	case strings.HasSuffix(baseURL, "/responses"), strings.HasSuffix(baseURL, "/v1/responses"):
+		return []string{baseURL}
+	case strings.HasSuffix(baseURL, "/v1"), strings.HasSuffix(baseURL, "/v4"):
+		return []string{baseURL + "/responses"}
+	default:
+		return []string{baseURL + "/v1/responses", baseURL + "/responses"}
+	}
+}
+
+func openAIChatHealthCheckTargets(baseURL string) []string {
+	switch {
+	case strings.HasSuffix(baseURL, "/chat/completions"), strings.HasSuffix(baseURL, "/v1/chat/completions"):
+		return []string{baseURL}
+	case strings.HasSuffix(baseURL, "/v1"), strings.HasSuffix(baseURL, "/v4"):
+		return []string{baseURL + "/chat/completions"}
+	default:
+		return []string{baseURL + "/v1/chat/completions"}
 	}
 }
 
@@ -252,6 +329,8 @@ func addAuthHeader(req *http.Request, provider *Provider) {
 	case "anthropic":
 		req.Header.Set("x-api-key", key.Key)
 		req.Header.Set("anthropic-version", provider.APIVersion)
+	case "minimax":
+		applyMiniMaxAnthropicProbeAuth(req, key.Key)
 	case "azure-openai":
 		req.Header.Set("api-key", key.Key)
 	case "google":
@@ -262,9 +341,13 @@ func addAuthHeader(req *http.Request, provider *Provider) {
 		// Format-based fallback for trial and custom providers
 		switch provider.APIFormat {
 		case APIFormatAnthropic:
-			req.Header.Set("x-api-key", key.Key)
-			if provider.APIVersion != "" {
-				req.Header.Set("anthropic-version", provider.APIVersion)
+			if usesMiniMaxAnthropicAuth(provider, req.URL.String(), provider.APIFormat) {
+				applyMiniMaxAnthropicProbeAuth(req, key.Key)
+			} else {
+				req.Header.Set("x-api-key", key.Key)
+				if provider.APIVersion != "" {
+					req.Header.Set("anthropic-version", provider.APIVersion)
+				}
 			}
 		case APIFormatGoogle:
 			q := req.URL.Query()
@@ -373,7 +456,7 @@ func autoSwitchBaseURL(provider *Provider, healthURL string) {
 		return
 	}
 	// Extract the base URL portion (strip the endpoint path suffix)
-	for _, suffix := range []string{"/v1/chat/completions", "/chat/completions", "/models"} {
+	for _, suffix := range []string{"/v1/messages", "/messages", "/v1/chat/completions", "/chat/completions", "/models"} {
 		if strings.HasSuffix(healthURL, suffix) {
 			provider.BaseURL = strings.TrimSuffix(healthURL, suffix)
 			return

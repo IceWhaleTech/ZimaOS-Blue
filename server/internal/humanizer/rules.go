@@ -279,6 +279,7 @@ func formatSearchForIM(query string, results []struct {
 
 // Tool name localization for function_calls blocks.
 var toolNameZh = map[string]string{
+	"web_query":     "网页查询",
 	"web_search":    "网页搜索",
 	"calculator":    "计算器",
 	"system_info":   "系统信息",

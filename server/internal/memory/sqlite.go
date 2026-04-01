@@ -13,6 +13,7 @@ import (
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -83,6 +84,7 @@ type ConversationCommandState struct {
 // Store provides conversation storage using SQLite.
 type Store struct {
 	db          *sql.DB
+	readDB      *sql.DB
 	mu          sync.Mutex // Mutex for write operations
 	ownsDB      bool       // true if this Store opened the DB and should close it
 	dbPath      string
@@ -108,12 +110,18 @@ func NewStoreWithOptions(dbPath string, opts StoreOptions) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+	opts = normalizeStoreOptions(dbPath, opts)
+	readDB, readErr := openStoreReaderDB(dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
 
 	store := &Store{
 		db:      db,
+		readDB:  readDB,
 		ownsDB:  true,
 		dbPath:  dbPath,
-		options: normalizeStoreOptions(dbPath, opts),
+		options: opts,
 		bgDone:  make(chan struct{}),
 	}
 	store.startOwnedLoops()
@@ -123,7 +131,19 @@ func NewStoreWithOptions(dbPath string, opts StoreOptions) (*Store, error) {
 // NewStoreWithDB creates a memory store using an existing shared database connection.
 // The caller is responsible for managing the DB lifecycle (pragmas, connection pool, close).
 func NewStoreWithDB(db *sql.DB) (*Store, error) {
-	store := &Store{db: db, ownsDB: false, options: DefaultStoreOptions()}
+	return NewStoreWithReadDB(db, db)
+}
+
+// NewStoreWithReadDB creates a memory store using separate shared write and read
+// database connections. The caller is responsible for managing the DB lifecycle.
+func NewStoreWithReadDB(writeDB, readDB *sql.DB) (*Store, error) {
+	if writeDB == nil {
+		return nil, fmt.Errorf("memory db is required")
+	}
+	if readDB == nil {
+		readDB = writeDB
+	}
+	store := &Store{db: writeDB, readDB: readDB, ownsDB: false, options: DefaultStoreOptions()}
 	if err := store.migrate(); err != nil {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
@@ -245,12 +265,23 @@ func (s *Store) migrate() error {
 func (s *Store) Close() error {
 	if s.ownsDB {
 		s.stopOwnedLoops()
+		var firstErr error
 		if s.db != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			_ = s.checkpoint(ctx, dbutil.CheckpointTruncate)
 			cancel()
-			return s.db.Close()
 		}
+		if s.readDB != nil && s.readDB != s.db {
+			if err := s.readDB.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		if s.db != nil {
+			if err := s.db.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		return firstErr
 	}
 	return nil
 }
@@ -268,16 +299,16 @@ func (s *Store) ensureConversationAccess(ctx context.Context, conversationID, sc
 		return nil
 	}
 
-	var exists int
-	err := s.db.QueryRowContext(ctx,
-		"SELECT 1 FROM conversations WHERE id = ? AND user_id = ? LIMIT 1",
-		conversationID, scopedUserID,
-	).Scan(&exists)
-	if err == sql.ErrNoRows {
-		return ErrNotFound
-	}
+	var count int64
+	_, err := s.conversationsRead(ctx).Select(&count,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("id", conversationID), z.Eq("user_id", scopedUserID)),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to verify conversation ownership: %w", err)
+	}
+	if count == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
@@ -297,10 +328,7 @@ func (s *Store) CreateConversation(ctx context.Context, title string, userID ...
 		conv.UserID = userID[0]
 	}
 
-	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO conversations (id, title, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		conv.ID, conv.Title, conv.UserID, conv.CreatedAt, conv.UpdatedAt,
-	)
+	_, err := s.conversations(ctx).Insert(conversationValues(conv))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create conversation: %w", err)
 	}
@@ -320,10 +348,7 @@ func (s *Store) CreateConversationWithID(ctx context.Context, id, title string) 
 		UpdatedAt: timeutil.NowTime(),
 	}
 
-	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-		conv.ID, conv.Title, conv.CreatedAt, conv.UpdatedAt,
-	)
+	_, err := s.conversations(ctx).Insert(conversationValues(conv))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create conversation: %w", err)
 	}
@@ -334,61 +359,49 @@ func (s *Store) CreateConversationWithID(ctx context.Context, id, title string) 
 // GetConversation retrieves a conversation by ID.
 func (s *Store) GetConversation(ctx context.Context, id string, userID ...string) (*Conversation, error) {
 	scopedUserID := normalizeConversationScope(userID)
-	conv := &Conversation{}
-	var err error
+	conds := []interface{}{z.Eq("id", id)}
 	if scopedUserID != "" {
-		err = s.db.QueryRowContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE id = ? AND user_id = ?",
-			id, scopedUserID,
-		).Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.Pinned, &conv.CreatedAt, &conv.UpdatedAt)
-	} else {
-		err = s.db.QueryRowContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE id = ?",
-			id,
-		).Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.Pinned, &conv.CreatedAt, &conv.UpdatedAt)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
 
-	if err == sql.ErrNoRows {
-		return nil, ErrNotFound
-	}
+	var rows []conversationRow
+	_, err := s.conversationsRead(ctx).Select(&rows,
+		z.Where(conds...),
+		z.Limit(1),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conversation: %w", err)
 	}
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
 
-	return conv, nil
+	return rowToConversation(rows[0]), nil
 }
 
 // ListConversations lists conversations with pagination, optionally filtered by userID.
 func (s *Store) ListConversations(ctx context.Context, limit, offset int, userID ...string) ([]Conversation, error) {
-	var rows *sql.Rows
-	var err error
-
-	if len(userID) > 0 && userID[0] != "" {
-		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC, created_at DESC, rowid DESC LIMIT ? OFFSET ?",
-			userID[0], limit, offset,
-		)
-	} else {
-		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations ORDER BY pinned DESC, updated_at DESC, created_at DESC, rowid DESC LIMIT ? OFFSET ?",
-			limit, offset,
-		)
+	opts := []z.ZormItem{
+		z.OrderBy("pinned DESC", "updated_at DESC", "created_at DESC", "rowid DESC"),
+		z.Limit(limit, offset),
 	}
+	if scopedUserID := normalizeConversationScope(userID); scopedUserID != "" {
+		opts = append([]z.ZormItem{
+			z.Where(z.Eq("user_id", scopedUserID)),
+		}, opts...)
+	}
+
+	var rows []conversationRow
+	_, err := s.conversationsRead(ctx).Select(&rows, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list conversations: %w", err)
 	}
-	defer rows.Close()
 
-	var convs []Conversation
-	for rows.Next() {
-		var conv Conversation
-		if err := rows.Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.Pinned, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan conversation: %w", err)
-		}
-		convs = append(convs, conv)
+	convs := make([]Conversation, 0, len(rows))
+	for i := range rows {
+		convs = append(convs, *rowToConversation(rows[i]))
 	}
-
-	return convs, rows.Err()
+	return convs, nil
 }
 
 // DeleteConversation deletes a conversation and its messages.
@@ -397,23 +410,17 @@ func (s *Store) DeleteConversation(ctx context.Context, id string, userID ...str
 	defer s.mu.Unlock()
 
 	scopedUserID := normalizeConversationScope(userID)
-	var (
-		res sql.Result
-		err error
-	)
+	conds := []interface{}{z.Eq("id", id)}
 	// Messages are deleted via CASCADE
 	if scopedUserID != "" {
-		res, err = s.db.ExecContext(ctx, "DELETE FROM conversations WHERE id = ? AND user_id = ?", id, scopedUserID)
-	} else {
-		res, err = s.db.ExecContext(ctx, "DELETE FROM conversations WHERE id = ?", id)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+	affected, err := s.conversations(ctx).Delete(z.Where(conds...))
 	if err != nil {
 		return fmt.Errorf("failed to delete conversation: %w", err)
 	}
-	if scopedUserID != "" {
-		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
-			return ErrNotFound
-		}
+	if scopedUserID != "" && affected == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
@@ -424,28 +431,20 @@ func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string, u
 	defer s.mu.Unlock()
 
 	scopedUserID := normalizeConversationScope(userID)
-	var (
-		res sql.Result
-		err error
-	)
+	conds := []interface{}{z.Eq("id", id)}
 	if scopedUserID != "" {
-		res, err = s.db.ExecContext(ctx,
-			"UPDATE conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?",
-			title, timeutil.NowTime(), id, scopedUserID,
-		)
-	} else {
-		res, err = s.db.ExecContext(ctx,
-			"UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
-			title, timeutil.NowTime(), id,
-		)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+	affected, err := s.conversations(ctx).Update(
+		z.V{"title": title, "updated_at": formatStoreTime(timeutil.NowTime())},
+		z.Fields("title", "updated_at"),
+		z.Where(conds...),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to update conversation title: %w", err)
 	}
-	if scopedUserID != "" {
-		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
-			return ErrNotFound
-		}
+	if scopedUserID != "" && affected == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
@@ -456,28 +455,20 @@ func (s *Store) PinConversation(ctx context.Context, id string, userID ...string
 	defer s.mu.Unlock()
 
 	scopedUserID := normalizeConversationScope(userID)
-	var (
-		res sql.Result
-		err error
-	)
+	conds := []interface{}{z.Eq("id", id)}
 	if scopedUserID != "" {
-		res, err = s.db.ExecContext(ctx,
-			"UPDATE conversations SET pinned = 1, updated_at = ? WHERE id = ? AND user_id = ?",
-			timeutil.NowTime(), id, scopedUserID,
-		)
-	} else {
-		res, err = s.db.ExecContext(ctx,
-			"UPDATE conversations SET pinned = 1, updated_at = ? WHERE id = ?",
-			timeutil.NowTime(), id,
-		)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+	affected, err := s.conversations(ctx).Update(
+		z.V{"pinned": true, "updated_at": formatStoreTime(timeutil.NowTime())},
+		z.Fields("pinned", "updated_at"),
+		z.Where(conds...),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to pin conversation: %w", err)
 	}
-	if scopedUserID != "" {
-		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
-			return ErrNotFound
-		}
+	if scopedUserID != "" && affected == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
@@ -488,63 +479,46 @@ func (s *Store) UnpinConversation(ctx context.Context, id string, userID ...stri
 	defer s.mu.Unlock()
 
 	scopedUserID := normalizeConversationScope(userID)
-	var (
-		res sql.Result
-		err error
-	)
+	conds := []interface{}{z.Eq("id", id)}
 	if scopedUserID != "" {
-		res, err = s.db.ExecContext(ctx,
-			"UPDATE conversations SET pinned = 0, updated_at = ? WHERE id = ? AND user_id = ?",
-			timeutil.NowTime(), id, scopedUserID,
-		)
-	} else {
-		res, err = s.db.ExecContext(ctx,
-			"UPDATE conversations SET pinned = 0, updated_at = ? WHERE id = ?",
-			timeutil.NowTime(), id,
-		)
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+	affected, err := s.conversations(ctx).Update(
+		z.V{"pinned": false, "updated_at": formatStoreTime(timeutil.NowTime())},
+		z.Fields("pinned", "updated_at"),
+		z.Where(conds...),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to unpin conversation: %w", err)
 	}
-	if scopedUserID != "" {
-		if affected, rowsErr := res.RowsAffected(); rowsErr == nil && affected == 0 {
-			return ErrNotFound
-		}
+	if scopedUserID != "" && affected == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
 
 // SearchConversations searches conversations by title, optionally filtered by userID.
 func (s *Store) SearchConversations(ctx context.Context, query string, limit int, userID ...string) ([]Conversation, error) {
-	var rows *sql.Rows
-	var err error
-
-	if len(userID) > 0 && userID[0] != "" {
-		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE user_id = ? AND title LIKE ? ORDER BY pinned DESC, updated_at DESC, created_at DESC, rowid DESC LIMIT ?",
-			userID[0], "%"+query+"%", limit,
-		)
-	} else {
-		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE title LIKE ? ORDER BY pinned DESC, updated_at DESC, created_at DESC, rowid DESC LIMIT ?",
-			"%"+query+"%", limit,
-		)
+	conds := []interface{}{z.Like("title", "%"+query+"%")}
+	if scopedUserID := normalizeConversationScope(userID); scopedUserID != "" {
+		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+
+	var rows []conversationRow
+	_, err := s.conversationsRead(ctx).Select(&rows,
+		z.Where(conds...),
+		z.OrderBy("pinned DESC", "updated_at DESC", "created_at DESC", "rowid DESC"),
+		z.Limit(limit),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search conversations: %w", err)
 	}
-	defer rows.Close()
 
-	var convs []Conversation
-	for rows.Next() {
-		var conv Conversation
-		if err := rows.Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.Pinned, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan conversation: %w", err)
-		}
-		convs = append(convs, conv)
+	convs := make([]Conversation, 0, len(rows))
+	for i := range rows {
+		convs = append(convs, *rowToConversation(rows[i]))
 	}
-
-	return convs, rows.Err()
+	return convs, nil
 }
 
 // AddMessage adds a message to a conversation.
@@ -612,24 +586,9 @@ func (s *Store) addMessage(ctx context.Context, conversationID string, msg Messa
 		}
 		defer tx.Rollback()
 
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO messages (
-				id, conversation_id, role, content, tool_calls, tool_call_id, tool_name,
-				provider, model, stats, attachments, has_attachments, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			persisted.ID,
-			persisted.ConversationID,
-			persisted.Role,
-			persisted.Content,
-			toolCallsJSON,
-			persisted.ToolCallID,
-			persisted.ToolName,
-			persisted.Provider,
-			persisted.Model,
-			statsJSON,
-			attachmentsJSON,
-			hasAttachments,
-			persisted.CreatedAt,
+		messagesTable := z.TableContext(ctx, tx, "messages")
+		if _, err := messagesTable.Insert(
+			messageValues(persisted, toolCallsJSON, statsJSON, attachmentsJSON, hasAttachments),
 		); err != nil {
 			return fmt.Errorf("failed to add message: %w", err)
 		}
@@ -640,10 +599,10 @@ func (s *Store) addMessage(ctx context.Context, conversationID string, msg Messa
 			}
 		}
 
-		if _, err := tx.ExecContext(ctx,
-			"UPDATE conversations SET updated_at = ? WHERE id = ?",
-			timeutil.NowTime(),
-			conversationID,
+		if _, err := z.TableContext(ctx, tx, "conversations").Update(
+			z.V{"updated_at": formatStoreTime(timeutil.NowTime())},
+			z.Fields("updated_at"),
+			z.Where(z.Eq("id", conversationID)),
 		); err != nil {
 			return fmt.Errorf("failed to update conversation timestamp: %w", err)
 		}
@@ -671,34 +630,28 @@ func (s *Store) UpdateMessageContentFull(ctx context.Context, messageID, content
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
+		values := z.V{"content": content}
+		fields := []string{"content"}
 		if stats != nil {
 			statsJSON, err := json.Marshal(stats)
 			if err != nil {
 				return fmt.Errorf("failed to marshal stats: %w", err)
 			}
-			if provider != "" || model != "" {
-				_, err = s.db.ExecContext(ctx,
-					"UPDATE messages SET content = ?, stats = ?, provider = COALESCE(NULLIF(?, ''), provider), model = COALESCE(NULLIF(?, ''), model) WHERE id = ?",
-					content, statsJSON, provider, model, messageID,
-				)
-			} else {
-				_, err = s.db.ExecContext(ctx,
-					"UPDATE messages SET content = ?, stats = ? WHERE id = ?",
-					content, statsJSON, messageID,
-				)
-			}
-			return err
+			values["stats"] = string(statsJSON)
+			fields = append(fields, "stats")
 		}
-		if provider != "" || model != "" {
-			_, err := s.db.ExecContext(ctx,
-				"UPDATE messages SET content = ?, provider = COALESCE(NULLIF(?, ''), provider), model = COALESCE(NULLIF(?, ''), model) WHERE id = ?",
-				content, provider, model, messageID,
-			)
-			return err
+		if provider != "" {
+			values["provider"] = provider
+			fields = append(fields, "provider")
 		}
-		_, err := s.db.ExecContext(ctx,
-			"UPDATE messages SET content = ? WHERE id = ?",
-			content, messageID,
+		if model != "" {
+			values["model"] = model
+			fields = append(fields, "model")
+		}
+		_, err := s.messages(ctx).Update(
+			values,
+			z.Fields(fields...),
+			z.Where(z.Eq("id", messageID)),
 		)
 		return err
 	})
@@ -737,51 +690,40 @@ func (s *Store) UpsertMessageContentFullTrusted(ctx context.Context, msg Message
 			}
 		}
 
-		res, err := tx.ExecContext(ctx,
-			`UPDATE messages
-			SET content = ?,
-			    stats = CASE WHEN ? IS NULL THEN stats ELSE ? END,
-			    provider = COALESCE(NULLIF(?, ''), provider),
-			    model = COALESCE(NULLIF(?, ''), model)
-			WHERE id = ?`,
-			msg.Content,
-			statsJSON,
-			statsJSON,
-			msg.Provider,
-			msg.Model,
-			msg.ID,
+		messagesTable := z.TableContext(ctx, tx, "messages")
+		values := z.V{"content": msg.Content}
+		fields := []string{"content"}
+		if len(statsJSON) > 0 {
+			values["stats"] = string(statsJSON)
+			fields = append(fields, "stats")
+		}
+		if msg.Provider != "" {
+			values["provider"] = msg.Provider
+			fields = append(fields, "provider")
+		}
+		if msg.Model != "" {
+			values["model"] = msg.Model
+			fields = append(fields, "model")
+		}
+
+		rowsAffected, err := messagesTable.Update(
+			values,
+			z.Fields(fields...),
+			z.Where(z.Eq("id", msg.ID)),
 		)
 		if err != nil {
 			return fmt.Errorf("update message content: %w", err)
 		}
-
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("message upsert rows affected: %w", err)
-		}
 		if rowsAffected == 0 {
-			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO messages (
-					id, conversation_id, role, content, tool_calls, tool_call_id, tool_name,
-					provider, model, stats, attachments, has_attachments, created_at
-				) VALUES (?, ?, ?, ?, NULL, '', '', ?, ?, ?, NULL, 0, ?)`,
-				msg.ID,
-				msg.ConversationID,
-				msg.Role,
-				msg.Content,
-				msg.Provider,
-				msg.Model,
-				statsJSON,
-				msg.CreatedAt,
-			); err != nil {
+			if _, err := messagesTable.Insert(messageValues(msg, nil, statsJSON, nil, false)); err != nil {
 				return fmt.Errorf("insert message content: %w", err)
 			}
 		}
 
-		if _, err := tx.ExecContext(ctx,
-			"UPDATE conversations SET updated_at = ? WHERE id = ?",
-			timeutil.NowTime(),
-			msg.ConversationID,
+		if _, err := z.TableContext(ctx, tx, "conversations").Update(
+			z.V{"updated_at": formatStoreTime(timeutil.NowTime())},
+			z.Fields("updated_at"),
+			z.Where(z.Eq("id", msg.ConversationID)),
 		); err != nil {
 			return fmt.Errorf("update conversation timestamp: %w", err)
 		}
@@ -791,56 +733,6 @@ func (s *Store) UpsertMessageContentFullTrusted(ctx context.Context, msg Message
 		}
 		return nil
 	})
-}
-
-// GetMessages retrieves messages for a conversation.
-func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, offset int, userID ...string) ([]Message, error) {
-	if err := s.ensureConversationAccess(ctx, conversationID, normalizeConversationScope(userID)); err != nil {
-		return nil, err
-	}
-	messages, err := s.queryMessages(
-		ctx,
-		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, has_attachments, created_at
-		FROM messages
-		WHERE conversation_id = ?
-		ORDER BY created_at ASC, rowid ASC
-		LIMIT ? OFFSET ?`,
-		[]any{conversationID, limit, offset},
-		true,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get messages: %w", err)
-	}
-	return messages, nil
-}
-
-// GetRecentMessages retrieves the latest messages for a conversation and returns
-// them in chronological order.
-func (s *Store) GetRecentMessages(ctx context.Context, conversationID string, limit int, userID ...string) ([]Message, error) {
-	if err := s.ensureConversationAccess(ctx, conversationID, normalizeConversationScope(userID)); err != nil {
-		return nil, err
-	}
-	if limit <= 0 {
-		return nil, nil
-	}
-	messages, err := s.queryMessages(
-		ctx,
-		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, has_attachments, created_at
-		FROM (
-			SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, has_attachments, created_at, rowid
-			FROM messages
-			WHERE conversation_id = ?
-			ORDER BY created_at DESC, rowid DESC
-			LIMIT ?
-		)
-		ORDER BY created_at ASC, rowid ASC`,
-		[]any{conversationID, limit},
-		true,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get recent messages: %w", err)
-	}
-	return messages, nil
 }
 
 // CountMessages returns the number of persisted messages in a conversation.
@@ -853,11 +745,14 @@ func (s *Store) CountMessages(ctx context.Context, conversationID string, userID
 		return 0, err
 	}
 
-	var count int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM messages WHERE conversation_id = ?", conversationID).Scan(&count); err != nil {
+	var count int64
+	if _, err := s.messagesRead(ctx).Select(&count,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("conversation_id", conversationID)),
+	); err != nil {
 		return 0, fmt.Errorf("failed to count messages: %w", err)
 	}
-	return count, nil
+	return int(count), nil
 }
 
 // GetLatestAssistantMessage returns the latest assistant message for a conversation.
@@ -870,20 +765,25 @@ func (s *Store) GetLatestAssistantMessage(ctx context.Context, conversationID st
 		return nil, err
 	}
 
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, has_attachments, created_at
-		FROM messages
-		WHERE conversation_id = ? AND role = 'assistant'
-		ORDER BY created_at DESC, rowid DESC
-		LIMIT 1`,
-		conversationID,
+	var rows []messageRow
+	_, err := s.messagesRead(ctx).Select(&rows,
+		z.Fields(
+			"id", "conversation_id", "role", "content", "tool_calls", "tool_call_id",
+			"tool_name", "provider", "model", "stats", "attachments", "has_attachments", "created_at",
+		),
+		z.Where(z.Eq("conversation_id", conversationID), z.Eq("role", "assistant")),
+		z.OrderBy("created_at DESC", "rowid DESC"),
+		z.Limit(1),
 	)
-
-	scanned, err := s.scanMessageRow(row, true)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
+		return nil, fmt.Errorf("failed to scan latest assistant message: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	scanned, err := rowToScannedMessage(rows[0])
+	if err != nil {
 		return nil, fmt.Errorf("failed to scan latest assistant message: %w", err)
 	}
 	msg := scanned.message
@@ -920,97 +820,96 @@ func defaultConversationCommandState(conversationID string) ConversationCommandS
 }
 
 func (s *Store) getConversationCommandStateScope(ctx context.Context, conversationID string) (string, error) {
-	var userID string
-	if err := s.db.QueryRowContext(ctx, "SELECT user_id FROM conversations WHERE id = ?", conversationID).Scan(&userID); err != nil {
-		if err == sql.ErrNoRows {
-			return "", ErrNotFound
-		}
+	var rows []conversationScopeRow
+	_, err := s.conversationsRead(ctx).Select(&rows,
+		z.Fields("user_id"),
+		z.Where(z.Eq("id", conversationID)),
+		z.Limit(1),
+	)
+	if err != nil {
 		return "", fmt.Errorf("failed to resolve conversation command state scope: %w", err)
 	}
-	return strings.TrimSpace(userID), nil
+	if len(rows) == 0 {
+		return "", ErrNotFound
+	}
+	if rows[0].UserID == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(*rows[0].UserID), nil
 }
 
 func (s *Store) getPersistedConversationCommandState(ctx context.Context, conversationID string) (ConversationCommandState, bool, error) {
 	state := defaultConversationCommandState(conversationID)
-	var selectedProviderID, selectedModelID string
-	var offline, webSearchEnabled, deepResearchEnabled bool
-	var updatedAt time.Time
-	err := s.db.QueryRowContext(ctx,
-		`SELECT selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at
-		FROM conversation_command_state
-		WHERE conversation_id = ?`,
-		conversationID,
-	).Scan(&selectedProviderID, &selectedModelID, &offline, &webSearchEnabled, &deepResearchEnabled, &updatedAt)
-	if err == sql.ErrNoRows {
-		return state, false, nil
-	}
+
+	var rows []conversationCommandStateRow
+	_, err := s.conversationCommandStateRead(ctx).Select(&rows,
+		z.Fields("selected_provider_id", "selected_model_id", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"),
+		z.Where(z.Eq("conversation_id", conversationID)),
+		z.Limit(1),
+	)
 	if err != nil {
 		return state, false, fmt.Errorf("failed to get conversation command state: %w", err)
 	}
+	if len(rows) == 0 {
+		return state, false, nil
+	}
 
-	state.SelectedProviderID = strings.TrimSpace(selectedProviderID)
-	state.SelectedModelID = strings.TrimSpace(selectedModelID)
-	state.Offline = offline
-	state.WebSearchEnabled = webSearchEnabled
-	state.DeepResearchEnabled = deepResearchEnabled
-	state.UpdatedAt = updatedAt
+	state = rowToConversationCommandState(conversationID, rows[0])
 	return state, true, nil
 }
 
 func (s *Store) getPersistedUserCommandState(ctx context.Context, userID string) (ConversationCommandState, bool, error) {
 	state := defaultConversationCommandState("")
-	var selectedProviderID, selectedModelID string
-	var offline, webSearchEnabled, deepResearchEnabled bool
-	var updatedAt time.Time
-	err := s.db.QueryRowContext(ctx,
-		`SELECT selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at
-		FROM user_command_state
-		WHERE user_id = ?`,
-		userID,
-	).Scan(&selectedProviderID, &selectedModelID, &offline, &webSearchEnabled, &deepResearchEnabled, &updatedAt)
-	if err == sql.ErrNoRows {
-		return state, false, nil
-	}
+
+	var rows []conversationCommandStateRow
+	_, err := s.userCommandStateRead(ctx).Select(&rows,
+		z.Fields("selected_provider_id", "selected_model_id", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"),
+		z.Where(z.Eq("user_id", userID)),
+		z.Limit(1),
+	)
 	if err != nil {
 		return state, false, fmt.Errorf("failed to get user command state: %w", err)
 	}
+	if len(rows) == 0 {
+		return state, false, nil
+	}
 
-	state.SelectedProviderID = strings.TrimSpace(selectedProviderID)
-	state.SelectedModelID = strings.TrimSpace(selectedModelID)
-	state.Offline = offline
-	state.WebSearchEnabled = webSearchEnabled
-	state.DeepResearchEnabled = deepResearchEnabled
-	state.UpdatedAt = updatedAt
+	state = rowToConversationCommandState("", rows[0])
 	return state, true, nil
 }
 
 func (s *Store) getLatestLegacyConversationCommandStateForUser(ctx context.Context, userID string) (ConversationCommandState, bool, error) {
 	state := defaultConversationCommandState("")
-	var selectedProviderID, selectedModelID string
-	var offline, webSearchEnabled, deepResearchEnabled bool
-	var updatedAt time.Time
-	err := s.db.QueryRowContext(ctx,
-		`SELECT cs.selected_provider_id, cs.selected_model_id, cs.offline, cs.web_search_enabled, cs.deep_research_enabled, cs.updated_at
-		FROM conversation_command_state cs
-		INNER JOIN conversations c ON c.id = cs.conversation_id
-		WHERE c.user_id = ?
-		ORDER BY cs.updated_at DESC, cs.conversation_id DESC
-		LIMIT 1`,
-		userID,
-	).Scan(&selectedProviderID, &selectedModelID, &offline, &webSearchEnabled, &deepResearchEnabled, &updatedAt)
-	if err == sql.ErrNoRows {
-		return state, false, nil
-	}
+
+	var rows []z.V
+	joined := z.TableContext(ctx, s.reader(), "conversation_command_state")
+	_, err := joined.Select(&rows,
+		z.Fields(
+			"conversation_command_state.selected_provider_id",
+			"conversation_command_state.selected_model_id",
+			"conversation_command_state.offline",
+			"conversation_command_state.web_search_enabled",
+			"conversation_command_state.deep_research_enabled",
+			"conversation_command_state.updated_at",
+		),
+		z.InnerJoin("conversations", "conversations.id = conversation_command_state.conversation_id"),
+		z.Where(z.Eq("conversations.user_id", userID)),
+		z.OrderBy("conversation_command_state.updated_at DESC", "conversation_command_state.conversation_id DESC"),
+		z.Limit(1),
+	)
 	if err != nil {
 		return state, false, fmt.Errorf("failed to get legacy conversation command state for user: %w", err)
 	}
+	if len(rows) == 0 {
+		return state, false, nil
+	}
 
-	state.SelectedProviderID = strings.TrimSpace(selectedProviderID)
-	state.SelectedModelID = strings.TrimSpace(selectedModelID)
-	state.Offline = offline
-	state.WebSearchEnabled = webSearchEnabled
-	state.DeepResearchEnabled = deepResearchEnabled
-	state.UpdatedAt = updatedAt
+	state.SelectedProviderID = lookupZormString(rows[0], "selected_provider_id", "conversation_command_state.selected_provider_id")
+	state.SelectedModelID = lookupZormString(rows[0], "selected_model_id", "conversation_command_state.selected_model_id")
+	state.Offline = lookupZormBool(rows[0], "offline", "conversation_command_state.offline")
+	state.WebSearchEnabled = lookupZormBool(rows[0], "web_search_enabled", "conversation_command_state.web_search_enabled")
+	state.DeepResearchEnabled = lookupZormBool(rows[0], "deep_research_enabled", "conversation_command_state.deep_research_enabled")
+	state.UpdatedAt = parseStoreTime(lookupZormString(rows[0], "updated_at", "conversation_command_state.updated_at"))
 	return state, true, nil
 }
 
@@ -1081,24 +980,12 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 	defer s.mu.Unlock()
 
 	if userID != "" {
-		_, err = s.db.ExecContext(ctx,
-			`INSERT INTO user_command_state (user_id, selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(user_id)
-			DO UPDATE SET
-				selected_provider_id = excluded.selected_provider_id,
-				selected_model_id = excluded.selected_model_id,
-				offline = excluded.offline,
-				web_search_enabled = excluded.web_search_enabled,
-				deep_research_enabled = excluded.deep_research_enabled,
-				updated_at = excluded.updated_at`,
-			userID,
-			state.SelectedProviderID,
-			state.SelectedModelID,
-			state.Offline,
-			state.WebSearchEnabled,
-			state.DeepResearchEnabled,
-			state.UpdatedAt,
+		_, err = s.userCommandState(ctx).Insert(
+			userCommandStateValues(userID, state),
+			z.OnConflictDoUpdateSet(
+				[]string{"user_id"},
+				[]string{"selected_provider_id", "selected_model_id", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
+			),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to upsert user command state: %w", err)
@@ -1106,24 +993,12 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 		return nil
 	}
 
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO conversation_command_state (conversation_id, selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(conversation_id)
-		DO UPDATE SET
-			selected_provider_id = excluded.selected_provider_id,
-			selected_model_id = excluded.selected_model_id,
-			offline = excluded.offline,
-			web_search_enabled = excluded.web_search_enabled,
-			deep_research_enabled = excluded.deep_research_enabled,
-			updated_at = excluded.updated_at`,
-		state.ConversationID,
-		state.SelectedProviderID,
-		state.SelectedModelID,
-		state.Offline,
-		state.WebSearchEnabled,
-		state.DeepResearchEnabled,
-		state.UpdatedAt,
+	_, err = s.conversationCommandState(ctx).Insert(
+		conversationCommandStateValues(state.ConversationID, state),
+		z.OnConflictDoUpdateSet(
+			[]string{"conversation_id"},
+			[]string{"selected_provider_id", "selected_model_id", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
+		),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to upsert conversation command state: %w", err)
@@ -1151,13 +1026,13 @@ func (s *Store) ClearConversationCommandState(ctx context.Context, conversationI
 	defer s.mu.Unlock()
 
 	if userID != "" {
-		if _, err := s.db.ExecContext(ctx, `DELETE FROM user_command_state WHERE user_id = ?`, userID); err != nil {
+		if _, err := s.userCommandState(ctx).Delete(z.Where(z.Eq("user_id", userID))); err != nil {
 			return fmt.Errorf("failed to clear user command state: %w", err)
 		}
 		return nil
 	}
 
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM conversation_command_state WHERE conversation_id = ?`, conversationID); err != nil {
+	if _, err := s.conversationCommandState(ctx).Delete(z.Where(z.Eq("conversation_id", conversationID))); err != nil {
 		return fmt.Errorf("failed to clear conversation command state: %w", err)
 	}
 	return nil
@@ -1172,21 +1047,12 @@ func (s *Store) DeleteMessages(ctx context.Context, conversationID string, messa
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Build placeholders for IN clause
-	placeholders := make([]string, len(messageIDs))
-	args := make([]interface{}, len(messageIDs)+1)
-	args[0] = conversationID
-	for i, id := range messageIDs {
-		placeholders[i] = "?"
-		args[i+1] = id
-	}
-
-	query := fmt.Sprintf(
-		"DELETE FROM messages WHERE conversation_id = ? AND id IN (%s)",
-		strings.Join(placeholders, ","),
+	_, err := s.messages(ctx).Delete(
+		z.Where(
+			z.Eq("conversation_id", conversationID),
+			z.In("id", messageIDs),
+		),
 	)
-
-	_, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete messages: %w", err)
 	}
@@ -1203,23 +1069,24 @@ func (s *Store) GetConversationPreviousResponseID(ctx context.Context, conversat
 	}
 
 	cutoff := timeutil.NowTime().Add(-responsesPreviousIDTTL)
-	var prevID string
-	err := s.db.QueryRowContext(
-		ctx,
-		`SELECT previous_response_id
-		FROM conversation_runtime_state
-		WHERE conversation_id = ? AND provider_id = '' AND model_id = '' AND updated_at >= ?
-		LIMIT 1`,
-		conversationID,
-		cutoff,
-	).Scan(&prevID)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
+	var rows []previousResponseIDRow
+	_, err := s.conversationRuntimeStateRead(ctx).Select(&rows,
+		z.Fields("previous_response_id"),
+		z.Where(
+			z.Eq("conversation_id", conversationID),
+			z.Eq("provider_id", ""),
+			z.Eq("model_id", ""),
+			z.Gte("updated_at", cutoff),
+		),
+		z.Limit(1),
+	)
 	if err != nil {
 		return "", fmt.Errorf("failed to get conversation previous response id: %w", err)
 	}
-	return strings.TrimSpace(prevID), nil
+	if len(rows) == 0 {
+		return "", nil
+	}
+	return strings.TrimSpace(rows[0].PreviousResponseID), nil
 }
 
 // SetConversationPreviousResponseID stores the latest Responses continuation ID for a conversation.
@@ -1235,15 +1102,12 @@ func (s *Store) SetConversationPreviousResponseID(ctx context.Context, conversat
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
-		_, err := s.db.ExecContext(
-			ctx,
-			`INSERT INTO conversation_runtime_state (conversation_id, provider_id, model_id, previous_response_id, assistant_message_id, updated_at)
-			VALUES (?, '', '', ?, '', ?)
-			ON CONFLICT(conversation_id, provider_id, model_id)
-			DO UPDATE SET previous_response_id = excluded.previous_response_id, updated_at = excluded.updated_at`,
-			conversationID,
-			responseID,
-			now,
+		_, err := s.conversationRuntimeState(ctx).Insert(
+			conversationRuntimeStateValues(conversationID, responseID, now),
+			z.OnConflictDoUpdateSet(
+				[]string{"conversation_id", "provider_id", "model_id"},
+				[]string{"previous_response_id", "updated_at"},
+			),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to set conversation previous response id: %w", err)
@@ -1263,11 +1127,7 @@ func (s *Store) ClearConversationPreviousResponseID(ctx context.Context, convers
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
-		if _, err := s.db.ExecContext(
-			ctx,
-			`DELETE FROM conversation_runtime_state WHERE conversation_id = ?`,
-			conversationID,
-		); err != nil {
+		if _, err := s.conversationRuntimeState(ctx).Delete(z.Where(z.Eq("conversation_id", conversationID))); err != nil {
 			return fmt.Errorf("failed to clear conversation previous response id: %w", err)
 		}
 		return nil

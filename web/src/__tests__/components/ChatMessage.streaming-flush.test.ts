@@ -235,4 +235,34 @@ describe('ChatMessage streaming flush', () => {
 
     expect(wrapper.text()).toContain('hello world from blue')
   })
+
+  it('flushes immediately when virtualized rendering prefers immediate streaming output', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage(''),
+        isStreaming: true,
+        disableAutoTTS: true,
+        preferImmediateStreamingRender: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    await wrapper.setProps({
+      message: makeMessage('hello world from blue'),
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('hello world from blue')
+  })
 })

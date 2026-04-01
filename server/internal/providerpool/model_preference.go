@@ -77,30 +77,10 @@ func preferredAPIFormatsForModel(modelID string) []APIFormat {
 		preferred = []APIFormat{APIFormatOpenAI, APIFormatAnthropic, APIFormatResponses}
 	}
 
-	if ResponsesIntegrationEnabled() {
-		return preferred
-	}
-
-	filtered := preferred[:0]
-	for _, format := range preferred {
-		if format == APIFormatResponses {
-			continue
-		}
-		filtered = append(filtered, format)
-	}
-	return filtered
+	return preferred
 }
 
 func recommendedAPIFormatForModel(modelID string, detectedFormat APIFormat, anthropicReachable, openAIReachable, responsesReachable, responsesOnly bool) APIFormat {
-	responsesEnabled := ResponsesIntegrationEnabled()
-	if !responsesEnabled {
-		responsesReachable = false
-		responsesOnly = false
-		if detectedFormat == APIFormatResponses {
-			detectedFormat = ""
-		}
-	}
-
 	if responsesOnly {
 		return APIFormatResponses
 	}
@@ -126,7 +106,7 @@ func recommendedAPIFormatForModel(modelID string, detectedFormat APIFormat, anth
 	if anthropicReachable {
 		return APIFormatAnthropic
 	}
-	if responsesEnabled && responsesReachable {
+	if responsesReachable {
 		return APIFormatResponses
 	}
 	if detectedFormat != "" {
@@ -166,7 +146,7 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 			score += 25
 		}
 	case modelFamilyCodex:
-		if ResponsesIntegrationEnabled() && (nativeFormat == APIFormatResponses || strings.Contains(providerID, "codex")) {
+		if nativeFormat == APIFormatResponses || strings.Contains(providerID, "codex") {
 			score += 25
 		}
 	default:
@@ -178,9 +158,6 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 
 func sortModelIDsByPreference(modelIDs []string) []string {
 	out := append([]string(nil), modelIDs...)
-	if !shouldPrioritizePreferredModels(len(out)) {
-		return out
-	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return compareModelPreference(out[i], out[j]) < 0
 	})
@@ -189,9 +166,6 @@ func sortModelIDsByPreference(modelIDs []string) []string {
 
 func sortModelsByPreference(models []*Model) []*Model {
 	out := append([]*Model(nil), models...)
-	if !shouldPrioritizePreferredModels(len(out)) {
-		return out
-	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return compareModelPreference(preferredModelID(out[i]), preferredModelID(out[j])) < 0
 	})
@@ -209,30 +183,21 @@ func preferredModelID(model *Model) string {
 }
 
 func compareModelPreference(left, right string) int {
-	leftPrefixRank := preferredModelPrefixRank(left)
-	rightPrefixRank := preferredModelPrefixRank(right)
-	if leftPrefixRank != rightPrefixRank {
-		if leftPrefixRank < rightPrefixRank {
-			return -1
-		}
-		return 1
-	}
-
-	leftScore := modelIntelligenceScore(left)
-	rightScore := modelIntelligenceScore(right)
-	if leftScore != rightScore {
-		if leftScore > rightScore {
-			return -1
-		}
-		return 1
-	}
-
-	leftNormalized := strings.ToLower(strings.TrimSpace(left))
-	rightNormalized := strings.ToLower(strings.TrimSpace(right))
-	if leftNormalized < rightNormalized {
+	leftNormalized := normalizeModelPreferenceID(left)
+	rightNormalized := normalizeModelPreferenceID(right)
+	if leftNormalized > rightNormalized {
 		return -1
 	}
-	if leftNormalized > rightNormalized {
+	if leftNormalized < rightNormalized {
+		return 1
+	}
+
+	leftRaw := strings.ToLower(strings.TrimSpace(left))
+	rightRaw := strings.ToLower(strings.TrimSpace(right))
+	if leftRaw > rightRaw {
+		return -1
+	}
+	if leftRaw < rightRaw {
 		return 1
 	}
 	return 0

@@ -134,6 +134,12 @@ func (c *CompactorMemoryIntegration) RefreshMemoryBeforeCompaction(ctx context.C
 		return nil
 	}
 
+	extracted = NormalizeExtractedMemoryForStorage(extracted)
+	if extracted == "" || extracted == "NO_MEMORY_NEEDED" {
+		log.Printf("[DEBUG] extracted memory was filtered as transient for session %s", session.ID.String())
+		return nil
+	}
+
 	// Save extracted memory
 	if err := c.memoryRefresher.RefreshMemory(ctx, extracted, session.ID.String()); err != nil {
 		log.Printf("[WARN] failed to refresh memory: %v", err)

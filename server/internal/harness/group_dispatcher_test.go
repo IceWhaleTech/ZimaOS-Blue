@@ -54,6 +54,23 @@ func (d *autoCompleteGroupDriver) Cancel(_ context.Context, run *Run) error {
 	return nil
 }
 
+type blockingGroupDriver struct {
+	kind RunKind
+}
+
+func (d *blockingGroupDriver) Kind() RunKind { return d.kind }
+
+func (d *blockingGroupDriver) Validate(spec RunSpec) error {
+	if spec.Goal == "" {
+		return fmt.Errorf("goal is required")
+	}
+	return nil
+}
+
+func (d *blockingGroupDriver) Start(_ context.Context, _ *Run, _ RunEnv) error { return nil }
+
+func (d *blockingGroupDriver) Cancel(_ context.Context, _ *Run) error { return nil }
+
 type mockProposalReflector struct {
 	input  selfreflect.Input
 	result *selfreflect.Result
@@ -137,6 +154,163 @@ func TestGroupDispatcher_CompletesAndScoresQueuedItem(t *testing.T) {
 	}
 	if len(report.Scorecards) != 1 || report.Scorecards[0].Verdict != ScoreVerdictPass {
 		t.Fatalf("unexpected scorecards: %#v", report.Scorecards)
+	}
+}
+
+func TestGroupDispatcher_GetGroupProjectsRunningStateWithoutEagerSummaryWrite(t *testing.T) {
+	controller := newTestController(t)
+	controller.RegisterDriver(&blockingGroupDriver{kind: RunKindAgentTask})
+	dispatcher := NewGroupDispatcher(controller)
+	dispatcher.SetRunPollInterval(10 * time.Millisecond)
+
+	group, err := controller.SubmitGroup(context.Background(), RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "running state projection",
+		OwnerUserID: "user-1",
+		Items: []RunGroupItemSpec{
+			{
+				RunKind: RunKindAgentTask,
+				Profile: "agent_task",
+				Input: map[string]interface{}{
+					"goal": "keep running",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	if err := dispatcher.DispatchOnce(context.Background()); err != nil {
+		t.Fatalf("DispatchOnce failed: %v", err)
+	}
+
+	waitForCondition(t, "group item running attempt", func() bool {
+		items, err := controller.ListGroupItems(context.Background(), group.ID)
+		return err == nil && len(items) == 1 && items[0].AttemptCount == 1 && items[0].Status == RunGroupItemStatusRunning
+	})
+
+	storedBefore, err := controller.store.GetGroup(context.Background(), group.ID)
+	if err != nil {
+		t.Fatalf("GetGroup(stored before) failed: %v", err)
+	}
+
+	got, err := controller.GetGroup(context.Background(), group.ID)
+	if err != nil {
+		t.Fatalf("GetGroup failed: %v", err)
+	}
+	if got.Status != RunGroupStatusRunning {
+		t.Fatalf("group status = %s, want running", got.Status)
+	}
+	if got.StartedAt == nil {
+		t.Fatal("expected running group to have StartedAt set")
+	}
+	summaryCounts := nestedMetadataMap(got.Summary, "counts")
+	if gotCount := intMetadata(summaryCounts["running"]); gotCount != 1 {
+		t.Fatalf("summary counts.running = %#v, want 1", summaryCounts["running"])
+	}
+
+	storedAfter, err := controller.store.GetGroup(context.Background(), group.ID)
+	if err != nil {
+		t.Fatalf("GetGroup(stored after) failed: %v", err)
+	}
+	if storedAfter.Status != storedBefore.Status {
+		t.Fatalf("stored group status changed on read: before=%s after=%s", storedBefore.Status, storedAfter.Status)
+	}
+	if !storedAfter.UpdatedAt.Equal(storedBefore.UpdatedAt) {
+		t.Fatalf("stored group UpdatedAt changed on read: before=%s after=%s", storedBefore.UpdatedAt, storedAfter.UpdatedAt)
+	}
+
+	if err := controller.CancelGroup(context.Background(), group.ID, "test cleanup"); err != nil {
+		t.Fatalf("CancelGroup failed: %v", err)
+	}
+}
+
+func TestBuildGroupItemRunSpec_InjectsExecutionRouteContract(t *testing.T) {
+	group := &RunGroup{
+		ID:          "group-1",
+		Title:       "execution routing",
+		OwnerUserID: "user-1",
+		Metadata: map[string]interface{}{
+			"gate_type": "execution_equivalence",
+		},
+	}
+	item := &RunGroupItem{
+		ID:      "item-1",
+		RunKind: RunKindAgentTask,
+		Profile: "agent_task",
+		Input: map[string]interface{}{
+			"goal": "看下 workspace 里的 README",
+		},
+		Metadata: map[string]interface{}{
+			"primary_route":       "analyze",
+			"expected_cli_action": "blue analyze",
+			"allow_fallback":      false,
+		},
+	}
+
+	spec, err := buildGroupItemRunSpec(group, item)
+	if err != nil {
+		t.Fatalf("buildGroupItemRunSpec failed: %v", err)
+	}
+
+	contract := nestedMetadataMap(spec.Metadata, "routing_contract")
+	if metadataString(contract, "primary_route") != "analyze" {
+		t.Fatalf("routing_contract.primary_route = %q, want analyze", metadataString(contract, "primary_route"))
+	}
+	if metadataString(contract, "expected_cli_action") != "blue analyze" {
+		t.Fatalf("routing_contract.expected_cli_action = %q, want blue analyze", metadataString(contract, "expected_cli_action"))
+	}
+	if enforce, ok := mapBool(contract, "enforce_cli_route"); !ok || !enforce {
+		t.Fatalf("routing_contract.enforce_cli_route = %#v, want true", contract["enforce_cli_route"])
+	}
+
+	fallback := decodeStringSlice(spec.Metadata["task_fallback_plan"])
+	if len(fallback) == 0 || !strings.Contains(fallback[0], "blue analyze") {
+		t.Fatalf("task_fallback_plan = %#v, want canonical CLI hint", fallback)
+	}
+	if len(fallback) < 3 || !strings.Contains(fallback[len(fallback)-1], "stop and report the blocker") {
+		t.Fatalf("task_fallback_plan = %#v, want no-route-hop fallback guard", fallback)
+	}
+}
+
+func TestBuildGroupItemRunSpec_UsesPolicyModelHintForAdaptivePolicyOnly(t *testing.T) {
+	group := &RunGroup{
+		ID:          "group-1",
+		Title:       "execution routing",
+		OwnerUserID: "user-1",
+		Metadata: map[string]interface{}{
+			"policy_model_hint": batch1ExecutionPolicyModelHint,
+		},
+	}
+	item := &RunGroupItem{
+		ID:      "item-1",
+		RunKind: RunKindAgentTask,
+		Profile: "agent_task",
+		Input: map[string]interface{}{
+			"goal": "Search the latest OpenAI Responses API documentation.",
+		},
+		Expected: map[string]interface{}{
+			"required_observations": []string{"evidence_tool_used"},
+		},
+	}
+
+	spec, err := buildGroupItemRunSpec(group, item)
+	if err != nil {
+		t.Fatalf("buildGroupItemRunSpec failed: %v", err)
+	}
+	if spec.Model != "" {
+		t.Fatalf("spec.Model = %q, want empty runtime model", spec.Model)
+	}
+	if enabled, _ := spec.Metadata["enable_external_qa"].(bool); enabled {
+		t.Fatal("expected policy model hint to disable external QA for lightweight contract")
+	}
+	if enabled, _ := spec.Metadata["enable_checkpoints"].(bool); enabled {
+		t.Fatal("expected policy model hint to disable checkpoints for lightweight contract")
+	}
+	adaptation := nestedMetadataMap(spec.Metadata, "runtime_adaptation")
+	if got := metadataString(adaptation, "profile"); got != "light" {
+		t.Fatalf("runtime_adaptation.profile = %q, want light", got)
 	}
 }
 
@@ -348,6 +522,64 @@ func TestGroupDispatcher_VerificationFlagsMissingEvidenceCollection(t *testing.T
 	}
 }
 
+func TestGroupDispatcher_VerificationFlagsMissingRequiredCard(t *testing.T) {
+	controller := newTestController(t)
+	controller.RegisterDriver(&autoCompleteGroupDriver{
+		kind:   RunKindAgentTask,
+		status: RunStatusCompleted,
+		result: `{"selected_tools":["web_query"],"canonical_skill_id":"web_query","skill_route_outcome":"selected"}`,
+		delay:  10 * time.Millisecond,
+	})
+	dispatcher := NewGroupDispatcher(controller)
+	dispatcher.SetRunPollInterval(10 * time.Millisecond)
+
+	group, err := controller.SubmitGroup(context.Background(), RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "required card gate",
+		OwnerUserID: "user-1",
+		ScoringConfig: GroupScoringConfig{
+			Mode:          ScoringModeRule,
+			PassThreshold: 0.5,
+		},
+		Items: []RunGroupItemSpec{
+			{
+				RunKind: RunKindAgentTask,
+				Profile: "selector_dry_run",
+				Input: map[string]interface{}{
+					"goal": "route the query",
+				},
+				Expected: map[string]interface{}{
+					"status": "completed",
+				},
+				Metadata: map[string]interface{}{
+					"required_cards": []interface{}{"skill_prompt_hint"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	if err := dispatcher.DispatchOnce(context.Background()); err != nil {
+		t.Fatalf("DispatchOnce failed: %v", err)
+	}
+
+	waitForCondition(t, "missing required card terminal state", func() bool {
+		report, err := controller.GetGroupReport(context.Background(), group.ID)
+		return err == nil && report != nil && len(report.Scorecards) >= 1
+	})
+
+	report, err := controller.GetGroupReport(context.Background(), group.ID)
+	if err != nil {
+		t.Fatalf("GetGroupReport failed: %v", err)
+	}
+	breakdown := decodeJSONMap(report.Scorecards[0].BreakdownJSON)
+	if label := metadataString(breakdown, "failure_label"); label != "missing_required_card" {
+		t.Fatalf("failure_label = %q, want missing_required_card", label)
+	}
+}
+
 func TestGroupDispatcher_VerificationFlagsToolFailureWithoutFallback(t *testing.T) {
 	controller := newTestController(t)
 	controller.RegisterDriver(&autoCompleteGroupDriver{
@@ -359,9 +591,9 @@ func TestGroupDispatcher_VerificationFlagsToolFailureWithoutFallback(t *testing.
 			return env.Manager.AppendEvent(context.Background(), RunEvent{
 				RunID:       run.ID,
 				Type:        "tool_finished",
-				ToolName:    "web_search",
+				ToolName:    "web_query",
 				Message:     "search failed",
-				PayloadJSON: `{"tool_name":"web_search","error":"search failed"}`,
+				PayloadJSON: `{"tool_name":"web_query","error":"search failed"}`,
 				CreatedAt:   time.Now().UTC(),
 			})
 		},
@@ -802,8 +1034,8 @@ func TestGroupDispatcher_RetryInjectsVerificationFeedbackIntoNextAttempt(t *test
 	if !strings.Contains(secondAttemptRetryContext, "Please correct the issue above before declaring this retry complete.") {
 		t.Fatalf("retry_context = %q, want corrective guidance", secondAttemptRetryContext)
 	}
-	if got := report.Group.Summary["retry_recovered_count"]; got != float64(1) {
-		t.Fatalf("retry_recovered_count = %#v, want 1", got)
+	if got := intMetadata(report.Group.Summary["retry_recovered_count"]); got != 1 {
+		t.Fatalf("retry_recovered_count = %#v, want 1", report.Group.Summary["retry_recovered_count"])
 	}
 }
 

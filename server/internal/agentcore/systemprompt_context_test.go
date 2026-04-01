@@ -485,6 +485,18 @@ func TestBuildSkillsSection_UsesWebFetchBrowserRouting(t *testing.T) {
 	if !strings.Contains(section, "Final web fallback→browser") {
 		t.Fatalf("expected skills section to mention final browser fallback, got: %s", section)
 	}
+	if !strings.Contains(section, "blue exec command='...'") {
+		t.Fatalf("expected skills section to mention external CLI execution via blue exec, got: %s", section)
+	}
+	if !strings.Contains(section, "blue media generate") {
+		t.Fatalf("expected skills section to mention media subcommand routing, got: %s", section)
+	}
+	if !strings.Contains(section, "timer`, `datetime`, `unit_converter`, and deprecated `search` are not live runtime skills") {
+		t.Fatalf("expected skills section to mention disabled placeholder skills, got: %s", section)
+	}
+	if !strings.Contains(section, "workspace `.agents/skills/` or `.claude/skills/`") || !strings.Contains(section, "`~/.agents/skills/` and `~/.claude/skills/`") {
+		t.Fatalf("expected skills section to mention both workspace and user skill roots, got: %s", section)
+	}
 }
 
 func TestBuildSkillsSection_WithoutWorkspaceDirStillIncludesPinnedSkills(t *testing.T) {

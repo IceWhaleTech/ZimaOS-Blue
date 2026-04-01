@@ -560,6 +560,14 @@ func TestRepository_CleanupOldExecutions(t *testing.T) {
 		CompletedAt:  &oldTime,
 	}
 	repo.SaveExecution(ctx, execution)
+	if err := repo.SaveExecutionLog(ctx, &ExecutionLog{
+		ExecutionID: execution.ID,
+		Level:       "info",
+		Message:     "old execution log",
+		Timestamp:   oldTime,
+	}); err != nil {
+		t.Fatalf("failed to save old execution log: %v", err)
+	}
 
 	// Create recent execution
 	recentTime := time.Now()
@@ -574,6 +582,14 @@ func TestRepository_CleanupOldExecutions(t *testing.T) {
 		CompletedAt:  &recentTime,
 	}
 	repo.SaveExecution(ctx, execution2)
+	if err := repo.SaveExecutionLog(ctx, &ExecutionLog{
+		ExecutionID: execution2.ID,
+		Level:       "info",
+		Message:     "recent execution log",
+		Timestamp:   recentTime,
+	}); err != nil {
+		t.Fatalf("failed to save recent execution log: %v", err)
+	}
 
 	// Cleanup old executions (30 days retention)
 	deleted, err := repo.CleanupOldExecutions(ctx, 30)
@@ -595,6 +611,22 @@ func TestRepository_CleanupOldExecutions(t *testing.T) {
 	_, err = repo.GetExecution(ctx, "recent-exec")
 	if err != nil {
 		t.Error("expected recent execution to still exist")
+	}
+
+	oldLogs, oldTotal, err := repo.GetExecutionLogs(ctx, "old-exec", &ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("failed to get old execution logs: %v", err)
+	}
+	if oldTotal != 0 || len(oldLogs) != 0 {
+		t.Fatalf("expected old execution logs to be deleted, total=%d len=%d", oldTotal, len(oldLogs))
+	}
+
+	recentLogs, recentTotal, err := repo.GetExecutionLogs(ctx, "recent-exec", &ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("failed to get recent execution logs: %v", err)
+	}
+	if recentTotal != 1 || len(recentLogs) != 1 {
+		t.Fatalf("expected recent execution log to remain, total=%d len=%d", recentTotal, len(recentLogs))
 	}
 }
 

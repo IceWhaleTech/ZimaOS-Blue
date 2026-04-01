@@ -109,6 +109,12 @@ func TestIsModelNotConfiguredError(t *testing.T) {
 			body:       `{"error":{"code":"model_not_found","message":"upstream model not found: claude-3-5-sonnet-20241022","type":"upstream_error"}}`,
 			expected:   true,
 		},
+		{
+			name:       "wrapped 400 no available ai provider for model from relay",
+			statusCode: 400,
+			body:       `{"error":{"message":"No available AI provider for model 'claude-3-5-haiku-20241022' across all groups checked).","type":"invalid_request_error"}}`,
+			expected:   true,
+		},
 
 		// Negative cases — should NOT be detected as "not configured"
 		{

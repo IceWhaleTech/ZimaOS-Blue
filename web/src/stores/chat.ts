@@ -23,6 +23,7 @@ import {
   type ProcessTraceItem,
   type ProcessTraceStatus,
 } from '@/utils/processTrace'
+import { localizeResearchSurfaceTitle } from '@/utils/deepResearchText'
 import { reportStartupMark } from '@/utils/startupTrace'
 
 type ChatApiModule = typeof import('@/api/chat')
@@ -386,7 +387,41 @@ function resolveProcessTraceText(
 }
 
 function resolveProcessTraceField(key: string, fallback: string): string {
+  if (key === 'deepResearch') {
+    return (
+      resolveI18nText('chat.processTrace.fields.deepResearch', '') ||
+      localizeResearchSurfaceTitle((translationKey, translationFallback) =>
+        resolveI18nText(translationKey, translationFallback)
+      )
+    )
+  }
   return resolveProcessTraceText(`fields.${key}`, fallback)
+}
+
+function isFixedModelPreferenceValue(value: string): boolean {
+  const trimmed = value.trim()
+  return trimmed !== '' && trimmed !== 'auto'
+}
+
+function isModelUnavailableErrorText(message: string): boolean {
+  const normalized = String(message || '').trim()
+  if (!normalized) return false
+
+  const lower = normalized.toLowerCase()
+  return (
+    lower.includes('no available ai provider for model') ||
+    lower.includes('model unavailable') ||
+    lower.includes('model is not available') ||
+    lower.includes('model not configured') ||
+    lower.includes('model not found') ||
+    lower.includes('unknown model') ||
+    lower.includes('model_not_found') ||
+    normalized.includes('无可用渠道') ||
+    normalized.includes('未配置') ||
+    normalized.includes('未启用') ||
+    normalized.includes('模型不存在') ||
+    normalized.includes('未找到模型')
+  )
 }
 
 function resolveProcessTraceDetail(_event: string, detail?: string): string {
@@ -394,6 +429,21 @@ function resolveProcessTraceDetail(_event: string, detail?: string): string {
   if (!normalized) return ''
 
   switch (normalized) {
+    case 'Using the resolved upstream provider and model for this response.':
+      return resolveProcessTraceText(
+        'details.providerResolved',
+        'This response will use the selected upstream provider and model.'
+      )
+    case 'Switched to an available upstream model for this response.':
+      return resolveProcessTraceText(
+        'details.providerResolvedModelSwitch',
+        'This response switched to an available upstream model.'
+      )
+    case 'Switched to another available upstream provider or model for this response.':
+      return resolveProcessTraceText(
+        'details.providerResolvedFailoverSwitch',
+        'This response switched to another available upstream provider or model.'
+      )
     case 'Retrying the tool follow-up without the previously pinned provider.':
       return resolveProcessTraceText(
         'details.providerFailoverToolFollowUp',
@@ -456,6 +506,8 @@ function resolveProcessTraceStatusLabel(item: ProcessTraceItem): string {
         return resolveProcessTraceText('events.providerSwitchFailed', 'Provider switch failed')
       }
       return resolveProcessTraceText('events.switchingProvider', 'Switching provider')
+    case 'provider_resolved':
+      return resolveProcessTraceText('events.providerResolved', 'Using available route')
     case 'injection_restart':
       return resolveProcessTraceText(
         'events.restartingWithLatestMessage',
@@ -495,7 +547,7 @@ export type StreamUIPhase =
   | 'interrupted'
   | 'completed'
 
-interface StreamUIState {
+export interface StreamUIState {
   phase: StreamUIPhase
   label: string | null
   detail: string | null
@@ -534,6 +586,21 @@ interface ActiveConversationStreamState {
   recoveryBaseline: StreamRecoveryBaseline
 }
 
+export interface ActiveMessageStreamState {
+  phase: StreamUIPhase
+  awaitingConfirmation: boolean
+  toolExecuting: boolean
+  toolExecutingCommands: string[]
+  toolExecutingNames: string[]
+  toolSandboxAvailable: boolean
+  statusSummary: string | null
+  streamProgress: string | null
+  processTrace: ProcessTraceItem[]
+  toolResults: ToolResultItem[]
+  statusStartedAt: number
+  showExternalStatusRail: boolean
+}
+
 type SendMessageFileAttachment = {
   id: string
   file: File
@@ -549,8 +616,66 @@ interface SendMessageOptions {
   skipConversationCreate?: boolean
 }
 
+type ModelAutoFallbackRetryKind = 'send' | 'continue' | 'regenerate'
+
+export interface PendingModelAutoFallback {
+  conversationId: string
+  retryKind: ModelAutoFallbackRetryKind
+  requestedModelId: string
+  requestedProviderId?: string
+  errorMessage: string
+}
+
 type RuntimeProcessMessage = Message & {
   local_process_tool_results?: ToolResultItem[]
+}
+
+type ResearchModeTogglePayload = {
+  deep_research_enabled?: boolean
+  research_mode_enabled?: boolean
+}
+
+function resolveResearchModeEnabled(payload: ResearchModeTogglePayload): boolean {
+  if (typeof payload.research_mode_enabled === 'boolean') {
+    return payload.research_mode_enabled
+  }
+  return payload.deep_research_enabled === true
+}
+
+function normalizeCommandStatePatchResearchMode(
+  patch: ConversationCommandStatePatch
+): ConversationCommandStatePatch {
+  const researchModeEnabled =
+    typeof patch.research_mode_enabled === 'boolean'
+      ? patch.research_mode_enabled
+      : typeof patch.deep_research_enabled === 'boolean'
+        ? patch.deep_research_enabled
+        : undefined
+  if (typeof researchModeEnabled !== 'boolean') {
+    return patch
+  }
+  return {
+    ...patch,
+    research_mode_enabled: researchModeEnabled,
+    deep_research_enabled: researchModeEnabled,
+  }
+}
+
+function normalizeSendMessageRequestResearchMode(request: SendMessageRequest): SendMessageRequest {
+  const researchModeEnabled =
+    typeof request.research_mode_enabled === 'boolean'
+      ? request.research_mode_enabled
+      : typeof request.deep_research_enabled === 'boolean'
+        ? request.deep_research_enabled
+        : undefined
+  if (typeof researchModeEnabled !== 'boolean') {
+    return request
+  }
+  return {
+    ...request,
+    research_mode_enabled: researchModeEnabled,
+    deep_research_enabled: researchModeEnabled,
+  }
 }
 
 function createStreamUIState(
@@ -661,7 +786,7 @@ export const useChatStore = defineStore('chat', () => {
     const trimmed = modelPreferenceRaw.trim()
     if (!trimmed || trimmed === 'auto') {
       return {
-        selected_provider_id: providerId,
+        selected_provider_id: '',
         selected_model_id: '',
         model_preference: 'auto',
       }
@@ -884,6 +1009,7 @@ export const useChatStore = defineStore('chat', () => {
   const isMultiSelectMode = ref(false)
   const selectedProviderId = ref<string>('')
   const modelPreference = ref<string>(loadModelPreference())
+  const pendingModelAutoFallback = ref<PendingModelAutoFallback | null>(null)
   const offlineMode = ref<boolean>(loadOfflineMode())
   const webSearchEnabled = ref<boolean>(loadWebSearchEnabled())
   const deepResearchEnabled = ref<boolean>(loadDeepResearchEnabled())
@@ -959,7 +1085,7 @@ export const useChatStore = defineStore('chat', () => {
     const fieldProvider = resolveProcessTraceField('provider', 'Provider')
     const fieldModel = resolveProcessTraceField('model', 'Model')
     const fieldWebSearch = resolveProcessTraceField('webSearch', 'Web search')
-    const fieldDeepResearch = resolveProcessTraceField('deepResearch', 'Deep research')
+    const fieldDeepResearch = resolveProcessTraceField('deepResearch', 'Deep Research')
     const fieldAttachments = resolveProcessTraceField('attachments', 'Attachments')
     const fieldAuto = resolveProcessTraceField('auto', 'Auto')
     const fieldFile = resolveProcessTraceField('file', 'file')
@@ -972,7 +1098,7 @@ export const useChatStore = defineStore('chat', () => {
     lines.push(`${fieldProvider}: ${provider}`)
     lines.push(`${fieldModel}: ${model}`)
     lines.push(
-      `${fieldWebSearch}: ${request.web_search_enabled === false ? disabledLabel : enabledLabel} · ${fieldDeepResearch}: ${request.deep_research_enabled ? enabledLabel : disabledLabel}`
+      `${fieldWebSearch}: ${request.web_search_enabled === false ? disabledLabel : enabledLabel} · ${fieldDeepResearch}: ${resolveResearchModeEnabled(request) ? enabledLabel : disabledLabel}`
     )
     if (attachments.length > 0) {
       lines.push(
@@ -1806,7 +1932,7 @@ export const useChatStore = defineStore('chat', () => {
     modelPreference.value = resolved.model_preference
     offlineMode.value = !!state.offline
     webSearchEnabled.value = state.web_search_enabled !== false
-    deepResearchEnabled.value = !!state.deep_research_enabled
+    deepResearchEnabled.value = resolveResearchModeEnabled(state)
   }
 
   function getLocalCommandStateSeed(): ConversationCommandState {
@@ -1817,6 +1943,7 @@ export const useChatStore = defineStore('chat', () => {
       offline: loadOfflineMode(),
       web_search_enabled: loadWebSearchEnabled(),
       deep_research_enabled: loadDeepResearchEnabled(),
+      research_mode_enabled: loadDeepResearchEnabled(),
     }
   }
 
@@ -1830,6 +1957,7 @@ export const useChatStore = defineStore('chat', () => {
         offline: offlineMode.value,
         web_search_enabled: webSearchEnabled.value,
         deep_research_enabled: deepResearchEnabled.value,
+        research_mode_enabled: deepResearchEnabled.value,
       }
       return cached
     }
@@ -1851,7 +1979,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function patchCommandState(conversationId: string, patch: ConversationCommandStatePatch) {
-    const response = await conversationApi.patchCommandState(conversationId, patch)
+    const normalizedPatch = normalizeCommandStatePatchResearchMode(patch)
+    const response = await conversationApi.patchCommandState(conversationId, normalizedPatch)
     applyCommandState(response.data)
     commandStateHydrated.value = true
     return response.data
@@ -1861,6 +1990,90 @@ export const useChatStore = defineStore('chat', () => {
     if (commandStateHydrated.value) return
     const seed = getLocalCommandStateSeed()
     await patchCommandState(conversationId, seed)
+  }
+
+  function clearPendingModelAutoFallback() {
+    pendingModelAutoFallback.value = null
+  }
+
+  function queueModelAutoFallbackRetry(params: {
+    conversationId: string
+    request: SendMessageRequest
+    errorMessage: string
+    retryKind: ModelAutoFallbackRetryKind
+  }): boolean {
+    const currentPreference = modelPreference.value.trim()
+    if (!isFixedModelPreferenceValue(currentPreference)) return false
+    if (!isModelUnavailableErrorText(params.errorMessage)) return false
+
+    const parsedPreference = splitModelPreference(currentPreference)
+    const requestedModelId =
+      params.request.model.trim() || parsedPreference.selected_model_id?.trim() || ''
+    if (!requestedModelId || requestedModelId.toLowerCase() === 'auto') return false
+
+    pendingModelAutoFallback.value = {
+      conversationId: params.conversationId,
+      retryKind: params.retryKind,
+      requestedModelId,
+      requestedProviderId:
+        params.request.provider.trim() || parsedPreference.selected_provider_id?.trim() || '',
+      errorMessage: params.errorMessage,
+    }
+    error.value = null
+    streamError.value = null
+    return true
+  }
+
+  async function applyModelPreference(value: string, conversationId?: string | null) {
+    const next = value.trim()
+    const resolved = resolveModelSelection(selectedProviderId.value, next || 'auto')
+    modelPreference.value = resolved.model_preference
+    saveModelPreference(modelPreference.value)
+    selectedProviderId.value = resolved.selected_provider_id
+    clearPendingModelAutoFallback()
+
+    if (!conversationId) return
+
+    const patch: ConversationCommandStatePatch = {}
+    if (!next || next === 'auto') {
+      patch.selected_provider_id = ''
+      patch.selected_model_id = ''
+    } else {
+      patch.selected_model_id = resolved.selected_model_id
+      if (resolved.selected_provider_id) {
+        patch.selected_provider_id = resolved.selected_provider_id
+      }
+    }
+
+    await patchCommandState(conversationId, patch)
+  }
+
+  async function confirmModelAutoFallbackRetry() {
+    const pending = pendingModelAutoFallback.value
+    if (!pending) return
+
+    clearPendingModelAutoFallback()
+    clearError()
+    clearStreamError()
+
+    await applyModelPreference('auto', pending.conversationId).catch(() => {})
+
+    if (currentConversationId.value !== pending.conversationId) {
+      await selectConversation(pending.conversationId)
+    } else {
+      await fetchMessages(pending.conversationId)
+    }
+
+    if (pending.retryKind === 'continue') {
+      await continueMessage()
+      return
+    }
+
+    await regenerateMessage()
+  }
+
+  function dismissModelAutoFallbackRetry() {
+    clearPendingModelAutoFallback()
   }
 
   function isSlashCommandText(value: string): boolean {
@@ -2909,7 +3122,7 @@ export const useChatStore = defineStore('chat', () => {
       selectedProviderId.value,
       modelPreference.value
     )
-    const request: SendMessageRequest = {
+    const request: SendMessageRequest = normalizeSendMessageRequestResearchMode({
       message: content,
       provider: resolvedModelSelection.selected_provider_id || '',
       model: resolvedModelSelection.selected_model_id || '',
@@ -2918,7 +3131,8 @@ export const useChatStore = defineStore('chat', () => {
       attachments: attachments.length > 0 ? attachments : undefined,
       web_search_enabled: webSearchEnabled.value,
       deep_research_enabled: deepResearchEnabled.value,
-    }
+      research_mode_enabled: deepResearchEnabled.value,
+    })
 
     try {
       sending.value = true
@@ -3151,6 +3365,20 @@ export const useChatStore = defineStore('chat', () => {
             return
           }
 
+          if (
+            queueModelAutoFallbackRetry({
+              conversationId,
+              request,
+              errorMessage: err.message,
+              retryKind: 'send',
+            })
+          ) {
+            messages.value = messages.value.filter(
+              (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
+            )
+            return
+          }
+
           const errorKey = resolveErrorKey(err.message)
           if (errorKey) {
             streamError.value = errorKey
@@ -3254,28 +3482,42 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       flushPendingStreamDelta(conversationId)
-      error.value = e instanceof Error ? e.message : 'Failed to send message'
-      streamUIState.value = createStreamUIState('interrupted', {
-        label: resolveStreamUIStateLabel('interrupted'),
-        detail: error.value,
-        canRetry: true,
-      })
-      // Keep streaming message with content, mark as interrupted; remove empty placeholders
-      const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
-      if (streamingMsg && streamingMsg.content.trim()) {
-        const newMessages = messages.value.filter((m) => !m.id.startsWith('temp-'))
-        const idx = newMessages.findIndex((m) => m.id === streamingMsg.id)
-        if (idx >= 0) {
-          newMessages[idx] = {
-            ...streamingMsg,
-            content: streamingMsg.content + '\n\n[Response interrupted]',
-          }
-        }
-        messages.value = newMessages
-      } else {
+      const caughtMessage = e instanceof Error ? e.message : 'Failed to send message'
+      if (
+        queueModelAutoFallbackRetry({
+          conversationId,
+          request,
+          errorMessage: caughtMessage,
+          retryKind: 'send',
+        })
+      ) {
         messages.value = messages.value.filter(
           (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
         )
+      } else {
+        error.value = caughtMessage
+        streamUIState.value = createStreamUIState('interrupted', {
+          label: resolveStreamUIStateLabel('interrupted'),
+          detail: error.value,
+          canRetry: true,
+        })
+        // Keep streaming message with content, mark as interrupted; remove empty placeholders
+        const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
+        if (streamingMsg && streamingMsg.content.trim()) {
+          const newMessages = messages.value.filter((m) => !m.id.startsWith('temp-'))
+          const idx = newMessages.findIndex((m) => m.id === streamingMsg.id)
+          if (idx >= 0) {
+            newMessages[idx] = {
+              ...streamingMsg,
+              content: streamingMsg.content + '\n\n[Response interrupted]',
+            }
+          }
+          messages.value = newMessages
+        } else {
+          messages.value = messages.value.filter(
+            (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
+          )
+        }
       }
     } finally {
       finalizeVisibleStreamSession(conversationId)
@@ -3424,6 +3666,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!convId) return
 
     const settingsStore = useSettingsStore()
+    let request: SendMessageRequest | null = null
 
     try {
       sending.value = true
@@ -3443,15 +3686,20 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = [...messages.value, assistantMessage]
 
       const modelSelection = splitModelPreference(modelPreference.value)
-      const request: SendMessageRequest = {
+      const resolvedModelSelection = resolveModelSelection(
+        selectedProviderId.value,
+        modelPreference.value
+      )
+      request = normalizeSendMessageRequestResearchMode({
         message: '[CONTINUE_AFTER_CANCEL]',
-        provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
-        model: modelSelection.selected_model_id || '',
+        provider: resolvedModelSelection.selected_provider_id || '',
+        model: resolvedModelSelection.selected_model_id || modelSelection.selected_model_id || '',
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         web_search_enabled: webSearchEnabled.value,
         deep_research_enabled: deepResearchEnabled.value,
-      }
+        research_mode_enabled: deepResearchEnabled.value,
+      })
 
       await connectConversationStream(convId, request, {
         onStreamId: (streamId) => {
@@ -3511,6 +3759,18 @@ export const useChatStore = defineStore('chat', () => {
           flushPendingStreamDelta(convId)
           streamProgress.value = null
           toolExecuting.value = false
+          if (
+            queueModelAutoFallbackRetry({
+              conversationId: convId,
+              request: request!,
+              errorMessage: err.message,
+              retryKind: 'continue',
+            })
+          ) {
+            messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            streaming.value = false
+            return
+          }
           streamError.value = err.message
           streamUIState.value = createStreamUIState('interrupted', {
             label: resolveStreamUIStateLabel('interrupted'),
@@ -3556,14 +3816,28 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
       })
-    } catch {
+    } catch (e) {
       flushPendingStreamDelta(convId)
-      streamUIState.value = createStreamUIState('interrupted', {
-        label: resolveStreamUIStateLabel('interrupted'),
-        detail: resolveI18nText('chat.streamError', 'Stream error'),
-        canRetry: true,
-      })
-      messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      const fallbackMessage =
+        e instanceof Error ? e.message : resolveI18nText('chat.streamError', 'Stream error')
+      if (
+        request &&
+        queueModelAutoFallbackRetry({
+          conversationId: convId,
+          request,
+          errorMessage: fallbackMessage,
+          retryKind: 'continue',
+        })
+      ) {
+        messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      } else {
+        streamUIState.value = createStreamUIState('interrupted', {
+          label: resolveStreamUIStateLabel('interrupted'),
+          detail: fallbackMessage,
+          canRetry: true,
+        })
+        messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      }
     } finally {
       finalizeVisibleStreamSession(convId)
     }
@@ -3575,6 +3849,7 @@ export const useChatStore = defineStore('chat', () => {
 
     const conversationId = currentConversationId.value
     const settingsStore = useSettingsStore()
+    let request: SendMessageRequest | null = null
 
     if (offlineMode.value) {
       appendAssistantLocalMessage(
@@ -3602,15 +3877,20 @@ export const useChatStore = defineStore('chat', () => {
       error.value = null
 
       const modelSelection = splitModelPreference(modelPreference.value)
-      const request: SendMessageRequest = {
+      const resolvedModelSelection = resolveModelSelection(
+        selectedProviderId.value,
+        modelPreference.value
+      )
+      request = normalizeSendMessageRequestResearchMode({
         message: '[CONTINUE]', // Special marker for continue
-        provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
-        model: modelSelection.selected_model_id || '',
+        provider: resolvedModelSelection.selected_provider_id || '',
+        model: resolvedModelSelection.selected_model_id || modelSelection.selected_model_id || '',
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         web_search_enabled: webSearchEnabled.value,
         deep_research_enabled: deepResearchEnabled.value,
-      }
+        research_mode_enabled: deepResearchEnabled.value,
+      })
 
       await connectConversationStream(conversationId, request, {
         onStreamId: (streamId) => {
@@ -3668,6 +3948,19 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== conversationId) return
           flushPendingStreamDelta(conversationId)
           streamProgress.value = null
+          if (
+            queueModelAutoFallbackRetry({
+              conversationId,
+              request: request!,
+              errorMessage: err.message,
+              retryKind: 'continue',
+            })
+          ) {
+            messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            streaming.value = false
+            toolExecuting.value = false
+            return
+          }
           error.value = err.message
           streaming.value = false
           toolExecuting.value = false
@@ -3727,12 +4020,25 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       flushPendingStreamDelta(conversationId)
-      error.value = e instanceof Error ? e.message : 'Failed to continue message'
-      streamUIState.value = createStreamUIState('interrupted', {
-        label: resolveStreamUIStateLabel('interrupted'),
-        detail: error.value,
-        canRetry: true,
-      })
+      const caughtMessage = e instanceof Error ? e.message : 'Failed to continue message'
+      if (
+        request &&
+        queueModelAutoFallbackRetry({
+          conversationId,
+          request,
+          errorMessage: caughtMessage,
+          retryKind: 'continue',
+        })
+      ) {
+        messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      } else {
+        error.value = caughtMessage
+        streamUIState.value = createStreamUIState('interrupted', {
+          label: resolveStreamUIStateLabel('interrupted'),
+          detail: error.value,
+          canRetry: true,
+        })
+      }
     } finally {
       finalizeVisibleStreamSession(conversationId)
     }
@@ -3744,6 +4050,7 @@ export const useChatStore = defineStore('chat', () => {
 
     const conversationId = currentConversationId.value
     const settingsStore = useSettingsStore()
+    let request: SendMessageRequest | null = null
 
     if (offlineMode.value) {
       appendAssistantLocalMessage(
@@ -3784,17 +4091,22 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = [...messages.value, assistantMessage]
 
       const modelSelection = splitModelPreference(modelPreference.value)
-      const request: SendMessageRequest = {
+      const resolvedModelSelection = resolveModelSelection(
+        selectedProviderId.value,
+        modelPreference.value
+      )
+      request = normalizeSendMessageRequestResearchMode({
         message: lastUserMessage.content,
-        provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
-        model: modelSelection.selected_model_id || '',
+        provider: resolvedModelSelection.selected_provider_id || '',
+        model: resolvedModelSelection.selected_model_id || modelSelection.selected_model_id || '',
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         attachments: lastUserMessage.attachments,
         regenerate: true,
         web_search_enabled: webSearchEnabled.value,
         deep_research_enabled: deepResearchEnabled.value,
-      }
+        research_mode_enabled: deepResearchEnabled.value,
+      })
 
       await connectConversationStream(conversationId, request, {
         onStreamId: (streamId) => {
@@ -3852,9 +4164,21 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== conversationId) return
           flushPendingStreamDelta(conversationId)
           streamProgress.value = null
-          error.value = err.message
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
+          if (
+            !wasToolExecuting &&
+            queueModelAutoFallbackRetry({
+              conversationId,
+              request: request!,
+              errorMessage: err.message,
+              retryKind: 'regenerate',
+            })
+          ) {
+            messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            return
+          }
+          error.value = err.message
           streamUIState.value = createStreamUIState('interrupted', {
             label: resolveStreamUIStateLabel('interrupted'),
             detail: err.message,
@@ -3933,25 +4257,38 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       flushPendingStreamDelta(conversationId)
-      error.value = e instanceof Error ? e.message : 'Failed to regenerate message'
-      streamUIState.value = createStreamUIState('interrupted', {
-        label: resolveStreamUIStateLabel('interrupted'),
-        detail: error.value,
-        canRetry: true,
-      })
-      const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
-      if (streamingMsg && streamingMsg.content.trim()) {
-        const newMessages = [...messages.value]
-        const idx = newMessages.indexOf(streamingMsg)
-        if (idx >= 0) {
-          newMessages[idx] = {
-            ...streamingMsg,
-            content: streamingMsg.content + '\n\n[Response interrupted]',
-          }
-          messages.value = newMessages
-        }
-      } else {
+      const caughtMessage = e instanceof Error ? e.message : 'Failed to regenerate message'
+      if (
+        request &&
+        queueModelAutoFallbackRetry({
+          conversationId,
+          request,
+          errorMessage: caughtMessage,
+          retryKind: 'regenerate',
+        })
+      ) {
         messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      } else {
+        error.value = caughtMessage
+        streamUIState.value = createStreamUIState('interrupted', {
+          label: resolveStreamUIStateLabel('interrupted'),
+          detail: error.value,
+          canRetry: true,
+        })
+        const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
+        if (streamingMsg && streamingMsg.content.trim()) {
+          const newMessages = [...messages.value]
+          const idx = newMessages.indexOf(streamingMsg)
+          if (idx >= 0) {
+            newMessages[idx] = {
+              ...streamingMsg,
+              content: streamingMsg.content + '\n\n[Response interrupted]',
+            }
+            messages.value = newMessages
+          }
+        } else {
+          messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+        }
       }
     } finally {
       finalizeVisibleStreamSession(conversationId)
@@ -4328,26 +4665,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function setModelPreference(value: string) {
-    const next = value.trim()
-    const resolved = resolveModelSelection(selectedProviderId.value, next || 'auto')
-    modelPreference.value = resolved.model_preference
-    saveModelPreference(modelPreference.value)
-    if (resolved.selected_provider_id) {
-      selectedProviderId.value = resolved.selected_provider_id
-    }
-    const convId = currentConversationId.value
-    if (convId) {
-      const patch: ConversationCommandStatePatch = {}
-      if (!next || next === 'auto') {
-        patch.selected_model_id = ''
-      } else {
-        patch.selected_model_id = resolved.selected_model_id
-        if (resolved.selected_provider_id) {
-          patch.selected_provider_id = resolved.selected_provider_id
-        }
-      }
-      void patchCommandState(convId, patch).catch(() => {})
-    }
+    void applyModelPreference(value, currentConversationId.value).catch(() => {})
   }
 
   function setDeepResearchEnabled(enabled: boolean) {
@@ -4355,7 +4673,7 @@ export const useChatStore = defineStore('chat', () => {
     saveDeepResearchEnabled(enabled)
     const convId = currentConversationId.value
     if (convId) {
-      void patchCommandState(convId, { deep_research_enabled: enabled }).catch(() => {})
+      void patchCommandState(convId, { research_mode_enabled: enabled }).catch(() => {})
     }
   }
 
@@ -4408,6 +4726,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingExecApproval,
     selectedProviderId,
     modelPreference,
+    pendingModelAutoFallback,
     offlineMode,
     webSearchEnabled,
     deepResearchEnabled,
@@ -4470,5 +4789,7 @@ export const useChatStore = defineStore('chat', () => {
     setModelPreference,
     setWebSearchEnabled,
     setDeepResearchEnabled,
+    confirmModelAutoFallbackRetry,
+    dismissModelAutoFallbackRetry,
   }
 })

@@ -495,6 +495,13 @@ id: url_installed_skill
 name: URL Installed Skill
 version: 1.2.3
 description: Installed from direct URL
+invocation: blue url_installed_skill action=list
+examples:
+  - blue url_installed_skill action=list
+capability_tags:
+  - install
+interaction_mode: stateless
+card_support: none
 ---
 
 # URL Installed Skill
@@ -551,6 +558,13 @@ id: url_installed_claude
 name: URL Installed Claude
 version: 1.0.0
 description: Installed from CLAUDE URL
+invocation: blue url_installed_claude action=list
+examples:
+  - blue url_installed_claude action=list
+capability_tags:
+  - install
+interaction_mode: stateless
+card_support: none
 ---
 
 # URL Installed Claude
@@ -615,6 +629,13 @@ id: github_directory_claude
 name: GitHub Directory Claude
 version: 2.0.0
 description: Installed from GitHub directory
+invocation: blue github_directory_claude action=list
+examples:
+  - blue github_directory_claude action=list
+capability_tags:
+  - github
+interaction_mode: stateless
+card_support: none
 ---
 
 # GitHub Directory Claude
@@ -662,6 +683,210 @@ description: Installed from GitHub directory
 			t.Fatalf("unexpected GitHub host fallback order: %v", hosts)
 		}
 	})
+
+	t.Run("rejects canonical alias conflict", func(t *testing.T) {
+		skillDir := filepath.Join(handler.skillsDir, "team-browser")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`), 0o644); err != nil {
+			t.Fatalf("write skill file: %v", err)
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = io.WriteString(w, `---
+id: browser
+name: Browser
+version: 2.0.0
+description: Installed from direct URL
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`)
+		}))
+		defer server.Close()
+		handler.httpClient = server.Client()
+
+		body := fmt.Sprintf(`{"url":"%s/SKILL.md"}`, server.URL)
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install-url", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.InstallFromURL(c); err != nil {
+			t.Fatalf("InstallFromURL failed: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusConflict, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "already installed as browser") {
+			t.Fatalf("expected canonical alias conflict, body=%s", rec.Body.String())
+		}
+	})
+
+	t.Run("rejects same-precedence home root conflict", func(t *testing.T) {
+		homeDir := t.TempDir()
+		t.Setenv("HOME", homeDir)
+		handler.SetSkillsDir(filepath.Join(homeDir, ".claude", "skills"))
+		if err := os.MkdirAll(handler.skillsDir, 0o755); err != nil {
+			t.Fatalf("mkdir handler skills dir: %v", err)
+		}
+
+		existingDir := filepath.Join(homeDir, ".agents", "skills", "team-browser")
+		if err := os.MkdirAll(existingDir, 0o755); err != nil {
+			t.Fatalf("mkdir existing skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(existingDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser from sibling home root
+version: 1.0.0
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`), 0o644); err != nil {
+			t.Fatalf("write existing skill file: %v", err)
+		}
+
+		req, contentType := newMultipartUploadRequest(t, "/skills/upload", "SKILL.md", []byte(`---
+id: browser
+name: Browser
+version: 2.0.0
+description: Uploaded browser skill
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`))
+		req.Header.Set(echo.HeaderContentType, contentType)
+		rec := httptest.NewRecorder()
+
+		if err := handler.UploadSkill(e.NewContext(req, rec)); err != nil {
+			t.Fatalf("UploadSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusConflict, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "already installed as browser") {
+			t.Fatalf("expected sibling home root conflict, body=%s", rec.Body.String())
+		}
+	})
+
+	t.Run("reports ambiguous same-precedence home root conflict", func(t *testing.T) {
+		homeDir := t.TempDir()
+		t.Setenv("HOME", homeDir)
+		handler.SetSkillsDir(filepath.Join(homeDir, ".claude", "skills"))
+		if err := os.MkdirAll(handler.skillsDir, 0o755); err != nil {
+			t.Fatalf("mkdir handler skills dir: %v", err)
+		}
+
+		firstDir := filepath.Join(homeDir, ".agents", "skills", "team-browser")
+		if err := os.MkdirAll(firstDir, 0o755); err != nil {
+			t.Fatalf("mkdir first skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(firstDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser alias from sibling home root
+version: 1.0.0
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`), 0o644); err != nil {
+			t.Fatalf("write first skill file: %v", err)
+		}
+
+		secondDir := filepath.Join(homeDir, ".agents", "skills", "browser")
+		if err := os.MkdirAll(secondDir, 0o755); err != nil {
+			t.Fatalf("mkdir second skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(secondDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser duplicate from sibling home root
+version: 1.0.0
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`), 0o644); err != nil {
+			t.Fatalf("write second skill file: %v", err)
+		}
+
+		req, contentType := newMultipartUploadRequest(t, "/skills/upload", "SKILL.md", []byte(`---
+id: browser
+name: Browser
+version: 2.0.0
+description: Uploaded browser skill
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`))
+		req.Header.Set(echo.HeaderContentType, contentType)
+		rec := httptest.NewRecorder()
+
+		if err := handler.UploadSkill(e.NewContext(req, rec)); err != nil {
+			t.Fatalf("UploadSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusConflict, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "canonical skill conflicts detected") {
+			t.Fatalf("expected canonical conflict detail, body=%s", rec.Body.String())
+		}
+	})
 }
 
 func TestSkillHandler_UploadSkill(t *testing.T) {
@@ -675,6 +900,13 @@ id: uploaded_claude_skill
 name: Uploaded Claude Skill
 version: 1.0.0
 description: Uploaded as CLAUDE.md
+invocation: blue uploaded_claude_skill action=list
+examples:
+  - blue uploaded_claude_skill action=list
+capability_tags:
+  - upload
+interaction_mode: stateless
+card_support: none
 ---
 
 # Uploaded Claude Skill
@@ -719,6 +951,13 @@ id: uploaded_agent_skill
 name: Uploaded Agent Skill
 version: 1.0.0
 description: Uploaded as archive
+invocation: blue uploaded_agent_skill action=list
+examples:
+  - blue uploaded_agent_skill action=list
+capability_tags:
+  - upload
+interaction_mode: stateless
+card_support: none
 ---
 
 # Uploaded Agent Skill
@@ -755,6 +994,59 @@ description: Uploaded as archive
 		}
 		if _, err := os.Stat(filepath.Join(handler.skillsDir, "uploaded_agent_skill", "SKILL.md")); err != nil {
 			t.Fatalf("expected compatibility SKILL.md to exist: %v", err)
+		}
+	})
+
+	t.Run("rejects canonical alias conflict", func(t *testing.T) {
+		skillDir := filepath.Join(handler.skillsDir, "team-browser")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser skill
+version: 1.0.0
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`), 0o644); err != nil {
+			t.Fatalf("write skill file: %v", err)
+		}
+
+		req, contentType := newMultipartUploadRequest(t, "/skills/upload", "SKILL.md", []byte(`---
+id: browser
+name: Browser
+version: 2.0.0
+description: Uploaded browser skill
+invocation: blue browser
+examples:
+  - blue browser
+capability_tags:
+  - browser
+interaction_mode: stateless
+card_support: none
+---
+
+# Browser
+`))
+		req.Header.Set(echo.HeaderContentType, contentType)
+		rec := httptest.NewRecorder()
+
+		if err := handler.UploadSkill(e.NewContext(req, rec)); err != nil {
+			t.Fatalf("UploadSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusConflict, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "already installed as browser") {
+			t.Fatalf("expected canonical alias conflict, body=%s", rec.Body.String())
 		}
 	})
 }
@@ -931,6 +1223,15 @@ func TestParseSkillContentNormalizesHyphenatedIDForLocalInstall(t *testing.T) {
 id: word-docx
 name: Word DOCX
 description: Convert Word documents
+version: 1.0.0
+invocation: blue word_docx.convert input=demo.docx
+examples:
+  - blue word_docx.convert input=demo.docx
+capability_tags:
+  - convert
+  - document
+interaction_mode: stateless
+card_support: none
 ---
 `, "https://example.com/skills/word-docx/SKILL.md", "", "")
 	if err != nil {

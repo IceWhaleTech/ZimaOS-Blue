@@ -65,7 +65,9 @@ const mocks = vi.hoisted(() => ({
     hasActiveTasks: false,
     refreshNow: vi.fn(),
     setConversation: vi.fn(),
+    performTaskAction: vi.fn(),
     cancelTask: vi.fn(),
+    resumeTask: vi.fn(),
     openTask: vi.fn(),
     stopPolling: vi.fn(),
   },
@@ -519,7 +521,9 @@ describe('ChatView virtual scroll integration', () => {
     mocks.taskProjectionsStore.backgroundTasks = []
     mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.performTaskAction.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.resumeTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)

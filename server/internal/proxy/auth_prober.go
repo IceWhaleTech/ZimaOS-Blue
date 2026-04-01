@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -39,7 +41,7 @@ func (s AuthStrategy) String() string {
 
 // AuthProber manages auth strategy probing and remembers what works.
 type AuthProber struct {
-	cache *ecache2.Cache[uint64] // key: FNV-1a hash of "providerID:host" → AuthStrategy
+	cache *ecache2.Cache[uint64] // key: FNV-1a hash of "providerID:baseURL[#format]" → AuthStrategy
 }
 
 // NewAuthProber creates a new auth prober with 1-hour TTL memory.
@@ -49,19 +51,36 @@ func NewAuthProber() *AuthProber {
 	}
 }
 
-// cacheKey builds the memory key as a raw FNV-1a uint64 hash. Zero allocation.
-func cacheKey(providerID, baseURL string) uint64 {
-	host := extractHost(baseURL)
+func normalizeAuthStrategyMemoryKey(baseURL string) string {
+	return strings.TrimRight(strings.TrimSpace(baseURL), "/")
+}
+
+func authStrategyMemoryKey(baseURL string, effectiveFormat providerpool.APIFormat) string {
+	key := normalizeAuthStrategyMemoryKey(baseURL)
+	if key == "" {
+		return ""
+	}
+	if format := strings.TrimSpace(string(effectiveFormat)); format != "" {
+		return key + "#" + format
+	}
+	return key
+}
+
+// cacheKey builds the memory key as a raw FNV-1a uint64 hash. Unlike provider
+// memory, auth probing must keep the full normalized endpoint key so different
+// formats on the same host do not poison each other.
+func cacheKey(providerID, memoryKey string) uint64 {
+	memoryKey = strings.TrimSpace(memoryKey)
 	hash := fnvOffset64
 	for i := 0; i < len(providerID); i++ {
 		hash ^= uint64(providerID[i])
 		hash *= fnvPrime64
 	}
-	if host != "" {
+	if memoryKey != "" {
 		hash ^= uint64(':')
 		hash *= fnvPrime64
-		for i := 0; i < len(host); i++ {
-			hash ^= uint64(host[i])
+		for i := 0; i < len(memoryKey); i++ {
+			hash ^= uint64(memoryKey[i])
 			hash *= fnvPrime64
 		}
 	}
@@ -69,8 +88,8 @@ func cacheKey(providerID, baseURL string) uint64 {
 }
 
 // Recall returns the cached winning strategy, if any.
-func (ap *AuthProber) Recall(providerID, baseURL string) (AuthStrategy, bool) {
-	if v, ok := ap.cache.Get(cacheKey(providerID, baseURL)); ok {
+func (ap *AuthProber) Recall(providerID, memoryKey string) (AuthStrategy, bool) {
+	if v, ok := ap.cache.Get(cacheKey(providerID, memoryKey)); ok {
 		if s, ok := v.(AuthStrategy); ok {
 			return s, true
 		}
@@ -78,14 +97,14 @@ func (ap *AuthProber) Recall(providerID, baseURL string) (AuthStrategy, bool) {
 	return 0, false
 }
 
-// Remember caches the winning auth strategy for a provider+host.
-func (ap *AuthProber) Remember(providerID, baseURL string, strategy AuthStrategy) {
-	ap.cache.Put(cacheKey(providerID, baseURL), strategy)
+// Remember caches the winning auth strategy for a provider+endpoint key.
+func (ap *AuthProber) Remember(providerID, memoryKey string, strategy AuthStrategy) {
+	ap.cache.Put(cacheKey(providerID, memoryKey), strategy)
 }
 
 // Forget evicts the cached strategy (e.g. on provider config change).
-func (ap *AuthProber) Forget(providerID, baseURL string) {
-	ap.cache.Del(cacheKey(providerID, baseURL))
+func (ap *AuthProber) Forget(providerID, memoryKey string) {
+	ap.cache.Del(cacheKey(providerID, memoryKey))
 }
 
 // Pre-allocated strategy arrays — avoids slice allocation on every call.
@@ -94,10 +113,12 @@ var (
 	strategiesAnthropic = []AuthStrategy{AuthAnthropic, AuthBearer, AuthXAPIKey, AuthNone}
 	strategiesOllama    = []AuthStrategy{AuthNone, AuthBearer}
 	strategiesDefault   = []AuthStrategy{AuthBearer, AuthXAPIKey, AuthNone}
-	// Cached-winner fast paths — single strategy, zero alloc
-	strategiesCachedBearer    = []AuthStrategy{AuthBearer}
-	strategiesCachedXAPIKey   = []AuthStrategy{AuthXAPIKey}
-	strategiesCachedAnthropic = []AuthStrategy{AuthAnthropic}
+	// Cached-winner fast paths keep the winning strategy first, but preserve
+	// fallback auth modes because /v1/models often accepts looser auth than the
+	// actual completion endpoints.
+	strategiesOllamaCachedBearer   = []AuthStrategy{AuthBearer, AuthNone}
+	strategiesDefaultCachedXAPIKey = []AuthStrategy{AuthXAPIKey, AuthBearer, AuthNone}
+	strategiesDefaultCachedNone    = []AuthStrategy{AuthNone, AuthBearer, AuthXAPIKey}
 )
 
 // Strategies returns an ordered list of auth strategies to try.
@@ -124,18 +145,32 @@ func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *provid
 	}
 
 	// If we have a cached winner, return a pre-built single-element slice
-	// Use effective base URL + format so different endpoints/formats get separate caches
-	cacheKey := provider.EffectiveBaseURL() + "#" + string(effectiveFormat)
-	if cached, ok := ap.Recall(provider.ID, cacheKey); ok {
-		switch cached {
-		case AuthBearer:
-			return strategiesCachedBearer
-		case AuthXAPIKey:
-			return strategiesCachedXAPIKey
-		case AuthAnthropic:
-			return strategiesCachedAnthropic
-		case AuthNone:
-			return strategiesNone
+	// with the cached strategy first while preserving fallback auth modes.
+	// Cache is scoped by normalized endpoint + effective format so /v1/models
+	// probing cannot poison chat-completions or anthropic-native requests.
+	memoryKey := authStrategyMemoryKey(provider.EffectiveBaseURL(), effectiveFormat)
+	if cached, ok := ap.Recall(provider.ID, memoryKey); ok {
+		switch effectiveFormat {
+		case providerpool.APIFormatAnthropic:
+			// Anthropic-native requests need the anthropic-version header; cached
+			// auth from /v1/models must not override the format-native strategy.
+			return strategiesAnthropic
+		case providerpool.APIFormatOllama:
+			switch cached {
+			case AuthBearer:
+				return strategiesOllamaCachedBearer
+			case AuthNone:
+				return strategiesOllama
+			}
+		default:
+			switch cached {
+			case AuthBearer:
+				return strategiesDefault
+			case AuthXAPIKey:
+				return strategiesDefaultCachedXAPIKey
+			case AuthNone:
+				return strategiesDefaultCachedNone
+			}
 		}
 	}
 
@@ -174,9 +209,90 @@ func (ap *AuthProber) Apply(req *http.Request, strategy AuthStrategy, apiKey *pr
 	}
 }
 
-// isAuthError returns true if the HTTP status indicates an authentication failure.
+var authProbeNonAuth403Markers = [...]string{
+	"insufficient_user_quota",
+	"insufficient_quota",
+	"quota exceeded",
+	"quota",
+	"billing",
+	"credit balance",
+	"payment required",
+	"rate limit",
+	"too many requests",
+	"throttled",
+	"capacity",
+	"overloaded",
+	"policy violation",
+	"content filter",
+	"safety",
+	"banned",
+}
+
+var authProbeAuthMarkers = [...]string{
+	"unauthorized",
+	"authentication",
+	"invalid api key",
+	"invalid key",
+	"invalid token",
+	"expired token",
+	"missing token",
+	"missing api key",
+	"api key required",
+	"credential",
+	"forbidden",
+	"未提供令牌",
+}
+
+func containsMarker(msg string, markers []string) bool {
+	for _, marker := range markers {
+		if marker != "" && strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func readAndRestoreBody(resp *http.Response) string {
+	if resp == nil || resp.Body == nil {
+		return ""
+	}
+	body := readErrorBody(resp.Body)
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	return strings.TrimSpace(string(body))
+}
+
+// isAuthError is the coarse status-code gate used by warmup/probing paths that
+// do not retain the upstream body. Body-aware auth probing should use
+// shouldContinueAuthProbe instead.
 func isAuthError(statusCode int) bool {
 	return statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden
+}
+
+// shouldContinueAuthProbe returns true when the response clearly indicates that
+// the current auth strategy failed and another strategy is worth trying.
+func shouldContinueAuthProbe(resp *http.Response) (bool, string) {
+	if resp == nil {
+		return false, ""
+	}
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		return true, readAndRestoreBody(resp)
+	case http.StatusForbidden:
+		body := readAndRestoreBody(resp)
+		bodyLower := strings.ToLower(body)
+		if containsMarker(bodyLower, authProbeNonAuth403Markers[:]) {
+			return false, body
+		}
+		if containsMarker(bodyLower, authProbeAuthMarkers[:]) {
+			return true, body
+		}
+		// Preserve existing compatibility for opaque 403 responses where the body
+		// does not tell us whether the relay rejected the auth scheme or the key.
+		return true, body
+	default:
+		return false, ""
+	}
 }
 
 // ProbeAndForward tries auth strategies in order until one succeeds (non-401/403).
@@ -208,17 +324,19 @@ func (ap *AuthProber) ProbeAndForward(
 			return nil, err
 		}
 
-		if !isAuthError(resp.StatusCode) {
-			// Success (or non-auth error like 400/500) — remember and return
-			// Use effective base URL so the auth strategy is cached per endpoint
-			ap.Remember(provider.ID, provider.EffectiveBaseURL(), strat)
+		continueProbe, probeBody := shouldContinueAuthProbe(resp)
+		if !continueProbe {
+			// Success, or an upstream error unrelated to auth probing — remember the
+			// working strategy and let the caller decide how to handle the response.
+			// Cache is scoped by endpoint + effective format.
+			ap.Remember(provider.ID, authStrategyMemoryKey(provider.EffectiveBaseURL(), effectiveFormat), strat)
 			return resp, nil
 		}
 
 		// Auth failed — remember the last rejection so callers can surface the
 		// real upstream cause instead of falling through to unrelated model errors.
 		lastStatusCode = resp.StatusCode
-		lastBody = strings.TrimSpace(string(readErrorBody(resp.Body)))
+		lastBody = probeBody
 		resp.Body.Close()
 
 		slog.Warn("[proxy] auth strategy failed",
@@ -230,9 +348,8 @@ func (ap *AuthProber) ProbeAndForward(
 		)
 	}
 
-	// All strategies exhausted — evict stale cache entry
-	// Use effective base URL to evict the correct endpoint's cache
-	ap.Forget(provider.ID, provider.EffectiveBaseURL())
+	// All strategies exhausted — evict stale cache entry for this endpoint/format.
+	ap.Forget(provider.ID, authStrategyMemoryKey(provider.EffectiveBaseURL(), effectiveFormat))
 	return nil, &AuthExhaustedError{
 		ProviderID:     provider.ID,
 		LastStatusCode: lastStatusCode,

@@ -1,9 +1,12 @@
 package tools
 
 import (
+	"context"
 	"database/sql"
 	"sync"
 	"time"
+
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // ExecAuditEntry is a single audit record for an exec invocation.
@@ -26,12 +29,25 @@ type ExecAuditEntry struct {
 
 // ExecAuditStore persists exec audit entries in SQLite.
 type ExecAuditStore struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // NewExecAuditStore creates the audit table and returns a store.
 func NewExecAuditStore(db *sql.DB) (*ExecAuditStore, error) {
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS exec_audit_log (
+	return NewExecAuditStoreWithReadDB(db, db)
+}
+
+// NewExecAuditStoreWithReadDB creates the audit table and returns a store with
+// separate write and read database handles.
+func NewExecAuditStoreWithReadDB(writeDB, readDB *sql.DB) (*ExecAuditStore, error) {
+	if writeDB == nil {
+		return nil, sql.ErrConnDone
+	}
+	if readDB == nil {
+		readDB = writeDB
+	}
+	_, err := writeDB.Exec(`CREATE TABLE IF NOT EXISTS exec_audit_log (
 		id          TEXT PRIMARY KEY,
 		timestamp   TEXT NOT NULL,
 		user_id     TEXT NOT NULL DEFAULT '',
@@ -51,34 +67,98 @@ func NewExecAuditStore(db *sql.DB) (*ExecAuditStore, error) {
 		return nil, err
 	}
 	// Index for time-range queries.
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_exec_audit_timestamp ON exec_audit_log(timestamp)`)
-	return &ExecAuditStore{db: db}, nil
+	writeDB.Exec(`CREATE INDEX IF NOT EXISTS idx_exec_audit_timestamp ON exec_audit_log(timestamp)`)
+	return &ExecAuditStore{db: writeDB, readDB: readDB}, nil
+}
+
+func (s *ExecAuditStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *ExecAuditStore) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "exec_audit_log")
+}
+
+func (s *ExecAuditStore) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "exec_audit_log")
+}
+
+type execAuditRow struct {
+	ID         string `json:"id" zorm:"id"`
+	Timestamp  string `json:"timestamp" zorm:"timestamp"`
+	UserID     string `json:"user_id" zorm:"user_id"`
+	Command    string `json:"command" zorm:"command"`
+	Workdir    string `json:"workdir" zorm:"workdir"`
+	RiskScore  int    `json:"risk_score" zorm:"risk_score"`
+	RiskLevel  string `json:"risk_level" zorm:"risk_level"`
+	PolicyMode string `json:"policy_mode" zorm:"policy_mode"`
+	Decision   string `json:"decision" zorm:"decision"`
+	ExitCode   *int64 `json:"exit_code" zorm:"exit_code"`
+	DurationMs int64  `json:"duration_ms" zorm:"duration_ms"`
+	StdoutLen  int    `json:"stdout_len" zorm:"stdout_len"`
+	StderrLen  int    `json:"stderr_len" zorm:"stderr_len"`
+	Error      string `json:"error" zorm:"error"`
+}
+
+func rowToExecAuditEntry(row execAuditRow) ExecAuditEntry {
+	entry := ExecAuditEntry{
+		ID:         row.ID,
+		UserID:     row.UserID,
+		Command:    row.Command,
+		Workdir:    row.Workdir,
+		RiskScore:  row.RiskScore,
+		RiskLevel:  RiskLevel(row.RiskLevel),
+		PolicyMode: row.PolicyMode,
+		Decision:   row.Decision,
+		Duration:   time.Duration(row.DurationMs) * time.Millisecond,
+		StdoutLen:  row.StdoutLen,
+		StderrLen:  row.StderrLen,
+		Error:      row.Error,
+	}
+	entry.Timestamp, _ = time.Parse(time.RFC3339Nano, row.Timestamp)
+	if row.ExitCode != nil {
+		code := int(*row.ExitCode)
+		entry.ExitCode = &code
+	}
+	return entry
+}
+
+func rowsToExecAuditEntries(rows []execAuditRow) []ExecAuditEntry {
+	entries := make([]ExecAuditEntry, 0, len(rows))
+	for i := range rows {
+		entries = append(entries, rowToExecAuditEntry(rows[i]))
+	}
+	return entries
 }
 
 // Record inserts an audit entry.
 func (s *ExecAuditStore) Record(entry ExecAuditEntry) error {
-	var exitCode sql.NullInt64
+	var exitCode interface{}
 	if entry.ExitCode != nil {
-		exitCode = sql.NullInt64{Int64: int64(*entry.ExitCode), Valid: true}
+		exitCode = int64(*entry.ExitCode)
 	}
-	_, err := s.db.Exec(
-		`INSERT INTO exec_audit_log (id, timestamp, user_id, command, workdir, risk_score, risk_level, policy_mode, decision, exit_code, duration_ms, stdout_len, stderr_len, error)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		entry.ID,
-		entry.Timestamp.UTC().Format(time.RFC3339Nano),
-		entry.UserID,
-		truncateStr(entry.Command, 2000),
-		entry.Workdir,
-		entry.RiskScore,
-		string(entry.RiskLevel),
-		entry.PolicyMode,
-		entry.Decision,
-		exitCode,
-		entry.Duration.Milliseconds(),
-		entry.StdoutLen,
-		entry.StderrLen,
-		entry.Error,
-	)
+	_, err := s.table(context.Background()).Insert(map[string]interface{}{
+		"id":          entry.ID,
+		"timestamp":   entry.Timestamp.UTC().Format(time.RFC3339Nano),
+		"user_id":     entry.UserID,
+		"command":     truncateStr(entry.Command, 2000),
+		"workdir":     entry.Workdir,
+		"risk_score":  entry.RiskScore,
+		"risk_level":  string(entry.RiskLevel),
+		"policy_mode": entry.PolicyMode,
+		"decision":    entry.Decision,
+		"exit_code":   exitCode,
+		"duration_ms": entry.Duration.Milliseconds(),
+		"stdout_len":  entry.StdoutLen,
+		"stderr_len":  entry.StderrLen,
+		"error":       entry.Error,
+	})
 	return err
 }
 
@@ -87,37 +167,15 @@ func (s *ExecAuditStore) Recent(limit int) ([]ExecAuditEntry, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.Query(
-		`SELECT id, timestamp, user_id, command, workdir, risk_score, risk_level, policy_mode, decision, exit_code, duration_ms, stdout_len, stderr_len, error
-		 FROM exec_audit_log ORDER BY timestamp DESC LIMIT ?`, limit)
+	var rows []execAuditRow
+	_, err := s.readTable(context.Background()).Select(&rows,
+		z.OrderBy("timestamp DESC"),
+		z.Limit(limit),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	return scanAuditRows(rows)
-}
-
-func scanAuditRows(rows *sql.Rows) ([]ExecAuditEntry, error) {
-	var entries []ExecAuditEntry
-	for rows.Next() {
-		var e ExecAuditEntry
-		var ts string
-		var exitCode sql.NullInt64
-		var durationMs int64
-		if err := rows.Scan(&e.ID, &ts, &e.UserID, &e.Command, &e.Workdir,
-			&e.RiskScore, &e.RiskLevel, &e.PolicyMode, &e.Decision,
-			&exitCode, &durationMs, &e.StdoutLen, &e.StderrLen, &e.Error); err != nil {
-			continue
-		}
-		e.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
-		if exitCode.Valid {
-			code := int(exitCode.Int64)
-			e.ExitCode = &code
-		}
-		e.Duration = time.Duration(durationMs) * time.Millisecond
-		entries = append(entries, e)
-	}
-	return entries, nil
+	return rowsToExecAuditEntries(rows), nil
 }
 
 // retryRecord tracks recent invocations of the same normalized command.

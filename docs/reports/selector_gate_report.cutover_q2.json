@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-03-30T08:27:35.988945Z",
+  "owner_user_id": "preview-user",
+  "candidate_id": "cutover-iso-q2",
+  "candidate_label": "cutover-iso-q2",
+  "status": "error",
+  "passed": false,
+  "error": "POST /selector-curated/ensure failed: HTTP 400: {\"error\":\"UNIQUE constraint failed: harness_dataset_versions.dataset_id, harness_dataset_versions.version\"}\n"
+}

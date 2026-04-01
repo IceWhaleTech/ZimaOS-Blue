@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	DefaultPromptPolicyVersion = "2026-03-11"
+	DefaultPromptPolicyVersion = "2026-03-28"
 	DefaultPromptPolicyProfile = "default"
 )
 
@@ -45,14 +45,14 @@ func policyFingerprint(profile string) string {
 	// Keep this stable unless policy text/behavior changes.
 	switch profile {
 	case DefaultPromptPolicyProfile:
-		return "tool_guidance_v3|toolless_nudge_v8|post_tool_nudge_v3|context_rules_v1"
+		return "tool_guidance_v4|toolless_nudge_v8|post_tool_nudge_v3|context_rules_v1"
 	default:
-		return "tool_guidance_v3|toolless_nudge_v8|post_tool_nudge_v3|context_rules_v1"
+		return "tool_guidance_v4|toolless_nudge_v8|post_tool_nudge_v3|context_rules_v1"
 	}
 }
 
 func (p PromptPolicy) ToolGuidanceConstraints() string {
-	return "Tool guidance constraints: (1) Never print tool-call syntax as plain text (no {\"cmd\":...}, {\"command\":...}, ```tool, <exec>). (2) When using tools, emit structured tool_calls only, with valid JSON arguments. (3) One step at a time: prefer one high-confidence tool call per round, then wait for results. (4) Only use listed tools; do not invent capabilities. (5) For exec, arguments must contain a concrete non-empty command without placeholders. (6) If tools are unavailable or unnecessary, provide direct executable steps instead of fake calls. (7) Built-in tools first; MCP fallback only when needed. (8) For reminder requests, call `reminder` directly with action/message/time and do not run `blue reminder --help`. (9) For large file writes, prefer transactional tools when available: use `write_begin`, then `write_chunk`, then `write_commit`. Otherwise never send one huge `write` payload: write the first chunk, then continue with smaller chunks using `append=true`."
+	return "Tool guidance constraints: (1) Never print tool-call syntax as plain text (no {\"cmd\":...}, {\"command\":...}, ```tool, <exec>). (2) When using tools, emit structured tool_calls only, with valid JSON arguments. (3) One step at a time: prefer one high-confidence tool call per round, then wait for results. (4) Only use listed tools; do not invent capabilities. (5) For exec, arguments must contain a concrete non-empty command without placeholders. (6) If tools are unavailable or unnecessary, provide direct executable steps instead of fake calls. (7) Built-in tools first; MCP fallback only when needed. (8) External CLI skills are not native `blue <skill>` subcommands; when a skill manual documents a terminal binary, run it through `blue exec command='...'` instead of inventing commands like `blue summarize`. (9) Treat disabled placeholder skills such as `timer`, `datetime`, `unit_converter`, and deprecated `search` as documentation only, not live runtime tool targets. (10) Prefer `web_query` as the unified public-web tool; `web_search`, `web_fetch`, and `web_read` are compatibility aliases only when exposed, and `browser` is the fallback for login or interaction. (11) For reminder requests, call `reminder` directly with action/message/time and do not run `blue reminder --help`. (12) For large file writes, prefer transactional tools when available: use `write_begin`, then `write_chunk`, then `write_commit`. Otherwise never send one huge `write` payload: write the first chunk, then continue with smaller chunks using `append=true`."
 }
 
 func (p PromptPolicy) ToollessAutoContinueNudge(agentMode bool, reason string) string {

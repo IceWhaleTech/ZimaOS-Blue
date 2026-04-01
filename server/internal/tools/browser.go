@@ -156,6 +156,10 @@ type relayAwareBrowserBackend interface {
 	UsesRelay(ctx context.Context, targetID string) bool
 }
 
+type readableContentBrowserBackend interface {
+	ExtractText(ctx context.Context, targetID, selector string) (string, error)
+}
+
 func (t *BrowserTool) relayApprovalKey(ctx context.Context) string {
 	sessionID := strings.TrimSpace(GetSessionID(ctx))
 	userID := strings.TrimSpace(GetUserID(ctx))
@@ -289,21 +293,39 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if action == "" {
 		return nil, errors.New("action is required")
 	}
+	rawAction := strings.ToLower(strings.TrimSpace(action))
 	action, actType := CanonicalizeBrowserAction(action, firstCompatString(args, "act_type", "actType"))
+	if rawAction == "read" {
+		if firstCompatString(args, "url", "href") != "" {
+			action = "navigate"
+		} else {
+			action = "snapshot_auto"
+		}
+	}
 	if actType != "" {
 		args["act_type"] = actType
 	}
 	targetID := firstCompatString(args, "target_id", "targetId")
 	vision, _ := compatBoolArg(args, "vision")
+	navURL := firstCompatString(args, "url", "href")
 
 	switch action {
 	case "navigate":
 		return t.doNavigate(ctx, backend, args, vision)
 	case "snapshot":
+		if targetID == "" && navURL != "" {
+			return t.doNavigate(ctx, backend, args, vision)
+		}
 		return t.doSnapshot(ctx, backend, targetID)
 	case "snapshot_interactive":
+		if targetID == "" && navURL != "" {
+			return t.doNavigate(ctx, backend, args, vision)
+		}
 		return t.doSnapshotInteractive(ctx, backend, targetID)
 	case "snapshot_auto":
+		if targetID == "" && navURL != "" {
+			return t.doNavigate(ctx, backend, args, vision)
+		}
 		return t.doAutoSnapshot(ctx, backend, targetID, vision)
 	case "act":
 		return t.doAct(ctx, backend, args, targetID)
@@ -371,13 +393,15 @@ func (t *BrowserTool) doSnapshot(ctx context.Context, b BrowserBackend, targetID
 		return jsonErr(err.Error()), nil
 	}
 	t.cacheRefs(a11y.TargetID, a11y.RefMap, nil)
-	return jsonResult(map[string]interface{}{
+	payload := map[string]interface{}{
 		"tree":      a11y.Tree,
 		"url":       a11y.URL,
 		"title":     a11y.Title,
 		"target_id": a11y.TargetID,
 		"message":   browserPageMsg(a11y.Title, a11y.URL, a11y.Tree, -1),
-	}), nil
+	}
+	t.maybeAugmentSnapshotWithReadableContent(ctx, b, payload)
+	return jsonResult(payload), nil
 }
 
 func (t *BrowserTool) doSnapshotInteractive(ctx context.Context, b BrowserBackend, targetID string) (interface{}, error) {
@@ -389,7 +413,7 @@ func (t *BrowserTool) doSnapshotInteractive(ctx context.Context, b BrowserBacken
 		return jsonErr(err.Error()), nil
 	}
 	t.cacheRefs(result.TargetID, nil, result.RefMap)
-	return jsonResult(map[string]interface{}{
+	payload := map[string]interface{}{
 		"tree":      result.Tree,
 		"url":       result.URL,
 		"title":     result.Title,
@@ -397,12 +421,15 @@ func (t *BrowserTool) doSnapshotInteractive(ctx context.Context, b BrowserBacken
 		"count":     result.Count,
 		"strategy":  "interactive",
 		"message":   browserPageMsg(result.Title, result.URL, result.Tree, result.Count),
-	}), nil
+	}
+	t.maybeAugmentSnapshotWithReadableContent(ctx, b, payload)
+	return jsonResult(payload), nil
 }
 
 const (
-	browserInteractiveThreshold = 30
-	browserA11yTreeMaxLen       = 6000
+	browserInteractiveThreshold  = 30
+	browserA11yTreeMaxLen        = 6000
+	browserReadableContentMaxLen = 3200
 )
 
 func (t *BrowserTool) doAutoSnapshot(ctx context.Context, b BrowserBackend, targetID string, vision bool) (interface{}, error) {
@@ -445,14 +472,16 @@ func (t *BrowserTool) doAutoSnapshot(ctx context.Context, b BrowserBackend, targ
 	}
 
 	t.cacheA11y(a11y.TargetID, a11y.RefMap)
-	return jsonResult(map[string]interface{}{
+	payload := map[string]interface{}{
 		"tree":      a11y.Tree,
 		"url":       a11y.URL,
 		"title":     a11y.Title,
 		"target_id": a11y.TargetID,
 		"strategy":  "a11y",
 		"message":   fmt.Sprintf("Page: %s (%s)\n\n%s", a11y.Title, a11y.URL, a11y.Tree),
-	}), nil
+	}
+	t.maybeAugmentSnapshotWithReadableContent(ctx, b, payload)
+	return jsonResult(payload), nil
 }
 
 func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b BrowserBackend, targetID string) (interface{}, error) {
@@ -486,7 +515,7 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 	}
 	data = t.normalizeScreenshotPayload(data)
 
-	return jsonResult(map[string]interface{}{
+	payload := map[string]interface{}{
 		"screenshot": data,
 		"tree":       interactive.Tree,
 		"url":        interactive.URL,
@@ -495,7 +524,9 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 		"count":      interactive.Count,
 		"strategy":   "screenshot+interactive",
 		"message":    "Page: " + interactive.Title + " (" + interactive.URL + ") — screenshot + " + strconv.Itoa(interactive.Count) + " interactive elements\n\n" + interactive.Tree,
-	}), nil
+	}
+	t.maybeAugmentSnapshotWithReadableContent(ctx, b, payload)
+	return jsonResult(payload), nil
 }
 
 func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[string]interface{}, targetID string) (interface{}, error) {
@@ -794,6 +825,12 @@ func (t *BrowserTool) cacheA11y(targetID string, refMap map[int]int) {
 	t.mu.Unlock()
 }
 
+func (t *BrowserTool) cachedTarget() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return strings.TrimSpace(t.lastTarget)
+}
+
 func (t *BrowserTool) resolveCheckpointURL(ctx context.Context, b BrowserBackend, targetID string) string {
 	targetID = strings.TrimSpace(targetID)
 	tabs, err := b.Tabs(ctx)
@@ -871,6 +908,218 @@ func browserPageMsg(title, url, tree string, count int) string {
 	buf = append(buf, "\n\n"...)
 	buf = append(buf, tree...)
 	return string(buf)
+}
+
+func (t *BrowserTool) maybeAugmentSnapshotWithReadableContent(ctx context.Context, b BrowserBackend, payload map[string]interface{}) {
+	if payload == nil || b == nil {
+		return
+	}
+	url := strings.TrimSpace(asString(payload["url"]))
+	title := strings.TrimSpace(asString(payload["title"]))
+	tree := strings.TrimSpace(asString(payload["tree"]))
+	targetID := strings.TrimSpace(asString(payload["target_id"]))
+	count, _ := coerceCompatInt(payload["count"])
+	if !shouldTryReadableBrowserContent(url, title, tree, count) {
+		return
+	}
+
+	content, err := extractReadableBrowserContent(ctx, b, targetID, url)
+	if err != nil || strings.TrimSpace(content) == "" {
+		return
+	}
+
+	payload["content"] = content
+	payload["content_format"] = "text"
+	payload["content_strategy"] = "extract_recipe"
+	if tree == "" {
+		payload["message"] = fmt.Sprintf("Page: %s (%s)\n\nMain content:\n%s", title, url, content)
+		return
+	}
+	sectionLabel := "Page structure"
+	switch strings.TrimSpace(asString(payload["strategy"])) {
+	case "interactive", "screenshot+interactive":
+		sectionLabel = "Interactive elements"
+	}
+	payload["message"] = fmt.Sprintf("Page: %s (%s)\n\nMain content:\n%s\n\n%s:\n%s", title, url, content, sectionLabel, tree)
+}
+
+func shouldTryReadableBrowserContent(url, title, tree string, count int) bool {
+	if strings.TrimSpace(url) == "" {
+		return false
+	}
+	if !browserLooksDocumentationPage(url, title) {
+		return false
+	}
+	if strings.TrimSpace(tree) == "" {
+		return true
+	}
+	if count >= browserInteractiveThreshold {
+		return true
+	}
+	if browserTreeLooksNavigationHeavy(tree) {
+		return true
+	}
+	// Documentation pages benefit from direct readable extraction even when the
+	// snapshot tree is compact; the extractor is cheap and silently falls back.
+	return true
+}
+
+func browserLooksDocumentationPage(url, title string) bool {
+	lowerURL := strings.ToLower(strings.TrimSpace(url))
+	lowerTitle := strings.ToLower(strings.TrimSpace(title))
+	switch {
+	case strings.Contains(lowerURL, "/docs/"):
+		return true
+	case strings.Contains(lowerURL, "/reference/"):
+		return true
+	case strings.Contains(lowerURL, "/api/reference/"):
+		return true
+	case strings.Contains(lowerURL, "/guides/"):
+		return true
+	case strings.Contains(lowerTitle, "api reference"):
+		return true
+	case strings.Contains(lowerTitle, "documentation"):
+		return true
+	case strings.Contains(lowerTitle, "developer docs"):
+		return true
+	default:
+		return false
+	}
+}
+
+func browserTreeLooksNavigationHeavy(tree string) bool {
+	lines := strings.Split(strings.TrimSpace(tree), "\n")
+	total := 0
+	navLines := 0
+	textLines := 0
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		total++
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "[a]") || strings.Contains(lower, "[link]") || strings.Contains(lower, "[menuitem]") || strings.Contains(lower, "[button]") {
+			navLines++
+		}
+		if strings.Contains(line, ". ") || strings.Contains(line, ": ") {
+			textLines++
+		}
+	}
+	if total == 0 {
+		return false
+	}
+	return navLines*100/total >= 70 && textLines <= 2
+}
+
+func extractReadableBrowserContent(ctx context.Context, b BrowserBackend, targetID, url string) (string, error) {
+	if extractor, ok := b.(readableContentBrowserBackend); ok && strings.TrimSpace(targetID) != "" {
+		if content, err := extractReadableBrowserContentFromTab(ctx, extractor, targetID); err == nil && strings.TrimSpace(content) != "" {
+			return content, nil
+		}
+	}
+	return extractReadableBrowserContentViaRecipe(ctx, b, url)
+}
+
+func extractReadableBrowserContentFromTab(ctx context.Context, extractor readableContentBrowserBackend, targetID string) (string, error) {
+	selectors := []string{
+		"main",
+		"article",
+		`[role="main"]`,
+		".sl-markdown-content",
+		"[data-pagefind-body]",
+		".docs-content",
+		".documentation",
+		".doc-content",
+		".content",
+		".markdown-body",
+		".prose",
+		"[data-content]",
+		".content-area",
+		".docs-page",
+	}
+	best := ""
+	for _, selector := range selectors {
+		text, err := extractor.ExtractText(ctx, targetID, selector)
+		if err != nil {
+			continue
+		}
+		candidate := cleanBrowserReadableContent(text)
+		if len([]rune(candidate)) > len([]rune(best)) {
+			best = candidate
+		}
+	}
+	heading, _ := extractor.ExtractText(ctx, targetID, "h1")
+	heading = cleanBrowserReadableContent(heading)
+	if heading != "" && !strings.Contains(strings.ToLower(best), strings.ToLower(heading)) {
+		best = strings.TrimSpace(heading + "\n\n" + best)
+	}
+	if len([]rune(best)) < webFetchMinReadableChars {
+		return "", errors.New("readable browser content too short")
+	}
+	return truncateRunes(best, browserReadableContentMaxLen), nil
+}
+
+func extractReadableBrowserContentViaRecipe(ctx context.Context, b BrowserBackend, url string) (string, error) {
+	selectors, err := json.Marshal(map[string]string{
+		"main_content":      "main, article, [role='main'], .sl-markdown-content, [data-pagefind-body], .docs-content, .documentation, .doc-content, .content",
+		"secondary_content": ".markdown-body, .prose, [data-content], .content-area, .docs-page",
+		"page_heading":      "h1",
+	})
+	if err != nil {
+		return "", err
+	}
+	result, err := b.ExecuteRecipe(ctx, "extract", map[string]string{
+		"url":       url,
+		"selectors": string(selectors),
+	})
+	if err != nil {
+		return "", err
+	}
+	if !result.Success {
+		return "", errors.New(firstNonEmpty(strings.TrimSpace(result.Message), "browser extract recipe failed"))
+	}
+
+	extracted, _ := coerceCompatMap(result.Data["extracted"])
+	candidates := []string{
+		cleanBrowserReadableContent(asString(extracted["main_content"])),
+		cleanBrowserReadableContent(asString(extracted["secondary_content"])),
+	}
+	best := ""
+	for _, candidate := range candidates {
+		if len([]rune(candidate)) > len([]rune(best)) {
+			best = candidate
+		}
+	}
+	heading := cleanBrowserReadableContent(asString(extracted["page_heading"]))
+	if heading != "" && !strings.Contains(strings.ToLower(best), strings.ToLower(heading)) {
+		best = strings.TrimSpace(heading + "\n\n" + best)
+	}
+	if len([]rune(best)) < webFetchMinReadableChars {
+		return "", errors.New("readable browser content too short")
+	}
+	return truncateRunes(best, browserReadableContentMaxLen), nil
+}
+
+func cleanBrowserReadableContent(raw string) string {
+	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	lines := strings.Split(raw, "\n")
+	cleaned := make([]string, 0, len(lines))
+	previousBlank := false
+	for _, line := range lines {
+		line = strings.Join(strings.Fields(strings.TrimSpace(line)), " ")
+		if line == "" {
+			if previousBlank {
+				continue
+			}
+			previousBlank = true
+			cleaned = append(cleaned, "")
+			continue
+		}
+		previousBlank = false
+		cleaned = append(cleaned, line)
+	}
+	return strings.TrimSpace(strings.Join(cleaned, "\n"))
 }
 
 // emitBrowserProgress pushes a streaming progress card to the client.

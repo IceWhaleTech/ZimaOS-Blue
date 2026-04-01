@@ -5,28 +5,68 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 type SQLiteStore struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 func NewSQLiteStore(db *sql.DB) (*SQLiteStore, error) {
-	if db == nil {
+	return NewSQLiteStoreWithReadDB(db, db)
+}
+
+func NewSQLiteStoreWithReadDB(writeDB, readDB *sql.DB) (*SQLiteStore, error) {
+	if writeDB == nil {
 		return nil, fmt.Errorf("agent sessions store requires a database")
 	}
-	s := &SQLiteStore{db: db}
+	if readDB == nil {
+		readDB = writeDB
+	}
+	s := &SQLiteStore{db: writeDB, readDB: readDB}
 	if err := s.migrate(); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+func (s *SQLiteStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *SQLiteStore) table(name string) *z.ZormTable {
+	return z.Table(s.db, name)
+}
+
+func (s *SQLiteStore) readTable(name string) *z.ZormTable {
+	return z.Table(s.reader(), name)
+}
+
+type jsonDataRow struct {
+	Data string `json:"data" zorm:"data"`
+}
+
+type runEventRow struct {
+	ID         int64  `json:"id" zorm:"id,auto_incr"`
+	SessionID  string `json:"session_id" zorm:"session_id"`
+	RunID      string `json:"run_id" zorm:"run_id"`
+	EventIndex int    `json:"event_index" zorm:"event_index"`
+	Type       string `json:"type" zorm:"type"`
+	Payload    string `json:"payload" zorm:"payload"`
+	CreatedAt  string `json:"created_at" zorm:"created_at"`
 }
 
 func (s *SQLiteStore) migrate() error {
@@ -99,6 +139,103 @@ func cloneMap(src map[string]interface{}) map[string]interface{} {
 	return out
 }
 
+func decodeProfile(raw string) (*AgentProfile, error) {
+	var profile AgentProfile
+	if err := json.Unmarshal([]byte(raw), &profile); err != nil {
+		return nil, err
+	}
+	return &profile, nil
+}
+
+func decodeProfiles(rows []jsonDataRow) ([]AgentProfile, error) {
+	profiles := make([]AgentProfile, 0, len(rows))
+	for i := range rows {
+		profile, err := decodeProfile(rows[i].Data)
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, *profile)
+	}
+	return profiles, nil
+}
+
+func decodeSession(raw string) (*ExternalSession, error) {
+	var session ExternalSession
+	if err := json.Unmarshal([]byte(raw), &session); err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func decodeSessions(rows []jsonDataRow) ([]ExternalSession, error) {
+	sessions := make([]ExternalSession, 0, len(rows))
+	for i := range rows {
+		session, err := decodeSession(rows[i].Data)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, *session)
+	}
+	return sessions, nil
+}
+
+func decodeRun(raw string) (*ExternalRun, error) {
+	var run ExternalRun
+	if err := json.Unmarshal([]byte(raw), &run); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func decodeRuns(rows []jsonDataRow) ([]ExternalRun, error) {
+	runs := make([]ExternalRun, 0, len(rows))
+	for i := range rows {
+		run, err := decodeRun(rows[i].Data)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, *run)
+	}
+	return runs, nil
+}
+
+func parseStoredTime(raw string) time.Time {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func rowToRunEvent(row runEventRow) RunEvent {
+	return RunEvent{
+		ID:        row.ID,
+		SessionID: row.SessionID,
+		RunID:     row.RunID,
+		Index:     row.EventIndex,
+		Type:      row.Type,
+		Payload:   json.RawMessage(row.Payload),
+		CreatedAt: parseStoredTime(row.CreatedAt),
+	}
+}
+
+func rowsToRunEvents(rows []runEventRow) []RunEvent {
+	events := make([]RunEvent, 0, len(rows))
+	for i := range rows {
+		events = append(events, rowToRunEvent(rows[i]))
+	}
+	return events
+}
+
 func (s *SQLiteStore) SaveProfile(profile *AgentProfile) error {
 	if profile == nil {
 		return fmt.Errorf("profile is nil")
@@ -118,78 +255,53 @@ func (s *SQLiteStore) SaveProfile(profile *AgentProfile) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(
-		`INSERT INTO agent_profiles (id, protocol, name, builtin, data, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET
-		   protocol=excluded.protocol,
-		   name=excluded.name,
-		   builtin=excluded.builtin,
-		   data=excluded.data,
-		   updated_at=excluded.updated_at`,
-		profile.ID,
-		profile.Protocol,
-		profile.Name,
-		boolToInt(profile.Builtin),
-		string(data),
-		now.Format(time.RFC3339Nano),
-	)
+	_, err = s.table("agent_profiles").Insert(z.V{
+		"id":         profile.ID,
+		"protocol":   string(profile.Protocol),
+		"name":       profile.Name,
+		"builtin":    boolToInt(profile.Builtin),
+		"data":       string(data),
+		"updated_at": now.Format(time.RFC3339Nano),
+	}, z.OnConflictDoUpdateSet(
+		[]string{"id"},
+		[]string{"protocol", "name", "builtin", "data", "updated_at"},
+	))
 	return err
 }
 
 func (s *SQLiteStore) GetProfile(id string) (*AgentProfile, error) {
-	row := s.db.QueryRow(`SELECT data FROM agent_profiles WHERE id = ?`, strings.TrimSpace(id))
-	var raw string
-	if err := row.Scan(&raw); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, ErrProfileNotFound
-		}
+	var rows []jsonDataRow
+	_, err := s.readTable("agent_profiles").Select(
+		&rows,
+		z.Where(z.Eq("id", strings.TrimSpace(id))),
+		z.Limit(1),
+	)
+	if err != nil {
 		return nil, err
 	}
-	var profile AgentProfile
-	if err := json.Unmarshal([]byte(raw), &profile); err != nil {
-		return nil, err
+	if len(rows) == 0 {
+		return nil, ErrProfileNotFound
 	}
-	return &profile, nil
+	return decodeProfile(rows[0].Data)
 }
 
 func (s *SQLiteStore) ListProfiles() ([]AgentProfile, error) {
-	rows, err := s.db.Query(`SELECT data FROM agent_profiles`)
+	var rows []jsonDataRow
+	_, err := s.readTable("agent_profiles").Select(
+		&rows,
+		z.OrderBy("builtin DESC, protocol ASC, name ASC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var profiles []AgentProfile
-	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		var profile AgentProfile
-		if err := json.Unmarshal([]byte(raw), &profile); err != nil {
-			return nil, err
-		}
-		profiles = append(profiles, profile)
-	}
-	sort.Slice(profiles, func(i, j int) bool {
-		if profiles[i].Builtin != profiles[j].Builtin {
-			return profiles[i].Builtin
-		}
-		if profiles[i].Protocol != profiles[j].Protocol {
-			return profiles[i].Protocol < profiles[j].Protocol
-		}
-		return profiles[i].Name < profiles[j].Name
-	})
-	return profiles, rows.Err()
+	return decodeProfiles(rows)
 }
 
 func (s *SQLiteStore) DeleteProfile(id string) error {
-	res, err := s.db.Exec(`DELETE FROM agent_profiles WHERE id = ?`, strings.TrimSpace(id))
+	affected, err := s.table("agent_profiles").Delete(z.Where(z.Eq("id", strings.TrimSpace(id))))
 	if err != nil {
 		return err
 	}
-	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		return ErrProfileNotFound
 	}
@@ -212,53 +324,53 @@ func (s *SQLiteStore) SaveSession(session *ExternalSession) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(
-		`INSERT INTO agent_sessions (
-			id, profile_id, protocol, user_id, name, cwd, status, remote_session_id, last_error, data, created_at, updated_at, closed_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-		  profile_id=excluded.profile_id,
-		  protocol=excluded.protocol,
-		  user_id=excluded.user_id,
-		  name=excluded.name,
-		  cwd=excluded.cwd,
-		  status=excluded.status,
-		  remote_session_id=excluded.remote_session_id,
-		  last_error=excluded.last_error,
-		  data=excluded.data,
-		  updated_at=excluded.updated_at,
-		  closed_at=excluded.closed_at`,
-		session.ID,
-		session.ProfileID,
-		session.Protocol,
-		strings.TrimSpace(session.UserID),
-		session.Name,
-		strings.TrimSpace(session.CWD),
-		session.Status,
-		strings.TrimSpace(session.RemoteSessionID),
-		strings.TrimSpace(session.LastError),
-		string(data),
-		session.CreatedAt.UTC().Format(time.RFC3339Nano),
-		session.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		formatOptionalTime(session.ClosedAt),
-	)
+	_, err = s.table("agent_sessions").Insert(z.V{
+		"id":                session.ID,
+		"profile_id":        session.ProfileID,
+		"protocol":          string(session.Protocol),
+		"user_id":           strings.TrimSpace(session.UserID),
+		"name":              session.Name,
+		"cwd":               strings.TrimSpace(session.CWD),
+		"status":            string(session.Status),
+		"remote_session_id": strings.TrimSpace(session.RemoteSessionID),
+		"last_error":        strings.TrimSpace(session.LastError),
+		"data":              string(data),
+		"created_at":        session.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updated_at":        session.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		"closed_at":         formatOptionalTime(session.ClosedAt),
+	}, z.OnConflictDoUpdateSet(
+		[]string{"id"},
+		[]string{
+			"profile_id",
+			"protocol",
+			"user_id",
+			"name",
+			"cwd",
+			"status",
+			"remote_session_id",
+			"last_error",
+			"data",
+			"updated_at",
+			"closed_at",
+		},
+	))
 	return err
 }
 
 func (s *SQLiteStore) GetSession(id string) (*ExternalSession, error) {
-	row := s.db.QueryRow(`SELECT data FROM agent_sessions WHERE id = ?`, strings.TrimSpace(id))
-	var raw string
-	if err := row.Scan(&raw); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, ErrSessionNotFound
-		}
+	var rows []jsonDataRow
+	_, err := s.readTable("agent_sessions").Select(
+		&rows,
+		z.Where(z.Eq("id", strings.TrimSpace(id))),
+		z.Limit(1),
+	)
+	if err != nil {
 		return nil, err
 	}
-	var session ExternalSession
-	if err := json.Unmarshal([]byte(raw), &session); err != nil {
-		return nil, err
+	if len(rows) == 0 {
+		return nil, ErrSessionNotFound
 	}
-	return &session, nil
+	return decodeSession(rows[0].Data)
 }
 
 func (s *SQLiteStore) ListSessions(limit, offset int, userID string, protocol ProtocolKind) ([]ExternalSession, error) {
@@ -268,44 +380,25 @@ func (s *SQLiteStore) ListSessions(limit, offset int, userID string, protocol Pr
 	if offset < 0 {
 		offset = 0
 	}
-	query := `SELECT data FROM agent_sessions`
-	var (
-		args       []interface{}
-		conditions []string
-	)
+	var conds []interface{}
 	if strings.TrimSpace(userID) != "" {
-		conditions = append(conditions, "user_id = ?")
-		args = append(args, strings.TrimSpace(userID))
+		conds = append(conds, z.Eq("user_id", strings.TrimSpace(userID)))
 	}
 	if protocol != "" {
-		conditions = append(conditions, "protocol = ?")
-		args = append(args, protocol)
+		conds = append(conds, z.Eq("protocol", string(protocol)))
 	}
-	if len(conditions) > 0 {
-		query += " WHERE " + strings.Join(conditions, " AND ")
+	opts := []z.ZormItem{
+		z.OrderBy("updated_at DESC"),
+		z.Limit(limit, offset),
 	}
-	query += " ORDER BY updated_at DESC LIMIT ? OFFSET ?"
-	args = append(args, limit, offset)
-
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
+	}
+	var rows []jsonDataRow
+	if _, err := s.readTable("agent_sessions").Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var sessions []ExternalSession
-	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		var session ExternalSession
-		if err := json.Unmarshal([]byte(raw), &session); err != nil {
-			return nil, err
-		}
-		sessions = append(sessions, session)
-	}
-	return sessions, rows.Err()
+	return decodeSessions(rows)
 }
 
 func (s *SQLiteStore) SaveRun(run *ExternalRun) error {
@@ -324,97 +417,88 @@ func (s *SQLiteStore) SaveRun(run *ExternalRun) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(
-		`INSERT INTO agent_runs (
-			id, session_id, status, remote_run_id, prompt, stop_reason, error, data, created_at, updated_at, started_at, completed_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-		  session_id=excluded.session_id,
-		  status=excluded.status,
-		  remote_run_id=excluded.remote_run_id,
-		  prompt=excluded.prompt,
-		  stop_reason=excluded.stop_reason,
-		  error=excluded.error,
-		  data=excluded.data,
-		  updated_at=excluded.updated_at,
-		  started_at=excluded.started_at,
-		  completed_at=excluded.completed_at`,
-		run.ID,
-		run.SessionID,
-		run.Status,
-		strings.TrimSpace(run.RemoteRunID),
-		run.Prompt,
-		strings.TrimSpace(run.StopReason),
-		strings.TrimSpace(run.Error),
-		string(data),
-		run.CreatedAt.UTC().Format(time.RFC3339Nano),
-		run.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		formatOptionalTime(run.StartedAt),
-		formatOptionalTime(run.CompletedAt),
-	)
+	_, err = s.table("agent_runs").Insert(z.V{
+		"id":            run.ID,
+		"session_id":    run.SessionID,
+		"status":        string(run.Status),
+		"remote_run_id": strings.TrimSpace(run.RemoteRunID),
+		"prompt":        run.Prompt,
+		"stop_reason":   strings.TrimSpace(run.StopReason),
+		"error":         strings.TrimSpace(run.Error),
+		"data":          string(data),
+		"created_at":    run.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updated_at":    run.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		"started_at":    formatOptionalTime(run.StartedAt),
+		"completed_at":  formatOptionalTime(run.CompletedAt),
+	}, z.OnConflictDoUpdateSet(
+		[]string{"id"},
+		[]string{
+			"session_id",
+			"status",
+			"remote_run_id",
+			"prompt",
+			"stop_reason",
+			"error",
+			"data",
+			"updated_at",
+			"started_at",
+			"completed_at",
+		},
+	))
 	return err
 }
 
 func (s *SQLiteStore) GetRun(id string) (*ExternalRun, error) {
-	row := s.db.QueryRow(`SELECT data FROM agent_runs WHERE id = ?`, strings.TrimSpace(id))
-	var raw string
-	if err := row.Scan(&raw); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, ErrRunNotFound
-		}
+	var rows []jsonDataRow
+	_, err := s.readTable("agent_runs").Select(
+		&rows,
+		z.Where(z.Eq("id", strings.TrimSpace(id))),
+		z.Limit(1),
+	)
+	if err != nil {
 		return nil, err
 	}
-	var run ExternalRun
-	if err := json.Unmarshal([]byte(raw), &run); err != nil {
-		return nil, err
+	if len(rows) == 0 {
+		return nil, ErrRunNotFound
 	}
-	return &run, nil
+	return decodeRun(rows[0].Data)
 }
 
 func (s *SQLiteStore) ListRuns(sessionID string, limit int) ([]ExternalRun, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := s.db.Query(
-		`SELECT data FROM agent_runs WHERE session_id = ? ORDER BY created_at DESC LIMIT ?`,
-		strings.TrimSpace(sessionID), limit,
+	var rows []jsonDataRow
+	_, err := s.readTable("agent_runs").Select(
+		&rows,
+		z.Where(z.Eq("session_id", strings.TrimSpace(sessionID))),
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit),
 	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var runs []ExternalRun
-	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		var run ExternalRun
-		if err := json.Unmarshal([]byte(raw), &run); err != nil {
-			return nil, err
-		}
-		runs = append(runs, run)
-	}
-	return runs, rows.Err()
+	return decodeRuns(rows)
 }
 
 func (s *SQLiteStore) LatestActiveRun(sessionID string) (*ExternalRun, error) {
-	row := s.db.QueryRow(
-		`SELECT data FROM agent_runs WHERE session_id = ? AND status IN (?, ?) ORDER BY updated_at DESC LIMIT 1`,
-		strings.TrimSpace(sessionID), RunStatusQueued, RunStatusRunning,
+	var rows []jsonDataRow
+	_, err := s.readTable("agent_runs").Select(
+		&rows,
+		z.Where(
+			z.Eq("session_id", strings.TrimSpace(sessionID)),
+			z.In("status", string(RunStatusQueued), string(RunStatusRunning)),
+		),
+		z.OrderBy("updated_at DESC"),
+		z.Limit(1),
 	)
-	var raw string
-	if err := row.Scan(&raw); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
+	if err != nil {
 		return nil, err
 	}
-	var run ExternalRun
-	if err := json.Unmarshal([]byte(raw), &run); err != nil {
-		return nil, err
+	if len(rows) == 0 {
+		return nil, nil
 	}
-	return &run, nil
+	return decodeRun(rows[0].Data)
 }
 
 func (s *SQLiteStore) AppendEvent(sessionID, runID, eventType string, payload interface{}) (*RunEvent, error) {
@@ -427,26 +511,24 @@ func (s *SQLiteStore) AppendEvent(sessionID, runID, eventType string, payload in
 	if err != nil {
 		return nil, err
 	}
-	res, err := s.db.Exec(
-		`INSERT INTO agent_run_events (session_id, run_id, event_index, type, payload, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		strings.TrimSpace(sessionID),
-		strings.TrimSpace(runID),
-		index,
-		strings.TrimSpace(eventType),
-		string(data),
-		now.Format(time.RFC3339Nano),
-	)
+	row := &runEventRow{
+		SessionID:  strings.TrimSpace(sessionID),
+		RunID:      strings.TrimSpace(runID),
+		EventIndex: index,
+		Type:       strings.TrimSpace(eventType),
+		Payload:    string(data),
+		CreatedAt:  now.Format(time.RFC3339Nano),
+	}
+	_, err = s.table("agent_run_events").Insert(row)
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	return &RunEvent{
-		ID:        id,
-		SessionID: strings.TrimSpace(sessionID),
-		RunID:     strings.TrimSpace(runID),
+		ID:        row.ID,
+		SessionID: row.SessionID,
+		RunID:     row.RunID,
 		Index:     index,
-		Type:      strings.TrimSpace(eventType),
+		Type:      row.Type,
 		Payload:   json.RawMessage(data),
 		CreatedAt: now,
 	}, nil
@@ -456,34 +538,20 @@ func (s *SQLiteStore) ListEvents(sessionID string, limit int, afterID int64) ([]
 	if limit <= 0 {
 		limit = 200
 	}
-	rows, err := s.db.Query(
-		`SELECT id, session_id, run_id, event_index, type, payload, created_at
-		 FROM agent_run_events
-		 WHERE session_id = ? AND id > ?
-		 ORDER BY id ASC
-		 LIMIT ?`,
-		strings.TrimSpace(sessionID), afterID, limit,
+	var rows []runEventRow
+	_, err := s.readTable("agent_run_events").Select(
+		&rows,
+		z.Where(
+			z.Eq("session_id", strings.TrimSpace(sessionID)),
+			z.Gt("id", afterID),
+		),
+		z.OrderBy("id ASC"),
+		z.Limit(limit),
 	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var events []RunEvent
-	for rows.Next() {
-		var (
-			event     RunEvent
-			payload   string
-			createdAt string
-		)
-		if err := rows.Scan(&event.ID, &event.SessionID, &event.RunID, &event.Index, &event.Type, &payload, &createdAt); err != nil {
-			return nil, err
-		}
-		event.Payload = json.RawMessage(payload)
-		event.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
-		events = append(events, event)
-	}
-	return events, rows.Err()
+	return rowsToRunEvents(rows), nil
 }
 
 func (s *SQLiteStore) BuildHistory(sessionID string, limit int) ([]SessionHistoryItem, error) {
@@ -517,16 +585,19 @@ func (s *SQLiteStore) BuildHistory(sessionID string, limit int) ([]SessionHistor
 }
 
 func (s *SQLiteStore) nextEventIndex(sessionID, runID string) (int, error) {
-	row := s.db.QueryRow(
-		`SELECT COALESCE(MAX(event_index), 0) FROM agent_run_events WHERE session_id = ? AND run_id = ?`,
-		strings.TrimSpace(sessionID),
-		strings.TrimSpace(runID),
+	var index int64
+	_, err := s.readTable("agent_run_events").Select(
+		&index,
+		z.Fields("coalesce(max(event_index), 0)"),
+		z.Where(
+			z.Eq("session_id", strings.TrimSpace(sessionID)),
+			z.Eq("run_id", strings.TrimSpace(runID)),
+		),
 	)
-	var index int
-	if err := row.Scan(&index); err != nil {
+	if err != nil {
 		return 0, err
 	}
-	return index + 1, nil
+	return int(index) + 1, nil
 }
 
 func boolToInt(value bool) int {

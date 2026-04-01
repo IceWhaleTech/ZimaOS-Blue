@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -38,23 +39,10 @@ type ipcResponse struct {
 // errors, to prevent launcher fallback to exec .bluecli for command invocations.
 // Returns false only when IPC is not applicable (e.g. no subcommand).
 func tryIPC(args []string) bool {
-	// Parse global flags, collect positional args (mirrors cliDispatch logic)
-	var positional []string
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--dev", "--no-color", "--json", "-v", "--verbose":
-			// skip flags
-		case "-h", "--help":
-			return false // let bluecli handle help
-		case "--config", "--profile":
-			if i+1 < len(args) {
-				i++ // skip value
-			}
-		case "--":
-			positional = append(positional, args[i+1:]...)
-			i = len(args)
-		default:
-			positional = append(positional, args[i])
+	positional, flags := parseCLIFlags(args)
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			return false
 		}
 	}
 
@@ -68,9 +56,12 @@ func tryIPC(args []string) bool {
 		// Let bluecli handle `help` so it can render full command/skill manuals.
 		return false
 	}
+	if !shouldAttemptIPCShortcut(cmd) {
+		return false
+	}
 	params := parseIPCArgs(rest)
 
-	conn, err := dialSock()
+	conn, err := dialSock(flags)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "Error: cannot connect to running Blue service (IPC unavailable): %v\n", err)
 		os.Exit(1)
@@ -94,16 +85,68 @@ func tryIPC(args []string) bool {
 		os.Exit(1)
 	}
 
+	if printed, exitCode := printIPCStdout(resp); printed {
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+		return true
+	}
+
 	// Print data fields (same format as ipcFallback in cmd/blue)
 	if resp.Data != nil {
 		for k, v := range resp.Data {
-			if k == "_card" || k == "success" {
+			if strings.HasPrefix(k, "__") || k == "_card" || k == "success" {
 				continue
 			}
 			fmt.Printf("%s: %s\n", k, v)
 		}
 	}
 	return true
+}
+
+func shouldAttemptIPCShortcut(cmd string) bool {
+	switch strings.TrimSpace(cmd) {
+	case "",
+		"help",
+		"status",
+		"health",
+		"version",
+		"doctor",
+		"config",
+		"models",
+		"plugins",
+		"skills",
+		"context",
+		"sessions",
+		"cron",
+		"harness",
+		"logs",
+		"media",
+		"gateway",
+		"complete-bootstrap",
+		"agent-sessions":
+		return false
+	default:
+		return true
+	}
+}
+
+func printIPCStdout(resp *ipcResponse) (bool, int) {
+	if resp == nil || resp.Data == nil {
+		return false, 0
+	}
+	stdout, ok := resp.Data["__stdout"]
+	if !ok {
+		return false, 0
+	}
+	fmt.Print(stdout)
+	exitCode := 0
+	if raw := strings.TrimSpace(resp.Data["__exit_code"]); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			exitCode = parsed
+		}
+	}
+	return true, exitCode
 }
 
 // parseIPCArgs converts CLI args to IPC params (mirrors ipcFallback in cmd/blue).
@@ -114,9 +157,13 @@ func parseIPCArgs(args []string) map[string]string {
 		a := args[i]
 		if strings.HasPrefix(a, "--") || strings.HasPrefix(a, "-") {
 			key := strings.TrimLeft(a, "-")
-			if key != "" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			if isBooleanIPCFlag(key) {
+				params[key] = "true"
+			} else if key != "" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 				params[key] = args[i+1]
 				i++
+			} else if key != "" {
+				params[key] = "true"
 			}
 			continue
 		}
@@ -132,29 +179,68 @@ func parseIPCArgs(args []string) map[string]string {
 	return params
 }
 
+func isBooleanIPCFlag(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "active", "clear", "fix", "follow", "full", "list", "poll", "silent", "verbose", "wait":
+		return true
+	default:
+		return false
+	}
+}
+
 // dialSock connects to the blue IPC socket.
-func dialSock() (net.Conn, error) {
-	paths := []string{"/tmp/blue.sock"}
-
-	// Also try {dataDir}/blue.sock
-	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".zimaos-blue", "data", "blue.sock"))
-	}
-
-	// On Windows, try named pipe
-	if runtime.GOOS == "windows" {
-		paths = append([]string{`\\.\pipe\blue`}, paths...)
-	}
+func dialSock(flags cliFlags) (net.Conn, error) {
+	paths := candidateLauncherIPCSocketPaths(flags)
 
 	var lastErr error
 	for _, p := range paths {
-		conn, err := net.DialTimeout("unix", p, 3*time.Second)
+		network := "unix"
+		if runtime.GOOS == "windows" && strings.HasPrefix(p, `\\.\pipe\`) {
+			network = "unix"
+		}
+		conn, err := net.DialTimeout(network, p, 3*time.Second)
 		if err == nil {
 			return conn, nil
 		}
 		lastErr = err
 	}
 	return nil, lastErr
+}
+
+func candidateLauncherIPCSocketPaths(flags cliFlags) []string {
+	if sockPath := strings.TrimSpace(os.Getenv("BLUE_IPC_SOCKET")); sockPath != "" {
+		return []string{sockPath}
+	}
+
+	paths := []string{
+		filepath.Join(getDataDir(flags), "blue.sock"),
+		"/tmp/blue.sock",
+	}
+	if runtime.GOOS == "windows" {
+		paths = append([]string{`\\.\pipe\blue`}, paths...)
+	}
+	return dedupeLauncherSocketPaths(paths)
+}
+
+func dedupeLauncherSocketPaths(paths []string) []string {
+	result := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		seen := false
+		for _, existing := range result {
+			if existing == path {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			result = append(result, path)
+		}
+	}
+	return result
 }
 
 // writeMsg writes a length-prefixed JSON message.

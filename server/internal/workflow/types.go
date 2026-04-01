@@ -407,6 +407,34 @@ type ExecutionLog struct {
 	Timestamp   time.Time `json:"timestamp"`
 }
 
+// ExecutionLaunchRequest describes a caller-originated workflow run request.
+type ExecutionLaunchRequest struct {
+	WorkflowID     string                 `json:"workflow_id"`
+	TriggerType    TriggerType            `json:"trigger_type,omitempty"`
+	TriggerData    map[string]interface{} `json:"trigger_data,omitempty"`
+	UserID         string                 `json:"user_id,omitempty"`
+	ConversationID string                 `json:"conversation_id,omitempty"`
+	TenantID       string                 `json:"tenant_id,omitempty"`
+}
+
+// ExecutionLauncher allows callers to route workflow launches through an
+// alternate runtime while preserving workflow.Execution responses.
+type ExecutionLauncher interface {
+	LaunchExecution(ctx context.Context, req ExecutionLaunchRequest) (*Execution, error)
+}
+
+// ExecutionCancellationController optionally lets callers route execution
+// cancellation through the owning runtime/control plane.
+type ExecutionCancellationController interface {
+	CancelExecution(ctx context.Context, executionID string, reason string) (handled bool, err error)
+}
+
+// ExecutionResumeController optionally lets callers route checkpoint resume
+// through the owning runtime/control plane.
+type ExecutionResumeController interface {
+	ResumeExecution(ctx context.Context, executionID string, resume ExecutionResumeInput) (handled bool, execution *Execution, err error)
+}
+
 // Service defines the workflow service interface.
 type Service interface {
 	// Workflow CRUD
@@ -423,6 +451,7 @@ type Service interface {
 
 	// Execution
 	ExecuteWorkflow(ctx context.Context, id string, triggerData map[string]interface{}) (*Execution, error)
+	ExecuteWorkflowWithTrigger(ctx context.Context, id string, triggerType TriggerType, triggerData map[string]interface{}) (*Execution, error)
 	GetExecution(ctx context.Context, id string) (*Execution, error)
 	ListExecutions(ctx context.Context, workflowID string, opts *ListOptions) ([]*Execution, int, error)
 	CancelExecution(ctx context.Context, id string) error
@@ -478,7 +507,7 @@ type Config struct {
 // DefaultConfig returns the default workflow configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxConcurrentExecutions: 10,
+		MaxConcurrentExecutions: resolveDefaultMaxConcurrentExecutions(),
 		DefaultTimeout:          300,  // 5 minutes
 		MaxTimeout:              3600, // 1 hour
 		RetryDelay:              5,

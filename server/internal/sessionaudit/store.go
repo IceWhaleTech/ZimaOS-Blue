@@ -14,6 +14,7 @@ import (
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -62,6 +63,7 @@ type Entry struct {
 // Store persists tool payload audit events in a dedicated SQLite database.
 type Store struct {
 	db         *sql.DB
+	readDB     *sql.DB
 	cfg        StoreConfig
 	done       chan struct{}
 	ownsDB     bool
@@ -140,17 +142,21 @@ func normalizeStoreConfig(cfg StoreConfig) StoreConfig {
 	return cfg
 }
 
-func newStoreWithDB(db *sql.DB, cfg StoreConfig, ownsDB bool, dbPath string) (*Store, error) {
-	if db == nil {
+func newStoreWithDB(writeDB, readDB *sql.DB, cfg StoreConfig, ownsDB bool, dbPath string) (*Store, error) {
+	if writeDB == nil {
 		return nil, fmt.Errorf("session audit db is nil")
 	}
+	if readDB == nil {
+		readDB = writeDB
+	}
 	cfg = normalizeStoreConfig(cfg)
-	if _, err := db.Exec(storeSchema); err != nil {
+	if _, err := writeDB.Exec(storeSchema); err != nil {
 		return nil, fmt.Errorf("create session audit schema: %w", err)
 	}
 
 	s := &Store{
-		db:     db,
+		db:     writeDB,
+		readDB: readDB,
 		cfg:    cfg,
 		done:   make(chan struct{}),
 		ownsDB: ownsDB,
@@ -162,6 +168,149 @@ func newStoreWithDB(db *sql.DB, cfg StoreConfig, ownsDB bool, dbPath string) (*S
 		go s.cleanupLoop()
 	}
 	return s, nil
+}
+
+func (s *Store) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *Store) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "session_tool_audit_logs")
+}
+
+func (s *Store) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "session_tool_audit_logs")
+}
+
+type sessionAuditRow struct {
+	ID             string `json:"id" zorm:"id"`
+	ConversationID string `json:"conversation_id" zorm:"conversation_id"`
+	SessionID      string `json:"session_id" zorm:"session_id"`
+	UserID         string `json:"user_id" zorm:"user_id"`
+	Source         string `json:"source" zorm:"source"`
+	EventType      string `json:"event_type" zorm:"event_type"`
+	Role           string `json:"role" zorm:"role"`
+	ToolCallID     string `json:"tool_call_id" zorm:"tool_call_id"`
+	ToolName       string `json:"tool_name" zorm:"tool_name"`
+	Payload        string `json:"payload" zorm:"payload"`
+	PayloadSHA256  string `json:"payload_sha256" zorm:"payload_sha256"`
+	PayloadBytes   int    `json:"payload_bytes" zorm:"payload_bytes"`
+	IsError        int    `json:"is_error" zorm:"is_error"`
+	Metadata       string `json:"metadata" zorm:"metadata"`
+	CreatedAt      string `json:"created_at" zorm:"created_at"`
+}
+
+type sessionAuditIDRow struct {
+	ID string `json:"id" zorm:"id"`
+}
+
+func rowToEntry(row sessionAuditRow) Entry {
+	entry := Entry{
+		ID:             row.ID,
+		ConversationID: row.ConversationID,
+		SessionID:      row.SessionID,
+		UserID:         row.UserID,
+		Source:         row.Source,
+		EventType:      row.EventType,
+		Role:           row.Role,
+		ToolCallID:     row.ToolCallID,
+		ToolName:       row.ToolName,
+		Payload:        row.Payload,
+		PayloadSHA256:  row.PayloadSHA256,
+		PayloadBytes:   row.PayloadBytes,
+		IsError:        row.IsError != 0,
+	}
+	if row.Metadata != "" && row.Metadata != "{}" {
+		_ = json.Unmarshal([]byte(row.Metadata), &entry.Metadata)
+	}
+	if ts, err := time.Parse(time.RFC3339Nano, row.CreatedAt); err == nil {
+		entry.CreatedAt = ts
+	}
+	return entry
+}
+
+func rowsToEntries(rows []sessionAuditRow) []Entry {
+	entries := make([]Entry, 0, len(rows))
+	for i := range rows {
+		entries = append(entries, rowToEntry(rows[i]))
+	}
+	return entries
+}
+
+func entryToAuditValues(entry Entry) (z.V, error) {
+	if strings.TrimSpace(entry.ID) == "" {
+		entry.ID = uuid.NewString()
+	}
+	entry.ConversationID = strings.TrimSpace(entry.ConversationID)
+	if entry.ConversationID == "" {
+		return nil, fmt.Errorf("conversation_id is required")
+	}
+	entry.SessionID = strings.TrimSpace(entry.SessionID)
+	entry.UserID = strings.TrimSpace(entry.UserID)
+	entry.Source = strings.TrimSpace(entry.Source)
+	entry.EventType = strings.TrimSpace(entry.EventType)
+	entry.Role = strings.TrimSpace(entry.Role)
+	entry.ToolCallID = strings.TrimSpace(entry.ToolCallID)
+	entry.ToolName = strings.TrimSpace(entry.ToolName)
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = timeutil.NowTime()
+	}
+	entry.PayloadBytes = len(entry.Payload)
+	if entry.PayloadSHA256 == "" {
+		sum := sha256.Sum256([]byte(entry.Payload))
+		entry.PayloadSHA256 = hex.EncodeToString(sum[:])
+	}
+
+	metadataJSON := "{}"
+	if len(entry.Metadata) > 0 {
+		if b, err := json.Marshal(entry.Metadata); err == nil {
+			metadataJSON = string(b)
+		}
+	}
+
+	return z.V{
+		"id":              entry.ID,
+		"conversation_id": entry.ConversationID,
+		"session_id":      entry.SessionID,
+		"user_id":         entry.UserID,
+		"source":          entry.Source,
+		"event_type":      entry.EventType,
+		"role":            entry.Role,
+		"tool_call_id":    entry.ToolCallID,
+		"tool_name":       entry.ToolName,
+		"payload":         entry.Payload,
+		"payload_sha256":  entry.PayloadSHA256,
+		"payload_bytes":   entry.PayloadBytes,
+		"is_error":        boolToInt(entry.IsError),
+		"metadata":        metadataJSON,
+		"created_at":      entry.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}, nil
+}
+
+func openSessionAuditReaderDB(dbPath string) (*sql.DB, error) {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("set reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // NewSQLiteStore opens/creates an isolated SQLite database for tool payload audit logs.
@@ -193,8 +342,16 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 		return nil, fmt.Errorf("open session audit db: %w", err)
 	}
 
-	s, err := newStoreWithDB(db, cfg, true, dbPath)
+	readDB, readErr := openSessionAuditReaderDB(dbPath)
+	if readErr != nil {
+		readDB = db
+	}
+
+	s, err := newStoreWithDB(db, readDB, cfg, true, dbPath)
 	if err != nil {
+		if readDB != nil && readDB != db {
+			_ = readDB.Close()
+		}
 		_ = db.Close()
 		return nil, err
 	}
@@ -203,7 +360,13 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 
 // NewSQLiteStoreWithDB reuses an existing SQLite connection for audit storage.
 func NewSQLiteStoreWithDB(db *sql.DB, cfg StoreConfig) (*Store, error) {
-	return newStoreWithDB(db, cfg, false, "")
+	return NewSQLiteStoreWithReadDB(db, db, cfg)
+}
+
+// NewSQLiteStoreWithReadDB reuses existing SQLite write/read connections for
+// audit storage.
+func NewSQLiteStoreWithReadDB(writeDB, readDB *sql.DB, cfg StoreConfig) (*Store, error) {
+	return newStoreWithDB(writeDB, readDB, cfg, false, "")
 }
 
 // Record appends one audit entry.
@@ -229,68 +392,14 @@ func (s *Store) RecordBatch(ctx context.Context, entries []Entry) error {
 			return fmt.Errorf("begin audit batch tx: %w", err)
 		}
 		defer tx.Rollback()
-
-		stmt, err := tx.PrepareContext(ctx,
-			`INSERT INTO session_tool_audit_logs (
-				id, conversation_id, session_id, user_id, source, event_type, role,
-				tool_call_id, tool_name, payload, payload_sha256, payload_bytes,
-				is_error, metadata, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		)
-		if err != nil {
-			return fmt.Errorf("prepare audit batch insert: %w", err)
-		}
-		defer stmt.Close()
+		table := z.TableContext(ctx, tx, "session_tool_audit_logs")
 
 		for _, entry := range entries {
-			if strings.TrimSpace(entry.ID) == "" {
-				entry.ID = uuid.NewString()
+			values, err := entryToAuditValues(entry)
+			if err != nil {
+				return err
 			}
-			entry.ConversationID = strings.TrimSpace(entry.ConversationID)
-			if entry.ConversationID == "" {
-				return fmt.Errorf("conversation_id is required")
-			}
-			entry.SessionID = strings.TrimSpace(entry.SessionID)
-			entry.UserID = strings.TrimSpace(entry.UserID)
-			entry.Source = strings.TrimSpace(entry.Source)
-			entry.EventType = strings.TrimSpace(entry.EventType)
-			entry.Role = strings.TrimSpace(entry.Role)
-			entry.ToolCallID = strings.TrimSpace(entry.ToolCallID)
-			entry.ToolName = strings.TrimSpace(entry.ToolName)
-			if entry.CreatedAt.IsZero() {
-				entry.CreatedAt = timeutil.NowTime()
-			}
-			entry.PayloadBytes = len(entry.Payload)
-			if entry.PayloadSHA256 == "" {
-				sum := sha256.Sum256([]byte(entry.Payload))
-				entry.PayloadSHA256 = hex.EncodeToString(sum[:])
-			}
-
-			metadataJSON := "{}"
-			if len(entry.Metadata) > 0 {
-				if b, err := json.Marshal(entry.Metadata); err == nil {
-					metadataJSON = string(b)
-				}
-			}
-
-			if _, err := stmt.ExecContext(
-				ctx,
-				entry.ID,
-				entry.ConversationID,
-				entry.SessionID,
-				entry.UserID,
-				entry.Source,
-				entry.EventType,
-				entry.Role,
-				entry.ToolCallID,
-				entry.ToolName,
-				entry.Payload,
-				entry.PayloadSHA256,
-				entry.PayloadBytes,
-				boolToInt(entry.IsError),
-				metadataJSON,
-				entry.CreatedAt.UTC().Format(time.RFC3339Nano),
-			); err != nil {
+			if _, err := table.Insert(values); err != nil {
 				return fmt.Errorf("insert session audit entry: %w", err)
 			}
 		}
@@ -315,57 +424,18 @@ func (s *Store) Recent(ctx context.Context, conversationID string, limit int) ([
 	}
 
 	conversationID = strings.TrimSpace(conversationID)
-	var (
-		rows *sql.Rows
-		err  error
-	)
-	if conversationID != "" {
-		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, conversation_id, session_id, user_id, source, event_type, role, tool_call_id, tool_name,
-			        payload, payload_sha256, payload_bytes, is_error, metadata, created_at
-			   FROM session_tool_audit_logs
-			  WHERE conversation_id = ?
-			  ORDER BY created_at DESC
-			  LIMIT ?`,
-			conversationID, limit,
-		)
-	} else {
-		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, conversation_id, session_id, user_id, source, event_type, role, tool_call_id, tool_name,
-			        payload, payload_sha256, payload_bytes, is_error, metadata, created_at
-			   FROM session_tool_audit_logs
-			  ORDER BY created_at DESC
-			  LIMIT ?`,
-			limit,
-		)
+	opts := []z.ZormItem{
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit),
 	}
-	if err != nil {
+	if conversationID != "" {
+		opts = append([]z.ZormItem{z.Where(z.Eq("conversation_id", conversationID))}, opts...)
+	}
+	var rows []sessionAuditRow
+	if _, err := s.readTable(ctx).Select(&rows, opts...); err != nil {
 		return nil, fmt.Errorf("query recent session audit entries: %w", err)
 	}
-	defer rows.Close()
-
-	entries := make([]Entry, 0, limit)
-	for rows.Next() {
-		var e Entry
-		var isError int
-		var metadataRaw string
-		var createdAt string
-		if err := rows.Scan(
-			&e.ID, &e.ConversationID, &e.SessionID, &e.UserID, &e.Source, &e.EventType, &e.Role,
-			&e.ToolCallID, &e.ToolName, &e.Payload, &e.PayloadSHA256, &e.PayloadBytes, &isError, &metadataRaw, &createdAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan session audit entry: %w", err)
-		}
-		e.IsError = isError != 0
-		if metadataRaw != "" && metadataRaw != "{}" {
-			_ = json.Unmarshal([]byte(metadataRaw), &e.Metadata)
-		}
-		if ts, err := time.Parse(time.RFC3339Nano, createdAt); err == nil {
-			e.CreatedAt = ts
-		}
-		entries = append(entries, e)
-	}
-	return entries, rows.Err()
+	return rowsToEntries(rows), nil
 }
 
 // DeleteConversation removes all audit logs for one conversation.
@@ -380,7 +450,7 @@ func (s *Store) DeleteConversation(ctx context.Context, conversationID string) e
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM session_tool_audit_logs WHERE conversation_id = ?`, conversationID); err != nil {
+	if _, err := s.table(ctx).Delete(z.Where(z.Eq("conversation_id", conversationID))); err != nil {
 		return fmt.Errorf("delete conversation audit logs: %w", err)
 	}
 	return nil
@@ -400,23 +470,27 @@ func (s *Store) PruneExpired(ctx context.Context) error {
 	cutoff := timeutil.NowTime().AddDate(0, 0, -s.cfg.RetentionDays).UTC().Format(time.RFC3339Nano)
 
 	for {
-		result, err := s.db.ExecContext(ctx,
-			`DELETE FROM session_tool_audit_logs
-			  WHERE id IN (
-			    SELECT id
-			      FROM session_tool_audit_logs
-			     WHERE created_at < ?
-			     ORDER BY created_at ASC
-			     LIMIT ?
-			  )`,
-			cutoff,
-			s.cfg.CleanupBatchSize,
-		)
+		var rows []sessionAuditIDRow
+		if _, err := s.readTable(ctx).Select(&rows,
+			z.Fields("id"),
+			z.Where(z.Lt("created_at", cutoff)),
+			z.OrderBy("created_at ASC"),
+			z.Limit(s.cfg.CleanupBatchSize),
+		); err != nil {
+			return fmt.Errorf("select expired session audit logs: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		ids := make([]string, 0, len(rows))
+		for i := range rows {
+			ids = append(ids, rows[i].ID)
+		}
+		affected, err := s.table(ctx).Delete(z.Where(z.In("id", ids)))
 		if err != nil {
 			return fmt.Errorf("prune expired session audit logs: %w", err)
 		}
-		affected, err := result.RowsAffected()
-		if err != nil || affected == 0 {
+		if affected == 0 {
 			return nil
 		}
 	}
@@ -468,10 +542,15 @@ func (s *Store) Close() error {
 	s.isClosed = true
 	close(s.done)
 	db := s.db
+	readDB := s.readDB
 	s.db = nil
+	s.readDB = nil
 	s.closeMu.Unlock()
 
 	if db != nil && s.ownsDB {
+		if readDB != nil && readDB != db {
+			_ = readDB.Close()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_ = dbutil.CheckpointWAL(ctx, db, dbutil.CheckpointTruncate)
 		cancel()
@@ -504,6 +583,9 @@ func (s *Store) Recover() error {
 	defer s.recoveryMu.Unlock()
 
 	if s.db != nil {
+		if s.readDB != nil && s.readDB != s.db {
+			_ = s.readDB.Close()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_ = dbutil.CheckpointWAL(ctx, s.db, dbutil.CheckpointTruncate)
 		cancel()
@@ -531,6 +613,14 @@ func (s *Store) Recover() error {
 		return err
 	}
 	s.db = db
+	readDB, readErr := openSessionAuditReaderDB(s.dbPath)
+	if readErr != nil {
+		s.readDB = db
+	} else if readDB != nil {
+		s.readDB = readDB
+	} else {
+		s.readDB = db
+	}
 	if _, err := s.db.Exec(storeSchema); err != nil {
 		return fmt.Errorf("create session audit schema: %w", err)
 	}

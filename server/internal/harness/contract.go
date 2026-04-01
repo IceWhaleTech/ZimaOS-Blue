@@ -532,6 +532,9 @@ func isStrongHarnessModel(model string) bool {
 	switch {
 	case strings.Contains(model, "gpt-5"),
 		strings.Contains(model, "claude-4"),
+		strings.Contains(model, "claude-haiku-4"),
+		strings.Contains(model, "claude-sonnet-4"),
+		strings.Contains(model, "claude-opus-4"),
 		strings.Contains(model, "claude-opus"),
 		strings.Contains(model, "gemini-2.5"),
 		strings.Contains(model, "o3"),

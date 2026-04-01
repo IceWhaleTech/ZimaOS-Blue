@@ -1,0 +1,426 @@
+{
+  "providers": {
+    "anthropic": {
+      "base_url": "https://api.anthropic.com",
+      "api_format": "anthropic",
+      "location": "cloud",
+      "website": "https://anthropic.com",
+      "api_key_url": "https://console.anthropic.com/settings/keys",
+      "icon": "anthropic",
+      "metadata_mode": "catalog"
+    },
+    "bedrock": {
+      "api_format": "anthropic",
+      "location": "cloud",
+      "website": "https://aws.amazon.com/bedrock",
+      "api_key_url": "https://console.aws.amazon.com/bedrock",
+      "icon": "aws",
+      "metadata_mode": "catalog"
+    },
+    "deepseek": {
+      "base_url": "https://api.deepseek.com",
+      "api_format": "openai",
+      "location": "cloud",
+      "website": "https://platform.deepseek.com",
+      "api_key_url": "https://platform.deepseek.com/api_keys",
+      "icon": "deepseek",
+      "metadata_mode": "catalog"
+    },
+    "glm": {
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "api_format": "openai",
+      "location": "cloud",
+      "website": "https://www.bigmodel.cn",
+      "api_key_url": "https://open.bigmodel.cn/usercenter/apikeys",
+      "icon": "glm",
+      "metadata_mode": "catalog"
+    },
+    "google": {
+      "base_url": "https://generativelanguage.googleapis.com",
+      "api_format": "google",
+      "location": "cloud",
+      "website": "https://ai.google.dev",
+      "api_key_url": "https://aistudio.google.com/app/apikey",
+      "icon": "google",
+      "metadata_mode": "catalog"
+    },
+    "grok": {
+      "base_url": "https://api.x.ai/v1",
+      "api_format": "openai",
+      "location": "cloud",
+      "website": "https://x.ai",
+      "api_key_url": "https://console.x.ai",
+      "icon": "grok",
+      "metadata_mode": "catalog"
+    },
+    "minimax": {
+      "base_url": "https://api.minimaxi.com/anthropic",
+      "api_format": "anthropic",
+      "location": "cloud",
+      "website": "https://platform.minimax.io",
+      "api_key_url": "https://platform.minimax.io/user-center/basic-information/interface-key",
+      "icon": "minimax",
+      "metadata_mode": "catalog"
+    },
+    "moonshot": {
+      "base_url": "https://api.moonshot.ai/v1",
+      "api_format": "openai",
+      "location": "cloud",
+      "website": "https://platform.moonshot.cn",
+      "api_key_url": "https://platform.moonshot.cn/console/api-keys",
+      "icon": "moonshot",
+      "metadata_mode": "catalog"
+    },
+    "ollama": {
+      "base_url": "http://localhost:11434",
+      "api_format": "ollama",
+      "location": "local",
+      "website": "https://ollama.com",
+      "icon": "ollama",
+      "metadata_mode": "catalog"
+    },
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_format": "openai",
+      "location": "cloud",
+      "website": "https://openai.com",
+      "api_key_url": "https://platform.openai.com/api-keys",
+      "icon": "openai",
+      "metadata_mode": "catalog"
+    },
+    "qwen": {
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode",
+      "api_format": "openai",
+      "location": "cloud",
+      "website": "https://tongyi.aliyun.com",
+      "api_key_url": "https://dashscope.console.aliyun.com/apiKey",
+      "icon": "qwen",
+      "metadata_mode": "catalog"
+    }
+  },
+  "models": {
+    "anthropic": [
+      {
+        "id": "claude-opus-4-5-20251101",
+        "display_name": "Claude Opus 4.5",
+        "context_window": 200000,
+        "max_output": 32000,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "thinking", "json", "system_prompt"]
+      },
+      {
+        "id": "claude-sonnet-4-5-20250929",
+        "display_name": "Claude Sonnet 4.5",
+        "context_window": 200000,
+        "max_output": 64000,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "thinking", "json", "system_prompt"]
+      },
+      {
+        "id": "claude-3-5-haiku-20241022",
+        "display_name": "Claude 3.5 Haiku",
+        "context_window": 200000,
+        "max_output": 8192,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "claude-3-5-sonnet-20241022",
+        "display_name": "Claude 3.5 Sonnet",
+        "context_window": 200000,
+        "max_output": 8192,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ],
+    "bedrock": [
+      {
+        "id": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "display_name": "Claude 3.5 Sonnet v2 (Bedrock)",
+        "context_window": 200000,
+        "max_output": 8192,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "anthropic.claude-3-5-haiku-20241022-v1:0",
+        "display_name": "Claude 3.5 Haiku (Bedrock)",
+        "context_window": 200000,
+        "max_output": 8192,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "meta.llama3-3-70b-instruct-v1:0",
+        "display_name": "Llama 3.3 70B Instruct (Bedrock)",
+        "context_window": 128000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "amazon.nova-pro-v1:0",
+        "display_name": "Amazon Nova Pro",
+        "context_window": 300000,
+        "max_output": 5000,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "amazon.nova-lite-v1:0",
+        "display_name": "Amazon Nova Lite",
+        "context_window": 300000,
+        "max_output": 5000,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ],
+    "deepseek": [
+      {
+        "id": "deepseek-chat",
+        "display_name": "DeepSeek Chat (V3)",
+        "context_window": 128000,
+        "max_output": 8192,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "deepseek-reasoner",
+        "display_name": "DeepSeek Reasoner (R1)",
+        "context_window": 128000,
+        "max_output": 8192,
+        "capabilities": ["chat", "function_call", "streaming", "thinking", "json", "system_prompt"]
+      }
+    ],
+    "glm": [
+      {
+        "id": "glm-4-plus",
+        "display_name": "GLM-4 Plus",
+        "context_window": 128000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "glm-4-air",
+        "display_name": "GLM-4 Air",
+        "context_window": 128000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "glm-4-airx",
+        "display_name": "GLM-4 AirX",
+        "context_window": 8192,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "glm-4-flash",
+        "display_name": "GLM-4 Flash",
+        "context_window": 128000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "glm-4-long",
+        "display_name": "GLM-4 Long",
+        "context_window": 1000000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "glm-4v-plus",
+        "display_name": "GLM-4V Plus",
+        "context_window": 8192,
+        "max_output": 1024,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ],
+    "google": [
+      {
+        "id": "gemini-2.0-flash",
+        "display_name": "Gemini 2.0 Flash",
+        "context_window": 1000000,
+        "max_output": 8192,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "gemini-2.0-flash-thinking",
+        "display_name": "Gemini 2.0 Flash Thinking",
+        "context_window": 1000000,
+        "max_output": 65536,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "thinking", "json", "system_prompt"]
+      },
+      {
+        "id": "gemini-1.5-pro",
+        "display_name": "Gemini 1.5 Pro",
+        "context_window": 2000000,
+        "max_output": 8192,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "gemini-1.5-flash",
+        "display_name": "Gemini 1.5 Flash",
+        "context_window": 1000000,
+        "max_output": 8192,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ],
+    "grok": [
+      {
+        "id": "grok-beta",
+        "display_name": "Grok Beta",
+        "context_window": 131072,
+        "max_output": 16384,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "grok-vision-beta",
+        "display_name": "Grok Vision Beta",
+        "context_window": 8192,
+        "max_output": 4096,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ],
+    "minimax": [
+      {
+        "id": "MiniMax-M2.5",
+        "display_name": "MiniMax M2.5",
+        "context_window": 1000000,
+        "max_output": 16384,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "codex-MiniMax-M2.5",
+        "display_name": "MiniMax M2.5 (Codex)",
+        "context_window": 1000000,
+        "max_output": 16384,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ],
+    "moonshot": [
+      {
+        "id": "moonshot-v1-8k",
+        "display_name": "Moonshot V1 8K",
+        "context_window": 8000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "moonshot-v1-32k",
+        "display_name": "Moonshot V1 32K",
+        "context_window": 32000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "moonshot-v1-128k",
+        "display_name": "Moonshot V1 128K",
+        "context_window": 128000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ],
+    "ollama": [
+      {
+        "id": "llama3.3",
+        "display_name": "Llama 3.3 70B",
+        "context_window": 128000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "qwen2.5",
+        "display_name": "Qwen 2.5",
+        "context_window": 32000,
+        "max_output": 4096,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "deepseek-r1",
+        "display_name": "DeepSeek R1 (Local)",
+        "context_window": 64000,
+        "max_output": 8192,
+        "capabilities": ["chat", "function_call", "streaming", "thinking", "json", "system_prompt"]
+      }
+    ],
+    "openai": [
+      {
+        "id": "gpt-4o",
+        "display_name": "GPT-4o",
+        "context_window": 128000,
+        "max_output": 16384,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "gpt-4o-mini",
+        "display_name": "GPT-4o Mini",
+        "context_window": 128000,
+        "max_output": 16384,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "o1",
+        "display_name": "o1",
+        "context_window": 200000,
+        "max_output": 100000,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "thinking", "json", "system_prompt"]
+      },
+      {
+        "id": "o1-mini",
+        "display_name": "o1 Mini",
+        "context_window": 128000,
+        "max_output": 65536,
+        "capabilities": ["chat", "function_call", "streaming", "thinking", "json", "system_prompt"]
+      },
+      {
+        "id": "o3-mini",
+        "display_name": "o3 Mini",
+        "context_window": 200000,
+        "max_output": 100000,
+        "capabilities": ["chat", "function_call", "streaming", "thinking", "json", "system_prompt"]
+      },
+      {
+        "id": "gpt-4-turbo",
+        "display_name": "GPT-4 Turbo",
+        "context_window": 128000,
+        "max_output": 4096,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ],
+    "qwen": [
+      {
+        "id": "qwen-turbo",
+        "display_name": "Qwen Turbo",
+        "context_window": 8192,
+        "max_output": 2048,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "qwen-plus",
+        "display_name": "Qwen Plus",
+        "context_window": 32768,
+        "max_output": 8192,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "qwen-max",
+        "display_name": "Qwen Max",
+        "context_window": 32768,
+        "max_output": 8192,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "qwen-max-longcontext",
+        "display_name": "Qwen Max (Long Context)",
+        "context_window": 1000000,
+        "max_output": 8192,
+        "capabilities": ["chat", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "qwen-vl-plus",
+        "display_name": "Qwen VL Plus",
+        "context_window": 8192,
+        "max_output": 2048,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      },
+      {
+        "id": "qwen-vl-max",
+        "display_name": "Qwen VL Max",
+        "context_window": 32768,
+        "max_output": 8192,
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+      }
+    ]
+  }
+}

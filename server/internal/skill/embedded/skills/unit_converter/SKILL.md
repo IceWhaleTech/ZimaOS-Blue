@@ -1,31 +1,23 @@
 ---
 name: unit_converter
-description: Convert values across units including length weight temperature volume data time and speed.
+version: "0.1.0"
+description: "Disabled placeholder for unit conversion helpers. ZimaOS Blue does not currently register a dedicated builtin unit_converter skill in the live runtime."
+enabled: false
+category: internal
+tags:
+  - units
+  - conversion
+  - calculator
 ---
 
 # Unit Converter
 
-Convert between units of measurement.
+This skill is currently disabled.
 
-## Usage
+Earlier drafts listed supported unit categories and parameters as if `unit_converter` were a live builtin interface. In the current ZimaOS Blue runtime, there is no dedicated builtin `unit_converter` skill registration behind that contract.
 
-- "Convert 100 km to miles"
-- "32°F to Celsius"
-- "5 kg to pounds"
-- "1 GB to MB"
+## Use Instead
 
-## Supported Categories
-
-- Length: km, m, cm, mm, mi, yd, ft, in
-- Weight: kg, g, mg, lb, oz
-- Temperature: °C, °F, K
-- Volume: L, mL, gal, qt, pt, cup, fl oz
-- Data: TB, GB, MB, KB, B
-- Time: h, min, s, ms
-- Speed: km/h, m/s, mph, knots
-
-## Parameters
-
-- `value`: Numeric value to convert (required)
-- `from`: Source unit (required)
-- `to`: Target unit (required)
+- Handle straightforward conversions directly in the normal answer flow when no external verification is needed.
+- For exact or audited calculations, use a verified external tool, spreadsheet, or shell workflow rather than relying on this placeholder.
+- If a real unit conversion skill is added later, document the supported units, rounding behavior, and invocation contract explicitly.

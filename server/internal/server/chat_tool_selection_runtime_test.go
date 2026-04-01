@@ -1,8 +1,11 @@
 package server
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -159,6 +162,7 @@ func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testi
 	webSearchEnabled := false
 	deepResearchEnabled := false
 	got := handler.selectChatToolsForRequest(
+		context.Background(),
 		"Look up the latest updates and create a checklist",
 		"claude-3-5-haiku-20241022",
 		"session-1",
@@ -178,6 +182,138 @@ func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testi
 		if _, ok := names[required]; !ok {
 			t.Fatalf("expected %q to remain visible, got=%v", required, got)
 		}
+	}
+}
+
+func TestSelectChatToolsForRequest_SmartSkillSelectionCollapsesToExec(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	smartSkill := true
+	handler.GetSettingsHandler().settings.SmartSkillSelection = &smartSkill
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_search query="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
+
+	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		"搜索最新 OpenAI Responses API 文档。",
+		"claude-3-5-haiku-20241022",
+		"session-cutover",
+		"",
+		memory.ConversationCommandState{ConversationID: "session-cutover"},
+		nil,
+		nil,
+	)
+
+	if names := selectedToolNames(got); len(names) != 1 || names[0] != "exec" {
+		t.Fatalf("selectChatToolsForRequest() = %v, want [exec]", names)
+	}
+}
+
+func TestSelectChatToolsForRequest_SmartSkillClarifyHidesNativeTools(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	smartSkill := true
+	handler.GetSettingsHandler().settings.SmartSkillSelection = &smartSkill
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_search query="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
+
+	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？",
+		"claude-3-5-haiku-20241022",
+		"session-clarify",
+		"",
+		memory.ConversationCommandState{ConversationID: "session-clarify"},
+		nil,
+		nil,
+	)
+
+	if len(got) != 0 {
+		t.Fatalf("selectChatToolsForRequest() = %v, want no native tools while clarifying", selectedToolNames(got))
+	}
+}
+
+func TestSelectChatToolsForRequest_CutoverSkipsPromptCacheStickyUnion(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	smartSkill := true
+	handler.GetSettingsHandler().settings.SmartSkillSelection = &smartSkill
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_search query="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
+
+	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+	attachTestProviderPool(t, handler, &providerpool.Provider{
+		ID:        "anthropic-test",
+		Name:      "Anthropic Test",
+		Type:      providerpool.ProviderTypeCustom,
+		Location:  providerpool.ProviderLocationCloud,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		APIFormat: providerpool.APIFormatAnthropic,
+	})
+
+	handler.setPromptCacheToolSurface("conv-cutover", &promptCacheToolSurface{
+		ProviderID:          "anthropic-test",
+		WebSearchEnabled:    true,
+		DeepResearchEnabled: false,
+		Tools: []tools.ToolDefinition{
+			{Name: "read"},
+			{Name: "write"},
+		},
+		ExpiresAt: time.Now().Add(time.Minute),
+	})
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		"搜索最新 OpenAI Responses API 文档。",
+		"claude-3-5-haiku-20241022",
+		"conv-cutover",
+		"",
+		memory.ConversationCommandState{
+			ConversationID:     "conv-cutover",
+			SelectedProviderID: "anthropic-test",
+			WebSearchEnabled:   true,
+		},
+		nil,
+		nil,
+	)
+
+	if names := selectedToolNames(got); len(names) != 1 || names[0] != "exec" {
+		t.Fatalf("selectChatToolsForRequest() = %v, want sticky surface reset to [exec]", names)
+	}
+	if cached := handler.getPromptCacheToolSurface("conv-cutover"); cached != nil {
+		t.Fatalf("prompt cache surface = %#v, want cleared after cutover-native selection", cached)
 	}
 }
 

@@ -69,7 +69,7 @@ import (
 )
 
 var (
-	version   = "0.10.35"
+	version   = "0.10.36"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -452,7 +452,12 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	trace.Mark("services_initialized")
 
 	// Shared kvstore for all config persistence
-	sqliteKV, err := kvstore.NewSQLiteStoreWithDB(services.DB)
+	var sqliteKV *kvstore.SQLiteStore
+	if services.DBConn != nil {
+		sqliteKV, err = kvstore.NewSQLiteStoreWithReadDB(services.DBConn.Writer, services.DBConn.Reader)
+	} else {
+		sqliteKV, err = kvstore.NewSQLiteStoreWithDB(services.DB)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to initialize config kvstore: %w", err)
 	}
@@ -527,7 +532,11 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
 	chatHandler.SetPersistenceOptions(cfg.Session.ChatPersistAsync, cfg.Session.ChatReadLite)
-	metricsCollector, metricsWriter := bootstrap.InitMetrics(dataDir, services.DB)
+	metricsReadDB := services.DB
+	if services.DBConn != nil && services.DBConn.Reader != nil {
+		metricsReadDB = services.DBConn.Reader
+	}
+	metricsCollector, metricsWriter := bootstrap.InitMetricsWithReadDB(dataDir, services.DB, metricsReadDB)
 	chatHandler.SetMetricsRecorder(metricsWriter)
 	// Register cleanup for metrics
 	registerCleanup(func() error {
@@ -591,7 +600,12 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	userHandler.SetJWTService(services.JWTService)
 
 	// Initialize permission service and set on user handler
-	permRepo, _ := permission.NewRepository(services.DB)
+	var permRepo *permission.Repository
+	if services.DBConn != nil {
+		permRepo, _ = permission.NewRepositoryWithReadDB(services.DBConn.Writer, services.DBConn.Reader)
+	} else {
+		permRepo, _ = permission.NewRepository(services.DB)
+	}
 	if permRepo != nil {
 		permService := permission.NewService(permRepo, services.UserRepo)
 		userHandler.SetPermissionService(permService)
@@ -717,7 +731,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize workflow handler lazily to avoid repository setup on the critical startup path.
 	workflowHandler := workflow.NewLazyHandler(func() *workflow.WorkflowService {
-		workflowRepo, err := workflow.NewRepository(services.DB)
+		var (
+			workflowRepo *workflow.Repository
+			err          error
+		)
+		if services.DBConn != nil {
+			workflowRepo, err = workflow.NewRepositoryWithReadDB(services.DBConn.Writer, services.DBConn.Reader)
+		} else {
+			workflowRepo, err = workflow.NewRepository(services.DB)
+		}
 		if err != nil {
 			zapLogger.Warn("Failed to initialize workflow repository", zap.Error(err))
 			return nil
@@ -939,8 +961,14 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
-	providerpool.SetResponsesIntegrationEnabled(false)
-	ppOpts := []providerpool.PoolOption{providerpool.WithDB(services.DB)}
+	providerPoolReadDB := services.DB
+	if services.DBConn != nil && services.DBConn.Reader != nil {
+		providerPoolReadDB = services.DBConn.Reader
+	}
+	ppOpts := []providerpool.PoolOption{
+		providerpool.WithDB(services.DB),
+		providerpool.WithReadDB(providerPoolReadDB),
+	}
 	if cfg.Security.Encryption.Enabled {
 		secretEncryptor, encErr := auth.NewEncryptor(&auth.EncryptionConfig{
 			KeyPath:    cfg.Security.Encryption.KeyPath,
@@ -954,15 +982,6 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	}
 	providerPool, _ := providerpool.NewPool(providerPoolPath, ppOpts...)
 	if providerPool != nil {
-		if normalized, err := providerPool.NormalizeLegacyCustomResponsesProviders(); err != nil {
-			zapLogger.Warn("Failed to normalize legacy custom responses providers", zap.Error(err))
-		} else if normalized > 0 {
-			zapLogger.Info("Legacy custom responses providers normalized", zap.Int("count", normalized))
-		}
-
-		if disabled := providerPool.DisableResponsesProviders(); disabled > 0 {
-			zapLogger.Info("Responses providers temporarily disabled", zap.Int("count", disabled))
-		}
 		bootstrap.LoadProvidersFromPool(providerPool, services.LLMRegistry)
 		chatHandler.SetProviderPool(providerPool)
 	}
@@ -997,7 +1016,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 		zapLogger.Info("Legacy context annotation store imported into blue.db", fields...)
 	}
-	contextAnnotationStore, err := contextpack.NewAnnotationStoreWithDB(services.DB)
+	contextAnnotationStoreFactory := func() (*contextpack.AnnotationStore, error) {
+		return contextpack.NewAnnotationStoreWithDB(services.DB)
+	}
+	if services.DBConn != nil {
+		contextAnnotationStoreFactory = func() (*contextpack.AnnotationStore, error) {
+			return contextpack.NewAnnotationStoreWithReadDB(services.DBConn.Writer, services.DBConn.Reader)
+		}
+	}
+	contextAnnotationStore, err := contextAnnotationStoreFactory()
 	if err != nil {
 		zapLogger.Warn("Failed to initialize context annotation store", zap.Error(err))
 	}
@@ -1027,9 +1054,14 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	sseBroker := ssePkg.NewBroker()
 
 	// Push notification service (scheduled push, native OS notifications, web push)
-	wpSender := bootstrap.InitWebPushSender(services.DB, configKV, zapLogger)
+	wpReadDB := services.DB
+	if services.DBConn != nil && services.DBConn.Reader != nil {
+		wpReadDB = services.DBConn.Reader
+	}
+	wpSender := bootstrap.InitWebPushSenderWithReadDB(services.DB, wpReadDB, configKV, zapLogger)
 	pushResult := bootstrap.InitPushService(&bootstrap.PushServiceDeps{
 		DB:          services.DB,
+		ReadDB:      wpReadDB,
 		MemoryStore: services.MemoryStore,
 		CronGetSvc:  cronHandler.GetService,
 		SSEBroker:   sseBroker,

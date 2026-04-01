@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, onUpdated, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { measureChatPerf, recordChatPerfCount } from '@/utils/chatPerf'
 
 interface Props {
   // Total number of items
@@ -137,9 +138,11 @@ const containerRef = ref<HTMLElement | null>(null)
 const activeScrollContainer = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
 const containerHeight = ref(0)
+const cachedExternalContainerOffset = ref(0)
 const layoutVersion = ref(0)
 let layoutVersionRafId: number | null = null
 const usesExternalScroll = computed(() => Boolean(props.scrollContainer))
+let cachedExternalContainerOffsetTarget: HTMLElement | null = null
 
 // Item height cache (for variable height items)
 const itemHeights = ref<number[]>([])
@@ -511,45 +514,67 @@ function getScrollContainer() {
   return props.scrollContainer ?? containerRef.value
 }
 
+function refreshContainerOffset(scrollContainer: HTMLElement | null = getScrollContainer()) {
+  if (!containerRef.value || !scrollContainer || scrollContainer === containerRef.value) {
+    cachedExternalContainerOffset.value = 0
+    cachedExternalContainerOffsetTarget = scrollContainer
+    return 0
+  }
+
+  return measureChatPerf('virtual_scroll.refresh_container_offset', () => {
+    recordChatPerfCount('virtual_scroll.get_bounding_client_rect.calls', 2)
+    const containerRect = containerRef.value!.getBoundingClientRect()
+    const scrollRect = scrollContainer.getBoundingClientRect()
+    const nextOffset = containerRect.top - scrollRect.top + scrollContainer.scrollTop
+    cachedExternalContainerOffset.value = nextOffset
+    cachedExternalContainerOffsetTarget = scrollContainer
+    return nextOffset
+  })
+}
+
 function getContainerOffset(scrollContainer: HTMLElement) {
   if (!containerRef.value || scrollContainer === containerRef.value) return 0
-
-  const containerRect = containerRef.value.getBoundingClientRect()
-  const scrollRect = scrollContainer.getBoundingClientRect()
-  return containerRect.top - scrollRect.top + scrollContainer.scrollTop
+  if (cachedExternalContainerOffsetTarget !== scrollContainer) {
+    return refreshContainerOffset(scrollContainer)
+  }
+  return cachedExternalContainerOffset.value
 }
 
 function syncScrollMetrics(scrollContainer: HTMLElement | null = getScrollContainer()) {
-  if (!scrollContainer) {
-    if (scrollTop.value !== 0) scrollTop.value = 0
-    if (containerHeight.value !== 0) containerHeight.value = 0
-    return
-  }
+  measureChatPerf('virtual_scroll.sync_scroll_metrics', () => {
+    recordChatPerfCount('virtual_scroll.sync_scroll_metrics.calls')
 
-  if (scrollContainer === containerRef.value) {
-    if (scrollTop.value !== scrollContainer.scrollTop) {
-      scrollTop.value = scrollContainer.scrollTop
+    if (!scrollContainer) {
+      if (scrollTop.value !== 0) scrollTop.value = 0
+      if (containerHeight.value !== 0) containerHeight.value = 0
+      return
     }
-    if (containerHeight.value !== scrollContainer.clientHeight) {
-      containerHeight.value = scrollContainer.clientHeight
+
+    if (scrollContainer === containerRef.value) {
+      if (scrollTop.value !== scrollContainer.scrollTop) {
+        scrollTop.value = scrollContainer.scrollTop
+      }
+      if (containerHeight.value !== scrollContainer.clientHeight) {
+        containerHeight.value = scrollContainer.clientHeight
+      }
+      return
     }
-    return
-  }
 
-  const topOffset = getContainerOffset(scrollContainer)
-  const viewportTop = Math.max(0, scrollContainer.scrollTop - topOffset)
-  const viewportBottom = Math.max(
-    0,
-    scrollContainer.scrollTop + scrollContainer.clientHeight - topOffset
-  )
-  const nextContainerHeight = Math.max(0, viewportBottom - viewportTop)
+    const topOffset = getContainerOffset(scrollContainer)
+    const viewportTop = Math.max(0, scrollContainer.scrollTop - topOffset)
+    const viewportBottom = Math.max(
+      0,
+      scrollContainer.scrollTop + scrollContainer.clientHeight - topOffset
+    )
+    const nextContainerHeight = Math.max(0, viewportBottom - viewportTop)
 
-  if (scrollTop.value !== viewportTop) {
-    scrollTop.value = viewportTop
-  }
-  if (containerHeight.value !== nextContainerHeight) {
-    containerHeight.value = nextContainerHeight
-  }
+    if (scrollTop.value !== viewportTop) {
+      scrollTop.value = viewportTop
+    }
+    if (containerHeight.value !== nextContainerHeight) {
+      containerHeight.value = nextContainerHeight
+    }
+  })
 }
 
 // Expose methods
@@ -604,21 +629,20 @@ function syncScrollContainerBinding() {
   }
 
   syncResizeObserverTargets()
+  refreshContainerOffset(nextContainer)
   syncScrollMetrics(nextContainer)
 }
 
 onMounted(() => {
   resizeObserver = new ResizeObserver(() => {
+    refreshContainerOffset()
     syncScrollMetrics()
   })
   syncScrollContainerBinding()
 })
 
-onUpdated(() => {
-  syncScrollMetrics()
-})
-
 watch([containerRef, () => props.scrollContainer], () => {
+  cachedExternalContainerOffsetTarget = null
   syncScrollContainerBinding()
 })
 
@@ -650,6 +674,8 @@ onUnmounted(() => {
   pendingHeightUpdates.clear()
   updateHeightHandlers.clear()
   observedResizeTargets.clear()
+  cachedExternalContainerOffsetTarget = null
+  cachedExternalContainerOffset.value = 0
   if (resizeObserver) {
     resizeObserver.disconnect()
   }

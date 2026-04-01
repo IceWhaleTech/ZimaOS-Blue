@@ -10,6 +10,19 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+func insertTestUser(t *testing.T, db *sql.DB, id uuid.UUID, username, email string) {
+	t.Helper()
+
+	now := time.Now().UTC()
+	if _, err := db.Exec(
+		`INSERT INTO users (id, username, email, password_hash, role, status, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id.String(), username, email, "hash", "user", "active", now, now,
+	); err != nil {
+		t.Fatalf("failed to insert user %s: %v", username, err)
+	}
+}
+
 func setupTestDB(t *testing.T) *sql.DB {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
@@ -172,6 +185,54 @@ func TestSQLiteRepository_Delete(t *testing.T) {
 	}
 }
 
+func TestSQLiteRepository_ListAndExistsBySlug(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewSQLiteRepository(db)
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("failed to init schema: %v", err)
+	}
+
+	ownerID := uuid.New()
+	alpha := NewTenant("Alpha Tenant", "alpha", ownerID)
+	beta := NewTenant("Beta Tenant", "beta", ownerID)
+	beta.Status = StatusSuspended
+
+	if err := repo.Create(context.Background(), alpha); err != nil {
+		t.Fatalf("failed to create alpha tenant: %v", err)
+	}
+	if err := repo.Create(context.Background(), beta); err != nil {
+		t.Fatalf("failed to create beta tenant: %v", err)
+	}
+
+	result, err := repo.List(context.Background(), &ListTenantsQuery{
+		Search:   "Alpha",
+		Status:   func() *Status { s := StatusActive; return &s }(),
+		Page:     1,
+		PageSize: 10,
+		SortBy:   "name",
+		SortDir:  "asc",
+	})
+	if err != nil {
+		t.Fatalf("failed to list tenants: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("expected total 1, got %d", result.Total)
+	}
+	if len(result.Tenants) != 1 || result.Tenants[0].Slug != "alpha" {
+		t.Fatalf("unexpected tenants result: %+v", result.Tenants)
+	}
+
+	exists, err := repo.ExistsBySlug(context.Background(), "beta")
+	if err != nil {
+		t.Fatalf("failed to check slug existence: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected beta slug to exist")
+	}
+}
+
 func TestSQLiteRepository_Members(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
@@ -247,6 +308,70 @@ func TestSQLiteRepository_Members(t *testing.T) {
 	}
 	if isMember {
 		t.Error("expected user to not be a member")
+	}
+}
+
+func TestSQLiteRepository_GetUserTenantsAndListMembers(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewSQLiteRepository(db)
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("failed to init schema: %v", err)
+	}
+
+	ownerID := uuid.New()
+	memberID := uuid.New()
+	insertTestUser(t, db, ownerID, "owner", "owner@example.com")
+	insertTestUser(t, db, memberID, "member", "member@example.com")
+
+	tenant := NewTenant("Test Tenant", "test-tenant", ownerID)
+	if err := repo.Create(context.Background(), tenant); err != nil {
+		t.Fatalf("failed to create tenant: %v", err)
+	}
+
+	ownerMember := NewTenantMember(tenant.ID, ownerID, MemberRoleOwner, nil)
+	if err := repo.AddMember(context.Background(), ownerMember); err != nil {
+		t.Fatalf("failed to add owner member: %v", err)
+	}
+
+	member := NewTenantMember(tenant.ID, memberID, MemberRoleMember, &ownerID)
+	if err := repo.AddMember(context.Background(), member); err != nil {
+		t.Fatalf("failed to add member: %v", err)
+	}
+
+	tenants, err := repo.GetUserTenants(context.Background(), memberID)
+	if err != nil {
+		t.Fatalf("failed to get user tenants: %v", err)
+	}
+	if len(tenants) != 1 || tenants[0].ID != tenant.ID {
+		t.Fatalf("unexpected user tenants: %+v", tenants)
+	}
+
+	result, err := repo.ListMembers(context.Background(), tenant.ID, &ListMembersQuery{
+		Role:     func() *MemberRole { r := MemberRoleMember; return &r }(),
+		Page:     1,
+		PageSize: 10,
+	})
+	if err != nil {
+		t.Fatalf("failed to list members: %v", err)
+	}
+	if result.Total != 1 || len(result.Members) != 1 {
+		t.Fatalf("unexpected list members result: total=%d len=%d", result.Total, len(result.Members))
+	}
+	if result.Members[0].Username != "member" {
+		t.Fatalf("unexpected listed member username: %+v", result.Members[0])
+	}
+	if result.Members[0].Email == nil || *result.Members[0].Email != "member@example.com" {
+		t.Fatalf("unexpected listed member: %+v", result.Members[0])
+	}
+
+	count, err := repo.CountMembers(context.Background(), tenant.ID)
+	if err != nil {
+		t.Fatalf("failed to count members: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 members, got %d", count)
 	}
 }
 

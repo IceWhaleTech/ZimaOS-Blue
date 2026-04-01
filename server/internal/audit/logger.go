@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 )
 
@@ -25,10 +25,11 @@ type Logger interface {
 
 // SQLiteLogger implements Logger using SQLite.
 type SQLiteLogger struct {
-	db       *sql.DB
-	buffer   chan *Entry
-	done     chan struct{}
-	batchSize int
+	db            *sql.DB
+	readDB        *sql.DB
+	buffer        chan *Entry
+	done          chan struct{}
+	batchSize     int
 	flushInterval time.Duration
 }
 
@@ -53,12 +54,25 @@ func DefaultLoggerConfig() *LoggerConfig {
 
 // NewSQLiteLogger creates a new SQLite-based audit logger.
 func NewSQLiteLogger(db *sql.DB, config *LoggerConfig) (*SQLiteLogger, error) {
+	return NewSQLiteLoggerWithReadDB(db, db, config)
+}
+
+// NewSQLiteLoggerWithReadDB creates a new SQLite-based audit logger with
+// separate write and read database handles.
+func NewSQLiteLoggerWithReadDB(writeDB, readDB *sql.DB, config *LoggerConfig) (*SQLiteLogger, error) {
 	if config == nil {
 		config = DefaultLoggerConfig()
 	}
+	if writeDB == nil {
+		return nil, fmt.Errorf("audit db is required")
+	}
+	if readDB == nil {
+		readDB = writeDB
+	}
 
 	logger := &SQLiteLogger{
-		db:            db,
+		db:            writeDB,
+		readDB:        readDB,
 		buffer:        make(chan *Entry, config.BufferSize),
 		done:          make(chan struct{}),
 		batchSize:     config.BatchSize,
@@ -73,6 +87,41 @@ func NewSQLiteLogger(db *sql.DB, config *LoggerConfig) (*SQLiteLogger, error) {
 	go logger.worker()
 
 	return logger, nil
+}
+
+type auditLogRow struct {
+	ID           string    `json:"id" zorm:"id"`
+	Timestamp    time.Time `json:"timestamp" zorm:"timestamp"`
+	UserID       *string   `json:"user_id" zorm:"user_id"`
+	Username     *string   `json:"username" zorm:"username"`
+	Action       string    `json:"action" zorm:"action"`
+	ResourceType *string   `json:"resource_type" zorm:"resource_type"`
+	ResourceID   *string   `json:"resource_id" zorm:"resource_id"`
+	IPAddress    *string   `json:"ip_address" zorm:"ip_address"`
+	UserAgent    *string   `json:"user_agent" zorm:"user_agent"`
+	RequestID    *string   `json:"request_id" zorm:"request_id"`
+	Status       string    `json:"status" zorm:"status"`
+	Details      *string   `json:"details" zorm:"details"`
+	OldValue     *string   `json:"old_value" zorm:"old_value"`
+	NewValue     *string   `json:"new_value" zorm:"new_value"`
+}
+
+func (l *SQLiteLogger) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, l.db, "audit_logs")
+}
+
+func (l *SQLiteLogger) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, l.reader(), "audit_logs")
+}
+
+func (l *SQLiteLogger) reader() *sql.DB {
+	if l != nil && l.readDB != nil {
+		return l.readDB
+	}
+	if l == nil {
+		return nil
+	}
+	return l.db
 }
 
 // migrate creates the necessary tables.
@@ -169,39 +218,10 @@ func (l *SQLiteLogger) writeBatch(entries []*Entry) error {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`INSERT INTO audit_logs (
-		id, timestamp, user_id, username, action, resource_type, resource_id,
-		ip_address, user_agent, request_id, status, details, old_value, new_value
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer stmt.Close()
+	table := z.Table(tx, "audit_logs")
 
 	for _, entry := range entries {
-		var userID interface{}
-		if entry.UserID != nil {
-			userID = entry.UserID.String()
-		}
-
-		_, err := stmt.Exec(
-			entry.ID.String(),
-			entry.Timestamp,
-			userID,
-			entry.Username,
-			entry.Action,
-			entry.ResourceType,
-			entry.ResourceID,
-			entry.IPAddress,
-			entry.UserAgent,
-			entry.RequestID,
-			entry.Status,
-			nullString(entry.Details),
-			nullString(entry.OldValue),
-			nullString(entry.NewValue),
-		)
-		if err != nil {
+		if _, err := table.Insert(auditEntryValues(entry)); err != nil {
 			return fmt.Errorf("failed to insert entry: %w", err)
 		}
 	}
@@ -224,6 +244,9 @@ func (l *SQLiteLogger) Log(ctx context.Context, entry *Entry) error {
 
 // Query retrieves audit entries based on parameters.
 func (l *SQLiteLogger) Query(ctx context.Context, params *QueryParams) (*QueryResult, error) {
+	if params == nil {
+		params = &QueryParams{}
+	}
 	// Set defaults
 	if params.Page < 1 {
 		params.Page = 1
@@ -232,59 +255,14 @@ func (l *SQLiteLogger) Query(ctx context.Context, params *QueryParams) (*QueryRe
 		params.PageSize = 20
 	}
 
-	// Build query
-	var conditions []string
-	var args []interface{}
+	conditions := buildAuditQueryConditions(params)
 
-	if params.UserID != nil {
-		conditions = append(conditions, "user_id = ?")
-		args = append(args, params.UserID.String())
-	}
-
-	if params.Action != nil {
-		conditions = append(conditions, "action = ?")
-		args = append(args, *params.Action)
-	}
-
-	if params.ResourceType != "" {
-		conditions = append(conditions, "resource_type = ?")
-		args = append(args, params.ResourceType)
-	}
-
-	if params.ResourceID != "" {
-		conditions = append(conditions, "resource_id = ?")
-		args = append(args, params.ResourceID)
-	}
-
-	if params.Status != nil {
-		conditions = append(conditions, "status = ?")
-		args = append(args, *params.Status)
-	}
-
-	if params.StartTime != nil {
-		conditions = append(conditions, "timestamp >= ?")
-		args = append(args, *params.StartTime)
-	}
-
-	if params.EndTime != nil {
-		conditions = append(conditions, "timestamp <= ?")
-		args = append(args, *params.EndTime)
-	}
-
-	if params.IPAddress != "" {
-		conditions = append(conditions, "ip_address = ?")
-		args = append(args, params.IPAddress)
-	}
-
-	whereClause := ""
-	if len(conditions) > 0 {
-		whereClause = "WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	// Count total
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM audit_logs %s", whereClause)
 	var total int64
-	if err := l.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	countOpts := []z.ZormItem{z.Fields("count(1)")}
+	if len(conditions) > 0 {
+		countOpts = append(countOpts, z.Where(conditions...))
+	}
+	if _, err := l.readTable(ctx).Select(&total, countOpts...); err != nil {
 		return nil, fmt.Errorf("failed to count entries: %w", err)
 	}
 
@@ -303,29 +281,23 @@ func (l *SQLiteLogger) Query(ctx context.Context, params *QueryParams) (*QueryRe
 
 	// Fetch entries
 	offset := (params.Page - 1) * params.PageSize
-	selectQuery := fmt.Sprintf(`SELECT id, timestamp, user_id, username, action, resource_type, resource_id,
-		ip_address, user_agent, request_id, status, details, old_value, new_value
-		FROM audit_logs %s ORDER BY %s %s LIMIT ? OFFSET ?`,
-		whereClause, orderBy, orderDir)
+	selectOpts := make([]z.ZormItem, 0, 3)
+	if len(conditions) > 0 {
+		selectOpts = append(selectOpts, z.Where(conditions...))
+	}
+	selectOpts = append(selectOpts,
+		z.OrderBy(fmt.Sprintf("%s %s", orderBy, orderDir)),
+		z.Limit(params.PageSize, offset),
+	)
 
-	args = append(args, params.PageSize, offset)
-	rows, err := l.db.QueryContext(ctx, selectQuery, args...)
-	if err != nil {
+	var rows []auditLogRow
+	if _, err := l.readTable(ctx).Select(&rows, selectOpts...); err != nil {
 		return nil, fmt.Errorf("failed to query entries: %w", err)
 	}
-	defer rows.Close()
 
-	var entries []*Entry
-	for rows.Next() {
-		entry, err := scanEntry(rows)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, entry)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate entries: %w", err)
+	entries := make([]*Entry, 0, len(rows))
+	for i := range rows {
+		entries = append(entries, rowToEntry(rows[i]))
 	}
 
 	totalPages := int(total) / params.PageSize
@@ -344,12 +316,18 @@ func (l *SQLiteLogger) Query(ctx context.Context, params *QueryParams) (*QueryRe
 
 // GetByID retrieves a single audit entry.
 func (l *SQLiteLogger) GetByID(ctx context.Context, id uuid.UUID) (*Entry, error) {
-	query := `SELECT id, timestamp, user_id, username, action, resource_type, resource_id,
-		ip_address, user_agent, request_id, status, details, old_value, new_value
-		FROM audit_logs WHERE id = ?`
-
-	row := l.db.QueryRowContext(ctx, query, id.String())
-	return scanEntryRow(row)
+	var rows []auditLogRow
+	_, err := l.readTable(ctx).Select(&rows,
+		z.Where(z.Eq("id", id.String())),
+		z.Limit(1),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query entry: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("entry not found")
+	}
+	return rowToEntry(rows[0]), nil
 }
 
 // Close closes the logger and flushes any pending entries.
@@ -466,4 +444,98 @@ func nullString(data []byte) interface{} {
 		return nil
 	}
 	return string(data)
+}
+
+func auditEntryValues(entry *Entry) z.V {
+	var userID interface{}
+	if entry != nil && entry.UserID != nil {
+		userID = entry.UserID.String()
+	}
+	return z.V{
+		"id":            entry.ID.String(),
+		"timestamp":     entry.Timestamp,
+		"user_id":       userID,
+		"username":      entry.Username,
+		"action":        entry.Action,
+		"resource_type": entry.ResourceType,
+		"resource_id":   entry.ResourceID,
+		"ip_address":    entry.IPAddress,
+		"user_agent":    entry.UserAgent,
+		"request_id":    entry.RequestID,
+		"status":        entry.Status,
+		"details":       nullString(entry.Details),
+		"old_value":     nullString(entry.OldValue),
+		"new_value":     nullString(entry.NewValue),
+	}
+}
+
+func buildAuditQueryConditions(params *QueryParams) []interface{} {
+	conditions := make([]interface{}, 0, 8)
+	if params.UserID != nil {
+		conditions = append(conditions, z.Eq("user_id", params.UserID.String()))
+	}
+	if params.Action != nil {
+		conditions = append(conditions, z.Eq("action", string(*params.Action)))
+	}
+	if params.ResourceType != "" {
+		conditions = append(conditions, z.Eq("resource_type", params.ResourceType))
+	}
+	if params.ResourceID != "" {
+		conditions = append(conditions, z.Eq("resource_id", params.ResourceID))
+	}
+	if params.Status != nil {
+		conditions = append(conditions, z.Eq("status", string(*params.Status)))
+	}
+	if params.StartTime != nil {
+		conditions = append(conditions, z.Expr("timestamp >= ?", *params.StartTime))
+	}
+	if params.EndTime != nil {
+		conditions = append(conditions, z.Expr("timestamp <= ?", *params.EndTime))
+	}
+	if params.IPAddress != "" {
+		conditions = append(conditions, z.Eq("ip_address", params.IPAddress))
+	}
+	return conditions
+}
+
+func rowToEntry(row auditLogRow) *Entry {
+	entry := &Entry{
+		Timestamp: row.Timestamp,
+		Action:    Action(row.Action),
+		Status:    Status(row.Status),
+	}
+	entry.ID, _ = uuid.Parse(row.ID)
+	if row.UserID != nil {
+		if uid, err := uuid.Parse(*row.UserID); err == nil {
+			entry.UserID = &uid
+		}
+	}
+	if row.Username != nil {
+		entry.Username = *row.Username
+	}
+	if row.ResourceType != nil {
+		entry.ResourceType = *row.ResourceType
+	}
+	if row.ResourceID != nil {
+		entry.ResourceID = *row.ResourceID
+	}
+	if row.IPAddress != nil {
+		entry.IPAddress = *row.IPAddress
+	}
+	if row.UserAgent != nil {
+		entry.UserAgent = *row.UserAgent
+	}
+	if row.RequestID != nil {
+		entry.RequestID = *row.RequestID
+	}
+	if row.Details != nil {
+		entry.Details = []byte(*row.Details)
+	}
+	if row.OldValue != nil {
+		entry.OldValue = []byte(*row.OldValue)
+	}
+	if row.NewValue != nil {
+		entry.NewValue = []byte(*row.NewValue)
+	}
+	return entry
 }

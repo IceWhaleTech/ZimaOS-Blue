@@ -13,6 +13,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/cdp"
 	"github.com/go-rod/rod/lib/launcher"
+	launcherflags "github.com/go-rod/rod/lib/launcher/flags"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/go-rod/stealth"
 
@@ -92,7 +93,46 @@ func (p *Pool) newLauncher() *launcher.Launcher {
 	if p.config.ProxyURL != "" {
 		l = l.Proxy(p.config.ProxyURL)
 	}
+	applyManagedChromiumStabilityFlags(l, p.config)
 	return l
+}
+
+func applyManagedChromiumStabilityFlags(l *launcher.Launcher, cfg *Config) {
+	if l == nil {
+		return
+	}
+
+	// Keep managed Chromium as deterministic as possible so transient GPU/plugin
+	// subprocess crashes do not take down the automation session.
+	l.Set(launcherflags.Flag("no-default-browser-check"))
+	l.Set(launcherflags.Flag("disable-extensions"))
+	l.Set(launcherflags.Flag("disable-plugins"))
+	l.Set(launcherflags.Flag("disable-plugins-discovery"))
+	if cfg == nil || cfg.Headless {
+		l.Set(launcherflags.Flag("disable-gpu"))
+	}
+	appendLauncherFlagValues(l, launcherflags.Flag("disable-features"), "DownloadBubble", "DownloadBubbleV2")
+}
+
+func appendLauncherFlagValues(l *launcher.Launcher, name launcherflags.Flag, values ...string) {
+	existing, _ := l.GetFlags(name)
+	seen := make(map[string]struct{}, len(existing)+len(values))
+	merged := make([]string, 0, len(existing)+len(values))
+	for _, value := range existing {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		merged = append(merged, value)
+	}
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		merged = append(merged, value)
+	}
+	l.Set(name, merged...)
 }
 
 func relayCDPWebSocketHeader() http.Header {

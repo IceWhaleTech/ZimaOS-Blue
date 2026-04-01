@@ -483,3 +483,89 @@ func TestUserRoleService_GetRoleUsers(t *testing.T) {
 		}
 	})
 }
+
+func TestUserRoleService_UsesReaderPoolForFileDB(t *testing.T) {
+	rbac := New()
+	rbac.DefineRole("admin", []string{"*"})
+
+	dbPath := filepath.Join(t.TempDir(), "user_roles_test.db")
+	svc, err := NewUserRoleService(dbPath, rbac)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	defer svc.Close()
+
+	if svc.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if svc.readDB == svc.db {
+		t.Fatal("expected file-backed user role service to use a separate read db")
+	}
+
+	if _, err := svc.AssignRole(context.Background(), &AssignRoleRequest{
+		UserID:     "user-123",
+		RoleName:   "admin",
+		AssignedBy: "system",
+	}); err != nil {
+		t.Fatalf("failed to assign role: %v", err)
+	}
+
+	roles, err := svc.GetUserRoles(context.Background(), "user-123")
+	if err != nil {
+		t.Fatalf("failed to get user roles through reader pool: %v", err)
+	}
+	if len(roles) != 1 {
+		t.Fatalf("expected 1 active role via reader pool, got %d", len(roles))
+	}
+	if roles[0].RoleName != "admin" {
+		t.Fatalf("expected admin role via reader pool, got %q", roles[0].RoleName)
+	}
+}
+
+func TestUserRoleService_ReadsStillWorkAfterWriterClose(t *testing.T) {
+	rbac := New()
+	rbac.DefineRole("admin", []string{"*"})
+
+	dbPath := filepath.Join(t.TempDir(), "user_roles_reader_close.db")
+	svc, err := NewUserRoleService(dbPath, rbac)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	defer func() {
+		if svc.readDB != nil && svc.readDB != svc.db {
+			_ = svc.readDB.Close()
+		}
+	}()
+
+	if svc.readDB == nil || svc.readDB == svc.db {
+		t.Fatal("expected file-backed user role service to use a separate read db")
+	}
+
+	if _, err := svc.AssignRole(context.Background(), &AssignRoleRequest{
+		UserID:     "user-reader",
+		RoleName:   "admin",
+		AssignedBy: "system",
+	}); err != nil {
+		t.Fatalf("failed to assign role: %v", err)
+	}
+
+	if err := svc.db.Close(); err != nil {
+		t.Fatalf("close writer db: %v", err)
+	}
+
+	roles, err := svc.GetUserRoles(context.Background(), "user-reader")
+	if err != nil {
+		t.Fatalf("failed to get user roles after writer close: %v", err)
+	}
+	if len(roles) != 1 || roles[0].RoleName != "admin" {
+		t.Fatalf("unexpected roles via reader db: %+v", roles)
+	}
+
+	hasPerm, err := svc.HasPermission(context.Background(), "user-reader", "delete")
+	if err != nil {
+		t.Fatalf("failed to check permission after writer close: %v", err)
+	}
+	if !hasPerm {
+		t.Fatal("expected admin permission lookup to work via reader db")
+	}
+}

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	z "github.com/IceWhaleTech/zorm"
 )
 
 func (s *Store) shouldExternalizeAttachments() bool {
@@ -45,19 +47,16 @@ func (s *Store) persistExternalAttachmentsTx(ctx context.Context, tx *sql.Tx, me
 		}
 		writtenPaths = append(writtenPaths, filePath)
 
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO message_attachments (
-				message_id, attachment_index, type, name, mime_type, duration, file_path, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			messageID,
-			idx,
-			strings.TrimSpace(attachment.Type),
-			strings.TrimSpace(attachment.Name),
-			strings.TrimSpace(attachment.MimeType),
-			attachment.Duration,
-			filePath,
-			createdAtValue,
-		); err != nil {
+		if _, err := z.TableContext(ctx, tx, "message_attachments").Insert(z.V{
+			"message_id":       messageID,
+			"attachment_index": idx,
+			"type":             strings.TrimSpace(attachment.Type),
+			"name":             strings.TrimSpace(attachment.Name),
+			"mime_type":        strings.TrimSpace(attachment.MimeType),
+			"duration":         attachment.Duration,
+			"file_path":        filePath,
+			"created_at":       createdAtValue,
+		}); err != nil {
 			cleanupFiles()
 			return fmt.Errorf("insert message attachment %d: %w", idx, err)
 		}
@@ -67,46 +66,40 @@ func (s *Store) persistExternalAttachmentsTx(ctx context.Context, tx *sql.Tx, me
 }
 
 func (s *Store) loadExternalAttachments(ctx context.Context, messageID string) ([]MessageAttachment, error) {
-	if s == nil || s.db == nil || strings.TrimSpace(messageID) == "" {
+	if s == nil || s.reader() == nil || strings.TrimSpace(messageID) == "" {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT file_path FROM message_attachments WHERE message_id = ? ORDER BY attachment_index ASC`,
-		messageID,
+	var rows []messageAttachmentFileRow
+	_, err := s.attachmentsRead(ctx).Select(&rows,
+		z.Fields("file_path"),
+		z.Where(z.Eq("message_id", messageID)),
+		z.OrderBy("attachment_index ASC"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query external attachments: %w", err)
 	}
-	defer rows.Close()
 
-	var attachments []MessageAttachment
-	for rows.Next() {
-		var filePath string
-		if err := rows.Scan(&filePath); err != nil {
-			return nil, fmt.Errorf("scan external attachment: %w", err)
-		}
-		raw, err := os.ReadFile(filePath)
+	attachments := make([]MessageAttachment, 0, len(rows))
+	for i := range rows {
+		raw, err := os.ReadFile(rows[i].FilePath)
 		if err != nil {
-			return nil, fmt.Errorf("read external attachment %q: %w", filePath, err)
+			return nil, fmt.Errorf("read external attachment %q: %w", rows[i].FilePath, err)
 		}
 		var attachment MessageAttachment
 		if err := json.Unmarshal(raw, &attachment); err != nil {
-			return nil, fmt.Errorf("decode external attachment %q: %w", filePath, err)
+			return nil, fmt.Errorf("decode external attachment %q: %w", rows[i].FilePath, err)
 		}
 		attachments = append(attachments, attachment)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return attachments, nil
 }
 
-func parseLegacyAttachments(raw sql.NullString) ([]MessageAttachment, error) {
-	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
+func parseLegacyAttachments(raw *string) ([]MessageAttachment, error) {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
 		return nil, nil
 	}
 	var attachments []MessageAttachment
-	if err := json.Unmarshal([]byte(raw.String), &attachments); err != nil {
+	if err := json.Unmarshal([]byte(*raw), &attachments); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal attachments: %w", err)
 	}
 	return attachments, nil

@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { classifyMediaIntent, MEDIA_INTENT_SUPPORTED_LOCALES } from './useMediaIntent'
+import { localeKeys } from '@/i18n/locale-catalog'
 
 describe('classifyMediaIntent', () => {
   it('tracks 27 supported locales for media intent detection', () => {
     expect(MEDIA_INTENT_SUPPORTED_LOCALES).toHaveLength(27)
+  })
+
+  it('reuses the shared 27-locale catalog', () => {
+    expect(MEDIA_INTENT_SUPPORTED_LOCALES).toEqual(localeKeys)
   })
 
   it('suppresses meta discussion about keyword matching density', () => {

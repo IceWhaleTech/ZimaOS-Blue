@@ -1,23 +1,29 @@
 ---
 name: timer
-description: Set check list and cancel in memory countdown timers.
+version: "0.1.0"
+description: "Disabled placeholder for session-local countdown timers. ZimaOS Blue does not currently register a live builtin timer skill at runtime."
+enabled: false
+category: internal
+tags:
+  - timer
+  - countdown
 ---
 
 # Timer
 
-Set, manage, and check countdown timers.
+This skill is currently disabled.
 
-## Usage
+ZimaOS Blue does not currently register a live builtin `timer` skill at runtime, so this document is kept only as a placeholder.
 
-Timers are managed in-memory by the built-in skill. Use natural language:
+## Use Instead
 
-- "Set a timer for 5 minutes"
-- "Set a 30-second timer called 'eggs'"
-- "Check my timers"
-- "Cancel the eggs timer"
+- Use `reminder` for user-facing alerts and notifications.
+- Use `scheduler` for recurring or cron-style command execution.
 
-## Parameters
+## Planned Behavior
 
-- `action`: start, check, cancel, list
-- `name`: Timer label (optional, default: "default")
-- `duration`: Duration string (e.g., "5m", "30s", "1h30m")
+If a real timer implementation is restored later, it should be clearly documented as:
+
+- Session-local or in-memory only
+- Distinct from persistent reminders
+- Distinct from recurring command automation

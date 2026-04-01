@@ -114,33 +114,49 @@ func TestProviderMemory_ToolCap(t *testing.T) {
 
 func TestProviderMemory_Throttle(t *testing.T) {
 	pm := NewProviderMemory()
+	pid := "p1"
+	baseURL := "https://api.example.com"
 
 	// Not throttled initially
-	if pm.IsThrottled("p1", "https://api.example.com") {
+	if pm.IsThrottled(pid, baseURL) {
 		t.Fatal("expected not throttled")
 	}
 
 	// Throttle with short duration
-	pm.RememberThrottle("p1", "https://api.example.com", 100*time.Millisecond)
-	if !pm.IsThrottled("p1", "https://api.example.com") {
+	pm.RememberThrottle(pid, baseURL, 100*time.Millisecond)
+	if !pm.IsThrottled(pid, baseURL) {
 		t.Fatal("expected throttled")
+	}
+	if until, ok := pm.ThrottleUntil(pid, baseURL); !ok {
+		t.Fatal("expected throttle deadline")
+	} else if remaining := time.Until(until); remaining <= 0 || remaining > 200*time.Millisecond {
+		t.Fatalf("expected throttle deadline in near future, got remaining=%v", remaining)
+	}
+	if remaining := pm.ThrottleRemaining(pid, baseURL); remaining <= 0 || remaining > 200*time.Millisecond {
+		t.Fatalf("expected throttle remaining in near future, got %v", remaining)
 	}
 
 	// Wait for expiry
 	time.Sleep(150 * time.Millisecond)
-	if pm.IsThrottled("p1", "https://api.example.com") {
+	if pm.IsThrottled(pid, baseURL) {
 		t.Fatal("expected not throttled after expiry")
+	}
+	if _, ok := pm.ThrottleUntil(pid, baseURL); ok {
+		t.Fatal("expected expired throttle deadline to disappear")
+	}
+	if remaining := pm.ThrottleRemaining(pid, baseURL); remaining != 0 {
+		t.Fatalf("expected zero throttle remaining after expiry, got %v", remaining)
 	}
 
 	// Default duration on zero
-	pm.RememberThrottle("p1", "https://api.example.com", 0)
-	if !pm.IsThrottled("p1", "https://api.example.com") {
+	pm.RememberThrottle(pid, baseURL, 0)
+	if !pm.IsThrottled(pid, baseURL) {
 		t.Fatal("expected throttled with default duration")
 	}
 
 	// Forget clears throttle
-	pm.ForgetThrottle("p1", "https://api.example.com")
-	if pm.IsThrottled("p1", "https://api.example.com") {
+	pm.ForgetThrottle(pid, baseURL)
+	if pm.IsThrottled(pid, baseURL) {
 		t.Fatal("expected not throttled after forget")
 	}
 }

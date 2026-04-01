@@ -1,33 +1,39 @@
 ---
 name: himalaya
-description: Manage real email accounts from the terminal with the Himalaya CLI using IMAP, SMTP, Notmuch, or Sendmail backends.
+version: "1.0.0"
+description: "Run the external Himalaya email CLI through exec for real IMAP/SMTP/Notmuch mailboxes. Use when the user explicitly wants Himalaya or a real terminal email workflow instead of the built-in benchmark email surfaces."
+invocation: "blue exec command='himalaya envelope list --output json'"
+examples:
+  - "blue exec command='himalaya envelope list --output json'"
+  - "blue exec command='himalaya --account work message read 42'"
+capability_tags:
+  - email
+  - external-cli
+  - himalaya
+interaction_mode: stateless
+card_support: none
 tags: ["email", "mail", "imap", "smtp", "notmuch", "maildir", "cli", "himalaya"]
 category: productivity
 environment: ["himalaya"]
 os: ["darwin", "linux"]
 homepage: https://github.com/pimalaya/himalaya
 metadata:
-  {
-    "openclaw":
-      {
-        "requires": { "bins": ["himalaya"] },
-        "install":
-          [
-            {
-              "id": "brew",
-              "kind": "brew",
-              "formula": "himalaya",
-              "bins": ["himalaya"],
-              "label": "Install Himalaya (brew)",
-            },
-          ],
-      },
-  }
+  openclaw:
+    requires:
+      bins:
+        - himalaya
+    install:
+      - id: brew
+        kind: brew
+        formula: himalaya
+        bins:
+          - himalaya
+        label: Install Himalaya (brew)
 ---
 
 # Himalaya Email CLI
 
-Use `himalaya` when the user wants to work with a real mailbox from the terminal instead of benchmark fixtures or workspace email files.
+Run the external `himalaya` binary via `blue exec` when the task is about a real mailbox.
 
 Himalaya is a CLI email client that supports IMAP, SMTP, Notmuch, and Sendmail backends. It can list folders, search envelopes, read full messages, compose drafts, send replies, move/archive mail, manage flags, and download attachments.
 
@@ -45,13 +51,13 @@ Do not prefer this skill for benchmark-local email fixtures already stored in th
 1. Verify the CLI exists:
 
 ```bash
-himalaya --version
+blue exec command="himalaya --version"
 ```
 
 2. Configure an account interactively:
 
 ```bash
-himalaya account configure
+blue exec command="himalaya account configure"
 ```
 
 3. Or create `~/.config/himalaya/config.toml` manually:
@@ -83,94 +89,88 @@ message.send.backend.auth.cmd = "pass show email/smtp"
 
 | User Intent | Action |
 |-------------|--------|
-| List folders/accounts | `himalaya folder list` / `himalaya account list` |
-| Search inbox or unread mail | `himalaya envelope list --output json ...` |
-| Read a message body | `himalaya message read <id>` |
-| Export raw MIME | `himalaya message export <id> --full` |
-| Reply, forward, or compose | `himalaya message reply <id>` / `himalaya message forward <id>` / `himalaya message write` |
-| Send a prepared message | `himalaya template send` |
-| Archive or move mail | `himalaya message move <id> "Archive"` |
-| Download attachments | `himalaya attachment download <id>` |
+| List folders/accounts | `blue exec command='himalaya folder list'` / `blue exec command='himalaya account list'` |
+| Search inbox or unread mail | `blue exec command='himalaya envelope list --output json ...'` |
+| Read a message body | `blue exec command='himalaya message read <id>'` |
+| Export raw MIME | `blue exec command='himalaya message export <id> --full'` |
+| Reply, forward, or compose | `blue exec command='himalaya message reply <id>'` / `blue exec command='himalaya message forward <id>'` / `blue exec command='himalaya message write'` |
+| Send a prepared message | `blue exec command='himalaya template send'` |
+| Archive or move mail | `blue exec command='himalaya message move <id> \"Archive\"'` |
+| Download attachments | `blue exec command='himalaya attachment download <id>'` |
 
 ## Common Commands
 
 List inbox envelopes:
 
 ```bash
-himalaya envelope list
+blue exec command="himalaya envelope list"
 ```
 
 List envelopes with machine-readable output:
 
 ```bash
-himalaya envelope list --output json
+blue exec command="himalaya envelope list --output json"
 ```
 
 Search by sender or subject:
 
 ```bash
-himalaya envelope list from alice@example.com subject invoice --output json
+blue exec command="himalaya envelope list from alice@example.com subject invoice --output json"
 ```
 
 Read a message:
 
 ```bash
-himalaya message read 42
+blue exec command="himalaya message read 42"
 ```
 
 Read raw MIME:
 
 ```bash
-himalaya message export 42 --full
+blue exec command="himalaya message export 42 --full"
 ```
 
 Reply:
 
 ```bash
-himalaya message reply 42
+blue exec command="himalaya message reply 42"
 ```
 
 Reply-all:
 
 ```bash
-himalaya message reply 42 --all
+blue exec command="himalaya message reply 42 --all"
 ```
 
 Compose and send from stdin:
 
 ```bash
-cat <<'EOF' | himalaya template send
-From: you@example.com
-To: recipient@example.com
-Subject: Quick update
-
-Hello from Himalaya.
-EOF
+blue exec command="printf 'From: you@example.com\nTo: recipient@example.com\nSubject: Quick update\n\nHello from Himalaya.\n' | himalaya template send"
 ```
 
 Move or archive:
 
 ```bash
-himalaya message move 42 "Archive"
+blue exec command="himalaya message move 42 Archive"
 ```
 
 Add or remove flags:
 
 ```bash
-himalaya flag add 42 --flag seen
-himalaya flag remove 42 --flag seen
+blue exec command="himalaya flag add 42 --flag seen"
+blue exec command="himalaya flag remove 42 --flag seen"
 ```
 
 Download attachments:
 
 ```bash
-himalaya attachment download 42 --dir ~/Downloads
+blue exec command="himalaya attachment download 42 --dir ~/Downloads"
 ```
 
 Use a specific account:
 
 ```bash
-himalaya --account work envelope list --output json
+blue exec command="himalaya --account work envelope list --output json"
 ```
 
 ## Guidance
@@ -179,3 +179,5 @@ himalaya --account work envelope list --output json
 - Prefer `message read` for user-facing summaries and `message export --full` only when MIME inspection is necessary.
 - Use `--account <name>` when the default account is not the intended mailbox.
 - For sending rich or multi-line email content, prefer `template send` or a body file over inline shell quoting.
+- This is an external CLI guide, not a native `blue himalaya` subcommand.
+- Prefer the built-in email skill for local benchmark fixtures; prefer Himalaya only for real mailbox operations.

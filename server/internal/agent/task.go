@@ -59,6 +59,21 @@ type Task struct {
 	GroundState *GroundTruthState `json:"-"`
 }
 
+func preferredTaskModel(task *Task) string {
+	if task == nil {
+		return "auto"
+	}
+	for _, source := range []map[string]interface{}{
+		task.Metadata,
+		metadataMapValue(task.Metadata, "group_input"),
+	} {
+		if model := metadataStringValue(source, "model"); model != "" {
+			return model
+		}
+	}
+	return "auto"
+}
+
 // PlanStep represents a single step in the agent's plan.
 type PlanStep struct {
 	Index       int        `json:"index"`

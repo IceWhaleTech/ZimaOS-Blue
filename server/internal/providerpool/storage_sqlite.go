@@ -20,13 +20,26 @@ import (
 // SQLiteStorage implements Storage using SQLite tables.
 type SQLiteStorage struct {
 	db        *sql.DB
+	readDB    *sql.DB
 	encryptor SecretEncryptor
 }
 
 // NewSQLiteStorage creates a new SQLite-backed storage and runs migrations.
 func NewSQLiteStorage(db *sql.DB, opts ...StorageOption) (*SQLiteStorage, error) {
+	return NewSQLiteStorageWithReadDB(db, db, opts...)
+}
+
+// NewSQLiteStorageWithReadDB creates a new SQLite-backed storage with separate
+// write and read database handles and runs migrations.
+func NewSQLiteStorageWithReadDB(writeDB, readDB *sql.DB, opts ...StorageOption) (*SQLiteStorage, error) {
+	if writeDB == nil {
+		return nil, fmt.Errorf("provider pool db is required")
+	}
+	if readDB == nil {
+		readDB = writeDB
+	}
 	storageOpts := applyStorageOptions(opts...)
-	s := &SQLiteStorage{db: db, encryptor: storageOpts.encryptor}
+	s := &SQLiteStorage{db: writeDB, readDB: readDB, encryptor: storageOpts.encryptor}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate provider pool tables: %w", err)
 	}
@@ -74,17 +87,42 @@ func (s *SQLiteStorage) migrate() error {
 func (s *SQLiteStorage) providers(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "pp_providers")
 }
+func (s *SQLiteStorage) providersRead(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "pp_providers")
+}
 func (s *SQLiteStorage) models(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "pp_models")
+}
+func (s *SQLiteStorage) modelsRead(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "pp_models")
 }
 func (s *SQLiteStorage) usage(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "pp_usage")
 }
+func (s *SQLiteStorage) usageRead(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "pp_usage")
+}
 func (s *SQLiteStorage) pricing(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "pp_pricing")
 }
+func (s *SQLiteStorage) pricingRead(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "pp_pricing")
+}
 func (s *SQLiteStorage) poolConfig(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "pp_config")
+}
+func (s *SQLiteStorage) poolConfigRead(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "pp_config")
+}
+
+func (s *SQLiteStorage) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
 }
 
 type ppProviderRow struct {
@@ -180,7 +218,7 @@ func (s *SQLiteStorage) SaveProvider(provider *Provider) error {
 func (s *SQLiteStorage) LoadProvider(id string) (*Provider, error) {
 	ctx := context.Background()
 	var rows []ppProviderRow
-	_, err := s.providers(ctx).Select(&rows,
+	_, err := s.providersRead(ctx).Select(&rows,
 		z.Where(z.Eq("id", id)),
 		z.Limit(1),
 	)
@@ -195,7 +233,7 @@ func (s *SQLiteStorage) LoadAllProviders() ([]*Provider, error) {
 	var rows []ppProviderRow
 	err := s.retryAfterWALCheckpoint(ctx, "load providers", func() error {
 		rows = nil
-		_, err := s.providers(ctx).Select(&rows)
+		_, err := s.providersRead(ctx).Select(&rows)
 		return err
 	})
 	if err != nil {
@@ -388,7 +426,7 @@ func (s *SQLiteStorage) SaveModels(providerID string, models []*Model) error {
 func (s *SQLiteStorage) LoadModels(providerID string) ([]*Model, error) {
 	ctx := context.Background()
 	var rows []ppModelsRow
-	_, err := s.models(ctx).Select(&rows,
+	_, err := s.modelsRead(ctx).Select(&rows,
 		z.Where(z.Eq("provider_id", providerID)),
 		z.Limit(1),
 	)
@@ -442,7 +480,7 @@ func (s *SQLiteStorage) LoadUsage(providerID string, start, end time.Time) ([]*U
 		}
 	}
 
-	_, err := s.usage(ctx).Select(&rows, conds...)
+	_, err := s.usageRead(ctx).Select(&rows, conds...)
 	if err != nil {
 		return nil, err
 	}
@@ -481,7 +519,7 @@ func (s *SQLiteStorage) SavePricingConfig(config *PricingConfig) error {
 func (s *SQLiteStorage) LoadPricingConfig() (*PricingConfig, error) {
 	ctx := context.Background()
 	var rows []ppSingleRow
-	_, err := s.pricing(ctx).Select(&rows, z.Where(z.Eq("id", "default")), z.Limit(1))
+	_, err := s.pricingRead(ctx).Select(&rows, z.Where(z.Eq("id", "default")), z.Limit(1))
 	if err != nil || len(rows) == 0 {
 		return nil, os.ErrNotExist
 	}
@@ -518,7 +556,7 @@ func (s *SQLiteStorage) SaveConfig(config *PoolConfig) error {
 func (s *SQLiteStorage) LoadConfig() (*PoolConfig, error) {
 	ctx := context.Background()
 	var rows []ppSingleRow
-	_, err := s.poolConfig(ctx).Select(&rows, z.Where(z.Eq("id", "default")), z.Limit(1))
+	_, err := s.poolConfigRead(ctx).Select(&rows, z.Where(z.Eq("id", "default")), z.Limit(1))
 	if err != nil || len(rows) == 0 {
 		return nil, os.ErrNotExist
 	}
@@ -538,7 +576,7 @@ func (s *SQLiteStorage) MigrateFromFiles(basePath string) error {
 	// Skip if DB already has providers
 	ctx := context.Background()
 	var rows []ppProviderRow
-	s.providers(ctx).Select(&rows, z.Limit(1))
+	s.providersRead(ctx).Select(&rows, z.Limit(1))
 	if len(rows) > 0 {
 		return nil // Already migrated
 	}

@@ -13,7 +13,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import type { ComponentPublicInstance } from 'vue'
-import { useChatStore } from '@/stores/chat'
+import { useChatStore, type ActiveMessageStreamState } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useTaskProjectionsStore } from '@/stores/taskProjections'
@@ -34,7 +34,8 @@ import { findLatestTodoChecklistSummary } from '@/utils/todoChecklist'
 import { reportStartupMark } from '@/utils/startupTrace'
 import type { Provider } from '@/api/providerPool'
 import { rafThrottle } from '@/utils/rafThrottle'
-import { sortItemsByModelPreference } from '@/utils/modelPreference'
+import { useTaskProjectionActions } from '@/composables/useTaskProjectionActions'
+import { measureChatPerf, recordChatPerfCount } from '@/utils/chatPerf'
 
 reportStartupMark('chat_view_setup_enter')
 
@@ -48,6 +49,7 @@ const PresetQuestions = defineAsyncComponent(
 const TalkMode = defineAsyncComponent(() => import('@/components/chat/TalkMode.vue'))
 const ToolApprovalDialog = defineAsyncComponent(() => import('@/components/ToolApprovalDialog.vue'))
 const ExecApprovalDialog = defineAsyncComponent(() => import('@/components/ExecApprovalDialog.vue'))
+const TaskActionDialog = defineAsyncComponent(() => import('@/components/TaskActionDialog.vue'))
 const MediaParamPanel = defineAsyncComponent(() => import('@/components/MediaParamPanel.vue'))
 const UserTaskProjectionCard = defineAsyncComponent(
   () => import('@/components/UserTaskProjectionCard.vue')
@@ -72,7 +74,6 @@ const mediaGen = useMediaGenerate()
 type VoiceApiModule = typeof import('@/api/voice')
 type MarkdownModule = typeof import('@/utils/markdown')
 type ApiClientModule = typeof import('@/api/client')
-type ChatApiModule = typeof import('@/api/chat')
 type EventStreamModule = typeof import('@/composables/useEventStream')
 type IdleWindow = Window & {
   requestIdleCallback?: (
@@ -85,7 +86,6 @@ type IdleWindow = Window & {
 let voiceApiModulePromise: Promise<VoiceApiModule> | null = null
 let markdownModulePromise: Promise<MarkdownModule> | null = null
 let apiClientModulePromise: Promise<ApiClientModule> | null = null
-let chatApiModulePromise: Promise<ChatApiModule> | null = null
 let eventStreamModulePromise: Promise<EventStreamModule> | null = null
 const startupBackgroundTaskCleanups: Array<() => void> = []
 let eventStreamListenersRegistered = false
@@ -111,13 +111,6 @@ function loadApiClientModule(): Promise<ApiClientModule> {
     apiClientModulePromise = import('@/api/client')
   }
   return apiClientModulePromise
-}
-
-function loadChatApiModule(): Promise<ChatApiModule> {
-  if (!chatApiModulePromise) {
-    chatApiModulePromise = import('@/api/chat')
-  }
-  return chatApiModulePromise
 }
 
 function loadEventStreamModule(): Promise<EventStreamModule> {
@@ -385,14 +378,6 @@ const shouldCompactStreamingActions = computed(() => {
   return !hasVisibleTextOutsideCards(parsed.text)
 })
 
-async function cancelProjectedTask(taskId: string) {
-  try {
-    await taskProjections.cancelTask(taskId)
-  } catch (e) {
-    console.error('Failed to cancel projected task:', e)
-  }
-}
-
 async function openProjectedTask(task: UserTaskProjection) {
   try {
     if (isMobile.value && task.conversation_id) {
@@ -485,6 +470,8 @@ type MessageMemoDepsTuple = [
   isMultiSelectMode: boolean,
   isSelected: boolean,
   showExternalStatusRail: boolean,
+  preferImmediateStreamingRender: boolean,
+  streamState: ActiveMessageStreamState | null,
 ]
 
 type MessageRenderBindings = {
@@ -495,6 +482,8 @@ type MessageRenderBindings = {
   isSelected: boolean
   isMultiSelectMode: boolean
   showExternalStatusRail: boolean
+  preferImmediateStreamingRender: boolean
+  streamState: ActiveMessageStreamState | null
 }
 
 type MessageRenderMeta = {
@@ -517,6 +506,73 @@ const messageRenderMetaKeyCache = new WeakMap<MessageMemoSource, string>()
 let lastRenderMetaLookupKey = ''
 let lastRenderMetaLookupMessage: MessageMemoSource | null = null
 let lastRenderMetaLookupValue: MessageRenderMeta | null = null
+let lastActiveMessageStreamStateDeps:
+  | [
+      phase: string,
+      awaitingConfirmation: boolean,
+      toolExecuting: boolean,
+      statusSummary: string | null,
+      streamProgress: string | null,
+      statusStartedAt: number,
+      showExternalStatusRail: boolean,
+      toolSandboxAvailable: boolean,
+      toolExecutingCommands: readonly string[],
+      toolExecutingNames: readonly string[],
+      processTrace: readonly unknown[],
+      toolResults: readonly unknown[],
+    ]
+  | null = null
+let lastActiveMessageStreamStateValue: ActiveMessageStreamState | null = null
+
+function getActiveMessageStreamState(
+  isStreaming: boolean,
+  showExternalStatusRail: boolean
+): ActiveMessageStreamState | null {
+  if (!isStreaming) {
+    return null
+  }
+
+  const deps = [
+    chatStore.streamUIState.phase,
+    chatStore.awaitingConfirmation,
+    chatStore.toolExecuting,
+    chatStore.statusSummary,
+    chatStore.streamProgress,
+    chatStore.statusStartedAt,
+    showExternalStatusRail,
+    chatStore.toolSandboxAvailable,
+    chatStore.toolExecutingCommands,
+    chatStore.toolExecutingNames,
+    chatStore.processTrace,
+    chatStore.toolResults,
+  ] as const
+
+  if (
+    lastActiveMessageStreamStateDeps &&
+    deps.every((value, index) => value === lastActiveMessageStreamStateDeps?.[index])
+  ) {
+    return lastActiveMessageStreamStateValue
+  }
+
+  const nextState: ActiveMessageStreamState = {
+    phase: chatStore.streamUIState.phase,
+    awaitingConfirmation: chatStore.awaitingConfirmation,
+    toolExecuting: chatStore.toolExecuting,
+    toolExecutingCommands: chatStore.toolExecutingCommands,
+    toolExecutingNames: chatStore.toolExecutingNames,
+    toolSandboxAvailable: chatStore.toolSandboxAvailable,
+    statusSummary: chatStore.statusSummary,
+    streamProgress: chatStore.streamProgress,
+    processTrace: chatStore.processTrace,
+    toolResults: chatStore.toolResults,
+    statusStartedAt: chatStore.statusStartedAt,
+    showExternalStatusRail,
+  }
+
+  lastActiveMessageStreamStateDeps = deps
+  lastActiveMessageStreamStateValue = nextState
+  return nextState
+}
 
 function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
   if (message === lastRenderMetaLookupMessage && lastRenderMetaLookupValue) {
@@ -537,6 +593,7 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     : false
   const showExternalStatusRail =
     showStreamStatusRail.value && isStreaming && message.id === streamingMessageId.value
+  const streamState = getActiveMessageStreamState(isStreaming, showExternalStatusRail)
 
   const cached = messageRenderMetaCache.get(cacheKey)
   if (
@@ -550,7 +607,9 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     cached.memoDeps[7] === isMobile.value &&
     cached.memoDeps[8] === chatStore.isMultiSelectMode &&
     cached.memoDeps[9] === isSelected &&
-    cached.memoDeps[10] === showExternalStatusRail
+    cached.memoDeps[10] === showExternalStatusRail &&
+    cached.memoDeps[11] === useVirtualScroll.value &&
+    cached.memoDeps[12] === streamState
   ) {
     lastRenderMetaLookupKey = cacheKey
     lastRenderMetaLookupMessage = message
@@ -570,6 +629,8 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     chatStore.isMultiSelectMode,
     isSelected,
     showExternalStatusRail,
+    useVirtualScroll.value,
+    streamState,
   ]
 
   const bindings: MessageRenderBindings = {
@@ -580,6 +641,8 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     isSelected,
     isMultiSelectMode: chatStore.isMultiSelectMode,
     showExternalStatusRail,
+    preferImmediateStreamingRender: useVirtualScroll.value,
+    streamState,
   }
 
   const nextMeta: MessageRenderMeta = {
@@ -640,6 +703,17 @@ function chatTextWithNamedFallback(
 ) {
   return te(key) ? String(t(key, named)) : fallback
 }
+
+const {
+  pendingTaskActionDialog,
+  taskActionDialogError,
+  taskActionDialogSubmitting,
+  closeTaskActionDialog,
+  performProjectedTaskAction,
+  confirmTaskActionDialog,
+} = useTaskProjectionActions({
+  translate: chatTextWithFallback,
+})
 
 function loadActiveTodoPanelCollapsed(): boolean {
   try {
@@ -769,6 +843,20 @@ function buildProviderGuidanceCopy(mode: 'unconfigured' | 'unavailable') {
 const providerConfigDialogCopy = computed(() =>
   buildProviderGuidanceCopy(providerConfigDialogMode.value)
 )
+const modelAutoFallbackDialogState = computed(() => {
+  const pending = chatStore.pendingModelAutoFallback
+  if (!pending) return null
+  if (pending.conversationId !== (chatStore.currentConversationId || '')) return null
+  return pending
+})
+const modelAutoFallbackTargetLabel = computed(() => {
+  const pending = modelAutoFallbackDialogState.value
+  if (!pending) return ''
+  if (pending.requestedProviderId) {
+    return `${pending.requestedProviderId}/${pending.requestedModelId}`
+  }
+  return pending.requestedModelId
+})
 const activeTodoPanelCollapsed = ref(loadActiveTodoPanelCollapsed())
 const focusedTodoMessageId = ref<string | null>(null)
 let focusedTodoMessageTimer: ReturnType<typeof setTimeout> | null = null
@@ -898,6 +986,9 @@ const cloudActiveCount = computed(
 const localActiveCount = computed(
   () => providerPoolStore.localProviders.filter((p) => p.status === 'active').length
 )
+const enabledChatProviders = computed(() =>
+  providerPoolStore.enabledProviders.filter((provider) => provider.type !== 'media')
+)
 const totalActiveProviderCount = computed(() => cloudActiveCount.value + localActiveCount.value)
 const isSingleModelMode = computed(() => chatStore.modelPreference !== 'auto')
 
@@ -916,21 +1007,24 @@ const fixedModelOptions = computed(() => {
     duplicateCount.set(model.id, (duplicateCount.get(model.id) || 0) + 1)
   }
 
-  return sortItemsByModelPreference(
-    availableModels,
-    (model) => model.id,
-    (left, right) => left.provider_id.localeCompare(right.provider_id)
-  )
-    .map((model) => ({
-      id: model.id,
-      providerId: model.provider_id,
-      value: `${model.provider_id}/${model.id}`,
-      label:
-        (duplicateCount.get(model.id) || 0) > 1
-          ? `${providerPoolStore.getProviderDisplayName(model.provider_id)} · ${model.id}`
-          : model.id,
-    }))
+  return availableModels.map((model) => ({
+    id: model.id,
+    providerId: model.provider_id,
+    value: `${model.provider_id}/${model.id}`,
+    label:
+      (duplicateCount.get(model.id) || 0) > 1
+        ? `${providerPoolStore.getProviderDisplayName(model.provider_id)} · ${model.display_name || model.id}`
+        : model.display_name || model.id,
+  }))
 })
+
+const showRoutingControl = computed(() => enabledChatProviders.value.length > 0)
+const showLocationRoutingOptions = computed(
+  () =>
+    enabledChatProviders.value.length > 1 &&
+    providerPoolStore.hasCloudProviders &&
+    providerPoolStore.hasLocalProviders
+)
 
 const fixedModelLabel = computed(() => {
   if (chatStore.modelPreference === 'auto') return t('chat.routingMode.highAvailability')
@@ -1093,17 +1187,15 @@ useChatShortcuts({
 
 // Scroll to bottom when messages change
 let autoScrollRafId: number | null = null
-function scheduleScrollToBottom(behavior: 'auto' | 'smooth' = 'auto') {
-  const nearBottom = checkIfNearBottom()
-  isUserNearBottom.value = nearBottom
-  if (!nearBottom) return
+function scheduleFollowScrollToBottom(behavior: 'auto' | 'smooth' = 'auto') {
+  if (!isUserNearBottom.value) return
   if (autoScrollRafId !== null) return
+  recordChatPerfCount('chat_view.follow_scroll.scheduled')
   autoScrollRafId = window.requestAnimationFrame(async () => {
     autoScrollRafId = null
     await nextTick()
-    const stillNearBottom = checkIfNearBottom()
-    isUserNearBottom.value = stillNearBottom
-    if (stillNearBottom) {
+    if (isUserNearBottom.value) {
+      recordChatPerfCount('chat_view.follow_scroll.executed')
       scrollToBottom(behavior)
     }
   })
@@ -1112,7 +1204,7 @@ function scheduleScrollToBottom(behavior: 'auto' | 'smooth' = 'auto') {
 watch(
   () => chatStore.messages.length,
   () => {
-    scheduleScrollToBottom('auto')
+    scheduleFollowScrollToBottom('auto')
   }
 )
 
@@ -1120,7 +1212,7 @@ watch(
 watch(
   () => chatStore.streamingContent,
   () => {
-    scheduleScrollToBottom('auto')
+    scheduleFollowScrollToBottom('auto')
   }
 )
 
@@ -1133,6 +1225,8 @@ watch(
     lastRenderMetaLookupKey = ''
     lastRenderMetaLookupMessage = null
     lastRenderMetaLookupValue = null
+    lastActiveMessageStreamStateDeps = null
+    lastActiveMessageStreamStateValue = null
     clearVirtualItemObservers()
     if (isMobile.value) {
       showSidebar.value = false
@@ -1174,19 +1268,22 @@ let normalScrollRafId: number | null = null
 let normalLoadMoreInFlight = false
 
 function checkIfNearBottom() {
-  if (useVirtualScroll.value && virtualScrollRef.value) {
-    // For virtual scroll, use exposed scroll container directly.
-    const container = virtualScrollRef.value.getContainer?.()
-    if (container) {
-      const { scrollTop, scrollHeight, clientHeight } = container
+  return measureChatPerf('chat_view.check_if_near_bottom', () => {
+    recordChatPerfCount('chat_view.check_if_near_bottom.calls')
+    if (useVirtualScroll.value && virtualScrollRef.value) {
+      // For virtual scroll, use exposed scroll container directly.
+      const container = virtualScrollRef.value.getContainer?.()
+      if (container) {
+        const { scrollTop, scrollHeight, clientHeight } = container
+        return scrollHeight - scrollTop - clientHeight < NEAR_BOTTOM_THRESHOLD
+      }
+      return true
+    } else if (messagesContainer.value) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
       return scrollHeight - scrollTop - clientHeight < NEAR_BOTTOM_THRESHOLD
     }
     return true
-  } else if (messagesContainer.value) {
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
-    return scrollHeight - scrollTop - clientHeight < NEAR_BOTTOM_THRESHOLD
-  }
-  return true
+  })
 }
 
 function scrollToBottom(behavior: 'auto' | 'smooth' = 'auto') {
@@ -1232,6 +1329,7 @@ function handleScroll() {
               const newHeight = messagesContainer.value.scrollHeight
               messagesContainer.value.scrollTop = newHeight - previousHeight
             }
+            isUserNearBottom.value = checkIfNearBottom()
           })
         })
         .finally(() => {
@@ -1278,9 +1376,12 @@ function handleVisibleRangeChange(start: number, _end: number) {
 
   virtualLoadMoreInFlight = true
   virtualLoadMoreLastAt = now
-  chatStore.loadMoreMessages().finally(() => {
-    virtualLoadMoreInFlight = false
-  })
+  chatStore
+    .loadMoreMessages()
+    .finally(() => {
+      virtualLoadMoreInFlight = false
+      isUserNearBottom.value = checkIfNearBottom()
+    })
 }
 
 async function handleSend(message: string, attachments?: FileAttachment[]) {
@@ -1354,9 +1455,9 @@ function handleCancel() {
 
   // 3. Cancel running projected tasks in the current conversation
   if (runningTasks.length > 0) {
-    void Promise.allSettled(runningTasks.map((task) => taskProjections.cancelTask(task.id))).catch(
-      () => {}
-    )
+    void Promise.allSettled(
+      runningTasks.map((task) => taskProjections.performTaskAction(task, 'cancel'))
+    ).catch(() => {})
   }
 
   // 4. Append a stop notification message if any async task was cancelled
@@ -1387,16 +1488,6 @@ function handleCancel() {
 
 function handleInject(message: string) {
   chatStore.injectMessage(message)
-}
-
-async function sendAgentMessage(taskId: string, message: string) {
-  try {
-    const { agentApi } = await loadChatApiModule()
-    await agentApi.sendMessage(taskId, message)
-    await taskProjections.refreshNow().catch(() => {})
-  } catch (e) {
-    console.error('Failed to send message to agent task:', e)
-  }
 }
 
 async function handleSelectConversation(id: string) {
@@ -1547,11 +1638,16 @@ watch(
     [
       showRoutingMenu.value,
       isMobile.value,
+      showRoutingControl.value,
       isSingleModelMode.value,
       fixedModelOptions.value.length,
       chatStore.modelPreference,
     ] as const,
-  ([open, mobile]) => {
+  ([open, mobile, routingVisible]) => {
+    if (!routingVisible && open) {
+      showRoutingMenu.value = false
+      return
+    }
     if (!open || mobile) return
     updateRoutingMenuPosition()
   }
@@ -1708,6 +1804,14 @@ function handleStreamRetry() {
 function handleOpenProviderSettings() {
   closeProviderConfigDialog()
   void router.push('/settings?tab=llm')
+}
+
+function dismissModelAutoFallbackDialog() {
+  chatStore.dismissModelAutoFallbackRetry()
+}
+
+function confirmModelAutoFallbackDialog() {
+  void chatStore.confirmModelAutoFallbackRetry()
 }
 
 function closeProviderConfigDialog() {
@@ -2329,6 +2433,7 @@ onUnmounted(() => {
                     </button>
 
                     <button
+                      v-if="showLocationRoutingOptions"
                       class="routing-option-row w-full"
                       :class="{
                         'is-active': providerPoolStore.routingMode === 'cloud',
@@ -2370,6 +2475,7 @@ onUnmounted(() => {
                     </button>
 
                     <button
+                      v-if="showLocationRoutingOptions"
                       class="routing-option-row w-full"
                       :class="{
                         'is-active': providerPoolStore.routingMode === 'local',
@@ -2572,6 +2678,7 @@ onUnmounted(() => {
                       </button>
 
                       <button
+                        v-if="showLocationRoutingOptions"
                         class="routing-option-row w-full"
                         :class="{
                           'is-active': providerPoolStore.routingMode === 'cloud',
@@ -2615,6 +2722,7 @@ onUnmounted(() => {
                       </button>
 
                       <button
+                        v-if="showLocationRoutingOptions"
                         class="routing-option-row w-full"
                         :class="{
                           'is-active': providerPoolStore.routingMode === 'local',
@@ -2805,6 +2913,7 @@ onUnmounted(() => {
                       </button>
 
                       <button
+                        v-if="showRoutingControl"
                         class="quick-action-tile"
                         :class="{ 'is-active': showRoutingMenu }"
                         :title="routingButtonTitle"
@@ -2947,6 +3056,7 @@ onUnmounted(() => {
                   }}</span>
                 </button>
                 <button
+                  v-if="showRoutingControl"
                   ref="desktopRoutingMenuAnchorEl"
                   class="chat-thread-detail-btn chat-thread-routing-btn inline-flex items-center gap-2 transition-colors cursor-pointer routing-menu-anchor"
                   :class="{ 'is-active': showRoutingMenu }"
@@ -3345,9 +3455,8 @@ onUnmounted(() => {
                     :key="task.id"
                     :task="task"
                     :collapse-by-default="true"
-                    @cancel="cancelProjectedTask"
+                    @action="performProjectedTaskAction"
                     @open="openProjectedTask"
-                    @message="sendAgentMessage"
                   />
                 </div>
 
@@ -3464,29 +3573,29 @@ onUnmounted(() => {
                               ? t('chat.requestBuildFailed')
                               : chatStore.streamError === 'requestTooLarge'
                                 ? t('chat.requestTooLarge')
-                            : chatStore.streamError === 'providerNoResponse'
-                              ? t('chat.providerNoResponse')
-                              : chatStore.streamError === 'providerReturnedEmpty'
-                                ? t('chat.providerReturnedEmpty')
-                                : chatStore.streamError === 'noResponseBody'
-                                  ? t('chat.noResponseBody')
-                                  : chatStore.streamError === 'trial_service_busy'
-                                    ? t('chat.trialServiceBusy')
-                                    : chatStore.streamError === 'provider_tool_unsupported'
-                                      ? t('chat.providerToolUnsupported')
-                                      : chatStore.streamError === 'provider_unavailable'
-                                        ? t('chat.providerUnavailable')
-                                        : chatStore.streamError === 'provider_auth_error'
-                                          ? t('chat.providerAuthError')
-                                          : chatStore.streamError === 'provider_rate_limited'
-                                            ? t('chat.providerRateLimited')
-                                            : chatStore.streamError ===
-                                                'provider_openrouter_privacy_policy'
-                                              ? t('chat.providerOpenRouterPrivacyPolicy')
-                                              : chatStore.streamError ===
-                                                  'execDirectoryApprovalTimeout'
-                                                ? t('chat.execDirectoryApprovalTimeout')
-                                                : chatStore.streamError
+                                : chatStore.streamError === 'providerNoResponse'
+                                  ? t('chat.providerNoResponse')
+                                  : chatStore.streamError === 'providerReturnedEmpty'
+                                    ? t('chat.providerReturnedEmpty')
+                                    : chatStore.streamError === 'noResponseBody'
+                                      ? t('chat.noResponseBody')
+                                      : chatStore.streamError === 'trial_service_busy'
+                                        ? t('chat.trialServiceBusy')
+                                        : chatStore.streamError === 'provider_tool_unsupported'
+                                          ? t('chat.providerToolUnsupported')
+                                          : chatStore.streamError === 'provider_unavailable'
+                                            ? t('chat.providerUnavailable')
+                                            : chatStore.streamError === 'provider_auth_error'
+                                              ? t('chat.providerAuthError')
+                                              : chatStore.streamError === 'provider_rate_limited'
+                                                ? t('chat.providerRateLimited')
+                                                : chatStore.streamError ===
+                                                    'provider_openrouter_privacy_policy'
+                                                  ? t('chat.providerOpenRouterPrivacyPolicy')
+                                                  : chatStore.streamError ===
+                                                      'execDirectoryApprovalTimeout'
+                                                    ? t('chat.execDirectoryApprovalTimeout')
+                                                    : chatStore.streamError
                     }}</span>
                     <button
                       class="px-2 py-0.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 cursor-pointer transition-colors text-xs"
@@ -3811,7 +3920,7 @@ onUnmounted(() => {
                 <UserTaskProjectionDock
                   :tasks="taskProjections.backgroundTasks"
                   @open="openProjectedTask"
-                  @cancel="cancelProjectedTask"
+                  @action="performProjectedTaskAction"
                 />
               </div>
               <!-- Media generation param panel -->
@@ -3952,6 +4061,99 @@ onUnmounted(() => {
 
     <!-- Exec directory approval dialog -->
     <ExecApprovalDialog />
+
+    <!-- Fixed-model unavailable dialog -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="modelAutoFallbackDialogState"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="model-auto-fallback-dialog-title"
+          class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          @click.self="dismissModelAutoFallbackDialog"
+        >
+          <div
+            class="w-full max-w-md mx-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden"
+          >
+            <div class="p-6 text-center">
+              <p
+                class="mb-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-500 dark:text-amber-300"
+              >
+                {{ chatTextWithFallback('chat.modelFallback.eyebrow', 'Fixed model unavailable') }}
+              </p>
+              <div
+                class="w-14 h-14 mx-auto mb-4 rounded-full flex items-center justify-center bg-amber-100 dark:bg-amber-900/30"
+              >
+                <svg
+                  class="w-7 h-7 text-amber-600 dark:text-amber-300"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              </div>
+              <h3
+                id="model-auto-fallback-dialog-title"
+                class="text-lg font-semibold text-gray-900 dark:text-white mb-2"
+              >
+                {{
+                  chatTextWithFallback(
+                    'chat.modelFallback.title',
+                    'Switch to auto routing and retry?'
+                  )
+                }}
+              </h3>
+              <p class="text-sm leading-6 text-gray-500 dark:text-gray-400 mb-3">
+                {{
+                  chatTextWithNamedFallback(
+                    'chat.modelFallback.description',
+                    'The fixed model "{model}" is no longer available. Switch this chat back to auto routing and retry your last request?',
+                    { model: modelAutoFallbackTargetLabel }
+                  )
+                }}
+              </p>
+              <p
+                class="mb-6 rounded-xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 break-all"
+              >
+                {{ modelAutoFallbackTargetLabel }}
+              </p>
+              <div class="flex gap-3">
+                <button
+                  class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                  @click="dismissModelAutoFallbackDialog"
+                >
+                  {{
+                    chatTextWithFallback('chat.modelFallback.secondaryAction', 'Keep current model')
+                  }}
+                </button>
+                <button
+                  class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
+                  @click="confirmModelAutoFallbackDialog"
+                >
+                  {{ chatTextWithFallback('chat.modelFallback.primaryAction', 'Switch and retry') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <TaskActionDialog
+      :open="!!pendingTaskActionDialog"
+      :action="pendingTaskActionDialog?.action || null"
+      :submitting="taskActionDialogSubmitting"
+      :submit-error="taskActionDialogError"
+      @close="closeTaskActionDialog()"
+      @confirm="confirmTaskActionDialog"
+    />
 
     <!-- Provider config required dialog -->
     <Teleport to="body">

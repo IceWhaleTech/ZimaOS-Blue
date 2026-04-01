@@ -7,7 +7,7 @@
 .PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
 
 # Version info
-VERSION ?= 0.10.20
+VERSION ?= 0.10.36
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 

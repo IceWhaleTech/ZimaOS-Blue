@@ -1,0 +1,136 @@
+{
+  "generated_at": "2026-03-30T19:06:47.971927Z",
+  "owner_user_id": "release-gate",
+  "candidate_id": "live-auto-selector-2",
+  "candidate_label": "live-auto-selector-2",
+  "assets": {},
+  "eval_run": {
+    "id": "bf04ba40-5a3b-455b-9ec1-b003de77ff74",
+    "eval_spec_id": "ab341f00-52ff-4907-9a8e-dd95103c2356",
+    "group_id": "bec58521-5b6b-42b5-a88f-d12f05a3fc21",
+    "dataset_version_id": "80c1fc01-bacb-4f78-b281-7b0446a555d9",
+    "baseline_eval_run_id": "38dfd117-b392-4a19-bfd3-40fd648c895e",
+    "title": "selector-gate-20260330-190443",
+    "owner_user_id": "release-gate",
+    "status": "completed",
+    "trigger_kind": "selector_gate_runner",
+    "metadata": {
+      "candidate_id": "live-auto-selector-2",
+      "candidate_label": "live-auto-selector-2",
+      "source": "scripts/selector_gate_runner.py"
+    },
+    "summary": {
+      "counts": {
+        "passed": 195,
+        "verdict:pass": 195
+      },
+      "evidence_backed_pass_rate": 1,
+      "item_count": 195,
+      "overall_score": 0.9521367521367522,
+      "pass_rate": 1,
+      "total_attempts": 195,
+      "verification_pass_rate": 1
+    },
+    "created_at": "2026-03-31T03:04:43.762258+08:00",
+    "updated_at": "2026-03-31T03:06:47.913503+08:00",
+    "started_at": "2026-03-31T03:06:47.913503+08:00",
+    "finished_at": "2026-03-31T03:06:47.913503+08:00"
+  },
+  "reused_eval_run": true,
+  "resolved_comparison_base": {
+    "owner_user_id": "release-gate",
+    "eval_spec_id": "ab341f00-52ff-4907-9a8e-dd95103c2356",
+    "requested_baseline_id": "",
+    "requested_base_eval_run_id": "",
+    "resolution": "existing_default_baseline",
+    "baseline_id": "d47a3d8e-db59-415d-a449-95f7a6a13ec9",
+    "base_eval_run_id": "38dfd117-b392-4a19-bfd3-40fd648c895e",
+    "baseline": {
+      "id": "d47a3d8e-db59-415d-a449-95f7a6a13ec9",
+      "name": "selector-auto-baseline-38dfd117-b392-4a19-bfd3-40fd648c895e",
+      "subject": "selector_dry_run",
+      "owner_user_id": "release-gate",
+      "eval_spec_id": "ab341f00-52ff-4907-9a8e-dd95103c2356",
+      "eval_run_id": "38dfd117-b392-4a19-bfd3-40fd648c895e",
+      "is_default": true,
+      "metadata": {
+        "auto_created": true,
+        "auto_created_for": "selector_gate",
+        "candidate_id": "live-auto-selector-2",
+        "source": "scripts/selector_gate_runner.py"
+      },
+      "created_at": "2026-03-31T03:04:43.762258+08:00",
+      "updated_at": "2026-03-31T03:04:43.762258+08:00"
+    }
+  },
+  "requested_budget_gate": {
+    "base_eval_run_id": "38dfd117-b392-4a19-bfd3-40fd648c895e",
+    "baseline_id": "d47a3d8e-db59-415d-a449-95f7a6a13ec9"
+  },
+  "status": "passed",
+  "passed": true,
+  "budget_gate": {
+    "target_eval_run_id": "bf04ba40-5a3b-455b-9ec1-b003de77ff74",
+    "base_eval_run_id": "38dfd117-b392-4a19-bfd3-40fd648c895e",
+    "baseline_id": "d47a3d8e-db59-415d-a449-95f7a6a13ec9",
+    "metrics": {
+      "case_count": 195,
+      "comparable_case_count": 195,
+      "missing_surface_case_count": 0,
+      "base_median_tool_count": 17,
+      "target_median_tool_count": 1,
+      "base_median_schema_bytes": 8164,
+      "target_median_schema_bytes": 1358,
+      "median_schema_byte_reduction_rate": 0.8336599706026457,
+      "base_median_latency_ms": 0,
+      "target_median_latency_ms": 0,
+      "median_latency_increase_rate": 0,
+      "allowed_final_native_tools": [
+        "exec"
+      ],
+      "allowed_final_native_tool_cases": 195,
+      "allowed_final_native_tool_case_rate": 1,
+      "non_allowed_native_tool_case_count": 0
+    },
+    "thresholds": {
+      "allowed_final_native_tools": [
+        "exec"
+      ],
+      "max_median_latency_increase_rate": 0.1,
+      "min_median_schema_byte_reduction_rate": 0.8
+    },
+    "checks": [
+      {
+        "name": "surface_metrics_coverage",
+        "passed": true,
+        "actual": 195,
+        "expected": 195
+      },
+      {
+        "name": "median_schema_byte_reduction_rate",
+        "passed": true,
+        "actual": 0.8336599706026457,
+        "expected": 0.8
+      },
+      {
+        "name": "median_latency_increase_rate",
+        "passed": true,
+        "actual": 0,
+        "expected": 0.1
+      },
+      {
+        "name": "final_native_tool_surface",
+        "passed": true,
+        "actual": 0,
+        "expected": 0,
+        "details": {
+          "allowed_final_native_tools": [
+            "exec"
+          ]
+        }
+      }
+    ],
+    "passed": true,
+    "created_at": "2026-03-31T03:06:49.632339+08:00"
+  }
+}

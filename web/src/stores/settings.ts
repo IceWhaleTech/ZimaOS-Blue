@@ -274,7 +274,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   /** Shared logic: convert raw Provider[] → ChatProviderInfo[] and set default selection. */
   function applyPoolProviders(poolProviders: Provider[]) {
-    // Keep OAuth-backed providers in backend data, but hide them from chat UI for now.
+    // Keep providers aligned with the provider settings UI, while still hiding
+    // official providers that do not yet have a usable setup flow.
     const enabledProviders = filterProvidersVisibleInUI(poolProviders).filter(
       (p: Provider) => p.enabled
     )

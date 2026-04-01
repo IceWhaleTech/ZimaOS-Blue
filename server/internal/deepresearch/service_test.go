@@ -807,7 +807,7 @@ func TestServiceOwnershipAndActorScoping(t *testing.T) {
 	}
 }
 
-func TestServiceCreateJob_ConcurrencyLimitPerUser(t *testing.T) {
+func TestServiceCreateJob_WaitsForAvailableUserSlot(t *testing.T) {
 	release := make(chan struct{})
 	svc := NewService(&mockPlanner{
 		plan: func(query string, mode Mode, lang string) []Task {
@@ -830,12 +830,72 @@ func TestServiceCreateJob_ConcurrencyLimitPerUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create first job failed: %v", err)
 	}
-	if _, err := svc.CreateJob(context.Background(), CreateJobRequest{Query: "second", UserID: "u1"}); !errors.Is(err, ErrTooManyActiveJobs) {
-		t.Fatalf("create second job err = %v, want %v", err, ErrTooManyActiveJobs)
+
+	go func() {
+		time.Sleep(75 * time.Millisecond)
+		close(release)
+	}()
+
+	started := time.Now()
+	second, err := svc.CreateJob(context.Background(), CreateJobRequest{Query: "second", UserID: "u1"})
+	if err != nil {
+		t.Fatalf("create second job failed after waiting: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed < 50*time.Millisecond {
+		t.Fatalf("create second job returned too early, elapsed=%s", elapsed)
+	}
+
+	_ = waitForTerminalJob(t, svc, job.ID, 2*time.Second)
+	_ = waitForTerminalJob(t, svc, second.ID, 2*time.Second)
+}
+
+func TestServiceCreateJob_WaitHonorsContextCancellation(t *testing.T) {
+	release := make(chan struct{})
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{ID: "task_1", Question: "q", Priority: 1, Depth: 1, Status: "pending"}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			select {
+			case <-release:
+				return []SearchHit{{Title: "Doc", URL: "https://example.com/a", Description: "A"}}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+	})
+	svc.maxConcurrentPerUser = 1
+	svc.maxCreatesPerWindow = 10
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{Query: "first", UserID: "u1"})
+	if err != nil {
+		t.Fatalf("create first job failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	if _, err := svc.CreateJob(ctx, CreateJobRequest{Query: "second", UserID: "u1"}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("create second job err = %v, want context deadline exceeded", err)
 	}
 
 	close(release)
 	_ = waitForTerminalJob(t, svc, job.ID, 2*time.Second)
+}
+
+func TestNewService_AllowsEnvOverrideForMaxConcurrentPerUser(t *testing.T) {
+	t.Setenv(deepResearchMaxConcurrentEnv, "6")
+
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return nil, nil
+		},
+	})
+
+	if svc.maxConcurrentPerUser != 6 {
+		t.Fatalf("maxConcurrentPerUser = %d, want 6", svc.maxConcurrentPerUser)
+	}
 }
 
 func TestServiceCreateJob_RateLimitPerUser(t *testing.T) {

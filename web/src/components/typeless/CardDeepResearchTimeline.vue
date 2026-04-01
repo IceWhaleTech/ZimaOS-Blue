@@ -11,6 +11,8 @@ import {
   localizeDeepResearchGap,
   localizeDeepResearchMode,
   localizeDeepResearchStatus,
+  localizeResearchProgressLabel,
+  localizeResearchSurfaceTitle,
 } from '@/utils/deepResearchText'
 
 const { t, te } = useI18n()
@@ -160,7 +162,7 @@ function stepKindLabel(step: DeepResearchTimelineStep): string {
     'loop-stopped': resolveLabel('chat.deepResearchActionLoopStopped', 'Research loop stopped'),
   }
   if (step.type === 'deep-research-progress') {
-    return resolveLabel('chat.deepResearchProgress', 'Deep Research Running')
+    return localizeResearchProgressLabel(resolveLabel)
   }
   return labels[eventKind] || eventKind || stageLabel(step.stage)
 }
@@ -232,7 +234,7 @@ function domainOf(source: DeepResearchLiveSource): string {
 
 const headerTitle = computed(() => {
   if (query.value) return query.value
-  return resolveLabel('chat.deepResearchTitle', 'Deep Research')
+  return localizeResearchSurfaceTitle(resolveLabel)
 })
 
 const emptyStateLabel = computed(() => {
@@ -256,7 +258,7 @@ const emptyStateLabel = computed(() => {
             <span
               class="rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
-              {{ resolveLabel('chat.deepResearchTitle', 'Deep Research') }}
+              {{ localizeResearchSurfaceTitle(resolveLabel) }}
             </span>
             <span class="rounded-full px-2 py-0.5" :class="statusClass">
               {{ stageLabel(stage || status) }}

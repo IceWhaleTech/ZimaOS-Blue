@@ -159,6 +159,53 @@ func TestFetchOpenAIModels(t *testing.T) {
 	}
 }
 
+func TestGetModelsForCatalogProviderMergesCatalogMetadataIntoStoredModels(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "catalog-models-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	provider := GetBuiltinProvider("openai")
+	provider.Enabled = true
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	if err := storage.SaveModels("openai", []*Model{{
+		ID:            "gpt-4o",
+		ProviderID:    "openai",
+		Name:          "gpt-4o",
+		DisplayName:   "temporary-name",
+		Enabled:       true,
+		ContextWindow: 1,
+		MaxOutput:     1,
+	}}); err != nil {
+		t.Fatalf("SaveModels failed: %v", err)
+	}
+
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	models, err := discovery.GetModels("openai")
+	if err != nil {
+		t.Fatalf("GetModels failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 stored model, got %d", len(models))
+	}
+	if models[0].DisplayName != "GPT-4o" {
+		t.Fatalf("expected catalog display name, got %q", models[0].DisplayName)
+	}
+	if models[0].ContextWindow != 128000 {
+		t.Fatalf("expected catalog context window, got %d", models[0].ContextWindow)
+	}
+	if models[0].MaxOutput != 16384 {
+		t.Fatalf("expected catalog max output, got %d", models[0].MaxOutput)
+	}
+}
+
 func TestFetchOpenAIModels_ResponsesBaseURLUsesRootModelsEndpoint(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
@@ -430,7 +477,7 @@ func TestGetFilteredModels_DefaultSortsByPreference(t *testing.T) {
 	if len(filtered) != 3 {
 		t.Fatalf("Expected 3 models, got %d", len(filtered))
 	}
-	if filtered[0].ID != "gpt-5.3-codex" || filtered[1].ID != "gpt-5.3-codex-spark" || filtered[2].ID != "gpt-4o-mini" {
+	if filtered[0].ID != "gpt-5.3-codex-spark" || filtered[1].ID != "gpt-5.3-codex" || filtered[2].ID != "gpt-4o-mini" {
 		t.Fatalf("unexpected model order: [%s %s %s]", filtered[0].ID, filtered[1].ID, filtered[2].ID)
 	}
 }

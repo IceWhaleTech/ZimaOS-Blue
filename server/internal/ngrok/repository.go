@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -65,7 +68,8 @@ type ConfigProvider interface {
 
 // Repository handles remote access data persistence.
 type Repository struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // NewRepository creates a new repository.
@@ -85,19 +89,204 @@ func NewRepository(dbPath string) (*Repository, error) {
 		if _, err := db.Exec(`PRAGMA wal_autocheckpoint=1000`); err != nil {
 			return err
 		}
-		repo := &Repository{db: db}
+		repo := &Repository{db: db, readDB: db}
 		return repo.migrate()
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &Repository{db: db}, nil
+	readDB, readErr := openNgrokReaderDB(dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+
+	return &Repository{db: db, readDB: readDB}, nil
 }
 
 // Close closes the database connection.
 func (r *Repository) Close() error {
+	if r == nil {
+		return nil
+	}
+	if r.readDB != nil && r.readDB != r.db {
+		_ = r.readDB.Close()
+	}
 	return r.db.Close()
+}
+
+func (r *Repository) reader() *sql.DB {
+	if r != nil && r.readDB != nil {
+		return r.readDB
+	}
+	if r == nil {
+		return nil
+	}
+	return r.db
+}
+
+func (r *Repository) table(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, r.db, name)
+}
+
+func (r *Repository) readTable(ctx context.Context, name string) *z.ZormTable {
+	return z.TableContext(ctx, r.reader(), name)
+}
+
+type remoteAccessConfigRow struct {
+	ID                    string  `json:"id" zorm:"id"`
+	Enabled               bool    `json:"enabled" zorm:"enabled"`
+	TunnelSubdomain       *string `json:"tunnel_subdomain" zorm:"tunnel_subdomain"`
+	NgrokAuthtoken        *string `json:"ngrok_authtoken" zorm:"ngrok_authtoken"`
+	NgrokDomain           *string `json:"ngrok_domain" zorm:"ngrok_domain"`
+	CloudflareToken       *string `json:"cloudflare_token" zorm:"cloudflare_token"`
+	DefaultProvider       *string `json:"default_provider" zorm:"default_provider"`
+	NotificationEmail     *string `json:"notification_email" zorm:"notification_email"`
+	NotifyOnURLChange     bool    `json:"notify_on_url_change" zorm:"notify_on_url_change"`
+	NotifyOnExpiryWarning bool    `json:"notify_on_expiry_warning" zorm:"notify_on_expiry_warning"`
+	NotifyOnError         bool    `json:"notify_on_error" zorm:"notify_on_error"`
+	CreatedAt             string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt             string  `json:"updated_at" zorm:"updated_at"`
+}
+
+type remoteAccessSessionRow struct {
+	ID           string  `json:"id" zorm:"id"`
+	TunnelURL    string  `json:"tunnel_url" zorm:"tunnel_url"`
+	StartedAt    string  `json:"started_at" zorm:"started_at"`
+	ExpiresAt    string  `json:"expires_at" zorm:"expires_at"`
+	EndedAt      *string `json:"ended_at" zorm:"ended_at"`
+	RenewedCount int     `json:"renewed_count" zorm:"renewed_count"`
+	Status       string  `json:"status" zorm:"status"`
+	ErrorMessage *string `json:"error_message" zorm:"error_message"`
+	CreatedAt    string  `json:"created_at" zorm:"created_at"`
+}
+
+type remoteAccessLogRow struct {
+	ID        string  `json:"id" zorm:"id"`
+	SessionID *string `json:"session_id" zorm:"session_id"`
+	EventType string  `json:"event_type" zorm:"event_type"`
+	Message   string  `json:"message" zorm:"message"`
+	Metadata  *string `json:"metadata" zorm:"metadata"`
+	CreatedAt string  `json:"created_at" zorm:"created_at"`
+}
+
+func parseNgrokTime(raw string) time.Time {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func nullableNgrokTime(ts time.Time) interface{} {
+	if ts.IsZero() {
+		return nil
+	}
+	return ts.UTC().Format(time.RFC3339Nano)
+}
+
+func strValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func strOrDefault(v *string, def string) string {
+	if v == nil || *v == "" {
+		return def
+	}
+	return *v
+}
+
+func rowToConfig(row remoteAccessConfigRow) *RemoteAccessConfig {
+	config := &RemoteAccessConfig{
+		ID:                    row.ID,
+		Enabled:               row.Enabled,
+		TunnelSubdomain:       strValue(row.TunnelSubdomain),
+		NgrokAuthtoken:        strValue(row.NgrokAuthtoken),
+		NgrokDomain:           strValue(row.NgrokDomain),
+		CloudflareToken:       strValue(row.CloudflareToken),
+		DefaultProvider:       strOrDefault(row.DefaultProvider, "auto"),
+		NotificationEmail:     strValue(row.NotificationEmail),
+		NotifyOnURLChange:     row.NotifyOnURLChange,
+		NotifyOnExpiryWarning: row.NotifyOnExpiryWarning,
+		NotifyOnError:         row.NotifyOnError,
+		CreatedAt:             parseNgrokTime(row.CreatedAt),
+		UpdatedAt:             parseNgrokTime(row.UpdatedAt),
+	}
+	if config.ID == "" {
+		config.ID = "default"
+	}
+	return config
+}
+
+func rowToSession(row remoteAccessSessionRow) *RemoteAccessSession {
+	session := &RemoteAccessSession{
+		ID:           row.ID,
+		TunnelURL:    row.TunnelURL,
+		StartedAt:    parseNgrokTime(row.StartedAt),
+		ExpiresAt:    parseNgrokTime(row.ExpiresAt),
+		RenewedCount: row.RenewedCount,
+		Status:       row.Status,
+		CreatedAt:    parseNgrokTime(row.CreatedAt),
+	}
+	if row.EndedAt != nil {
+		session.EndedAt = parseNgrokTime(*row.EndedAt)
+	}
+	if row.ErrorMessage != nil {
+		session.ErrorMessage = *row.ErrorMessage
+	}
+	return session
+}
+
+func rowToLog(row remoteAccessLogRow) *RemoteAccessLog {
+	log := &RemoteAccessLog{
+		ID:        row.ID,
+		EventType: row.EventType,
+		Message:   row.Message,
+		CreatedAt: parseNgrokTime(row.CreatedAt),
+	}
+	if row.SessionID != nil {
+		log.SessionID = *row.SessionID
+	}
+	if row.Metadata != nil && *row.Metadata != "" {
+		_ = json.Unmarshal([]byte(*row.Metadata), &log.Metadata)
+	}
+	return log
+}
+
+func rowsToLogs(rows []remoteAccessLogRow) []*RemoteAccessLog {
+	logs := make([]*RemoteAccessLog, 0, len(rows))
+	for i := range rows {
+		logs = append(logs, rowToLog(rows[i]))
+	}
+	return logs
+}
+
+func openNgrokReaderDB(dbPath string) (*sql.DB, error) {
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // migrate creates the necessary tables.
@@ -171,29 +360,32 @@ const base58Alphabet = "180789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 // initializeTunnelSubdomain ensures a tunnel subdomain exists.
 func (r *Repository) initializeTunnelSubdomain(ctx context.Context) error {
-	// Check if subdomain already exists
-	var subdomain sql.NullString
-	err := r.db.QueryRowContext(ctx, `
-		SELECT tunnel_subdomain FROM remote_access_config WHERE id = 'default'
-	`).Scan(&subdomain)
-
-	if err == sql.ErrNoRows {
-		// No config exists, create one with subdomain
-		_, err = r.db.ExecContext(ctx, `
-			INSERT INTO remote_access_config (id, tunnel_subdomain) VALUES ('default', ?)
-		`, generateTunnelSubdomain())
+	var rows []remoteAccessConfigRow
+	_, err := r.readTable(ctx, "remote_access_config").Select(
+		&rows,
+		z.Fields("id", "tunnel_subdomain"),
+		z.Where(z.Eq("id", "default")),
+		z.Limit(1),
+	)
+	if err != nil {
 		return err
 	}
-
-	if err != nil {
+	if len(rows) == 0 {
+		// No config exists, create one with subdomain
+		_, err = r.table(ctx, "remote_access_config").Insert(z.V{
+			"id":               "default",
+			"tunnel_subdomain": generateTunnelSubdomain(),
+		})
 		return err
 	}
 
 	// If subdomain is empty, generate one
-	if !subdomain.Valid || subdomain.String == "" {
-		_, err = r.db.ExecContext(ctx, `
-			UPDATE remote_access_config SET tunnel_subdomain = ? WHERE id = 'default'
-		`, generateTunnelSubdomain())
+	if rows[0].TunnelSubdomain == nil || *rows[0].TunnelSubdomain == "" {
+		_, err = r.table(ctx, "remote_access_config").Update(
+			z.V{"tunnel_subdomain": generateTunnelSubdomain()},
+			z.Fields("tunnel_subdomain"),
+			z.Where(z.Eq("id", "default")),
+		)
 		return err
 	}
 
@@ -203,31 +395,36 @@ func (r *Repository) initializeTunnelSubdomain(ctx context.Context) error {
 // EnsureTunnelSubdomain returns the tunnel subdomain, generating and persisting one if empty.
 // Call this when starting auto (Serveo) so we always pass echo-xxx.
 func (r *Repository) EnsureTunnelSubdomain(ctx context.Context) (string, error) {
-	var subdomain sql.NullString
-	err := r.db.QueryRowContext(ctx, `
-		SELECT tunnel_subdomain FROM remote_access_config WHERE id = 'default'
-	`).Scan(&subdomain)
-
-	if err == sql.ErrNoRows {
+	var rows []remoteAccessConfigRow
+	_, err := r.readTable(ctx, "remote_access_config").Select(
+		&rows,
+		z.Fields("id", "tunnel_subdomain"),
+		z.Where(z.Eq("id", "default")),
+		z.Limit(1),
+	)
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
 		sub := generateTunnelSubdomain()
-		_, err = r.db.ExecContext(ctx, `
-			INSERT INTO remote_access_config (id, tunnel_subdomain) VALUES ('default', ?)
-		`, sub)
+		_, err = r.table(ctx, "remote_access_config").Insert(z.V{
+			"id":               "default",
+			"tunnel_subdomain": sub,
+		})
 		if err != nil {
 			return "", err
 		}
 		return sub, nil
 	}
-	if err != nil {
-		return "", err
-	}
-	if subdomain.Valid && subdomain.String != "" {
-		return subdomain.String, nil
+	if rows[0].TunnelSubdomain != nil && *rows[0].TunnelSubdomain != "" {
+		return *rows[0].TunnelSubdomain, nil
 	}
 	sub := generateTunnelSubdomain()
-	_, err = r.db.ExecContext(ctx, `
-		UPDATE remote_access_config SET tunnel_subdomain = ? WHERE id = 'default'
-	`, sub)
+	_, err = r.table(ctx, "remote_access_config").Update(
+		z.V{"tunnel_subdomain": sub},
+		z.Fields("tunnel_subdomain"),
+		z.Where(z.Eq("id", "default")),
+	)
 	if err != nil {
 		return "", err
 	}
@@ -244,101 +441,56 @@ func (r *Repository) GetConfig(ctx context.Context) (*RemoteAccessConfig, error)
 		NotifyOnExpiryWarning: false,
 		NotifyOnError:         true,
 	}
-
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, enabled, tunnel_subdomain, ngrok_authtoken, ngrok_domain, cloudflare_token, default_provider,
-		       notification_email, notify_on_url_change, notify_on_expiry_warning,
-		       notify_on_error, created_at, updated_at
-		FROM remote_access_config
-		WHERE id = 'default'
-	`)
-
-	var tunnelSubdomain, ngrokAuthtoken, ngrokDomain, cloudflareToken, defaultProvider, notificationEmail sql.NullString
-	var createdAt, updatedAt sql.NullTime
-
-	err := row.Scan(
-		&config.ID,
-		&config.Enabled,
-		&tunnelSubdomain,
-		&ngrokAuthtoken,
-		&ngrokDomain,
-		&cloudflareToken,
-		&defaultProvider,
-		&notificationEmail,
-		&config.NotifyOnURLChange,
-		&config.NotifyOnExpiryWarning,
-		&config.NotifyOnError,
-		&createdAt,
-		&updatedAt,
+	var rows []remoteAccessConfigRow
+	_, err := r.readTable(ctx, "remote_access_config").Select(
+		&rows,
+		z.Where(z.Eq("id", "default")),
+		z.Limit(1),
 	)
-
-	if err == sql.ErrNoRows {
-		// Return default config
-		return config, nil
-	}
-
 	if err != nil {
 		return nil, err
 	}
-
-	if tunnelSubdomain.Valid {
-		config.TunnelSubdomain = tunnelSubdomain.String
+	if len(rows) == 0 {
+		// Return default config
+		return config, nil
 	}
-	if ngrokAuthtoken.Valid {
-		config.NgrokAuthtoken = ngrokAuthtoken.String
-	}
-	if ngrokDomain.Valid {
-		config.NgrokDomain = ngrokDomain.String
-	}
-	if cloudflareToken.Valid {
-		config.CloudflareToken = cloudflareToken.String
-	}
-	if defaultProvider.Valid && defaultProvider.String != "" {
-		config.DefaultProvider = defaultProvider.String
-	}
-	if notificationEmail.Valid {
-		config.NotificationEmail = notificationEmail.String
-	}
-	if createdAt.Valid {
-		config.CreatedAt = createdAt.Time
-	}
-	if updatedAt.Valid {
-		config.UpdatedAt = updatedAt.Time
-	}
-
-	return config, nil
+	return rowToConfig(rows[0]), nil
 }
 
 // SaveConfig saves the remote access configuration.
 func (r *Repository) SaveConfig(ctx context.Context, config *RemoteAccessConfig) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO remote_access_config (
-			id, enabled, ngrok_authtoken, ngrok_domain, cloudflare_token, default_provider,
-			notification_email, notify_on_url_change, notify_on_expiry_warning,
-			notify_on_error, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(id) DO UPDATE SET
-			enabled = excluded.enabled,
-			ngrok_authtoken = excluded.ngrok_authtoken,
-			ngrok_domain = excluded.ngrok_domain,
-			cloudflare_token = excluded.cloudflare_token,
-			default_provider = excluded.default_provider,
-			notification_email = excluded.notification_email,
-			notify_on_url_change = excluded.notify_on_url_change,
-			notify_on_expiry_warning = excluded.notify_on_expiry_warning,
-			notify_on_error = excluded.notify_on_error,
-			updated_at = CURRENT_TIMESTAMP
-	`,
-		"default",
-		config.Enabled,
-		config.NgrokAuthtoken,
-		config.NgrokDomain,
-		config.CloudflareToken,
-		config.DefaultProvider,
-		config.NotificationEmail,
-		config.NotifyOnURLChange,
-		config.NotifyOnExpiryWarning,
-		config.NotifyOnError,
+	if config == nil {
+		return fmt.Errorf("config is nil")
+	}
+	_, err := r.table(ctx, "remote_access_config").Insert(
+		z.V{
+			"id":                       "default",
+			"enabled":                  config.Enabled,
+			"ngrok_authtoken":          config.NgrokAuthtoken,
+			"ngrok_domain":             config.NgrokDomain,
+			"cloudflare_token":         config.CloudflareToken,
+			"default_provider":         config.DefaultProvider,
+			"notification_email":       config.NotificationEmail,
+			"notify_on_url_change":     config.NotifyOnURLChange,
+			"notify_on_expiry_warning": config.NotifyOnExpiryWarning,
+			"notify_on_error":          config.NotifyOnError,
+			"updated_at":               timeutil.NowTime().UTC().Format(time.RFC3339Nano),
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"id"},
+			[]string{
+				"enabled",
+				"ngrok_authtoken",
+				"ngrok_domain",
+				"cloudflare_token",
+				"default_provider",
+				"notification_email",
+				"notify_on_url_change",
+				"notify_on_expiry_warning",
+				"notify_on_error",
+				"updated_at",
+			},
+		),
 	)
 
 	return err
@@ -348,41 +500,36 @@ func (r *Repository) SaveConfig(ctx context.Context, config *RemoteAccessConfig)
 func (r *Repository) CreateSession(ctx context.Context, session *RemoteAccessSession) (string, error) {
 	id := uuid.New().String()
 
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO remote_access_sessions (
-			id, tunnel_url, started_at, expires_at, renewed_count, status
-		) VALUES (?, ?, ?, ?, ?, ?)
-	`,
-		id,
-		session.TunnelURL,
-		session.StartedAt,
-		session.ExpiresAt,
-		session.RenewedCount,
-		session.Status,
-	)
+	_, err := r.table(ctx, "remote_access_sessions").Insert(z.V{
+		"id":            id,
+		"tunnel_url":    session.TunnelURL,
+		"started_at":    session.StartedAt.UTC().Format(time.RFC3339Nano),
+		"expires_at":    session.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		"renewed_count": session.RenewedCount,
+		"status":        session.Status,
+	})
 
 	if err != nil {
 		return "", err
 	}
 
+	session.ID = id
 	return id, nil
 }
 
 // UpdateSession updates a session record.
 func (r *Repository) UpdateSession(ctx context.Context, session *RemoteAccessSession) error {
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE remote_access_sessions
-		SET tunnel_url = ?, expires_at = ?, ended_at = ?,
-		    renewed_count = ?, status = ?, error_message = ?
-		WHERE id = ?
-	`,
-		session.TunnelURL,
-		session.ExpiresAt,
-		session.EndedAt,
-		session.RenewedCount,
-		session.Status,
-		session.ErrorMessage,
-		session.ID,
+	_, err := r.table(ctx, "remote_access_sessions").Update(
+		z.V{
+			"tunnel_url":    session.TunnelURL,
+			"expires_at":    session.ExpiresAt.UTC().Format(time.RFC3339Nano),
+			"ended_at":      nullableNgrokTime(session.EndedAt),
+			"renewed_count": session.RenewedCount,
+			"status":        session.Status,
+			"error_message": session.ErrorMessage,
+		},
+		z.Fields("tunnel_url", "expires_at", "ended_at", "renewed_count", "status", "error_message"),
+		z.Where(z.Eq("id", session.ID)),
 	)
 
 	return err
@@ -390,56 +537,33 @@ func (r *Repository) UpdateSession(ctx context.Context, session *RemoteAccessSes
 
 // GetActiveSession returns the currently active session.
 func (r *Repository) GetActiveSession(ctx context.Context) (*RemoteAccessSession, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, tunnel_url, started_at, expires_at, ended_at,
-		       renewed_count, status, error_message, created_at
-		FROM remote_access_sessions
-		WHERE status = 'active'
-		ORDER BY created_at DESC
-		LIMIT 1
-	`)
-
-	session := &RemoteAccessSession{}
-	var endedAt sql.NullTime
-	var errorMessage sql.NullString
-
-	err := row.Scan(
-		&session.ID,
-		&session.TunnelURL,
-		&session.StartedAt,
-		&session.ExpiresAt,
-		&endedAt,
-		&session.RenewedCount,
-		&session.Status,
-		&errorMessage,
-		&session.CreatedAt,
+	var rows []remoteAccessSessionRow
+	_, err := r.readTable(ctx, "remote_access_sessions").Select(
+		&rows,
+		z.Where(z.Eq("status", "active")),
+		z.OrderBy("created_at DESC"),
+		z.Limit(1),
 	)
-
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-
 	if err != nil {
 		return nil, err
 	}
-
-	if endedAt.Valid {
-		session.EndedAt = endedAt.Time
+	if len(rows) == 0 {
+		return nil, nil
 	}
-	if errorMessage.Valid {
-		session.ErrorMessage = errorMessage.String
-	}
-
-	return session, nil
+	return rowToSession(rows[0]), nil
 }
 
 // EndSession marks a session as ended.
 func (r *Repository) EndSession(ctx context.Context, sessionID string, status string, errorMsg string) error {
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE remote_access_sessions
-		SET status = ?, error_message = ?, ended_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, status, errorMsg, sessionID)
+	_, err := r.table(ctx, "remote_access_sessions").Update(
+		z.V{
+			"status":        status,
+			"error_message": errorMsg,
+			"ended_at":      timeutil.NowTime().UTC().Format(time.RFC3339Nano),
+		},
+		z.Fields("status", "error_message", "ended_at"),
+		z.Where(z.Eq("id", sessionID)),
+	)
 
 	return err
 }
@@ -457,99 +581,42 @@ func (r *Repository) AddLog(ctx context.Context, sessionID, eventType, message s
 		}
 	}
 
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO remote_access_logs (id, session_id, event_type, message, metadata)
-		VALUES (?, ?, ?, ?, ?)
-	`, id, sessionID, eventType, message, string(metadataJSON))
+	_, err := r.table(ctx, "remote_access_logs").Insert(z.V{
+		"id":         id,
+		"session_id": sessionID,
+		"event_type": eventType,
+		"message":    message,
+		"metadata":   string(metadataJSON),
+	})
 
 	return err
 }
 
 // GetLogs returns log entries with pagination.
 func (r *Repository) GetLogs(ctx context.Context, limit, offset int) ([]*RemoteAccessLog, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, session_id, event_type, message, metadata, created_at
-		FROM remote_access_logs
-		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`, limit, offset)
-
+	var rows []remoteAccessLogRow
+	_, err := r.readTable(ctx, "remote_access_logs").Select(
+		&rows,
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit, offset),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var logs []*RemoteAccessLog
-	for rows.Next() {
-		log := &RemoteAccessLog{}
-		var sessionID, metadataStr sql.NullString
-
-		err := rows.Scan(
-			&log.ID,
-			&sessionID,
-			&log.EventType,
-			&log.Message,
-			&metadataStr,
-			&log.CreatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if sessionID.Valid {
-			log.SessionID = sessionID.String
-		}
-		if metadataStr.Valid && metadataStr.String != "" {
-			json.Unmarshal([]byte(metadataStr.String), &log.Metadata)
-		}
-
-		logs = append(logs, log)
-	}
-
-	return logs, nil
+	return rowsToLogs(rows), nil
 }
 
 // GetErrorLogs returns only error log entries with pagination.
 func (r *Repository) GetErrorLogs(ctx context.Context, limit, offset int) ([]*RemoteAccessLog, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, session_id, event_type, message, metadata, created_at
-		FROM remote_access_logs
-		WHERE event_type = 'error'
-		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`, limit, offset)
-
+	var rows []remoteAccessLogRow
+	_, err := r.readTable(ctx, "remote_access_logs").Select(
+		&rows,
+		z.Where(z.Eq("event_type", "error")),
+		z.OrderBy("created_at DESC"),
+		z.Limit(limit, offset),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var logs []*RemoteAccessLog
-	for rows.Next() {
-		log := &RemoteAccessLog{}
-		var sessionID, metadataStr sql.NullString
-
-		err := rows.Scan(
-			&log.ID,
-			&sessionID,
-			&log.EventType,
-			&log.Message,
-			&metadataStr,
-			&log.CreatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if sessionID.Valid {
-			log.SessionID = sessionID.String
-		}
-		if metadataStr.Valid && metadataStr.String != "" {
-			json.Unmarshal([]byte(metadataStr.String), &log.Metadata)
-		}
-
-		logs = append(logs, log)
-	}
-
-	return logs, nil
+	return rowsToLogs(rows), nil
 }

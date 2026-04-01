@@ -55,6 +55,7 @@ const nameCoverage = [
   'analyze',
   'ask',
   'mediagen',
+  'deep_research',
   'research_run',
   'research_status',
 ] as const
@@ -109,13 +110,18 @@ const descriptionCoverage = [
     description: 'Generate images and videos using AI models.',
   },
   {
+    name: 'deep_research',
+    description:
+      'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',
+  },
+  {
     name: 'research_run',
     description:
-      'Run deep research. You can wait for the final report or get a job ID to check later.',
+      'Run a research workflow. You can wait for the final report or get a job ID to check later.',
   },
   {
     name: 'research_status',
-    description: 'Get the current status or final report for a deep research job.',
+    description: 'Get the current status or final report for a research job.',
   },
   {
     name: 'docker',
@@ -214,8 +220,12 @@ describe('tool page localization coverage', () => {
     expect(getLocalizedToolName('generate_image', t, te)).toBe('Image')
     expect(getLocalizedToolName('generateImage', t, te)).toBe('Image')
     expect(getLocalizedToolName('sessions_list', t, te)).toBe('Sessions')
+    expect(getLocalizedToolName('deep_research', t, te)).toBe('Deep Research')
     expect(getLocalizedToolDescription('web_query', 'fallback', t, te)).toBe(
       'Unified web tool for searching, reading, extracting, or crawling web content'
+    )
+    expect(getLocalizedToolDescription('deep_research', 'fallback', t, te)).toBe(
+      'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.'
     )
     expect(getLocalizedToolDescription('web_fetch', 'fallback', t, te)).toBe(
       'Unified web tool for searching, reading, extracting, or crawling web content'

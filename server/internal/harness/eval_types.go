@@ -171,9 +171,89 @@ type BaselineFilter struct {
 	Limit       int
 }
 
+type SelectorCuratedAssets struct {
+	Dataset        *Dataset        `json:"dataset,omitempty"`
+	DatasetVersion *DatasetVersion `json:"dataset_version,omitempty"`
+	EvalSpec       *EvalSpec       `json:"eval_spec,omitempty"`
+}
+
 type CompareEvalRunRequest struct {
 	BaseEvalRunID string `json:"base_eval_run_id,omitempty"`
 	BaselineID    string `json:"baseline_id,omitempty"`
+}
+
+type SelectorGateThresholds struct {
+	MinPassRate                *float64 `json:"min_pass_rate,omitempty"`
+	MinCriticalPassRate        *float64 `json:"min_critical_pass_rate,omitempty"`
+	MinRouteAgreementRate      *float64 `json:"min_route_agreement_rate,omitempty"`
+	MinRouteCompatibleRate     *float64 `json:"min_route_compatible_rate,omitempty"`
+	MaxClarifyRateDelta        *float64 `json:"max_clarify_rate_delta,omitempty"`
+	MaxCriticalRegressionCount *int     `json:"max_critical_regression_count,omitempty"`
+}
+
+type SelectorGateRequest struct {
+	BaseEvalRunID string                 `json:"base_eval_run_id,omitempty"`
+	BaselineID    string                 `json:"baseline_id,omitempty"`
+	Thresholds    SelectorGateThresholds `json:"thresholds,omitempty"`
+}
+
+type SelectorGateSegmentMetrics struct {
+	CaseCount               int     `json:"case_count"`
+	RouteAgreementCount     int     `json:"route_agreement_count"`
+	RouteAgreementRate      float64 `json:"route_agreement_rate"`
+	RouteCompatibleCount    int     `json:"route_compatible_count"`
+	RouteCompatibleRate     float64 `json:"route_compatible_rate"`
+	RouteImprovementCount   int     `json:"route_improvement_count"`
+	RouteDisagreementCount  int     `json:"route_disagreement_count"`
+	CriticalCaseCount       int     `json:"critical_case_count"`
+	CriticalRegressionCount int     `json:"critical_regression_count"`
+	BaseClarifyCount        int     `json:"base_clarify_count"`
+	BaseClarifyRate         float64 `json:"base_clarify_rate"`
+	TargetClarifyCount      int     `json:"target_clarify_count"`
+	TargetClarifyRate       float64 `json:"target_clarify_rate"`
+	ClarifyRateDelta        float64 `json:"clarify_rate_delta"`
+}
+
+type SelectorGateMetrics struct {
+	CaseCount               int                                   `json:"case_count"`
+	PassedCount             int                                   `json:"passed_count"`
+	PassRate                float64                               `json:"pass_rate"`
+	CriticalCaseCount       int                                   `json:"critical_case_count"`
+	CriticalPassedCount     int                                   `json:"critical_passed_count"`
+	CriticalPassRate        float64                               `json:"critical_pass_rate"`
+	RouteCaseCount          int                                   `json:"route_case_count"`
+	RouteAgreementCount     int                                   `json:"route_agreement_count"`
+	RouteAgreementRate      float64                               `json:"route_agreement_rate"`
+	RouteCompatibleCount    int                                   `json:"route_compatible_count"`
+	RouteCompatibleRate     float64                               `json:"route_compatible_rate"`
+	RouteImprovementCount   int                                   `json:"route_improvement_count"`
+	RouteDisagreementCount  int                                   `json:"route_disagreement_count"`
+	CriticalRegressionCount int                                   `json:"critical_regression_count"`
+	BaseClarifyRate         float64                               `json:"base_clarify_rate"`
+	TargetClarifyRate       float64                               `json:"target_clarify_rate"`
+	ClarifyRateDelta        float64                               `json:"clarify_rate_delta"`
+	LocaleBreakdown         map[string]SelectorGateSegmentMetrics `json:"locale_breakdown,omitempty"`
+	PrimaryRouteBreakdown   map[string]SelectorGateSegmentMetrics `json:"primary_route_breakdown,omitempty"`
+}
+
+type SelectorGateCheck struct {
+	Name     string                 `json:"name"`
+	Passed   bool                   `json:"passed"`
+	Actual   interface{}            `json:"actual,omitempty"`
+	Expected interface{}            `json:"expected,omitempty"`
+	Details  map[string]interface{} `json:"details,omitempty"`
+}
+
+type SelectorGateReport struct {
+	TargetEvalRunID    string                 `json:"target_eval_run_id"`
+	BaseEvalRunID      string                 `json:"base_eval_run_id,omitempty"`
+	BaselineID         string                 `json:"baseline_id,omitempty"`
+	ComparisonReportID string                 `json:"comparison_report_id,omitempty"`
+	Metrics            SelectorGateMetrics    `json:"metrics"`
+	Thresholds         map[string]interface{} `json:"thresholds,omitempty"`
+	Checks             []SelectorGateCheck    `json:"checks,omitempty"`
+	Passed             bool                   `json:"passed"`
+	CreatedAt          time.Time              `json:"created_at"`
 }
 
 type ComparisonCaseDelta struct {

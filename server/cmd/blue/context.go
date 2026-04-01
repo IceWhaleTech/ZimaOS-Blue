@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -14,19 +13,23 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	contextpackembed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack/embedded"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
 var (
-	contextLang    string
-	contextVersion string
-	contextFile    string
-	contextFull    bool
-	contextTenant  string
-	contextUser    string
-	contextClear   bool
-	contextList    bool
+	contextLang          string
+	contextVersion       string
+	contextFile          string
+	contextFull          bool
+	contextTenant        string
+	contextUser          string
+	contextClear         bool
+	contextList          bool
+	contextRuntimeOpener = openLocalContextRuntime
+	contextRuntimeCloser = closeLocalContextRuntime
+	contextExit          = os.Exit
 )
 
 var contextCmd = &cobra.Command{
@@ -42,35 +45,35 @@ var contextSearchCmd = &cobra.Command{
 	Use:   "search <query>",
 	Short: "Search local context packs",
 	Args:  cobra.MinimumNArgs(1),
-	Run:   runContextSearch,
+	Run:   runContextSearchCommand,
 }
 
 var contextGetCmd = &cobra.Command{
 	Use:   "get <id>",
 	Short: "Get a context pack document",
 	Args:  cobra.ExactArgs(1),
-	Run:   runContextGet,
+	Run:   runContextGetCommand,
 }
 
 var contextAnnotateCmd = &cobra.Command{
 	Use:   "annotate <id> [note]",
 	Short: "Create, list, or clear local context annotations",
 	Args:  cobra.RangeArgs(1, 2),
-	Run:   runContextAnnotate,
+	Run:   runContextAnnotateCommand,
 }
 
 var contextImportCmd = &cobra.Command{
 	Use:   "import <dir>",
 	Short: "Import local context packs into the workspace registry",
 	Args:  cobra.ExactArgs(1),
-	Run:   runContextImport,
+	Run:   runContextImportCommand,
 }
 
 var contextValidateCmd = &cobra.Command{
 	Use:   "validate [dir]",
 	Short: "Validate the workspace registry or a candidate import directory",
 	Args:  cobra.MaximumNArgs(1),
-	Run:   runContextValidate,
+	Run:   runContextValidateCommand,
 }
 
 func init() {
@@ -100,7 +103,7 @@ type localContextRuntime struct {
 	workspace *workspace.Manager
 	registry  *contextpack.Registry
 	store     *contextpack.AnnotationStore
-	db        *sql.DB
+	db        *dbutil.SQLiteConn
 }
 
 func openLocalContextRuntime() (*localContextRuntime, error) {
@@ -119,27 +122,28 @@ func openLocalContextRuntime() (*localContextRuntime, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := openPrimaryDatabaseWithStartupRecovery(dataDir, cfg.Performance.Database)
+	dbConn, err := openPrimaryDatabaseWithStartupRecovery(dataDir, cfg.Performance.Database)
 	if err != nil {
 		return nil, err
 	}
+	db := dbConn.Writer
 	if _, err := contextpack.MigrateLegacyAnnotations(context.Background(), db, dataDir); err != nil {
-		_ = db.Close()
+		_ = dbConn.Close()
 		return nil, err
 	}
-	store, err := contextpack.NewAnnotationStoreWithDB(db)
+	store, err := contextpack.NewAnnotationStoreWithReadDB(dbConn.Writer, dbConn.Reader)
 	if err != nil {
-		_ = db.Close()
+		_ = dbConn.Close()
 		return nil, err
 	}
 	registry := contextpack.NewRegistry(workspaceMgr.ContextDir())
 	registry.SetRefreshTTL(0)
 	if err := registry.Refresh(context.Background()); err != nil {
 		_ = store.Close()
-		_ = db.Close()
+		_ = dbConn.Close()
 		return nil, err
 	}
-	return &localContextRuntime{workspace: workspaceMgr, registry: registry, store: store, db: db}, nil
+	return &localContextRuntime{workspace: workspaceMgr, registry: registry, store: store, db: dbConn}, nil
 }
 
 func closeLocalContextRuntime(rt *localContextRuntime) {
@@ -154,13 +158,105 @@ func closeLocalContextRuntime(rt *localContextRuntime) {
 	}
 }
 
+func runContextSearchCommand(cmd *cobra.Command, args []string) {
+	dispatchContextCLIAction("search", args)
+}
+
+func runContextGetCommand(cmd *cobra.Command, args []string) {
+	dispatchContextCLIAction("get", args)
+}
+
+func runContextAnnotateCommand(cmd *cobra.Command, args []string) {
+	dispatchContextCLIAction("annotate", args)
+}
+
+func runContextImportCommand(cmd *cobra.Command, args []string) {
+	dispatchContextCLIAction("import", args)
+}
+
+func runContextValidateCommand(cmd *cobra.Command, args []string) {
+	dispatchContextCLIAction("validate", args)
+}
+
+func dispatchContextCLIAction(action string, args []string) {
+	cmd, params, err := buildContextIPCDispatchRequest(action, args)
+	if err != nil {
+		printContextError("Invalid context command", err)
+		return
+	}
+	ipcDispatchPreparedCommand(cmd, prepareIPCParams(params), true)
+}
+
+func buildContextIPCDispatchRequest(action string, args []string) (string, map[string]string, error) {
+	params := make(map[string]string)
+	if value := strings.TrimSpace(contextLang); value != "" {
+		params["lang"] = value
+	}
+	if value := strings.TrimSpace(contextVersion); value != "" {
+		params["version"] = value
+	}
+	if value := strings.TrimSpace(contextFile); value != "" {
+		params["file"] = value
+	}
+	if value := strings.TrimSpace(contextTenant); value != "" {
+		params["tenant"] = value
+	}
+	if value := strings.TrimSpace(contextUser); value != "" {
+		params["user"] = value
+	}
+	if contextClear {
+		params["clear"] = "true"
+	}
+	if contextList {
+		params["list"] = "true"
+	}
+	if contextFull {
+		params["full"] = "true"
+	}
+
+	switch action {
+	case "search":
+		query := strings.TrimSpace(strings.Join(args, " "))
+		if query == "" {
+			return "", nil, fmt.Errorf("context search query is required")
+		}
+		params["query"] = query
+	case "get":
+		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+			return "", nil, fmt.Errorf("context id is required")
+		}
+		params["id"] = strings.TrimSpace(args[0])
+	case "annotate":
+		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+			return "", nil, fmt.Errorf("context id is required")
+		}
+		params["id"] = strings.TrimSpace(args[0])
+		if len(args) > 1 && strings.TrimSpace(args[1]) != "" {
+			params["note"] = strings.TrimSpace(args[1])
+		}
+	case "import":
+		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+			return "", nil, fmt.Errorf("import path is required")
+		}
+		params["path"] = strings.TrimSpace(args[0])
+	case "validate":
+		if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+			params["path"] = strings.TrimSpace(args[0])
+		}
+	default:
+		return "", nil, fmt.Errorf("unknown context action %q", action)
+	}
+
+	return "context." + action, params, nil
+}
+
 func runContextSearch(cmd *cobra.Command, args []string) {
-	rt, err := openLocalContextRuntime()
+	rt, err := contextRuntimeOpener()
 	if err != nil {
 		printContextError("Failed to initialize context registry", err)
 		return
 	}
-	defer closeLocalContextRuntime(rt)
+	defer contextRuntimeCloser(rt)
 
 	query := strings.TrimSpace(strings.Join(args, " "))
 	results, err := rt.registry.Search(context.Background(), contextpack.SearchOptions{Query: query, Language: contextLang, Version: contextVersion, Limit: 10})
@@ -189,12 +285,12 @@ func runContextSearch(cmd *cobra.Command, args []string) {
 }
 
 func runContextGet(cmd *cobra.Command, args []string) {
-	rt, err := openLocalContextRuntime()
+	rt, err := contextRuntimeOpener()
 	if err != nil {
 		printContextError("Failed to initialize context registry", err)
 		return
 	}
-	defer closeLocalContextRuntime(rt)
+	defer contextRuntimeCloser(rt)
 
 	result, err := rt.registry.Get(context.Background(), args[0], contextpack.GetOptions{Language: contextLang, Version: contextVersion, File: contextFile, Full: contextFull})
 	if err != nil {
@@ -227,12 +323,12 @@ func runContextGet(cmd *cobra.Command, args []string) {
 }
 
 func runContextAnnotate(cmd *cobra.Command, args []string) {
-	rt, err := openLocalContextRuntime()
+	rt, err := contextRuntimeOpener()
 	if err != nil {
 		printContextError("Failed to initialize annotation store", err)
 		return
 	}
-	defer closeLocalContextRuntime(rt)
+	defer contextRuntimeCloser(rt)
 
 	id := strings.TrimSpace(args[0])
 	filter := contextpack.AnnotationFilter{TenantID: contextTenant, UserID: contextUser, EntryID: id, Language: contextLang, Version: contextVersion, File: contextFile}
@@ -285,12 +381,12 @@ func runContextAnnotate(cmd *cobra.Command, args []string) {
 }
 
 func runContextImport(cmd *cobra.Command, args []string) {
-	rt, err := openLocalContextRuntime()
+	rt, err := contextRuntimeOpener()
 	if err != nil {
 		printContextError("Failed to initialize context registry", err)
 		return
 	}
-	defer closeLocalContextRuntime(rt)
+	defer contextRuntimeCloser(rt)
 
 	if err := contextpack.ImportDir(args[0], rt.workspace.ContextDir()); err != nil {
 		printContextError("Failed to import context packs", err)
@@ -314,12 +410,12 @@ func runContextImport(cmd *cobra.Command, args []string) {
 func runContextValidate(cmd *cobra.Command, args []string) {
 	root := ""
 	if len(args) == 0 {
-		rt, err := openLocalContextRuntime()
+		rt, err := contextRuntimeOpener()
 		if err != nil {
 			printContextError("Failed to initialize context registry", err)
 			return
 		}
-		defer closeLocalContextRuntime(rt)
+		defer contextRuntimeCloser(rt)
 		root = rt.workspace.ContextDir()
 	} else {
 		root = args[0]
@@ -355,7 +451,7 @@ func printContextError(msg string, err error) {
 	} else {
 		fmt.Printf("%s: %v\n", msg, err)
 	}
-	os.Exit(1)
+	contextExit(1)
 }
 
 func emptyAsDash(v string) string {

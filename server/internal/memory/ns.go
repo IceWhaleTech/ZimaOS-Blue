@@ -9,14 +9,15 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // NamespaceConfig holds per-namespace settings.
 type NamespaceConfig struct {
-	EmbeddingDim  int      `json:"embedding_dim"`
-	DefaultTTL    Duration `json:"default_ttl,omitempty"`
-	MaxEntries    int      `json:"max_entries"`
-	MaxSizeBytes  int64    `json:"max_size_bytes"`
+	EmbeddingDim int      `json:"embedding_dim"`
+	DefaultTTL   Duration `json:"default_ttl,omitempty"`
+	MaxEntries   int      `json:"max_entries"`
+	MaxSizeBytes int64    `json:"max_size_bytes"`
 }
 
 // DefaultNamespaceConfig returns sensible defaults.
@@ -48,13 +49,26 @@ type NamespaceStats struct {
 
 // NamespaceStore manages namespace CRUD backed by SQLite.
 type NamespaceStore struct {
-	db *sql.DB
-	mu sync.RWMutex
+	db     *sql.DB
+	readDB *sql.DB
+	mu     sync.RWMutex
 }
 
 // NewNamespaceStore creates a NamespaceStore and initializes the schema.
 func NewNamespaceStore(db *sql.DB) (*NamespaceStore, error) {
-	s := &NamespaceStore{db: db}
+	return NewNamespaceStoreWithReadDB(db, db)
+}
+
+// NewNamespaceStoreWithReadDB creates a NamespaceStore with separate write and
+// read database handles and initializes the schema.
+func NewNamespaceStoreWithReadDB(writeDB, readDB *sql.DB) (*NamespaceStore, error) {
+	if writeDB == nil {
+		return nil, fmt.Errorf("namespace db is required")
+	}
+	if readDB == nil {
+		readDB = writeDB
+	}
+	s := &NamespaceStore{db: writeDB, readDB: readDB}
 	if err := s.initSchema(); err != nil {
 		return nil, fmt.Errorf("namespace schema init: %w", err)
 	}
@@ -73,6 +87,31 @@ func (s *NamespaceStore) initSchema() error {
 	return err
 }
 
+func (s *NamespaceStore) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "namespaces")
+}
+
+func (s *NamespaceStore) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "namespaces")
+}
+
+func (s *NamespaceStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+type namespaceRow struct {
+	ID        string `json:"id" zorm:"id"`
+	Config    string `json:"config" zorm:"config"`
+	CreatedAt string `json:"created_at" zorm:"created_at"`
+	UpdatedAt string `json:"updated_at" zorm:"updated_at"`
+}
+
 // Create creates a new namespace. Returns error if it already exists.
 func (s *NamespaceStore) Create(ctx context.Context, ns *Namespace) error {
 	s.mu.Lock()
@@ -86,9 +125,12 @@ func (s *NamespaceStore) Create(ctx context.Context, ns *Namespace) error {
 	ns.CreatedAt = now
 	ns.UpdatedAt = now
 
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO namespaces (id, config, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-		ns.ID, string(cfgJSON), ns.CreatedAt, ns.UpdatedAt,
+	_, err = s.table(ctx).Insert(map[string]interface{}{
+		"id":         ns.ID,
+		"config":     string(cfgJSON),
+		"created_at": ns.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updated_at": ns.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	},
 	)
 	if err != nil {
 		return fmt.Errorf("insert namespace: %w", err)
@@ -101,21 +143,18 @@ func (s *NamespaceStore) Get(ctx context.Context, id string) (*Namespace, error)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var ns Namespace
-	var cfgJSON string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, config, created_at, updated_at FROM namespaces WHERE id = ?`, id,
-	).Scan(&ns.ID, &cfgJSON, &ns.CreatedAt, &ns.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("namespace %q not found", id)
-	}
+	var rows []namespaceRow
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	)
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal([]byte(cfgJSON), &ns.Config); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("namespace %q not found", id)
 	}
-	return &ns, nil
+	return rowToNamespace(rows[0])
 }
 
 // List returns all namespaces.
@@ -123,26 +162,21 @@ func (s *NamespaceStore) List(ctx context.Context) ([]*Namespace, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, config, created_at, updated_at FROM namespaces ORDER BY created_at`)
+	var rows []namespaceRow
+	_, err := s.readTable(ctx).Select(&rows, z.OrderBy("created_at"))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var result []*Namespace
-	for rows.Next() {
-		var ns Namespace
-		var cfgJSON string
-		if err := rows.Scan(&ns.ID, &cfgJSON, &ns.CreatedAt, &ns.UpdatedAt); err != nil {
+	result := make([]*Namespace, 0, len(rows))
+	for i := range rows {
+		ns, err := rowToNamespace(rows[i])
+		if err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(cfgJSON), &ns.Config); err != nil {
-			return nil, err
-		}
-		result = append(result, &ns)
+		result = append(result, ns)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // Delete removes a namespace.
@@ -150,11 +184,10 @@ func (s *NamespaceStore) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res, err := s.db.ExecContext(ctx, `DELETE FROM namespaces WHERE id = ?`, id)
+	n, err := s.table(ctx).Delete(z.Where(z.Eq("id", id)))
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("namespace %q not found", id)
 	}
@@ -170,16 +203,46 @@ func (s *NamespaceStore) UpdateConfig(ctx context.Context, id string, cfg Namesp
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE namespaces SET config = ?, updated_at = ? WHERE id = ?`,
-		string(cfgJSON), timeutil.NowTime(), id,
+	n, err := s.table(ctx).Update(
+		z.V{
+			"config":     string(cfgJSON),
+			"updated_at": timeutil.NowTime().UTC().Format(time.RFC3339Nano),
+		},
+		z.Fields("config", "updated_at"),
+		z.Where(z.Eq("id", id)),
 	)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("namespace %q not found", id)
 	}
 	return nil
+}
+
+func rowToNamespace(row namespaceRow) (*Namespace, error) {
+	var ns Namespace
+	ns.ID = row.ID
+	if err := json.Unmarshal([]byte(row.Config), &ns.Config); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	ns.CreatedAt = parseNamespaceTime(row.CreatedAt)
+	ns.UpdatedAt = parseNamespaceTime(row.UpdatedAt)
+	return &ns, nil
+}
+
+func parseNamespaceTime(raw string) time.Time {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }

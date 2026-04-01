@@ -11,6 +11,31 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
+type evalRunReportContext struct {
+	evalRun        *EvalRun
+	group          *RunGroup
+	evalSpec       *EvalSpec
+	dataset        *Dataset
+	datasetVersion *DatasetVersion
+	groupReport    *groupReportContext
+}
+
+type evalRunGroupSnapshot struct {
+	evalRun *EvalRun
+	group   *RunGroup
+}
+
+type evalRunSpecContext struct {
+	snapshot *evalRunGroupSnapshot
+	evalSpec *EvalSpec
+}
+
+type evalRunDatasetContext struct {
+	specContext    *evalRunSpecContext
+	dataset        *Dataset
+	datasetVersion *DatasetVersion
+}
+
 func (c *Controller) CreateDataset(ctx context.Context, spec DatasetSpec) (*Dataset, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("harness controller is not configured")
@@ -194,7 +219,7 @@ func (c *Controller) SubmitEvalRun(ctx context.Context, spec EvalRunSpec) (*Eval
 	if err != nil {
 		return nil, err
 	}
-	now := timeutil.NowTime()
+	now := monotonicHarnessTime()
 	evalRun := &EvalRun{
 		ID:                uuid.NewString(),
 		EvalSpecID:        evalSpec.ID,
@@ -248,15 +273,29 @@ func (c *Controller) ListEvalRuns(ctx context.Context, filter EvalRunFilter) ([]
 	return evalRuns, nil
 }
 
+func (c *Controller) GetComparisonReport(ctx context.Context, id string) (*ComparisonReport, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	return c.store.GetComparisonReport(ctx, strings.TrimSpace(id))
+}
+
 func (c *Controller) CancelEvalRun(ctx context.Context, id string, reason string) error {
-	evalRun, err := c.GetEvalRun(ctx, id)
+	if c == nil || c.store == nil {
+		return fmt.Errorf("harness controller is not configured")
+	}
+	evalRun, err := c.store.GetEvalRun(ctx, strings.TrimSpace(id))
 	if err != nil {
 		return err
 	}
-	if err := c.CancelGroup(ctx, evalRun.GroupID, reason); err != nil {
+	snapshot, err := c.loadEvalRunGroupSnapshot(ctx, evalRun)
+	if err != nil {
 		return err
 	}
-	_, err = c.syncEvalRun(ctx, evalRun)
+	if err := c.CancelGroup(ctx, snapshot.group.ID, reason); err != nil {
+		return err
+	}
+	_, err = c.loadEvalRunGroupSnapshot(ctx, snapshot.evalRun)
 	return err
 }
 
@@ -267,14 +306,16 @@ func (c *Controller) CreateBaseline(ctx context.Context, spec BaselineSpec) (*Ba
 	if strings.TrimSpace(spec.Name) == "" {
 		return nil, fmt.Errorf("name is required")
 	}
-	evalRun, err := c.GetEvalRun(ctx, strings.TrimSpace(spec.EvalRunID))
+	evalRun, err := c.store.GetEvalRun(ctx, strings.TrimSpace(spec.EvalRunID))
 	if err != nil {
 		return nil, err
 	}
-	evalSpec, err := c.store.GetEvalSpec(ctx, evalRun.EvalSpecID)
+	specContext, err := c.loadEvalRunSpecContext(ctx, evalRun)
 	if err != nil {
 		return nil, err
 	}
+	evalRun = specContext.snapshot.evalRun
+	evalSpec := specContext.evalSpec
 	if spec.EvalSpecID != "" && strings.TrimSpace(spec.EvalSpecID) != evalSpec.ID {
 		return nil, fmt.Errorf("eval run does not belong to eval spec")
 	}
@@ -310,41 +351,94 @@ func (c *Controller) ListBaselines(ctx context.Context, filter BaselineFilter) (
 }
 
 func (c *Controller) GetEvalRunReport(ctx context.Context, id string) (*EvalRunReport, error) {
-	evalRun, err := c.GetEvalRun(ctx, id)
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	evalRun, err := c.store.GetEvalRun(ctx, strings.TrimSpace(id))
 	if err != nil {
 		return nil, err
 	}
-	evalSpec, err := c.store.GetEvalSpec(ctx, evalRun.EvalSpecID)
+	return c.buildEvalRunReport(ctx, evalRun)
+}
+
+func (c *Controller) buildEvalRunReport(ctx context.Context, evalRun *EvalRun) (*EvalRunReport, error) {
+	reportCtx, err := c.loadEvalRunReportContext(ctx, evalRun)
 	if err != nil {
 		return nil, err
 	}
-	dataset, err := c.store.GetDataset(ctx, evalSpec.DatasetID)
+	return c.buildEvalRunReportFromContext(reportCtx)
+}
+
+func (c *Controller) loadEvalRunReportContext(ctx context.Context, evalRun *EvalRun) (*evalRunReportContext, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	datasetContext, err := c.loadEvalRunDatasetContext(ctx, evalRun)
 	if err != nil {
 		return nil, err
 	}
-	version, err := c.store.GetDatasetVersion(ctx, evalRun.DatasetVersionID)
+	groupReport, err := c.loadGroupReportContext(ctx, datasetContext.specContext.snapshot.group)
 	if err != nil {
 		return nil, err
 	}
-	groupReport, err := c.GetGroupReport(ctx, evalRun.GroupID)
+	return &evalRunReportContext{
+		evalRun:        datasetContext.specContext.snapshot.evalRun,
+		group:          datasetContext.specContext.snapshot.group,
+		evalSpec:       datasetContext.specContext.evalSpec,
+		dataset:        datasetContext.dataset,
+		datasetVersion: datasetContext.datasetVersion,
+		groupReport:    groupReport,
+	}, nil
+}
+
+func (c *Controller) buildEvalRunReportFromContext(reportCtx *evalRunReportContext) (*EvalRunReport, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	if reportCtx == nil {
+		return nil, fmt.Errorf("eval run report context is required")
+	}
+	groupReport, err := buildGroupReportFromContext(reportCtx.groupReport)
 	if err != nil {
 		return nil, err
 	}
 	return &EvalRunReport{
-		EvalRun:        evalRun,
-		EvalSpec:       evalSpec,
-		Dataset:        dataset,
-		DatasetVersion: version,
+		EvalRun:        reportCtx.evalRun,
+		EvalSpec:       reportCtx.evalSpec,
+		Dataset:        reportCtx.dataset,
+		DatasetVersion: reportCtx.datasetVersion,
 		GroupReport:    groupReport,
 	}, nil
+}
+
+func resolveEvalRunDatasetVersionID(evalRun *EvalRun, evalSpec *EvalSpec) string {
+	evalRunVersionID := ""
+	if evalRun != nil {
+		evalRunVersionID = strings.TrimSpace(evalRun.DatasetVersionID)
+	}
+	evalSpecVersionID := ""
+	if evalSpec != nil {
+		evalSpecVersionID = strings.TrimSpace(evalSpec.DatasetVersionID)
+	}
+	return firstNonEmpty(
+		evalRunVersionID,
+		evalSpecVersionID,
+	)
 }
 
 func (c *Controller) syncEvalRun(ctx context.Context, evalRun *EvalRun) (*EvalRun, error) {
 	if evalRun == nil || strings.TrimSpace(evalRun.GroupID) == "" {
 		return evalRun, nil
 	}
-	group, err := c.store.GetGroup(ctx, evalRun.GroupID)
+	snapshot, err := c.loadEvalRunGroupSnapshot(ctx, evalRun)
 	if err != nil {
+		return evalRun, nil
+	}
+	return snapshot.evalRun, nil
+}
+
+func (c *Controller) syncEvalRunWithGroup(ctx context.Context, evalRun *EvalRun, group *RunGroup) (*EvalRun, error) {
+	if evalRun == nil || group == nil {
 		return evalRun, nil
 	}
 	changed := false
@@ -370,6 +464,72 @@ func (c *Controller) syncEvalRun(ctx context.Context, evalRun *EvalRun) (*EvalRu
 		}
 	}
 	return evalRun, nil
+}
+
+func (c *Controller) loadEvalRunGroupSnapshot(ctx context.Context, evalRun *EvalRun) (*evalRunGroupSnapshot, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	if evalRun == nil {
+		return nil, fmt.Errorf("eval run is required")
+	}
+	group, err := c.GetGroup(ctx, evalRun.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	evalRun, err = c.syncEvalRunWithGroup(ctx, evalRun, group)
+	if err != nil {
+		return nil, err
+	}
+	return &evalRunGroupSnapshot{
+		evalRun: evalRun,
+		group:   group,
+	}, nil
+}
+
+func (c *Controller) loadEvalRunSpecContext(ctx context.Context, evalRun *EvalRun) (*evalRunSpecContext, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	snapshot, err := c.loadEvalRunGroupSnapshot(ctx, evalRun)
+	if err != nil {
+		return nil, err
+	}
+	evalSpec, err := c.store.GetEvalSpec(ctx, snapshot.evalRun.EvalSpecID)
+	if err != nil {
+		return nil, err
+	}
+	return &evalRunSpecContext{
+		snapshot: snapshot,
+		evalSpec: evalSpec,
+	}, nil
+}
+
+func (c *Controller) loadEvalRunDatasetContext(ctx context.Context, evalRun *EvalRun) (*evalRunDatasetContext, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	specContext, err := c.loadEvalRunSpecContext(ctx, evalRun)
+	if err != nil {
+		return nil, err
+	}
+	dataset, err := c.store.GetDataset(ctx, specContext.evalSpec.DatasetID)
+	if err != nil {
+		return nil, err
+	}
+	versionID := resolveEvalRunDatasetVersionID(specContext.snapshot.evalRun, specContext.evalSpec)
+	if versionID == "" {
+		return nil, fmt.Errorf("dataset version is required")
+	}
+	version, err := c.store.GetDatasetVersion(ctx, versionID)
+	if err != nil {
+		return nil, err
+	}
+	return &evalRunDatasetContext{
+		specContext:    specContext,
+		dataset:        dataset,
+		datasetVersion: version,
+	}, nil
 }
 
 func materializeEvalGroupSpec(evalSpec *EvalSpec, dataset *Dataset, version *DatasetVersion, runSpec EvalRunSpec) (RunGroupSpec, error) {
@@ -426,16 +586,22 @@ func materializeEvalGroupSpec(evalSpec *EvalSpec, dataset *Dataset, version *Dat
 		})
 	}
 
+	schedulerConfig := mergeSchedulerConfig(
+		manifest.Defaults.Scheduler,
+		evalSpec.SchedulerConfig,
+	)
+	schedulerConfig = applyRuntimeSchedulerConcurrencyOverride(
+		firstNonEmpty(evalSpec.Subject, dataset.Subject, manifest.Dataset.Subject),
+		schedulerConfig,
+	)
+
 	return RunGroupSpec{
-		Kind:        RunGroupKindEval,
-		Title:       firstNonEmpty(runSpec.Title, evalSpec.Name, dataset.Name, version.Version),
-		Subject:     firstNonEmpty(evalSpec.Subject, dataset.Subject, manifest.Dataset.Subject),
-		OwnerUserID: firstNonEmpty(runSpec.OwnerUserID, evalSpec.OwnerUserID, dataset.OwnerUserID),
-		Metadata:    groupMetadata,
-		SchedulerConfig: mergeSchedulerConfig(
-			manifest.Defaults.Scheduler,
-			evalSpec.SchedulerConfig,
-		),
+		Kind:            RunGroupKindEval,
+		Title:           firstNonEmpty(runSpec.Title, evalSpec.Name, dataset.Name, version.Version),
+		Subject:         firstNonEmpty(evalSpec.Subject, dataset.Subject, manifest.Dataset.Subject),
+		OwnerUserID:     firstNonEmpty(runSpec.OwnerUserID, evalSpec.OwnerUserID, dataset.OwnerUserID),
+		Metadata:        groupMetadata,
+		SchedulerConfig: schedulerConfig,
 		ScoringConfig: mergeScoringConfig(
 			manifest.Defaults.Scoring,
 			evalSpec.ScoringConfig,

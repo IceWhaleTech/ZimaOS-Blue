@@ -96,7 +96,9 @@ const cpuSummaryItems = computed(() => [
         </p>
         <p class="dashboard-card-footnote">
           {{
-            cpuPeak == null ? 'Awaiting peak sample' : `Peak ${cpuPeak.toFixed(0)}% over 5 minutes`
+            cpuPeak == null
+              ? t('system.cards.cpu.awaitingPeak')
+              : t('system.cards.cpu.peakWindow', { value: cpuPeak.toFixed(0) })
           }}
         </p>
       </div>
@@ -121,7 +123,7 @@ const cpuSummaryItems = computed(() => [
     unit="%"
     color="blue"
     badge="5m"
-    :caption="`Rolling compute pressure across the most recent 5 minute window`"
+    :caption="t('system.cards.cpu.caption')"
     :max-value="100"
     :format-value="(v: number) => v.toFixed(1)"
     :summary-items="cpuSummaryItems"

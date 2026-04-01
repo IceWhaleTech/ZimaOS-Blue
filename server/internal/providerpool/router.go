@@ -21,7 +21,7 @@ type candidateSnapshot struct {
 	// byModel maps model ID → sorted candidates (by default strategy)
 	byModel map[string][]*RouteCandidate
 	// allCandidates is the full list of all provider+model pairs. Empty-model
-	// routing collapses this to one filtered candidate per provider at read time.
+	// routing reorders and shortlists this at read time for auto scheduling.
 	allCandidates []*RouteCandidate
 	// builtAt is when this snapshot was created
 	builtAt time.Time
@@ -285,6 +285,9 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 	needModeFilter := req.Mode != "" && req.Mode != RoutingModeAuto
 	bypassPenalty := r.shouldBypassPenalty()
 	for _, c := range source {
+		if c.Provider == nil || !c.Provider.Enabled {
+			continue
+		}
 		if len(excludeSet) > 0 && excludeSet[c.Provider.ID] {
 			continue
 		}
@@ -292,6 +295,9 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 			continue
 		}
 		if !bypassPenalty && r.IsInCooldown(c.Provider.ID) {
+			continue
+		}
+		if c.Provider.Location == ProviderLocationCloud && !r.hasCredentials(c.Provider) {
 			continue
 		}
 		if needModeFilter {
@@ -310,29 +316,36 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 		result = append(result, &copy)
 	}
 	if req.ModelID == "" && len(result) > 1 {
-		result = collapseCandidatesByProvider(result)
+		result = r.orderAutoCandidates(result)
 	}
 	return result
 }
 
-func collapseCandidatesByProvider(candidates []*RouteCandidate) []*RouteCandidate {
+func (r *Router) orderAutoCandidates(candidates []*RouteCandidate) []*RouteCandidate {
 	if len(candidates) <= 1 {
 		return candidates
 	}
 
-	seen := make(map[string]struct{}, len(candidates))
-	collapsed := make([]*RouteCandidate, 0, len(candidates))
+	grouped := make(map[string][]*RouteCandidate, len(candidates))
+	providerOrder := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		if candidate == nil || candidate.Provider == nil {
 			continue
 		}
-		if _, exists := seen[candidate.Provider.ID]; exists {
-			continue
+		providerID := candidate.Provider.ID
+		if _, exists := grouped[providerID]; !exists {
+			providerOrder = append(providerOrder, providerID)
 		}
-		seen[candidate.Provider.ID] = struct{}{}
-		collapsed = append(collapsed, candidate)
+		grouped[providerID] = append(grouped[providerID], candidate)
 	}
-	return collapsed
+
+	ordered := make([]*RouteCandidate, 0, len(candidates))
+	for _, providerID := range providerOrder {
+		providerCandidates := shortlistRouteCandidatesForAuto(grouped[providerID])
+		providerCandidates = r.rotateRouteCandidates("auto_provider:"+providerID, providerCandidates)
+		ordered = append(ordered, providerCandidates...)
+	}
+	return ordered
 }
 
 // findCandidates finds all providers that can serve the requested model
@@ -385,8 +398,11 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 			continue
 		}
 
-		// If no model specified, use first available enabled model
+		// Empty model means "auto" routing. Keep a provider's shortlisted models
+		// together so round-robin can rotate within that provider without
+		// falling back outside the discovered candidate set.
 		if req.ModelID == "" {
+			var providerCandidates []*RouteCandidate
 			for _, model := range models {
 				if !model.Enabled {
 					continue
@@ -394,12 +410,14 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 				if req.RequireCap != nil && !matchesCapabilities(model.Capabilities, *req.RequireCap) {
 					continue
 				}
-				candidates = append(candidates, &RouteCandidate{
+				providerCandidates = append(providerCandidates, &RouteCandidate{
 					Provider: provider,
 					Model:    model,
 				})
-				break
 			}
+			providerCandidates = shortlistRouteCandidatesForAuto(providerCandidates)
+			providerCandidates = r.rotateRouteCandidates("auto_provider:"+provider.ID, providerCandidates)
+			candidates = append(candidates, providerCandidates...)
 			continue
 		}
 
@@ -586,31 +604,47 @@ func (r *Router) sortByRoundRobin(candidates []*RouteCandidate) {
 		return candidates[i].Provider.ID < candidates[j].Provider.ID
 	})
 
-	// Get or create round-robin index for this model
 	modelID := candidates[0].Model.ID
-	r.rrMu.Lock()
-	if r.rrIndex[modelID] == nil {
-		var idx uint64
-		r.rrIndex[modelID] = &idx
-	}
-	idx := r.rrIndex[modelID]
-	r.rrMu.Unlock()
-
-	// Get current index and increment
-	current := atomic.AddUint64(idx, 1) - 1
-	offset := int(current % uint64(len(candidates)))
-
-	// Rotate the slice
-	rotated := make([]*RouteCandidate, len(candidates))
-	for i := range candidates {
-		rotated[i] = candidates[(i+offset)%len(candidates)]
-	}
-	copy(candidates, rotated)
+	copy(candidates, r.rotateRouteCandidates(modelID, candidates))
 
 	// Set scores
 	for i, c := range candidates {
 		c.Score = float64(len(candidates) - i)
 	}
+}
+
+func (r *Router) rotateRouteCandidates(key string, candidates []*RouteCandidate) []*RouteCandidate {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+
+	offset := r.nextRoundRobinOffset(key, len(candidates))
+	if offset == 0 {
+		return candidates
+	}
+
+	rotated := make([]*RouteCandidate, len(candidates))
+	for i := range candidates {
+		rotated[i] = candidates[(i+offset)%len(candidates)]
+	}
+	return rotated
+}
+
+func (r *Router) nextRoundRobinOffset(key string, total int) int {
+	if total <= 1 {
+		return 0
+	}
+
+	r.rrMu.Lock()
+	if r.rrIndex[key] == nil {
+		var idx uint64
+		r.rrIndex[key] = &idx
+	}
+	idx := r.rrIndex[key]
+	r.rrMu.Unlock()
+
+	current := atomic.AddUint64(idx, 1) - 1
+	return int(current % uint64(total))
 }
 
 // UpdateLatency updates the latency for a provider
@@ -787,6 +821,53 @@ func isNoResponseError(err error) bool {
 		strings.Contains(s, "returned empty streaming response")
 }
 
+var nonAuth403Markers = [...]string{
+	"insufficient_user_quota",
+	"insufficient_quota",
+	"quota exceeded",
+	"quota",
+	"billing",
+	"credit balance",
+	"payment required",
+	"rate limit",
+	"too many requests",
+	"throttled",
+	"capacity",
+	"overloaded",
+	"policy violation",
+	"content filter",
+	"safety",
+	"banned",
+}
+
+var authLikeMarkers = [...]string{
+	"unauthorized",
+	"authentication",
+	"invalid api key",
+	"invalid key",
+	"invalid token",
+	"expired token",
+	"missing token",
+	"missing api key",
+	"api key required",
+	"credential",
+	"未提供令牌",
+}
+
+func containsAnyMarker(msg string, markers []string) bool {
+	for _, marker := range markers {
+		if marker != "" && strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func isQuotaLikeErrorText(msg string) bool {
+	msg = strings.ToLower(msg)
+	return containsAnyMarker(msg, nonAuth403Markers[:])
+}
+
 // isAuthError returns true for authentication/authorization errors (401/403) that
 // indicate permanent credential issues (expired token, invalid API key, etc.).
 // Also includes 404 errors that indicate the API endpoint doesn't exist (misconfigured provider).
@@ -794,18 +875,17 @@ func isAuthError(err error) bool {
 	if err == nil {
 		return false
 	}
-	s := err.Error()
-	// Match both "upstream 401", "upstream 403", "upstream 404", and proxy-level errors
-	// 404 on API endpoint usually means the provider is misconfigured or the token doesn't have access
-	return strings.Contains(s, "upstream 401") ||
-		strings.Contains(s, "upstream 403") ||
-		strings.Contains(s, "upstream 404") ||
-		strings.Contains(s, "provider returned 401") ||
-		strings.Contains(s, "provider returned 403") ||
-		strings.Contains(s, "provider returned 404") ||
-		strings.Contains(s, "unauthorized") ||
-		strings.Contains(s, "authentication") ||
-		strings.Contains(s, "page not found")
+	s := strings.ToLower(err.Error())
+	if strings.Contains(s, "page not found") || containsHTTPStatusCode(s, 404) {
+		return true
+	}
+	if strings.Contains(s, "unauthorized") || strings.Contains(s, "authentication") || containsAnyMarker(s, authLikeMarkers[:]) {
+		return true
+	}
+	if isQuotaLikeErrorText(s) {
+		return false
+	}
+	return containsHTTPStatusCode(s, 401) || containsHTTPStatusCode(s, 403)
 }
 
 // RecordSuccess records a successful request and potentially resets cooldown
@@ -858,6 +938,10 @@ func classifyError(err error) FailoverReason {
 		return FailoverReasonTimeout
 	}
 	if strings.Contains(errStr, "rate limit") ||
+		strings.Contains(errStr, "insufficient_user_quota") ||
+		strings.Contains(errStr, "insufficient_quota") ||
+		strings.Contains(errStr, "quota exceeded") ||
+		strings.Contains(errStr, "billing hard limit") ||
 		strings.Contains(errStr, "too many requests") ||
 		containsHTTPStatusCode(errStr, 429) {
 		return FailoverReasonRateLimit
@@ -950,6 +1034,7 @@ func shouldRetryWithNextAPIKey(err error) bool {
 		strings.Contains(errStr, "throttled (429)") ||
 		strings.Contains(errStr, "too many requests") ||
 		strings.Contains(errStr, "rate limit") ||
+		strings.Contains(errStr, "insufficient_user_quota") ||
 		strings.Contains(errStr, "insufficient_quota") ||
 		strings.Contains(errStr, "insufficient quota") ||
 		strings.Contains(errStr, "quota exceeded") ||
@@ -1071,10 +1156,9 @@ func buildAPIKeyAttempts(provider *Provider, preferred *APIKey) []*APIKey {
 	return attempts
 }
 
-// RouteWithFallback attempts to route with automatic fallback on failure.
-// When the exact model is not found or all same-model providers fail,
-// it falls back to any healthy provider matching the routing mode (auto/cloud/local),
-// forwarding the original model name and letting the upstream decide.
+// RouteWithFallback attempts to route within the discovered candidate set only.
+// It never blind-falls back to providers/models outside the fetched model list
+// (after allowlist filtering), so callers see the final routing error directly.
 func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execute func(*RouteResult) error) error {
 	// Only allocate failover tracking when a callback is registered
 	var failoverResult *FailoverResult
@@ -1089,38 +1173,15 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		}()
 	}
 
-	// Track which providers we've already tried (to avoid retrying in blind fallback).
-	// Seed with explicit exclusions too — callers use Exclude for hard bans during
-	// a retry window (for example, dropping an overloaded pinned provider), and
-	// blind fallback must not reintroduce them.
-	triedProviders := make(map[string]bool, len(req.Exclude))
-	for _, providerID := range req.Exclude {
-		if strings.TrimSpace(providerID) == "" {
-			continue
-		}
-		triedProviders[providerID] = true
-	}
-
-	allowBlindFallback := false
 	var lastErr error
 
 	result, err := r.Route(req)
 	if err != nil {
 		lastErr = err
-		// Empty model means "auto pick any available model". Blind fallback is not
-		// useful in this case because it forwards req.ModelID as-is, which would be
-		// empty and lead to provider-side model selection errors/misleading logs.
-		if strings.TrimSpace(req.ModelID) == "" {
-			if failoverResult != nil {
-				failoverResult.FinalError = ErrNoAvailableProvider.Error()
-			}
-			return ErrNoAvailableProvider
+		if failoverResult != nil {
+			failoverResult.FinalError = lastErr.Error()
 		}
-		// Model not in snapshot — skip to blind provider fallback
-		slog.Info("[router] model not in snapshot, trying blind provider fallback",
-			"model", req.ModelID, "mode", req.Mode)
-		allowBlindFallback = true
-		goto blindFallback
+		return lastErr
 	}
 
 	{
@@ -1150,7 +1211,6 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 			}
 			start := timeutil.NowTime()
 			latency, attemptErr := executeWithNaturalRetry(ctx, attemptResult, execute)
-			triedProviders[result.Provider.ID] = true
 
 			if attemptErr == nil {
 				r.UpdateLatency(result.Provider.ID, latency)
@@ -1236,7 +1296,6 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 				}
 				start := timeutil.NowTime()
 				latency, attemptErr := executeWithNaturalRetry(ctx, attemptResult, execute)
-				triedProviders[fallback.Provider.ID] = true
 
 				if attemptErr == nil {
 					r.UpdateLatency(fallback.Provider.ID, latency)
@@ -1274,148 +1333,6 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 				}
 				break
 			}
-		}
-	}
-
-	allowBlindFallback = shouldAttemptBlindFallback(lastErr)
-
-blindFallback:
-	if !allowBlindFallback {
-		if failoverResult != nil {
-			if lastErr != nil {
-				failoverResult.FinalError = lastErr.Error()
-			} else {
-				failoverResult.FinalError = ErrNoAvailableProvider.Error()
-			}
-		}
-		if lastErr != nil {
-			return lastErr
-		}
-		return ErrNoAvailableProvider
-	}
-
-	// Blind fallback is only meaningful for explicit model IDs not present in the
-	// snapshot. For empty model requests, providers were already exhausted above.
-	if strings.TrimSpace(req.ModelID) == "" {
-		if failoverResult != nil {
-			if lastErr != nil {
-				failoverResult.FinalError = lastErr.Error()
-			} else {
-				failoverResult.FinalError = ErrNoAvailableProvider.Error()
-			}
-		}
-		if lastErr != nil {
-			return lastErr
-		}
-		return ErrNoAvailableProvider
-	}
-
-	// Blind provider fallback: try any healthy provider matching the routing mode.
-	// The original model name is forwarded as-is — the upstream decides if it supports it.
-	// This handles cases where our local model list is incomplete or the model is new.
-	blindCandidates := r.findBlindFallbackProviders(req.ModelID, req.Mode, triedProviders)
-	if len(blindCandidates) == 0 {
-		if failoverResult != nil {
-			if lastErr != nil {
-				failoverResult.FinalError = lastErr.Error()
-			} else {
-				failoverResult.FinalError = ErrNoAvailableProvider.Error()
-			}
-		}
-		if lastErr != nil {
-			return lastErr
-		}
-		return ErrNoAvailableProvider
-	}
-
-	slog.Info("[router] trying blind provider fallback",
-		"model", req.ModelID, "candidates", len(blindCandidates))
-
-	// Use a passthrough Model with the original model ID so tryOnProvider sends it as-is
-	passthroughModel := &Model{
-		ID:      req.ModelID,
-		Name:    req.ModelID,
-		Enabled: true,
-	}
-
-	for _, provider := range blindCandidates {
-		if ctx.Err() != nil {
-			if failoverResult != nil {
-				failoverResult.FinalError = ctx.Err().Error()
-			}
-			return ctx.Err()
-		}
-
-		blindResult := &RouteResult{
-			Provider: provider,
-			Model:    passthroughModel,
-		}
-		if apiKey, keyErr := r.registry.GetAPIKey(provider.ID); keyErr == nil {
-			blindResult.APIKey = apiKey
-		}
-		if blindResult.APIKey == nil {
-			if oauthCfg, oauthErr := r.registry.GetOAuthConfig(provider.ID); oauthErr == nil {
-				blindResult.OAuth = oauthCfg
-			}
-		}
-
-		blindKeyAttempts := buildAPIKeyAttempts(provider, blindResult.APIKey)
-		if len(blindKeyAttempts) == 0 {
-			blindKeyAttempts = []*APIKey{nil}
-		}
-
-		for keyIdx, apiKey := range blindKeyAttempts {
-			if ctx.Err() != nil {
-				if failoverResult != nil {
-					failoverResult.FinalError = ctx.Err().Error()
-				}
-				return ctx.Err()
-			}
-
-			attemptResult := &RouteResult{
-				Provider: provider,
-				Model:    passthroughModel,
-				APIKey:   apiKey,
-				OAuth:    blindResult.OAuth,
-			}
-
-			if failoverResult != nil {
-				failoverResult.TotalAttempts++
-			}
-			start := timeutil.NowTime()
-			latency, attemptErr := executeWithNaturalRetry(ctx, attemptResult, execute)
-
-			if attemptErr == nil {
-				r.UpdateLatency(provider.ID, latency)
-				r.RecordSuccess(provider.ID)
-				if failoverResult != nil {
-					failoverResult.SuccessProvider = provider.ID
-					failoverResult.SuccessModel = req.ModelID
-				}
-				slog.Info("[router] blind fallback succeeded", "provider", provider.ID, "model", req.ModelID)
-				return nil
-			}
-			lastErr = attemptErr
-
-			r.UpdateLatency(provider.ID, latency*2)
-			r.RecordFailure(provider.ID, attemptErr)
-
-			if failoverResult != nil {
-				failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
-					Timestamp:    start,
-					ProviderID:   provider.ID,
-					ProviderName: provider.Name,
-					ModelID:      req.ModelID,
-					Reason:       classifyError(attemptErr),
-					Error:        attemptErr.Error(),
-					Latency:      latency,
-				})
-			}
-
-			if keyIdx+1 < len(blindKeyAttempts) && shouldRetryWithNextAPIKey(attemptErr) {
-				continue
-			}
-			break
 		}
 	}
 
@@ -1548,7 +1465,41 @@ func (r *Router) FindBestProvider(modelID string) (*Provider, *Model, error) {
 
 // ListAvailableModels returns all models that can be routed
 func (r *Router) ListAvailableModels() []*Model {
-	return r.discovery.GetAllModels()
+	if r == nil || r.registry == nil || r.discovery == nil {
+		return nil
+	}
+
+	models := make([]*Model, 0)
+	seen := make(map[string]struct{})
+	for _, provider := range r.registry.ListEnabled() {
+		if provider == nil || !provider.Enabled {
+			continue
+		}
+		if provider.Location == ProviderLocationCloud && !r.hasCredentials(provider) {
+			continue
+		}
+		filteredModels, err := r.discovery.GetFilteredModels(provider.ID)
+		if err != nil {
+			continue
+		}
+		for _, model := range filteredModels {
+			if model == nil || !model.Enabled {
+				continue
+			}
+			key := provider.ID + "\x00" + model.ID
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+
+			copy := *model
+			if strings.TrimSpace(copy.ProviderID) == "" {
+				copy.ProviderID = provider.ID
+			}
+			models = append(models, &copy)
+		}
+	}
+	return sortModelsByPreference(models)
 }
 
 // GetProviderForModel returns the provider that would be selected for a model

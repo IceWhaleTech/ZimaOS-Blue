@@ -103,6 +103,15 @@ func containsMemoryContext(messages []llm.Message) bool {
 	return false
 }
 
+func memoryContextContent(messages []llm.Message) string {
+	for _, msg := range messages {
+		if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, "<memory_context>") {
+			return msg.Content
+		}
+	}
+	return ""
+}
+
 func TestSendMessage_AutomaticMemoryRecallAndPostTurnSave(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -199,6 +208,98 @@ func TestStreamMessage_AutomaticMemoryRecallAndPostTurnSave(t *testing.T) {
 		t.Fatalf("expected memory context in stream request, got %+v", captureProvider.LastRequest().Messages)
 	}
 	waitForRefreshCount(t, refresher, 1)
+}
+
+func TestSendMessage_LatestDocsSkipsMemoryRecall(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "latest docs skip memory")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "assistant", Content: "Earlier context"}); err != nil {
+		t.Fatalf("AddMessage seed: %v", err)
+	}
+
+	captureProvider := &requestCaptureProvider{}
+	registry := llm.NewProviderRegistry()
+	registry.Register(captureProvider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	defer handler.Close()
+	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	handler.SetLayeredMemory(layered)
+	if _, err := baseSvc.Remember(context.Background(), "This documentation belongs to Cursor, not ZimaOS.", []string{"longterm", "docs"}); err != nil {
+		t.Fatalf("Remember: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"搜索 OpenAI Responses API 的最新文档。","provider":"capture","model":"capture-model"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if containsMemoryContext(captureProvider.LastRequest().Messages) {
+		t.Fatalf("expected latest docs request to skip memory context, got %+v", captureProvider.LastRequest().Messages)
+	}
+}
+
+func TestSendMessage_GenericPromptSkipsSessionCompactionMemory(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "generic skip compaction")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "assistant", Content: "Earlier context"}); err != nil {
+		t.Fatalf("AddMessage seed: %v", err)
+	}
+
+	captureProvider := &requestCaptureProvider{}
+	registry := llm.NewProviderRegistry()
+	registry.Register(captureProvider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	defer handler.Close()
+	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	handler.SetLayeredMemory(layered)
+	if _, err := baseSvc.Remember(context.Background(), "Earlier session summary that may be stale.", []string{"session-compaction", "session:test"}); err != nil {
+		t.Fatalf("Remember: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"Explain Rust borrowing in simple terms.","provider":"capture","model":"capture-model"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if containsMemoryContext(captureProvider.LastRequest().Messages) {
+		t.Fatalf("expected generic prompt to skip session-compaction memory, got %+v", captureProvider.LastRequest().Messages)
+	}
 }
 
 func TestProcessChannelMessage_FinalReplyTriggersPostTurnSaveOnly(t *testing.T) {

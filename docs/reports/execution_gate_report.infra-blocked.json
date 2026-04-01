@@ -1,0 +1,2671 @@
+{
+  "generated_at": "2026-03-29T05:33:42.342761Z",
+  "owner_user_id": "release-gate",
+  "candidate_id": "execution-gate-20260329-051759",
+  "candidate_label": "execution-gate-20260329-051759",
+  "assets": {
+    "dataset": {
+      "id": "641bb32f-d072-4373-8b1d-5b75697dfa7a",
+      "name": "skill-exec-batch1",
+      "description": "Curated batch-1 execution equivalence dataset for tool-to-skill migration.",
+      "owner_user_id": "preview-user",
+      "subject": "skill_execution_batch1",
+      "default_run_kind": "agent_task",
+      "default_profile": "skill_execution_batch1",
+      "active_version_id": "f101585f-2989-41f6-b6e5-0fcc9d3e3f53",
+      "metadata": {
+        "dataset_family": "builtin_batch1_execution",
+        "languages": [
+          "ca-ES",
+          "cs-CZ",
+          "da-DK",
+          "de-DE",
+          "el-GR",
+          "en-GB",
+          "en-US",
+          "es-ES",
+          "fr-FR",
+          "ga-IE",
+          "hr-HR",
+          "hu-HU",
+          "it-IT",
+          "ja-JP",
+          "ko-KR",
+          "ml-IN",
+          "nb-NO",
+          "nl-NL",
+          "pl-PL",
+          "pt-BR",
+          "pt-PT",
+          "ro-RO",
+          "ru-RU",
+          "sk-SK",
+          "sv-SE",
+          "zh-CN",
+          "zh-TW"
+        ],
+        "migrated_skills": [
+          "web_search",
+          "analyze",
+          "reminder"
+        ],
+        "migration_batch": "batch1",
+        "source": "server/internal/harness/execution_dataset.go"
+      },
+      "created_at": "2026-03-29T03:30:53.669043+08:00",
+      "updated_at": "2026-03-29T03:30:53.769043+08:00"
+    },
+    "dataset_version": {
+      "id": "f101585f-2989-41f6-b6e5-0fcc9d3e3f53",
+      "dataset_id": "641bb32f-d072-4373-8b1d-5b75697dfa7a",
+      "version": "skill-exec-batch1-v1",
+      "manifest_sha256": "ba16c167d19323cb4ae56eb2f919e8de9fb749b6b8d0642d12647290cedd7474",
+      "item_count": 85,
+      "source_type": "builtin_batch1_execution",
+      "source_ref": "server/internal/harness/execution_dataset.go",
+      "manifest": {
+        "dataset": {
+          "name": "skill-exec-batch1",
+          "subject": "skill_execution_batch1"
+        },
+        "defaults": {
+          "profile": "skill_execution_batch1",
+          "run_kind": "agent_task",
+          "runtime_policy": {
+            "gate_type": "execution_equivalence",
+            "migrated_skills": [
+              "web_search",
+              "analyze",
+              "reminder"
+            ],
+            "migration_batch": "batch1"
+          },
+          "scheduler": {
+            "max_attempts": 1
+          },
+          "scoring": {
+            "mode": "rule",
+            "pass_threshold": 1
+          }
+        },
+        "items": [
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-ca-es",
+            "input": {
+              "goal": "Busca la documentacio mes recent de l'API Responses d'OpenAI.",
+              "lang": "ca-ES",
+              "locale": "ca-ES",
+              "query": "Busca la documentacio mes recent de l'API Responses d'OpenAI."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "ca-ES",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-cs-cz",
+            "input": {
+              "goal": "Vyhledej nejnovejsi dokumentaci k OpenAI Responses API.",
+              "lang": "cs-CZ",
+              "locale": "cs-CZ",
+              "query": "Vyhledej nejnovejsi dokumentaci k OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "cs-CZ",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-da-dk",
+            "input": {
+              "goal": "Find den nyeste dokumentation til OpenAI Responses API.",
+              "lang": "da-DK",
+              "locale": "da-DK",
+              "query": "Find den nyeste dokumentation til OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "da-DK",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-de-de",
+            "input": {
+              "goal": "Suche die neueste Dokumentation zur OpenAI Responses API.",
+              "lang": "de-DE",
+              "locale": "de-DE",
+              "query": "Suche die neueste Dokumentation zur OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "de-DE",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-el-gr",
+            "input": {
+              "goal": "Αναζήτησε την πιο πρόσφατη τεκμηρίωση για το OpenAI Responses API.",
+              "lang": "el-GR",
+              "locale": "el-GR",
+              "query": "Αναζήτησε την πιο πρόσφατη τεκμηρίωση για το OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "el-GR",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-en-gb",
+            "input": {
+              "goal": "Search the latest OpenAI Responses API documentation.",
+              "lang": "en-GB",
+              "locale": "en-GB",
+              "query": "Search the latest OpenAI Responses API documentation."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "en-GB",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-en-us",
+            "input": {
+              "goal": "Search the latest OpenAI Responses API documentation.",
+              "lang": "en-US",
+              "locale": "en-US",
+              "query": "Search the latest OpenAI Responses API documentation."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "en-US",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-es-es",
+            "input": {
+              "goal": "Busca la documentacion mas reciente de OpenAI Responses API.",
+              "lang": "es-ES",
+              "locale": "es-ES",
+              "query": "Busca la documentacion mas reciente de OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "es-ES",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-fr-fr",
+            "input": {
+              "goal": "Recherche la documentation la plus recente de l'API Responses d'OpenAI.",
+              "lang": "fr-FR",
+              "locale": "fr-FR",
+              "query": "Recherche la documentation la plus recente de l'API Responses d'OpenAI."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "fr-FR",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-ga-ie",
+            "input": {
+              "goal": "Cuardaigh an chaipéisíocht is déanaí don OpenAI Responses API.",
+              "lang": "ga-IE",
+              "locale": "ga-IE",
+              "query": "Cuardaigh an chaipéisíocht is déanaí don OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "ga-IE",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-hr-hr",
+            "input": {
+              "goal": "Pretrazi najnoviju dokumentaciju za OpenAI Responses API.",
+              "lang": "hr-HR",
+              "locale": "hr-HR",
+              "query": "Pretrazi najnoviju dokumentaciju za OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "hr-HR",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-hu-hu",
+            "input": {
+              "goal": "Keresd meg az OpenAI Responses API legfrissebb dokumentaciojat.",
+              "lang": "hu-HU",
+              "locale": "hu-HU",
+              "query": "Keresd meg az OpenAI Responses API legfrissebb dokumentaciojat."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "hu-HU",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-it-it",
+            "input": {
+              "goal": "Cerca la documentazione piu recente di OpenAI Responses API.",
+              "lang": "it-IT",
+              "locale": "it-IT",
+              "query": "Cerca la documentazione piu recente di OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "it-IT",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-ja-jp",
+            "input": {
+              "goal": "OpenAI Responses API の最新ドキュメントを検索して。",
+              "lang": "ja-JP",
+              "locale": "ja-JP",
+              "query": "OpenAI Responses API の最新ドキュメントを検索して。"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "ja-JP",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-ko-kr",
+            "input": {
+              "goal": "OpenAI Responses API 최신 문서를 검색해 줘.",
+              "lang": "ko-KR",
+              "locale": "ko-KR",
+              "query": "OpenAI Responses API 최신 문서를 검색해 줘."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "ko-KR",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-ml-in",
+            "input": {
+              "goal": "OpenAI Responses APIയുടെ ഏറ്റവും പുതിയ ഡോക്യുമെന്റേഷൻ തിരയൂ.",
+              "lang": "ml-IN",
+              "locale": "ml-IN",
+              "query": "OpenAI Responses APIയുടെ ഏറ്റവും പുതിയ ഡോക്യുമെന്റേഷൻ തിരയൂ."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "ml-IN",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-nb-no",
+            "input": {
+              "goal": "Sok etter den nyeste dokumentasjonen for OpenAI Responses API.",
+              "lang": "nb-NO",
+              "locale": "nb-NO",
+              "query": "Sok etter den nyeste dokumentasjonen for OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "nb-NO",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-nl-nl",
+            "input": {
+              "goal": "Zoek de nieuwste documentatie voor OpenAI Responses API.",
+              "lang": "nl-NL",
+              "locale": "nl-NL",
+              "query": "Zoek de nieuwste documentatie voor OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "nl-NL",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-pl-pl",
+            "input": {
+              "goal": "Wyszukaj najnowsza dokumentacje OpenAI Responses API.",
+              "lang": "pl-PL",
+              "locale": "pl-PL",
+              "query": "Wyszukaj najnowsza dokumentacje OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "pl-PL",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-pt-br",
+            "input": {
+              "goal": "Busque a documentacao mais recente da OpenAI Responses API.",
+              "lang": "pt-BR",
+              "locale": "pt-BR",
+              "query": "Busque a documentacao mais recente da OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "pt-BR",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-pt-pt",
+            "input": {
+              "goal": "Procura a documentacao mais recente da OpenAI Responses API.",
+              "lang": "pt-PT",
+              "locale": "pt-PT",
+              "query": "Procura a documentacao mais recente da OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "pt-PT",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-ro-ro",
+            "input": {
+              "goal": "Cauta cea mai recenta documentatie pentru OpenAI Responses API.",
+              "lang": "ro-RO",
+              "locale": "ro-RO",
+              "query": "Cauta cea mai recenta documentatie pentru OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "ro-RO",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-ru-ru",
+            "input": {
+              "goal": "Найди самую свежую документацию по OpenAI Responses API.",
+              "lang": "ru-RU",
+              "locale": "ru-RU",
+              "query": "Найди самую свежую документацию по OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "ru-RU",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-sk-sk",
+            "input": {
+              "goal": "Vyhladaj najnovsiu dokumentaciu k OpenAI Responses API.",
+              "lang": "sk-SK",
+              "locale": "sk-SK",
+              "query": "Vyhladaj najnovsiu dokumentaciu k OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "sk-SK",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-sv-se",
+            "input": {
+              "goal": "Sok den senaste dokumentationen for OpenAI Responses API.",
+              "lang": "sv-SE",
+              "locale": "sv-SE",
+              "query": "Sok den senaste dokumentationen for OpenAI Responses API."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "sv-SE",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-zh-cn",
+            "input": {
+              "goal": "搜索 OpenAI Responses API 的最新文档。",
+              "lang": "zh-CN",
+              "locale": "zh-CN",
+              "query": "搜索 OpenAI Responses API 的最新文档。"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "zh-CN",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-web_search-zh-tw",
+            "input": {
+              "goal": "搜尋 OpenAI Responses API 的最新文件。",
+              "lang": "zh-TW",
+              "locale": "zh-TW",
+              "query": "搜尋 OpenAI Responses API 的最新文件。"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "zh-TW",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "The web_search execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-ca-es",
+            "input": {
+              "goal": "Resumeix el README de l'espai de treball i digues que fa el projecte.",
+              "lang": "ca-ES",
+              "locale": "ca-ES",
+              "query": "Resumeix el README de l'espai de treball i digues que fa el projecte."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "ca-ES",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-cs-cz",
+            "input": {
+              "goal": "Shrn README ve workspace a rekni, co projekt dela.",
+              "lang": "cs-CZ",
+              "locale": "cs-CZ",
+              "query": "Shrn README ve workspace a rekni, co projekt dela."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "cs-CZ",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-da-dk",
+            "input": {
+              "goal": "Opsummer README i workspace og fortael, hvad projektet laver.",
+              "lang": "da-DK",
+              "locale": "da-DK",
+              "query": "Opsummer README i workspace og fortael, hvad projektet laver."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "da-DK",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-de-de",
+            "input": {
+              "goal": "Fasse das README im Workspace zusammen und sag mir, was das Projekt macht.",
+              "lang": "de-DE",
+              "locale": "de-DE",
+              "query": "Fasse das README im Workspace zusammen und sag mir, was das Projekt macht."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "de-DE",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-el-gr",
+            "input": {
+              "goal": "Σύνοψε το README στο workspace και πες μου τι κάνει το έργο.",
+              "lang": "el-GR",
+              "locale": "el-GR",
+              "query": "Σύνοψε το README στο workspace και πες μου τι κάνει το έργο."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "el-GR",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-en-gb",
+            "input": {
+              "goal": "Summarise the README in the workspace and tell me what the project does.",
+              "lang": "en-GB",
+              "locale": "en-GB",
+              "query": "Summarise the README in the workspace and tell me what the project does."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "en-GB",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-en-us",
+            "input": {
+              "goal": "Summarize the README in the workspace and tell me what the project does.",
+              "lang": "en-US",
+              "locale": "en-US",
+              "query": "Summarize the README in the workspace and tell me what the project does."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "en-US",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-es-es",
+            "input": {
+              "goal": "Resume el README del espacio de trabajo y dime que hace el proyecto.",
+              "lang": "es-ES",
+              "locale": "es-ES",
+              "query": "Resume el README del espacio de trabajo y dime que hace el proyecto."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "es-ES",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-fr-fr",
+            "input": {
+              "goal": "Resume le README de l'espace de travail et dis-moi ce que fait le projet.",
+              "lang": "fr-FR",
+              "locale": "fr-FR",
+              "query": "Resume le README de l'espace de travail et dis-moi ce que fait le projet."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "fr-FR",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-ga-ie",
+            "input": {
+              "goal": "Dean achoimre ar an README sa spás oibre agus inis dom cad a dhéanann an tionscadal.",
+              "lang": "ga-IE",
+              "locale": "ga-IE",
+              "query": "Dean achoimre ar an README sa spás oibre agus inis dom cad a dhéanann an tionscadal."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "ga-IE",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-hr-hr",
+            "input": {
+              "goal": "Sazmi README u workspaceu i reci mi sto projekt radi.",
+              "lang": "hr-HR",
+              "locale": "hr-HR",
+              "query": "Sazmi README u workspaceu i reci mi sto projekt radi."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "hr-HR",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-hu-hu",
+            "input": {
+              "goal": "Foglald ossze a README-t a workspaceben, es mondd el, mit csinal a projekt.",
+              "lang": "hu-HU",
+              "locale": "hu-HU",
+              "query": "Foglald ossze a README-t a workspaceben, es mondd el, mit csinal a projekt."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "hu-HU",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-it-it",
+            "input": {
+              "goal": "Riassumi il README nel workspace e dimmi cosa fa il progetto.",
+              "lang": "it-IT",
+              "locale": "it-IT",
+              "query": "Riassumi il README nel workspace e dimmi cosa fa il progetto."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "it-IT",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-ja-jp",
+            "input": {
+              "goal": "workspace の README を要約して、プロジェクトが何をしているか教えて。",
+              "lang": "ja-JP",
+              "locale": "ja-JP",
+              "query": "workspace の README を要約して、プロジェクトが何をしているか教えて。"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "ja-JP",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-ko-kr",
+            "input": {
+              "goal": "workspace 의 README 를 요약하고 프로젝트가 무엇을 하는지 알려 줘.",
+              "lang": "ko-KR",
+              "locale": "ko-KR",
+              "query": "workspace 의 README 를 요약하고 프로젝트가 무엇을 하는지 알려 줘."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "ko-KR",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-ml-in",
+            "input": {
+              "goal": "workspace ലെയുള്ള README സംഗ്രഹിച്ച് പ്രോജക്ട് എന്താണ് ചെയ്യുന്നതെന്ന് പറയൂ.",
+              "lang": "ml-IN",
+              "locale": "ml-IN",
+              "query": "workspace ലെയുള്ള README സംഗ്രഹിച്ച് പ്രോജക്ട് എന്താണ് ചെയ്യുന്നതെന്ന് പറയൂ."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "ml-IN",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-nb-no",
+            "input": {
+              "goal": "Oppsummer README i workspace og fortell hva prosjektet gjor.",
+              "lang": "nb-NO",
+              "locale": "nb-NO",
+              "query": "Oppsummer README i workspace og fortell hva prosjektet gjor."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "nb-NO",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-nl-nl",
+            "input": {
+              "goal": "Vat de README in de workspace samen en vertel wat het project doet.",
+              "lang": "nl-NL",
+              "locale": "nl-NL",
+              "query": "Vat de README in de workspace samen en vertel wat het project doet."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "nl-NL",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-pl-pl",
+            "input": {
+              "goal": "Podsumuj README w workspace i powiedz, co robi projekt.",
+              "lang": "pl-PL",
+              "locale": "pl-PL",
+              "query": "Podsumuj README w workspace i powiedz, co robi projekt."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "pl-PL",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-pt-br",
+            "input": {
+              "goal": "Resuma o README no workspace e diga o que o projeto faz.",
+              "lang": "pt-BR",
+              "locale": "pt-BR",
+              "query": "Resuma o README no workspace e diga o que o projeto faz."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "pt-BR",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-pt-pt",
+            "input": {
+              "goal": "Resume o README no workspace e diz-me o que o projeto faz.",
+              "lang": "pt-PT",
+              "locale": "pt-PT",
+              "query": "Resume o README no workspace e diz-me o que o projeto faz."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "pt-PT",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-ro-ro",
+            "input": {
+              "goal": "Rezuma README-ul din workspace si spune-mi ce face proiectul.",
+              "lang": "ro-RO",
+              "locale": "ro-RO",
+              "query": "Rezuma README-ul din workspace si spune-mi ce face proiectul."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "ro-RO",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-ru-ru",
+            "input": {
+              "goal": "Суммируй README в workspace и скажи, что делает проект.",
+              "lang": "ru-RU",
+              "locale": "ru-RU",
+              "query": "Суммируй README в workspace и скажи, что делает проект."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "ru-RU",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-sk-sk",
+            "input": {
+              "goal": "Zhrn README vo workspace a povedz mi, co projekt robi.",
+              "lang": "sk-SK",
+              "locale": "sk-SK",
+              "query": "Zhrn README vo workspace a povedz mi, co projekt robi."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "sk-SK",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-sv-se",
+            "input": {
+              "goal": "Sammanfatta README i workspace och beratta vad projektet gor.",
+              "lang": "sv-SE",
+              "locale": "sv-SE",
+              "query": "Sammanfatta README i workspace och beratta vad projektet gor."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "sv-SE",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-zh-cn",
+            "input": {
+              "goal": "总结 workspace 里的 README，并告诉我项目在做什么。",
+              "lang": "zh-CN",
+              "locale": "zh-CN",
+              "query": "总结 workspace 里的 README，并告诉我项目在做什么。"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "zh-CN",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-analyze-zh-tw",
+            "input": {
+              "goal": "總結 workspace 裡的 README，並告訴我專案在做什麼。",
+              "lang": "zh-TW",
+              "locale": "zh-TW",
+              "query": "總結 workspace 裡的 README，並告訴我專案在做什麼。"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "zh-TW",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "The analyze execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-ca-es",
+            "input": {
+              "goal": "Programa un recordatori per dema a les 9 per enviar l'informe setmanal.",
+              "lang": "ca-ES",
+              "locale": "ca-ES",
+              "query": "Programa un recordatori per dema a les 9 per enviar l'informe setmanal.",
+              "session_id": "batch1-reminder-ca-es-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "ca-ES",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-cs-cz",
+            "input": {
+              "goal": "Naplanuj pripominku na zitra v 9 pro odeslani tydenniho reportu.",
+              "lang": "cs-CZ",
+              "locale": "cs-CZ",
+              "query": "Naplanuj pripominku na zitra v 9 pro odeslani tydenniho reportu.",
+              "session_id": "batch1-reminder-cs-cz-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "cs-CZ",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-da-dk",
+            "input": {
+              "goal": "Planlaeg en pamindelse til i morgen klokken 9 om at sende ugerapporten.",
+              "lang": "da-DK",
+              "locale": "da-DK",
+              "query": "Planlaeg en pamindelse til i morgen klokken 9 om at sende ugerapporten.",
+              "session_id": "batch1-reminder-da-dk-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "da-DK",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-de-de",
+            "input": {
+              "goal": "Plane eine Erinnerung fur morgen um 9 Uhr, damit ich den Wochenbericht sende.",
+              "lang": "de-DE",
+              "locale": "de-DE",
+              "query": "Plane eine Erinnerung fur morgen um 9 Uhr, damit ich den Wochenbericht sende.",
+              "session_id": "batch1-reminder-de-de-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "de-DE",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-el-gr",
+            "input": {
+              "goal": "Προγραμμάτισε μια υπενθύμιση για αύριο στις 9 να στείλω την εβδομαδιαία αναφορά.",
+              "lang": "el-GR",
+              "locale": "el-GR",
+              "query": "Προγραμμάτισε μια υπενθύμιση για αύριο στις 9 να στείλω την εβδομαδιαία αναφορά.",
+              "session_id": "batch1-reminder-el-gr-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "el-GR",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-en-gb",
+            "input": {
+              "goal": "Schedule a reminder for tomorrow at 9 AM to send the weekly report.",
+              "lang": "en-GB",
+              "locale": "en-GB",
+              "query": "Schedule a reminder for tomorrow at 9 AM to send the weekly report.",
+              "session_id": "batch1-reminder-en-gb-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "en-GB",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-en-us",
+            "input": {
+              "goal": "Schedule a reminder for tomorrow at 9 AM to send the weekly report.",
+              "lang": "en-US",
+              "locale": "en-US",
+              "query": "Schedule a reminder for tomorrow at 9 AM to send the weekly report.",
+              "session_id": "batch1-reminder-en-us-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "en-US",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-es-es",
+            "input": {
+              "goal": "Programa un recordatorio para manana a las 9 para enviar el informe semanal.",
+              "lang": "es-ES",
+              "locale": "es-ES",
+              "query": "Programa un recordatorio para manana a las 9 para enviar el informe semanal.",
+              "session_id": "batch1-reminder-es-es-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "es-ES",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-fr-fr",
+            "input": {
+              "goal": "Programme un rappel pour demain a 9 h afin d'envoyer le rapport hebdomadaire.",
+              "lang": "fr-FR",
+              "locale": "fr-FR",
+              "query": "Programme un rappel pour demain a 9 h afin d'envoyer le rapport hebdomadaire.",
+              "session_id": "batch1-reminder-fr-fr-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "fr-FR",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-ga-ie",
+            "input": {
+              "goal": "Socraigh meabhruchan do amárach ag 9 chun an tuairisc sheachtainiúil a sheoladh.",
+              "lang": "ga-IE",
+              "locale": "ga-IE",
+              "query": "Socraigh meabhruchan do amárach ag 9 chun an tuairisc sheachtainiúil a sheoladh.",
+              "session_id": "batch1-reminder-ga-ie-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "ga-IE",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-hr-hr",
+            "input": {
+              "goal": "Zakazi podsjetnik za sutra u 9 da posaljem tjedni izvjestaj.",
+              "lang": "hr-HR",
+              "locale": "hr-HR",
+              "query": "Zakazi podsjetnik za sutra u 9 da posaljem tjedni izvjestaj.",
+              "session_id": "batch1-reminder-hr-hr-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "hr-HR",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-hu-hu",
+            "input": {
+              "goal": "Utemezz emlekeztetot holnap 9 orara a heti jelentes elkuldesehez.",
+              "lang": "hu-HU",
+              "locale": "hu-HU",
+              "query": "Utemezz emlekeztetot holnap 9 orara a heti jelentes elkuldesehez.",
+              "session_id": "batch1-reminder-hu-hu-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "hu-HU",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-it-it",
+            "input": {
+              "goal": "Programma un promemoria per domani alle 9 per inviare il rapporto settimanale.",
+              "lang": "it-IT",
+              "locale": "it-IT",
+              "query": "Programma un promemoria per domani alle 9 per inviare il rapporto settimanale.",
+              "session_id": "batch1-reminder-it-it-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "it-IT",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-ja-jp",
+            "input": {
+              "goal": "明日朝9時に週報を送るリマインダーを設定して。",
+              "lang": "ja-JP",
+              "locale": "ja-JP",
+              "query": "明日朝9時に週報を送るリマインダーを設定して。",
+              "session_id": "batch1-reminder-ja-jp-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "ja-JP",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-ko-kr",
+            "input": {
+              "goal": "내일 아침 9시에 주간 보고서를 보내도록 알림을 예약해 줘.",
+              "lang": "ko-KR",
+              "locale": "ko-KR",
+              "query": "내일 아침 9시에 주간 보고서를 보내도록 알림을 예약해 줘.",
+              "session_id": "batch1-reminder-ko-kr-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "ko-KR",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-ml-in",
+            "input": {
+              "goal": "നാളെ രാവിലെ 9 മണിക്ക് ആഴ്ച റിപ്പോർട്ട് അയക്കാൻ ഒരു റിമൈൻഡർ സജ്ജമാക്കൂ.",
+              "lang": "ml-IN",
+              "locale": "ml-IN",
+              "query": "നാളെ രാവിലെ 9 മണിക്ക് ആഴ്ച റിപ്പോർട്ട് അയക്കാൻ ഒരു റിമൈൻഡർ സജ്ജമാക്കൂ.",
+              "session_id": "batch1-reminder-ml-in-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "ml-IN",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-nb-no",
+            "input": {
+              "goal": "Planlegg en paminnelse for i morgen klokken 9 om a sende ukesrapporten.",
+              "lang": "nb-NO",
+              "locale": "nb-NO",
+              "query": "Planlegg en paminnelse for i morgen klokken 9 om a sende ukesrapporten.",
+              "session_id": "batch1-reminder-nb-no-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "nb-NO",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-nl-nl",
+            "input": {
+              "goal": "Plan een herinnering voor morgen om 9 uur om het weekrapport te sturen.",
+              "lang": "nl-NL",
+              "locale": "nl-NL",
+              "query": "Plan een herinnering voor morgen om 9 uur om het weekrapport te sturen.",
+              "session_id": "batch1-reminder-nl-nl-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "nl-NL",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-pl-pl",
+            "input": {
+              "goal": "Zaplanuj przypomnienie na jutro na 9:00, zebym wyslal tygodniowy raport.",
+              "lang": "pl-PL",
+              "locale": "pl-PL",
+              "query": "Zaplanuj przypomnienie na jutro na 9:00, zebym wyslal tygodniowy raport.",
+              "session_id": "batch1-reminder-pl-pl-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "pl-PL",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-pt-br",
+            "input": {
+              "goal": "Agende um lembrete para amanha as 9 para enviar o relatorio semanal.",
+              "lang": "pt-BR",
+              "locale": "pt-BR",
+              "query": "Agende um lembrete para amanha as 9 para enviar o relatorio semanal.",
+              "session_id": "batch1-reminder-pt-br-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "pt-BR",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-pt-pt",
+            "input": {
+              "goal": "Agenda um lembrete para amanha as 9 para enviar o relatorio semanal.",
+              "lang": "pt-PT",
+              "locale": "pt-PT",
+              "query": "Agenda um lembrete para amanha as 9 para enviar o relatorio semanal.",
+              "session_id": "batch1-reminder-pt-pt-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "pt-PT",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-ro-ro",
+            "input": {
+              "goal": "Programeaza un memento pentru maine la 9 ca sa trimit raportul saptamanal.",
+              "lang": "ro-RO",
+              "locale": "ro-RO",
+              "query": "Programeaza un memento pentru maine la 9 ca sa trimit raportul saptamanal.",
+              "session_id": "batch1-reminder-ro-ro-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "ro-RO",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-ru-ru",
+            "input": {
+              "goal": "Запланируй напоминание на завтра на 9:00, чтобы отправить недельный отчет.",
+              "lang": "ru-RU",
+              "locale": "ru-RU",
+              "query": "Запланируй напоминание на завтра на 9:00, чтобы отправить недельный отчет.",
+              "session_id": "batch1-reminder-ru-ru-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "ru-RU",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-sk-sk",
+            "input": {
+              "goal": "Naplanuj pripomienku na zajtra o 9:00, aby som poslal tyzdenny report.",
+              "lang": "sk-SK",
+              "locale": "sk-SK",
+              "query": "Naplanuj pripomienku na zajtra o 9:00, aby som poslal tyzdenny report.",
+              "session_id": "batch1-reminder-sk-sk-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "sk-SK",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-sv-se",
+            "input": {
+              "goal": "Planera en paminnelse till i morgon klockan 9 for att skicka veckorapporten.",
+              "lang": "sv-SE",
+              "locale": "sv-SE",
+              "query": "Planera en paminnelse till i morgon klockan 9 for att skicka veckorapporten.",
+              "session_id": "batch1-reminder-sv-se-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "sv-SE",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-zh-cn",
+            "input": {
+              "goal": "帮我设置一个明早 9 点发送周报的提醒。",
+              "lang": "zh-CN",
+              "locale": "zh-CN",
+              "query": "帮我设置一个明早 9 点发送周报的提醒。",
+              "session_id": "batch1-reminder-zh-cn-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "zh-CN",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "exec-reminder-zh-tw",
+            "input": {
+              "goal": "幫我設定一個明早 9 點發送週報的提醒。",
+              "lang": "zh-TW",
+              "locale": "zh-TW",
+              "query": "幫我設定一個明早 9 點發送週報的提醒。",
+              "session_id": "batch1-reminder-zh-tw-localized_route"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": false,
+              "execution_case_type": "localized_route",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "zh-TW",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "The reminder execution flow should complete without regressing from the current baseline."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "critical-web-search-latest-docs-zh-cn",
+            "input": {
+              "goal": "搜索 OpenAI Responses API 的最新文档。",
+              "lang": "zh-CN",
+              "locale": "zh-CN",
+              "query": "搜索 OpenAI Responses API 的最新文档。"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": true,
+              "execution_case_type": "latest_docs_web",
+              "expected_cli_action": "blue web_search",
+              "latency_budget_ms": 10000,
+              "locale": "zh-CN",
+              "migration_batch": "batch1",
+              "primary_route": "web_search",
+              "success_rubric": "Keep latest-documentation execution working for live web search requests."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "critical-analyze-workspace-readme-zh-cn",
+            "input": {
+              "goal": "看下 workspace 里的 README，总结一下项目是做什么的。",
+              "lang": "zh-CN",
+              "locale": "zh-CN",
+              "query": "看下 workspace 里的 README，总结一下项目是做什么的。"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": true,
+              "execution_case_type": "workspace_readme_local",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "zh-CN",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "Keep local workspace README execution working without falling back to the web."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested",
+                "evidence_tool_used"
+              ],
+              "status": "completed"
+            },
+            "id": "critical-analyze-workspace-report-en-us",
+            "input": {
+              "goal": "Review files in the workspace and summarize the report.",
+              "lang": "en-US",
+              "locale": "en-US",
+              "query": "Review files in the workspace and summarize the report."
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": true,
+              "execution_case_type": "workspace_report_analysis",
+              "expected_cli_action": "blue analyze",
+              "latency_budget_ms": 10000,
+              "locale": "en-US",
+              "migration_batch": "batch1",
+              "primary_route": "analyze",
+              "success_rubric": "Keep workspace report analysis execution working for local file tasks."
+            }
+          },
+          {
+            "expected": {
+              "forbidden_observations": [
+                "clarification_requested"
+              ],
+              "required_observations": [
+                "session_context_propagated"
+              ],
+              "status": "completed"
+            },
+            "id": "critical-reminder-tomorrow-9-zh-cn",
+            "input": {
+              "goal": "帮我明早 9 点提醒我发送周报。",
+              "lang": "zh-CN",
+              "locale": "zh-CN",
+              "query": "帮我明早 9 点提醒我发送周报。",
+              "session_id": "batch1-reminder-zh-cn-reminder_schedule"
+            },
+            "metadata": {
+              "allow_fallback": false,
+              "critical": true,
+              "execution_case_type": "reminder_schedule",
+              "expected_cli_action": "blue reminder.add",
+              "latency_budget_ms": 10000,
+              "locale": "zh-CN",
+              "migration_batch": "batch1",
+              "primary_route": "reminder",
+              "success_rubric": "Keep reminder scheduling execution working for time-based requests."
+            }
+          }
+        ]
+      },
+      "metadata": {
+        "case_count": 85,
+        "languages": [
+          "ca-ES",
+          "cs-CZ",
+          "da-DK",
+          "de-DE",
+          "el-GR",
+          "en-GB",
+          "en-US",
+          "es-ES",
+          "fr-FR",
+          "ga-IE",
+          "hr-HR",
+          "hu-HU",
+          "it-IT",
+          "ja-JP",
+          "ko-KR",
+          "ml-IN",
+          "nb-NO",
+          "nl-NL",
+          "pl-PL",
+          "pt-BR",
+          "pt-PT",
+          "ro-RO",
+          "ru-RU",
+          "sk-SK",
+          "sv-SE",
+          "zh-CN",
+          "zh-TW"
+        ],
+        "migrated_skills": [
+          "web_search",
+          "analyze",
+          "reminder"
+        ],
+        "migration_batch": "batch1"
+      },
+      "created_by": "preview-user",
+      "created_at": "2026-03-29T03:30:53.669043+08:00"
+    },
+    "eval_spec": {
+      "id": "77765c46-2490-47ea-bf49-d2c50f0f5ba2",
+      "name": "Skill Execution Batch 1",
+      "owner_user_id": "preview-user",
+      "subject": "skill_execution_batch1",
+      "run_kind": "agent_task",
+      "profile": "skill_execution_batch1",
+      "dataset_id": "641bb32f-d072-4373-8b1d-5b75697dfa7a",
+      "dataset_version_id": "f101585f-2989-41f6-b6e5-0fcc9d3e3f53",
+      "scheduler_config": {},
+      "scoring_config": {
+        "mode": "rule",
+        "pass_threshold": 1
+      },
+      "runtime_policy": {
+        "gate_type": "execution_equivalence",
+        "migrated_skills": [
+          "web_search",
+          "analyze",
+          "reminder"
+        ],
+        "migration_batch": "batch1"
+      },
+      "metadata": {
+        "dataset_family": "builtin_batch1_execution",
+        "gate_type": "execution_equivalence",
+        "migration_batch": "batch1"
+      },
+      "created_at": "2026-03-29T03:30:53.769043+08:00",
+      "updated_at": "2026-03-29T03:30:53.769043+08:00"
+    }
+  },
+  "skip_hil": true,
+  "skip_hil_settings": {
+    "agent_mode": true,
+    "agent_auto_confirm": true,
+    "agent_ask_timeout_seconds": 15,
+    "agent_ask_timeout_action": "default",
+    "small_model_enabled": false,
+    "small_model_summary_enabled": true,
+    "small_model_context_compress_enabled": true,
+    "small_model_doc_extract_enabled": true,
+    "small_model_context_prune_enabled": false,
+    "small_model_media_intent_enabled": false,
+    "offline_ir_fallback_enabled": false,
+    "feature_intent_ir_enabled": false,
+    "small_model_route_short_qa_enabled": true,
+    "directory_whitelist_enabled": true,
+    "directory_whitelist": [
+      {
+        "path": "/tmp"
+      }
+    ]
+  },
+  "run_metadata": {
+    "candidate_id": "execution-gate-20260329-051759",
+    "candidate_label": "execution-gate-20260329-051759",
+    "approval_mode": "allow"
+  },
+  "eval_run": {
+    "id": "fdb112ce-3cb4-45f7-b12a-3e6f9b05357c",
+    "eval_spec_id": "77765c46-2490-47ea-bf49-d2c50f0f5ba2",
+    "group_id": "37dfce1f-397a-43b2-bc54-d77976ca2fd5",
+    "dataset_version_id": "f101585f-2989-41f6-b6e5-0fcc9d3e3f53",
+    "title": "execution-gate-20260329-051759",
+    "owner_user_id": "preview-user",
+    "status": "failed",
+    "trigger_kind": "execution_gate_runner",
+    "metadata": {
+      "approval_mode": "allow",
+      "candidate_id": "execution-gate-20260329-051759",
+      "candidate_label": "execution-gate-20260329-051759",
+      "source": "scripts/execution_gate_runner.py"
+    },
+    "summary": {
+      "counts": {
+        "error": 31,
+        "failed": 54,
+        "verdict:error": 31,
+        "verdict:fail": 54
+      },
+      "failure_label_counts": {
+        "infra_provider_blocked": 1,
+        "missing_evidence_collection": 27,
+        "run_failed": 30,
+        "verification_failed": 27
+      },
+      "item_count": 85,
+      "overall_score": 0.17843137254901956,
+      "pass_rate": 0,
+      "total_attempts": 85,
+      "verification_pass_rate": 0
+    },
+    "created_at": "2026-03-29T13:17:59.189285+08:00",
+    "updated_at": "2026-03-29T13:33:42.288384+08:00",
+    "started_at": "2026-03-29T13:33:42.288384+08:00",
+    "finished_at": "2026-03-29T13:33:42.288384+08:00"
+  },
+  "requested_execution_gate": {},
+  "status": "eval_failed",
+  "passed": false
+}

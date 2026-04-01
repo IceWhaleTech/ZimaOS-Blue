@@ -552,3 +552,45 @@ func TestNewSQLiteStoreWithDBDoesNotCloseSharedDB(t *testing.T) {
 	_, err = db.Exec("SELECT 1")
 	require.NoError(t, err)
 }
+
+func TestSQLiteStore_UsesReaderDBForReads(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "reader_metrics.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	require.NoError(t, err)
+	defer store.Close()
+
+	require.NotNil(t, store.readDB)
+	require.NotSame(t, store.db, store.readDB)
+
+	ctx := context.Background()
+	now := time.Now()
+	err = store.Write(ctx, &Point{
+		Measurement: "reader_metric",
+		Tags:        map[string]string{"model": "gpt-4"},
+		Fields:      map[string]interface{}{"latency": 123.4},
+		Timestamp:   now,
+	})
+	require.NoError(t, err)
+
+	err = store.SaveTokenUsage(ctx, &TokenUsage{
+		InputTokens:   42,
+		OutputTokens:  21,
+		TotalTokens:   63,
+		EstimatedCost: 0.12,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, store.db.Close())
+
+	result, err := store.QueryRange(ctx, "reader_metric", now.Add(-time.Hour), now.Add(time.Hour), "")
+	require.NoError(t, err)
+	require.Len(t, result.Series, 1)
+	require.Len(t, result.Series[0].Values, 1)
+
+	usage, err := store.LoadTokenUsage(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	assert.Equal(t, int64(42), usage.InputTokens)
+}

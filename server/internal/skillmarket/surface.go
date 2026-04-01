@@ -137,5 +137,5 @@ func isDependencyManifest(name string) bool {
 
 func looksLikeArchiveURL(raw string) bool {
 	lower := strings.ToLower(raw)
-	return strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz")
+	return strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") || strings.HasSuffix(lower, ".skill")
 }

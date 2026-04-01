@@ -17,6 +17,7 @@ import {
   localizeDeepResearchMode,
   localizeDeepResearchSegment,
   localizeDeepResearchStatus,
+  localizeResearchSurfaceTitle,
 } from '@/utils/deepResearchText'
 
 const { t, te } = useI18n()
@@ -43,7 +44,8 @@ const verificationItems = computed(() => verificationSummary.value?.items || [])
 const researchTrace = computed(() => props.card.research_trace || [])
 const timelineSections = computed(() => props.card.timeline_sections || [])
 const stageErrors = computed(() => props.card.stage_errors || [])
-const modeLabel = computed(() => localizeDeepResearchMode(props.card.mode || 'standard', t))
+const modeLabel = computed(() => localizeDeepResearchMode(props.card.mode || 'standard', tr))
+const researchTitle = computed(() => localizeResearchSurfaceTitle(tr))
 const reportStyle = computed(() => props.card.report_style || '')
 const isKnowledgeBase = computed(() => reportStyle.value === 'knowledge_base')
 const supportCount = computed(() => props.card.support_count || 0)
@@ -55,7 +57,7 @@ const confidenceLabel = computed(() => formatPercent(props.card.confidence))
 const citationCoverageLabel = computed(() => formatPercent(props.card.citation_coverage))
 const statusLabel = computed(
   () =>
-    localizeDeepResearchStatus(props.card.status || 'completed', t) ||
+    localizeDeepResearchStatus(props.card.status || 'completed', tr) ||
     props.card.status ||
     'completed'
 )
@@ -203,7 +205,7 @@ function objectStatusBadges(item: DeepResearchObjectMapItem): string[] {
   const counts = item.status_counts || {}
   return Object.entries(counts)
     .filter(([, count]) => typeof count === 'number' && count > 0)
-    .map(([status, count]) => `${localizeDeepResearchSegment(status, t) || status}: ${count}`)
+    .map(([status, count]) => `${localizeDeepResearchSegment(status, tr) || status}: ${count}`)
 }
 
 function calibrationToneClass(calibrationItem: DeepResearchCalibration | null): string {
@@ -277,7 +279,7 @@ function conflictRiskLabel(risk?: string): string {
         <div class="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0 flex-1">
             <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {{ t('chat.deepResearchTitle', 'Deep Research') }}
+              {{ researchTitle }}
             </div>
             <div
               v-if="query"

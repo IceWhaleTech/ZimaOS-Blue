@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 const (
@@ -203,7 +204,7 @@ func (s *Store) CleanupExpiredRuntimeState(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	cutoff := time.Now().UTC().Add(-responsesPreviousIDTTL)
-	_, err := s.db.ExecContext(ctx, `DELETE FROM conversation_runtime_state WHERE updated_at < ?`, cutoff)
+	_, err := s.conversationRuntimeState(ctx).Delete(z.Where(z.Lt("updated_at", cutoff)))
 	if err != nil {
 		return fmt.Errorf("cleanup expired conversation runtime state: %w", err)
 	}
@@ -239,11 +240,19 @@ func (s *Store) Recover() error {
 		cancel()
 		_ = s.db.Close()
 	}
+	if s.readDB != nil && s.readDB != s.db {
+		_ = s.readDB.Close()
+	}
 
 	db, err := openOwnedStoreDB(s.dbPath, s.options)
 	if err != nil {
 		return err
 	}
 	s.db = db
+	readDB, readErr := openStoreReaderDB(s.dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+	s.readDB = readDB
 	return nil
 }

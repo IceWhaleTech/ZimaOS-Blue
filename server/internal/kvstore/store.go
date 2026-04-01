@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -205,12 +206,27 @@ func matchGlob(pattern, str string) bool {
 // SQLiteStore is a SQLite-backed key-value store.
 type SQLiteStore struct {
 	db     *sql.DB
+	readDB *sql.DB
 	mu     sync.Mutex
 	ownsDB bool // true if this store opened the DB and should close it
 }
 
 func (s *SQLiteStore) table(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "kvstore")
+}
+
+func (s *SQLiteStore) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "kvstore")
+}
+
+func (s *SQLiteStore) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
 }
 
 type kvRow struct {
@@ -222,6 +238,15 @@ type kvRow struct {
 func parseKVTime(s *string) *time.Time {
 	if s == nil {
 		return nil
+	}
+	if unixValue, err := strconv.ParseInt(*s, 10, 64); err == nil {
+		var t time.Time
+		if len(*s) > 11 {
+			t = time.Unix(0, unixValue).UTC()
+		} else {
+			t = time.Unix(unixValue, 0).UTC()
+		}
+		return &t
 	}
 	t, _ := time.Parse(time.RFC3339Nano, *s)
 	if t.IsZero() {
@@ -245,6 +270,68 @@ func parseKVTime(s *string) *time.Time {
 	return &t
 }
 
+func parseKVTimeValue(value interface{}) *time.Time {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case time.Time:
+		t := typed.UTC()
+		return &t
+	case string:
+		return parseKVTime(&typed)
+	case []byte:
+		s := string(typed)
+		return parseKVTime(&s)
+	case int64:
+		t := time.Unix(typed, 0).UTC()
+		if typed > 1e11 {
+			t = time.Unix(0, typed).UTC()
+		}
+		return &t
+	case int:
+		return parseKVTimeValue(int64(typed))
+	case float64:
+		return parseKVTimeValue(int64(typed))
+	default:
+		s := fmt.Sprint(typed)
+		return parseKVTime(&s)
+	}
+}
+
+func stringFromKVValue(value interface{}) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func openKVReaderDB(dbPath string) (*sql.DB, error) {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" || dbPath == ":memory:" {
+		return nil, nil
+	}
+
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(2)
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("failed to set kvstore reader busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
 // NewSQLiteStore creates a new SQLite-backed store with its own database file.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db, err := dbutil.OpenSQLiteWithRecoveryAndRecreate(dbPath, dbPath, func(db *sql.DB) error {
@@ -264,7 +351,7 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 			return fmt.Errorf("failed to set wal autocheckpoint: %w", err)
 		}
 
-		store := &SQLiteStore{db: db}
+		store := &SQLiteStore{db: db, readDB: db}
 		if err := store.migrate(); err != nil {
 			return fmt.Errorf("failed to migrate: %w", err)
 		}
@@ -274,13 +361,27 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, err
 	}
 
-	return &SQLiteStore{db: db, ownsDB: true}, nil
+	readDB, readErr := openKVReaderDB(dbPath)
+	if readErr != nil || readDB == nil {
+		readDB = db
+	}
+
+	return &SQLiteStore{db: db, readDB: readDB, ownsDB: true}, nil
 }
 
 // NewSQLiteStoreWithDB creates a kvstore backed by an existing *sql.DB connection.
 // The caller retains ownership of the DB — Close() on this store is a no-op.
 func NewSQLiteStoreWithDB(db *sql.DB) (*SQLiteStore, error) {
-	store := &SQLiteStore{db: db, ownsDB: false}
+	return NewSQLiteStoreWithReadDB(db, db)
+}
+
+// NewSQLiteStoreWithReadDB creates a kvstore backed by separate write and read
+// database connections. The caller retains ownership of the DB handles.
+func NewSQLiteStoreWithReadDB(writeDB, readDB *sql.DB) (*SQLiteStore, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	store := &SQLiteStore{db: writeDB, readDB: readDB, ownsDB: false}
 	if err := store.migrate(); err != nil {
 		return nil, fmt.Errorf("failed to migrate kvstore table: %w", err)
 	}
@@ -304,6 +405,9 @@ func (s *SQLiteStore) migrate() error {
 // Close closes the database connection if this store owns it.
 func (s *SQLiteStore) Close() error {
 	if s.ownsDB {
+		if s.readDB != nil && s.readDB != s.db {
+			_ = s.readDB.Close()
+		}
 		return s.db.Close()
 	}
 	return nil
@@ -311,31 +415,28 @@ func (s *SQLiteStore) Close() error {
 
 // Get retrieves a value by key.
 func (s *SQLiteStore) Get(ctx context.Context, key string) (interface{}, error) {
-	var value string
-	var expiresAtRaw sql.NullString
-	err := s.db.QueryRowContext(ctx,
-		"SELECT value, expires_at FROM kvstore WHERE key = ? LIMIT 1",
-		key,
-	).Scan(&value, &expiresAtRaw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrKeyNotFound
-	}
+	var rows []z.V
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Fields("key", "value", "expires_at"),
+		z.Where(z.Eq("key", key)),
+		z.Limit(1),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get key: %w", err)
 	}
-
-	// Check expiration
-	var expiresAt *time.Time
-	if expiresAtRaw.Valid {
-		expiresAt = parseKVTime(&expiresAtRaw.String)
-	}
-	if expiresAt != nil && !time.Now().Before(*expiresAt) {
-		// Delete expired key
-		s.Delete(ctx, key)
+	if len(rows) == 0 {
 		return nil, ErrKeyNotFound
 	}
 
-	return value, nil
+	// Check expiration
+	expiresAt := parseKVTimeValue(rows[0]["expires_at"])
+	if expiresAt != nil && !time.Now().Before(*expiresAt) {
+		// Delete expired key
+		_ = s.Delete(ctx, key)
+		return nil, ErrKeyNotFound
+	}
+
+	return stringFromKVValue(rows[0]["value"]), nil
 }
 
 // Set stores a value with optional TTL.
@@ -345,17 +446,20 @@ func (s *SQLiteStore) Set(ctx context.Context, key string, value interface{}, tt
 
 	var expiresAt interface{}
 	if ttl > 0 {
-		// Persist as RFC3339Nano for stable round-tripping and sub-second TTL support.
+		// Persist as RFC3339Nano so SQLite keeps the value as text.
 		expiresAt = time.Now().UTC().Add(ttl).Format(time.RFC3339Nano)
 	}
 
 	valueStr := fmt.Sprintf("%v", value)
 
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO kvstore (key, value, expires_at) VALUES (?, ?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at`,
-		key, valueStr, expiresAt,
-	)
+	_, err := s.table(ctx).Insert(map[string]interface{}{
+		"key":        key,
+		"value":      valueStr,
+		"expires_at": expiresAt,
+	}, z.OnConflictDoUpdateSet(
+		[]string{"key"},
+		[]string{"value", "expires_at"},
+	))
 	if err != nil {
 		return fmt.Errorf("failed to set key: %w", err)
 	}
@@ -368,7 +472,7 @@ func (s *SQLiteStore) Delete(ctx context.Context, key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.ExecContext(ctx, "DELETE FROM kvstore WHERE key = ?", key)
+	_, err := s.table(ctx).Delete(z.Where(z.Eq("key", key)))
 	if err != nil {
 		return fmt.Errorf("failed to delete key: %w", err)
 	}
@@ -389,35 +493,23 @@ func (s *SQLiteStore) Exists(ctx context.Context, key string) (bool, error) {
 
 // Keys returns keys matching a pattern (SQL LIKE pattern: % matches any).
 func (s *SQLiteStore) Keys(ctx context.Context, pattern string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT key, expires_at FROM kvstore WHERE key LIKE ?",
-		pattern,
+	var rows []z.V
+	_, err := s.readTable(ctx).Select(&rows,
+		z.Fields("key", "expires_at"),
+		z.Where(z.Like("key", pattern)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get keys: %w", err)
 	}
-	defer rows.Close()
 
 	now := time.Now()
 	keys := make([]string, 0)
-	for rows.Next() {
-		var key string
-		var expiresAtRaw sql.NullString
-		if err := rows.Scan(&key, &expiresAtRaw); err != nil {
-			return nil, fmt.Errorf("failed to scan key row: %w", err)
-		}
-
-		var expiresAt *time.Time
-		if expiresAtRaw.Valid {
-			expiresAt = parseKVTime(&expiresAtRaw.String)
-		}
+	for _, row := range rows {
+		expiresAt := parseKVTimeValue(row["expires_at"])
 		if expiresAt != nil && !now.Before(*expiresAt) {
 			continue
 		}
-		keys = append(keys, key)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate key rows: %w", err)
+		keys = append(keys, stringFromKVValue(row["key"]))
 	}
 
 	return keys, nil
@@ -428,7 +520,7 @@ func (s *SQLiteStore) Clear(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.ExecContext(ctx, "DELETE FROM kvstore")
+	_, err := s.table(ctx).Delete(z.Where(z.Expr("1 = 1")))
 	if err != nil {
 		return fmt.Errorf("failed to clear: %w", err)
 	}

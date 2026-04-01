@@ -3,6 +3,7 @@ package deepresearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -182,6 +183,9 @@ func actorFromContext(c echo.Context) (userID, tenantID string) {
 }
 
 func mapServiceError(c echo.Context, err error, defaultStatus int) error {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return writeServiceError(c, http.StatusRequestTimeout, "request_timeout", err)
+	}
 	switch err {
 	case nil:
 		return nil

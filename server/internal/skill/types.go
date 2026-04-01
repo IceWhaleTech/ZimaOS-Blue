@@ -26,19 +26,24 @@ func GetUserID(ctx context.Context) string {
 
 // Manifest represents a skill manifest
 type Manifest struct {
-	ID           string            `json:"id" yaml:"id"`
-	Name         string            `json:"name" yaml:"name"`
-	Version      string            `json:"version" yaml:"version"`
-	Description  string            `json:"description" yaml:"description"`
-	Author       string            `json:"author,omitempty" yaml:"author,omitempty"`
-	Category     string            `json:"category,omitempty" yaml:"category,omitempty"`
-	Icon         string            `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Tags         []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Inputs       []Parameter       `json:"inputs,omitempty" yaml:"inputs,omitempty"`
-	Outputs      []Parameter       `json:"outputs,omitempty" yaml:"outputs,omitempty"`
-	Permissions  []string          `json:"permissions,omitempty" yaml:"permissions,omitempty"`
-	Config       map[string]any    `json:"config,omitempty" yaml:"config,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	ID              string            `json:"id" yaml:"id"`
+	Name            string            `json:"name" yaml:"name"`
+	Version         string            `json:"version" yaml:"version"`
+	Description     string            `json:"description" yaml:"description"`
+	Author          string            `json:"author,omitempty" yaml:"author,omitempty"`
+	Category        string            `json:"category,omitempty" yaml:"category,omitempty"`
+	Icon            string            `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Tags            []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Invocation      string            `json:"invocation,omitempty" yaml:"invocation,omitempty"`
+	Examples        []string          `json:"examples,omitempty" yaml:"examples,omitempty"`
+	CapabilityTags  []string          `json:"capability_tags,omitempty" yaml:"capability_tags,omitempty"`
+	InteractionMode string            `json:"interaction_mode,omitempty" yaml:"interaction_mode,omitempty"`
+	CardSupport     string            `json:"card_support,omitempty" yaml:"card_support,omitempty"`
+	Inputs          []Parameter       `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Outputs         []Parameter       `json:"outputs,omitempty" yaml:"outputs,omitempty"`
+	Permissions     []string          `json:"permissions,omitempty" yaml:"permissions,omitempty"`
+	Config          map[string]any    `json:"config,omitempty" yaml:"config,omitempty"`
+	Metadata        map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
 // Parameter represents an input or output parameter

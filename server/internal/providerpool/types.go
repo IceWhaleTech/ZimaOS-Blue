@@ -84,6 +84,16 @@ const (
 	APIFormatModePinned APIFormatMode = "pinned"
 )
 
+// ProviderMetadataMode controls how provider/model metadata is sourced.
+type ProviderMetadataMode string
+
+const (
+	// ProviderMetadataModeCatalog means provider/model metadata comes from the official catalog.
+	ProviderMetadataModeCatalog ProviderMetadataMode = "catalog"
+	// ProviderMetadataModeDynamic means provider/model metadata is discovered dynamically.
+	ProviderMetadataModeDynamic ProviderMetadataMode = "dynamic"
+)
+
 // Provider represents an LLM provider configuration
 type Provider struct {
 	ID            string           `json:"id"`
@@ -118,14 +128,15 @@ type Provider struct {
 	AllowlistConfigured bool `json:"allowlist_configured,omitempty"`
 
 	// Metadata
-	Icon        string    `json:"icon,omitempty"`        // Built-in icon name (e.g., "openai", "anthropic")
-	CustomIcon  string    `json:"custom_icon,omitempty"` // Custom icon: base64 data URL or relative file path
-	Description string    `json:"description,omitempty"`
-	Website     string    `json:"website,omitempty"`     // Official website URL for the provider
-	APIKeyURL   string    `json:"api_key_url,omitempty"` // URL to obtain/manage API keys
-	Beta        bool      `json:"beta,omitempty"`        // Beta providers are shown in "Other" with a beta badge
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Icon         string               `json:"icon,omitempty"`        // Built-in icon name (e.g., "openai", "anthropic")
+	CustomIcon   string               `json:"custom_icon,omitempty"` // Custom icon: base64 data URL or relative file path
+	Description  string               `json:"description,omitempty"`
+	Website      string               `json:"website,omitempty"`     // Official website URL for the provider
+	APIKeyURL    string               `json:"api_key_url,omitempty"` // URL to obtain/manage API keys
+	MetadataMode ProviderMetadataMode `json:"metadata_mode,omitempty"`
+	Beta         bool                 `json:"beta,omitempty"` // Beta providers are shown in "Other" with a beta badge
+	CreatedAt    time.Time            `json:"created_at"`
+	UpdatedAt    time.Time            `json:"updated_at"`
 
 	// Detected capabilities (persisted across restarts)
 	DetectedFormat APIFormat `json:"detected_format,omitempty"` // Probed API format that works (persisted)
@@ -139,11 +150,6 @@ type Provider struct {
 	// DetectedEndpoint remembers which endpoint worked (full base URL without path).
 	// This is persisted and survives restarts. When set, it overrides BaseURL.
 	DetectedEndpoint string `json:"detected_endpoint,omitempty"`
-
-	// Region specifies the region/token plan for providers that support CN/International.
-	// Supported values: "auto" (default, automatic failover), "cn", "international".
-	// Only meaningful for providers that support multiple regions (e.g., minimax, moonshot).
-	Region string `json:"region,omitempty"`
 
 	// Health check
 	LastHealthCheck time.Time `json:"last_health_check,omitempty"`
@@ -165,40 +171,12 @@ func (p *Provider) ParsedBaseURL() *url.URL {
 	return p.parsedURL
 }
 
-// EffectiveBaseURL returns the effective base URL to use, considering Region and DetectedEndpoint.
-// Region takes precedence: "cn" uses China endpoint, "international" uses International endpoint.
-// When Region is "auto" or empty, DetectedEndpoint (if set) takes precedence over BaseURL.
+// EffectiveBaseURL returns the effective base URL to use, considering DetectedEndpoint.
+// If DetectedEndpoint is set, it takes precedence over BaseURL.
 func (p *Provider) EffectiveBaseURL() string {
-	// Region-based URL override for providers that support CN/International
-	switch p.Region {
-	case "cn":
-		return p.regionalBaseURL("cn")
-	case "international":
-		return p.regionalBaseURL("international")
-	}
-	// Auto mode: DetectedEndpoint takes precedence
 	if p.DetectedEndpoint != "" {
 		return p.DetectedEndpoint
 	}
-	return p.BaseURL
-}
-
-// regionalBaseURL returns the appropriate base URL for the given region.
-// Only supported for providers with known regional domain pairs.
-func (p *Provider) regionalBaseURL(region string) string {
-	switch p.ID {
-	case "minimax":
-		if region == "cn" {
-			return "https://api.minimaxi.com"
-		}
-		return "https://api.minimax.io"
-	case "moonshot":
-		if region == "cn" {
-			return "https://api.moonshot.cn"
-		}
-		return "https://api.moonshot.ai"
-	}
-	// Fallback to current BaseURL for unsupported providers
 	return p.BaseURL
 }
 
@@ -278,8 +256,8 @@ type ModelParams struct {
 	FrequencyPenalty *float64 `json:"frequency_penalty,omitempty"` // -2.0 - 2.0
 	PresencePenalty  *float64 `json:"presence_penalty,omitempty"`  // -2.0 - 2.0
 
-	// Server-detected capabilities (read-only, populated by capability detection)
-	DetectedMaxTokens *int   `json:"detected_max_tokens,omitempty"` // Actual max tokens supported by server
+	// Server-detected output limit fallback (read-only, dynamic providers only)
+	DetectedMaxTokens *int   `json:"detected_max_tokens,omitempty"` // Detected or inferred max output tokens
 	DetectedAt        *int64 `json:"detected_at,omitempty"`         // Unix timestamp of last detection
 }
 

@@ -28,9 +28,9 @@ func NewDeepResearch() *DeepResearch {
 	return &DeepResearch{
 		manifest: &skill.Manifest{
 			ID:          "deep_research",
-			Name:        "Deep Research",
+			Name:        "Research",
 			Version:     "1.0.0",
-			Description: "Run multi-step deep research with planning, evidence collection, and citation-based summary.",
+			Description: "Run a multi-step research workflow with planning, evidence collection, and a citation-backed summary.",
 			Category:    "system",
 			Icon:        "search",
 			Tags:        []string{"deep-research", "research", "evidence", "citations"},

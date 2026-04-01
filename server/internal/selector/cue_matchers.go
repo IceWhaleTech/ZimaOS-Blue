@@ -28,6 +28,7 @@ var (
 	workspaceFileExtMatcher     = textmatch.NewFoldedTermMatcher(workspaceFileExtTerms)
 	workspaceFileContextMatcher = textmatch.NewFoldedTermMatcher(workspaceFileContextTerms)
 	liveWebTermMatcher          = textmatch.NewFoldedTermMatcher(liveWebTerms)
+	liveWebStrongTermMatcher    = textmatch.NewFoldedTermMatcher(liveWebStrongTerms)
 	productivityTermMatcher     = textmatch.NewFoldedTermMatcher(productivityTerms)
 	uiArtifactTermMatcher       = textmatch.NewFoldedTermMatcher(uiArtifactTerms)
 	highRiskTermMatcher         = textmatch.NewFoldedTermMatcher(highRiskTerms)

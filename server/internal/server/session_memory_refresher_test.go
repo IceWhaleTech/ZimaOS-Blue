@@ -24,11 +24,14 @@ func TestSessionMemoryRefresherStoresAndDedups(t *testing.T) {
 	refresher := NewSessionMemoryRefresher(handler)
 
 	ctx := context.Background()
-	extracted := "- User preference: concise output"
+	extracted := strings.Join([]string{
+		"- User preference: concise output",
+		"- Uploaded file available at /tmp/session/upload.md",
+	}, "\n")
 	if err := refresher.RefreshMemory(ctx, extracted, "agent:ch:peer"); err != nil {
 		t.Fatalf("refresh memory failed: %v", err)
 	}
-	if err := refresher.RefreshMemory(ctx, extracted, "agent:ch:peer"); err != nil {
+	if err := refresher.RefreshMemory(ctx, "* user preference: concise output", "agent:ch:peer"); err != nil {
 		t.Fatalf("refresh memory duplicate failed: %v", err)
 	}
 
@@ -37,7 +40,11 @@ func TestSessionMemoryRefresherStoresAndDedups(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read daily log failed: %v", err)
 	}
-	if got := strings.Count(string(data), extracted); got != 1 {
-		t.Fatalf("duplicate memory should be deduped, count=%d", got)
+	logText := string(data)
+	if strings.Contains(logText, "/tmp/session/upload.md") {
+		t.Fatalf("transient upload path should not be persisted: %q", logText)
+	}
+	if got := strings.Count(logText, "User preference: concise output"); got != 1 {
+		t.Fatalf("duplicate memory should be deduped after normalization, count=%d text=%q", got, logText)
 	}
 }

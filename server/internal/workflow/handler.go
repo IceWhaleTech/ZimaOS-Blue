@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +16,8 @@ import (
 
 // Handler handles HTTP requests for workflows.
 type Handler struct {
-	service *WorkflowService
+	service  *WorkflowService
+	launcher ExecutionLauncher
 
 	// Lazy init support
 	initFn          func() *WorkflowService
@@ -122,6 +124,15 @@ func (h *Handler) SetServiceInitHook(fn func(*WorkflowService)) {
 	}
 }
 
+// SetExecutionLauncher overrides manual workflow execute requests with a
+// harness-aware launcher while leaving the service-based read APIs intact.
+func (h *Handler) SetExecutionLauncher(launcher ExecutionLauncher) {
+	if h == nil || launcher == nil {
+		return
+	}
+	h.launcher = launcher
+}
+
 // SetRouteMiddlewares applies security middleware to workflow management routes.
 // Webhook routes stay public and are intentionally excluded.
 func (h *Handler) SetRouteMiddlewares(middlewares ...echo.MiddlewareFunc) {
@@ -139,7 +150,14 @@ func getContextString(c echo.Context, key, defaultValue string) string {
 }
 
 func requestContext(c echo.Context) context.Context {
-	return withWorkflowTenant(c.Request().Context(), getContextString(c, "tenant_id", "default"))
+	ctx := withWorkflowTenant(c.Request().Context(), getContextString(c, "tenant_id", "default"))
+	if userID := getContextString(c, "user_id", ""); userID != "" {
+		ctx = withWorkflowUser(ctx, userID)
+	}
+	if conversationID := getContextString(c, "conversation_id", getContextString(c, "session_id", "")); conversationID != "" {
+		ctx = withWorkflowConversation(ctx, conversationID)
+	}
+	return ctx
 }
 
 // RegisterRoutes registers the workflow routes.
@@ -480,17 +498,33 @@ func (h *Handler) ExecuteWorkflow(c echo.Context) error {
 	}
 
 	var execution *Execution
-	err := h.withService(func(svc *WorkflowService) error {
-		var err error
-		execution, err = svc.ExecuteWorkflow(requestContext(c), id, req.TriggerData)
-		return err
-	})
+	var err error
+	ctx := requestContext(c)
+	if h.launcher != nil {
+		execution, err = h.launcher.LaunchExecution(ctx, ExecutionLaunchRequest{
+			WorkflowID:     id,
+			TriggerType:    TriggerTypeManual,
+			TriggerData:    req.TriggerData,
+			UserID:         getContextString(c, "user_id", "anonymous"),
+			ConversationID: getContextString(c, "conversation_id", getContextString(c, "session_id", "")),
+			TenantID:       getContextString(c, "tenant_id", "default"),
+		})
+	} else {
+		err = h.withService(func(svc *WorkflowService) error {
+			var err error
+			execution, err = svc.ExecuteWorkflow(ctx, id, req.TriggerData)
+			return err
+		})
+	}
 	if err != nil {
 		if err == ErrWorkflowNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
 		}
 		if err == ErrMaxExecutionsReached {
 			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "max concurrent executions reached"})
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return c.JSON(http.StatusRequestTimeout, map[string]string{"error": "request timed out while waiting for an execution slot"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}

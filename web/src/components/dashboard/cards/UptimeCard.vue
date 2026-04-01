@@ -39,7 +39,7 @@ const ringDashOffset = computed(() => {
     <div class="dashboard-card-footer">
       <div class="dashboard-card-copy">
         <p class="dashboard-card-label">{{ t('system.uptime') }}</p>
-        <p class="dashboard-card-subtitle mt-2">Process availability</p>
+        <p class="dashboard-card-subtitle mt-2">{{ t('system.cards.uptime.subtitle') }}</p>
       </div>
     </div>
 
@@ -52,7 +52,7 @@ const ringDashOffset = computed(() => {
           <p class="dashboard-card-value truncate text-gray-900 dark:text-white">
             {{ uptimeLabel }}
           </p>
-          <p class="dashboard-card-footnote mt-3">Since latest process start</p>
+          <p class="dashboard-card-footnote mt-3">{{ t('system.cards.uptime.footnote') }}</p>
         </template>
       </div>
 

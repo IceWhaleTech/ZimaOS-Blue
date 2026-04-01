@@ -135,7 +135,7 @@ func (r *PolicyResolver) Resolve(spec RunSpec) RunSpec {
 
 func (r *PolicyResolver) ResolveChild(parent *Run, spec RunSpec) (RunSpec, error) {
 	if parent == nil {
-		return RunSpec{}, fmt.Errorf("parent run is required")
+		return RunSpec{}, newGuardPipelineError(RuntimeStagePolicy, "parent_required", "parent run is required", nil)
 	}
 	spec.ParentRunID = parent.ID
 	if strings.TrimSpace(spec.UserID) == "" {
@@ -174,7 +174,10 @@ func (r *PolicyResolver) ResolveChild(parent *Run, spec RunSpec) (RunSpec, error
 	spec = r.Resolve(spec)
 
 	if parent.MaxDepth > 0 && parent.Depth+1 > parent.MaxDepth {
-		return RunSpec{}, fmt.Errorf("max depth exceeded")
+		return RunSpec{}, newGuardPipelineError(RuntimeStagePolicy, "budget_exceeded", "max depth exceeded", map[string]interface{}{
+			"max_depth":    parent.MaxDepth,
+			"parent_depth": parent.Depth,
+		})
 	}
 	if parent.MaxDepth > 0 && (spec.MaxDepth <= 0 || spec.MaxDepth > parent.MaxDepth) {
 		spec.MaxDepth = parent.MaxDepth
@@ -192,10 +195,16 @@ func (r *PolicyResolver) ResolveChild(parent *Run, spec RunSpec) (RunSpec, error
 		spec.MaxDuration = parent.MaxDuration
 	}
 	if strings.TrimSpace(parent.SandboxMode) != "" && widensSandbox(strings.TrimSpace(parent.SandboxMode), strings.TrimSpace(spec.SandboxMode)) {
-		return RunSpec{}, fmt.Errorf("child run cannot widen sandbox scope")
+		return RunSpec{}, newGuardPipelineError(RuntimeStagePolicy, "sandbox_scope_widened", "child run cannot widen sandbox scope", map[string]interface{}{
+			"parent_sandbox_mode": strings.TrimSpace(parent.SandboxMode),
+			"child_sandbox_mode":  strings.TrimSpace(spec.SandboxMode),
+		})
 	}
 	if parent.ApprovalMode != "" && widensApproval(parent.ApprovalMode, spec.ApprovalMode) {
-		return RunSpec{}, fmt.Errorf("child run cannot widen approval mode")
+		return RunSpec{}, newGuardPipelineError(RuntimeStageApproval, "approval_scope_widened", "child run cannot widen approval mode", map[string]interface{}{
+			"parent_approval_mode": string(parent.ApprovalMode),
+			"child_approval_mode":  string(spec.ApprovalMode),
+		})
 	}
 	return spec, nil
 }

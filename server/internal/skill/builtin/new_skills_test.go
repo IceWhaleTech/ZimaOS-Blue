@@ -122,18 +122,20 @@ func (m *mockCronService) GetExecutions(jobID string, limit int) ([]CronJobExecu
 // --- Mock BrowserService ---
 
 type mockBrowserService struct {
-	started           bool
-	tabs              []BrowserTabInfo
-	interactiveCount  int // configurable for auto-snapshot tests
-	screenshotData    string
-	screenshotTabData string
-	lastScreenshotURL string
-	lastScreenshotTab string
-	lastActMode       string
-	lastActTargetID   string
-	lastActRef        int
-	lastActAction     string
-	lastActValue      string
+	started                 bool
+	tabs                    []BrowserTabInfo
+	interactiveCount        int // configurable for auto-snapshot tests
+	screenshotData          string
+	screenshotTabData       string
+	extractedTextBySelector map[string]string
+	recipeData              map[string]interface{}
+	lastScreenshotURL       string
+	lastScreenshotTab       string
+	lastActMode             string
+	lastActTargetID         string
+	lastActRef              int
+	lastActAction           string
+	lastActValue            string
 }
 
 func newMockBrowserService() *mockBrowserService {
@@ -151,21 +153,45 @@ func (m *mockBrowserService) Navigate(_ context.Context, url, _ string) (Browser
 	return BrowserNavResult{URL: url, Title: "Test Page", TargetID: "tab-1"}, nil
 }
 
+func (m *mockBrowserService) currentTabMeta() (string, string) {
+	for _, tab := range m.tabs {
+		if tab.Active {
+			return tab.URL, tab.Title
+		}
+	}
+	if len(m.tabs) > 0 {
+		return m.tabs[0].URL, m.tabs[0].Title
+	}
+	return "https://example.com", "Test Page"
+}
+
+func (m *mockBrowserService) ExtractText(_ context.Context, _ string, selector string) (string, error) {
+	if m.extractedTextBySelector == nil {
+		return "", fmt.Errorf("selector not found: %s", selector)
+	}
+	if text, ok := m.extractedTextBySelector[selector]; ok {
+		return text, nil
+	}
+	return "", fmt.Errorf("selector not found: %s", selector)
+}
+
 func (m *mockBrowserService) AccessibilityTree(_ context.Context, _ string, _ int) (BrowserA11yResult, error) {
+	url, title := m.currentTabMeta()
 	return BrowserA11yResult{
 		Tree:     "@1 [button] \"Submit\"\n@2 [textbox] \"Search\"",
-		URL:      "https://example.com",
-		Title:    "Test Page",
+		URL:      url,
+		Title:    title,
 		TargetID: "tab-1",
 		RefMap:   map[int]int{1: 100, 2: 200},
 	}, nil
 }
 
 func (m *mockBrowserService) InteractiveElements(_ context.Context, _ string) (BrowserInteractiveResult, error) {
+	url, title := m.currentTabMeta()
 	return BrowserInteractiveResult{
 		Tree:     "@1 [button] \"Submit\"\n@2 [input] \"Search\" type=text",
-		URL:      "https://example.com",
-		Title:    "Test Page",
+		URL:      url,
+		Title:    title,
 		TargetID: "tab-1",
 		RefMap:   map[int]string{1: "__interactive_ref_0", 2: "__interactive_ref_1"},
 		Count:    2,
@@ -251,12 +277,16 @@ func (m *mockBrowserService) Tabs(_ context.Context) ([]BrowserTabInfo, error) {
 }
 
 func (m *mockBrowserService) ExecuteRecipe(_ context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
-	return BrowserRecipeResult{
-		Success: true,
-		Data: map[string]interface{}{
+	data := m.recipeData
+	if data == nil {
+		data = map[string]interface{}{
 			"recipe": recipe,
 			"params": params,
-		},
+		}
+	}
+	return BrowserRecipeResult{
+		Success:  true,
+		Data:     data,
 		TargetID: "tab-1",
 		Message:  "recipe executed",
 	}, nil
@@ -794,6 +824,48 @@ func TestBrowserSkill(t *testing.T) {
 		data := result.Data.(map[string]any)
 		if data["strategy"] != "interactive" {
 			t.Errorf("expected strategy 'interactive' from navigate auto, got '%v'", data["strategy"])
+		}
+	})
+
+	t.Run("snapshot_auto_docs_page_adds_readable_content", func(t *testing.T) {
+		mock.interactiveCount = 66
+		mock.extractedTextBySelector = map[string]string{
+			"main": "Create a model response POST /responses. Get a model response GET /responses/{response_id}. Delete a model response DELETE /responses/{response_id}. This reference explains request fields, authentication, response objects, streaming events, and related examples with enough readable detail for the browser fallback to stop looping on navigation chrome alone.",
+			"h1":   "Responses",
+		}
+		mock.recipeData = map[string]interface{}{
+			"extracted": map[string]interface{}{
+				"page_heading": "Responses",
+				"main_content": "Create a model response POST /responses. Get a model response GET /responses/{response_id}. Delete a model response DELETE /responses/{response_id}. This reference explains request fields, authentication, response objects, streaming events, and related examples with enough readable detail for the browser fallback to stop looping on navigation chrome alone.",
+			},
+		}
+		defer func() {
+			mock.extractedTextBySelector = nil
+			mock.recipeData = nil
+		}()
+		mock.tabs = []BrowserTabInfo{{
+			TargetID: "tab-1",
+			URL:      "https://developers.openai.com/api/reference/resources/responses",
+			Title:    "Responses | OpenAI API Reference",
+			Active:   true,
+		}}
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action": "snapshot_auto",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("snapshot_auto failed: err=%v", err)
+		}
+		data := result.Data.(map[string]any)
+		content, _ := data["content"].(string)
+		if !strings.Contains(content, "Create a model response POST /responses") {
+			t.Fatalf("content = %q, want extracted documentation body", content)
+		}
+		if data["content_strategy"] != "extract_recipe" {
+			t.Fatalf("content_strategy = %v, want extract_recipe", data["content_strategy"])
+		}
+		message, _ := data["message"].(string)
+		if !strings.Contains(message, "Main content:") {
+			t.Fatalf("message = %q, want readable content section", message)
 		}
 	})
 }

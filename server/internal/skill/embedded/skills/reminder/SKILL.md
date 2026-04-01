@@ -1,6 +1,17 @@
 ---
 name: reminder
+version: "1.0.0"
 description: "Schedule and manage reminders (add/list/delete/clear) with multi-channel delivery. Use when the user asks to be reminded at a specific time, recurring cadence, or to manage existing reminder tasks."
+invocation: "blue reminder.add message=\"Check the build\" time=30m"
+examples:
+  - "blue reminder.add message=\"Check the build\" time=30m"
+  - "blue reminder.list"
+capability_tags:
+  - reminder
+  - schedule
+  - notify
+interaction_mode: stateless
+card_support: batch
 ---
 
 # Reminder Skill
@@ -53,4 +64,6 @@ Time formats:
 
 - Delivery may include conversation injection, SSE, web push, and native OS alerts depending on availability.
 - Prefer `blue reminder.*` command style to avoid model/tool pre-check mismatches in some providers.
-- Use `scheduler` for cron-style command automation; use `reminder` for user-facing reminder alerts.
+- Use `reminder` for user-facing alerts and notifications that should reach the user later.
+- Use `scheduler` for cron-style command automation; it runs commands, not reminder notifications.
+- This skill is not a generic recurring shell automation surface.

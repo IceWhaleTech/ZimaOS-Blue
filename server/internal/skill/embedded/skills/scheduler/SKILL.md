@@ -1,6 +1,17 @@
 ---
 name: scheduler
+version: "1.0.0"
 description: "Manage recurring cron schedules for commands (create/list/trigger/enable/disable/delete). Use when the user asks to run tasks automatically on a time schedule, periodic checks, or recurring maintenance jobs."
+invocation: "blue cron.create name=uptime_check schedule=\"*/10 * * * *\" command=\"uptime\""
+examples:
+  - "blue cron.create name=uptime_check schedule=\"*/10 * * * *\" command=\"uptime\""
+  - "blue cron.list"
+capability_tags:
+  - cron
+  - automation
+  - jobs
+interaction_mode: stateless
+card_support: none
 ---
 
 # Scheduler Skill
@@ -55,4 +66,6 @@ Cron format examples:
 
 - `command` uses the shell command handler and is validated at creation time.
 - Currently allowed base commands are: `echo`, `date`, `uptime`, `df`, `free`, `ps`, `curl`, `wget`.
-- Use scheduler for recurring execution; for one-time reminders use `reminder`.
+- Use `scheduler` for recurring or cron-style command execution.
+- Use `reminder` for user-facing alerts and notifications; the two skills are intentionally different.
+- This skill automates commands. It is not a countdown timer or reminder delivery surface.

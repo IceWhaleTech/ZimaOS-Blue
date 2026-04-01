@@ -5,6 +5,7 @@ import { i18n } from '@/i18n'
 import type { DeepResearchJobSummary } from '@/api/deepResearch'
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
+import { localizeResearchSurfaceTitle } from '@/utils/deepResearchText'
 
 type DeepResearchApiModule = typeof import('@/api/deepResearch')
 let deepResearchApiModulePromise: Promise<DeepResearchApiModule> | null = null
@@ -171,6 +172,8 @@ export const useDeepResearchJobsStore = defineStore('deepResearchJobs', () => {
     terminalNotifiedJobIds.add(job.job_id)
 
     const t = i18n.global.t.bind(i18n.global)
+    const te = i18n.global.te.bind(i18n.global)
+    const translate = (key: string, fallback: string) => (te(key) ? String(t(key)) : fallback)
     const notificationStore = useNotificationStore()
     const action = job.conversation_id
       ? {
@@ -182,28 +185,36 @@ export const useDeepResearchJobsStore = defineStore('deepResearchJobs', () => {
         }
       : undefined
 
-    const title = job.query || t('chat.deepResearchTitle', 'Deep Research')
+    const title = job.query || localizeResearchSurfaceTitle(translate)
     if (job.status === 'completed') {
-      notificationStore.success(title, t('chat.deepResearchTaskCompleted', 'Research completed'), {
-        action,
-        duration: 8000,
-        messageKey: 'chat.deepResearchTaskCompleted',
-      })
+      notificationStore.success(
+        title,
+        t('chat.deepResearchTaskCompleted', 'Deep Research completed'),
+        {
+          action,
+          duration: 8000,
+          messageKey: 'chat.deepResearchTaskCompleted',
+        }
+      )
       return
     }
     if (job.status === 'failed') {
-      notificationStore.error(title, t('chat.deepResearchTaskFailed', 'Research failed'), {
+      notificationStore.error(title, t('chat.deepResearchTaskFailed', 'Deep Research failed'), {
         action,
         messageKey: 'chat.deepResearchTaskFailed',
       })
       return
     }
     if (job.status === 'cancelled') {
-      notificationStore.info(title, t('chat.deepResearchTaskCancelled', 'Research cancelled'), {
-        action,
-        duration: 6000,
-        messageKey: 'chat.deepResearchTaskCancelled',
-      })
+      notificationStore.info(
+        title,
+        t('chat.deepResearchTaskCancelled', 'Deep Research cancelled'),
+        {
+          action,
+          duration: 6000,
+          messageKey: 'chat.deepResearchTaskCancelled',
+        }
+      )
     }
   }
 

@@ -2,6 +2,7 @@ package mediagen
 
 import (
 	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -259,5 +260,176 @@ func TestTaskStore_GetStatsScopedByUser(t *testing.T) {
 	}
 	if stats.Succeeded != 1 || stats.TotalTasks != 1 {
 		t.Fatalf("stats = %#v, want only one user-a task", stats)
+	}
+}
+
+func TestTaskStore_UsesReaderDBForReads(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "media_tasks.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(write): %v", err)
+	}
+	defer writeDB.Close()
+
+	if _, err := NewTaskStore(writeDB); err != nil {
+		t.Fatalf("NewTaskStore(bootstrap): %v", err)
+	}
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("sql.Open(read): %v", err)
+	}
+	defer readDB.Close()
+
+	store, err := NewTaskStoreWithReadDB(writeDB, readDB)
+	if err != nil {
+		t.Fatalf("NewTaskStoreWithReadDB: %v", err)
+	}
+	if store.readDB == nil || store.readDB == store.db {
+		t.Fatal("expected separate reader db")
+	}
+
+	pt := &PersistentTask{
+		ID:        "task-reader",
+		UserID:    "user-reader",
+		MessageID: "msg-reader",
+		Status:    TaskStatusPending,
+		Type:      MediaTypeImage,
+		Category:  "t2i",
+		Provider:  "reader-provider",
+		Model:     "reader-model",
+		Source:    "web",
+		Request:   `{"prompt":"reader"}`,
+	}
+	if err := store.Create(pt); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := store.Get("task-reader", "user-reader")
+	if err != nil {
+		t.Fatalf("Get via reader: %v", err)
+	}
+	if got == nil || got.ID != "task-reader" {
+		t.Fatalf("unexpected task via reader: %+v", got)
+	}
+
+	byMessage, err := store.GetByMessageID("msg-reader", "user-reader")
+	if err != nil {
+		t.Fatalf("GetByMessageID via reader: %v", err)
+	}
+	if len(byMessage) != 1 || byMessage[0].ID != "task-reader" {
+		t.Fatalf("unexpected message tasks via reader: %+v", byMessage)
+	}
+
+	pending, err := store.ListPending()
+	if err != nil {
+		t.Fatalf("ListPending via reader: %v", err)
+	}
+	if len(pending) != 1 || pending[0].ID != "task-reader" {
+		t.Fatalf("unexpected pending tasks via reader: %+v", pending)
+	}
+}
+
+func TestTaskStore_GetStatsUsesReaderDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "media_tasks_stats.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(write): %v", err)
+	}
+	defer writeDB.Close()
+
+	if _, err := NewTaskStore(writeDB); err != nil {
+		t.Fatalf("NewTaskStore(bootstrap): %v", err)
+	}
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("sql.Open(read): %v", err)
+	}
+	defer readDB.Close()
+
+	store, err := NewTaskStoreWithReadDB(writeDB, readDB)
+	if err != nil {
+		t.Fatalf("NewTaskStoreWithReadDB: %v", err)
+	}
+
+	succeeded := &PersistentTask{
+		ID:        "task-stats-success",
+		UserID:    "user-stats",
+		MessageID: "msg-stats",
+		Status:    TaskStatusPending,
+		Type:      MediaTypeImage,
+		Category:  "t2i",
+		Provider:  "stats-provider",
+		Model:     "stats-model",
+		Source:    "web",
+		Response:  `{"created":1,"data":[{"url":"http://x"}]}`,
+	}
+	if err := store.Create(succeeded); err != nil {
+		t.Fatalf("Create(succeeded): %v", err)
+	}
+	if err := store.UpdateStatus(succeeded.ID, TaskStatusSucceeded, 1, "", succeeded.Response); err != nil {
+		t.Fatalf("UpdateStatus(succeeded): %v", err)
+	}
+
+	failed := &PersistentTask{
+		ID:        "task-stats-failed",
+		UserID:    "user-stats",
+		MessageID: "msg-stats",
+		Status:    TaskStatusPending,
+		Type:      MediaTypeVideo,
+		Category:  "t2v",
+		Provider:  "stats-provider",
+		Model:     "stats-model",
+		Source:    "web",
+	}
+	if err := store.Create(failed); err != nil {
+		t.Fatalf("Create(failed): %v", err)
+	}
+	if err := store.UpdateStatus(failed.ID, TaskStatusFailed, 1, "boom", ""); err != nil {
+		t.Fatalf("UpdateStatus(failed): %v", err)
+	}
+
+	otherUser := &PersistentTask{
+		ID:        "task-stats-other",
+		UserID:    "user-other",
+		MessageID: "msg-other",
+		Status:    TaskStatusPending,
+		Type:      MediaTypeImage,
+		Category:  "t2i",
+		Provider:  "other-provider",
+		Model:     "other-model",
+		Source:    "web",
+		Response:  `{"created":1,"data":[{"url":"http://y"}]}`,
+	}
+	if err := store.Create(otherUser); err != nil {
+		t.Fatalf("Create(other): %v", err)
+	}
+	if err := store.UpdateStatus(otherUser.ID, TaskStatusSucceeded, 1, "", otherUser.Response); err != nil {
+		t.Fatalf("UpdateStatus(other): %v", err)
+	}
+
+	if err := writeDB.Close(); err != nil {
+		t.Fatalf("close writer db: %v", err)
+	}
+	writeDB = nil
+
+	stats, err := store.GetStats("user-stats")
+	if err != nil {
+		t.Fatalf("GetStats via reader: %v", err)
+	}
+	if stats.Succeeded != 1 || stats.Failed != 1 || stats.TotalTasks != 2 {
+		t.Fatalf("unexpected stats via reader: %+v", stats)
+	}
+	if stats.TasksByType[string(MediaTypeImage)] != 1 {
+		t.Fatalf("unexpected TasksByType via reader: %+v", stats.TasksByType)
+	}
+	if stats.TasksByCategory["t2i"] != 1 {
+		t.Fatalf("unexpected TasksByCategory via reader: %+v", stats.TasksByCategory)
+	}
+	if stats.TasksByProvider["stats-provider"] != 1 {
+		t.Fatalf("unexpected TasksByProvider via reader: %+v", stats.TasksByProvider)
 	}
 }

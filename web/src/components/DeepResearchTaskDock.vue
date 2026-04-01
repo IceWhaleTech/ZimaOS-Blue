@@ -7,6 +7,9 @@ import {
   localizeDeepResearchAction,
   localizeDeepResearchGap,
   localizeDeepResearchStage,
+  localizeResearchProgressLabel,
+  localizeResearchRunningElsewhereLabel,
+  localizeResearchRunningTasksLabel,
 } from '@/utils/deepResearchText'
 
 const DEEP_RESEARCH_DOCK_COLLAPSED_KEY = 'zima.chat.deep_research_dock_collapsed.v1'
@@ -22,6 +25,8 @@ const collapsed = ref(loadCollapsedState())
 
 const jobs = computed(() => deepResearchJobs.activeJobs)
 const leadJob = computed(() => jobs.value[0] || null)
+const runningTasksLabel = computed(() => localizeResearchRunningTasksLabel(tr))
+const runningElsewhereLabel = computed(() => localizeResearchRunningElsewhereLabel(tr))
 
 function tr(key: string, fallback: string): string {
   return te(key) ? String(t(key)) : fallback
@@ -48,7 +53,7 @@ function persistCollapsedState(value: boolean) {
 }
 
 function stageLabel(stage?: string): string {
-  return localizeDeepResearchStage(stage, tr) || stage || t('chat.deepResearchProgress', 'Running')
+  return localizeDeepResearchStage(stage, tr) || stage || localizeResearchProgressLabel(tr)
 }
 
 function latestActionLabel(action?: string): string {
@@ -109,7 +114,7 @@ watch(
         <span class="min-w-0 flex-1">
           <span class="flex min-w-0 items-center gap-2">
             <span class="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {{ t('chat.deepResearchRunningTasks', 'Running research tasks') }}
+              {{ runningTasksLabel }}
             </span>
           </span>
 
@@ -124,23 +129,12 @@ watch(
             </span>
             <span v-if="leadJob">{{ Math.round(leadJob.progress || 0) }}%</span>
             <span class="min-w-0 flex-1 truncate">
-              {{
-                leadJob?.query ||
-                t(
-                  'chat.deepResearchRunningElsewhere',
-                  'Track active deep research jobs across conversations.'
-                )
-              }}
+              {{ leadJob?.query || runningElsewhereLabel }}
             </span>
           </span>
 
           <span v-if="!collapsed" class="mt-1.5 block text-xs text-slate-500 dark:text-slate-400">
-            {{
-              t(
-                'chat.deepResearchRunningElsewhere',
-                'Track active deep research jobs across conversations.'
-              )
-            }}
+            {{ runningElsewhereLabel }}
           </span>
         </span>
 

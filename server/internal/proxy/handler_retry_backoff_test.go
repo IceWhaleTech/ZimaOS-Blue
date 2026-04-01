@@ -18,9 +18,12 @@ func TestTransientUpstreamRetryDelay(t *testing.T) {
 		attempt int
 		want    time.Duration
 	}{
-		{attempt: 0, want: 500 * time.Millisecond},
-		{attempt: 1, want: 1500 * time.Millisecond},
-		{attempt: 2, want: 3 * time.Second},
+		{attempt: 0, want: 1 * time.Second},
+		{attempt: 1, want: 2 * time.Second},
+		{attempt: 2, want: 4 * time.Second},
+		{attempt: 3, want: 8 * time.Second},
+		{attempt: 4, want: 12 * time.Second},
+		{attempt: 5, want: 18 * time.Second},
 	}
 
 	for _, tc := range tests {
@@ -50,21 +53,21 @@ func TestShouldRetryTransientUpstream5xx(t *testing.T) {
 			want:          false,
 		},
 		{
-			name:          "429 retries until 5 total attempts when routing is truly single-provider",
+			name:          "429 retries until 7 total attempts when routing is truly single-provider",
 			single:        true,
 			routingSingle: true,
 			status:        429,
 			body:          `{"error":"rate limit exceeded"}`,
-			attempt:       3,
+			attempt:       5,
 			want:          true,
 		},
 		{
-			name:          "429 stops after 5 total attempts when routing is truly single-provider",
+			name:          "429 stops after 7 total attempts when routing is truly single-provider",
 			single:        true,
 			routingSingle: true,
 			status:        429,
 			body:          `{"error":"rate limit exceeded"}`,
-			attempt:       4,
+			attempt:       6,
 			want:          false,
 		},
 		{
@@ -122,12 +125,21 @@ func TestShouldRetryTransientUpstream5xx(t *testing.T) {
 			want:          true,
 		},
 		{
-			name:          "transient 503 stops after short policy limit",
+			name:          "transient 503 retries through the expanded short policy",
 			single:        true,
 			routingSingle: false,
 			status:        503,
 			body:          `{"error":"service unavailable"}`,
 			attempt:       2,
+			want:          true,
+		},
+		{
+			name:          "transient 503 stops after expanded short policy limit",
+			single:        true,
+			routingSingle: false,
+			status:        503,
+			body:          `{"error":"service unavailable"}`,
+			attempt:       3,
 			want:          false,
 		},
 		{

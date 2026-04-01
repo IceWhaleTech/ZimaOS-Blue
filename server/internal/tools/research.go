@@ -88,7 +88,7 @@ func RegisterResearchTools(registry *Registry, service ResearchService) {
 func (t *DeepResearchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "deep_research",
-		Description: "Run deep research or poll the status of an existing deep research job. Use action=run to start research and action=status to resume/poll a job.",
+		Description: "Run a research workflow or poll the status of an existing research job. Use action=run to start Harness research and action=status to resume or poll a job.",
 		Icon:        "research",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -96,7 +96,7 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 				"action": map[string]interface{}{
 					"type":        "string",
 					"enum":        []string{DeepResearchActionRun, DeepResearchActionStatus},
-					"description": "run to start a deep research job, status to get progress or final results for an existing job",
+					"description": "run to start a research job, status to get progress or final results for an existing job",
 				},
 				"query":                map[string]interface{}{"type": "string", "description": "Research query or objective. Required for action=run."},
 				"mode":                 map[string]interface{}{"type": "string", "description": "Research depth: fast, standard, deep"},
@@ -110,7 +110,7 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 				"wait":                 map[string]interface{}{"type": "boolean", "description": "Whether to wait for completion when action=run (default true)"},
 				"wait_timeout_seconds": map[string]interface{}{"type": "integer", "description": "Optional max wait time before returning pending status"},
 				"poll_interval_ms":     map[string]interface{}{"type": "integer", "description": "Polling interval when wait=true (default 500ms)"},
-				"job_id":               map[string]interface{}{"type": "string", "description": "Deep research job ID. Required for action=status."},
+				"job_id":               map[string]interface{}{"type": "string", "description": "Research job ID. Required for action=status."},
 				"id":                   map[string]interface{}{"type": "string", "description": "Alias for job_id"},
 			},
 			"anyOf": []interface{}{
@@ -154,7 +154,7 @@ func resolveDeepResearchAction(args map[string]interface{}) string {
 func (t *ResearchRunTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "research_run",
-		Description: "Run deep research through the built-in web research flow. Optionally wait for the final report or return a job handle for later polling.",
+		Description: "Run a Harness research workflow. Optionally wait for the final report or return a job handle for later polling.",
 		Icon:        "research",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -180,12 +180,12 @@ func (t *ResearchRunTool) Definition() ToolDefinition {
 func (t *ResearchStatusTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "research_status",
-		Description: "Get status or final report for a deep research job created by research_run.",
+		Description: "Get status or final report for a research job created by research_run.",
 		Icon:        "research-status",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"job_id": map[string]interface{}{"type": "string", "description": "Deep research job ID"},
+				"job_id": map[string]interface{}{"type": "string", "description": "Research job ID"},
 				"id":     map[string]interface{}{"type": "string", "description": "Alias for job_id"},
 			},
 			"required": []string{"job_id"},

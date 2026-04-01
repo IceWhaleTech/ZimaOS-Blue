@@ -53,6 +53,61 @@ func TestStoreRecordAndRecent(t *testing.T) {
 	}
 }
 
+func TestStoreDeleteConversation(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "session_audit_delete.db")
+	store, err := NewSQLiteStore(dbPath, StoreConfig{
+		RetentionDays:    30,
+		CleanupInterval:  0,
+		CleanupBatchSize: 100,
+	})
+	if err != nil {
+		t.Fatalf("NewSQLiteStore() error = %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	if err := store.Record(ctx, Entry{
+		ConversationID: "conv-delete",
+		EventType:      "tool_result",
+		Role:           "tool",
+		ToolCallID:     "tc-delete",
+		ToolName:       "exec",
+		Payload:        `{"stdout":"gone"}`,
+	}); err != nil {
+		t.Fatalf("Record(delete) error = %v", err)
+	}
+	if err := store.Record(ctx, Entry{
+		ConversationID: "conv-keep",
+		EventType:      "tool_result",
+		Role:           "tool",
+		ToolCallID:     "tc-keep",
+		ToolName:       "exec",
+		Payload:        `{"stdout":"stay"}`,
+	}); err != nil {
+		t.Fatalf("Record(keep) error = %v", err)
+	}
+
+	if err := store.DeleteConversation(ctx, "conv-delete"); err != nil {
+		t.Fatalf("DeleteConversation() error = %v", err)
+	}
+
+	deleted, err := store.Recent(ctx, "conv-delete", 10)
+	if err != nil {
+		t.Fatalf("Recent(deleted) error = %v", err)
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("len(Recent(deleted)) = %d, want 0", len(deleted))
+	}
+
+	kept, err := store.Recent(ctx, "conv-keep", 10)
+	if err != nil {
+		t.Fatalf("Recent(kept) error = %v", err)
+	}
+	if len(kept) != 1 || kept[0].ToolCallID != "tc-keep" {
+		t.Fatalf("unexpected kept rows: %+v", kept)
+	}
+}
+
 func TestStorePruneExpired(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "session_audit_prune.db")
 	store, err := NewSQLiteStore(dbPath, StoreConfig{
@@ -167,5 +222,90 @@ func TestStoreRecordBatch(t *testing.T) {
 	}
 	if len(got) != 2 {
 		t.Fatalf("len(Recent()) = %d, want 2", len(got))
+	}
+}
+
+func TestStoreRecordBatchRollsBackOnValidationError(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "batch_audit_rollback.db")
+	store, err := NewSQLiteStore(dbPath, StoreConfig{
+		RetentionDays:    30,
+		CleanupBatchSize: 100,
+	})
+	if err != nil {
+		t.Fatalf("NewSQLiteStore() error = %v", err)
+	}
+	defer store.Close()
+
+	err = store.RecordBatch(context.Background(), []Entry{
+		{
+			ConversationID: "conv-batch-rollback",
+			EventType:      "assistant_tool_call",
+			Role:           "assistant",
+			ToolCallID:     "tc-ok",
+			ToolName:       "web_search",
+			Payload:        `{"query":"ok"}`,
+		},
+		{
+			EventType:  "tool_result",
+			Role:       "tool",
+			ToolCallID: "tc-bad",
+			ToolName:   "web_search",
+			Payload:    `{"ok":false}`,
+		},
+	})
+	if err == nil {
+		t.Fatal("RecordBatch() error = nil, want validation failure")
+	}
+
+	got, err := store.Recent(context.Background(), "conv-batch-rollback", 10)
+	if err != nil {
+		t.Fatalf("Recent() error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("len(Recent()) = %d, want 0 after rollback", len(got))
+	}
+}
+
+func TestStoreUsesReaderDBForReads(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "session_audit_reader.db")
+	store, err := NewSQLiteStore(dbPath, StoreConfig{
+		RetentionDays:    30,
+		CleanupInterval:  0,
+		CleanupBatchSize: 100,
+	})
+	if err != nil {
+		t.Fatalf("NewSQLiteStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if store.readDB == nil {
+		t.Fatal("expected read db to be initialized")
+	}
+	if store.readDB == store.db {
+		t.Fatal("expected file-backed session audit store to use a separate read db")
+	}
+
+	ctx := context.Background()
+	if err := store.Record(ctx, Entry{
+		ConversationID: "conv-reader",
+		EventType:      "tool_result",
+		Role:           "tool",
+		ToolCallID:     "tc-reader",
+		ToolName:       "web_search",
+		Payload:        `{"results":[{"title":"reader"}]}`,
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	if err := store.db.Close(); err != nil {
+		t.Fatalf("close writer db: %v", err)
+	}
+
+	got, err := store.Recent(ctx, "conv-reader", 10)
+	if err != nil {
+		t.Fatalf("Recent() error = %v", err)
+	}
+	if len(got) != 1 || got[0].ToolCallID != "tc-reader" {
+		t.Fatalf("unexpected recent rows via reader: %+v", got)
 	}
 }

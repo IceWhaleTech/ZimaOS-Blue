@@ -41,6 +41,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -5812,17 +5813,97 @@ func (h *ChatHandler) rejectIfPreparedInputExceedsBudget(c echo.Context, model s
 	})
 }
 
-func (h *ChatHandler) selectChatToolsForRequest(userMessage, model, sessionID, explicitProviderID string, state memory.ConversationCommandState, webSearchEnabled, deepResearchEnabled *bool) []tools.ToolDefinition {
-	selectedTools := h.selectTools(userMessage, tools.ToolPolicyRequest{
+type chatNativeToolSurfaceMode string
+
+const (
+	chatNativeToolSurfaceModeLegacy      chatNativeToolSurfaceMode = "legacy"
+	chatNativeToolSurfaceModeSkillExec   chatNativeToolSurfaceMode = "skill_exec"
+	chatNativeToolSurfaceModeClarifyNone chatNativeToolSurfaceMode = "clarify_none"
+)
+
+type chatToolSurfaceSelection struct {
+	RoutedDefs    []tools.ToolDefinition
+	NativeDefs    []tools.ToolDefinition
+	NativeMode    chatNativeToolSurfaceMode
+	SkillDecision *agentcore.Decision
+}
+
+func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage, model, sessionID, explicitProviderID string, state memory.ConversationCommandState, webSearchEnabled, deepResearchEnabled *bool) []tools.ToolDefinition {
+	selection := h.selectChatToolSurfacesForRequest(ctx, userMessage, tools.ToolPolicyRequest{
 		Model:               model,
 		SessionID:           sessionID,
 		RouteKind:           tools.ToolRouteKindChat,
 		DeepResearchEnabled: deepResearchEnabled,
-	})
-	selectedTools = applyWebSearchPreference(selectedTools, webSearchEnabled)
-	selectedTools = applyDeepResearchPreference(selectedTools, deepResearchEnabled)
+	}, webSearchEnabled, deepResearchEnabled)
+	selectedTools := selection.NativeDefs
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		h.clearPromptCacheToolSurface(sessionID)
+		return sortToolDefsByName(selectedTools)
+	}
 	selectedTools = h.stabilizePromptCacheToolSurface(sessionID, explicitProviderID, state, webSearchEnabled, deepResearchEnabled, selectedTools)
 	return selectedTools
+}
+
+func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, userMessage string, policyReq tools.ToolPolicyRequest, webSearchEnabled, deepResearchEnabled *bool) chatToolSurfaceSelection {
+	routedDefs, _ := h.selectToolsDetailed(userMessage, policyReq)
+	routedDefs = applyWebSearchPreference(routedDefs, webSearchEnabled)
+	routedDefs = applyDeepResearchPreference(routedDefs, deepResearchEnabled)
+
+	selection := chatToolSurfaceSelection{
+		RoutedDefs: routedDefs,
+		NativeDefs: routedDefs,
+		NativeMode: chatNativeToolSurfaceModeLegacy,
+	}
+
+	decision, ok := h.resolveSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
+	if !ok {
+		return selection
+	}
+	selection.SkillDecision = &decision
+
+	if decision.NeedClarify {
+		selection.NativeDefs = nil
+		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
+		return selection
+	}
+
+	selectedSkill := strings.TrimSpace(decision.SelectedSkill)
+	if selectedSkill == "" || !cutoverSkillAllowedByPreferences(selectedSkill, webSearchEnabled, deepResearchEnabled) {
+		return selection
+	}
+
+	execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
+	if !ok {
+		return selection
+	}
+
+	selection.NativeDefs = []tools.ToolDefinition{execDef}
+	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
+	return selection
+}
+
+func cutoverSkillAllowedByPreferences(skill string, webSearchEnabled, deepResearchEnabled *bool) bool {
+	switch strings.ToLower(strings.TrimSpace(skill)) {
+	case "web_search", "web", "web-query", "web_query":
+		return webSearchEnabled == nil || *webSearchEnabled
+	case "deep_research", "deep-research", "research_run", "research_status":
+		return deepResearchEnabled == nil || *deepResearchEnabled
+	default:
+		return true
+	}
+}
+
+func (h *ChatHandler) lookupCutoverNativeExecToolDefinition(kind tools.ToolRouteKind) (tools.ToolDefinition, bool) {
+	if h == nil || h.toolRegistry == nil {
+		return tools.ToolDefinition{}, false
+	}
+	if tool := h.toolRegistry.Get("exec"); tool != nil {
+		return tool.Definition(), true
+	}
+	if def, ok := h.toolRegistry.LookupDefinitionForRoute("exec", kind); ok {
+		return def, true
+	}
+	return tools.ToolDefinition{}, false
 }
 
 func estimateCurrentRequestMessages(req SendMessageRequest) []llm.Message {
@@ -5859,7 +5940,7 @@ func estimateCurrentRequestMessages(req SendMessageRequest) []llm.Message {
 
 func (h *ChatHandler) rejectIfCurrentRequestExceedsBudget(c echo.Context, convID, model string, req SendMessageRequest, explicitProviderID string) error {
 	messages := estimateCurrentRequestMessages(req)
-	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(req.Message, model, convID, explicitProviderID, memory.ConversationCommandState{ConversationID: convID}, req.WebSearchEnabled, req.DeepResearchEnabled))
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(c.Request().Context(), req.Message, model, convID, explicitProviderID, memory.ConversationCommandState{ConversationID: convID}, req.WebSearchEnabled, req.DeepResearchEnabled))
 	if _, structuredEvaluatorNoTools := h.isStructuredEvaluatorConversation(c.Request().Context(), convID, req.Message); structuredEvaluatorNoTools {
 		budgetTools = nil
 	}
@@ -5957,16 +6038,7 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 
 	logger.Debug().Str("provider_id", providerID).Str("api_format", string(poolProvider.APIFormat)).Str("base_url", poolProvider.BaseURL).Bool("has_key", apiKey != "").Msg("[chat] getProviderFromPool")
 
-	// Determine base URL - MiniMax uses different endpoints based on API format
 	baseURL := poolProvider.BaseURL
-	if providerID == "minimax" {
-		switch poolProvider.APIFormat {
-		case providerpool.APIFormatAnthropic:
-			baseURL = "https://api.minimaxi.com/anthropic"
-		default:
-			baseURL = "https://api.minimaxi.com/v1"
-		}
-	}
 
 	// Create LLM provider based on API format
 	var provider llm.Provider
@@ -6005,16 +6077,7 @@ func (h *ChatHandler) tryProviderWithKeyFallback(ctx context.Context, providerID
 			continue
 		}
 
-		// Determine base URL - MiniMax uses different endpoints based on API format
 		baseURL := poolProvider.BaseURL
-		if providerID == "minimax" {
-			switch poolProvider.APIFormat {
-			case providerpool.APIFormatAnthropic:
-				baseURL = "https://api.minimaxi.com/anthropic"
-			default:
-				baseURL = "https://api.minimaxi.com/v1"
-			}
-		}
 
 		var provider llm.Provider
 		switch poolProvider.APIFormat {
@@ -6065,16 +6128,7 @@ func (h *ChatHandler) tryProviderChatWithKeyFallback(ctx context.Context, provid
 			continue
 		}
 
-		// Determine base URL - MiniMax uses different endpoints based on API format
 		baseURL := poolProvider.BaseURL
-		if providerID == "minimax" {
-			switch poolProvider.APIFormat {
-			case providerpool.APIFormatAnthropic:
-				baseURL = "https://api.minimaxi.com/anthropic"
-			default:
-				baseURL = "https://api.minimaxi.com/v1"
-			}
-		}
 
 		var provider llm.Provider
 		switch poolProvider.APIFormat {
@@ -7511,16 +7565,20 @@ func hasExplicitSystemReminderTarget(userMessage string) bool {
 	return false
 }
 
-func (h *ChatHandler) resolveSkillSelection(ctx context.Context, userMessage string) (string, string) {
+func (h *ChatHandler) resolveSkillDecision(ctx context.Context, userMessage string) (agentcore.Decision, bool) {
+	return h.resolveSkillDecisionWithOverride(ctx, userMessage, false)
+}
+
+func (h *ChatHandler) resolveSkillDecisionWithOverride(ctx context.Context, userMessage string, allowWhenDisabled bool) (agentcore.Decision, bool) {
 	if h.skillSelector == nil {
-		return "", ""
+		return agentcore.Decision{}, false
 	}
 	userMessage = strings.TrimSpace(userMessage)
 	if userMessage == "" {
-		return "", ""
+		return agentcore.Decision{}, false
 	}
-	if h.settingsHandler != nil && !h.settingsHandler.GetSmartSkillSelection() {
-		return "", ""
+	if h.settingsHandler != nil && !allowWhenDisabled && !h.settingsHandler.GetSmartSkillSelection() {
+		return agentcore.Decision{}, false
 	}
 
 	opts := agentcore.SelectOptions{
@@ -7537,30 +7595,100 @@ func (h *ChatHandler) resolveSkillSelection(ctx context.Context, userMessage str
 	decision, err := h.skillSelector.Select(ctx, userMessage, opts)
 	if err != nil {
 		logger.Warn().Err(err).Msg("[chat] skill selector failed")
+		return agentcore.Decision{}, false
+	}
+	return decision, true
+}
+
+func (h *ChatHandler) resolveSkillSelection(ctx context.Context, userMessage string) (string, string) {
+	decision, ok := h.resolveSkillDecision(ctx, userMessage)
+	if !ok {
 		return "", ""
 	}
 	return decision.PromptHint(3), decision.SelectedSkill
 }
 
-func forcedSkillSelectionHint(userMessage, skill string) string {
+func forcedSkillSelectionDecision(userMessage, skill string) agentcore.Decision {
 	userMessage = strings.TrimSpace(userMessage)
 	skill = strings.TrimSpace(skill)
 	if userMessage == "" || skill == "" {
-		return ""
+		return agentcore.Decision{}
 	}
-	return fmt.Sprintf(
-		`<selected_skill_candidates query=%q confidence="1.00" need_clarify="false"><skill name=%q /><decision selected=%q stage="forced" /></selected_skill_candidates>`,
-		truncateRunes(userMessage, 160),
-		skill,
-		skill,
-	)
+	return agentcore.Decision{
+		Query:         userMessage,
+		SelectedSkill: skill,
+		Confidence:    1,
+		NeedClarify:   false,
+		Reason:        "forced_research_exposure",
+		Stage:         "forced",
+		Candidates: []agentcore.SkillCandidate{
+			{Name: skill},
+		},
+	}
+}
+
+func forcedSkillSelectionHint(userMessage, skill string) string {
+	return forcedSkillSelectionDecision(userMessage, skill).PromptHint(1)
+}
+
+func (h *ChatHandler) resolveSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
+	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
+		return forcedSkillSelectionDecision(userMessage, "deep_research"), true
+	}
+	return h.resolveSkillDecision(ctx, userMessage)
+}
+
+func (h *ChatHandler) previewSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
+	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
+		return forcedSkillSelectionDecision(userMessage, "deep_research"), true
+	}
+	return h.resolveSkillDecisionWithOverride(ctx, userMessage, true)
+}
+
+func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, userMessage string, policyReq tools.ToolPolicyRequest, webSearchEnabled, deepResearchEnabled *bool) chatToolSurfaceSelection {
+	routedDefs, _ := h.selectToolsDetailed(userMessage, policyReq)
+	routedDefs = applyWebSearchPreference(routedDefs, webSearchEnabled)
+	routedDefs = applyDeepResearchPreference(routedDefs, deepResearchEnabled)
+
+	selection := chatToolSurfaceSelection{
+		RoutedDefs: routedDefs,
+		NativeDefs: routedDefs,
+		NativeMode: chatNativeToolSurfaceModeLegacy,
+	}
+
+	decision, ok := h.previewSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
+	if !ok {
+		return selection
+	}
+	selection.SkillDecision = &decision
+
+	if decision.NeedClarify {
+		selection.NativeDefs = nil
+		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
+		return selection
+	}
+
+	selectedSkill := strings.TrimSpace(decision.SelectedSkill)
+	if selectedSkill == "" || !cutoverSkillAllowedByPreferences(selectedSkill, webSearchEnabled, deepResearchEnabled) {
+		return selection
+	}
+
+	execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
+	if !ok {
+		return selection
+	}
+
+	selection.NativeDefs = []tools.ToolDefinition{execDef}
+	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
+	return selection
 }
 
 func (h *ChatHandler) resolveSkillSelectionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (string, string) {
-	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
-		return forcedSkillSelectionHint(userMessage, "deep_research"), "deep_research"
+	decision, ok := h.resolveSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
+	if !ok {
+		return "", ""
 	}
-	return h.resolveSkillSelection(ctx, userMessage)
+	return decision.PromptHint(3), decision.SelectedSkill
 }
 
 func shouldForceRequestAgentMode(userMessage string, deepResearchEnabled *bool) bool {
@@ -9482,9 +9610,9 @@ func toolFallbackHumanLabel(toolName string, useChinese bool) string {
 		return "command execution"
 	case "deep_research", "deep-research":
 		if useChinese {
-			return "深度研究"
+			return "研究"
 		}
-		return "deep research"
+		return "research"
 	}
 	toolName = strings.TrimSpace(toolName)
 	if toolName == "" {
@@ -10659,7 +10787,7 @@ func formatIMDeepResearchProgress(card map[string]interface{}, lang i18n.Languag
 	stage = imDeepResearchStageLabel(stage, lang)
 	progress := strings.TrimSpace(formatValue(card["progress"]))
 	query := strings.TrimSpace(formatValue(card["query"]))
-	line := strings.TrimSpace(fmt.Sprintf("%s %s %s", icon, imLocalized(lang, "Deep Research", "深度研究"), stage))
+	line := strings.TrimSpace(fmt.Sprintf("%s %s %s", icon, imLocalized(lang, "Research", "研究"), stage))
 	if progress != "" {
 		line = strings.TrimSpace(line + " · " + progress + "%")
 	}
@@ -10685,7 +10813,7 @@ func formatIMDeepResearchEvent(card map[string]interface{}, lang i18n.Language) 
 		summary = strings.TrimSpace(formatValue(card["message"]))
 	}
 	if summary == "" {
-		summary = imLocalized(lang, "Deep Research update", "深度研究更新")
+		summary = imLocalized(lang, "Research update", "研究更新")
 	}
 	lines := []string{summary}
 	if iteration, ok := deepResearchFallbackInt(card["iteration"]); ok && iteration > 0 {
@@ -10755,7 +10883,7 @@ func formatIMUIReviewCard(card map[string]interface{}, lang i18n.Language) strin
 }
 
 func formatIMDeepResearchCard(card map[string]interface{}, lang i18n.Language) string {
-	lines := []string{imLocalized(lang, "Deep Research", "深度研究")}
+	lines := []string{imLocalized(lang, "Research", "研究")}
 	if query := strings.TrimSpace(formatValue(card["query"])); query != "" {
 		lines = append(lines, query)
 	}
@@ -11101,7 +11229,7 @@ func formatIMResultCard(card map[string]interface{}, lang i18n.Language) string 
 	case "ui_review":
 		return formatIMStructuredResult(card, lang, imLocalized(lang, "UI Review Update", "UI 评审更新"))
 	case "deep_research":
-		return formatIMStructuredResult(card, lang, imLocalized(lang, "Deep Research Update", "深度研究更新"))
+		return formatIMStructuredResult(card, lang, imLocalized(lang, "Research Update", "研究更新"))
 	case "analyze":
 		return formatIMStructuredResult(card, lang, imLocalized(lang, "Analysis Update", "分析更新"))
 	default:
@@ -12233,7 +12361,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Add first-turn tool definitions using the full static chat allowlist.
-	selectedTools := h.selectChatToolsForRequest(routingMessage, req.Model, convID, "", convState, nil, channelDeepResearchEnabled)
+	selectedTools := h.selectChatToolsForRequest(ctx, routingMessage, req.Model, convID, "", convState, nil, channelDeepResearchEnabled)
 	req.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
@@ -12691,11 +12819,122 @@ func (h *ChatHandler) persistChannelResponseMessage(ctx context.Context, convID,
 // Memory is a nice-to-have enhancement, not a critical path.
 const memoryRecallTimeout = 100 * time.Millisecond
 
+func shouldSkipPromptMemoryRecall(userMessage string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(userMessage))
+	if normalized == "" {
+		return true
+	}
+	if strings.Contains(normalized, "http://") || strings.Contains(normalized, "https://") || strings.Contains(normalized, "www.") {
+		return true
+	}
+	allowWorkspaceMemory := shouldUsePromptSessionCompactionMemory(userMessage)
+	if !allowWorkspaceMemory {
+		if skill, ok := routingcue.InferSkill(userMessage); ok && (skill == "web_query" || skill == "browser") {
+			return true
+		}
+	}
+	webSignals := []string{
+		"search the web", "web search", "browse", "browser", "website", "url", "look up online",
+		"search docs", "search documentation", "official docs", "official documentation",
+		"搜索", "搜尋", "网页", "網頁", "网站", "網站", "浏览器", "瀏覽器", "官网", "官方文档", "官方文件",
+	}
+	freshPublicSignals := []string{
+		"latest", "newest", "recent", "current", "today", "news", "release notes", "documentation", "docs",
+		"最新", "最近", "当前", "今天", "新闻", "更新", "文档", "文件",
+	}
+	return !allowWorkspaceMemory && containsAnyPromptMemorySignal(normalized, webSignals) && containsAnyPromptMemorySignal(normalized, freshPublicSignals)
+}
+
+func containsAnyPromptMemorySignal(query string, signals []string) bool {
+	for _, signal := range signals {
+		if strings.Contains(query, signal) {
+			return true
+		}
+	}
+	return false
+}
+
+func promptMemoryTags(metadata map[string]string) []string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	tags := make([]string, 0, len(metadata))
+	for key, value := range metadata {
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "tag_") {
+			continue
+		}
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			tags = append(tags, strings.ToLower(trimmed))
+		}
+	}
+	return tags
+}
+
+func promptMemoryHasTag(metadata map[string]string, want string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	if want == "" {
+		return false
+	}
+	for _, tag := range promptMemoryTags(metadata) {
+		if tag == want {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldUsePromptSessionCompactionMemory(userMessage string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(userMessage))
+	if normalized == "" {
+		return false
+	}
+	codingSignals := []string{
+		"workspace", "repo", "repository", "project", "codebase", "build", "fix", "implement", "refactor", "readme",
+		"workspace files", "local file", "local files", "source tree", "test", "tests",
+		"工作区", "仓库", "代码库", "项目", "代码", "实现", "修复", "重构", "测试", "README", "文件",
+	}
+	memoryCueSignals := []string{
+		"remember", "memory", "preference", "profile", "previously said", "as i said",
+		"记得", "记忆", "偏好", "之前说过", "习惯",
+	}
+	return containsAnyPromptMemorySignal(normalized, codingSignals) || containsAnyPromptMemorySignal(normalized, memoryCueSignals)
+}
+
+func promptMemoryMinScore(baseMinScore float64, metadata map[string]string) float64 {
+	if promptMemoryHasTag(metadata, "session-compaction") && baseMinScore < 0.7 {
+		return 0.7
+	}
+	return baseMinScore
+}
+
+func promptMemorySourceLabel(metadata map[string]string) string {
+	switch {
+	case promptMemoryHasTag(metadata, "session-compaction"):
+		return "session_compaction"
+	case promptMemoryHasTag(metadata, "longterm"):
+		return "long_term"
+	default:
+		return "unspecified"
+	}
+}
+
+func promptMemoryTrustLabel(metadata map[string]string) string {
+	switch promptMemorySourceLabel(metadata) {
+	case "session_compaction":
+		return "low"
+	default:
+		return "medium"
+	}
+}
+
 // recallMemories searches for relevant memories and returns a system message to prepend.
 // Returns empty string if no relevant memories found or if recall times out.
 // Chunk count/length limits are controlled by memory recall mode.
 func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string, mode MemoryRecallMode) string {
 	if h.layeredMemory == nil || userMessage == "" {
+		return ""
+	}
+	if shouldSkipPromptMemoryRecall(userMessage) {
 		return ""
 	}
 	limits := recallLimitsForMode(mode)
@@ -12724,7 +12963,14 @@ func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string, mo
 		if len(preview) > 80 {
 			preview = preview[:80] + "..."
 		}
-		if float64(r.Score) < minScore || r.Chunk.Content == "" {
+		if r.Chunk.Content == "" {
+			continue
+		}
+		if promptMemoryHasTag(r.Chunk.Metadata, "session-compaction") && !shouldUsePromptSessionCompactionMemory(userMessage) {
+			logger.Debug().Str("preview", preview).Msg("[memory] skipped session-compaction memory for non-memory goal")
+			continue
+		}
+		if float64(r.Score) < promptMemoryMinScore(minScore, r.Chunk.Metadata) {
 			logger.Debug().Float64("score", float64(r.Score)).Str("preview", preview).Msg("[memory] skipped low-relevance memory")
 			continue
 		}
@@ -12738,6 +12984,13 @@ func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string, mo
 			continue
 		}
 		seen[key] = struct{}{}
+		chunk = fmt.Sprintf(
+			"[memory source=%s trust=%s relevance=%.2f] %s",
+			promptMemorySourceLabel(r.Chunk.Metadata),
+			promptMemoryTrustLabel(r.Chunk.Metadata),
+			r.Score,
+			chunk,
+		)
 		kept = append(kept, chunk)
 		logger.Info().Float64("score", float64(r.Score)).Str("preview", preview).Msg("[memory] recalled")
 	}
@@ -18495,6 +18748,28 @@ type SendMessageRequest struct {
 	// Nil means default behavior (enabled). False removes web_search from tool list.
 	WebSearchEnabled    *bool `json:"web_search_enabled,omitempty"`
 	DeepResearchEnabled *bool `json:"deep_research_enabled,omitempty"`
+	ResearchModeEnabled *bool `json:"research_mode_enabled,omitempty"`
+}
+
+func (r *SendMessageRequest) normalizeResearchModeAlias() {
+	if r == nil {
+		return
+	}
+	if r.ResearchModeEnabled != nil {
+		r.DeepResearchEnabled = r.ResearchModeEnabled
+		return
+	}
+	if r.DeepResearchEnabled != nil {
+		r.ResearchModeEnabled = r.DeepResearchEnabled
+	}
+}
+
+func (r *SendMessageRequest) setResearchModeEnabled(value bool) {
+	if r == nil {
+		return
+	}
+	r.DeepResearchEnabled = &value
+	r.ResearchModeEnabled = r.DeepResearchEnabled
 }
 
 // SendMessageResponse represents a response from sending a message.
@@ -18733,6 +19008,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
+	req.normalizeResearchModeAlias()
 	if reqCtx := h.applyPendingBrowserLaunchIntent(c.Request().Context(), convID, req.Message); reqCtx != c.Request().Context() {
 		c.SetRequest(c.Request().WithContext(reqCtx))
 	}
@@ -18937,7 +19213,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
 		}
 	}
-	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(routingMessage, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(c.Request().Context(), routingMessage, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
 	if structuredEvaluatorNoTools {
 		budgetTools = nil
 	}
@@ -18981,7 +19257,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Get first-turn tool definitions using the full static chat allowlist.
-	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
+	selectedTools := h.selectChatToolsForRequest(c.Request().Context(), routingMessage, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
 		logger.Info().
@@ -20886,6 +21162,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
+	req.normalizeResearchModeAlias()
 	if reqCtx := h.applyPendingBrowserLaunchIntent(c.Request().Context(), convID, req.Message); reqCtx != c.Request().Context() {
 		c.SetRequest(c.Request().WithContext(reqCtx))
 	}
@@ -21174,7 +21451,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
 		}
 	}
-	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(routingMessage, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
+	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(c.Request().Context(), routingMessage, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
 	if structuredEvaluatorNoTools {
 		budgetTools = nil
 	}
@@ -21220,7 +21497,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Get first-turn tool definitions using the full static chat allowlist.
-	selectedTools := h.selectChatToolsForRequest(routingMessage, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
+	selectedTools := h.selectChatToolsForRequest(c.Request().Context(), routingMessage, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
 	if structuredEvaluatorNoTools {
 		selectedTools = nil
 		logger.Info().
@@ -21450,7 +21727,67 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var actualProvider string   // Track actual provider from response
 	var actualProviderID string // Track actual provider ID for sticky routing
 	var latestResponseID string // Track latest Responses response.id for continuation
+	requestedModelForTrace := strings.TrimSpace(req.Model)
+	lastResolvedTraceProvider := ""
+	lastResolvedTraceModel := ""
 	userID := h.getUserID(c)
+	isRoutingHintSelection := func(model string) bool {
+		switch strings.ToLower(strings.TrimSpace(model)) {
+		case "", "auto", "local", "cloud":
+			return true
+		default:
+			return false
+		}
+	}
+	emitResolvedProviderModel := func() {
+		providerLabel := strings.TrimSpace(actualProvider)
+		if providerLabel == "" && resolvedRoute.Provider != "" {
+			providerLabel = strings.TrimSpace(resolvedRoute.Provider)
+		}
+		if providerLabel == "" {
+			providerLabel = strings.TrimSpace(actualProviderID)
+		}
+		if providerLabel == "" && resolvedRoute.ProviderID != "" {
+			providerLabel = strings.TrimSpace(resolvedRoute.ProviderID)
+		}
+		modelLabel := strings.TrimSpace(resolvedRoute.Model)
+		if modelLabel == "" {
+			modelLabel = strings.TrimSpace(actualModel)
+		}
+		if modelLabel == "" {
+			modelLabel = strings.TrimSpace(h.resolveResponseModel(chatReq.Model, resolvedRoute.Model))
+		}
+		if providerLabel == "" && modelLabel == "" {
+			return
+		}
+		if strings.EqualFold(providerLabel, lastResolvedTraceProvider) && strings.EqualFold(modelLabel, lastResolvedTraceModel) {
+			return
+		}
+		detail := "Using the resolved upstream provider and model for this response."
+		switch {
+		case lastResolvedTraceProvider != "" || lastResolvedTraceModel != "":
+			detail = "Switched to another available upstream provider or model for this response."
+		case !isRoutingHintSelection(requestedModelForTrace) && requestedModelForTrace != "" && modelLabel != "" &&
+			!strings.EqualFold(requestedModelForTrace, modelLabel):
+			detail = "Switched to an available upstream model for this response."
+		}
+		extra := map[string]interface{}{}
+		if providerLabel != "" {
+			extra["process_provider"] = providerLabel
+		}
+		if modelLabel != "" {
+			extra["process_model"] = modelLabel
+		}
+		emitProcessEvent(
+			"provider_resolved",
+			"success",
+			"Using available route",
+			detail,
+			extra,
+		)
+		lastResolvedTraceProvider = providerLabel
+		lastResolvedTraceModel = modelLabel
+	}
 	accumulateCompletedRoundUsage := func() {
 		if totalInputTokens == 0 && totalOutputTokens == 0 {
 			return
@@ -21865,6 +22202,13 @@ STREAM_LOOP:
 			if chunk.ProviderID != "" && actualProviderID == "" {
 				actualProviderID = chunk.ProviderID
 			}
+			if actualProvider == "" && resolvedRoute.Provider != "" {
+				actualProvider = resolvedRoute.Provider
+			}
+			if actualProviderID == "" && resolvedRoute.ProviderID != "" {
+				actualProviderID = resolvedRoute.ProviderID
+			}
+			emitResolvedProviderModel()
 			if chunk.Progress != "" && chunk.Progress != lastStreamProgress {
 				emitSSE(map[string]interface{}{
 					"stream_progress": chunk.Progress,
@@ -22165,6 +22509,7 @@ STREAM_LOOP:
 				if actualModel == "" {
 					actualModel = h.resolveResponseModel(chatReq.Model, resolvedRoute.Model)
 				}
+				emitResolvedProviderModel()
 
 				// Send final chunk with provider/model info and stats
 				logger.Info().
@@ -23929,6 +24274,15 @@ STREAM_LOOP:
 			completedRoundInputTokens = 0
 			completedRoundOutputTokens = 0
 		}
+		if actualProvider == "" && resolvedRoute.Provider != "" {
+			actualProvider = resolvedRoute.Provider
+		}
+		if actualProviderID == "" && resolvedRoute.ProviderID != "" {
+			actualProviderID = resolvedRoute.ProviderID
+		}
+		if actualModel == "" {
+			actualModel = h.resolveResponseModel(chatReq.Model, resolvedRoute.Model)
+		}
 		if totalInputTokens == 0 {
 			totalInputTokens = estimateInputTokens(compactedMessages)
 		}
@@ -23950,6 +24304,7 @@ STREAM_LOOP:
 		if fullContent == "" {
 			donePayload["empty_response"] = true
 		}
+		emitResolvedProviderModel()
 		emitSSE(donePayload)
 	}
 	if err != nil {
@@ -24084,7 +24439,7 @@ STREAM_LOOP:
 					h.recordContextPackAudit(promptCtx, convID, selection)
 				}
 
-				injectedBudgetTools := defsToLLMTools(h.selectChatToolsForRequest(injectedMsg, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
+				injectedBudgetTools := defsToLLMTools(h.selectChatToolsForRequest(ctx, injectedMsg, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
 				if structuredEvaluatorNoTools {
 					injectedBudgetTools = nil
 				}
@@ -24110,7 +24465,7 @@ STREAM_LOOP:
 				applyBudgetAttemptToChatReq(currentBudgetAttempt)
 				pendingContextCompacting = progressiveContextTrim != nil || compacted
 
-				injectedTools := h.selectChatToolsForRequest(injectedMsg, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
+				injectedTools := h.selectChatToolsForRequest(ctx, injectedMsg, chatReq.Model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled)
 				if structuredEvaluatorNoTools {
 					injectedTools = nil
 				}

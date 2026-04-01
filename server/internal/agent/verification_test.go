@@ -132,6 +132,176 @@ func TestRunVerification_RequiresAllCriteriaPass(t *testing.T) {
 	}
 }
 
+func TestMergeTaskSuccessCriteria_LocksExecutionEquivalenceContract(t *testing.T) {
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"gate_type":             "execution_equivalence",
+			"task_success_criteria": []interface{}{"evidence_tool_used"},
+			"task_fallback_plan":    []interface{}{"run blue web_search first"},
+		},
+	}
+
+	gotCriteria := mergeTaskSuccessCriteria(task, []string{"planner invented another criterion"})
+	if len(gotCriteria) != 1 || gotCriteria[0] != "evidence_tool_used" {
+		t.Fatalf("mergeTaskSuccessCriteria() = %#v, want [evidence_tool_used]", gotCriteria)
+	}
+
+	gotFallback := mergeTaskFallbackPlan(task, []string{"planner invented another fallback"})
+	if len(gotFallback) != 1 || gotFallback[0] != "run blue web_search first" {
+		t.Fatalf("mergeTaskFallbackPlan() = %#v, want [run blue web_search first]", gotFallback)
+	}
+}
+
+func TestPreferredTaskModel_UsesGroupInputModel(t *testing.T) {
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"group_input": map[string]interface{}{
+				"model": "claude-haiku-4-5-20251001",
+			},
+		},
+	}
+
+	if got := preferredTaskModel(task); got != "claude-haiku-4-5-20251001" {
+		t.Fatalf("preferredTaskModel() = %q, want claude-haiku-4-5-20251001", got)
+	}
+}
+
+func TestGeneratePlanForTask_UsesPreferredTaskModel(t *testing.T) {
+	llmStub := &captureRequestLLM{response: `{"goal":"test","subtasks":[{"description":"step one"}]}`}
+	runner := &Runner{llm: llmStub}
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"group_input": map[string]interface{}{
+				"model": "claude-haiku-4-5-20251001",
+			},
+		},
+	}
+
+	if _, err := runner.generatePlanForTask(context.Background(), task, "test", ""); err != nil {
+		t.Fatalf("generatePlanForTask failed: %v", err)
+	}
+	if llmStub.lastModel != "claude-haiku-4-5-20251001" {
+		t.Fatalf("planner model = %q, want claude-haiku-4-5-20251001", llmStub.lastModel)
+	}
+}
+
+func TestGroundedPlannerAndVerifier_UseProvidedModel(t *testing.T) {
+	plannerLLM := &captureRequestLLM{response: `{"status":"complete","reason":"enough evidence"}`}
+	planner := NewGroundedPlanner(plannerLLM)
+	if _, err := planner.Decide(context.Background(), PlannerInput{Model: "claude-haiku-4-5-20251001"}); err != nil {
+		t.Fatalf("GroundedPlanner.Decide failed: %v", err)
+	}
+	if plannerLLM.lastModel != "claude-haiku-4-5-20251001" {
+		t.Fatalf("grounded planner model = %q, want claude-haiku-4-5-20251001", plannerLLM.lastModel)
+	}
+
+	verifierLLM := &captureRequestLLM{response: `{"summary":"ok","claims":[{"type":"unknown","text":"unknown"}]}`}
+	verifier := NewGroundedVerifier(nil)
+	if _, err := verifier.Respond(context.Background(), verifierLLM, ResponderInput{Model: "claude-haiku-4-5-20251001"}); err != nil {
+		t.Fatalf("GroundedVerifier.Respond failed: %v", err)
+	}
+	if verifierLLM.lastModel != "claude-haiku-4-5-20251001" {
+		t.Fatalf("grounded verifier model = %q, want claude-haiku-4-5-20251001", verifierLLM.lastModel)
+	}
+}
+
+func TestGroundedVerifierRespond_UsesDeterministicStructuredWebEvidenceWithoutLLM(t *testing.T) {
+	state := NewGroundTruthState()
+	toolCallID := "task/deterministic-web/tc/1"
+	state.Calls[toolCallID] = GroundedToolCall{
+		ToolCallID: toolCallID,
+		Tool:       "bash",
+		Args: map[string]any{
+			"command": `blue web_query input="OpenAI Responses API latest docs"`,
+		},
+	}
+	state.Results[toolCallID] = GroundedToolResult{
+		ToolCallID: toolCallID,
+		Tool:       "bash",
+		ExitCode:   0,
+		OK:         true,
+		Result: map[string]any{
+			"stdout": "status: ok",
+			"data": map[string]any{
+				"status":    "ok",
+				"final_url": "https://developers.openai.com/api/reference/resources/responses",
+				"title":     "Responses | OpenAI API Reference",
+				"content":   "Responses | OpenAI API Reference\nBuild stateful interactions with the Responses API.",
+			},
+		},
+	}
+
+	verifier := NewGroundedVerifier(nil)
+	response, err := verifier.Respond(context.Background(), nil, ResponderInput{
+		GroundState:      state,
+		PriorToolCallIDs: []string{toolCallID},
+	})
+	if err != nil {
+		t.Fatalf("GroundedVerifier.Respond returned error: %v", err)
+	}
+	if response == nil || len(response.Claims) == 0 {
+		t.Fatalf("expected deterministic grounded claims, got %#v", response)
+	}
+	decision := verifier.Verify(state, response)
+	if !decision.Valid {
+		t.Fatalf("deterministic response should verify, got violations=%v output=%q", decision.Violations, decision.Output)
+	}
+	for _, want := range []string{
+		"Responses | OpenAI API Reference",
+		"https://developers.openai.com/api/reference/resources/responses",
+	} {
+		if !strings.Contains(decision.Output, want) {
+			t.Fatalf("expected output to contain %q, got %q", want, decision.Output)
+		}
+	}
+}
+
+func TestGroundedVerifierRespond_UsesDeterministicAnalyzeEvidenceWithoutLLM(t *testing.T) {
+	state := NewGroundTruthState()
+	toolCallID := "task/deterministic-analyze/tc/1"
+	state.Calls[toolCallID] = GroundedToolCall{
+		ToolCallID: toolCallID,
+		Tool:       "bash",
+		Args: map[string]any{
+			"command": `blue analyze topic="Summarize and extract the key points" url="https://example.com/blog"`,
+		},
+	}
+	state.Results[toolCallID] = GroundedToolResult{
+		ToolCallID: toolCallID,
+		Tool:       "bash",
+		ExitCode:   0,
+		OK:         true,
+		Result: map[string]any{
+			"stdout": "answer: Analysis completed for Summarize and extract the key points.",
+			"data": map[string]any{
+				"answer":      "Analysis completed for Summarize and extract the key points.",
+				"message":     "Analysis ready: Summarize and extract the key points",
+				"output_mode": "inline",
+				"topic":       "Summarize and extract the key points",
+			},
+		},
+	}
+
+	verifier := NewGroundedVerifier(nil)
+	response, err := verifier.Respond(context.Background(), nil, ResponderInput{
+		GroundState:      state,
+		PriorToolCallIDs: []string{toolCallID},
+	})
+	if err != nil {
+		t.Fatalf("GroundedVerifier.Respond returned error: %v", err)
+	}
+	if response == nil || len(response.Claims) == 0 {
+		t.Fatalf("expected deterministic grounded claims, got %#v", response)
+	}
+	decision := verifier.Verify(state, response)
+	if !decision.Valid {
+		t.Fatalf("deterministic analyze response should verify, got violations=%v output=%q", decision.Violations, decision.Output)
+	}
+	if !strings.Contains(decision.Output, "Analysis completed for Summarize and extract the key points.") {
+		t.Fatalf("expected output to contain deterministic analyze answer, got %q", decision.Output)
+	}
+}
+
 func TestBuildRecoveryUserPrompt_UsesFallbackPlanOrder(t *testing.T) {
 	task := &Task{
 		Goal: "fix parser",
@@ -229,6 +399,18 @@ type externalRecoveryFlowLLM struct {
 	verificationCalls int
 }
 
+type captureRequestLLM struct {
+	response  string
+	lastModel string
+}
+
+func (m *captureRequestLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	m.lastModel = req.Model
+	return &llm.ChatResponse{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: m.response},
+	}, nil
+}
+
 func (m *externalRecoveryFlowLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	switch {
 	case len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "bounded recovery engine"):
@@ -265,6 +447,23 @@ func TestProgressSignatureState_DetectsRepeatedNoProgress(t *testing.T) {
 	}
 	if !state.Observe("exec:{\"command\":\"go test ./...\"}", "retry tests", []string{"error:command exited with code #"}) {
 		t.Fatal("expected third identical progress signature to trigger no-progress detection")
+	}
+}
+
+func TestProgressSignatureState_DetectsSearchFamilyNoProgressWithVariantQueries(t *testing.T) {
+	state := &ProgressSignatureState{}
+	queries := []string{
+		`web_query:target=openai responses api docs`,
+		`web_query:target=latest openai responses api documentation`,
+		`web_query:target=openai responses api latest docs`,
+	}
+	for i := 0; i < len(queries)-1; i++ {
+		if detection := state.ObserveDetailed(queries[i], "continue searching", []string{"status:ok|mode:search_read|target_url:https://platform.openai.com/docs/api-reference/responses"}); detection.Abort {
+			t.Fatalf("unexpected family no-progress trigger at iteration %d: %#v", i, detection)
+		}
+	}
+	if detection := state.ObserveDetailed(queries[len(queries)-1], "continue searching", []string{"status:ok|mode:search_read|target_url:https://platform.openai.com/docs/api-reference/responses"}); !detection.Abort {
+		t.Fatal("expected repeated web search family outcome to trigger no-progress detection")
 	}
 }
 

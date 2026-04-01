@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
+
+var groundedURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
 
 // RuntimeState represents the explicit orchestrator FSM state.
 type RuntimeState string
@@ -141,11 +146,7 @@ type runtimePlan struct {
 func parseRuntimePlan(content string) (runtimePlan, error) {
 	var out runtimePlan
 
-	trimmed := strings.TrimSpace(content)
-	trimmed = strings.TrimPrefix(trimmed, "```json")
-	trimmed = strings.TrimPrefix(trimmed, "```")
-	trimmed = strings.TrimSuffix(trimmed, "```")
-	trimmed = strings.TrimSpace(trimmed)
+	trimmed := trimStructuredContent(content)
 
 	var rawObj struct {
 		Goal     string `json:"goal"`
@@ -258,7 +259,7 @@ func parseExecCommand(argsJSON string) string {
 
 func isReadLikeTool(name string) bool {
 	switch normalizeGroundToolName(name) {
-	case "read", "memory", "web_search", "analyze", "ui_reviewer", "ask":
+	case "read", "memory", "web_search", "web_query", "analyze", "ui_reviewer", "ask":
 		return true
 	default:
 		return false
@@ -272,11 +273,7 @@ func shouldRequireConfirm(cap CapabilityInfo, contextText string) bool {
 	if cap.RiskLevel == "high" || cap.RiskLevel == "critical" {
 		return true
 	}
-	lower := strings.ToLower(contextText)
-	if strings.Contains(lower, "production") || strings.Contains(lower, "delete") || strings.Contains(lower, "drop") || strings.Contains(lower, "publish") {
-		return true
-	}
-	return false
+	return containsDangerousConfirmationCue(contextText)
 }
 
 func requiresClarification(goal string) bool {
@@ -293,12 +290,38 @@ func planNeedsConfirmation(plan runtimePlan) bool {
 		return true
 	}
 	for _, step := range plan.Subtasks {
-		lower := strings.ToLower(step)
-		if strings.Contains(lower, "production") || strings.Contains(lower, "delete") || strings.Contains(lower, "drop") || strings.Contains(lower, "publish") {
+		if containsDangerousConfirmationCue(step) {
 			return true
 		}
 	}
 	return false
+}
+
+func containsDangerousConfirmationCue(text string) bool {
+	var token strings.Builder
+	flush := func() bool {
+		if token.Len() == 0 {
+			return false
+		}
+		word := token.String()
+		token.Reset()
+		switch word {
+		case "production", "delete", "drop", "publish":
+			return true
+		default:
+			return false
+		}
+	}
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			token.WriteRune(r)
+			continue
+		}
+		if flush() {
+			return true
+		}
+	}
+	return flush()
 }
 
 type GroundedRuntimeConfig struct {
@@ -386,29 +409,59 @@ func (r *GroundedRuntime) ExecuteStep(ctx context.Context, task *Task, step Plan
 	var previousViolations []string
 	var allAssertions []PlannerAssertion
 	decisionStatus := PlannerDecisionUnknown
+	progressState := ProgressSignatureState{}
+	var forcedNextTool *PlannerToolCall
 
 	for round := 1; round <= maxToolRounds; round++ {
-		decision, err := r.planner.Decide(ctx, PlannerInput{
-			Goal:               task.Goal,
-			PlanSummary:        planSummary,
-			Step:               step,
-			PlannerRound:       round,
-			MaxRounds:          maxToolRounds,
-			GroundState:        task.GroundState,
-			ToolCatalog:        toolCatalog,
-			PriorToolCallIDs:   toolCallIDs,
-			PreviousViolations: previousViolations,
-		})
-		if err != nil {
-			return &GroundedStepResult{
-				Output:             "unknown",
-				VerifiedOutput:     "unknown",
-				GroundingStatus:    GroundingStatusRejected,
-				VerificationErrors: []string{err.Error()},
-			}, err
+		var decision *PlannerDecision
+		if forcedNextTool != nil {
+			decision = &PlannerDecision{
+				Status:   PlannerDecisionContinue,
+				Reason:   "web_query requested browser escalation",
+				NextTool: forcedNextTool,
+			}
+			forcedNextTool = nil
+		} else {
+			planned, err := r.planner.Decide(ctx, PlannerInput{
+				Model:              preferredTaskModel(task),
+				Goal:               task.Goal,
+				PlanSummary:        planSummary,
+				Step:               step,
+				PlannerRound:       round,
+				MaxRounds:          maxToolRounds,
+				GroundState:        task.GroundState,
+				ToolCatalog:        toolCatalog,
+				PriorToolCallIDs:   toolCallIDs,
+				PreviousViolations: previousViolations,
+				RoutingContract:    buildTaskRoutingContractContext(plannerTaskMetadata(task)),
+			})
+			if err != nil {
+				if fallback, note := groundedPlannerErrorFallback(task, toolCatalog, err); fallback != nil && ctx.Err() == nil {
+					decision = fallback
+					if strings.TrimSpace(note) != "" {
+						previousViolations = append(previousViolations, note)
+					}
+				} else {
+					return &GroundedStepResult{
+						Output:             "unknown",
+						VerifiedOutput:     "unknown",
+						GroundingStatus:    GroundingStatusRejected,
+						VerificationErrors: []string{err.Error()},
+					}, err
+				}
+			} else {
+				decision = planned
+			}
 		}
 		decisionStatus = decision.Status
 		allAssertions = append(allAssertions, decision.Assertions...)
+		if overridden, note := groundedCanonicalCLIOverride(task, toolCatalog, decision); overridden != nil {
+			decision = overridden
+			decisionStatus = decision.Status
+			if strings.TrimSpace(note) != "" {
+				previousViolations = append(previousViolations, note)
+			}
+		}
 		if decision.Status != PlannerDecisionContinue {
 			break
 		}
@@ -448,6 +501,33 @@ func (r *GroundedRuntime) ExecuteStep(ctx context.Context, task *Task, step Plan
 				VerificationErrors: failures,
 			}, fmt.Errorf("%s", strings.Join(failures, "; "))
 		}
+		if groundedShouldCompleteExecutionContract(task) {
+			previousViolations = append(previousViolations, "execution routing contract evidence is already satisfied; stop after grounded web evidence instead of additional route hops")
+			decisionStatus = PlannerDecisionComplete
+			if r.store != nil {
+				_ = r.store.Update(ctx, task)
+			}
+			break
+		}
+		if groundedShouldSuppressBrowserEscalation(task, exec) {
+			previousViolations = append(previousViolations, fmt.Sprintf("web_query requested browser escalation for %s after canonical web_search already succeeded; summarize existing evidence or report the blocker instead of forcing browser", firstNonEmptyURL(exec)))
+		} else if escalation := groundedBrowserEscalationTool(exec); escalation != nil {
+			forcedNextTool = escalation
+			previousViolations = append(previousViolations, fmt.Sprintf("web_query requested browser escalation for %s; switch to browser immediately", firstNonEmptyURL(exec)))
+		}
+		if detection := progressState.ObserveDetailed(groundedPlannerToolSignature(*decision.NextTool), decision.Reason, []string{groundedExecutionProgressSummary(exec)}); detection.Abort {
+			previousViolations = append(previousViolations, fmt.Sprintf("tool loop detected (%s): %s", detection.Reason, detection.Signature))
+			r.persistLoopDetection(ctx, task, step.Index, round, detection)
+			if detection.Reason == tools.ToolLoopReasonErrorRepeat {
+				decisionStatus = PlannerDecisionBlocked
+			} else {
+				decisionStatus = PlannerDecisionComplete
+			}
+			if r.store != nil {
+				_ = r.store.Update(ctx, task)
+			}
+			break
+		}
 		if r.store != nil {
 			_ = r.store.Update(ctx, task)
 		}
@@ -463,6 +543,7 @@ func (r *GroundedRuntime) ExecuteStep(ctx context.Context, task *Task, step Plan
 	}
 
 	responderInput := ResponderInput{
+		Model:              preferredTaskModel(task),
 		Goal:               task.Goal,
 		Step:               step,
 		GroundState:        task.GroundState,
@@ -515,6 +596,649 @@ func (r *GroundedRuntime) ExecuteStep(ctx context.Context, task *Task, step Plan
 	}, nil
 }
 
+func groundedPlannerToolSignature(call PlannerToolCall) string {
+	argsJSON, err := json.Marshal(call.Args)
+	if err != nil {
+		return strings.TrimSpace(call.Tool)
+	}
+	return agentToolLoopCallSignature(llm.ToolCall{
+		Name:      strings.TrimSpace(call.Tool),
+		Arguments: string(argsJSON),
+	})
+}
+
+func groundedCanonicalCLIOverride(task *Task, toolCatalog []llm.Tool, decision *PlannerDecision) (*PlannerDecision, string) {
+	expectedCLIAction, enforce := groundedExpectedCLIAction(task)
+	if !enforce || expectedCLIAction == "" {
+		return nil, ""
+	}
+	command := groundedCanonicalCLICommand(task, expectedCLIAction, decision)
+	if command == "" {
+		return nil, ""
+	}
+	if groundedCanonicalCLIAlreadyAttempted(task, command) {
+		return nil, ""
+	}
+	if groundedPlannerDecisionUsesCanonicalCLI(decision, command) {
+		return nil, ""
+	}
+	toolName := groundedCanonicalCLIToolName(toolCatalog)
+	if toolName == "" {
+		return nil, ""
+	}
+	return &PlannerDecision{
+		Status: PlannerDecisionContinue,
+		Reason: "execution routing contract requires the canonical CLI action first",
+		NextTool: &PlannerToolCall{
+			Tool: toolName,
+			Args: map[string]any{"command": command},
+		},
+		Assertions: decisionAssertions(decision),
+	}, fmt.Sprintf("execution routing contract forced canonical CLI action %q before alternate route %q", command, groundedPlannerDecisionToolName(decision))
+}
+
+func groundedPlannerErrorFallback(task *Task, toolCatalog []llm.Tool, plannerErr error) (*PlannerDecision, string) {
+	expectedCLIAction, enforce := groundedExpectedCLIAction(task)
+	if !enforce || expectedCLIAction == "" {
+		return nil, ""
+	}
+	command := groundedCanonicalCLICommand(task, expectedCLIAction, nil)
+	if command == "" || groundedCanonicalCLIAlreadyAttempted(task, command) {
+		return nil, ""
+	}
+	toolName := groundedCanonicalCLIToolName(toolCatalog)
+	if toolName == "" {
+		return nil, ""
+	}
+	return &PlannerDecision{
+		Status: PlannerDecisionContinue,
+		Reason: "execution routing contract recovered from planner failure with canonical CLI action",
+		NextTool: &PlannerToolCall{
+			Tool: toolName,
+			Args: map[string]any{"command": command},
+		},
+	}, fmt.Sprintf("planner error %q triggered canonical CLI fallback %q", strings.TrimSpace(plannerErr.Error()), command)
+}
+
+func groundedExpectedCLIAction(task *Task) (string, bool) {
+	meta := plannerTaskMetadata(task)
+	if len(meta) == 0 {
+		return "", false
+	}
+	contract := metadataMapValue(meta, "routing_contract")
+	if len(contract) == 0 {
+		contract = meta
+	}
+	expectedCLIAction := firstNonEmptyString(metadataStringValue(contract, "expected_cli_action"), metadataStringValue(meta, "expected_cli_action"))
+	if expectedCLIAction == "" {
+		return "", false
+	}
+	if enforce, ok := metadataBoolFromMaps([]map[string]interface{}{contract, meta}, "enforce_cli_route"); ok {
+		return expectedCLIAction, enforce
+	}
+	gateType := firstNonEmptyString(metadataStringValue(contract, "gate_type"), metadataStringValue(meta, "gate_type"))
+	return expectedCLIAction, gateType == "execution_equivalence"
+}
+
+func groundedCanonicalCLIToolName(toolCatalog []llm.Tool) string {
+	var fallback string
+	for _, tool := range toolCatalog {
+		name := strings.TrimSpace(tool.Name)
+		if name == "" || normalizeGroundToolName(name) != "bash" {
+			continue
+		}
+		if strings.EqualFold(name, "exec") {
+			return name
+		}
+		if fallback == "" {
+			fallback = name
+		}
+	}
+	return fallback
+}
+
+func groundedPlannerDecisionUsesCanonicalCLI(decision *PlannerDecision, expectedCLIAction string) bool {
+	if decision == nil || decision.NextTool == nil {
+		return false
+	}
+	if normalizeGroundToolName(decision.NextTool.Tool) != "bash" {
+		return false
+	}
+	actual := firstNonEmptyString(
+		strings.TrimSpace(asString(decision.NextTool.Args["command"])),
+		strings.TrimSpace(asString(decision.NextTool.Args["cmd"])),
+	)
+	return groundedCLICommandMatches(actual, expectedCLIAction)
+}
+
+func groundedCanonicalCLIAlreadyAttempted(task *Task, expectedCLIAction string) bool {
+	if task == nil || task.GroundState == nil || expectedCLIAction == "" {
+		return false
+	}
+	for _, fact := range task.GroundState.Commands {
+		if normalizeGroundToolName(fact.Tool) != "bash" {
+			continue
+		}
+		if groundedCLICommandMatches(fact.Command, expectedCLIAction) {
+			return true
+		}
+	}
+	for _, call := range task.GroundState.Calls {
+		if normalizeGroundToolName(call.Tool) != "bash" {
+			continue
+		}
+		command := firstNonEmptyString(
+			strings.TrimSpace(asString(call.Args["command"])),
+			strings.TrimSpace(asString(call.Args["cmd"])),
+		)
+		if groundedCLICommandMatches(command, expectedCLIAction) {
+			return true
+		}
+	}
+	return false
+}
+
+func groundedCLICommandMatches(actual, expected string) bool {
+	actual = normalizeGroundedCLICommand(actual)
+	expected = normalizeGroundedCLICommand(expected)
+	if actual == "" || expected == "" {
+		return false
+	}
+	return actual == expected || strings.HasPrefix(actual, expected+" ")
+}
+
+func normalizeGroundedCLICommand(command string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(command)), " ")
+}
+
+func groundedCanonicalCLICommand(task *Task, expectedCLIAction string, decision *PlannerDecision) string {
+	command := normalizeGroundedCLICommand(expectedCLIAction)
+	if command == "" || groundedCLICommandHasArgs(command) {
+		return command
+	}
+	skillToken := groundedCLICommandSkillToken(command)
+	if skillToken == "" {
+		return command
+	}
+	query := groundedCanonicalCLIQuery(task, skillToken, decision)
+	switch strings.ToLower(skillToken) {
+	case "web_search", "web_query":
+		if query != "" {
+			return command + " query=" + strconv.Quote(query)
+		}
+	case "analyze":
+		topic, url := groundedCanonicalAnalyzeCLIArgs(task, decision)
+		if topic != "" {
+			command += " topic=" + strconv.Quote(topic)
+		}
+		if url != "" {
+			command += " url=" + strconv.Quote(url)
+		}
+		return command
+	}
+	return command
+}
+
+func groundedCanonicalAnalyzeCLIArgs(task *Task, decision *PlannerDecision) (string, string) {
+	topic := groundedCanonicalCLIQuery(task, "analyze", decision)
+	url := groundedCanonicalAnalyzeURL(task, decision)
+	if url != "" {
+		if stripped := groundedStripURLs(topic); stripped != "" {
+			topic = stripped
+		}
+	}
+	if topic == "" {
+		topic = url
+	}
+	return topic, url
+}
+
+func groundedCanonicalCLIQuery(task *Task, skillToken string, decision *PlannerDecision) string {
+	if query := groundedPlannerSuggestedCLIQuery(skillToken, decision); query != "" {
+		return query
+	}
+	return groundedTaskQuery(task)
+}
+
+func groundedPlannerSuggestedCLIQuery(skillToken string, decision *PlannerDecision) string {
+	if decision == nil || decision.NextTool == nil {
+		return ""
+	}
+	args := decision.NextTool.Args
+	switch strings.ToLower(strings.TrimSpace(skillToken)) {
+	case "web_search", "web_query":
+		if !isGroundedWebToolFamily(decision.NextTool.Tool) {
+			return ""
+		}
+		return groundedPlannerArgString(args, "query", "input", "url", "href", "target")
+	case "analyze":
+		if normalizeGroundToolName(decision.NextTool.Tool) != "analyze" {
+			return ""
+		}
+		return groundedPlannerArgString(args, "topic", "query", "input", "path", "target")
+	default:
+		return ""
+	}
+}
+
+func groundedCanonicalAnalyzeURL(task *Task, decision *PlannerDecision) string {
+	if decision != nil && decision.NextTool != nil && normalizeGroundToolName(decision.NextTool.Tool) == "analyze" {
+		if url := groundedPlannerSuggestedURL(decision.NextTool.Args, "url", "href", "target", "source", "urls", "input", "query", "topic"); url != "" {
+			return url
+		}
+	}
+	return groundedExtractFirstURL(groundedTaskQuery(task))
+}
+
+func groundedPlannerSuggestedURL(args map[string]any, keys ...string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	for _, key := range keys {
+		if url := groundedExtractFirstURLFromAny(args[key]); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
+func groundedPlannerArgString(args map[string]any, keys ...string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	for _, key := range keys {
+		if value := strings.TrimSpace(asString(args[key])); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func groundedTaskQuery(task *Task) string {
+	meta := plannerTaskMetadata(task)
+	groupInput := metadataMapValue(meta, "group_input")
+	return firstNonEmptyString(
+		metadataStringValue(groupInput, "query"),
+		metadataStringValue(groupInput, "goal"),
+		task.Goal,
+	)
+}
+
+func groundedExtractFirstURLFromAny(value any) string {
+	switch typed := value.(type) {
+	case []string:
+		for _, item := range typed {
+			if url := groundedExtractFirstURL(item); url != "" {
+				return url
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if url := groundedExtractFirstURLFromAny(item); url != "" {
+				return url
+			}
+		}
+	}
+	return groundedExtractFirstURL(asString(value))
+}
+
+func groundedExtractFirstURL(text string) string {
+	matches := groundedURLPattern.FindAllString(text, -1)
+	for _, match := range matches {
+		if cleaned := groundedNormalizeURLToken(match); cleaned != "" {
+			return cleaned
+		}
+	}
+	return ""
+}
+
+func groundedStripURLs(text string) string {
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	cleaned := groundedURLPattern.ReplaceAllString(text, " ")
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	cleaned = strings.Trim(cleaned, `"'“”‘’()[]{}<>.,!?;:，。！？；：、）】》〉」』］〕`)
+	return strings.TrimSpace(cleaned)
+}
+
+func groundedNormalizeURLToken(raw string) string {
+	cleaned := strings.TrimSpace(raw)
+	cleaned = strings.TrimRight(cleaned, `"'“”‘’.,!?;:)]}>,，。！？；：、）】》〉」』］〕`)
+	if cleaned == "" {
+		return ""
+	}
+	return cleaned
+}
+
+func groundedCLICommandSkillToken(command string) string {
+	fields := strings.Fields(strings.TrimSpace(command))
+	if len(fields) >= 2 && fields[0] == "blue" {
+		return fields[1]
+	}
+	return ""
+}
+
+func groundedCLICommandHasArgs(command string) bool {
+	skillToken := groundedCLICommandSkillToken(command)
+	if skillToken == "" {
+		return false
+	}
+	prefix := "blue " + skillToken
+	trimmed := strings.TrimSpace(command)
+	if !strings.HasPrefix(trimmed, prefix) {
+		return false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(trimmed, prefix)) != ""
+}
+
+func groundedPlannerDecisionToolName(decision *PlannerDecision) string {
+	if decision == nil || decision.NextTool == nil {
+		return "none"
+	}
+	return strings.TrimSpace(decision.NextTool.Tool)
+}
+
+func decisionAssertions(decision *PlannerDecision) []PlannerAssertion {
+	if decision == nil || len(decision.Assertions) == 0 {
+		return nil
+	}
+	out := make([]PlannerAssertion, len(decision.Assertions))
+	copy(out, decision.Assertions)
+	return out
+}
+
+func groundedExecutionProgressSummary(exec *GroundedExecution) string {
+	if exec == nil {
+		return "empty"
+	}
+	payload := exec.Result.Result
+	if !exec.Result.OK && strings.TrimSpace(exec.Result.Stderr) != "" {
+		payload = map[string]any{"error": exec.Result.Stderr}
+	}
+	switch typed := payload.(type) {
+	case string:
+		return tools.NormalizeToolProgressSummary(typed)
+	default:
+		encoded, err := json.Marshal(typed)
+		if err != nil {
+			return tools.NormalizeToolProgressSummary(fmt.Sprintf("%v", typed))
+		}
+		return tools.NormalizeToolProgressSummary(string(encoded))
+	}
+}
+
+func (r *GroundedRuntime) persistLoopDetection(ctx context.Context, task *Task, stepIndex, plannerRound int, detection tools.ToolLoopDetection) {
+	if r == nil || r.store == nil || task == nil {
+		return
+	}
+	payloadJSON, err := json.Marshal(detection)
+	if err != nil {
+		return
+	}
+	_ = r.store.AppendRuntimeEvent(ctx, RuntimeEvent{
+		ID:           fmt.Sprintf("%s/loop_detection/%d", task.ID, time.Now().UTC().UnixNano()),
+		TaskID:       task.ID,
+		StepIndex:    stepIndex,
+		PlannerRound: plannerRound,
+		EventType:    "loop_detection",
+		PayloadJSON:  string(payloadJSON),
+		CreatedAt:    time.Now().UTC(),
+	})
+}
+
+func groundedBrowserEscalationTool(exec *GroundedExecution) *PlannerToolCall {
+	if exec == nil || normalizeGroundToolName(exec.Call.Tool) != "web_query" {
+		return nil
+	}
+	target := firstNonEmptyURL(exec)
+	if target == "" {
+		return nil
+	}
+	if !groundedNeedsBrowser(exec.Result.Result) {
+		return nil
+	}
+	return &PlannerToolCall{
+		Tool: "browser",
+		Args: map[string]any{
+			"action": "navigate",
+			"url":    target,
+		},
+	}
+}
+
+func groundedShouldSuppressBrowserEscalation(task *Task, exec *GroundedExecution) bool {
+	if task == nil || task.GroundState == nil || exec == nil {
+		return false
+	}
+	if normalizeGroundToolName(exec.Call.Tool) != "web_query" || !groundedNeedsBrowser(exec.Result.Result) {
+		return false
+	}
+	expectedCLIAction, enforce := groundedExpectedCLIAction(task)
+	if !enforce {
+		return false
+	}
+	if normalizeGroundToolName(groundedCLICommandSkillToken(expectedCLIAction)) != "web_search" {
+		return false
+	}
+	return groundedCommandHistorySucceeded(task.GroundState, expectedCLIAction)
+}
+
+func groundedShouldCompleteExecutionContract(task *Task) bool {
+	if task == nil || task.GroundState == nil {
+		return false
+	}
+	expectedCLIAction, enforce := groundedExpectedCLIAction(task)
+	if !enforce {
+		return false
+	}
+	skillToken := normalizeGroundToolName(groundedCLICommandSkillToken(expectedCLIAction))
+	if skillToken == "" {
+		return false
+	}
+	if !groundedCommandHistorySucceeded(task.GroundState, expectedCLIAction) {
+		return false
+	}
+	if skillToken == "analyze" {
+		return groundedHasSuccessfulAnalyzeEvidence(task.GroundState)
+	}
+	if !isGroundedWebToolFamily(skillToken) {
+		return false
+	}
+	criteria := groundedExecutionObservationCriteria(task)
+	if len(criteria) == 0 {
+		return false
+	}
+	for _, criterion := range criteria {
+		switch normalizeGroundedExecutionCriterion(criterion) {
+		case "evidence_tool_used":
+			if !groundedHasSuccessfulWebEvidence(task.GroundState) {
+				return false
+			}
+		case "planner_memory_skipped":
+			if !shouldSkipPlannerMemory(groundedTaskQuery(task)) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func groundedExecutionObservationCriteria(task *Task) []string {
+	if task == nil {
+		return nil
+	}
+	var values []string
+	for _, source := range taskMetadataSources(task) {
+		values = append(values, metadataStringSlice(source, "required_observations")...)
+		values = append(values, metadataStringSlice(source, "task_success_criteria")...)
+	}
+	return dedupeStrings(values)
+}
+
+func normalizeGroundedExecutionCriterion(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func groundedHasSuccessfulWebEvidence(state *GroundTruthState) bool {
+	if state == nil {
+		return false
+	}
+	for toolCallID, result := range state.Results {
+		if !result.OK {
+			continue
+		}
+		call := state.Calls[toolCallID]
+		if !groundedResultCarriesWebEvidence(call, result) {
+			continue
+		}
+		if groundedResultHasUsefulEvidence(result) {
+			return true
+		}
+	}
+	return false
+}
+
+func groundedHasSuccessfulAnalyzeEvidence(state *GroundTruthState) bool {
+	if state == nil {
+		return false
+	}
+	for toolCallID, result := range state.Results {
+		if !result.OK {
+			continue
+		}
+		call := state.Calls[toolCallID]
+		if !groundedResultCarriesAnalyzeEvidence(call, result) {
+			continue
+		}
+		if groundedResultHasAnalyzeEvidence(result.Result) {
+			return true
+		}
+	}
+	return false
+}
+
+func groundedResultCarriesWebEvidence(call GroundedToolCall, result GroundedToolResult) bool {
+	if isGroundedWebToolFamily(firstNonEmptyString(call.Tool, result.Tool)) {
+		return true
+	}
+	if normalizeGroundToolName(firstNonEmptyString(call.Tool, result.Tool)) != "bash" {
+		return false
+	}
+	command := firstNonEmptyString(
+		strings.TrimSpace(asString(call.Args["command"])),
+		strings.TrimSpace(asString(call.Args["cmd"])),
+	)
+	if command == "" {
+		return false
+	}
+	return isGroundedWebToolFamily(groundedCLICommandSkillToken(command))
+}
+
+func groundedResultCarriesAnalyzeEvidence(call GroundedToolCall, result GroundedToolResult) bool {
+	if normalizeGroundToolName(firstNonEmptyString(call.Tool, result.Tool)) == "analyze" {
+		return true
+	}
+	if normalizeGroundToolName(firstNonEmptyString(call.Tool, result.Tool)) != "bash" {
+		return false
+	}
+	command := firstNonEmptyString(
+		strings.TrimSpace(asString(call.Args["command"])),
+		strings.TrimSpace(asString(call.Args["cmd"])),
+	)
+	if command == "" {
+		return false
+	}
+	return normalizeGroundToolName(groundedCLICommandSkillToken(command)) == "analyze"
+}
+
+func groundedResultHasUsefulEvidence(result GroundedToolResult) bool {
+	if groundedResultTitle(result.Result) != "" {
+		return true
+	}
+	if groundedResultURL(result.Result) != "" {
+		return true
+	}
+	return strings.TrimSpace(groundedResultSnippet(result)) != ""
+}
+
+func groundedResultHasAnalyzeEvidence(value any) bool {
+	for _, payload := range deterministicStructuredPayloads(value) {
+		if deterministicAnalyzeResultReady(payload) {
+			return true
+		}
+	}
+	return false
+}
+
+func groundedCommandHistorySucceeded(state *GroundTruthState, expectedCLIAction string) bool {
+	if state == nil || strings.TrimSpace(expectedCLIAction) == "" {
+		return false
+	}
+	for _, fact := range state.Commands {
+		if normalizeGroundToolName(fact.Tool) != "bash" || fact.ExitCode != 0 {
+			continue
+		}
+		if groundedCLICommandMatches(fact.Command, expectedCLIAction) {
+			return true
+		}
+	}
+	return false
+}
+
+func groundedNeedsBrowser(result any) bool {
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return false
+	}
+	normalized := strings.ToLower(string(encoded))
+	for _, needle := range []string{"retry_browser", "browser_required", "needs_browser", "login_wall", "challenge"} {
+		if strings.Contains(normalized, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func firstNonEmptyURL(exec *GroundedExecution) string {
+	if exec == nil {
+		return ""
+	}
+	for _, source := range []any{
+		exec.Result.Result,
+		extractField(exec.Result.Result, "result"),
+		exec.Call.Args,
+	} {
+		for _, key := range []string{"final_url", "target_url", "url", "input"} {
+			if value := strings.TrimSpace(asString(extractField(source, key))); value != "" {
+				return value
+			}
+		}
+		if nested := parseGroundedNestedPayload(source); nested != nil {
+			for _, key := range []string{"final_url", "target_url", "url", "input"} {
+				if value := strings.TrimSpace(asString(extractField(nested, key))); value != "" {
+					return value
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func parseGroundedNestedPayload(value any) map[string]any {
+	raw := strings.TrimSpace(asString(value))
+	if raw == "" {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil || len(decoded) == 0 {
+		return nil
+	}
+	return decoded
+}
+
 func (r *GroundedRuntime) VerifyTask(task *Task) (*VerificationResult, string, error) {
 	verificationCtx := compileVerificationContext(task)
 	result := &VerificationResult{
@@ -537,9 +1261,9 @@ func (r *GroundedRuntime) VerifyTask(task *Task) (*VerificationResult, string, e
 			Status:    "pass",
 			Evidence:  groundedEvidenceForTask(task),
 		}
-		if hasFailedOrSkippedSteps(task.Plan) || task.GroundingStatus == GroundingStatusRejected {
+		if groundedVerificationHasBlockingPlanState(task) || task.GroundingStatus == GroundingStatusRejected {
 			item.Status = "fail"
-			item.Evidence = "Task contains failed/skipped work or rejected grounded output."
+			item.Evidence = groundedVerificationFailureEvidence(task)
 		}
 		result.CriteriaResults = append(result.CriteriaResults, item)
 	}
@@ -750,6 +1474,57 @@ func groundedEvidenceForTask(task *Task) string {
 	default:
 		return "Grounded runtime produced verified step outputs."
 	}
+}
+
+func groundedVerificationHasBlockingPlanState(task *Task) bool {
+	failed, skipped := groundedPlanFailureFlags(task)
+	if failed {
+		return true
+	}
+	return skipped && !groundedVerificationAllowsSkippedWork(task)
+}
+
+func groundedVerificationFailureEvidence(task *Task) string {
+	if task == nil {
+		return "Task is missing grounded verification context."
+	}
+	failed, skipped := groundedPlanFailureFlags(task)
+	switch {
+	case task.GroundingStatus == GroundingStatusRejected && failed:
+		return "Task contains failed work and rejected grounded output."
+	case task.GroundingStatus == GroundingStatusRejected:
+		return "Grounded runtime rejected the output."
+	case failed:
+		return "Task contains failed work that blocks completion."
+	case skipped && groundedVerificationAllowsSkippedWork(task):
+		return "Task skipped only post-evidence expansion work after satisfying the execution contract."
+	case skipped:
+		return "Task contains skipped work that blocks completion."
+	default:
+		return "Task did not satisfy grounded verification checks."
+	}
+}
+
+func groundedPlanFailureFlags(task *Task) (failed bool, skipped bool) {
+	if task == nil {
+		return false, false
+	}
+	for _, step := range task.Plan {
+		if isRuntimeMetaStep(step.Description) {
+			continue
+		}
+		switch step.Status {
+		case StepStatusFailed:
+			failed = true
+		case StepStatusSkipped:
+			skipped = true
+		}
+	}
+	return failed, skipped
+}
+
+func groundedVerificationAllowsSkippedWork(task *Task) bool {
+	return taskUsesExecutionEquivalenceGate(task) && groundedShouldCompleteExecutionContract(task)
 }
 
 func hasFailedOrSkippedSteps(plan []PlanStep) bool {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // Status constants for push notification lifecycle.
@@ -35,16 +36,58 @@ type PushNotification struct {
 
 // Store provides SQLite-backed persistence for push notifications.
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 }
 
 // NewStore creates a new push notification store and ensures the table exists.
 func NewStore(db *sql.DB) (*Store, error) {
-	s := &Store{db: db}
+	return NewStoreWithReadDB(db, db)
+}
+
+// NewStoreWithReadDB creates a new push notification store with separate
+// write and read database handles.
+func NewStoreWithReadDB(writeDB, readDB *sql.DB) (*Store, error) {
+	if readDB == nil {
+		readDB = writeDB
+	}
+	s := &Store{db: writeDB, readDB: readDB}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("push store migration: %w", err)
 	}
 	return s, nil
+}
+
+func (s *Store) reader() *sql.DB {
+	if s != nil && s.readDB != nil {
+		return s.readDB
+	}
+	if s == nil {
+		return nil
+	}
+	return s.db
+}
+
+func (s *Store) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "push")
+}
+
+func (s *Store) readTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.reader(), "push")
+}
+
+type pushRow struct {
+	ID        string     `json:"id" zorm:"id"`
+	OwnerID   string     `json:"owner_id" zorm:"owner_id"`
+	Message   string     `json:"message" zorm:"message"`
+	FireAt    time.Time  `json:"fire_at" zorm:"fire_at"`
+	Recurring string     `json:"recurring" zorm:"recurring"`
+	UntilAt   *time.Time `json:"until_at" zorm:"until_at"`
+	SessionID string     `json:"session_id" zorm:"session_id"`
+	CronJobID string     `json:"cron_job_id" zorm:"cron_job_id"`
+	Status    string     `json:"status" zorm:"status"`
+	CreatedAt time.Time  `json:"created_at" zorm:"created_at"`
+	FiredAt   *time.Time `json:"fired_at" zorm:"fired_at"`
 }
 
 func (s *Store) migrate() error {
@@ -114,6 +157,37 @@ func resolveOwnerScope(ownerID []string) string {
 	return strings.TrimSpace(ownerID[0])
 }
 
+func nullablePushTime(t *time.Time) interface{} {
+	if t == nil {
+		return nil
+	}
+	return *t
+}
+
+func rowToPushNotification(row pushRow) *PushNotification {
+	return &PushNotification{
+		ID:        row.ID,
+		OwnerID:   row.OwnerID,
+		Message:   row.Message,
+		FireAt:    row.FireAt,
+		Recurring: row.Recurring,
+		UntilAt:   row.UntilAt,
+		SessionID: row.SessionID,
+		CronJobID: row.CronJobID,
+		Status:    row.Status,
+		CreatedAt: row.CreatedAt,
+		FiredAt:   row.FiredAt,
+	}
+}
+
+func rowsToPushNotifications(rows []pushRow) []*PushNotification {
+	result := make([]*PushNotification, 0, len(rows))
+	for i := range rows {
+		result = append(result, rowToPushNotification(rows[i]))
+	}
+	return result
+}
+
 // Create inserts a new push notification.
 func (s *Store) Create(ctx context.Context, r *PushNotification) error {
 	if r.CreatedAt.IsZero() {
@@ -122,90 +196,102 @@ func (s *Store) Create(ctx context.Context, r *PushNotification) error {
 	if r.Status == "" {
 		r.Status = StatusPending
 	}
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO push (id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.OwnerID, r.Message, r.FireAt, r.Recurring, r.UntilAt, r.SessionID, r.CronJobID, r.Status, r.CreatedAt,
-	)
+	_, err := s.table(ctx).Insert(map[string]interface{}{
+		"id":          r.ID,
+		"owner_id":    r.OwnerID,
+		"message":     r.Message,
+		"fire_at":     r.FireAt,
+		"recurring":   r.Recurring,
+		"until_at":    nullablePushTime(r.UntilAt),
+		"session_id":  r.SessionID,
+		"cron_job_id": r.CronJobID,
+		"status":      r.Status,
+		"created_at":  r.CreatedAt,
+	})
 	return err
 }
 
 // Get retrieves a push notification by ID.
 func (s *Store) Get(ctx context.Context, id string, ownerID ...string) (*PushNotification, error) {
-	r := &PushNotification{}
 	scopedOwnerID := resolveOwnerScope(ownerID)
-	var err error
+	conds := []interface{}{z.Eq("id", id)}
 	if scopedOwnerID != "" {
-		err = s.db.QueryRowContext(ctx,
-			`SELECT id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at, fired_at
-			 FROM push WHERE id = ? AND owner_id = ?`, id, scopedOwnerID,
-		).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.UntilAt, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
-	} else {
-		err = s.db.QueryRowContext(ctx,
-			`SELECT id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at, fired_at
-			 FROM push WHERE id = ?`, id,
-		).Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.UntilAt, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt)
+		conds = append(conds, z.Eq("owner_id", scopedOwnerID))
 	}
-	if err == sql.ErrNoRows {
+	var rows []pushRow
+	_, err := s.readTable(ctx).Select(&rows, z.Where(conds...), z.Limit(1))
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
 		return nil, nil
 	}
-	return r, err
+	return rowToPushNotification(rows[0]), nil
 }
 
 // ListByOwner returns push notifications for a user, optionally filtered by status.
 func (s *Store) ListByOwner(ctx context.Context, ownerID string, status ...string) ([]*PushNotification, error) {
-	query := `SELECT id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at, fired_at
-	          FROM push WHERE owner_id = ?`
-	args := []any{ownerID}
-
+	conds := []interface{}{z.Eq("owner_id", ownerID)}
 	if len(status) > 0 && status[0] != "" {
-		query += " AND status = ?"
-		args = append(args, status[0])
+		conds = append(conds, z.Eq("status", status[0]))
 	}
-	query += " ORDER BY fire_at ASC"
-
-	return s.queryPush(ctx, query, args...)
+	return s.queryPush(ctx, z.Where(conds...), z.OrderBy("fire_at ASC"))
 }
 
 // ListPending returns all pending push notifications (for restart recovery).
 func (s *Store) ListPending(ctx context.Context) ([]*PushNotification, error) {
 	return s.queryPush(ctx,
-		`SELECT id, owner_id, message, fire_at, recurring, until_at, session_id, cron_job_id, status, created_at, fired_at
-		 FROM push WHERE status = ? ORDER BY fire_at ASC`, StatusPending)
+		z.Where(z.Eq("status", StatusPending)),
+		z.OrderBy("fire_at ASC"),
+	)
 }
 
 // UpdateStatus updates the status and optionally the fired_at timestamp.
 func (s *Store) UpdateStatus(ctx context.Context, id, status string, firedAt *time.Time) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE push SET status = ?, fired_at = ? WHERE id = ?`,
-		status, firedAt, id)
+	_, err := s.table(ctx).Update(
+		z.V{
+			"status":   status,
+			"fired_at": nullablePushTime(firedAt),
+		},
+		z.Fields("status", "fired_at"),
+		z.Where(z.Eq("id", id)),
+	)
 	return err
 }
 
 // UpdateCronJobID sets the cron_job_id for a push notification.
 func (s *Store) UpdateCronJobID(ctx context.Context, id, cronJobID string) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE push SET cron_job_id = ? WHERE id = ?`,
-		cronJobID, id)
+	_, err := s.table(ctx).Update(
+		z.V{"cron_job_id": cronJobID},
+		z.Fields("cron_job_id"),
+		z.Where(z.Eq("id", id)),
+	)
 	return err
 }
 
 // UpdateSchedule updates the next fire time, cron job ID, and status together.
 func (s *Store) UpdateSchedule(ctx context.Context, id string, fireAt time.Time, cronJobID, status string, firedAt *time.Time) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE push SET fire_at = ?, cron_job_id = ?, status = ?, fired_at = ? WHERE id = ?`,
-		fireAt, cronJobID, status, firedAt, id)
+	_, err := s.table(ctx).Update(
+		z.V{
+			"fire_at":     fireAt,
+			"cron_job_id": cronJobID,
+			"status":      status,
+			"fired_at":    nullablePushTime(firedAt),
+		},
+		z.Fields("fire_at", "cron_job_id", "status", "fired_at"),
+		z.Where(z.Eq("id", id)),
+	)
 	return err
 }
 
 // Delete removes a push notification by ID (only if owned by ownerID).
 func (s *Store) Delete(ctx context.Context, id, ownerID string) error {
-	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM push WHERE id = ? AND owner_id = ?`, id, ownerID)
+	n, err := s.table(ctx).Delete(
+		z.Where(z.Eq("id", id), z.Eq("owner_id", ownerID)),
+	)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("push notification %s not found", id)
 	}
@@ -214,28 +300,20 @@ func (s *Store) Delete(ctx context.Context, id, ownerID string) error {
 
 // DeleteByOwner removes all push notifications for a user, returns count deleted.
 func (s *Store) DeleteByOwner(ctx context.Context, ownerID string) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM push WHERE owner_id = ?`, ownerID)
+	n, err := s.table(ctx).Delete(
+		z.Where(z.Eq("owner_id", ownerID)),
+	)
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	return int64(n), nil
 }
 
-func (s *Store) queryPush(ctx context.Context, query string, args ...any) ([]*PushNotification, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
+func (s *Store) queryPush(ctx context.Context, opts ...z.ZormItem) ([]*PushNotification, error) {
+	var rows []pushRow
+	_, err := s.readTable(ctx).Select(&rows, opts...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var result []*PushNotification
-	for rows.Next() {
-		r := &PushNotification{}
-		if err := rows.Scan(&r.ID, &r.OwnerID, &r.Message, &r.FireAt, &r.Recurring, &r.UntilAt, &r.SessionID, &r.CronJobID, &r.Status, &r.CreatedAt, &r.FiredAt); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return rowsToPushNotifications(rows), nil
 }

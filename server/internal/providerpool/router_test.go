@@ -1308,7 +1308,7 @@ func TestRouterSingleProvider_ErrorStatusStillRoutes(t *testing.T) {
 	}
 }
 
-func TestRouterSingleProvider_BlindFallbackBypassesErrorStatus(t *testing.T) {
+func TestRouterSingleProvider_StrictCandidateSetDoesNotRouteUnknownModel(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-single-provider-error-blind-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -1339,11 +1339,11 @@ func TestRouterSingleProvider_BlindFallbackBypassesErrorStatus(t *testing.T) {
 		return nil
 	})
 
-	if err != nil {
-		t.Fatalf("Expected success, got: %v", err)
+	if !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider, got: %v", err)
 	}
-	if len(tried) != 1 || tried[0] != provider.ID {
-		t.Fatalf("Expected blind fallback to try only %s, got %v", provider.ID, tried)
+	if len(tried) != 0 {
+		t.Fatalf("expected no attempts for unknown model outside candidate set, got %v", tried)
 	}
 }
 
@@ -1699,6 +1699,110 @@ func TestRouterCooldownReset(t *testing.T) {
 	}
 }
 
+func TestRouterSnapshotSkipsDisabledProviderWithoutRebuild(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	result, err := router.Route(&RouteRequest{ModelID: "test-model"})
+	if err != nil {
+		t.Fatalf("initial route failed: %v", err)
+	}
+	if result.Provider.ID != "provider-high" {
+		t.Fatalf("initial provider = %q, want provider-high", result.Provider.ID)
+	}
+
+	if err := router.registry.Disable("provider-high"); err != nil {
+		t.Fatalf("Disable failed: %v", err)
+	}
+
+	result, err = router.Route(&RouteRequest{ModelID: "test-model"})
+	if err != nil {
+		t.Fatalf("route after disable failed: %v", err)
+	}
+	if result.Provider.ID != "provider-medium" {
+		t.Fatalf("provider after disable = %q, want provider-medium", result.Provider.ID)
+	}
+}
+
+func TestRouterSnapshotSkipsProviderThatLosesCredentialsWithoutRebuild(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-cloud-creds-*")
+	if err != nil {
+		t.Fatalf("mkdir temp: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+	registry, err := NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	providers := []*Provider{
+		{
+			ID:       "provider-high-cloud",
+			Name:     "High Cloud",
+			Type:     ProviderTypeCustom,
+			Enabled:  true,
+			Status:   ProviderStatusActive,
+			Location: ProviderLocationCloud,
+			Priority: 100,
+			APIKeys:  []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+		},
+		{
+			ID:       "provider-medium-cloud",
+			Name:     "Medium Cloud",
+			Type:     ProviderTypeCustom,
+			Enabled:  true,
+			Status:   ProviderStatusActive,
+			Location: ProviderLocationCloud,
+			Priority: 50,
+			APIKeys:  []APIKey{{ID: "k2", Key: "key2", Enabled: true}},
+		},
+	}
+	for _, provider := range providers {
+		if err := registry.Register(provider); err != nil {
+			t.Fatalf("register provider %s failed: %v", provider.ID, err)
+		}
+		if err := storage.SaveModels(provider.ID, []*Model{{
+			ID:         "test-model",
+			ProviderID: provider.ID,
+			Name:       "test-model",
+			Enabled:    true,
+			Capabilities: ModelCapabilities{
+				Chat: true,
+			},
+		}}); err != nil {
+			t.Fatalf("SaveModels for %s failed: %v", provider.ID, err)
+		}
+	}
+	router.RebuildCandidates()
+
+	result, err := router.Route(&RouteRequest{ModelID: "test-model"})
+	if err != nil {
+		t.Fatalf("initial route failed: %v", err)
+	}
+	if result.Provider.ID != "provider-high-cloud" {
+		t.Fatalf("initial provider = %q, want provider-high-cloud", result.Provider.ID)
+	}
+
+	if err := router.registry.RemoveAPIKey("provider-high-cloud", "k1"); err != nil {
+		t.Fatalf("RemoveAPIKey failed: %v", err)
+	}
+
+	result, err = router.Route(&RouteRequest{ModelID: "test-model"})
+	if err != nil {
+		t.Fatalf("route after key removal failed: %v", err)
+	}
+	if result.Provider.ID != "provider-medium-cloud" {
+		t.Fatalf("provider after key removal = %q, want provider-medium-cloud", result.Provider.ID)
+	}
+}
+
 func TestRouterCooldownSkipsProvider(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
@@ -1952,7 +2056,7 @@ func TestRouterEmptyModelID(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
 
-	// Route with empty model ID should select first available
+	// Route with empty model ID should select an auto-routed discovered model
 	result, err := router.Route(&RouteRequest{
 		ModelID:  "",
 		Strategy: RoutingStrategyPriority,
@@ -1971,7 +2075,7 @@ func TestRouterEmptyModelID(t *testing.T) {
 	}
 }
 
-func TestRouterEmptyModelID_RouteWithFallbackTriesEachProviderOnce(t *testing.T) {
+func TestRouterEmptyModelID_RouteWithFallbackTriesShortlistedModelsBeforeNextProvider(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-empty-model-dedupe-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2032,14 +2136,83 @@ func TestRouterEmptyModelID_RouteWithFallbackTriesEachProviderOnce(t *testing.T)
 		t.Fatalf("RouteWithFallback failed: %v", err)
 	}
 
-	if len(tried) != 2 {
-		t.Fatalf("expected 2 attempts, got %d: %v", len(tried), tried)
+	if len(tried) != 3 {
+		t.Fatalf("expected 3 attempts, got %d: %v", len(tried), tried)
 	}
-	if tried[0] != "provider-high:high-model-a" {
-		t.Fatalf("expected first attempt on first high provider model, got %s", tried[0])
+	if tried[0] != "provider-high:high-model-b" {
+		t.Fatalf("expected first attempt on highest sorted high provider model, got %s", tried[0])
 	}
-	if tried[1] != "provider-medium:medium-model-a" {
-		t.Fatalf("expected fallback to medium provider, got %s", tried[1])
+	if tried[1] != "provider-high:high-model-a" {
+		t.Fatalf("expected second attempt on remaining high provider model, got %s", tried[1])
+	}
+	if tried[2] != "provider-medium:medium-model-a" {
+		t.Fatalf("expected fallback to medium provider after exhausting high provider models, got %s", tried[2])
+	}
+}
+
+func TestRouterEmptyModelID_RotatesShortlistedModelsWithinSingleProvider(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-empty-model-rotate-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	provider := &Provider{
+		ID:       "provider-only",
+		Name:     "Only",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 100,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	registry.Register(provider)
+
+	modelIDs := []string{
+		"claude-sonnet-4-5",
+		"gpt-5",
+		"claude-haiku-4-5",
+	}
+	models := make([]*Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		models = append(models, &Model{
+			ID:         modelID,
+			ProviderID: provider.ID,
+			Name:       modelID,
+			Enabled:    true,
+		})
+	}
+	if err := storage.SaveModels(provider.ID, models); err != nil {
+		t.Fatalf("SaveModels failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	var got []string
+	for range modelIDs {
+		result, routeErr := router.Route(&RouteRequest{ModelID: ""})
+		if routeErr != nil {
+			t.Fatalf("Route failed: %v", routeErr)
+		}
+		got = append(got, result.Model.ID)
+	}
+
+	want := []string{
+		"gpt-5",
+		"claude-sonnet-4-5",
+		"claude-haiku-4-5",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d routed models, got %d", len(want), len(got))
+	}
+	for index, expected := range want {
+		if got[index] != expected {
+			t.Fatalf("rotation %d mismatch: got %q want %q", index, got[index], expected)
+		}
 	}
 }
 
@@ -2123,6 +2296,7 @@ func TestClassifyError(t *testing.T) {
 		{errors.New("context deadline exceeded"), FailoverReasonTimeout},
 		{errors.New("rate limit exceeded"), FailoverReasonRateLimit},
 		{errors.New("429 too many requests"), FailoverReasonRateLimit},
+		{errors.New("provider foo returned 403: insufficient_user_quota"), FailoverReasonRateLimit},
 		{errors.New("401 unauthorized"), FailoverReasonAuthError},
 		{errors.New("invalid api key"), FailoverReasonAuthError},
 		{errors.New("model not found"), FailoverReasonModelNotFound},
@@ -2165,12 +2339,24 @@ func TestShouldRetryWithNextAPIKey_StatusDigitsInProviderID(t *testing.T) {
 			err:  errors.New("provider foo throttled (429)"),
 			want: true,
 		},
+		{
+			name: "quota style 403 should still rotate keys",
+			err:  errors.New("provider foo returned 403: insufficient_user_quota"),
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {
 		if got := shouldRetryWithNextAPIKey(tt.err); got != tt.want {
 			t.Fatalf("%s: shouldRetryWithNextAPIKey(%q) = %v, want %v", tt.name, tt.err.Error(), got, tt.want)
 		}
+	}
+}
+
+func TestIsAuthError_Quota403IsNotCredentialFailure(t *testing.T) {
+	err := errors.New("provider foo returned 403: insufficient_user_quota")
+	if isAuthError(err) {
+		t.Fatalf("expected quota-style 403 to avoid auth classification")
 	}
 }
 
@@ -2269,7 +2455,7 @@ func TestCustomProviderWithProvIDFormat(t *testing.T) {
 		t.Errorf("Expected API key sk-test-key-12345, got %s", result.APIKey.Key)
 	}
 
-	// Test 3: Route with empty model ID should select first available
+	// Test 3: Route with empty model ID should select an available discovered model
 	result2, err := router.Route(&RouteRequest{
 		ModelID:  "",
 		Strategy: RoutingStrategyPriority,
@@ -2370,10 +2556,9 @@ func TestRegistryGetCustomProvider(t *testing.T) {
 	}
 }
 
-// TestRouterBlindFallback_ModelNotInSnapshot verifies that when the requested model
-// is not in any provider's model list, RouteWithFallback still tries healthy providers
-// by forwarding the original model name (blind fallback).
-func TestRouterBlindFallback_ModelNotInSnapshot(t *testing.T) {
+// TestRouterStrictCandidates_ModelNotInSnapshot verifies that explicit models
+// outside the discovered candidate set fail immediately instead of blind fallback.
+func TestRouterStrictCandidates_ModelNotInSnapshot(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
 
@@ -2391,25 +2576,18 @@ func TestRouterBlindFallback_ModelNotInSnapshot(t *testing.T) {
 		return errors.New("model not found")
 	})
 
-	if err != nil {
-		t.Fatalf("RouteWithFallback should succeed via blind fallback, got: %v", err)
+	if !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider, got: %v", err)
 	}
 
-	// Should have tried providers in priority order: high, medium
-	if len(triedProviders) != 2 {
-		t.Fatalf("Expected 2 attempts, got %d: %v", len(triedProviders), triedProviders)
-	}
-	if triedProviders[0] != "provider-high" {
-		t.Errorf("First attempt should be provider-high, got %s", triedProviders[0])
-	}
-	if triedProviders[1] != "provider-medium" {
-		t.Errorf("Second attempt should be provider-medium, got %s", triedProviders[1])
+	if len(triedProviders) != 0 {
+		t.Fatalf("expected 0 attempts for unknown model, got %d: %v", len(triedProviders), triedProviders)
 	}
 }
 
-// TestRouterBlindFallback_AllSameModelFail verifies that when the model exists in the
-// snapshot but all same-model providers fail, blind fallback tries remaining providers.
-func TestRouterBlindFallback_AllSameModelFail(t *testing.T) {
+// TestRouterStrictCandidates_AllSameModelFail verifies that when all known
+// candidates for a fixed model fail, the final upstream error is returned.
+func TestRouterStrictCandidates_AllSameModelFail(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-blind-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2456,31 +2634,24 @@ func TestRouterBlindFallback_AllSameModelFail(t *testing.T) {
 		Strategy: RoutingStrategyPriority,
 	}, func(result *RouteResult) error {
 		triedProviders = append(triedProviders, result.Provider.ID)
-		if result.Provider.ID == "provider-b" {
-			return nil // provider-b succeeds (upstream supports the model even though we don't know)
-		}
 		return errors.New("upstream error")
 	})
 
-	if err != nil {
-		t.Fatalf("Expected blind fallback to succeed, got: %v", err)
+	if err == nil || err.Error() != "upstream error" {
+		t.Fatalf("expected final upstream error, got: %v", err)
 	}
 
-	// provider-a tried first (same-model match), then provider-b (blind fallback)
-	if len(triedProviders) != 2 {
-		t.Fatalf("Expected 2 attempts, got %d: %v", len(triedProviders), triedProviders)
+	if len(triedProviders) != 1 {
+		t.Fatalf("Expected 1 attempt, got %d: %v", len(triedProviders), triedProviders)
 	}
 	if triedProviders[0] != "provider-a" {
 		t.Errorf("First attempt should be provider-a, got %s", triedProviders[0])
 	}
-	if triedProviders[1] != "provider-b" {
-		t.Errorf("Second attempt should be provider-b (blind fallback), got %s", triedProviders[1])
-	}
 }
 
-// TestRouterBlindFallback_RespectsExplicitExclude verifies that blind fallback
-// does not resurrect providers the caller explicitly excluded.
-func TestRouterBlindFallback_RespectsExplicitExclude(t *testing.T) {
+// TestRouterStrictCandidates_RespectsExplicitExclude verifies that strict
+// routing does not resurrect providers the caller explicitly excluded.
+func TestRouterStrictCandidates_RespectsExplicitExclude(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-blind-exclude-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2527,20 +2698,17 @@ func TestRouterBlindFallback_RespectsExplicitExclude(t *testing.T) {
 		return nil
 	})
 
-	if err != nil {
-		t.Fatalf("Expected blind fallback to succeed on non-excluded provider, got: %v", err)
+	if !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider, got: %v", err)
 	}
-	if len(triedProviders) != 1 {
-		t.Fatalf("expected exactly 1 attempt, got %d (%v)", len(triedProviders), triedProviders)
-	}
-	if triedProviders[0] != "provider-b" {
-		t.Fatalf("expected blind fallback to skip excluded provider-a and use provider-b, got %v", triedProviders)
+	if len(triedProviders) != 0 {
+		t.Fatalf("expected no attempts when excluded candidates remove the fixed model, got %v", triedProviders)
 	}
 }
 
-// TestRouterBlindFallback_RespectsRoutingMode verifies that blind fallback
-// only tries providers matching the requested routing mode (cloud/local).
-func TestRouterBlindFallback_RespectsRoutingMode(t *testing.T) {
+// TestRouterStrictCandidates_RespectsRoutingMode verifies that strict routing
+// still respects cloud/local mode filters when no candidates exist.
+func TestRouterStrictCandidates_RespectsRoutingMode(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-blind-mode-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2570,7 +2738,6 @@ func TestRouterBlindFallback_RespectsRoutingMode(t *testing.T) {
 	// Neither provider has the model in their list
 	router.RebuildCandidates()
 
-	// Request with cloud mode — should only try cloud provider
 	var triedProviders []string
 	err = router.RouteWithFallback(context.Background(), &RouteRequest{
 		ModelID: "new-model",
@@ -2580,14 +2747,13 @@ func TestRouterBlindFallback_RespectsRoutingMode(t *testing.T) {
 		return nil // succeed on first try
 	})
 
-	if err != nil {
-		t.Fatalf("Expected success, got: %v", err)
+	if !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider for cloud mode, got: %v", err)
 	}
-	if len(triedProviders) != 1 || triedProviders[0] != "cloud-prov" {
-		t.Errorf("Expected only cloud-prov, got: %v", triedProviders)
+	if len(triedProviders) != 0 {
+		t.Errorf("expected no attempts for unknown cloud-mode model, got: %v", triedProviders)
 	}
 
-	// Request with local mode — should only try local provider
 	triedProviders = nil
 	err = router.RouteWithFallback(context.Background(), &RouteRequest{
 		ModelID: "new-model",
@@ -2597,17 +2763,17 @@ func TestRouterBlindFallback_RespectsRoutingMode(t *testing.T) {
 		return nil
 	})
 
-	if err != nil {
-		t.Fatalf("Expected success, got: %v", err)
+	if !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider for local mode, got: %v", err)
 	}
-	if len(triedProviders) != 1 || triedProviders[0] != "local-prov" {
-		t.Errorf("Expected only local-prov, got: %v", triedProviders)
+	if len(triedProviders) != 0 {
+		t.Errorf("expected no attempts for unknown local-mode model, got: %v", triedProviders)
 	}
 }
 
-// TestRouterBlindFallback_AllFail verifies that when all providers fail
-// (including blind fallback), the error is properly returned.
-func TestRouterBlindFallback_AllFail(t *testing.T) {
+// TestRouterStrictCandidates_AllFail verifies that when all discovered
+// candidates fail, the final error is returned to the caller.
+func TestRouterStrictCandidates_AllFail(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
 
@@ -2622,9 +2788,9 @@ func TestRouterBlindFallback_AllFail(t *testing.T) {
 	}
 }
 
-// TestRouterBlindFallback_EmptyModelSkipsBlindFallback verifies that model=""
-// (auto mode) does not enter blind fallback when no routable models exist.
-func TestRouterBlindFallback_EmptyModelSkipsBlindFallback(t *testing.T) {
+// TestRouterStrictCandidates_EmptyModelDoesNotRouteWhenNoModelsExist verifies
+// that auto mode returns no-available-provider when no discovered models exist.
+func TestRouterStrictCandidates_EmptyModelDoesNotRouteWhenNoModelsExist(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-empty-model-no-blind-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2658,13 +2824,13 @@ func TestRouterBlindFallback_EmptyModelSkipsBlindFallback(t *testing.T) {
 		t.Fatalf("expected ErrNoAvailableProvider, got %v", err)
 	}
 	if attempts != 0 {
-		t.Fatalf("expected 0 attempts for empty-model blind fallback, got %d", attempts)
+		t.Fatalf("expected 0 attempts for empty-model routing miss, got %d", attempts)
 	}
 }
 
-// TestRouterBlindFallback_SkipsUnhealthyAndCooldown verifies that blind fallback
-// skips providers that are unhealthy or in cooldown.
-func TestRouterBlindFallback_SkipsUnhealthyAndCooldown(t *testing.T) {
+// TestRouterStrictCandidates_SkipsUnhealthyAndCooldown verifies that strict
+// routing still filters unhealthy providers before declaring no candidates.
+func TestRouterStrictCandidates_SkipsUnhealthyAndCooldown(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-blind-skip-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2700,41 +2866,35 @@ func TestRouterBlindFallback_SkipsUnhealthyAndCooldown(t *testing.T) {
 		return nil
 	})
 
-	if err != nil {
-		t.Fatalf("Expected success, got: %v", err)
+	if !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider, got: %v", err)
 	}
 
-	// Should only try the healthy provider, not the unhealthy one
-	if len(triedProviders) != 1 || triedProviders[0] != "healthy" {
-		t.Errorf("Expected only healthy provider, got: %v", triedProviders)
+	if len(triedProviders) != 0 {
+		t.Errorf("expected no attempts for unknown model outside candidate set, got: %v", triedProviders)
 	}
 }
 
-// TestRouterBlindFallback_PassthroughModel verifies that blind fallback
-// sends the original model ID to the provider (passthrough).
-func TestRouterBlindFallback_PassthroughModel(t *testing.T) {
+// TestRouterStrictCandidates_ReturnsFinalExplicitModelError verifies that
+// discovered fixed models surface the last execution error directly.
+func TestRouterStrictCandidates_ReturnsFinalExplicitModelError(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
 
-	var receivedModel string
 	err := router.RouteWithFallback(context.Background(), &RouteRequest{
-		ModelID: "gpt-5.3-codex",
+		ModelID: "test-model",
 	}, func(result *RouteResult) error {
-		receivedModel = result.Model.ID
-		return nil
+		return fmt.Errorf("final error from %s", result.Provider.ID)
 	})
 
-	if err != nil {
-		t.Fatalf("Expected success, got: %v", err)
-	}
-	if receivedModel != "gpt-5.3-codex" {
-		t.Errorf("Expected passthrough model gpt-5.3-codex, got %s", receivedModel)
+	if err == nil || err.Error() != "final error from provider-low" {
+		t.Fatalf("expected last candidate error, got %v", err)
 	}
 }
 
-// TestRouterBlindFallback_RespectsAllowedModels verifies blind fallback does not
-// route to providers that disallow the requested model via AllowedModels.
-func TestRouterBlindFallback_RespectsAllowedModels(t *testing.T) {
+// TestRouterStrictCandidates_RespectsAllowedModels verifies strict routing does
+// not route to providers that disallow the requested model via AllowedModels.
+func TestRouterStrictCandidates_RespectsAllowedModels(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-blind-allowlist-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2752,7 +2912,7 @@ func TestRouterBlindFallback_RespectsAllowedModels(t *testing.T) {
 		Location: ProviderLocationCloud,
 		APIKeys:  []APIKey{{ID: "k1", Key: "key-a", Enabled: true}},
 	}
-	// Higher priority than provider-c, but should be skipped in blind fallback.
+	// Higher priority than provider-c, but should be skipped because allowlist removes the requested model.
 	providerB := &Provider{
 		ID: "provider-b", Name: "Provider B", Type: ProviderTypeCustom,
 		Enabled: true, Status: ProviderStatusActive, Priority: 90,
@@ -2791,22 +2951,16 @@ func TestRouterBlindFallback_RespectsAllowedModels(t *testing.T) {
 		ModelID: "special-model",
 	}, func(result *RouteResult) error {
 		tried = append(tried, result.Provider.ID)
-		if result.Provider.ID == "provider-a" {
-			return errors.New("upstream error")
-		}
-		return nil
+		return errors.New("upstream error")
 	})
-	if err != nil {
-		t.Fatalf("Expected fallback success, got: %v", err)
+	if err == nil || err.Error() != "upstream error" {
+		t.Fatalf("expected upstream error from only allowed candidate, got: %v", err)
 	}
-	if len(tried) != 2 {
-		t.Fatalf("Expected 2 attempts, got %d: %v", len(tried), tried)
+	if len(tried) != 1 {
+		t.Fatalf("Expected 1 attempt, got %d: %v", len(tried), tried)
 	}
 	if tried[0] != "provider-a" {
 		t.Errorf("First attempt should be provider-a, got %s", tried[0])
-	}
-	if tried[1] != "provider-c" {
-		t.Errorf("Second attempt should skip provider-b due allowlist and use provider-c, got %s", tried[1])
 	}
 }
 
@@ -2992,8 +3146,9 @@ func TestOAuthDisconnectedExcluded(t *testing.T) {
 	}
 }
 
-// TestOAuthProviderBlindFallback verifies OAuth providers participate in blind fallback.
-func TestOAuthProviderBlindFallback(t *testing.T) {
+// TestOAuthProviderStrictCandidates verifies OAuth-only providers do not route
+// unknown models outside the discovered candidate set.
+func TestOAuthProviderStrictCandidates(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "router-oauth-blind-test-*")
 	defer os.RemoveAll(tmpDir)
 
@@ -3020,10 +3175,10 @@ func TestOAuthProviderBlindFallback(t *testing.T) {
 		return nil
 	})
 
-	if err != nil {
-		t.Fatalf("Expected blind fallback to succeed, got: %v", err)
+	if !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider, got: %v", err)
 	}
-	if len(tried) != 1 || tried[0] != "oauth-only" {
-		t.Errorf("Expected oauth-only in blind fallback, got: %v", tried)
+	if len(tried) != 0 {
+		t.Errorf("expected no attempts for unknown model, got: %v", tried)
 	}
 }

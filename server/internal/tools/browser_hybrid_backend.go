@@ -540,6 +540,32 @@ func (b *HybridCapabilityBrowserBackend) CountInteractiveElements(ctx context.Co
 	}
 }
 
+func (b *HybridCapabilityBrowserBackend) ExtractText(ctx context.Context, targetID, selector string) (string, error) {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
+		return "", unsupportedLightpandaAction("text extraction")
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return "", browser.ErrTabNotFound
+		}
+		extractor, ok := b.lightpandaBinary.(readableContentBrowserBackend)
+		if !ok {
+			return "", unsupportedLightpandaAction("text extraction")
+		}
+		return extractor.ExtractText(ctx, targetID, selector)
+	default:
+		backend := b.chromiumForTarget(ctx, targetID)
+		if backend == nil {
+			return "", browser.ErrTabNotFound
+		}
+		extractor, ok := backend.(readableContentBrowserBackend)
+		if !ok {
+			return "", fmt.Errorf("browser text extraction not supported")
+		}
+		return extractor.ExtractText(ctx, targetID, selector)
+	}
+}
+
 func (b *HybridCapabilityBrowserBackend) ActByRef(ctx context.Context, targetID string, ref int, refMap map[int]int, action string, value string) error {
 	switch b.targetDetail(ctx, targetID) {
 	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:

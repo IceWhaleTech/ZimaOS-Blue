@@ -104,29 +104,182 @@ func isConnectionClosed(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
-	return strings.Contains(msg, "use of closed network connection") ||
-		strings.Contains(msg, "connection reset") ||
-		strings.Contains(msg, "broken pipe") ||
-		strings.Contains(msg, "websocket: close") ||
-		strings.Contains(msg, "EOF")
+	msg := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"use of closed network connection",
+		"connection reset",
+		"broken pipe",
+		"websocket: close",
+		"eof",
+		"connection closed",
+		"target closed",
+		"target crashed",
+		"page crashed",
+		"session closed",
+		"session not found",
+		"target detached",
+		"inspector.detached",
+		"browser has disconnected",
+		"cannot find context with specified id",
+		"rod panic during wait",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+type pageInfoSnapshot struct {
+	URL   string
+	Title string
+}
+
+func snapshotPageInfoFromInfo(info *proto.TargetTargetInfo) pageInfoSnapshot {
+	if info == nil {
+		return pageInfoSnapshot{}
+	}
+	return pageInfoSnapshot{
+		URL:   info.URL,
+		Title: info.Title,
+	}
+}
+
+func checkedPageInfo(page *rod.Page) (*proto.TargetTargetInfo, error) {
+	if page == nil {
+		return nil, fmt.Errorf("page is not available")
+	}
+	info, err := page.Info()
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
+		return nil, fmt.Errorf("page info unavailable")
+	}
+	return info, nil
+}
+
+func snapshotPageInfo(page *rod.Page) pageInfoSnapshot {
+	info, err := checkedPageInfo(page)
+	if err != nil {
+		return pageInfoSnapshot{}
+	}
+	return snapshotPageInfoFromInfo(info)
+}
+
+func safeRodPageCall(action string, fn func() error) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("rod panic during %s: %v", action, recovered)
+		}
+	}()
+	return fn()
+}
+
+func safeRodPageResult[T any](action string, fn func() (T, error)) (result T, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("rod panic during %s: %v", action, recovered)
+		}
+	}()
+	return fn()
+}
+
+func waitPageLoad(page *rod.Page, timeout time.Duration) error {
+	if page == nil {
+		return fmt.Errorf("page is not available")
+	}
+	return safeRodPageCall("wait load", func() error {
+		if timeout > 0 {
+			return page.Timeout(timeout).WaitLoad()
+		}
+		return page.WaitLoad()
+	})
+}
+
+func waitPageIdle(page *rod.Page, timeout time.Duration) error {
+	if page == nil {
+		return fmt.Errorf("page is not available")
+	}
+	return safeRodPageCall("wait idle", func() error {
+		return page.WaitIdle(timeout)
+	})
+}
+
+func waitPageDOMStable(page *rod.Page, timeout time.Duration, threshold float64) error {
+	if page == nil {
+		return fmt.Errorf("page is not available")
+	}
+	return safeRodPageCall("wait dom stable", func() error {
+		return page.WaitDOMStable(timeout, threshold)
+	})
+}
+
+var (
+	waitPageStableLoadFn = waitPageLoad
+	waitPageStableIdleFn = waitPageIdle
+	waitPageStableSleep  = time.Sleep
+)
+
+func waitPageStable(page *rod.Page, timeout time.Duration) error {
+	if page == nil {
+		return fmt.Errorf("page is not available")
+	}
+	// rod.Page.WaitStable has been observed to panic from an internal helper
+	// goroutine under concurrent browser load, which bypasses our recover path
+	// and takes down the whole gateway. Use a conservative approximation here
+	// so browser fallback stays alive during harness concurrency.
+	if timeout <= 0 {
+		timeout = 500 * time.Millisecond
+	}
+	loadTimeout := timeout
+	if loadTimeout > 2*time.Second {
+		loadTimeout = 2 * time.Second
+	}
+	if err := waitPageStableLoadFn(page, loadTimeout); err != nil {
+		return err
+	}
+	idleTimeout := timeout / 2
+	if idleTimeout <= 0 {
+		idleTimeout = 200 * time.Millisecond
+	}
+	if idleTimeout > time.Second {
+		idleTimeout = time.Second
+	}
+	if err := waitPageStableIdleFn(page, idleTimeout); err == nil {
+		return nil
+	}
+	settleDelay := timeout / 4
+	if settleDelay <= 0 {
+		settleDelay = 150 * time.Millisecond
+	}
+	if settleDelay > 500*time.Millisecond {
+		settleDelay = 500 * time.Millisecond
+	}
+	waitPageStableSleep(settleDelay)
+	return nil
 }
 
 // removeTab cleans up a stale tab entry.
 func (s *RodService) removeTab(tab *tabInfo) {
-	if tab != nil {
-		tab.networkMu.Lock()
-		if tab.network != nil && tab.network.cancel != nil {
-			tab.network.cancel()
-		}
-		tab.network = nil
-		tab.networkMu.Unlock()
+	if tab == nil {
+		return
 	}
+	tab.networkMu.Lock()
+	if tab.network != nil && tab.network.cancel != nil {
+		tab.network.cancel()
+	}
+	tab.network = nil
+	tab.networkMu.Unlock()
 	s.tabsMu.Lock()
 	delete(s.tabs, tab.targetID)
 	s.tabsMu.Unlock()
 	s.clearSessionScreenshotHistory(tab.targetID)
-	if tab.page != nil && !s.config.UsesRelayDriver() {
+	if !s.config.UsesRelayDriver() {
+		s.pool.ReleasePage(tab.page, tab.browser)
+		return
+	}
+	if tab.page != nil {
 		_ = tab.page.Close()
 	}
 }
@@ -279,7 +432,7 @@ func (s *RodService) syncRelayTabs(ctx context.Context) error {
 		if page == nil {
 			continue
 		}
-		info, err := page.Info()
+		info, err := checkedPageInfo(page)
 		if err != nil {
 			continue
 		}
@@ -667,7 +820,10 @@ func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 	if err != nil {
 		return nil, err
 	}
+	return s.openTabNormalized(ctx, normalizedURL, true)
+}
 
+func (s *RodService) openTabNormalized(ctx context.Context, normalizedURL string, allowRetry bool) (*Tab, error) {
 	page, browser, err := s.pool.NewPage(ctx)
 	if err != nil {
 		return nil, err
@@ -684,20 +840,29 @@ func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 	err = page.Timeout(timeout).Navigate(normalizedURL)
 	if err != nil {
 		s.pool.ReleasePage(page, browser)
+		if allowRetry && isConnectionClosed(err) {
+			return s.openTabNormalized(ctx, normalizedURL, false)
+		}
 		return nil, err
 	}
 
 	// Wait for page to load
-	err = page.Timeout(timeout).WaitLoad()
+	err = waitPageLoad(page, timeout)
 	if err != nil {
 		s.pool.ReleasePage(page, browser)
+		if allowRetry && isConnectionClosed(err) {
+			return s.openTabNormalized(ctx, normalizedURL, false)
+		}
 		return nil, err
 	}
 
 	// Get page info
-	info, err := page.Info()
+	info, err := checkedPageInfo(page)
 	if err != nil {
 		s.pool.ReleasePage(page, browser)
+		if allowRetry && isConnectionClosed(err) {
+			return s.openTabNormalized(ctx, normalizedURL, false)
+		}
 		return nil, err
 	}
 
@@ -855,7 +1020,7 @@ func (s *RodService) captureDetachedMonitorPageScreenshot(page *rod.Page, scope 
 		return
 	}
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 	s.rememberDetachedMonitorScreenshot(
 		info.URL,
 		info.Title,
@@ -996,9 +1161,22 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 		tab = nil
 	}
 
+	reopenTab := func() (*NavigateResponse, error) {
+		s.removeTab(tab)
+		newTab, retryErr := s.openTabNormalized(ctx, normalizedURL, true)
+		if retryErr != nil {
+			return nil, retryErr
+		}
+		return &NavigateResponse{
+			URL:      newTab.URL,
+			Title:    newTab.Title,
+			TargetID: newTab.TargetID,
+		}, nil
+	}
+
 	if tab == nil {
 		// Open new tab
-		newTab, err := s.OpenTab(ctx, normalizedURL)
+		newTab, err := s.openTabNormalized(ctx, normalizedURL, true)
 		if err != nil {
 			return nil, err
 		}
@@ -1017,16 +1195,7 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 		// Connection may be dead (Chrome crashed, WebSocket closed).
 		// Clean up the stale tab and retry with a fresh one.
 		if isConnectionClosed(err) {
-			s.removeTab(tab)
-			newTab, retryErr := s.OpenTab(ctx, normalizedURL)
-			if retryErr != nil {
-				return nil, retryErr
-			}
-			return &NavigateResponse{
-				URL:      newTab.URL,
-				Title:    newTab.Title,
-				TargetID: newTab.TargetID,
-			}, nil
+			return reopenTab()
 		}
 		return nil, err
 	}
@@ -1034,18 +1203,24 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 	// Wait based on WaitUntil
 	switch req.WaitUntil {
 	case "networkidle":
-		err = tab.page.WaitIdle(timeout)
+		err = waitPageIdle(tab.page, timeout)
 	case "domcontentloaded":
-		err = tab.page.WaitDOMStable(timeout, 0.5)
+		err = waitPageDOMStable(tab.page, timeout, 0.5)
 	default: // "load" or empty
-		err = tab.page.Timeout(timeout).WaitLoad()
+		err = waitPageLoad(tab.page, timeout)
 	}
 	if err != nil {
+		if isConnectionClosed(err) {
+			return reopenTab()
+		}
 		return nil, err
 	}
 
-	info, err := tab.page.Info()
+	info, err := checkedPageInfo(tab.page)
 	if err != nil {
+		if isConnectionClosed(err) {
+			return reopenTab()
+		}
 		return nil, err
 	}
 
@@ -1091,7 +1266,7 @@ func (s *RodService) Screenshot(ctx context.Context, req *ScreenshotRequest) (*S
 		return nil, err
 	}
 
-	err = page.Timeout(timeout).WaitLoad()
+	err = waitPageLoad(page, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -1150,7 +1325,7 @@ func (s *RodService) Screenshot(ctx context.Context, req *ScreenshotRequest) (*S
 		}
 	}
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 	encoded := base64.StdEncoding.EncodeToString(data)
 	scope := "viewport"
 	if req.FullPage {
@@ -1199,7 +1374,7 @@ func (s *RodService) PDF(ctx context.Context, req *PDFRequest) (*PDFResponse, er
 		return nil, err
 	}
 
-	err = page.Timeout(timeout).WaitLoad()
+	err = waitPageLoad(page, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -1259,7 +1434,7 @@ func (s *RodService) PDF(ctx context.Context, req *PDFRequest) (*PDFResponse, er
 		return nil, err
 	}
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 
 	return &PDFResponse{
 		Data:  base64.StdEncoding.EncodeToString(data),
@@ -1289,7 +1464,7 @@ func (s *RodService) Snapshot(ctx context.Context, req *SnapshotRequest) (*Snaps
 		snapshot = snapshot[:req.MaxChars]
 	}
 
-	info, _ := tab.page.Info()
+	info := snapshotPageInfo(tab.page)
 
 	return &SnapshotResponse{
 		Snapshot:     snapshot,
@@ -1320,7 +1495,7 @@ func (s *RodService) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeRes
 		return nil, err
 	}
 
-	err = page.Timeout(timeout).WaitLoad()
+	err = waitPageLoad(page, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -1380,7 +1555,7 @@ func (s *RodService) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeRes
 		}
 	}
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 
 	return &ScrapeResponse{
 		Data:  data,
@@ -1529,7 +1704,7 @@ func (s *RodService) Automate(ctx context.Context, req *AutomateRequest) (*Autom
 		return nil, err
 	}
 
-	err = page.Timeout(timeout).WaitLoad()
+	err = waitPageLoad(page, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -1569,7 +1744,7 @@ func (s *RodService) Automate(ctx context.Context, req *AutomateRequest) (*Autom
 		results = append(results, result)
 	}
 
-	info, _ := page.Info()
+	info := snapshotPageInfo(page)
 	s.captureDetachedMonitorPageScreenshot(page, "automate")
 
 	return &AutomateResponse{
@@ -1719,7 +1894,9 @@ func (s *RodService) ElementExists(ctx context.Context, targetID, selector strin
 		return false, err
 	}
 	timeout := GetTimeout(0, s.config)
-	_, err = tab.page.Timeout(timeout).Element(selector)
+	_, err = safeRodPageResult("element exists lookup", func() (*rod.Element, error) {
+		return tab.page.Timeout(timeout).Element(selector)
+	})
 	if err != nil {
 		return false, nil
 	}
@@ -1733,18 +1910,24 @@ func (s *RodService) ExtractFirstFromTab(ctx context.Context, targetID, selector
 		return "", err
 	}
 	timeout := GetTimeout(0, s.config)
-	el, err := tab.page.Timeout(timeout).Element(selector)
+	el, err := safeRodPageResult("extract element lookup", func() (*rod.Element, error) {
+		return tab.page.Timeout(timeout).Element(selector)
+	})
 	if err != nil {
 		return "", err
 	}
 	if attribute != "" {
-		attr, err := el.Attribute(attribute)
+		attr, err := safeRodPageResult("extract attribute", func() (*string, error) {
+			return el.Attribute(attribute)
+		})
 		if err != nil || attr == nil {
 			return "", err
 		}
 		return *attr, nil
 	}
-	return el.Text()
+	return safeRodPageResult("extract text", func() (string, error) {
+		return el.Text()
+	})
 }
 
 // PageInfo returns the current URL and title for a tab.
@@ -1753,7 +1936,7 @@ func (s *RodService) PageInfo(ctx context.Context, targetID string) (string, str
 	if err != nil {
 		return "", "", err
 	}
-	info, err := tab.page.Info()
+	info, err := checkedPageInfo(tab.page)
 	if err != nil {
 		return "", "", err
 	}
@@ -1886,7 +2069,7 @@ func (s *RodService) AccessibilityTree(ctx context.Context, targetID string, max
 	builder := newAXTreeBuilder(nodes)
 	tree := builder.build()
 
-	info, _ := tab.page.Info()
+	info := snapshotPageInfo(tab.page)
 
 	return &AccessibilityTreeResponse{
 		Tree:     tree,
@@ -2415,7 +2598,7 @@ func (s *RodService) InteractiveElements(ctx context.Context, targetID string) (
 	page := tab.page
 
 	// Wait for page to be stable before extracting
-	_ = page.WaitStable(500 * time.Millisecond)
+	_ = waitPageStable(page, 500*time.Millisecond)
 
 	// JS extraction: only interactive elements
 	result, err := page.Eval(`() => {

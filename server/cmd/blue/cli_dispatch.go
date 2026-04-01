@@ -1,6 +1,11 @@
 package main
 
-import "os"
+import (
+	"os"
+	"strings"
+)
+
+var cliDispatchExit = os.Exit
 
 // cliDispatch handles CLI subcommands on a fast path, bypassing cobra
 // to avoid touching additional code pages and reduce RSS.
@@ -68,7 +73,11 @@ func cliDispatch(args []string) bool {
 	case "skills":
 		return false // skills subcommands need cobra arg validation
 	case "context":
-		return false // context subcommands use cobra/local registry helpers
+		if shouldIPCDispatchContext(rest) {
+			ipcDispatchCommand(cmd, rest, true)
+			break
+		}
+		return false // let cobra render help/usage for unsupported shapes
 	case "sessions":
 		if dispatchSessionsFastPath(rest) {
 			break
@@ -76,6 +85,8 @@ func cliDispatch(args []string) bool {
 		return false // fall back to cobra for unsupported/invalid shapes
 	case "cron":
 		return false // cron subcommands need cobra arg validation
+	case "harness":
+		return false // harness subcommands need cobra arg validation
 	case "logs":
 		logsFollow = flagBool(rest, "-f") || flagBool(rest, "--follow")
 		logsLines = flagInt(rest, "-n", 50)
@@ -89,14 +100,26 @@ func cliDispatch(args []string) bool {
 		return false // gateway run needs runServer, let cobra handle
 	default:
 		// Unknown command → try IPC fallback (forward to main process)
-		if ipcFallback(cmd, rest) {
+		if ipcDispatchCommand(cmd, rest, false) {
 			break
 		}
 		return false // server not reachable → let cobra handle
 	}
 
-	os.Exit(0)
+	cliDispatchExit(0)
 	return true
+}
+
+func shouldIPCDispatchContext(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	switch strings.TrimSpace(args[0]) {
+	case "search", "get", "annotate", "import", "validate":
+		return true
+	default:
+		return false
+	}
 }
 
 func dispatchSessionsFastPath(args []string) bool {

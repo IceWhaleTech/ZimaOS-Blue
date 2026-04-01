@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -232,5 +233,63 @@ func TestStoreUpdateCronJobID(t *testing.T) {
 	got, _ := store.Get(ctx, "rem-1")
 	if got.CronJobID != "job-abc" {
 		t.Errorf("cron_job_id = %q, want job-abc", got.CronJobID)
+	}
+}
+
+func TestStoreUsesReaderDBForReads(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "push.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(write): %v", err)
+	}
+	defer writeDB.Close()
+
+	if _, err := NewStore(writeDB); err != nil {
+		t.Fatalf("NewStore(bootstrap): %v", err)
+	}
+
+	readDB, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("sql.Open(read): %v", err)
+	}
+	defer readDB.Close()
+
+	store, err := NewStoreWithReadDB(writeDB, readDB)
+	if err != nil {
+		t.Fatalf("NewStoreWithReadDB: %v", err)
+	}
+	if store.readDB == nil || store.readDB == store.db {
+		t.Fatal("expected separate reader db")
+	}
+
+	ctx := context.Background()
+	if err := store.Create(ctx, &PushNotification{
+		ID:      "rem-reader",
+		OwnerID: "user-1",
+		Message: "Reader",
+		FireAt:  time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := writeDB.Close(); err != nil {
+		t.Fatalf("close writer db: %v", err)
+	}
+
+	got, err := store.Get(ctx, "rem-reader", "user-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got == nil || got.Message != "Reader" {
+		t.Fatalf("unexpected push via reader: %+v", got)
+	}
+
+	pending, err := store.ListPending(ctx)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	if len(pending) != 1 || pending[0].ID != "rem-reader" {
+		t.Fatalf("unexpected pending push via reader: %+v", pending)
 	}
 }

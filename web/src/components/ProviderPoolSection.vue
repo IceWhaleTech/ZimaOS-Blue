@@ -21,6 +21,7 @@ const isRtl = computed(() => getLocaleDirection(locale.value) === 'rtl')
 
 // Local state
 const showAddModal = ref(false)
+const addProviderMode = ref<'chooser' | 'custom'>('chooser')
 const showKeyModal = ref(false)
 const showPricingModal = ref(false)
 const showParamsModal = ref(false)
@@ -120,17 +121,25 @@ const addingStep = ref('') // '', 'adding', 'probing', 'done'
 
 function openAddProviderModal() {
   showNewProviderApiKey.value = false
+  addProviderMode.value = 'chooser'
   showAddModal.value = true
 }
 
 function closeAddProviderModal() {
   showNewProviderApiKey.value = false
+  addProviderMode.value = 'chooser'
+  resetNewProviderForm()
   showAddModal.value = false
 }
 
 function tr(key: string, fallback = ''): string {
   return te(key) ? t(key) : fallback
 }
+
+function trp(key: string, params: Record<string, unknown>, fallback: string): string {
+  return te(key) ? t(key, params) : fallback
+}
+
 const tabFallbackLabels: Record<ProviderTab, string> = {
   all: 'All',
   trial: 'Trial',
@@ -149,13 +158,18 @@ function getLocalizedProviderModelName(model: Model): string {
 }
 
 function canEditProviderLocation(provider?: Provider | null): boolean {
-  return !!provider && (provider.type === 'custom' || provider.id === 'ollama')
+  return !!provider && provider.type === 'custom'
 }
 
 function getEffectiveProviderLocation(provider?: Provider | null): 'cloud' | 'local' {
   if (!provider) return 'cloud'
-  if (!canEditProviderLocation(provider)) return 'cloud'
-  return provider.location === 'local' ? 'local' : 'cloud'
+  if (
+    provider.location === 'local' &&
+    (provider.type === 'custom' || provider.metadata_mode === 'catalog')
+  ) {
+    return 'local'
+  }
+  return 'cloud'
 }
 
 // New API key form
@@ -218,6 +232,17 @@ const selectedProviderModels = computed(() => {
   return store.models.filter((m) => m.provider_id === store.selectedProviderId)
 })
 
+const officialProviderOptions = computed(() =>
+  visibleProviders.value.filter(
+    (provider) => provider.type === 'builtin' || provider.type === 'platform'
+  )
+)
+
+const canReorderProviders = computed(() => filteredProviders.value.length > 1)
+const providerOutputLimitLabel = computed(() =>
+  tr('providerPool.outputLimit', t('providerPool.maxTokens'))
+)
+
 // Models to display: always provider-level (union of all keys)
 const displayModels = computed(() => {
   return selectedProviderModels.value
@@ -228,6 +253,12 @@ const selectedKeyModels = computed(() => {
   if (!provider || !selectedKeyId.value) return []
   const key = provider.api_keys?.find((item) => item.id === selectedKeyId.value)
   return key?.models || []
+})
+
+const providerAccountStatus = computed(() => {
+  const provider = displayProvider.value
+  if (!provider) return null
+  return store.accountStatus[provider.id] || null
 })
 
 const verificationProbeEntries = computed(() => {
@@ -264,7 +295,53 @@ const verificationProbeEntries = computed(() => {
 
 const supportsProviderVerification = computed(() => {
   const provider = displayProvider.value
-  return !!provider && provider.type !== 'trial' && provider.type !== 'media'
+  return (
+    !!provider &&
+    provider.type !== 'trial' &&
+    provider.type !== 'media' &&
+    provider.metadata_mode !== 'catalog'
+  )
+})
+
+const showBaseURLSection = computed(() => {
+  const provider = displayProvider.value
+  if (!provider || provider.type === 'trial' || provider.metadata_mode === 'catalog') {
+    return false
+  }
+
+  return (
+    !provider.base_url ||
+    provider.id === 'azure-openai' ||
+    provider.type === 'custom' ||
+    provider.type === 'platform'
+  )
+})
+
+function supportsProviderAccountStatus(provider?: Provider | null): boolean {
+  return provider?.id === 'openrouter' || provider?.id === 'openrouter-free' || provider?.id === 'deepseek'
+}
+
+function getProviderAccountStatusKey(provider?: Provider | null): string | undefined {
+  if (!provider?.api_keys?.length) return undefined
+  return provider.api_keys.find((key) => key.enabled)?.id || provider.api_keys[0]?.id
+}
+
+const shouldShowProviderAccountStatus = computed(() => {
+  const provider = displayProvider.value
+  return !!provider && supportsProviderAccountStatus(provider) && !!provider.api_keys?.length
+})
+
+const providerAccountStatusPrimaryItem = computed(() => {
+  const status = providerAccountStatus.value
+  if (!status?.items?.length) return null
+  return status.items.find((item) => item.key === status.primary_item_key) || status.items[0] || null
+})
+
+const providerAccountStatusSecondaryItems = computed(() => {
+  const status = providerAccountStatus.value
+  const primaryKey = providerAccountStatusPrimaryItem.value?.key
+  if (!status?.items?.length) return []
+  return status.items.filter((item) => item.key !== primaryKey)
 })
 
 function getCustomProviderFormatValue(provider?: Provider | null): EditableCustomProviderFormat {
@@ -312,6 +389,11 @@ watch(
     if (seq !== providerSelectionSeq) return
 
     fetchProviderUsage(providerId)
+    if (supportsProviderAccountStatus(provider) && provider.api_keys?.length) {
+      store.fetchAccountStatus(providerId, getProviderAccountStatusKey(provider))
+    } else {
+      store.clearAccountStatus(providerId)
+    }
     // Fetch OAuth quota lazily when provider is selected
     if (provider.oauth?.connected) {
       store.fetchOAuthQuota(providerId)
@@ -483,8 +565,10 @@ function getProviderDescription(provider: Provider): string {
   // Try to get i18n description first
   const i18nKey = `providerPool.providers.${provider.id}`
   if (te(i18nKey)) return t(i18nKey)
-  // Fall back to provider's description or base_url
-  return provider.description || provider.base_url || ''
+  // Fall back to provider's description. Keep official provider cards free of URL noise.
+  if (provider.description) return provider.description
+  if (provider.metadata_mode === 'catalog') return ''
+  return provider.base_url || ''
 }
 
 // Reset to 'all' if current tab is no longer available (e.g., trial removed)
@@ -595,6 +679,18 @@ async function clearProviderError(providerId: string) {
 async function refreshModels(providerId: string) {
   refreshingModels.value = providerId
   try {
+    const provider = store.providers.find((item) => item.id === providerId)
+    if (provider?.metadata_mode === 'catalog') {
+      const fetchResult = await store.refreshModels(providerId)
+      if (!fetchResult.success) {
+        notification.error(t('providerPool.refreshModelsFailed'), fetchResult.error, {
+          duration: 8000,
+          titleKey: 'providerPool.refreshModelsFailed',
+        })
+      }
+      return
+    }
+
     // Smart refresh: try probe first (tests actual availability), fall back to fetch
     const probeResult = await store.probeModels(providerId)
     if (probeResult.success) {
@@ -806,16 +902,8 @@ async function addCustomProvider() {
     // Auto-select the new provider
     store.selectProvider(providerId)
 
-    showAddModal.value = false
-    showNewProviderApiKey.value = false
-    newProvider.value = {
-      name: '',
-      base_url: '',
-      api_key: '',
-      priority: 50,
-      location: 'cloud',
-      format: 'auto',
-    }
+    closeAddProviderModal()
+    resetNewProviderForm()
   } catch (e) {
     console.error('Failed to add provider:', e)
     notification.error(t('providerPool.addFailed'), e instanceof Error ? e.message : '', {
@@ -824,6 +912,31 @@ async function addCustomProvider() {
   } finally {
     addingProvider.value = false
     addingStep.value = ''
+  }
+}
+
+function resetNewProviderForm() {
+  showNewProviderApiKey.value = false
+  newProvider.value = {
+    name: '',
+    base_url: '',
+    api_key: '',
+    priority: 50,
+    location: 'cloud',
+    format: 'auto',
+  }
+}
+
+function openCustomProviderForm() {
+  addProviderMode.value = 'custom'
+}
+
+function selectOfficialProviderOption(provider: Provider) {
+  activeTab.value = visibleTab(getProviderTab(provider))
+  store.selectProvider(provider.id)
+  closeAddProviderModal()
+  if (!provider.oauth && !(provider.api_keys && provider.api_keys.length > 0)) {
+    openKeyModal(provider.id)
   }
 }
 
@@ -875,9 +988,16 @@ async function addAPIKey() {
       testConnection(providerId, keyId)
     }
 
-    // For builtin/platform providers: also probe models in background
+    // Dynamic builtin/platform providers still benefit from a background probe.
     const provider = store.providers.find((p) => p.id === providerId)
-    if (provider && (provider.type === 'builtin' || provider.type === 'platform')) {
+    if (supportsProviderAccountStatus(provider)) {
+      store.fetchAccountStatus(providerId, getProviderAccountStatusKey(provider))
+    }
+    if (
+      provider &&
+      provider.metadata_mode !== 'catalog' &&
+      (provider.type === 'builtin' || provider.type === 'platform')
+    ) {
       store.probeModels(providerId).then((result) => {
         if (result.success && result.available > 0) {
           notification.success(
@@ -901,6 +1021,12 @@ async function removeAPIKey(providerId: string, keyId: string) {
     await store.removeAPIKey(providerId, keyId)
     // Clear test result for removed key
     delete keyTestResults.value[keyId]
+    const provider = store.providers.find((p) => p.id === providerId)
+    if (supportsProviderAccountStatus(provider) && provider?.api_keys?.length) {
+      store.fetchAccountStatus(providerId, getProviderAccountStatusKey(provider))
+    } else {
+      store.clearAccountStatus(providerId)
+    }
   } catch (e) {
     console.error('Failed to remove API key:', e)
   }
@@ -970,6 +1096,41 @@ function tierListBadgeClass(tier: string): string {
   if (t === 'ULTRA' || t === 'PREMIUM' || t === 'ENTERPRISE' || t === 'MAX')
     return 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
   return 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+}
+
+function formatAccountStatusAmount(item?: { value: number; currency?: string } | null): string {
+  if (!item) return '-'
+  const value = Number(item.value || 0)
+  const formatted = value.toLocaleString(undefined, {
+    minimumFractionDigits: value >= 100 ? 0 : 2,
+    maximumFractionDigits: value >= 100 ? 2 : 4,
+  })
+  const currency = (item.currency || '').toUpperCase()
+  if (currency === 'USD') return `$${formatted}`
+  if (currency === 'CNY') return `¥${formatted}`
+  return currency ? `${formatted} ${currency}` : formatted
+}
+
+function getAccountStatusItemLabel(itemKey: string): string {
+  switch (itemKey) {
+    case 'remaining':
+      return tr('providerPool.accountStatus.items.remaining', 'Remaining')
+    case 'used':
+      return tr('providerPool.accountStatus.items.used', 'Used')
+    case 'limit':
+      return tr('providerPool.accountStatus.items.limit', 'Limit')
+    case 'granted':
+      return tr('providerPool.accountStatus.items.granted', 'Granted')
+    case 'topped_up':
+      return tr('providerPool.accountStatus.items.toppedUp', 'Top-up')
+    default:
+      return itemKey
+  }
+}
+
+function getAccountStatusKeyLabel(keyHash?: string): string {
+  if (!keyHash) return ''
+  return trp('providerPool.accountStatus.usingKey', { key: keyHash }, `Using key ${keyHash}`)
 }
 
 async function startOAuthConnect(providerId: string) {
@@ -1098,6 +1259,7 @@ function selectProvider(providerId: string) {
 
 // Drag and drop handlers
 function handleDragStart(e: DragEvent, provider: Provider) {
+  if (!canReorderProviders.value) return
   draggedProvider.value = provider
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move'
@@ -1106,6 +1268,7 @@ function handleDragStart(e: DragEvent, provider: Provider) {
 }
 
 function handleDragOver(e: DragEvent, provider: Provider) {
+  if (!canReorderProviders.value) return
   e.preventDefault()
   if (e.dataTransfer) {
     e.dataTransfer.dropEffect = 'move'
@@ -1116,15 +1279,18 @@ function handleDragOver(e: DragEvent, provider: Provider) {
 }
 
 function handleDragLeave() {
+  if (!canReorderProviders.value) return
   dragOverProvider.value = null
 }
 
 function handleDragEnd() {
+  if (!canReorderProviders.value) return
   draggedProvider.value = null
   dragOverProvider.value = null
 }
 
 async function handleDrop(e: DragEvent, targetProvider: Provider) {
+  if (!canReorderProviders.value) return
   e.preventDefault()
   dragOverProvider.value = null
 
@@ -1429,7 +1595,7 @@ async function saveModelParams() {
 
 async function detectCapabilities() {
   const provider = displayProvider.value
-  if (!provider) return
+  if (!provider || provider.metadata_mode === 'catalog') return
 
   detectingCapabilities.value = provider.id
   try {
@@ -1594,7 +1760,7 @@ onMounted(() => {
           @click="openAddProviderModal"
         >
           <span>+</span>
-          {{ t('providerPool.addCustom') }}
+          {{ tr('providerPool.addProvider', t('providerPool.addCustom')) }}
         </button>
       </div>
     </div>
@@ -1734,7 +1900,7 @@ onMounted(() => {
       <div class="space-y-2 max-h-[360px] overflow-y-auto lg:max-h-[480px]">
         <!-- Drag hint -->
         <p
-          v-if="filteredProviders.length > 1 && !searchQuery"
+          v-if="canReorderProviders && !searchQuery"
           class="text-xs text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1"
         >
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1750,7 +1916,7 @@ onMounted(() => {
         <div
           v-for="provider in filteredProviders"
           :key="provider.id"
-          draggable="true"
+          :draggable="canReorderProviders"
           :class="[
             'p-3 rounded-lg border transition-all select-none group/card',
             store.selectedProviderId === provider.id
@@ -1760,7 +1926,7 @@ onMounted(() => {
               ? 'border-gray-300 dark:border-gray-600 border-dashed bg-gray-100 dark:bg-gray-700/10'
               : '',
             draggedProvider?.id === provider.id ? 'opacity-50' : '',
-            draggedProvider ? 'cursor-grabbing' : 'cursor-pointer',
+            canReorderProviders && draggedProvider ? 'cursor-grabbing' : 'cursor-pointer',
           ]"
           @click="selectProvider(provider.id)"
           @dragstart="handleDragStart($event, provider)"
@@ -1773,6 +1939,7 @@ onMounted(() => {
             <div class="flex items-center gap-2">
               <!-- Drag handle - only visible during drag -->
               <div
+                v-if="canReorderProviders"
                 :class="[
                   'flex-shrink-0 text-gray-400 dark:text-gray-500 cursor-grab transition-opacity',
                   draggedProvider ? 'opacity-100' : 'opacity-0',
@@ -1992,7 +2159,7 @@ onMounted(() => {
                   >
                   <span>·</span>
                   <span>
-                    {{ t('providerPool.maxTokens') }}:
+                    {{ providerOutputLimitLabel }}:
                     {{
                       displayProvider!.model_params?.max_tokens ||
                       displayProvider!.model_params?.detected_max_tokens ||
@@ -2044,10 +2211,23 @@ onMounted(() => {
                   </template>
                   <span
                     v-else
-                    data-testid="provider-location-fixed-cloud"
-                    class="px-1.5 py-0.5 rounded text-[10px] transition-colors bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                    :data-testid="
+                      getEffectiveProviderLocation(displayProvider) === 'local'
+                        ? 'provider-location-fixed-local'
+                        : 'provider-location-fixed-cloud'
+                    "
+                    :class="[
+                      'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                      getEffectiveProviderLocation(displayProvider) === 'local'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+                    ]"
                   >
-                    ☁️ {{ t('providerPool.locationCloud') }}
+                    {{
+                      getEffectiveProviderLocation(displayProvider) === 'local'
+                        ? `💻 ${t('providerPool.locationLocal')}`
+                        : `☁️ ${t('providerPool.locationCloud')}`
+                    }}
                   </span>
                 </div>
               </div>
@@ -2083,6 +2263,7 @@ onMounted(() => {
               </h3>
               <div class="flex gap-1">
                 <button
+                  v-if="displayProvider!.metadata_mode !== 'catalog'"
                   :disabled="
                     detectingCapabilities === displayProvider!.id || !displayProvider!.base_url
                   "
@@ -2115,7 +2296,7 @@ onMounted(() => {
               </div>
               <div>
                 <span class="text-gray-500 dark:text-gray-400"
-                  >{{ t('providerPool.maxTokens') }}:</span
+                  >{{ providerOutputLimitLabel }}:</span
                 >
                 <span
                   v-if="displayProvider!.model_params?.max_tokens"
@@ -2164,18 +2345,7 @@ onMounted(() => {
           </div>
 
           <!-- Base URL Section (for providers that need configuration) -->
-          <div
-            v-if="
-              displayProvider!.type !== 'trial' &&
-              (!displayProvider!.base_url ||
-                displayProvider!.id === 'azure-openai' ||
-                displayProvider!.id === 'bedrock' ||
-                displayProvider!.id === 'ollama' ||
-                displayProvider!.type === 'custom' ||
-                displayProvider!.type === 'platform')
-            "
-            class="mb-4"
-          >
+          <div v-if="showBaseURLSection" data-testid="provider-base-url-section" class="mb-4">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.baseUrl') }}
@@ -2480,9 +2650,7 @@ onMounted(() => {
                   @click="startOAuthConnect(displayProvider.id)"
                 >
                   {{
-                    connectingOAuth === displayProvider.id
-                      ? '...'
-                      : t('providerPool.oauth.connect')
+                    connectingOAuth === displayProvider.id ? '...' : t('providerPool.oauth.connect')
                   }}
                 </button>
               </div>
@@ -2854,6 +3022,54 @@ onMounted(() => {
             {{ t('providerPool.usage.loading') }}
           </div>
 
+          <div
+            v-if="shouldShowProviderAccountStatus"
+            data-testid="provider-account-status-section"
+            class="mb-4 p-3 bg-gray-50 dark:bg-slate-900/30 rounded-lg border border-gray-100 dark:border-slate-700/50"
+          >
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ tr('providerPool.accountStatus.title', 'Account Status') }}
+              </h3>
+              <span v-if="providerAccountStatus?.key_hash" class="text-[10px] text-gray-500">
+                {{ getAccountStatusKeyLabel(providerAccountStatus.key_hash) }}
+              </span>
+            </div>
+            <div v-if="store.loadingAccountStatus === displayProvider!.id" class="text-xs text-gray-400">
+              {{ tr('providerPool.accountStatus.loading', 'Loading account status...') }}
+            </div>
+            <div v-else-if="providerAccountStatus?.items?.length" class="space-y-3">
+              <div
+                v-if="providerAccountStatusPrimaryItem"
+                class="p-3 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700"
+              >
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ getAccountStatusItemLabel(providerAccountStatusPrimaryItem.key) }}
+                </div>
+                <div class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
+                  {{ formatAccountStatusAmount(providerAccountStatusPrimaryItem) }}
+                </div>
+              </div>
+              <div v-if="providerAccountStatusSecondaryItems.length" class="grid grid-cols-2 gap-2">
+                <div
+                  v-for="item in providerAccountStatusSecondaryItems"
+                  :key="item.key"
+                  class="p-2 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700"
+                >
+                  <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                    {{ getAccountStatusItemLabel(item.key) }}
+                  </div>
+                  <div class="text-sm font-medium text-gray-900 dark:text-white mt-1">
+                    {{ formatAccountStatusAmount(item) }}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-xs text-gray-400">
+              {{ tr('providerPool.accountStatus.unavailable', 'Account status unavailable') }}
+            </div>
+          </div>
+
           <!-- Models Section — shows models for selected key or provider-level fallback -->
           <div>
             <div class="flex items-center justify-between mb-2">
@@ -3061,205 +3277,352 @@ onMounted(() => {
     <Teleport to="body">
       <div
         v-if="showAddModal"
-        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        class="fixed inset-0 z-50 overflow-y-auto bg-black/50 px-4 py-4 sm:py-6"
       >
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
-          <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
-            {{ t('providerPool.addCustomProvider') }}
-          </h2>
-          <form class="space-y-4" @submit.prevent="addCustomProvider">
-            <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
-                t('providerPool.providerName')
-              }}</label>
-              <input
-                v-model="newProvider.name"
-                type="text"
-                required
-                :disabled="addingProvider"
-                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-              />
-            </div>
-            <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
-                t('providerPool.baseUrl')
-              }}</label>
-              <input
-                v-model="newProvider.base_url"
-                type="url"
-                required
-                :disabled="addingProvider"
-                placeholder="https://api.example.com/v1"
-                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-              />
-            </div>
-            <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
-                t('providerPool.apiFormatLabel')
-              }}</label>
-              <select
-                v-model="newProvider.format"
-                data-testid="new-provider-format-select"
-                :disabled="addingProvider"
-                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-              >
-                <option
-                  v-for="option in editableCustomProviderFormatOptions"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ t(`providerPool.apiFormatOptions.${option.value}`) }}
-                </option>
-              </select>
-              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.apiFormatHint') }}</p>
-            </div>
-            <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
-                t('providerPool.apiKeyOptional')
-              }}</label>
-              <div class="relative">
-                <input
-                  v-model.trim="newProvider.api_key"
-                  :type="showNewProviderApiKey ? 'text' : 'password'"
-                  :disabled="addingProvider"
-                  placeholder="sk-..."
-                  class="provider-input-with-action w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-                />
-                <button
-                  type="button"
-                  :disabled="addingProvider"
-                  class="provider-input-action absolute inset-y-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50"
-                  :title="showNewProviderApiKey ? 'Hide API Key' : 'Show API Key'"
-                  @click="showNewProviderApiKey = !showNewProviderApiKey"
-                >
-                  <svg
-                    v-if="showNewProviderApiKey"
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 012.132-3.368m3.1-2.329A9.96 9.96 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.036 10.036 0 01-4.293 5.232M15 12a3 3 0 11-4.243-4.243m0 0L3 3m7.757 4.757L21 21"
-                    />
-                  </svg>
-                  <svg
-                    v-else
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M2.458 12C3.732 7.943 7.522 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7z"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.apiKeyHint') }}</p>
-            </div>
-            <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
-                t('providerPool.location')
-              }}</label>
-              <div class="flex gap-2">
-                <button
-                  type="button"
-                  :disabled="addingProvider"
-                  :class="[
-                    'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
-                    newProvider.location === 'cloud'
-                      ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
-                      : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500',
-                  ]"
-                  @click="newProvider.location = 'cloud'"
-                >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
-                    />
-                  </svg>
-                  {{ t('providerPool.locationCloud') }}
-                </button>
-                <button
-                  type="button"
-                  :disabled="addingProvider"
-                  :class="[
-                    'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
-                    newProvider.location === 'local'
-                      ? 'bg-green-500/20 border-green-500 text-green-500'
-                      : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500',
-                  ]"
-                  @click="newProvider.location = 'local'"
-                >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                    />
-                  </svg>
-                  {{ t('providerPool.locationLocal') }}
-                </button>
-              </div>
-              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.locationHint') }}</p>
-            </div>
-
-            <!-- Progress indicator during add -->
-            <div
-              v-if="addingProvider"
-              class="flex items-center gap-2 p-3 bg-gray-100 dark:bg-slate-700 rounded-lg"
-            >
+        <div class="flex min-h-full items-start justify-center sm:items-center">
+          <div
+            :class="[
+              'flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-800 sm:max-h-[90vh]',
+              addProviderMode === 'chooser' ? 'max-w-5xl' : 'max-w-2xl',
+            ]"
+          >
+            <template v-if="addProviderMode === 'chooser'">
               <div
-                class="animate-spin w-4 h-4 border-2 border-gray-900 dark:border-gray-300 border-t-transparent rounded-full flex-shrink-0"
-              ></div>
-              <span class="text-sm text-gray-600 dark:text-gray-300">
-                {{
-                  addingStep === 'adding'
-                    ? t('providerPool.addingProvider')
-                    : addingStep === 'probing'
-                      ? t('providerPool.probingModels')
-                      : ''
-                }}
-              </span>
-            </div>
+                class="flex items-start justify-between gap-4 border-b border-gray-200 p-5 dark:border-slate-700"
+              >
+                <div>
+                  <h2 class="text-lg font-bold text-gray-900 dark:text-white">
+                    {{ tr('providerPool.addProvider', t('providerPool.addCustomProvider')) }}
+                  </h2>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{
+                      tr(
+                        'providerPool.addProviderHint',
+                        'Select an official provider or add a custom compatible endpoint.'
+                      )
+                    }}
+                  </p>
+                </div>
+                <button
+                  class="px-3 py-1.5 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm"
+                  @click="closeAddProviderModal"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
 
-            <div class="flex justify-end gap-3 mt-6">
-              <button
-                type="button"
-                :disabled="addingProvider"
-                class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg disabled:opacity-50"
-                @click="closeAddProviderModal"
+              <div class="flex-1 overflow-y-auto p-5">
+                <div class="space-y-3">
+                  <div>
+                    <h3 class="mb-2 text-sm font-medium text-gray-900 dark:text-white">
+                      {{ tr('providerPool.officialProvider', 'Official Provider') }}
+                    </h3>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <button
+                        v-for="provider in officialProviderOptions"
+                        :key="provider.id"
+                        type="button"
+                        class="text-left p-3 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900/30 hover:border-gray-300 dark:hover:border-slate-500 transition-colors"
+                        @click="selectOfficialProviderOption(provider)"
+                      >
+                        <div class="flex items-start gap-3">
+                          <ProviderIcon
+                            :provider-id="provider.id"
+                            :custom-icon="provider.custom_icon"
+                            size="lg"
+                          />
+                          <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2">
+                              <div class="font-medium text-gray-900 dark:text-white truncate">
+                                {{ getProviderName(provider) }}
+                              </div>
+                              <span
+                                v-if="provider.enabled"
+                                class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+                              >
+                                {{ tr('providerPool.configured', 'Configured') }}
+                              </span>
+                            </div>
+                            <div class="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
+                              {{
+                                getProviderDescription(provider) ||
+                                provider.api_format ||
+                                provider.location
+                              }}
+                            </div>
+                            <div class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                              {{ provider.api_format || 'openai' }} · {{ provider.location }}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="border-t border-gray-200 pt-3 dark:border-slate-700">
+                    <button
+                      type="button"
+                      class="w-full text-left p-3 rounded-lg border border-dashed border-gray-300 dark:border-slate-600 hover:border-gray-400 dark:hover:border-slate-500 transition-colors"
+                      @click="openCustomProviderForm"
+                    >
+                      <div class="font-medium text-gray-900 dark:text-white">
+                        {{
+                          tr(
+                            'providerPool.customCompatibleProvider',
+                            'Custom Compatible Provider'
+                          )
+                        }}
+                      </div>
+                      <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          tr(
+                            'providerPool.customCompatibleProviderHint',
+                            'Bring your own compatible endpoint and keep dynamic verify/probe support.'
+                          )
+                        }}
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <template v-else>
+              <div
+                class="flex items-start justify-between gap-4 border-b border-gray-200 p-5 dark:border-slate-700"
               >
-                {{ t('common.cancel') }}
-              </button>
-              <button
-                type="submit"
-                :disabled="addingProvider"
-                class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg disabled:opacity-50"
-              >
-                {{ addingProvider ? t('common.processing') : t('common.add') }}
-              </button>
-            </div>
-          </form>
+                <div class="flex min-w-0 items-start gap-2">
+                  <button
+                    type="button"
+                    class="px-2 py-1 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded text-sm"
+                    @click="addProviderMode = 'chooser'"
+                  >
+                    ←
+                  </button>
+                  <div class="min-w-0">
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white">
+                      {{ t('providerPool.addCustomProvider') }}
+                    </h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{
+                        tr(
+                          'providerPool.customCompatibleProviderHint',
+                          'Bring your own compatible endpoint and keep dynamic verify/probe support.'
+                        )
+                      }}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  class="px-3 py-1.5 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm"
+                  @click="closeAddProviderModal"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+
+              <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="addCustomProvider">
+                <div class="flex-1 overflow-y-auto p-5">
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                        t('providerPool.providerName')
+                      }}</label>
+                      <input
+                        v-model="newProvider.name"
+                        type="text"
+                        required
+                        :disabled="addingProvider"
+                        class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                        t('providerPool.baseUrl')
+                      }}</label>
+                      <input
+                        v-model="newProvider.base_url"
+                        type="url"
+                        required
+                        :disabled="addingProvider"
+                        placeholder="https://api.example.com/v1"
+                        class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                        t('providerPool.apiFormatLabel')
+                      }}</label>
+                      <select
+                        v-model="newProvider.format"
+                        data-testid="new-provider-format-select"
+                        :disabled="addingProvider"
+                        class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                      >
+                        <option
+                          v-for="option in editableCustomProviderFormatOptions"
+                          :key="option.value"
+                          :value="option.value"
+                        >
+                          {{ t(`providerPool.apiFormatOptions.${option.value}`) }}
+                        </option>
+                      </select>
+                      <p class="mt-1 text-xs text-gray-400">
+                        {{ t('providerPool.apiFormatHint') }}
+                      </p>
+                    </div>
+                    <div>
+                      <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                        t('providerPool.apiKeyOptional')
+                      }}</label>
+                      <div class="relative">
+                        <input
+                          v-model.trim="newProvider.api_key"
+                          :type="showNewProviderApiKey ? 'text' : 'password'"
+                          :disabled="addingProvider"
+                          placeholder="sk-..."
+                          class="provider-input-with-action w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                        />
+                        <button
+                          type="button"
+                          :disabled="addingProvider"
+                          class="provider-input-action absolute inset-y-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50"
+                          :title="showNewProviderApiKey ? 'Hide API Key' : 'Show API Key'"
+                          @click="showNewProviderApiKey = !showNewProviderApiKey"
+                        >
+                          <svg
+                            v-if="showNewProviderApiKey"
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 012.132-3.368m3.1-2.329A9.96 9.96 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.036 10.036 0 01-4.293 5.232M15 12a3 3 0 11-4.243-4.243m0 0L3 3m7.757 4.757L21 21"
+                            />
+                          </svg>
+                          <svg
+                            v-else
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M2.458 12C3.732 7.943 7.522 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7z"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                      <p class="mt-1 text-xs text-gray-400">{{ t('providerPool.apiKeyHint') }}</p>
+                    </div>
+                    <div>
+                      <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
+                        t('providerPool.location')
+                      }}</label>
+                      <div class="flex gap-2">
+                        <button
+                          type="button"
+                          :disabled="addingProvider"
+                          :class="[
+                            'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
+                            newProvider.location === 'cloud'
+                              ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
+                              : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500',
+                          ]"
+                          @click="newProvider.location = 'cloud'"
+                        >
+                          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                            />
+                          </svg>
+                          {{ t('providerPool.locationCloud') }}
+                        </button>
+                        <button
+                          type="button"
+                          :disabled="addingProvider"
+                          :class="[
+                            'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
+                            newProvider.location === 'local'
+                              ? 'bg-green-500/20 border-green-500 text-green-500'
+                              : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500',
+                          ]"
+                          @click="newProvider.location = 'local'"
+                        >
+                          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                            />
+                          </svg>
+                          {{ t('providerPool.locationLocal') }}
+                        </button>
+                      </div>
+                      <p class="mt-1 text-xs text-gray-400">{{ t('providerPool.locationHint') }}</p>
+                    </div>
+
+                    <div
+                      v-if="addingProvider"
+                      class="flex items-center gap-2 rounded-lg bg-gray-100 p-3 dark:bg-slate-700"
+                    >
+                      <div
+                        class="animate-spin w-4 h-4 border-2 border-gray-900 dark:border-gray-300 border-t-transparent rounded-full flex-shrink-0"
+                      ></div>
+                      <span class="text-sm text-gray-600 dark:text-gray-300">
+                        {{
+                          addingStep === 'adding'
+                            ? t('providerPool.addingProvider')
+                            : addingStep === 'probing'
+                              ? t('providerPool.probingModels')
+                              : ''
+                        }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end gap-3 border-t border-gray-200 px-5 py-4 dark:border-slate-700"
+                >
+                  <button
+                    type="button"
+                    :disabled="addingProvider"
+                    class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg disabled:opacity-50"
+                    @click="closeAddProviderModal"
+                  >
+                    {{ t('common.cancel') }}
+                  </button>
+                  <button
+                    type="submit"
+                    :disabled="addingProvider"
+                    class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg disabled:opacity-50"
+                  >
+                    {{ addingProvider ? t('common.processing') : t('common.add') }}
+                  </button>
+                </div>
+              </form>
+            </template>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -3523,7 +3886,7 @@ onMounted(() => {
             </div>
             <div>
               <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
-                t('providerPool.maxTokens')
+                providerOutputLimitLabel
               }}</label>
               <input
                 v-model.number="paramsForm.maxTokens"

@@ -540,6 +540,14 @@ func TestIsConnectionClosed(t *testing.T) {
 		{"broken pipe", fmt.Errorf("write: broken pipe"), true},
 		{"websocket close", fmt.Errorf("websocket: close 1006"), true},
 		{"EOF", fmt.Errorf("EOF"), true},
+		{"target closed", fmt.Errorf("proto.PageNavigate: Target closed"), true},
+		{"target crashed", fmt.Errorf("cdp call failed: target crashed"), true},
+		{"page crashed", fmt.Errorf("Page crashed while taking screenshot"), true},
+		{"session closed", fmt.Errorf("session closed"), true},
+		{"session not found", fmt.Errorf("Session not found"), true},
+		{"target detached", fmt.Errorf("target detached"), true},
+		{"inspector detached", fmt.Errorf("Inspector.detached: Render process gone"), true},
+		{"missing context", fmt.Errorf("Cannot find context with specified id"), true},
 		{"wrapped", fmt.Errorf("navigate failed: %w", fmt.Errorf("use of closed network connection")), true},
 	}
 	for _, tt := range tests {

@@ -10,9 +10,9 @@ var (
 	trialLicense string // Ed25519-signed license injected at build time
 )
 
-// BuiltinProviders returns the list of built-in provider configurations.
+// builtinProvidersFallback returns the embedded fallback snapshot of built-in providers.
 // The trial provider is only included if a trial API key was injected at build time.
-func BuiltinProviders() []*Provider {
+func builtinProvidersFallback() []*Provider {
 	providers := []*Provider{
 		{
 			ID:          "openai",
@@ -467,9 +467,9 @@ func GetTrialLicense() string {
 	return trialLicense
 }
 
-// BuiltinModels returns known models for built-in providers
+// builtinModelsFallback returns the embedded fallback snapshot of built-in models.
 // Prices are per 1M tokens in USD (as of Jan 2026)
-func BuiltinModels() map[string][]*Model {
+func builtinModelsFallback() map[string][]*Model {
 	return map[string][]*Model{
 		"openai": {
 			{
@@ -1740,6 +1740,26 @@ func BuiltinModels() map[string][]*Model {
 			},
 		},
 	}
+}
+
+// BuiltinProviders returns the effective built-in provider list with remote catalog overrides applied.
+func BuiltinProviders() []*Provider {
+	providers := builtinProvidersFallback()
+	for _, provider := range providers {
+		if provider == nil || provider.MetadataMode != "" {
+			continue
+		}
+		provider.MetadataMode = defaultProviderMetadataMode(provider)
+	}
+	applyOfficialProviderCatalogToProviders(providers)
+	return providers
+}
+
+// BuiltinModels returns effective built-in models with remote catalog overrides applied.
+func BuiltinModels() map[string][]*Model {
+	models := builtinModelsFallback()
+	applyOfficialProviderCatalogToModels(models)
+	return models
 }
 
 // GetBuiltinProvider returns a built-in provider by ID
