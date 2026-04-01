@@ -25,6 +25,12 @@ func TestBatch1ExecutionDatasetManifest_DecodesAndCountsCases(t *testing.T) {
 	if manifest.Defaults.Scheduler.MaxConcurrency != batch1ExecutionMaxConcurrency {
 		t.Fatalf("defaults.scheduler.max_concurrency = %d, want %d", manifest.Defaults.Scheduler.MaxConcurrency, batch1ExecutionMaxConcurrency)
 	}
+	if manifest.Defaults.Scheduler.MaxAttempts != batch1ExecutionMaxAttempts {
+		t.Fatalf("defaults.scheduler.max_attempts = %d, want %d", manifest.Defaults.Scheduler.MaxAttempts, batch1ExecutionMaxAttempts)
+	}
+	if manifest.Defaults.Scheduler.RetryBackoff != batch1ExecutionRetryBackoff {
+		t.Fatalf("defaults.scheduler.retry_backoff = %s, want %s", manifest.Defaults.Scheduler.RetryBackoff, batch1ExecutionRetryBackoff)
+	}
 	if manifest.Defaults.Scoring.Mode != ScoringModeRule {
 		t.Fatalf("defaults.scoring.mode = %q, want %q", manifest.Defaults.Scoring.Mode, ScoringModeRule)
 	}
@@ -273,6 +279,12 @@ func TestMaterializeEvalGroupSpec_Batch1ExecutionPreservesCaseIDsAndMetadata(t *
 	if groupSpec.SchedulerConfig.MaxConcurrency != batch1ExecutionMaxConcurrency {
 		t.Fatalf("group scheduler max_concurrency = %d, want %d", groupSpec.SchedulerConfig.MaxConcurrency, batch1ExecutionMaxConcurrency)
 	}
+	if groupSpec.SchedulerConfig.MaxAttempts != batch1ExecutionMaxAttempts {
+		t.Fatalf("group scheduler max_attempts = %d, want %d", groupSpec.SchedulerConfig.MaxAttempts, batch1ExecutionMaxAttempts)
+	}
+	if groupSpec.SchedulerConfig.RetryBackoff != batch1ExecutionRetryBackoff {
+		t.Fatalf("group scheduler retry_backoff = %s, want %s", groupSpec.SchedulerConfig.RetryBackoff, batch1ExecutionRetryBackoff)
+	}
 
 	selected := findExecutionGroupItem(t, groupSpec.Items, "exec-web_search-en-us")
 	if selected.Expected["status"] != "completed" {
@@ -337,6 +349,12 @@ func TestBatch1ExecutionDatasetSpecs_CreateReusableEvalAssets(t *testing.T) {
 	}
 	if evalSpec.SchedulerConfig.MaxConcurrency != batch1ExecutionMaxConcurrency {
 		t.Fatalf("eval spec scheduler max_concurrency = %d, want %d", evalSpec.SchedulerConfig.MaxConcurrency, batch1ExecutionMaxConcurrency)
+	}
+	if evalSpec.SchedulerConfig.MaxAttempts != batch1ExecutionMaxAttempts {
+		t.Fatalf("eval spec scheduler max_attempts = %d, want %d", evalSpec.SchedulerConfig.MaxAttempts, batch1ExecutionMaxAttempts)
+	}
+	if evalSpec.SchedulerConfig.RetryBackoff != batch1ExecutionRetryBackoff {
+		t.Fatalf("eval spec scheduler retry_backoff = %s, want %s", evalSpec.SchedulerConfig.RetryBackoff, batch1ExecutionRetryBackoff)
 	}
 	if metadataString(evalSpec.RuntimePolicy, "gate_type") != "execution_equivalence" {
 		t.Fatalf("eval spec runtime_policy.gate_type = %q, want execution_equivalence", metadataString(evalSpec.RuntimePolicy, "gate_type"))

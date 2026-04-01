@@ -716,7 +716,7 @@ func verificationRetryable(item *RunGroupItem, failureLabel string) bool {
 		}
 	}
 	switch failureLabel {
-	case "missing_artifact", "missing_required_card", "required_check_missing", "tool_selection_error", "run_failed", "run_not_completed", "verification_failed", "timeout", "missing_clarification", "question_left_unresolved", "approval_blocked_without_replan", "tool_failed_without_fallback", "missing_evidence_collection", "missing_session_context", "session_context_mismatch", "infra_provider_blocked":
+	case "missing_artifact", "missing_required_card", "required_check_missing", "tool_selection_error", "run_failed", "run_not_completed", "verification_failed", "timeout", "missing_clarification", "question_left_unresolved", "approval_blocked_without_replan", "tool_failed_without_fallback", "missing_evidence_collection", "missing_session_context", "session_context_mismatch", "infra_provider_auth", "infra_provider_quota", "infra_provider_blocked":
 		return true
 	default:
 		return false

@@ -196,6 +196,24 @@ func (c *Controller) loadGroupReportContext(ctx context.Context, group *RunGroup
 	if err != nil {
 		return nil, err
 	}
+	reconciled, err := c.reconcileGroupReportState(ctx, group, items, latestCards, runtimeBundle)
+	if err != nil {
+		return nil, err
+	}
+	if reconciled {
+		items, err = c.store.ListGroupItems(ctx, group.ID)
+		if err != nil {
+			return nil, err
+		}
+		scorecards, err = c.store.ListScorecards(ctx, group.ID)
+		if err != nil {
+			return nil, err
+		}
+		latestCards = latestScorecardsByItem(scorecards)
+		if refreshed, refreshErr := c.refreshGroupSummary(ctx, group.ID); refreshErr == nil && refreshed != nil {
+			group = refreshed
+		}
+	}
 	metrics := buildGroupReportMetrics(items, latestCards, runtimeBundle.runByID)
 	return &groupReportContext{
 		group:           group,
@@ -210,6 +228,90 @@ func (c *Controller) loadGroupReportContext(ctx context.Context, group *RunGroup
 		itemContracts:   buildGroupItemContracts(group, items),
 		metrics:         metrics,
 	}, nil
+}
+
+func (c *Controller) reconcileGroupReportState(ctx context.Context, group *RunGroup, items []RunGroupItem, latestCards map[string]Scorecard, runtimeBundle *groupReportRuntimeBundle) (bool, error) {
+	if c == nil || c.store == nil || group == nil || runtimeBundle == nil {
+		return false, nil
+	}
+
+	now := timeutil.NowTime()
+	reconciled := false
+	for i := range items {
+		item := &items[i]
+		// Avoid double-scoring while the dispatcher is actively running/scoring
+		// this item under a valid lease. Reconciliation is meant to repair stale
+		// state, not race the live dispatcher.
+		if (item.Status == RunGroupItemStatusRunning || item.Status == RunGroupItemStatusScoring) &&
+			strings.TrimSpace(item.LeaseOwner) != "" &&
+			item.LeaseExpiresAt != nil &&
+			item.LeaseExpiresAt.After(now) {
+			continue
+		}
+
+		runID := strings.TrimSpace(item.LatestRunID)
+		if runID == "" {
+			continue
+		}
+		run := runtimeBundle.runByID[runID]
+		if run == nil || run.Status != RunStatusCompleted {
+			continue
+		}
+
+		card, hasCard := latestCards[item.ID]
+		needsRescore := !hasCard
+		if hasCard {
+			if strings.TrimSpace(card.RunID) != run.ID {
+				needsRescore = true
+			}
+			if item.Status != verdictToItemStatus(&card) {
+				needsRescore = true
+			}
+			if run.UpdatedAt.After(card.CreatedAt) && card.Verdict != ScoreVerdictPass {
+				needsRescore = true
+			}
+			if runLooksVerifiedSuccessful(run) && card.Verdict != ScoreVerdictPass {
+				needsRescore = true
+			}
+		}
+		if !needsRescore {
+			continue
+		}
+
+		verification := c.verifyGroupRun(ctx, group, item, run)
+		scorecard := c.scoreGroupRun(ctx, group, item, run, &verification)
+		scorecard = c.annotateResearchProposalSummary(ctx, group, run, scorecard)
+		if err := c.store.AttachScorecard(ctx, scorecard); err != nil {
+			return reconciled, err
+		}
+
+		nextStatus := verdictToItemStatus(&scorecard)
+		if item.Status != nextStatus || item.LeaseOwner != "" || item.LeaseExpiresAt != nil {
+			item.Status = nextStatus
+			item.LeaseOwner = ""
+			item.LeaseExpiresAt = nil
+			if err := c.store.UpdateGroupItem(ctx, item); err != nil {
+				return reconciled, err
+			}
+		}
+		latestCards[item.ID] = scorecard
+		reconciled = true
+	}
+	return reconciled, nil
+}
+
+func runLooksVerifiedSuccessful(run *Run) bool {
+	if run == nil {
+		return false
+	}
+	corpus := strings.ToLower(strings.TrimSpace(strings.Join([]string{run.Result, run.Error}, "\n")))
+	if corpus == "" {
+		return false
+	}
+	return strings.Contains(corpus, "verification: pass") ||
+		strings.Contains(corpus, "verification passed") ||
+		strings.Contains(corpus, "grounded runtime checks passed") ||
+		strings.Contains(corpus, "task completed with grounded")
 }
 
 func buildGroupReportFromContext(reportCtx *groupReportContext) (*RunGroupReport, error) {

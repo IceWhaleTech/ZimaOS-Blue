@@ -50,6 +50,21 @@ type BuildResult struct {
 	ContextPacks *contextpack.SelectionSet
 }
 
+type promptSectionStability string
+
+const (
+	promptSectionStable  promptSectionStability = "stable_prefix"
+	promptSectionConfig  promptSectionStability = "config_prefix"
+	promptSectionDynamic promptSectionStability = "dynamic_turn"
+)
+
+type promptSection struct {
+	Name      string
+	Stability promptSectionStability
+	Reason    string
+	Content   string
+}
+
 // String returns the full system prompt as a single string (for non-Anthropic providers).
 // No newline separators — XML tags are self-delimiting.
 func (r BuildResult) String() string {
@@ -242,6 +257,12 @@ const (
 
 	agentModeCodingDefaultsGuidance = "<coding_defaults>For coding tasks, start by checking whether mainstream skills are available: superpowers and ui-ux-pro-max-skill. If missing, use available skill-install workflow to download them before implementation; if install is unavailable or blocked, state it once and continue with best effort. If stack preferences are unclear, ask the user once and then remember the answer as long-term preference (backend/frontend/mobile/client priorities). Default stack when no preference is known: backend=Go, frontend=React, mobile=React Native, client=Electron. If the repository or runtime already implies a specific language/framework (for example Python or Node.js), follow the existing environment instead of forcing defaults.</coding_defaults>"
 
+	agentModeCoordinatorGuidance = "<coordination>If tool `subagents` is available, you are the coordinator for bounded worker delegation and may delegate bounded independent work. Default workflow: research -> synthesis -> implementation -> verification. Do the synthesis yourself: read worker findings, decide the approach, and then write a self-contained follow-up brief with concrete files, constraints, and done criteria. Parallelize read-only work when helpful, but serialize overlapping writes so only one worker edits a file set at a time. Continue the same worker when context overlap is high or when it is correcting its own failed attempt. Spawn a fresh worker when the next task is narrow after broad research, when the prior approach polluted context, or when you need independent verification with fresh context. Stop a worker promptly when requirements change or you detect it is heading in the wrong direction.</coordination>"
+
+	agentModeCoordinatorExamplesGuidance = "<coordination_examples>Never delegate understanding with vague prompts. Bad delegation: 'Based on your findings, fix the auth bug.' Good delegation: 'Fix the null pointer in src/auth/validate.ts:42 by checking whether Session.user is nil before reading user.id. If nil, return 401 with an expired-session error, update the relevant test, and report the verification output.' Workers cannot see your conversation, so every prompt must be self-contained.</coordination_examples>"
+
+	agentModeCoordinatorVerificationGuidance = "<coordination_verification>Use the shared scratchpad as durable cross-worker state for task claims, interim findings, blockers, and worker handoffs. For non-trivial implementation, prefer independent verification with fresh context instead of letting the implementation path rubber-stamp itself. Verification must prove behavior, not merely confirm that files exist.</coordination_verification>"
+
 	agentModeExecutionPrefix = "<execution>Before each tool call, briefly state which task you are working on. "
 
 	agentModeExecutionAutoConfirmClause = "Auto-confirm enabled — execute without asking. For potential asset-loss operations (fund transfers, securities transactions, redemption/gift codes), always require explicit secondary user confirmation immediately before execution. "
@@ -271,18 +292,7 @@ func (b *SystemPromptBuilder) BuildStructured(ctx context.Context, extraPrompt s
 	// ── STATIC_SYSTEM: byte-stable across all requests ──
 	// Core guidance is computed once; env-sensitive wrapper is cached by locale/timezone.
 	b.staticCoreOnce.Do(func() {
-		var sb strings.Builder
-		sb.WriteString(roleGuidance)
-		sb.WriteString(instructionPriorityGuidance)
-		sb.WriteString(groundingGuidance)
-		sb.WriteString(expressivenessGuidance)
-		sb.WriteString(safetyGuidance)
-		sb.WriteString(toolCallStyleGuidance)
-		sb.WriteString(webToolRoutingGuidance)
-		sb.WriteString(blueCoreRulesGuidance)
-		sb.WriteString(silentReplyGuidance)
-		sb.WriteString(heartbeatGuidance)
-		b.staticCoreStr = sb.String()
+		b.staticCoreStr = joinPromptSections(b.staticCoreSections())
 	})
 	result.Static = b.buildStaticSystem()
 
@@ -304,36 +314,11 @@ func (b *SystemPromptBuilder) BuildStructured(ctx context.Context, extraPrompt s
 			b.lastContextStats.Store(nil)
 		}
 	} else {
-		var cfg strings.Builder
-
-		// Agent mode guidance (if enabled)
-		if b.isAgentMode() {
-			b.writeAgentModeGuidanceTo(&cfg)
-		}
-
-		// Workspace information
-		if b.config.WorkspaceDir != "" {
-			b.writeWorkspaceInfoTo(&cfg, gitRepo)
-		}
-
-		// Available tools information
-		if hasTools {
-			b.writeToolsInfoTo(&cfg, hasSandbox)
-		}
-
-		// Available skills (XML index — cached string)
-		if s := b.buildSkillsSection(); s != "" {
-			cfg.WriteString(s)
-		}
-
-		// Workspace context files (SOUL.md, USER.md, etc.)
-		if len(contextFiles) > 0 {
-			cfg.WriteString(b.buildProjectContext(contextFiles))
-		} else {
+		configSections := b.configSections(contextFiles, gitRepo, hasTools, hasSandbox)
+		if len(contextFiles) == 0 {
 			b.lastContextStats.Store(nil)
 		}
-
-		result.Config = cfg.String()
+		result.Config = joinPromptSections(configSections)
 		var stats *ContextStats
 		if len(contextFiles) > 0 {
 			stats = cloneContextStats(b.LastContextStats())
@@ -346,18 +331,9 @@ func (b *SystemPromptBuilder) BuildStructured(ctx context.Context, extraPrompt s
 
 	// ── TURN_DYNAMIC: changes every request ──
 	// Runtime information (contains timestamp — must be dynamic)
-	var dyn strings.Builder
-	b.writeRuntimeInfoTo(&dyn)
-	if extraPrompt != "" {
-		dyn.WriteString(extraPrompt)
-	}
-	if b.contextResolver != nil {
-		if prompt, selection, err := b.contextResolver.ResolvePrompt(ctx); err == nil && prompt != "" {
-			dyn.WriteString(prompt)
-			result.ContextPacks = selection.Clone()
-		}
-	}
-	result.Dynamic = dyn.String()
+	dynamicSections, selection := b.dynamicSections(ctx, extraPrompt)
+	result.Dynamic = joinPromptSections(dynamicSections)
+	result.ContextPacks = selection
 
 	return result
 }
@@ -381,7 +357,7 @@ func (b *SystemPromptBuilder) buildStaticSystem() string {
 
 	var sb strings.Builder
 	sb.WriteString(b.staticCoreStr)
-	b.writePlatformInfoTo(&sb)
+	appendPromptSections(&sb, b.staticRuntimeSections())
 	value := sb.String()
 	if b.staticCache != nil {
 		b.staticCache.Put(key, value)
@@ -494,12 +470,21 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 	}
 
 	sb.WriteString("<tool_guidance>Built-in API tools. Call via tool_use. Do not fake file/tool calls by routing them through shell commands.")
+	sb.WriteString("<routing_guide>Prefer dedicated tools over exec when they directly cover the action so the runtime can validate, route, and audit the work more precisely.</routing_guide>")
+	sb.WriteString("<parallel_guide>When multiple read-only checks do not depend on each other, batch or parallelize them when the runtime supports it. Keep dependent or state-changing actions sequential.</parallel_guide>")
 	if b.toolRegistry.Get("write") != nil || b.toolRegistry.Get("file_write") != nil {
 		sb.WriteString("<write_guide>For large file writes, prefer write_begin + repeated write_chunk + write_commit. If you must use write directly, never send one huge write payload: write the first chunk, then continue with smaller chunks using append=true.</write_guide>")
 	}
 	if b.toolRegistry.Get("office") != nil {
 		sb.WriteString("<office_guide>For polished .xlsx or .docx artifacts, prefer office over raw file_write so styles, layout, and typography are generated natively.</office_guide>")
 	}
+	if b.toolRegistry.Get("subagents") != nil {
+		sb.WriteString("<subagent_guide>Use subagents only for bounded independent work such as research, isolated implementation slices, or independent verification. After research, synthesize the findings yourself before delegating follow-up work. Never send overlapping writers to the same file set.</subagent_guide>")
+	}
+	if b.toolRegistry.Get("ask") != nil {
+		sb.WriteString("<ask_guide>Use ask only when key requirements are missing, user preferences cannot be inferred, or a risky action needs confirmation. Do not ask for facts that available tools can verify directly.</ask_guide>")
+	}
+	sb.WriteString("<verification_guide>After non-trivial implementation, run independent verification such as tests, typechecks, or focused validation before claiming success.</verification_guide>")
 	b.writeExecGuidanceTo(sb, hasSandbox)
 	sb.WriteString("</tool_guidance>")
 	return true
@@ -567,6 +552,16 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 	sb.WriteString(agentModeIntroGuidance)
 	sb.WriteString(agentModePlanningGuidance)
 	sb.WriteString(agentModeCodingDefaultsGuidance)
+	if b.hasToolNamed("subagents") {
+		sb.WriteString(agentModeCoordinatorGuidance)
+		sb.WriteString(agentModeCoordinatorExamplesGuidance)
+		sb.WriteString(agentModeCoordinatorVerificationGuidance)
+		if rel := workspace.SharedScratchpadRelPath(); rel != "" && b.config.WorkspaceDir != "" {
+			sb.WriteString("<shared_scratchpad>Shared scratchpad lives at ")
+			sb.WriteString(rel)
+			sb.WriteString(" within the workspace. Use it for task claims, interim findings, blockers, and worker handoffs.</shared_scratchpad>")
+		}
+	}
 	sb.WriteString(agentModeExecutionPrefix)
 	if autoConfirm {
 		sb.WriteString(agentModeExecutionAutoConfirmClause)
@@ -577,6 +572,158 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 	sb.WriteString(agentModeVerificationGuidance)
 	sb.WriteString(agentModeCompletionGuidance)
 	sb.WriteString(agentModeClosingTag)
+}
+
+func (b *SystemPromptBuilder) hasToolNamed(name string) bool {
+	if b == nil || b.toolRegistry == nil {
+		return false
+	}
+	return b.toolRegistry.Get(strings.TrimSpace(name)) != nil
+}
+
+func joinPromptSections(sections []promptSection) string {
+	var sb strings.Builder
+	appendPromptSections(&sb, sections)
+	return sb.String()
+}
+
+func appendPromptSections(sb *strings.Builder, sections []promptSection) {
+	for _, section := range sections {
+		if strings.TrimSpace(section.Content) == "" {
+			continue
+		}
+		sb.WriteString(section.Content)
+	}
+}
+
+func (b *SystemPromptBuilder) staticCoreSections() []promptSection {
+	return []promptSection{
+		{Name: "role", Stability: promptSectionStable, Reason: "assistant identity is shared across turns", Content: roleGuidance},
+		{Name: "instruction_priority", Stability: promptSectionStable, Reason: "instruction hierarchy must remain byte-stable", Content: instructionPriorityGuidance},
+		{Name: "grounding", Stability: promptSectionStable, Reason: "grounding policy is global runtime guidance", Content: groundingGuidance},
+		{Name: "expressiveness", Stability: promptSectionStable, Reason: "writing style defaults are shared across turns", Content: expressivenessGuidance},
+		{Name: "safety", Stability: promptSectionStable, Reason: "safety policy must stay in the stable prefix", Content: safetyGuidance},
+		{Name: "tool_style", Stability: promptSectionStable, Reason: "tool narration policy is global guidance", Content: toolCallStyleGuidance},
+		{Name: "web_tools", Stability: promptSectionStable, Reason: "web routing defaults should remain cache-stable", Content: webToolRoutingGuidance},
+		{Name: "blue_core_rules", Stability: promptSectionStable, Reason: "core runtime rules are shared across turns", Content: blueCoreRulesGuidance},
+		{Name: "silent_reply", Stability: promptSectionStable, Reason: "special silent marker contract must stay stable", Content: silentReplyGuidance},
+		{Name: "heartbeat", Stability: promptSectionStable, Reason: "heartbeat contract must stay stable", Content: heartbeatGuidance},
+	}
+}
+
+func (b *SystemPromptBuilder) staticRuntimeSections() []promptSection {
+	return []promptSection{{
+		Name:      "platform",
+		Stability: promptSectionStable,
+		Reason:    "locale and platform information change rarely and should stay in the cached prefix",
+		Content:   b.buildPlatformInfoSection(),
+	}}
+}
+
+func (b *SystemPromptBuilder) configSections(contextFiles map[string]string, gitRepo, hasTools, hasSandbox bool) []promptSection {
+	sections := make([]promptSection, 0, 5)
+	if b.isAgentMode() {
+		sections = append(sections, promptSection{
+			Name:      "agent_mode",
+			Stability: promptSectionConfig,
+			Reason:    "agent mode depends on runtime mode, confirmation policy, and tool availability",
+			Content:   b.buildAgentModeGuidanceSection(),
+		})
+	}
+	if b.config.WorkspaceDir != "" {
+		sections = append(sections, promptSection{
+			Name:      "workspace",
+			Stability: promptSectionConfig,
+			Reason:    "workspace metadata changes only when the active workspace changes",
+			Content:   b.buildWorkspaceInfoSection(gitRepo),
+		})
+	}
+	if hasTools {
+		sections = append(sections, promptSection{
+			Name:      "tools",
+			Stability: promptSectionConfig,
+			Reason:    "tool guidance changes when the exposed tool surface changes",
+			Content:   b.buildToolsInfoSection(hasSandbox),
+		})
+	}
+	if s := b.buildSkillsSection(); s != "" {
+		sections = append(sections, promptSection{
+			Name:      "skills",
+			Stability: promptSectionConfig,
+			Reason:    "skill catalog changes less frequently than per-turn runtime context",
+			Content:   s,
+		})
+	}
+	if len(contextFiles) > 0 {
+		sections = append(sections, promptSection{
+			Name:      "project_context",
+			Stability: promptSectionConfig,
+			Reason:    "workspace context files are cacheable until project files change",
+			Content:   b.buildProjectContext(contextFiles),
+		})
+	}
+	return sections
+}
+
+func (b *SystemPromptBuilder) dynamicSections(ctx context.Context, extraPrompt string) ([]promptSection, *contextpack.SelectionSet) {
+	sections := []promptSection{{
+		Name:      "runtime_info",
+		Stability: promptSectionDynamic,
+		Reason:    "timestamps change every turn and must stay out of the cached prefix",
+		Content:   b.buildRuntimeInfoSection(),
+	}}
+	if extraPrompt != "" {
+		sections = append(sections, promptSection{
+			Name:      "extra_prompt",
+			Stability: promptSectionDynamic,
+			Reason:    "late-bound execution hints and per-turn prompt injections vary by request",
+			Content:   extraPrompt,
+		})
+	}
+	if b.contextResolver != nil {
+		if prompt, selection, err := b.contextResolver.ResolvePrompt(ctx); err == nil && prompt != "" {
+			sections = append(sections, promptSection{
+				Name:      "context_packs",
+				Stability: promptSectionDynamic,
+				Reason:    "late-bound context pack selection is request-specific and must remain dynamic",
+				Content:   prompt,
+			})
+			if selection != nil {
+				return sections, selection.Clone()
+			}
+		}
+	}
+	return sections, nil
+}
+
+func (b *SystemPromptBuilder) buildToolsInfoSection(hasSandbox bool) string {
+	var sb strings.Builder
+	b.writeToolsInfoTo(&sb, hasSandbox)
+	return sb.String()
+}
+
+func (b *SystemPromptBuilder) buildWorkspaceInfoSection(gitRepo bool) string {
+	var sb strings.Builder
+	b.writeWorkspaceInfoTo(&sb, gitRepo)
+	return sb.String()
+}
+
+func (b *SystemPromptBuilder) buildAgentModeGuidanceSection() string {
+	var sb strings.Builder
+	b.writeAgentModeGuidanceTo(&sb)
+	return sb.String()
+}
+
+func (b *SystemPromptBuilder) buildRuntimeInfoSection() string {
+	var sb strings.Builder
+	b.writeRuntimeInfoTo(&sb)
+	return sb.String()
+}
+
+func (b *SystemPromptBuilder) buildPlatformInfoSection() string {
+	var sb strings.Builder
+	b.writePlatformInfoTo(&sb)
+	return sb.String()
 }
 
 // buildSkillsSection builds the Skills section for the system prompt.
@@ -591,7 +738,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("<skills>Invoke through the Blue CLI. Built-in skills usually use `blue <cmd> ...` or dotted forms such as `blue reminder.add ...` (for example `blue web_query input=\"latest news\"`). Command groups may use subcommands such as `blue media generate ...` and `blue media status ...`. External CLIs documented as skills should be run via `blue exec command='...'`, not by inventing new native subcommands. Disabled placeholders such as `timer`, `datetime`, `unit_converter`, and deprecated `search` are not live runtime skills. For reminders, prefer `blue reminder.add message=\"...\" time=...` or repeating `blue reminder.add message=\"...\" every=2m until=\"2026-03-17 22:00\"` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. Use `scheduler` for cron-style automation jobs, not ordinary user reminders. ")
+	sb.WriteString("<skills>Invoke through the Blue CLI. Built-in skills usually use `blue <cmd> ...` (for example `blue web_query input=\"latest news\"`). Command groups may use subcommands such as `blue media generate ...` and `blue media status ...`. External CLIs documented as skills should be run via `blue exec command='...'`, not by inventing new native subcommands. Disabled placeholders such as `timer`, `datetime`, `unit_converter`, and deprecated `search` are not live runtime skills. For reminders, prefer `blue reminder add message=\"...\" time=...` or repeating `blue reminder add message=\"...\" every=2m until=\"2026-03-17 22:00\"` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. Use `scheduler` for cron-style automation jobs, not ordinary user reminders. ")
 	sb.WriteString("Routing: ask→ask, normal web discovery/read→web_query, login/JS/forms/screenshots/live interaction→browser, UI review→ui_reviewer, PPT/slide visuals→ppt, image/video generation→mediagen (`blue media generate` / `blue media status`), bounded synthesis/report generation→analyze, citation-first or multi-source research→deep_research, reminder/alert→reminder, scheduler→scheduler, admin→mgmt.{domain}.{op}. When exposed, `web_search`, `web_fetch`, and `web_read` are compatibility actions behind unified `web_query`, not separate skills. If web_query reports login_wall, challenge, browser_required, or next_action=retry_browser, switch to browser. Final web fallback→browser. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
 	sb.WriteString("More skills may exist in workspace `.agents/skills/` or `.claude/skills/`, plus user defaults `~/.agents/skills/` and `~/.claude/skills/`. Core built-in skills are preloaded below.")

@@ -14,17 +14,26 @@ import (
 
 func writeSelectorSkill(t *testing.T, workspaceDir, id, desc, invocation string, capabilityTags ...string) {
 	t.Helper()
+	writeSelectorSkillWithFrontmatter(t, workspaceDir, id, id, desc, invocation, "", capabilityTags...)
+}
 
-	dir := filepath.Join(workspaceDir, ".claude", "skills", id)
+func writeSelectorSkillWithFrontmatter(t *testing.T, workspaceDir, dirName, manifestName, desc, invocation, extraFrontmatter string, capabilityTags ...string) {
+	t.Helper()
+
+	dir := filepath.Join(workspaceDir, ".claude", "skills", dirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir skill: %v", err)
 	}
 
 	var md strings.Builder
 	md.WriteString("---\n")
-	md.WriteString(fmt.Sprintf("name: %s\n", id))
+	md.WriteString(fmt.Sprintf("name: %s\n", manifestName))
 	md.WriteString("version: \"1.0.0\"\n")
 	md.WriteString(fmt.Sprintf("description: %q\n", desc))
+	if strings.TrimSpace(extraFrontmatter) != "" {
+		md.WriteString(strings.TrimRight(extraFrontmatter, "\n"))
+		md.WriteString("\n")
+	}
 	if invocation != "" {
 		md.WriteString(fmt.Sprintf("invocation: %q\n", invocation))
 		md.WriteString("examples:\n")
@@ -41,7 +50,7 @@ func writeSelectorSkill(t *testing.T, workspaceDir, id, desc, invocation string,
 	md.WriteString(fmt.Sprintf("os: [%q]\n", runtime.GOOS))
 	md.WriteString("---\n")
 	md.WriteString("# ")
-	md.WriteString(id)
+	md.WriteString(manifestName)
 	md.WriteString("\n")
 
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(md.String()), 0o644); err != nil {
@@ -194,6 +203,121 @@ func TestSkillSelector_LatestDocsRouteToWebQuery(t *testing.T) {
 	}
 	if decision.NeedClarify {
 		t.Fatalf("latest docs query should not need clarify, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_ModelInvocableFalseIsHiddenFromSelector(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkillWithFrontmatter(
+		t,
+		workspaceDir,
+		"secret_docs",
+		"secret_docs",
+		"search the web for latest docs and official references",
+		`blue secret_docs query="OpenAI Responses API docs"`,
+		"model_invocable: false",
+		"search", "web", "docs",
+	)
+	writeSelectorSkill(
+		t,
+		workspaceDir,
+		"web_query",
+		"search the web for docs and references",
+		`blue web_query input="OpenAI Responses API docs"`,
+		"search", "web", "docs",
+	)
+
+	selector := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := selector.Select(context.Background(), "最新 OpenAI Responses API 文档", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "web_query" {
+		t.Fatalf("expected web_query, got=%+v", decision)
+	}
+
+	view, ok, err := selector.LookupSkillRuntimeView("secret_docs")
+	if err != nil {
+		t.Fatalf("LookupSkillRuntimeView error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected runtime view for secret_docs")
+	}
+	if view.ModelInvocable {
+		t.Fatalf("expected secret_docs model_invocable=false, got %+v", view)
+	}
+}
+
+func TestSkillSelector_DynamicExposureActivatesConditionalSkillAndInvalidatesCache(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkillWithFrontmatter(
+		t,
+		workspaceDir,
+		"pkg_helper",
+		"pkg_helper",
+		"inspect Go packages under pkg",
+		`blue pkg_helper target="pkg"`,
+		"paths:\n  - pkg/**",
+		"pkg", "go", "package",
+	)
+
+	selector := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	selector.SetDynamicExposureEnabledFunc(func() bool { return true })
+
+	beforeDebug, err := selector.DebugState()
+	if err != nil {
+		t.Fatalf("DebugState before activation: %v", err)
+	}
+	beforeView, ok, err := selector.LookupSkillRuntimeView("pkg_helper")
+	if err != nil {
+		t.Fatalf("LookupSkillRuntimeView before activation: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected runtime view for pkg_helper before activation")
+	}
+	if beforeView.ActivationState != "dormant" || beforeView.ActivationSource != "conditional" {
+		t.Fatalf("unexpected runtime view before activation: %+v", beforeView)
+	}
+
+	selector.ExposureManager().ObserveToolPath("read", filepath.Join(workspaceDir, "pkg", "main.go"))
+
+	afterDebug, err := selector.DebugState()
+	if err != nil {
+		t.Fatalf("DebugState after activation: %v", err)
+	}
+	if afterDebug.CacheInvalidationCount <= beforeDebug.CacheInvalidationCount {
+		t.Fatalf("expected cache invalidation count to increase, before=%d after=%d", beforeDebug.CacheInvalidationCount, afterDebug.CacheInvalidationCount)
+	}
+
+	view, ok, err := selector.LookupSkillRuntimeView("pkg_helper")
+	if err != nil {
+		t.Fatalf("LookupSkillRuntimeView error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected runtime view for pkg_helper")
+	}
+	if view.ActivationState != "active" || view.ActivationSource != "conditional" {
+		t.Fatalf("unexpected runtime view after activation: %+v", view)
+	}
+	foundActivated := false
+	for _, id := range afterDebug.ActivatedConditionalSkills {
+		if id == "pkg_helper" {
+			foundActivated = true
+			break
+		}
+	}
+	if !foundActivated {
+		t.Fatalf("expected pkg_helper in activated conditional skills, got %v", afterDebug.ActivatedConditionalSkills)
 	}
 }
 
@@ -421,7 +545,7 @@ func TestSkillSelector_ReminderIntentRoutesReminder(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	writeSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder.add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
+	writeSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
 	writeSelectorSkill(t, workspaceDir, "scheduler", "manage recurring cron jobs and automation schedules", `blue cron.create name=uptime_check schedule="*/10 * * * *" command="uptime"`, "cron", "automation")
 	writeSelectorSkill(t, workspaceDir, "web_query", "search the web for docs and references", `blue web_query input="reminder app docs"`, "search", "web")
 

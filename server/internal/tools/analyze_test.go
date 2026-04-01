@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -213,6 +214,22 @@ func (m *mockBrowserBackend) ExecuteRecipe(_ context.Context, _ string, _ map[st
 	return BrowserRecipeResult{}, nil
 }
 func (m *mockBrowserBackend) ListRecipes(_ context.Context) []BrowserRecipeInfo { return nil }
+
+type mockAnalyzeExecTool struct {
+	definition ToolDefinition
+	execute    func(ctx context.Context, args map[string]interface{}) (interface{}, error)
+}
+
+func (m *mockAnalyzeExecTool) Definition() ToolDefinition {
+	return m.definition
+}
+
+func (m *mockAnalyzeExecTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	if m.execute == nil {
+		return nil, nil
+	}
+	return m.execute(ctx, args)
+}
 
 func TestAnalyzeTool_Definition(t *testing.T) {
 	tool := NewAnalyzeTool()
@@ -767,6 +784,177 @@ func TestAnalyzeTool_Execute_PromotesURLFromTopic(t *testing.T) {
 	}
 	if !strings.Contains(bridge.calls[0], "Example Blog") {
 		t.Error("LLM should have received scraped blog content")
+	}
+}
+
+func TestAnalyzeTool_Execute_PromotesSingularURLAlias(t *testing.T) {
+	analysisJSON := `{"summary":"Browser analysis","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+
+	bridge := &mockLLMBridge{
+		responses: []string{analysisJSON},
+	}
+	browser := &mockBrowserBackend{
+		navResult: BrowserNavResult{
+			URL:      "https://example.com/blog",
+			Title:    "Example Blog",
+			TargetID: "tab-1",
+		},
+		a11yResult: BrowserA11yTreeResult{
+			Tree: "heading 'Example Blog'\ntext 'Some content here'",
+		},
+	}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetBrowser(browser)
+	tool.SetMediaDir(t.TempDir())
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic": "Summarise and extract the key points.",
+		"url":   "https://example.com/blog",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resultStr, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string result, got %T", result)
+	}
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &resultMap); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+	if resultMap["success"] != true {
+		t.Error("expected success=true")
+	}
+	if !browser.closeCalled {
+		t.Error("expected browser tab to be closed after scraping singular url alias")
+	}
+	if browser.navCalls == 0 {
+		t.Fatal("expected browser navigation when url alias is supplied")
+	}
+	if !strings.Contains(bridge.calls[0], "Example Blog") {
+		t.Error("LLM should have received scraped blog content via singular url alias")
+	}
+}
+
+func TestAnalyzeTool_Execute_UsesWebReadFallbackWhenBrowserNavigateFails(t *testing.T) {
+	analysisJSON := `{"summary":"Web read analysis","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	bridge := &mockLLMBridge{responses: []string{analysisJSON}}
+	browser := &mockBrowserBackend{
+		navErr: errors.New("navigate failed: net::ERR_CERT_AUTHORITY_INVALID"),
+	}
+
+	registry := NewRegistry()
+	registry.Register(&mockAnalyzeExecTool{
+		definition: ToolDefinition{Name: "web_read"},
+		execute: func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+			return marshalWebReadResponse(webReadResponse{
+				URL:      firstCompatString(args, "url"),
+				FinalURL: "https://example.com/blog",
+				Title:    "Example Domain",
+				Format:   webReadFormatText,
+				Content:  "Example Domain content",
+				Source:   webAccessSourceHTTP,
+			})
+		},
+	})
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetExecutor(NewExecutor(registry))
+	tool.SetBrowser(browser)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic": "Summarise the page",
+		"url":   "https://example.com/blog",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resultStr, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string result, got %T", result)
+	}
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &resultMap); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+	if resultMap["success"] != true {
+		t.Fatalf("expected success=true, got %#v", resultMap)
+	}
+	if browser.navCalls != 0 {
+		t.Fatalf("expected web_read fallback to avoid browser navigation, got %d nav calls", browser.navCalls)
+	}
+	if len(bridge.calls) == 0 || !strings.Contains(bridge.calls[0], "Example Domain content") {
+		t.Fatalf("expected LLM prompt to include web_read content, got %#v", bridge.calls)
+	}
+}
+
+func TestAnalyzeTool_Execute_FallsBackToBrowserWhenWebReadRequestsInteraction(t *testing.T) {
+	analysisJSON := `{"summary":"Browser fallback analysis","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	bridge := &mockLLMBridge{responses: []string{analysisJSON}}
+	browser := &mockBrowserBackend{
+		navResult: BrowserNavResult{
+			URL:      "https://example.com/blog",
+			Title:    "Example Blog",
+			TargetID: "tab-1",
+		},
+		a11yResult: BrowserA11yTreeResult{
+			URL:   "https://example.com/blog",
+			Title: "Example Blog",
+			Tree:  "heading 'Browser content'",
+		},
+	}
+
+	registry := NewRegistry()
+	registry.Register(&mockAnalyzeExecTool{
+		definition: ToolDefinition{Name: "web_read"},
+		execute: func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+			return marshalWebReadResponse(webReadResponse{
+				URL:                 firstCompatString(args, "url"),
+				FinalURL:            "https://example.com/blog",
+				Title:               "Login wall",
+				Format:              webReadFormatText,
+				Content:             "Please sign in",
+				Source:              webAccessSourceHTTP,
+				WarningCodes:        []string{webFetchWarningCodeBrowserRequired},
+				InteractiveRequired: true,
+			})
+		},
+	})
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetExecutor(NewExecutor(registry))
+	tool.SetBrowser(browser)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic": "Summarise the page",
+		"url":   "https://example.com/blog",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resultStr, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string result, got %T", result)
+	}
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &resultMap); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+	if resultMap["success"] != true {
+		t.Fatalf("expected success=true, got %#v", resultMap)
+	}
+	if browser.navCalls != 1 {
+		t.Fatalf("expected browser fallback after interactive web_read result, got %d nav calls", browser.navCalls)
+	}
+	if len(bridge.calls) == 0 || !strings.Contains(bridge.calls[0], "Browser content") {
+		t.Fatalf("expected LLM prompt to include browser content, got %#v", bridge.calls)
 	}
 }
 

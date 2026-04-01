@@ -10,6 +10,7 @@ import (
 	"time"
 
 	agentpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agent"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
 	sqlite3 "github.com/mattn/go-sqlite3"
@@ -300,6 +301,47 @@ func (s *SQLiteStore) reader() *sql.DB {
 		return nil
 	}
 	return s.db
+}
+
+func (s *SQLiteStore) hasSeparateReader() bool {
+	return s != nil && s.db != nil && s.reader() != nil && s.reader() != s.db
+}
+
+func (s *SQLiteStore) shouldFallbackToWriter(err error, empty bool) bool {
+	if !s.hasSeparateReader() {
+		return false
+	}
+	if err == nil {
+		return empty
+	}
+	return errorsIsNoRows(err) || dbutil.IsSQLiteCorruptionError(err)
+}
+
+func mergeUniqueRowsByKey[T any](primary []T, secondary []T, limit int, keyFn func(T) string) []T {
+	if len(secondary) == 0 {
+		return primary
+	}
+	out := make([]T, 0, len(primary)+len(secondary))
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	appendRows := func(rows []T) {
+		for _, row := range rows {
+			if limit > 0 && len(out) >= limit {
+				return
+			}
+			key := strings.TrimSpace(keyFn(row))
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, row)
+		}
+	}
+	appendRows(primary)
+	appendRows(secondary)
+	return out
 }
 
 type harnessRunRow struct {
@@ -723,12 +765,15 @@ func (s *SQLiteStore) UpdateRun(ctx context.Context, run *Run) error {
 }
 
 func (s *SQLiteStore) GetRun(ctx context.Context, id string) (*Run, error) {
-	var rows []harnessRunRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_runs").Select(&rows,
-		z.Where(z.Eq("id", id)),
-		z.Limit(1),
-	); err != nil {
+	rows, err := s.selectRunRows(ctx, s.reader(), id)
+	if err != nil {
 		return nil, err
+	}
+	if len(rows) == 0 && s.reader() != s.db {
+		rows, err = s.selectRunRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(rows) == 0 {
 		return nil, sql.ErrNoRows
@@ -737,7 +782,37 @@ func (s *SQLiteStore) GetRun(ctx context.Context, id string) (*Run, error) {
 	return &run, nil
 }
 
+func (s *SQLiteStore) selectRunRows(ctx context.Context, db *sql.DB, id string) ([]harnessRunRow, error) {
+	var rows []harnessRunRow
+	if _, err := z.TableContext(ctx, db, "harness_runs").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (s *SQLiteStore) ListRuns(ctx context.Context, filter RunFilter) ([]Run, error) {
+	rows, err := s.listRunRows(ctx, s.reader(), filter)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, false) {
+			return nil, err
+		}
+		rows, err = s.listRunRows(ctx, s.db, filter)
+		if err != nil {
+			return nil, err
+		}
+	} else if s.hasSeparateReader() {
+		writerRows, writerErr := s.listRunRows(ctx, s.db, filter)
+		if writerErr == nil {
+			rows = mergeUniqueRowsByKey(rows, writerRows, filter.Limit, func(row harnessRunRow) string { return row.ID })
+		}
+	}
+	return harnessRunsFromRows(rows), nil
+}
+
+func (s *SQLiteStore) listRunRows(ctx context.Context, db *sql.DB, filter RunFilter) ([]harnessRunRow, error) {
 	var conds []interface{}
 	if v := strings.TrimSpace(filter.UserID); v != "" {
 		conds = append(conds, z.Eq("user_id", v))
@@ -795,10 +870,10 @@ func (s *SQLiteStore) ListRuns(ctx context.Context, filter RunFilter) ([]Run, er
 		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
 	}
 	var rows []harnessRunRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_runs").Select(&rows, opts...); err != nil {
+	if _, err := z.TableContext(ctx, db, "harness_runs").Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	return harnessRunsFromRows(rows), nil
+	return rows, nil
 }
 
 func (s *SQLiteStore) FindRunByMetadata(ctx context.Context, kind RunKind, key, value string) (*Run, error) {
@@ -939,12 +1014,20 @@ func (s *SQLiteStore) UpdateGroup(ctx context.Context, group *RunGroup) error {
 }
 
 func (s *SQLiteStore) GetGroup(ctx context.Context, id string) (*RunGroup, error) {
-	var rows []harnessGroupRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_run_groups").Select(&rows,
-		z.Where(z.Eq("id", id)),
-		z.Limit(1),
-	); err != nil {
-		return nil, err
+	rows, err := s.selectGroupRows(ctx, s.reader(), id)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, false) {
+			return nil, err
+		}
+		rows, err = s.selectGroupRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
+	} else if len(rows) == 0 && s.hasSeparateReader() {
+		rows, err = s.selectGroupRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(rows) == 0 {
 		return nil, sql.ErrNoRows
@@ -954,6 +1037,25 @@ func (s *SQLiteStore) GetGroup(ctx context.Context, id string) (*RunGroup, error
 }
 
 func (s *SQLiteStore) ListGroups(ctx context.Context, filter RunGroupFilter) ([]RunGroup, error) {
+	rows, err := s.listGroupRows(ctx, s.reader(), filter)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, false) {
+			return nil, err
+		}
+		rows, err = s.listGroupRows(ctx, s.db, filter)
+		if err != nil {
+			return nil, err
+		}
+	} else if s.hasSeparateReader() {
+		writerRows, writerErr := s.listGroupRows(ctx, s.db, filter)
+		if writerErr == nil {
+			rows = mergeUniqueRowsByKey(rows, writerRows, filter.Limit, func(row harnessGroupRow) string { return row.ID })
+		}
+	}
+	return harnessGroupsFromRows(rows), nil
+}
+
+func (s *SQLiteStore) listGroupRows(ctx context.Context, db *sql.DB, filter RunGroupFilter) ([]harnessGroupRow, error) {
 	var conds []interface{}
 	if v := strings.TrimSpace(filter.OwnerUserID); v != "" {
 		conds = append(conds, z.Eq("owner_user_id", v))
@@ -994,10 +1096,21 @@ func (s *SQLiteStore) ListGroups(ctx context.Context, filter RunGroupFilter) ([]
 		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
 	}
 	var rows []harnessGroupRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_run_groups").Select(&rows, opts...); err != nil {
+	if _, err := z.TableContext(ctx, db, "harness_run_groups").Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	return harnessGroupsFromRows(rows), nil
+	return rows, nil
+}
+
+func (s *SQLiteStore) selectGroupRows(ctx context.Context, db *sql.DB, id string) ([]harnessGroupRow, error) {
+	var rows []harnessGroupRow
+	if _, err := z.TableContext(ctx, db, "harness_run_groups").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (s *SQLiteStore) CreateGroupItems(ctx context.Context, items []RunGroupItem) error {
@@ -1101,6 +1214,13 @@ func (s *SQLiteStore) CountGroupItemsByStatuses(ctx context.Context, groupID str
 	if strings.TrimSpace(groupID) == "" || len(statuses) == 0 {
 		return 0, nil
 	}
+	return s.countGroupItemsByStatuses(ctx, s.reader(), groupID, statuses)
+}
+
+func (s *SQLiteStore) countGroupItemsByStatuses(ctx context.Context, db *sql.DB, groupID string, statuses []RunGroupItemStatus) (int, error) {
+	if strings.TrimSpace(groupID) == "" || len(statuses) == 0 {
+		return 0, nil
+	}
 	statusValues := make([]interface{}, 0, len(statuses))
 	for _, status := range statuses {
 		if status == "" {
@@ -1112,7 +1232,7 @@ func (s *SQLiteStore) CountGroupItemsByStatuses(ctx context.Context, groupID str
 		return 0, nil
 	}
 	var count int64
-	if _, err := z.TableContext(ctx, s.reader(), "harness_run_group_items").Select(&count,
+	if _, err := z.TableContext(ctx, db, "harness_run_group_items").Select(&count,
 		z.Fields("COUNT(1)"),
 		z.Where(
 			z.Eq("group_id", strings.TrimSpace(groupID)),
@@ -1120,6 +1240,12 @@ func (s *SQLiteStore) CountGroupItemsByStatuses(ctx context.Context, groupID str
 		),
 	); err != nil {
 		return 0, err
+	}
+	if count == 0 && s.hasSeparateReader() && db == s.reader() {
+		writerCount, writerErr := s.countGroupItemsByStatuses(ctx, s.db, groupID, statuses)
+		if writerErr == nil {
+			return writerCount, nil
+		}
 	}
 	return int(count), nil
 }

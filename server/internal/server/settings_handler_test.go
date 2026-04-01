@@ -92,7 +92,7 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 
 	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_search query="OpenAI Responses API docs"`, "search", "web", "docs")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
-	writeSettingsSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder.add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
+	writeSettingsSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
 	writeSettingsSelectorSkill(t, workspaceDir, "ui_reviewer", "review screenshots and UI layouts for accessibility and visual issues", `blue ui_reviewer target="screenshot.png"`, "ui", "review", "screenshot")
 

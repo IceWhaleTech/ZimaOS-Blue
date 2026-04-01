@@ -4158,10 +4158,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'കമാൻഡ് കുത്തിവയ്പ്പ്',
+          description: 'സിസ്റ്റം കമാൻഡുകൾ നടപ്പിലാക്കാൻ ശ്രമിക്കുന്നു',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'ക്രിട്ടിക്കൽ',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4818,6 +4818,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'ഈ skill സുരക്ഷാ നയം കാരണം തടഞ്ഞിരിക്കുന്നു.',
+      blockedByPolicyMediumRisk: 'ഈ skill സുരക്ഷാ നയം കാരണം തടഞ്ഞിരിക്കുന്നു (മീഡിയം റിസ്ക്).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6609,6 +6610,7 @@ export default {
     outputTruncated: 'ചുരുക്കി',
     outputUnavailable: 'ഈ കാർഡിൽ ഔട്ട്പുട്ട് ലഭ്യമല്ല',
     noOutput: 'ഔട്ട്പുട്ട് ഇല്ല',
+      noCommand: 'No command',
     running: 'പ്രവർത്തിക്കുന്നു...',
     copyCommand: 'കമാൻഡ് പകർത്തുക',
     copied: 'പകർത്തി!',

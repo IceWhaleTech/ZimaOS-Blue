@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type runtimeEvidenceDriver struct {
@@ -107,6 +109,132 @@ func TestController_GetGroupPreservesCompletedEmptyGroup(t *testing.T) {
 	}
 	if !got.FinishedAt.Equal(finishedAt) {
 		t.Fatalf("FinishedAt changed across refresh: before=%s after=%s", finishedAt, *got.FinishedAt)
+	}
+}
+
+func TestController_GetGroupReportReconcilesCompletedRunAgainstStaleScorecard(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "reconcile stale scorecard",
+		OwnerUserID: "user-1",
+		Items: []RunGroupItemSpec{
+			{
+				RunKind:  RunKindAgentTask,
+				Input:    map[string]interface{}{"goal": "summarize"},
+				Expected: map[string]interface{}{"status": "completed"},
+				Metadata: map[string]interface{}{"dataset_case_id": "stale-scorecard-case"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	items, err := controller.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListGroupItems failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("ListGroupItems len = %d, want 1", len(items))
+	}
+	item := items[0]
+
+	now := time.Now().UTC()
+	run := &Run{
+		ID:           uuid.NewString(),
+		RootRunID:    "",
+		GroupID:      group.ID,
+		GroupItemID:  item.ID,
+		AttemptIndex: 1,
+		Kind:         RunKindAgentTask,
+		Status:       RunStatusFailed,
+		UserID:       "user-1",
+		Goal:         "summarize",
+		Error:        "proxy returned 502",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	run.RootRunID = run.ID
+	if err := controller.store.CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun failed: %v", err)
+	}
+
+	item.LatestRunID = run.ID
+	item.AttemptCount = 1
+	item.Status = RunGroupItemStatusError
+	if err := controller.store.UpdateGroupItem(ctx, &item); err != nil {
+		t.Fatalf("UpdateGroupItem failed: %v", err)
+	}
+
+	staleCard := Scorecard{
+		ID:          uuid.NewString(),
+		GroupID:     group.ID,
+		GroupItemID: item.ID,
+		RunID:       run.ID,
+		Mode:        ScoringModeRule,
+		Verdict:     ScoreVerdictError,
+		Score:       0.49,
+		BreakdownJSON: marshalInterface(map[string]interface{}{
+			"failure_label":       "infra_provider_auth",
+			"retryable":           false,
+			"verification_passed": false,
+		}),
+		CreatedAt: now.Add(10 * time.Millisecond),
+	}
+	if err := controller.store.AttachScorecard(ctx, staleCard); err != nil {
+		t.Fatalf("AttachScorecard failed: %v", err)
+	}
+
+	completedAt := now.Add(20 * time.Millisecond)
+	run.Status = RunStatusCompleted
+	run.Error = ""
+	run.Result = "verification passed"
+	run.UpdatedAt = completedAt
+	run.FinishedAt = &completedAt
+	if err := controller.store.UpdateRun(ctx, run); err != nil {
+		t.Fatalf("UpdateRun failed: %v", err)
+	}
+	if err := controller.store.AppendEvent(ctx, RunEvent{
+		RunID:       run.ID,
+		Type:        "run_completed",
+		Message:     "verification passed",
+		CreatedAt:   completedAt,
+		PayloadJSON: "{}",
+	}); err != nil {
+		t.Fatalf("AppendEvent failed: %v", err)
+	}
+
+	report, err := controller.GetGroupReport(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroupReport failed: %v", err)
+	}
+
+	latest, err := controller.store.LatestScorecardForItem(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("LatestScorecardForItem failed: %v", err)
+	}
+	if latest == nil {
+		t.Fatal("LatestScorecardForItem returned nil")
+	}
+	if latest.Verdict != ScoreVerdictPass {
+		t.Fatalf("latest verdict = %q, want %q", latest.Verdict, ScoreVerdictPass)
+	}
+
+	reloadedItems, err := controller.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListGroupItems(reload) failed: %v", err)
+	}
+	if len(reloadedItems) != 1 {
+		t.Fatalf("ListGroupItems(reload) len = %d, want 1", len(reloadedItems))
+	}
+	if reloadedItems[0].Status != RunGroupItemStatusPassed {
+		t.Fatalf("reloaded item status = %q, want %q", reloadedItems[0].Status, RunGroupItemStatusPassed)
+	}
+	if report == nil || len(report.Scorecards) == 0 {
+		t.Fatalf("GetGroupReport scorecards = %#v, want non-empty", report)
 	}
 }
 

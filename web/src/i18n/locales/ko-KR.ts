@@ -4244,10 +4244,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: '명령 인젝션',
+          description: '시스템 명령어 실행 시도',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: '심각',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4917,6 +4917,7 @@ export default {
       },
       messages: {
         blockedByPolicy: '이 스킬은 보안 정책에 의해 차단되었습니다.',
+      blockedByPolicyMediumRisk: '이 스킬은 보안 정책에 의해 차단되었습니다 (중간 위험).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6799,6 +6800,7 @@ export default {
     outputTruncated: '잘림',
     outputUnavailable: '이 카드에서는 출력을 사용할 수 없습니다',
     noOutput: '출력 없음',
+      noCommand: '명령 없음',
     running: '실행 중...',
     copyCommand: '명령어 복사',
     copied: '복사됨!',

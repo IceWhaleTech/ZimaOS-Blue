@@ -11,25 +11,30 @@ import (
 
 // SkillDoc is a compact, selector-friendly representation of a skill.
 type SkillDoc struct {
-	ID              string
-	Name            string
-	Description     string
-	Tags            []string
-	Category        string
-	Environment     []string
-	Example         string
-	Invocation      string
-	Examples        []string
-	InteractionMode string
-	CardSupport     string
-	Setup           string
-	ScriptPaths     []string
-	InstallSteps    []string
-	UsageSteps      []string
-	TaskRoutes      []SkillRoute
-	ErrorRules      []SkillError
-	Body            string
-	SourcePath      string
+	ID               string
+	Name             string
+	Description      string
+	Tags             []string
+	Paths            []string
+	UserInvocable    bool
+	ModelInvocable   bool
+	ActivationState  string
+	ActivationSource string
+	Category         string
+	Environment      []string
+	Example          string
+	Invocation       string
+	Examples         []string
+	InteractionMode  string
+	CardSupport      string
+	Setup            string
+	ScriptPaths      []string
+	InstallSteps     []string
+	UsageSteps       []string
+	TaskRoutes       []SkillRoute
+	ErrorRules       []SkillError
+	Body             string
+	SourcePath       string
 }
 
 // BuildSkillIndex scans workspace and user default skill roots and builds a
@@ -126,6 +131,21 @@ func BuildSkillIndex(workspaceDir string) ([]SkillDoc, error) {
 	return docs, nil
 }
 
+func BuildSkillIndexFromViews(views []skillmanifest.SkillExposureView) []SkillDoc {
+	if len(views) == 0 {
+		return nil
+	}
+
+	docs := make([]SkillDoc, 0, len(views))
+	for _, view := range views {
+		doc := buildSkillDoc(skillEntryFromDocument(view.Document), view.Raw)
+		doc.ActivationState = strings.TrimSpace(view.ActivationState)
+		doc.ActivationSource = strings.TrimSpace(view.ActivationSource)
+		docs = append(docs, doc)
+	}
+	return docs
+}
+
 func buildSkillDoc(se SkillEntry, raw []byte) SkillDoc {
 	content := string(raw)
 	body := content
@@ -149,6 +169,9 @@ func buildSkillDoc(se SkillEntry, raw []byte) SkillDoc {
 		Name:            strings.TrimSpace(se.Name),
 		Description:     strings.TrimSpace(se.Description),
 		Tags:            append([]string(nil), se.Tags...),
+		Paths:           append([]string(nil), se.Paths...),
+		UserInvocable:   se.UserInvocable,
+		ModelInvocable:  se.ModelInvocable,
 		Category:        strings.TrimSpace(se.Category),
 		Environment:     append([]string(nil), se.Environment...),
 		Example:         truncateForIndex(example, 180),

@@ -4592,6 +4592,7 @@ export default {
       },
       messages: {
         blockedByPolicy: '该技能已被安全策略阻止安装。',
+      blockedByPolicyMediumRisk: '该技能因安全风险（中风险）被安全策略阻止安装。',
       },
       quick: {
         categories: '按分类浏览',
@@ -6285,6 +6286,7 @@ export default {
     outputTruncated: '已截断',
     outputUnavailable: '此卡片中未包含输出内容',
     noOutput: '无输出',
+      noCommand: '无命令',
     running: '执行中...',
     copyCommand: '复制命令',
     copied: '已复制！',

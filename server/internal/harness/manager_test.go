@@ -191,6 +191,24 @@ func newTestController(t *testing.T) *Controller {
 	return NewController(store, NewPolicyResolver(harnessCfg, nil))
 }
 
+func newTestControllerWithReadDB(t *testing.T, readDB *sql.DB) *Controller {
+	t.Helper()
+	tmpDir := t.TempDir()
+	writeDB, err := sql.Open("sqlite3", filepath.Join(tmpDir, "harness-test.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = writeDB.Close() })
+	store, err := NewSQLiteStoreWithReadDB(writeDB, readDB)
+	if err != nil {
+		t.Fatalf("NewSQLiteStoreWithReadDB failed: %v", err)
+	}
+	harnessCfg := *config.DefaultHarnessConfig()
+	harnessCfg.StorePath = filepath.Join(tmpDir, "blue.db")
+	harnessCfg.ArtifactRoot = filepath.Join(tmpDir, "artifacts")
+	return NewController(store, NewPolicyResolver(harnessCfg, nil))
+}
+
 func TestController_SubmitAndList(t *testing.T) {
 	controller := newTestController(t)
 	driver := &stubDriver{kind: RunKindAgentTask}
@@ -215,6 +233,92 @@ func TestController_SubmitAndList(t *testing.T) {
 	}
 	if len(runs) != 1 || runs[0].ID != run.ID {
 		t.Fatalf("List returned %#v", runs)
+	}
+}
+
+func TestController_SubmitFallsBackWhenReaderMissesFreshRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	staleReader, err := sql.Open("sqlite3", filepath.Join(tmpDir, "stale-reader.db"))
+	if err != nil {
+		t.Fatalf("open stale reader sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = staleReader.Close() })
+	if _, err := NewSQLiteStoreWithReadDB(staleReader, staleReader); err != nil {
+		t.Fatalf("initialize stale reader schema: %v", err)
+	}
+
+	controller := newTestControllerWithReadDB(t, staleReader)
+	driver := &stubDriver{kind: RunKindAgentTask}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:   RunKindAgentTask,
+		Goal:   "reader fallback",
+		UserID: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if run == nil || strings.TrimSpace(run.ID) == "" {
+		t.Fatalf("Submit returned %#v", run)
+	}
+	if len(driver.started) != 1 || driver.started[0] != run.ID {
+		t.Fatalf("driver Start was not called correctly: %#v", driver.started)
+	}
+	stored, err := controller.GetStored(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetStored failed: %v", err)
+	}
+	if stored.ID != run.ID {
+		t.Fatalf("stored run = %#v, want id %q", stored, run.ID)
+	}
+}
+
+func TestController_SpawnChildFallsBackWhenReaderMissesFreshRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	staleReader, err := sql.Open("sqlite3", filepath.Join(tmpDir, "stale-reader.db"))
+	if err != nil {
+		t.Fatalf("open stale reader sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = staleReader.Close() })
+	if _, err := NewSQLiteStoreWithReadDB(staleReader, staleReader); err != nil {
+		t.Fatalf("initialize stale reader schema: %v", err)
+	}
+
+	controller := newTestControllerWithReadDB(t, staleReader)
+	driver := &stubDriver{kind: RunKindAgentTask}
+	controller.RegisterDriver(driver)
+
+	parent, err := controller.Submit(context.Background(), RunSpec{
+		Kind:         RunKindAgentTask,
+		Goal:         "parent",
+		UserID:       "user-1",
+		MaxSubagents: 2,
+	})
+	if err != nil {
+		t.Fatalf("Submit(parent) failed: %v", err)
+	}
+
+	child, err := controller.SpawnChild(context.Background(), parent.ID, RunSpec{
+		Kind:   RunKindAgentTask,
+		Goal:   "child",
+		UserID: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("SpawnChild failed: %v", err)
+	}
+	if child == nil || strings.TrimSpace(child.ID) == "" {
+		t.Fatalf("SpawnChild returned %#v", child)
+	}
+	if child.ParentRunID != parent.ID {
+		t.Fatalf("child parent_run_id = %q, want %q", child.ParentRunID, parent.ID)
+	}
+	stored, err := controller.GetStored(context.Background(), child.ID)
+	if err != nil {
+		t.Fatalf("GetStored(child) failed: %v", err)
+	}
+	if stored.ID != child.ID {
+		t.Fatalf("stored child = %#v, want id %q", stored, child.ID)
 	}
 }
 

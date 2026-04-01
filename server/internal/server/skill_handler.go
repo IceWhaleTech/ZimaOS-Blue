@@ -437,18 +437,23 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 
 // SkillResponse represents a skill in API responses
 type SkillResponse struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Description string            `json:"description"`
-	Author      string            `json:"author,omitempty"`
-	Category    string            `json:"category,omitempty"`
-	Icon        string            `json:"icon,omitempty"`
-	Tags        []string          `json:"tags,omitempty"`
-	Enabled     bool              `json:"enabled"`
-	Builtin     bool              `json:"builtin"`
-	Inputs      []skill.Parameter `json:"inputs,omitempty"`
-	Outputs     []skill.Parameter `json:"outputs,omitempty"`
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	Version          string            `json:"version"`
+	Description      string            `json:"description"`
+	Author           string            `json:"author,omitempty"`
+	Category         string            `json:"category,omitempty"`
+	Icon             string            `json:"icon,omitempty"`
+	Tags             []string          `json:"tags,omitempty"`
+	Enabled          bool              `json:"enabled"`
+	Builtin          bool              `json:"builtin"`
+	Inputs           []skill.Parameter `json:"inputs,omitempty"`
+	Outputs          []skill.Parameter `json:"outputs,omitempty"`
+	Paths            []string          `json:"paths,omitempty"`
+	UserInvocable    bool              `json:"user_invocable"`
+	ModelInvocable   bool              `json:"model_invocable"`
+	ActivationState  string            `json:"activation_state,omitempty"`
+	ActivationSource string            `json:"activation_source,omitempty"`
 }
 
 // skillsHiddenFromSkillTab lists skill IDs that are displayed in the Tools tab
@@ -467,21 +472,37 @@ var skillsHiddenFromSkillTab = map[string]bool{
 func (h *SkillHandler) ListSkills(c echo.Context) error {
 	response := make([]SkillResponse, 0)
 	seen := make(map[string]struct{})
+	exposureLookup := skillExposureLookupForSkillsDir(h.skillsDir)
 
 	if h.localScanner != nil {
 		for _, ls := range h.localScanner.GetAll() {
 			if skillsHiddenFromSkillTab[ls.ID] {
 				continue
 			}
+			meta := defaultSkillExposureMetadata()
+			if doc, ok := parseSkillDocumentFromEntryPath(ls.FilePath); ok {
+				meta = skillExposureMetadataFromDocument(doc)
+			}
+			if view, ok := findSkillExposureView(exposureLookup, ls.ID, ls.Name); ok {
+				meta = applySkillExposureView(meta, view)
+			}
+			if !meta.UserInvocable {
+				continue
+			}
 			response = append(response, SkillResponse{
-				ID:          ls.ID,
-				Name:        ls.Name,
-				Version:     ls.Version,
-				Description: ls.Description,
-				Author:      ls.Author,
-				Category:    ls.Category,
-				Tags:        ls.Tags,
-				Enabled:     true,
+				ID:               ls.ID,
+				Name:             ls.Name,
+				Version:          ls.Version,
+				Description:      ls.Description,
+				Author:           ls.Author,
+				Category:         ls.Category,
+				Tags:             ls.Tags,
+				Enabled:          true,
+				Paths:            append([]string(nil), meta.Paths...),
+				UserInvocable:    meta.UserInvocable,
+				ModelInvocable:   meta.ModelInvocable,
+				ActivationState:  meta.ActivationState,
+				ActivationSource: meta.ActivationSource,
 			})
 			seen[ls.ID] = struct{}{}
 		}
@@ -497,21 +518,33 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 		if id == "" || skillsHiddenFromSkillTab[id] {
 			continue
 		}
+		meta := skillExposureMetadataFromManifest(info.Manifest)
+		if view, ok := findSkillExposureView(exposureLookup, id, info.Manifest.Name); ok {
+			meta = applySkillExposureView(meta, view)
+		}
+		if !meta.UserInvocable {
+			continue
+		}
 		if _, exists := seen[id]; exists {
 			continue
 		}
 		response = append(response, SkillResponse{
-			ID:          id,
-			Name:        info.Manifest.Name,
-			Version:     info.Manifest.Version,
-			Description: info.Manifest.Description,
-			Author:      info.Manifest.Author,
-			Category:    info.Manifest.Category,
-			Tags:        info.Manifest.Tags,
-			Enabled:     info.Enabled,
-			Builtin:     info.Builtin,
-			Inputs:      info.Manifest.Inputs,
-			Outputs:     info.Manifest.Outputs,
+			ID:               id,
+			Name:             info.Manifest.Name,
+			Version:          info.Manifest.Version,
+			Description:      info.Manifest.Description,
+			Author:           info.Manifest.Author,
+			Category:         info.Manifest.Category,
+			Tags:             info.Manifest.Tags,
+			Enabled:          info.Enabled,
+			Builtin:          info.Builtin,
+			Inputs:           info.Manifest.Inputs,
+			Outputs:          info.Manifest.Outputs,
+			Paths:            append([]string(nil), meta.Paths...),
+			UserInvocable:    meta.UserInvocable,
+			ModelInvocable:   meta.ModelInvocable,
+			ActivationState:  meta.ActivationState,
+			ActivationSource: meta.ActivationSource,
 		})
 	}
 
@@ -1714,23 +1747,41 @@ card_support: none
 // Supports both single SKILL.md downloads and full GitHub directory downloads.
 // Publishes progress events via the unified SSE broker.
 func (h *SkillHandler) InstallSkill(c echo.Context) error {
-	if market, _ := h.ensureMarketplace(); market != nil {
-		id, err := validatedSkillID(c.Param("id"))
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-		result, err := market.Install(c.Request().Context(), skillmarket.InstallRequest{ID: id})
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-		return c.JSON(http.StatusOK, result)
-	}
-
 	id, err := validatedSkillID(c.Param("id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	userID := getUserIDFromContext(c)
+
+	if market, _ := h.ensureMarketplace(); market != nil {
+		ctx := c.Request().Context()
+		h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+			"id": id, "percent": 0, "message": "Starting install...",
+		})
+		result, err := market.Install(ctx, skillmarket.InstallRequest{ID: id})
+		if err != nil {
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
+
+		message := fmt.Sprintf("skill %s installed", id)
+		if result != nil && strings.TrimSpace(result.Version) != "" {
+			message = fmt.Sprintf("skill %s@%s installed", id, strings.TrimSpace(result.Version))
+		}
+
+		response := map[string]interface{}{
+			"success": true,
+			"message": message,
+		}
+		if rs := h.findRemoteSkill(ctx, id); rs != nil {
+			response["skill"] = rs
+		}
+		if result != nil {
+			response["market"] = result
+		}
+		return c.JSON(http.StatusOK, response)
+	}
 
 	if h.skillsDir == "" {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -1885,6 +1936,25 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
+	if market, _ := h.ensureMarketplace(); market != nil {
+		if resolvedID, ok := h.resolveInstalledSkillID(id); ok {
+			id = resolvedID
+		}
+		if info := h.registry.GetInfo(id); info != nil && info.Builtin {
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"error": "cannot uninstall builtin skill",
+			})
+		}
+		if err := market.Uninstall(c.Request().Context(), id); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":  true,
+			"skill_id": id,
+			"message":  "skill uninstalled",
+		})
+	}
+
 	if h.skillsDir == "" {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "skills directory not configured",
@@ -1903,16 +1973,6 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 	if info := h.registry.GetInfo(id); info != nil && info.Builtin {
 		return c.JSON(http.StatusForbidden, map[string]string{
 			"error": "cannot uninstall builtin skill",
-		})
-	}
-
-	if market, _ := h.ensureMarketplace(); market != nil {
-		if err := market.Uninstall(c.Request().Context(), id); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success":  true,
-			"skill_id": id,
 		})
 	}
 
@@ -3199,22 +3259,38 @@ func (h *SkillHandler) ListLocalSkills(c echo.Context) error {
 
 	skills := h.localScanner.GetAll()
 	installedIDs := h.getInstalledSkillIDs()
+	exposureLookup := skillExposureLookupForSkillsDir(h.skillsDir)
 
 	// Convert to response format
 	result := make([]map[string]interface{}, 0, len(skills))
 	for _, s := range skills {
+		meta := defaultSkillExposureMetadata()
+		if doc, ok := parseSkillDocumentFromEntryPath(s.FilePath); ok {
+			meta = skillExposureMetadataFromDocument(doc)
+		}
+		if view, ok := findSkillExposureView(exposureLookup, s.ID, s.Name); ok {
+			meta = applySkillExposureView(meta, view)
+		}
+		if !meta.UserInvocable {
+			continue
+		}
 		result = append(result, map[string]interface{}{
-			"id":            s.ID,
-			"name":          s.Name,
-			"description":   s.Description,
-			"version":       s.Version,
-			"author":        s.Author,
-			"category":      s.Category,
-			"tags":          s.Tags,
-			"file_path":     s.FilePath,
-			"discovered_at": s.DiscoveredAt,
-			"last_modified": s.LastModified,
-			"installed":     installedIDs[s.ID],
+			"id":                s.ID,
+			"name":              s.Name,
+			"description":       s.Description,
+			"version":           s.Version,
+			"author":            s.Author,
+			"category":          s.Category,
+			"tags":              s.Tags,
+			"file_path":         s.FilePath,
+			"discovered_at":     s.DiscoveredAt,
+			"last_modified":     s.LastModified,
+			"installed":         installedIDs[s.ID],
+			"paths":             append([]string(nil), meta.Paths...),
+			"user_invocable":    meta.UserInvocable,
+			"model_invocable":   meta.ModelInvocable,
+			"activation_state":  meta.ActivationState,
+			"activation_source": meta.ActivationSource,
 		})
 	}
 

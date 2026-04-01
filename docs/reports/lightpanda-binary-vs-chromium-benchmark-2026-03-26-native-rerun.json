@@ -1,0 +1,291 @@
+{
+  "generated_at": "2026-03-26T07:28:01Z",
+  "hostname": "Orcas-MacBook-Pro.local",
+  "goos": "darwin",
+  "goarch": "arm64",
+  "warm_runs": 3,
+  "lightpanda_runtime": "native_binary",
+  "lightpanda_binary_path": "/Users/orca/Library/Caches/zimaos-blue/browser/lightpanda/darwin-arm64/lightpanda",
+  "notes": [
+    "Cold timings exclude one-time browser/binary download and measure engine startup + navigate + operation.",
+    "Warm timings reuse an already-started engine and report p50 over measured iterations after one uncounted priming run.",
+    "lightpanda_binary is measured through Blue's current browser-lite backend contract, so screenshot remains unsupported by design.",
+    "lightpanda_binary used a locally ready upstream Lightpanda native binary."
+  ],
+  "results": [
+    {
+      "scenario": {
+        "id": "synthetic_static_article",
+        "label": "Synthetic static article / readable tree",
+        "category": "synthetic",
+        "url": "http://127.0.0.1:49182/article",
+        "operation": "a11y_tree",
+        "timeout_ms": 15000,
+        "notes": "Measures navigate + accessibility tree on a simple readable page."
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 249.564375,
+          "cold_error": "failed to get accessibility tree: json: cannot unmarshal number into Go struct field AccessibilityAXNode.nodes.nodeId of type proto.AccessibilityAXNodeID"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 1277.931875,
+          "warm_runs_ms": [
+            19.065583,
+            11.472458,
+            9.110041
+          ],
+          "warm_p50_ms": 11.472458,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "synthetic_dense_dom",
+        "label": "Synthetic dense DOM / readable tree",
+        "category": "synthetic",
+        "url": "http://127.0.0.1:49182/dense",
+        "operation": "a11y_tree",
+        "timeout_ms": 20000,
+        "notes": "Measures navigate + accessibility tree on a large local DOM."
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 226.132167,
+          "cold_error": "failed to get accessibility tree: json: cannot unmarshal number into Go struct field AccessibilityAXNode.nodes.nodeId of type proto.AccessibilityAXNodeID"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 1358.02875,
+          "warm_runs_ms": [
+            71.953833,
+            67.501709,
+            66.792583
+          ],
+          "warm_p50_ms": 67.501709,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "synthetic_js_shell",
+        "label": "Synthetic JS shell / hydrated app",
+        "category": "synthetic",
+        "url": "http://127.0.0.1:49182/js-shell",
+        "operation": "a11y_tree",
+        "timeout_ms": 20000,
+        "notes": "Shim would fail fast here; lp binary and Chromium execute the client-side render."
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 214.09325,
+          "cold_error": "failed to get accessibility tree: json: cannot unmarshal number into Go struct field AccessibilityAXNode.nodes.nodeId of type proto.AccessibilityAXNodeID"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 1304.758875,
+          "warm_runs_ms": [
+            14.333958,
+            9.4305,
+            9.054875
+          ],
+          "warm_p50_ms": 9.4305,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "synthetic_screenshot_baseline",
+        "label": "Synthetic screenshot baseline",
+        "category": "synthetic",
+        "url": "http://127.0.0.1:49182/article",
+        "operation": "screenshot",
+        "timeout_ms": 20000,
+        "notes": "Current Blue browser-lite contract keeps screenshots Chromium-only."
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "unsupported",
+          "cold_ms": 205.786291,
+          "cold_error": "unsupported_capability: screenshots requires Chromium"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 1524.260625,
+          "warm_runs_ms": [
+            345.301916,
+            321.829459,
+            332.632167
+          ],
+          "warm_p50_ms": 332.632167,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_example",
+        "label": "https://example.com",
+        "category": "real",
+        "url": "https://example.com",
+        "operation": "a11y_tree",
+        "timeout_ms": 45000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 1323.715875,
+          "cold_error": "failed to get accessibility tree: json: cannot unmarshal number into Go struct field AccessibilityAXNode.nodes.nodeId of type proto.AccessibilityAXNodeID"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 1417.967459,
+          "warm_runs_ms": [
+            13.300959,
+            12.41,
+            9.4145
+          ],
+          "warm_p50_ms": 12.41,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_mdn_html",
+        "label": "https://developer.mozilla.org/en-US/docs/Web/HTML",
+        "category": "real",
+        "url": "https://developer.mozilla.org/en-US/docs/Web/HTML",
+        "operation": "a11y_tree",
+        "timeout_ms": 60000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 8140.241083,
+          "cold_error": "failed to get accessibility tree: json: cannot unmarshal number into Go struct field AccessibilityAXNode.nodes.nodeId of type proto.AccessibilityAXNodeID"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 2536.096791,
+          "warm_runs_ms": [
+            97.864959,
+            90.347333,
+            87.507542
+          ],
+          "warm_p50_ms": 90.347333,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_apple",
+        "label": "https://www.apple.com/",
+        "category": "real",
+        "url": "https://www.apple.com/",
+        "operation": "a11y_tree",
+        "timeout_ms": 60000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 1131.019084,
+          "cold_error": "failed to get accessibility tree: json: cannot unmarshal number into Go struct field AccessibilityAXNode.nodes.nodeId of type proto.AccessibilityAXNodeID"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 18231.041791,
+          "warm_runs_ms": [
+            16019.598208,
+            460.260125,
+            334.458
+          ],
+          "warm_p50_ms": 460.260125,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_github",
+        "label": "https://github.com/",
+        "category": "real",
+        "url": "https://github.com/",
+        "operation": "a11y_tree",
+        "timeout_ms": 60000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 5255.514625,
+          "cold_error": "read tcp 127.0.0.1:49972-\u003e127.0.0.1:49967: read: connection reset by peer"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 3592.196416,
+          "warm_runs_ms": [
+            477.134459,
+            431.5105,
+            422.660042
+          ],
+          "warm_p50_ms": 431.5105,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_figma",
+        "label": "https://www.figma.com/",
+        "category": "real",
+        "url": "https://www.figma.com/",
+        "operation": "a11y_tree",
+        "timeout_ms": 60000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 4872.050833,
+          "cold_error": "failed to get accessibility tree: json: cannot unmarshal number into Go struct field AccessibilityAXNode.nodes.nodeId of type proto.AccessibilityAXNodeID"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 2248.127042,
+          "warm_runs_ms": [
+            242.360583,
+            221.070958,
+            215.282791
+          ],
+          "warm_p50_ms": 221.070958,
+          "successful_runs": 3
+        }
+      ]
+    }
+  ]
+}

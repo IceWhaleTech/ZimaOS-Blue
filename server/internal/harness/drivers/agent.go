@@ -63,7 +63,7 @@ func (d *AgentDriver) Start(ctx context.Context, run *harness.Run, _ harness.Run
 	task := &agentpkg.Task{
 		ID:              run.ID,
 		UserID:          run.UserID,
-		ConversationID:  run.ConversationID,
+		ConversationID:  runConversationID(run),
 		Goal:            run.Goal,
 		Status:          agentpkg.TaskStatusPending,
 		WorkspaceRoot:   run.WorkspaceRoot,
@@ -195,8 +195,8 @@ func taskToRun(existing *harness.Run, task *agentpkg.Task, kind harness.RunKind)
 	run.ID = task.ID
 	run.Kind = kind
 	run.UserID = task.UserID
-	run.ConversationID = task.ConversationID
-	run.SessionID = task.ConversationID
+	run.ConversationID = mergedRunConversationID(existing, task)
+	run.SessionID = mergedRunSessionID(existing, task)
 	run.Goal = task.Goal
 	run.Status = taskStatusToRunStatus(task.Status)
 	run.RuntimeState = task.RuntimeState
@@ -297,6 +297,39 @@ func composeConversationContext(meta map[string]interface{}) string {
 		parts = append(parts, retry)
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func runConversationID(run *harness.Run) string {
+	if run == nil {
+		return ""
+	}
+	return firstNonEmpty(run.ConversationID, run.SessionID)
+}
+
+func mergedRunConversationID(existing *harness.Run, task *agentpkg.Task) string {
+	if task == nil {
+		if existing == nil {
+			return ""
+		}
+		return firstNonEmpty(existing.ConversationID, existing.SessionID)
+	}
+	if existing == nil {
+		return strings.TrimSpace(task.ConversationID)
+	}
+	return firstNonEmpty(task.ConversationID, existing.ConversationID, existing.SessionID)
+}
+
+func mergedRunSessionID(existing *harness.Run, task *agentpkg.Task) string {
+	if task == nil {
+		if existing == nil {
+			return ""
+		}
+		return firstNonEmpty(existing.SessionID, existing.ConversationID)
+	}
+	if existing == nil {
+		return strings.TrimSpace(task.ConversationID)
+	}
+	return firstNonEmpty(task.ConversationID, existing.SessionID, existing.ConversationID)
 }
 
 func runtimeEvidenceSummary(event agentpkg.RuntimeEvent) string {

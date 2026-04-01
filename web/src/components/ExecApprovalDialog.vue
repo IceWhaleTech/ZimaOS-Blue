@@ -158,7 +158,7 @@ function deny() {
             </button>
             <button
               :disabled="isSubmitting"
-              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               @click="allowAlways"
             >
               {{

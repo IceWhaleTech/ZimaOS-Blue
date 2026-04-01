@@ -1,5 +1,6 @@
 import api, { ensureFreshToken } from './client'
 import { getStoredAccessToken } from '@/utils/authStorage'
+import { consumeSSEJsonStream } from '@/utils/sseStream'
 
 // Types
 export type MediaType = 'image' | 'video'
@@ -246,60 +247,34 @@ export function streamMediaTask(
         callbacks.onError?.(`HTTP ${response.status}`)
         return
       }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
       let receivedTerminal = false
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        let currentEvent = ''
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim()
-          } else if (line.startsWith('data: ')) {
-            const raw = line.slice(6).trim()
-            if (raw === '[DONE]') {
+      await consumeSSEJsonStream<MediaProgressEvent>(response.body, {
+        onMessage: (event, evt) => {
+          switch (event) {
+            case 'progress':
+              callbacks.onProgress?.(evt)
+              break
+            case 'complete':
               receivedTerminal = true
-              return
-            }
-
-            try {
-              const data = JSON.parse(raw) as MediaProgressEvent
-              switch (currentEvent) {
-                case 'progress':
-                  callbacks.onProgress?.(data)
-                  break
-                case 'complete':
-                  receivedTerminal = true
-                  callbacks.onComplete?.(data)
-                  return
-                case 'cancelled':
-                  receivedTerminal = true
-                  callbacks.onCancelled?.(data)
-                  return
-                case 'error':
-                  receivedTerminal = true
-                  callbacks.onError?.(data.error || 'Generation failed')
-                  return
-              }
-            } catch {
-              // ignore parse errors
-            }
-            currentEvent = ''
+              callbacks.onComplete?.(evt)
+              return true
+            case 'cancelled':
+              receivedTerminal = true
+              callbacks.onCancelled?.(evt)
+              return true
+            case 'error':
+              receivedTerminal = true
+              callbacks.onError?.(evt.error || 'Generation failed')
+              return true
           }
-        }
-      }
+        },
+        onDone: () => {
+          receivedTerminal = true
+        },
+      })
 
       // Stream ended without a terminal event — connection dropped
-      if (!receivedTerminal) {
+      if (!receivedTerminal && !controller.signal.aborted) {
         callbacks.onError?.('stream_disconnected')
       }
     } catch (err) {
@@ -358,50 +333,24 @@ export function streamImageGeneration(
         callbacks.onError?.(`HTTP ${response.status}`)
         return
       }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        let currentEvent = ''
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim()
-          } else if (line.startsWith('data: ')) {
-            const raw = line.slice(6).trim()
-            if (raw === '[DONE]') return
-
-            try {
-              const data = JSON.parse(raw)
-              switch (currentEvent) {
-                case 'started':
-                  callbacks.onStarted?.(data.task_id)
-                  break
-                case 'progress':
-                  callbacks.onProgress?.(data)
-                  break
-                case 'complete':
-                  callbacks.onComplete?.(data)
-                  return
-                case 'error':
-                  callbacks.onError?.(data.error || 'Generation failed')
-                  return
-              }
-            } catch {
-              // ignore
-            }
-            currentEvent = ''
+      await consumeSSEJsonStream<unknown>(response.body, {
+        onMessage: (event, data) => {
+          switch (event) {
+            case 'started':
+              callbacks.onStarted?.((data as { task_id: string }).task_id)
+              break
+            case 'progress':
+              callbacks.onProgress?.(data as MediaProgressEvent)
+              break
+            case 'complete':
+              callbacks.onComplete?.(data as MediaProgressEvent)
+              return true
+            case 'error':
+              callbacks.onError?.((data as { error?: string }).error || 'Generation failed')
+              return true
           }
-        }
-      }
+        },
+      })
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       callbacks.onError?.(err instanceof Error ? err.message : String(err))

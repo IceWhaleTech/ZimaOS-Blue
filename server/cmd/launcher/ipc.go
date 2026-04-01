@@ -59,7 +59,28 @@ func tryIPC(args []string) bool {
 	if !shouldAttemptIPCShortcut(cmd) {
 		return false
 	}
+
+	// Compatibility: allow action-oriented skill calls in a positional form:
+	//   blue reminder add message=... time=...
+	// and normalize them to the canonical IPC command form:
+	//   reminder.add|list|delete|clear
+	var positionalAction string
+	if strings.TrimSpace(cmd) == "reminder" {
+		if action, remaining := consumeLauncherPositionalAction(rest); action != "" {
+			positionalAction = action
+			rest = remaining
+		}
+	}
+
 	params := parseIPCArgs(rest)
+	if positionalAction != "" {
+		cmd = "reminder." + positionalAction
+	} else if strings.TrimSpace(cmd) == "reminder" {
+		if action, ok := normalizeLauncherReminderAction(params["action"]); ok {
+			cmd = "reminder." + action
+			delete(params, "action")
+		}
+	}
 
 	conn, err := dialSock(flags)
 	if err != nil {
@@ -128,6 +149,44 @@ func shouldAttemptIPCShortcut(cmd string) bool {
 		return false
 	default:
 		return true
+	}
+}
+
+func consumeLauncherPositionalAction(args []string) (action string, remaining []string) {
+	if len(args) == 0 {
+		return "", args
+	}
+	first := strings.ToLower(strings.TrimSpace(args[0]))
+	if first == "" || strings.HasPrefix(first, "-") || strings.Contains(first, "=") {
+		return "", args
+	}
+	switch first {
+	case "list", "get", "status":
+		return "list", args[1:]
+	case "add", "create", "send", "notify":
+		return "add", args[1:]
+	case "delete", "remove", "rm":
+		return "delete", args[1:]
+	case "clear":
+		return "clear", args[1:]
+	default:
+		return "", args
+	}
+}
+
+func normalizeLauncherReminderAction(raw string) (string, bool) {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	switch raw {
+	case "list", "get", "status":
+		return "list", true
+	case "add", "create", "send", "notify":
+		return "add", true
+	case "delete", "remove", "rm":
+		return "delete", true
+	case "clear":
+		return "clear", true
+	default:
+		return "", false
 	}
 }
 

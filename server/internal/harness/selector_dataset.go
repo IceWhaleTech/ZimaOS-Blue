@@ -3,6 +3,7 @@ package harness
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 )
@@ -11,9 +12,11 @@ const (
 	SelectorCuratedDatasetName        = "selector-curated"
 	SelectorCuratedDatasetDescription = "Curated selector dry-run routing regression dataset."
 	SelectorCuratedDatasetSubject     = "selector_dry_run"
-	SelectorCuratedDatasetVersion     = "selector-curated-v2"
+	SelectorCuratedDatasetVersion     = "selector-curated-v4"
 	SelectorCuratedEvalName           = "Selector Curated Dry Run"
 	selectorCuratedMaxConcurrency     = 8
+	selectorCuratedMaxAttempts        = 3
+	selectorCuratedRetryBackoff       = 20 * time.Second
 
 	selectorCuratedProfile      = "selector_dry_run"
 	selectorDryRunTarget        = "/api/settings/selector/dry-run"
@@ -56,9 +59,13 @@ func SelectorCuratedDatasetManifest() DatasetManifest {
 			Subject: SelectorCuratedDatasetSubject,
 		},
 		Defaults: DatasetManifestDefaults{
-			RunKind:       RunKindAgentTask,
-			Profile:       selectorCuratedProfile,
-			Scheduler:     GroupSchedulerConfig{MaxConcurrency: selectorCuratedMaxConcurrency},
+			RunKind: RunKindAgentTask,
+			Profile: selectorCuratedProfile,
+			Scheduler: GroupSchedulerConfig{
+				MaxConcurrency: selectorCuratedMaxConcurrency,
+				MaxAttempts:    selectorCuratedMaxAttempts,
+				RetryBackoff:   selectorCuratedRetryBackoff,
+			},
 			RuntimePolicy: selectorDryRunRuntimePolicy(),
 		},
 		Items: items,
@@ -121,7 +128,11 @@ func SelectorCuratedEvalSpecSpec(datasetID, datasetVersionID, ownerUserID string
 		Profile:          selectorCuratedProfile,
 		DatasetID:        strings.TrimSpace(datasetID),
 		DatasetVersionID: strings.TrimSpace(datasetVersionID),
-		SchedulerConfig:  GroupSchedulerConfig{MaxConcurrency: selectorCuratedMaxConcurrency},
+		SchedulerConfig: GroupSchedulerConfig{
+			MaxConcurrency: selectorCuratedMaxConcurrency,
+			MaxAttempts:    selectorCuratedMaxAttempts,
+			RetryBackoff:   selectorCuratedRetryBackoff,
+		},
 		RuntimePolicy:    selectorDryRunRuntimePolicy(),
 		Metadata: map[string]interface{}{
 			"dataset_family": "builtin_selector_curated",
@@ -321,7 +332,7 @@ func selectorExpectedCLIAction(skill string) string {
 	case "exec":
 		return "blue exec"
 	case "reminder":
-		return "blue reminder.add"
+		return "blue reminder add"
 	default:
 		return "blue " + strings.TrimSpace(skill)
 	}

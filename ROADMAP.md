@@ -385,12 +385,12 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 - [x] Workspace management, built-in productivity skill adapters, and small model management
 - [x] Mobile UX refresh, security approvals/browser allowlists, transcript auditing, and Harness management
 
-**v0.10.30+ - Retrieval Quality & Chat Reliability** (In Progress)
+**v0.10.30+ - Retrieval Quality & Chat Reliability** (Done)
 - [x] Chat interaction and rendering polish, including compact mode guidance and smoother streaming feedback
 - [x] Interrupted stream recovery, retry flow, and persisted-message synchronization hardening
 - [x] Harness compare flow, scorecard diagnostics, and session/transcript audit storage improvements
 - [x] Deep Research routing and evidence presentation upgrades, including stronger intent matching and richer source details
-- [ ] Built-in web search / web fetch capability uplift and broader information acquisition quality improvements
+- [x] Built-in web search / web fetch capability uplift and broader information acquisition quality improvements
 
 ---
 
@@ -420,6 +420,9 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | Mar 16–18, 2026 | — | Approved browser sites management; database auto-recovery coverage; Security/Settings/Plugins layout refresh; embedding disabled by default |
 | Mar 19–20, 2026 | — | Harness rollout (tab, groups, locale overlays); SQLite transcript auditing; media model localization and chat settings polish |
 | Mar 21–22, 2026 | — | Chat streaming interruption recovery and compact interaction polish; Harness compare flow and scorecard diagnostics; session/transcript audit storage hardening; Deep Research routing and source-detail improvements; built-in web search and information acquisition uplift in progress |
+| Mar 23–25, 2026 | v0.10.33 | Channel config persistence; IM cache invalidation fixes; conversation response ID cleanup |
+| Mar 29–30, 2026 | v0.10.35 | GPT-5.4/5.3-codex compatibility; MiniMax regional routing; MuleRouter image generation fixes; External Agents settings; OpenRouter stream error recovery; Harness scorecard diagnostics |
+| Mar 31–Apr 1, 2026 | v0.10.36 | SQLite transcript auditing enhancements; Harness i18n overlays and group management; streaming tool parsing fixes; SkillTab/ToolTab UI polish; embedding disabled by default |
 
 ---
 
@@ -464,8 +467,8 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | v0.10.18–22 | Runtime Optimization | Performance, context cache, prompt compaction | Done |
 | v0.10.23–25 | Delivery & Cache | OTA, channel rollout, CC Cache | Done |
 | v0.10.26–29 | Intelligence & Governance | Humanizer, pruner, memory, safe tooling | Done |
-| v0.10.29+ | Platform Expansion | FFI/runtime loader, Windows speech, workspace, harness/audit | Ongoing |
-| v0.10.30+ | Retrieval Quality & Chat Reliability | Stream recovery, harness diagnostics, and web search/info acquisition uplift | Ongoing |
+| v0.10.29+ | Platform Expansion | FFI/runtime loader, Windows speech, workspace, harness/audit | Done |
+| v0.10.30+ | Retrieval Quality & Chat Reliability | Stream recovery, harness diagnostics, and web search/info acquisition uplift | Done |
 
 ---
 

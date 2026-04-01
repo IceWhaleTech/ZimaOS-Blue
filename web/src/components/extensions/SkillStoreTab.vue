@@ -1535,22 +1535,37 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
       }
     }
     pendingRiskSkill.value = null
-  } catch (err) {
-    const message = getErrorMessage(err) || skillStoreText('installError', 'Failed to install skill')
-    const normalized = message.toLowerCase()
-    if (
-      normalized.includes('risk acknowledgement') ||
-      normalized.includes('ack_risk') ||
-      normalized.includes('ack risk')
-    ) {
-      pendingRiskSkill.value = skill
-    } else {
-      error.value = message
-    }
-  } finally {
+      } catch (err) {
+        const message = getErrorMessage(err) || skillStoreText('installError', 'Failed to install skill')
+        const normalized = message.toLowerCase()
+        if (
+          normalized.includes('risk acknowledgement') ||
+          normalized.includes('ack_risk') ||
+          normalized.includes('ack risk')
+        ) {
+          pendingRiskSkill.value = skill
+        } else if (
+          normalized.includes('blocked by security policy') ||
+          normalized.includes('security policy')
+        ) {
+          // Check if it's specifically a medium risk block
+          if (normalized.includes('medium risk')) {
+            error.value = marketplaceText(
+              'messages.blockedByPolicyMediumRisk',
+              'This skill is blocked by security policy (medium risk).'
+            )
+          } else {
+            error.value = marketplaceText(
+              'messages.blockedByPolicy',
+              'This skill is blocked by the security policy.'
+            )
+          }
+        } else {
+          error.value = message
+        }
+      }
     installingSkillId.value = null
   }
-}
 
 function closeRiskModal() {
   pendingRiskSkill.value = null
@@ -2826,7 +2841,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="modal-actions risk-modal__actions">
-            <button class="btn-ghost" type="button" @click="closeRiskModal">
+            <button class="btn-ghost risk-modal__cancel-button" type="button" @click="closeRiskModal">
               {{ commonText('cancel', 'Cancel') }}
             </button>
             <button
@@ -4576,12 +4591,20 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
+.risk-modal__cancel-button {
+  border-color: var(--border);
+  background: var(--panel-bg);
+}
 .risk-modal__review-button {
   border-color: color-mix(in srgb, var(--security-yellow-border) 72%, var(--border));
   background: color-mix(in srgb, var(--security-yellow-bg) 62%, var(--panel-bg));
 }
 
 .risk-modal__confirm-button {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #ffffff;
+  font-weight: 600;
   box-shadow: 0 18px 32px -26px rgba(59, 130, 246, 0.58);
 }
 

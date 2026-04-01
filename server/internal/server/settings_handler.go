@@ -66,6 +66,7 @@ type Settings struct {
 	SkillRerankONNXEnabled              *bool                     `json:"skill_rerank_onnx_enabled,omitempty"`                 // Enable ONNX reranker path (nil = default false)
 	SkillRerankONNXAutoDownload         *bool                     `json:"skill_rerank_onnx_auto_download,omitempty"`           // Allow ONNX model auto-download (nil = default false)
 	SkillSelectorConfidenceThreshold    *float64                  `json:"skill_selector_confidence_threshold,omitempty"`       // default 0.78
+	SkillDynamicExposure                *bool                     `json:"skill_dynamic_exposure,omitempty"`                    // Enable runtime nested discovery + path activation (nil = default false)
 	PromptPolicyVersion                 string                    `json:"prompt_policy_version,omitempty"`                     // prompt policy version marker
 	PromptPolicyProfile                 string                    `json:"prompt_policy_profile,omitempty"`                     // prompt policy profile
 	MemoryRecallMode                    string                    `json:"memory_recall_mode,omitempty"`                        // Memory recall strategy: aggressive|balanced|quality
@@ -396,6 +397,7 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 		"query":                        query,
 		"model":                        model,
 		"smart_skill_selection":        h.GetSmartSkillSelection(),
+		"skill_dynamic_exposure":       h.GetSkillDynamicExposure(),
 		"selected_tools":               toolNames,
 		"selected_tool_surface":        toolSurface,
 		"selected_native_tools":        selectedNativeNames,
@@ -407,10 +409,16 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 	}
 
 	var selectedDecision *agentcore.Decision
+	selectedSkillName := ""
+	candidateNames := make([]string, 0, 4)
 	if selection.SkillDecision != nil {
 		copied := *selection.SkillDecision
 		selectedDecision = &copied
 		decision := copied
+		selectedSkillName = strings.TrimSpace(decision.SelectedSkill)
+		for _, candidate := range decision.Candidates {
+			candidateNames = append(candidateNames, candidate.Name)
+		}
 		response["skill_decision"] = decision
 		response["skill_prompt_hint"] = decision.PromptHint(3)
 		response["canonical_skill_id"] = decision.SelectedSkill
@@ -437,6 +445,10 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 		} else {
 			copied := decision
 			selectedDecision = &copied
+			selectedSkillName = strings.TrimSpace(decision.SelectedSkill)
+			for _, candidate := range decision.Candidates {
+				candidateNames = append(candidateNames, candidate.Name)
+			}
 			response["skill_decision"] = decision
 			response["skill_prompt_hint"] = decision.PromptHint(3)
 			response["canonical_skill_id"] = decision.SelectedSkill
@@ -450,6 +462,45 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 				} else {
 					response["fallback_reason"] = decision.Reason
 				}
+			}
+		}
+	}
+	if chatHandler.skillSelector != nil {
+		if debugState, err := chatHandler.skillSelector.DebugState(); err == nil {
+			response["active_skill_count"] = debugState.ActiveSkillCount
+			response["dormant_skill_count"] = debugState.DormantSkillCount
+			response["skill_cache_invalidation_count"] = debugState.CacheInvalidationCount
+			if len(debugState.DiscoveredDirs) > 0 {
+				response["skill_discovered_dirs"] = debugState.DiscoveredDirs
+			}
+			if len(debugState.ActivatedConditionalSkills) > 0 {
+				response["skill_activated_conditional_skills"] = debugState.ActivatedConditionalSkills
+			}
+		} else {
+			response["skill_debug_error"] = err.Error()
+		}
+
+		if selectedSkillName != "" {
+			if view, ok, err := chatHandler.skillSelector.LookupSkillRuntimeView(selectedSkillName); err == nil && ok {
+				response["activation_state"] = view.ActivationState
+				response["activation_source"] = view.ActivationSource
+				response["model_invocable"] = view.ModelInvocable
+				response["user_invocable"] = view.UserInvocable
+				response["selected_skill_runtime"] = view
+			} else if err != nil {
+				response["selected_skill_runtime_error"] = err.Error()
+			}
+		}
+
+		if len(candidateNames) > 0 {
+			candidateRuntime := make(map[string]agentcore.SkillSelectorSkillRuntimeView, len(candidateNames))
+			for _, candidate := range candidateNames {
+				if view, ok, err := chatHandler.skillSelector.LookupSkillRuntimeView(candidate); err == nil && ok {
+					candidateRuntime[candidate] = view
+				}
+			}
+			if len(candidateRuntime) > 0 {
+				response["candidate_runtime"] = candidateRuntime
 			}
 		}
 	}
@@ -626,6 +677,11 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	if v, ok := updates["smart_skill_selection"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.SmartSkillSelection = &b
+		}
+	}
+	if v, ok := updates["skill_dynamic_exposure"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SkillDynamicExposure = &b
 		}
 	}
 	if mode, ok := updates["skill_selector_mode"].(string); ok {
@@ -963,6 +1019,25 @@ func (h *SettingsHandler) GetSmartSkillSelection() bool {
 		return false
 	}
 	return *h.settings.SmartSkillSelection
+}
+
+// GetSkillDynamicExposure returns whether runtime skill dynamic exposure is enabled (default false).
+func (h *SettingsHandler) GetSkillDynamicExposure() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SkillDynamicExposure == nil {
+		return false
+	}
+	return *h.settings.SkillDynamicExposure
+}
+
+func (h *SettingsHandler) GetSkillDynamicExposureExplicit() (bool, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SkillDynamicExposure == nil {
+		return false, false
+	}
+	return *h.settings.SkillDynamicExposure, true
 }
 
 // GetSkillSelectorMode returns selector mode (default "hybrid").

@@ -255,18 +255,37 @@ func (s *SQLiteStore) UpdateDataset(ctx context.Context, dataset *Dataset) error
 }
 
 func (s *SQLiteStore) GetDataset(ctx context.Context, id string) (*Dataset, error) {
-	var rows []datasetRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_datasets").Select(&rows,
-		z.Where(z.Eq("id", id)),
-		z.Limit(1),
-	); err != nil {
-		return nil, err
+	rows, err := s.selectDatasetRows(ctx, s.reader(), id)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, false) {
+			return nil, err
+		}
+		rows, err = s.selectDatasetRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
+	} else if len(rows) == 0 && s.hasSeparateReader() {
+		rows, err = s.selectDatasetRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(rows) == 0 {
 		return nil, sql.ErrNoRows
 	}
 	dataset := datasetFromRow(rows[0])
 	return &dataset, nil
+}
+
+func (s *SQLiteStore) selectDatasetRows(ctx context.Context, db *sql.DB, id string) ([]datasetRow, error) {
+	var rows []datasetRow
+	if _, err := z.TableContext(ctx, db, "harness_datasets").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (s *SQLiteStore) ListDatasets(ctx context.Context, filter DatasetFilter) ([]Dataset, error) {
@@ -313,18 +332,37 @@ func (s *SQLiteStore) CreateDatasetVersion(ctx context.Context, version *Dataset
 }
 
 func (s *SQLiteStore) GetDatasetVersion(ctx context.Context, id string) (*DatasetVersion, error) {
-	var rows []datasetVersionRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_dataset_versions").Select(&rows,
-		z.Where(z.Eq("id", id)),
-		z.Limit(1),
-	); err != nil {
-		return nil, err
+	rows, err := s.selectDatasetVersionRows(ctx, s.reader(), id)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, false) {
+			return nil, err
+		}
+		rows, err = s.selectDatasetVersionRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
+	} else if len(rows) == 0 && s.hasSeparateReader() {
+		rows, err = s.selectDatasetVersionRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(rows) == 0 {
 		return nil, sql.ErrNoRows
 	}
 	version := datasetVersionFromRow(rows[0])
 	return &version, nil
+}
+
+func (s *SQLiteStore) selectDatasetVersionRows(ctx context.Context, db *sql.DB, id string) ([]datasetVersionRow, error) {
+	var rows []datasetVersionRow
+	if _, err := z.TableContext(ctx, db, "harness_dataset_versions").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (s *SQLiteStore) ListDatasetVersions(ctx context.Context, datasetID string, limit int) ([]DatasetVersion, error) {
@@ -372,18 +410,37 @@ func (s *SQLiteStore) CreateEvalSpec(ctx context.Context, spec *EvalSpec) error 
 }
 
 func (s *SQLiteStore) GetEvalSpec(ctx context.Context, id string) (*EvalSpec, error) {
-	var rows []evalSpecRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_eval_specs").Select(&rows,
-		z.Where(z.Eq("id", id)),
-		z.Limit(1),
-	); err != nil {
-		return nil, err
+	rows, err := s.selectEvalSpecRows(ctx, s.reader(), id)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, false) {
+			return nil, err
+		}
+		rows, err = s.selectEvalSpecRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
+	} else if len(rows) == 0 && s.hasSeparateReader() {
+		rows, err = s.selectEvalSpecRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(rows) == 0 {
 		return nil, sql.ErrNoRows
 	}
 	spec := evalSpecFromRow(rows[0])
 	return &spec, nil
+}
+
+func (s *SQLiteStore) selectEvalSpecRows(ctx context.Context, db *sql.DB, id string) ([]evalSpecRow, error) {
+	var rows []evalSpecRow
+	if _, err := z.TableContext(ctx, db, "harness_eval_specs").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (s *SQLiteStore) ListEvalSpecs(ctx context.Context, filter EvalSpecFilter) ([]EvalSpec, error) {
@@ -455,12 +512,20 @@ func (s *SQLiteStore) UpdateEvalRun(ctx context.Context, evalRun *EvalRun) error
 }
 
 func (s *SQLiteStore) GetEvalRun(ctx context.Context, id string) (*EvalRun, error) {
-	var rows []evalRunRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_eval_runs").Select(&rows,
-		z.Where(z.Eq("id", id)),
-		z.Limit(1),
-	); err != nil {
-		return nil, err
+	rows, err := s.selectEvalRunRows(ctx, s.reader(), id)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, false) {
+			return nil, err
+		}
+		rows, err = s.selectEvalRunRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
+	} else if len(rows) == 0 && s.hasSeparateReader() {
+		rows, err = s.selectEvalRunRows(ctx, s.db, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(rows) == 0 {
 		return nil, sql.ErrNoRows
@@ -469,7 +534,41 @@ func (s *SQLiteStore) GetEvalRun(ctx context.Context, id string) (*EvalRun, erro
 	return &evalRun, nil
 }
 
+func (s *SQLiteStore) selectEvalRunRows(ctx context.Context, db *sql.DB, id string) ([]evalRunRow, error) {
+	var rows []evalRunRow
+	if _, err := z.TableContext(ctx, db, "harness_eval_runs").Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (s *SQLiteStore) ListEvalRuns(ctx context.Context, filter EvalRunFilter) ([]EvalRun, error) {
+	rows, err := s.listEvalRunRows(ctx, s.reader(), filter)
+	if err != nil {
+		if !s.shouldFallbackToWriter(err, false) {
+			return nil, err
+		}
+		rows, err = s.listEvalRunRows(ctx, s.db, filter)
+		if err != nil {
+			return nil, err
+		}
+	} else if s.hasSeparateReader() {
+		writerRows, writerErr := s.listEvalRunRows(ctx, s.db, filter)
+		if writerErr == nil {
+			rows = mergeUniqueRowsByKey(rows, writerRows, filter.Limit, func(row evalRunRow) string { return row.ID })
+		}
+	}
+	out := make([]EvalRun, 0, len(rows))
+	for i := range rows {
+		out = append(out, evalRunFromRow(rows[i]))
+	}
+	return out, nil
+}
+
+func (s *SQLiteStore) listEvalRunRows(ctx context.Context, db *sql.DB, filter EvalRunFilter) ([]evalRunRow, error) {
 	var conds []interface{}
 	if v := strings.TrimSpace(filter.OwnerUserID); v != "" {
 		conds = append(conds, z.Eq("owner_user_id", v))
@@ -501,14 +600,10 @@ func (s *SQLiteStore) ListEvalRuns(ctx context.Context, filter EvalRunFilter) ([
 		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
 	}
 	var rows []evalRunRow
-	if _, err := z.TableContext(ctx, s.reader(), "harness_eval_runs").Select(&rows, opts...); err != nil {
+	if _, err := z.TableContext(ctx, db, "harness_eval_runs").Select(&rows, opts...); err != nil {
 		return nil, err
 	}
-	out := make([]EvalRun, 0, len(rows))
-	for i := range rows {
-		out = append(out, evalRunFromRow(rows[i]))
-	}
-	return out, nil
+	return rows, nil
 }
 
 func (s *SQLiteStore) ClearDefaultBaseline(ctx context.Context, evalSpecID string) error {

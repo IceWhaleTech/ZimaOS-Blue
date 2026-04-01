@@ -42,6 +42,7 @@ type PlannerInput struct {
 	PriorToolCallIDs   []string
 	PreviousViolations []string
 	RoutingContract    string
+	CoordinationCtx    string
 }
 
 type GroundedPlanner struct {
@@ -91,6 +92,15 @@ func buildGroundedPlannerSystemPrompt(tools []llm.Tool) string {
 	sb.WriteString("- If the execution routing contract provides a canonical CLI action and exec/bash is available, choose that canonical CLI action first instead of substituting direct alternative tools.\n")
 	sb.WriteString("- Assertions are optional and must be limited to file_exists(path) and tool_called(name).\n")
 	sb.WriteString("- Keep reasons concise.\n")
+	if hasPlannerTool(tools, "subagents") {
+		sb.WriteString("- If subagents is available, you may delegate bounded independent work after you identify the exact purpose of the worker.\n")
+		sb.WriteString("- Follow the coordinator workflow: research -> synthesis -> implementation -> verification.\n")
+		sb.WriteString("- After research, synthesize the findings yourself before follow-up work. Write self-contained worker briefs with concrete files, constraints, and done criteria.\n")
+		sb.WriteString("- Never issue vague follow-up prompts such as 'based on your findings'; that delegates understanding instead of grounding the plan.\n")
+		sb.WriteString("- Continue the same worker when context overlap is high or when it is correcting its own failed attempt.\n")
+		sb.WriteString("- Spawn a fresh worker for narrow implementation after broad research, for clean-slate retries after a wrong approach, or for independent verification with fresh context.\n")
+		sb.WriteString("- serialize overlapping writes and use the shared scratchpad context for handoffs, task claims, blockers, and interim findings.\n")
+	}
 	if len(tools) > 0 {
 		sb.WriteString("\nAvailable tools:\n")
 		for _, tool := range tools {
@@ -139,8 +149,22 @@ func buildGroundedPlannerUserPrompt(input PlannerInput) string {
 		sb.WriteString(strings.TrimSpace(input.RoutingContract))
 		sb.WriteByte('\n')
 	}
+	if strings.TrimSpace(input.CoordinationCtx) != "" {
+		sb.WriteString("\n")
+		sb.WriteString(strings.TrimSpace(input.CoordinationCtx))
+		sb.WriteByte('\n')
+	}
 	sb.WriteString("\nDecide the single next grounded action.")
 	return strings.TrimSpace(sb.String())
+}
+
+func hasPlannerTool(tools []llm.Tool, name string) bool {
+	for _, tool := range tools {
+		if strings.TrimSpace(tool.Name) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func parsePlannerDecision(content string) (*PlannerDecision, error) {

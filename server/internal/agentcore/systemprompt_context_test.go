@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
@@ -36,6 +37,97 @@ func TestBuildProjectContext_DeterministicOrderForSamePriority(t *testing.T) {
 	}
 	if bootIdx > userIdx {
 		t.Fatalf("expected BOOTSTRAP.md before USER.md, got: %s", first)
+	}
+}
+
+func TestStaticPromptSections_ExposeStabilityAnnotations(t *testing.T) {
+	b := NewSystemPromptBuilder(&Config{})
+
+	sections := append([]promptSection{}, b.staticCoreSections()...)
+	sections = append(sections, b.staticRuntimeSections()...)
+	if len(sections) == 0 {
+		t.Fatal("expected static prompt sections")
+	}
+	for _, section := range sections {
+		if section.Stability != promptSectionStable {
+			t.Fatalf("section %s stability = %q, want %q", section.Name, section.Stability, promptSectionStable)
+		}
+		if strings.TrimSpace(section.Reason) == "" {
+			t.Fatalf("section %s should record why it stays cache-stable", section.Name)
+		}
+		if strings.TrimSpace(section.Content) == "" {
+			t.Fatalf("section %s should have content", section.Name)
+		}
+	}
+}
+
+func TestConfigPromptSections_ExposeStabilityAnnotations(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewSubagentsTool(&config.Config{Agents: *config.DefaultAgentsConfig()}))
+	registry.Register(tools.NewAskTool(nil))
+
+	b := NewSystemPromptBuilder(&Config{WorkspaceDir: t.TempDir()})
+	b.SetAgentMode(true)
+	b.SetToolRegistry(registry)
+
+	sections := b.configSections(map[string]string{workspace.FileUSER: "project context"}, true, true, false)
+	if len(sections) == 0 {
+		t.Fatal("expected config prompt sections")
+	}
+	required := map[string]bool{
+		"agent_mode":      false,
+		"workspace":       false,
+		"tools":           false,
+		"project_context": false,
+	}
+	for _, section := range sections {
+		if section.Stability != promptSectionConfig {
+			t.Fatalf("section %s stability = %q, want %q", section.Name, section.Stability, promptSectionConfig)
+		}
+		if strings.TrimSpace(section.Reason) == "" {
+			t.Fatalf("section %s should record why it belongs in config", section.Name)
+		}
+		if _, ok := required[section.Name]; ok {
+			required[section.Name] = true
+		}
+	}
+	for name, seen := range required {
+		if !seen {
+			t.Fatalf("expected config sections to include %s, got %#v", name, sections)
+		}
+	}
+}
+
+func TestDynamicPromptSections_KeepLateBoundContentOutOfStableBlocks(t *testing.T) {
+	b := NewSystemPromptBuilder(&Config{})
+
+	sections, selection := b.dynamicSections(context.Background(), "<late_bound_hint>retry browser</late_bound_hint>")
+	if selection != nil {
+		t.Fatal("expected no context pack selection in this test")
+	}
+	if len(sections) != 2 {
+		t.Fatalf("dynamic section count = %d, want 2", len(sections))
+	}
+	for _, section := range sections {
+		if section.Stability != promptSectionDynamic {
+			t.Fatalf("section %s stability = %q, want %q", section.Name, section.Stability, promptSectionDynamic)
+		}
+		if strings.TrimSpace(section.Reason) == "" {
+			t.Fatalf("section %s should record why it stays dynamic", section.Name)
+		}
+	}
+
+	res := b.BuildStructured(context.Background(), "<late_bound_hint>retry browser</late_bound_hint>")
+	if !strings.Contains(res.Dynamic, "<now>") || !strings.Contains(res.Dynamic, "<late_bound_hint>retry browser</late_bound_hint>") {
+		t.Fatalf("expected runtime info and late-bound prompt in dynamic block, got: %s", res.Dynamic)
+	}
+	for _, block := range []string{res.Static, res.Config} {
+		if strings.Contains(block, "<now>") {
+			t.Fatalf("unexpected timestamp in cacheable block: %s", block)
+		}
+		if strings.Contains(block, "<late_bound_hint>retry browser</late_bound_hint>") {
+			t.Fatalf("unexpected late-bound prompt in cacheable block: %s", block)
+		}
 	}
 }
 
@@ -341,6 +433,61 @@ func TestBuildAgentModeGuidance_AutoConfirmClause(t *testing.T) {
 	}
 	if !strings.Contains(out, "</agent_mode>") {
 		t.Fatalf("agent mode guidance should close agent_mode tag: %s", out)
+	}
+}
+
+func TestBuildAgentModeGuidance_IncludesCoordinatorAndScratchpadWhenSubagentsAvailable(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewSubagentsTool(&config.Config{Agents: *config.DefaultAgentsConfig()}))
+
+	b := NewSystemPromptBuilder(&Config{WorkspaceDir: "/tmp/workspace"})
+	b.SetAgentMode(true)
+	b.SetToolRegistry(registry)
+
+	var sb strings.Builder
+	b.writeAgentModeGuidanceTo(&sb)
+	out := sb.String()
+	required := []string{
+		"delegate bounded independent work",
+		"research -> synthesis -> implementation -> verification",
+		"Continue the same worker when context overlap is high",
+		"Based on your findings, fix the auth bug.",
+		"Workers cannot see your conversation",
+		".blue/scratchpad/shared",
+		"task claims, interim findings, blockers, and worker handoffs",
+	}
+	for _, want := range required {
+		if !strings.Contains(out, want) {
+			t.Fatalf("agent mode guidance should include %q, got: %s", want, out)
+		}
+	}
+}
+
+func TestWriteToolsInfoTo_IncludesToolUsageRules(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewSubagentsTool(&config.Config{Agents: *config.DefaultAgentsConfig()}))
+	registry.Register(tools.NewAskTool(nil))
+
+	b := NewSystemPromptBuilder(&Config{})
+	b.SetToolRegistry(registry)
+
+	var sb strings.Builder
+	if !b.writeToolsInfoTo(&sb, false) {
+		t.Fatal("expected tool guidance to be written")
+	}
+	out := sb.String()
+	required := []string{
+		"Prefer dedicated tools over exec",
+		"parallelize them when the runtime supports it",
+		"Use subagents only for bounded independent work",
+		"After research, synthesize the findings yourself before delegating follow-up work",
+		"Use ask only when key requirements are missing",
+		"run independent verification",
+	}
+	for _, want := range required {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected tool guidance to include %q, got: %s", want, out)
+		}
 	}
 }
 

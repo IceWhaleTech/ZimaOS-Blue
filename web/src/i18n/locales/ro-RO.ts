@@ -4144,10 +4144,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Injecție de comandă',
+          description: 'Încearcă să execute comenzi de sistem',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Critic',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4804,6 +4804,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Acest skill este blocat de politica de securitate.',
+      blockedByPolicyMediumRisk: 'Acest skill este blocat de politica de securitate (risc mediu).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6595,6 +6596,7 @@ export default {
     outputTruncated: 'trunchiat',
     outputUnavailable: 'Ieșirea nu este disponibilă în acest card',
     noOutput: 'Fără ieșire',
+      noCommand: 'No command',
     running: 'Se execută...',
     copyCommand: 'Copiază comanda',
     copied: 'Copiat!',

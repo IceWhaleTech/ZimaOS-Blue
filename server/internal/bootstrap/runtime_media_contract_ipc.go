@@ -22,7 +22,6 @@ func registerRouteRuntimeMediaIPC(
 	if ipcSrv == nil || deps == nil || services == nil || mediaManager == nil {
 		return
 	}
-
 	mediaGen := func(ctx context.Context, category, model, prompt string, params map[string]string) (string, error) {
 		req := &mediagen.MediaRequest{
 			Prompt: prompt,
@@ -48,7 +47,6 @@ func registerRouteRuntimeMediaIPC(
 		}
 		return task.ID, nil
 	}
-
 	statusQuery := func(ctx context.Context, taskID string) (map[string]string, error) {
 		lookupUserID := strings.TrimSpace(tools.GetUserID(ctx))
 		var (
@@ -73,7 +71,6 @@ func registerRouteRuntimeMediaIPC(
 			"error":       task.Error,
 		}, nil
 	}
-
 	sockipc.RegisterMediaHandlers(ipcSrv, mediaGen, statusQuery, logger)
 	if deps.BrowserIPC != nil {
 		sockipc.RegisterBrowserHandlers(ipcSrv, deps.BrowserIPC, logger)
@@ -90,7 +87,6 @@ func registerRouteRuntimeMediaIPC(
 	if deps.RegisterIPCExtensions != nil {
 		deps.RegisterIPCExtensions(ipcSrv)
 	}
-
 	sockipc.RegisterSkillFallback(ipcSrv, sockipc.SkillExecutorFunc(func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
 		resolved, err := resolveRuntimeSkillForExecution(services.SkillRegistry, runtimeSkillExecutionWorkspace(workspaceDir, input), skillID)
 		if err == nil && resolved.Skill != nil {

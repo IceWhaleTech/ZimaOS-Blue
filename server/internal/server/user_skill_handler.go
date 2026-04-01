@@ -91,9 +91,10 @@ type UserSkillResponse struct {
 
 // installedSkillInfo holds minimal info parsed from SKILL.md frontmatter.
 type installedSkillInfo struct {
-	ID      string
-	Name    string
-	Aliases []string
+	ID            string
+	Name          string
+	Aliases       []string
+	UserInvocable bool
 }
 
 func (h *UserSkillHandler) skillRoots() []string {
@@ -130,12 +131,16 @@ func (h *UserSkillHandler) listInstalledSkills() []installedSkillInfo {
 			if _, ok := seen[id]; ok {
 				continue
 			}
+			if !bundle.Document.UserInvocable {
+				continue
+			}
 			seen[id] = struct{}{}
 			name := firstString(strings.TrimSpace(bundle.Document.Name), id, entry.Name())
 			skills = append(skills, installedSkillInfo{
-				ID:      id,
-				Name:    name,
-				Aliases: userSkillAliases(id, bundle.Document, entry.Name()),
+				ID:            id,
+				Name:          name,
+				Aliases:       userSkillAliases(id, bundle.Document, entry.Name()),
+				UserInvocable: bundle.Document.UserInvocable,
 			})
 		}
 	}

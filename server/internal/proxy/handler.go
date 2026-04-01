@@ -141,6 +141,7 @@ type parsedRequest struct {
 	resolvedProvider      string // actual provider name after routing
 	resolvedProviderID    string // actual provider ID after routing
 	resolvedModel         string // actual model ID after routing
+	promptCacheSnapshot   PromptCacheStateSnapshot
 }
 
 // sseBufferPool reuses 32KB buffers for SSE streaming to reduce GC pressure.
@@ -785,6 +786,7 @@ type ProxyHandler struct {
 	routingEnabled     atomic.Bool       // Toggle for model routing
 	promptCacheEnabled atomic.Bool       // Toggle for Anthropic prompt caching
 	promptCacheStats   *PromptCacheStats // Prompt cache effectiveness stats
+	promptCacheBreaks  *PromptCacheBreakDetector
 
 	// Warm path — accessed conditionally
 	failover      *FailoverHandler          // Failover handler
@@ -823,6 +825,7 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 		connPool:                      connPool,
 		failover:                      failover,
 		promptCacheStats:              &PromptCacheStats{},
+		promptCacheBreaks:             NewPromptCacheBreakDetector(0),
 		providerRaceConfig:            normalizeProviderRaceConfig(DefaultProviderRaceConfig()),
 		providerRaceStats:             make(map[string]*providerRaceStat),
 		responsesPrevID:               make(map[string]string),
@@ -2212,6 +2215,9 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	)
 
 	requestCtx := withUpstreamResponsesPreviousID(r.Context(), upstreamPrevID)
+	if strings.HasSuffix(finalPath, "/messages") {
+		requestCtx = withPromptCacheSnapshot(requestCtx, BuildPromptCacheStateSnapshot(body, provider.ID, strings.TrimSpace(gjson.GetBytes(body, "model").String()), finalPath))
+	}
 	req, err := http.NewRequestWithContext(requestCtx, r.Method, fullURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -3762,6 +3768,11 @@ func (ph *ProxyHandler) handleModels(w http.ResponseWriter, r *http.Request) {
 // Uses pre-parsed request data to avoid redundant JSON parsing.
 func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response, pr *parsedRequest, r *http.Request) {
 	copyHeaders(w.Header(), resp.Header)
+	if pr != nil && resp.Request != nil {
+		if snapshot, ok := promptCacheSnapshotFromContext(resp.Request.Context()); ok {
+			pr.promptCacheSnapshot = snapshot
+		}
+	}
 	var resolvedRoute *providerpool.RouteResult
 	if pr != nil && pr.resolvedProviderID != "" {
 		resolvedRoute = &providerpool.RouteResult{
@@ -4093,7 +4104,11 @@ func (ph *ProxyHandler) recordPromptCache(pr *parsedRequest, input, cacheRead, c
 		}
 		promptCacheKey = pr.promptCacheKey
 	}
-	LogTokenChurn(provider, model, promptCacheKey, int(input), int(cacheRead), int(cacheCreation))
+	var observation *PromptCacheBreakObservation
+	if pr != nil && ph.promptCacheBreaks != nil {
+		observation = ph.promptCacheBreaks.Observe(pr.promptCacheSnapshot, int(cacheRead))
+	}
+	LogTokenChurn(provider, model, promptCacheKey, int(input), int(cacheRead), int(cacheCreation), observation)
 }
 
 func usageMapTokens(usage map[string]interface{}) (int64, int64) {

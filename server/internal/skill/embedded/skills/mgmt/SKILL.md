@@ -2,6 +2,7 @@
 name: mgmt
 version: "1.0.0"
 description: "Perform administrative/system operations: provider management, settings, channel/skill/tool toggles, user controls, health/version, and proxy stats. Use for ops/admin tasks, diagnostics, and runtime configuration changes."
+model_invocable: false
 invocation: "blue mgmt.providers.list"
 examples:
   - "blue mgmt.providers.list"

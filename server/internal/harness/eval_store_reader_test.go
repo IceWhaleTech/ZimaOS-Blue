@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -209,5 +210,108 @@ func TestSQLiteStore_EvalReadsUseReaderDB(t *testing.T) {
 	}
 	if gotReport.ID != report.ID {
 		t.Fatalf("GetComparisonReport returned %q, want %q", gotReport.ID, report.ID)
+	}
+}
+
+func TestController_GetEvalRunReportFallsBackWhenReaderMissesGroupEvalContext(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	staleReader, err := sql.Open("sqlite3", filepath.Join(tmpDir, "stale-reader.db"))
+	if err != nil {
+		t.Fatalf("open stale reader sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = staleReader.Close() })
+	if _, err := NewSQLiteStoreWithReadDB(staleReader, staleReader); err != nil {
+		t.Fatalf("initialize stale reader schema: %v", err)
+	}
+
+	controller := newTestControllerWithReadDB(t, staleReader)
+
+	dataset := &Dataset{
+		ID:             "dataset-fallback",
+		Name:           "Dataset fallback",
+		OwnerUserID:    "user-1",
+		Subject:        "routing",
+		DefaultRunKind: RunKindResearch,
+	}
+	if err := controller.store.CreateDataset(ctx, dataset); err != nil {
+		t.Fatalf("CreateDataset failed: %v", err)
+	}
+
+	version := &DatasetVersion{
+		ID:         "version-fallback",
+		DatasetID:  dataset.ID,
+		Version:    "v1",
+		ItemCount:  0,
+		Manifest:   map[string]interface{}{"items": []interface{}{}},
+		CreatedBy:  "user-1",
+		SourceType: "seed",
+	}
+	if err := controller.store.CreateDatasetVersion(ctx, version); err != nil {
+		t.Fatalf("CreateDatasetVersion failed: %v", err)
+	}
+
+	spec := &EvalSpec{
+		ID:               "spec-fallback",
+		Name:             "Spec fallback",
+		OwnerUserID:      "user-1",
+		Subject:          "routing",
+		RunKind:          RunKindResearch,
+		Profile:          "default",
+		DatasetID:        dataset.ID,
+		DatasetVersionID: version.ID,
+	}
+	if err := controller.store.CreateEvalSpec(ctx, spec); err != nil {
+		t.Fatalf("CreateEvalSpec failed: %v", err)
+	}
+
+	now := time.Now().UTC()
+	group := &RunGroup{
+		ID:          "group-fallback",
+		Kind:        RunGroupKindEval,
+		Title:       "group fallback",
+		Status:      RunGroupStatusCompleted,
+		OwnerUserID: "user-1",
+		Summary:     map[string]interface{}{"item_count": 0},
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		StartedAt:   &now,
+		FinishedAt:  &now,
+	}
+	if err := controller.store.CreateGroup(ctx, group); err != nil {
+		t.Fatalf("CreateGroup failed: %v", err)
+	}
+
+	evalRun := &EvalRun{
+		ID:               "eval-run-fallback",
+		EvalSpecID:       spec.ID,
+		GroupID:          group.ID,
+		DatasetVersionID: version.ID,
+		Title:            "Eval Run fallback",
+		OwnerUserID:      "user-1",
+		Status:           RunGroupStatusCompleted,
+		TriggerKind:      "manual",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		StartedAt:        &now,
+		FinishedAt:       &now,
+	}
+	if err := controller.store.CreateEvalRun(ctx, evalRun); err != nil {
+		t.Fatalf("CreateEvalRun failed: %v", err)
+	}
+
+	report, err := controller.GetEvalRunReport(ctx, evalRun.ID)
+	if err != nil {
+		t.Fatalf("GetEvalRunReport fallback failed: %v", err)
+	}
+	if report == nil || report.EvalRun == nil || report.GroupReport == nil {
+		t.Fatalf("GetEvalRunReport returned %#v", report)
+	}
+	if report.EvalRun.ID != evalRun.ID {
+		t.Fatalf("report eval run = %q, want %q", report.EvalRun.ID, evalRun.ID)
+	}
+	if report.GroupReport.Group == nil || report.GroupReport.Group.ID != group.ID {
+		t.Fatalf("report group = %#v, want id %q", report.GroupReport.Group, group.ID)
 	}
 }

@@ -23,6 +23,20 @@ const sqliteRecoverTimeout = 2 * time.Minute
 
 var sqliteAuxiliarySuffixes = []string{"", "-wal", "-shm"}
 
+const defaultSQLiteQuickCheckTimeout = 2 * time.Minute
+
+var sqliteQuickCheckTimeout = func() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("BLUE_SQLITE_QUICK_CHECK_TIMEOUT"))
+	if raw == "" {
+		return defaultSQLiteQuickCheckTimeout
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return defaultSQLiteQuickCheckTimeout
+	}
+	return parsed
+}()
+
 // IsSQLiteCorruptionError reports whether err looks like SQLite file corruption.
 func IsSQLiteCorruptionError(err error) bool {
 	if err == nil {
@@ -219,7 +233,7 @@ func quickCheckOpenDatabase(db *sql.DB) error {
 		return fmt.Errorf("database is nil")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteQuickCheckTimeout)
 	defer cancel()
 
 	rows, err := db.QueryContext(ctx, "PRAGMA quick_check")
@@ -770,7 +784,7 @@ func QuickCheckDatabase(dbPath string) error {
 	defer db.Close()
 
 	// Use a timeout context to prevent hanging on corrupted databases
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteQuickCheckTimeout)
 	defer cancel()
 
 	rows, err := db.QueryContext(ctx, "PRAGMA quick_check")

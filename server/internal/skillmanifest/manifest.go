@@ -45,6 +45,9 @@ type Document struct {
 	Invocation      string
 	Examples        []string
 	CapabilityTags  []string
+	Paths           []string
+	UserInvocable   bool
+	ModelInvocable  bool
 	InteractionMode string
 	CardSupport     string
 	Permissions     []string
@@ -202,11 +205,13 @@ func ParseEntry(dirName, sourcePath string, data []byte, opts Options) (Document
 	}
 
 	doc := Document{
-		Name:      strings.TrimSpace(dirName),
-		Location:  sourcePath,
-		EntryFile: filepath.Base(sourcePath),
-		Enabled:   true,
-		Body:      strings.TrimSpace(body),
+		Name:           strings.TrimSpace(dirName),
+		Location:       sourcePath,
+		EntryFile:      filepath.Base(sourcePath),
+		Enabled:        true,
+		UserInvocable:  true,
+		ModelInvocable: true,
+		Body:           strings.TrimSpace(body),
 	}
 
 	parseFrontmatter(meta, &doc)
@@ -265,6 +270,9 @@ func ParseEntry(dirName, sourcePath string, data []byte, opts Options) (Document
 		Author:          doc.Author,
 		Category:        doc.Category,
 		Tags:            append([]string(nil), doc.Tags...),
+		Paths:           append([]string(nil), doc.Paths...),
+		UserInvocable:   doc.UserInvocable,
+		ModelInvocable:  doc.ModelInvocable,
 		Permissions:     append([]string(nil), doc.Permissions...),
 		Invocation:      doc.Invocation,
 		Examples:        append([]string(nil), doc.Examples...),
@@ -332,6 +340,7 @@ func parseFrontmatter(meta map[string]any, doc *Document) {
 	if value := stringValue(meta["invocation"]); value != "" {
 		doc.Invocation = value
 	}
+	doc.Paths = appendUnique(doc.Paths, stringListValue(meta["paths"])...)
 	if value := stringValue(meta["interaction_mode"]); value != "" {
 		doc.InteractionMode = value
 	}
@@ -340,6 +349,15 @@ func parseFrontmatter(meta map[string]any, doc *Document) {
 	}
 	if enabled, ok := boolValue(meta["enabled"]); ok {
 		doc.Enabled = enabled
+	}
+	if userInvocable, ok := boolValue(firstNonNil(meta["user_invocable"], meta["user-invocable"])); ok {
+		doc.UserInvocable = userInvocable
+	}
+	if modelInvocable, ok := boolValue(meta["model_invocable"]); ok {
+		doc.ModelInvocable = modelInvocable
+	}
+	if disableModel, ok := boolValue(meta["disable-model-invocation"]); ok && disableModel {
+		doc.ModelInvocable = false
 	}
 	doc.OS = appendUnique(doc.OS, stringListValue(meta["os"])...)
 	doc.Environment = appendUnique(doc.Environment, stringListValue(firstNonNil(meta["environment"], meta["env"], meta["applicable_env"], meta["applicable-environment"]))...)

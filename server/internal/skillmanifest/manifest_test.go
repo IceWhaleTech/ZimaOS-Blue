@@ -49,7 +49,7 @@ description: Schedule reminders
 ## Command Usage
 
 ` + "```bash" + `
-blue reminder.add message="ping" time=10m
+blue reminder add message="ping" time=10m
 ` + "```" + `
 `
 
@@ -69,8 +69,8 @@ name:
 version: 7
 description: true
 invocation:
-  - blue reminder.add
-examples: blue reminder.add
+  - blue reminder add
+examples: blue reminder add
 capability_tags: reminder
 interaction_mode:
   mode: stateless
@@ -104,9 +104,9 @@ func TestParseEntry_StrictContractRejectsUnparseableBlueCommands(t *testing.T) {
 name: reminder
 version: 1.0.0
 description: Schedule reminders
-invocation: reminder.add message=ping
+invocation: reminder add message=ping
 examples:
-  - reminder.add message=ping
+  - reminder add message=ping
 capability_tags:
   - reminder
 interaction_mode: stateless
@@ -157,6 +157,71 @@ blue web_search query="latest news"
 	}
 	if doc.Manifest == nil || doc.Manifest.Invocation == "" {
 		t.Fatalf("expected manifest invocation, got %+v", doc.Manifest)
+	}
+}
+
+func TestParseEntry_ExposureFieldDefaults(t *testing.T) {
+	content := `---
+name: web_search
+description: Search the web
+os: ["` + runtime.GOOS + `"]
+---
+# Web Search
+`
+
+	doc, err := ParseEntry("web_search", "/tmp/SKILL.md", []byte(content), Options{})
+	if err != nil {
+		t.Fatalf("ParseEntry error: %v", err)
+	}
+	if !doc.UserInvocable {
+		t.Fatal("expected user_invocable to default to true")
+	}
+	if !doc.ModelInvocable {
+		t.Fatal("expected model_invocable to default to true")
+	}
+	if len(doc.Paths) != 0 {
+		t.Fatalf("expected no paths by default, got %v", doc.Paths)
+	}
+	if doc.Manifest == nil || !doc.Manifest.UserInvocable || !doc.Manifest.ModelInvocable {
+		t.Fatalf("unexpected manifest defaults: %+v", doc.Manifest)
+	}
+}
+
+func TestParseEntry_ExposureFieldAliases(t *testing.T) {
+	content := `---
+name: hidden_skill
+version: "1.0.0"
+description: Hidden internal skill
+paths:
+  - src/**
+user-invocable: false
+disable-model-invocation: true
+invocation: "blue hidden_skill action=run"
+examples:
+  - "blue hidden_skill action=run"
+capability_tags:
+  - internal
+interaction_mode: stateless
+card_support: none
+---
+# Hidden Skill
+`
+
+	doc, err := ParseEntry("hidden_skill", "/tmp/SKILL.md", []byte(content), Options{RequireContract: true})
+	if err != nil {
+		t.Fatalf("ParseEntry error: %v", err)
+	}
+	if got := doc.Paths; len(got) != 1 || got[0] != "src/**" {
+		t.Fatalf("paths=%v, want [src/**]", got)
+	}
+	if doc.UserInvocable {
+		t.Fatal("expected user_invocable=false from alias")
+	}
+	if doc.ModelInvocable {
+		t.Fatal("expected model_invocable=false from disable-model-invocation")
+	}
+	if doc.Manifest == nil || doc.Manifest.UserInvocable || doc.Manifest.ModelInvocable {
+		t.Fatalf("unexpected manifest alias values: %+v", doc.Manifest)
 	}
 }
 

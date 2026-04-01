@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +13,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 )
 
 const (
@@ -71,6 +70,25 @@ type skillIndexEntry struct {
 	bundle skillSelectorBundle
 }
 
+type SkillSelectorSkillRuntimeView struct {
+	ID               string   `json:"id,omitempty"`
+	Name             string   `json:"name,omitempty"`
+	Paths            []string `json:"paths,omitempty"`
+	UserInvocable    bool     `json:"user_invocable"`
+	ModelInvocable   bool     `json:"model_invocable"`
+	ActivationState  string   `json:"activation_state,omitempty"`
+	ActivationSource string   `json:"activation_source,omitempty"`
+}
+
+type SkillSelectorDebugState struct {
+	ActiveSkillCount           int                                      `json:"active_skill_count"`
+	DormantSkillCount          int                                      `json:"dormant_skill_count"`
+	CacheInvalidationCount     uint64                                   `json:"cache_invalidation_count"`
+	DiscoveredDirs             []string                                 `json:"discovered_dirs,omitempty"`
+	ActivatedConditionalSkills []string                                 `json:"activated_conditional_skills,omitempty"`
+	Skills                     map[string]SkillSelectorSkillRuntimeView `json:"skills,omitempty"`
+}
+
 // PromptHint returns a compact XML block for system prompt injection.
 func (d Decision) PromptHint(maxCandidates int) string {
 	if maxCandidates <= 0 {
@@ -115,11 +133,15 @@ func (d Decision) PromptHint(maxCandidates int) string {
 type SkillSelector struct {
 	workspaceDir string
 	reranker     SkillReranker
+	exposure     *skillmanifest.SkillExposureManager
 
-	mu         sync.RWMutex
-	indexStamp string
-	indexDocs  []SkillDoc
-	indexCache []skillIndexEntry
+	mu                     sync.RWMutex
+	indexLoaded            bool
+	indexStamp             string
+	indexDocs              []SkillDoc
+	indexCache             []skillIndexEntry
+	cacheInvalidationCount uint64
+	debugState             SkillSelectorDebugState
 
 	cacheMu  sync.RWMutex
 	cache    map[string]cachedSkillDecision
@@ -139,9 +161,59 @@ func NewSkillSelector(workspaceDir string, reranker SkillReranker) *SkillSelecto
 	return &SkillSelector{
 		workspaceDir: workspaceDir,
 		reranker:     reranker,
+		exposure:     skillmanifest.SharedSkillExposureManager(workspaceDir),
 		cache:        make(map[string]cachedSkillDecision),
 		cacheTTL:     defaultSkillSelectCacheTTL,
 	}
+}
+
+func (s *SkillSelector) SetDynamicExposureEnabledFunc(fn func() bool) {
+	if s == nil || s.exposure == nil {
+		return
+	}
+	s.exposure.SetDynamicExposureEnabledFunc(fn)
+}
+
+func (s *SkillSelector) ExposureManager() *skillmanifest.SkillExposureManager {
+	if s == nil {
+		return nil
+	}
+	return s.exposure
+}
+
+func (s *SkillSelector) DebugState() (SkillSelectorDebugState, error) {
+	if s == nil {
+		return SkillSelectorDebugState{}, nil
+	}
+	if _, _, err := s.loadIndex(); err != nil {
+		return SkillSelectorDebugState{}, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return cloneSkillSelectorDebugState(s.debugState), nil
+}
+
+func (s *SkillSelector) LookupSkillRuntimeView(name string) (SkillSelectorSkillRuntimeView, bool, error) {
+	if s == nil {
+		return SkillSelectorSkillRuntimeView{}, false, nil
+	}
+	if _, _, err := s.loadIndex(); err != nil {
+		return SkillSelectorSkillRuntimeView{}, false, err
+	}
+
+	key := strings.ToLower(strings.TrimSpace(name))
+	if key == "" {
+		return SkillSelectorSkillRuntimeView{}, false, nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	view, ok := s.debugState.Skills[key]
+	if !ok {
+		return SkillSelectorSkillRuntimeView{}, false, nil
+	}
+	return cloneSkillRuntimeView(view), true, nil
 }
 
 func normalizeSkillSelectorMode(mode string) string {
@@ -702,13 +774,21 @@ func (s *SkillSelector) setCachedDecision(key string, d Decision) {
 }
 
 func (s *SkillSelector) loadIndex() ([]SkillDoc, []skillIndexEntry, error) {
-	stamp, err := buildSkillRootsStamp(s.workspaceDir)
+	snapshot, err := s.exposure.Snapshot()
 	if err != nil {
 		return nil, nil, err
 	}
+	activeViews := make([]skillmanifest.SkillExposureView, 0, len(snapshot.ActiveSkills))
+	for _, view := range snapshot.ActiveSkills {
+		if !view.ModelInvocable {
+			continue
+		}
+		activeViews = append(activeViews, view)
+	}
+	stamp := strings.TrimSpace(snapshot.Stamp)
 
 	s.mu.RLock()
-	if s.indexStamp == stamp && len(s.indexDocs) > 0 {
+	if s.indexLoaded && s.indexStamp == stamp {
 		out := make([]SkillDoc, len(s.indexDocs))
 		copy(out, s.indexDocs)
 		cache := make([]skillIndexEntry, len(s.indexCache))
@@ -718,10 +798,7 @@ func (s *SkillSelector) loadIndex() ([]SkillDoc, []skillIndexEntry, error) {
 	}
 	s.mu.RUnlock()
 
-	docs, err := BuildSkillIndex(s.workspaceDir)
-	if err != nil {
-		return nil, nil, err
-	}
+	docs := BuildSkillIndexFromViews(activeViews)
 	indexCache := make([]skillIndexEntry, 0, len(docs))
 	for _, doc := range docs {
 		indexCache = append(indexCache, skillIndexEntry{
@@ -731,11 +808,19 @@ func (s *SkillSelector) loadIndex() ([]SkillDoc, []skillIndexEntry, error) {
 	}
 
 	s.mu.Lock()
+	cacheInvalidations := s.cacheInvalidationCount
+	if s.indexStamp != "" && s.indexStamp != stamp {
+		cacheInvalidations++
+		s.cacheInvalidationCount = cacheInvalidations
+		s.invalidateDecisionCache()
+	}
+	s.indexLoaded = true
 	s.indexStamp = stamp
 	s.indexDocs = make([]SkillDoc, len(docs))
 	copy(s.indexDocs, docs)
 	s.indexCache = make([]skillIndexEntry, len(indexCache))
 	copy(s.indexCache, indexCache)
+	s.debugState = buildSkillSelectorDebugState(snapshot, cacheInvalidations)
 	s.mu.Unlock()
 
 	out := make([]SkillDoc, len(docs))
@@ -745,27 +830,61 @@ func (s *SkillSelector) loadIndex() ([]SkillDoc, []skillIndexEntry, error) {
 	return out, cache, nil
 }
 
-func buildSkillRootsStamp(workspaceDir string) (string, error) {
-	roots := resolveSkillRoots(workspaceDir)
-	parts := make([]string, 0, 128)
-	for _, root := range roots {
-		entries, err := os.ReadDir(root)
-		if err != nil {
-			continue
+func (s *SkillSelector) invalidateDecisionCache() {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	s.cache = make(map[string]cachedSkillDecision)
+}
+
+func buildSkillSelectorDebugState(snapshot skillmanifest.SkillExposureSnapshot, cacheInvalidations uint64) SkillSelectorDebugState {
+	state := SkillSelectorDebugState{
+		ActiveSkillCount:           snapshot.ActiveSkillCount,
+		DormantSkillCount:          snapshot.DormantSkillCount,
+		CacheInvalidationCount:     cacheInvalidations,
+		DiscoveredDirs:             append([]string(nil), snapshot.DiscoveredDirs...),
+		ActivatedConditionalSkills: append([]string(nil), snapshot.ActivatedConditionalSkills...),
+		Skills:                     make(map[string]SkillSelectorSkillRuntimeView, len(snapshot.VisibleSkills)*2),
+	}
+
+	for _, skillView := range snapshot.VisibleSkills {
+		view := SkillSelectorSkillRuntimeView{
+			ID:               strings.TrimSpace(skillView.Document.ID),
+			Name:             strings.TrimSpace(firstNonBlank(skillView.Document.Name, skillView.Document.ID)),
+			Paths:            append([]string(nil), skillView.Paths...),
+			UserInvocable:    skillView.UserInvocable,
+			ModelInvocable:   skillView.ModelInvocable,
+			ActivationState:  strings.TrimSpace(skillView.ActivationState),
+			ActivationSource: strings.TrimSpace(skillView.ActivationSource),
 		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			md := filepath.Join(root, e.Name(), "SKILL.md")
-			st, err := os.Stat(md)
-			if err != nil {
-				continue
-			}
-			parts = append(parts, md+"|"+fmt.Sprintf("%d|%d", st.Size(), st.ModTime().UnixNano()))
+		if key := strings.ToLower(strings.TrimSpace(view.Name)); key != "" {
+			state.Skills[key] = view
+		}
+		if key := strings.ToLower(strings.TrimSpace(view.ID)); key != "" {
+			state.Skills[key] = view
 		}
 	}
-	sort.Strings(parts)
-	h := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	return hex.EncodeToString(h[:]), nil
+	return state
+}
+
+func cloneSkillSelectorDebugState(state SkillSelectorDebugState) SkillSelectorDebugState {
+	out := SkillSelectorDebugState{
+		ActiveSkillCount:           state.ActiveSkillCount,
+		DormantSkillCount:          state.DormantSkillCount,
+		CacheInvalidationCount:     state.CacheInvalidationCount,
+		DiscoveredDirs:             append([]string(nil), state.DiscoveredDirs...),
+		ActivatedConditionalSkills: append([]string(nil), state.ActivatedConditionalSkills...),
+	}
+	if len(state.Skills) == 0 {
+		return out
+	}
+	out.Skills = make(map[string]SkillSelectorSkillRuntimeView, len(state.Skills))
+	for key, value := range state.Skills {
+		out.Skills[key] = cloneSkillRuntimeView(value)
+	}
+	return out
+}
+
+func cloneSkillRuntimeView(view SkillSelectorSkillRuntimeView) SkillSelectorSkillRuntimeView {
+	view.Paths = append([]string(nil), view.Paths...)
+	return view
 }

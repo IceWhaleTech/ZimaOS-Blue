@@ -4100,10 +4100,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Kommandoinjeksjon',
+          description: 'Forsøker å utføre systemkommandoer',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Kritisk',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4759,6 +4759,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Denne skillen er blokkert av sikkerhetspolicyen.',
+      blockedByPolicyMediumRisk: 'Denne skillen er blokkert av sikkerhetspolicyen (middels risiko).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6529,6 +6530,7 @@ export default {
     outputTruncated: 'avkortet',
     outputUnavailable: 'Utdata er ikke tilgjengelig på dette kortet',
     noOutput: 'Ingen utdata',
+      noCommand: 'No command',
     running: 'Kjører...',
     copyCommand: 'Kopier kommando',
     copied: 'Kopiert!',

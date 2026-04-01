@@ -5134,7 +5134,7 @@ func TestStreamMessageAutoContinue_PseudoToolCall_CommandWorkdirJSON(t *testing.
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	pseudo := "收到，开始设置提醒。\n- [ ] 创建“10秒后喝水”提醒\nWorking on task: add reminder for 10 seconds later.{\"command\":\"blue reminder.add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"blue help reminder\",...}"
+	pseudo := "收到，开始设置提醒。\n- [ ] 创建“10秒后喝水”提醒\nWorking on task: add reminder for 10 seconds later.{\"command\":\"blue reminder add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"blue help reminder\",...}"
 	fakeProxy := &autoContinueScriptedProxyHandler{
 		firstRoundContent:  pseudo,
 		secondRoundContent: "已切换为真实工具调用并完成提醒创建。",
@@ -5158,7 +5158,7 @@ func TestStreamMessageAutoContinue_PseudoToolCall_CommandWorkdirJSON(t *testing.
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
 	}
-	if strings.Contains(body, "{\"command\":\"blue reminder.add") ||
+	if strings.Contains(body, "{\"command\":\"blue reminder add") ||
 		strings.Contains(body, "Working on task:") ||
 		strings.Contains(body, "\"workdir\"") {
 		t.Fatalf("expected command/workdir pseudo tool-call leakage to be suppressed from streamed body, got=%s", body)
@@ -5187,7 +5187,7 @@ func TestStreamMessageAutoContinue_PseudoToolCall_CommandWorkdirJSON(t *testing.
 		if m.Role != "assistant" {
 			continue
 		}
-		if strings.Contains(m.Content, "{\"command\":\"blue reminder.add") ||
+		if strings.Contains(m.Content, "{\"command\":\"blue reminder add") ||
 			strings.Contains(m.Content, "Working on task:") {
 			t.Fatalf("expected malformed pseudo tool-call text to be discarded from persisted assistant messages, got=%q", m.Content)
 		}

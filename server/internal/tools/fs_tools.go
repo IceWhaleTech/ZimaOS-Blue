@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 )
 
 const (
@@ -560,8 +562,9 @@ func fsTruncateRunes(s string, maxRunes int) string {
 }
 
 type EditTool struct {
-	Scope       *fsToolScope
-	MaxFileSize int64
+	Scope         *fsToolScope
+	MaxFileSize   int64
+	skillExposure *skillmanifest.SkillExposureManager
 }
 
 func NewEditTool(allowedPaths []string, maxFileSize int64) *EditTool {
@@ -569,6 +572,13 @@ func NewEditTool(allowedPaths []string, maxFileSize int64) *EditTool {
 		maxFileSize = maxFSToolBytes
 	}
 	return &EditTool{Scope: newFSToolScope(allowedPaths), MaxFileSize: maxFileSize}
+}
+
+func (t *EditTool) SetSkillExposureManager(manager *skillmanifest.SkillExposureManager) {
+	if t == nil {
+		return
+	}
+	t.skillExposure = manager
 }
 
 func (t *EditTool) Definition() ToolDefinition {
@@ -665,6 +675,7 @@ func (t *EditTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	if err := os.WriteFile(absPath, []byte(replaced), 0o644); err != nil {
 		return nil, err
 	}
+	t.observeSkillExposure(absPath)
 
 	out, err := json.Marshal(map[string]interface{}{
 		"path":         relPath,
@@ -676,6 +687,13 @@ func (t *EditTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, err
 	}
 	return string(out), nil
+}
+
+func (t *EditTool) observeSkillExposure(absPath string) {
+	if t == nil || t.skillExposure == nil {
+		return
+	}
+	t.skillExposure.ObserveToolPath("edit", absPath)
 }
 
 type GrepTool struct {

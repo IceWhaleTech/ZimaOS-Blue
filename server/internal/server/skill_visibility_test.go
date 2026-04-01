@@ -1437,6 +1437,83 @@ version: 1.0.0
 	})
 }
 
+func TestListLocalSkills_HidesUserNonInvocableSkills(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	tempDir, err := os.MkdirTemp("", "local-skills-hidden-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	visibleDir := filepath.Join(tempDir, "visible-skill")
+	if err := os.MkdirAll(visibleDir, 0o755); err != nil {
+		t.Fatalf("mkdir visible skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(visibleDir, "SKILL.md"), []byte(`---
+name: visible-skill
+description: Visible local skill
+version: 1.0.0
+---
+
+# Visible
+`), 0o644); err != nil {
+		t.Fatalf("write visible skill: %v", err)
+	}
+
+	hiddenDir := filepath.Join(tempDir, "hidden-skill")
+	if err := os.MkdirAll(hiddenDir, 0o755); err != nil {
+		t.Fatalf("mkdir hidden skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(hiddenDir, "SKILL.md"), []byte(`---
+name: hidden-skill
+description: Hidden local skill
+version: 1.0.0
+user_invocable: false
+---
+
+# Hidden
+`), 0o644); err != nil {
+		t.Fatalf("write hidden skill: %v", err)
+	}
+
+	scanner := skillstore.NewLocalSkillScanner(tempDir)
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("scan local skills: %v", err)
+	}
+	handler.SetLocalScanner(scanner)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/local", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListLocalSkills(c); err != nil {
+		t.Fatalf("ListLocalSkills failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var result struct {
+		Skills []map[string]any `json:"skills"`
+		Count  int              `json:"count"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if result.Count != 1 {
+		t.Fatalf("count=%d, want 1 body=%s", result.Count, rec.Body.String())
+	}
+	if len(result.Skills) != 1 || result.Skills[0]["id"] != "visible-skill" {
+		t.Fatalf("unexpected skills payload: %+v", result.Skills)
+	}
+	if result.Skills[0]["user_invocable"] != true {
+		t.Fatalf("expected visible skill user_invocable=true, got %+v", result.Skills[0]["user_invocable"])
+	}
+}
+
 // TestScanLocalSkills tests the local skills scan endpoint
 func TestScanLocalSkills(t *testing.T) {
 	registry := skill.NewRegistry()

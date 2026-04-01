@@ -35,6 +35,9 @@ type SkillEntry struct {
 	OS              []string // platform filter (empty = all platforms)
 	Environment     []string
 	Tags            []string
+	Paths           []string
+	UserInvocable   bool
+	ModelInvocable  bool
 	Category        string
 	Setup           string
 	ScriptPaths     []string
@@ -125,6 +128,9 @@ func skillEntryFromDocument(doc skillmanifest.Document) SkillEntry {
 		OS:              append([]string(nil), doc.OS...),
 		Environment:     append([]string(nil), doc.Environment...),
 		Tags:            append([]string(nil), doc.Tags...),
+		Paths:           append([]string(nil), doc.Paths...),
+		UserInvocable:   doc.UserInvocable,
+		ModelInvocable:  doc.ModelInvocable,
 		Category:        strings.TrimSpace(doc.Category),
 		Setup:           doc.Setup,
 		ScriptPaths:     append([]string(nil), doc.ScriptPaths...),
@@ -702,6 +708,9 @@ func FormatPinnedSkills(workspaceDir string) string {
 	var found []SkillEntry
 	for _, name := range pinnedSkills {
 		if se, ok := foundByName[name]; ok {
+			if !se.ModelInvocable {
+				continue
+			}
 			found = append(found, se)
 		}
 	}

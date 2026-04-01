@@ -4151,10 +4151,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Injecció de comandes',
+          description: 'Intenta executar comandes del sistema',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Crític',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4813,6 +4813,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Aquesta habilitat està bloquejada per la política de seguretat.',
+      blockedByPolicyMediumRisk: 'Aquesta habilitat està bloquejada per la política de seguretat (risc mitjà).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6704,6 +6705,7 @@ export default {
     outputTruncated: 'truncat',
     outputUnavailable: 'Sortida no disponible en aquesta targeta',
     noOutput: 'Sense sortida',
+      noCommand: 'No command',
     running: 'Executant...',
     copyCommand: 'Copiar comanda',
     copied: 'Copiat!',

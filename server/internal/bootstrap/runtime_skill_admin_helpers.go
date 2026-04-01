@@ -11,11 +11,14 @@ func adminSkillInfoFromDocument(doc skillmanifest.Document, enabled, builtin boo
 	id := strings.TrimSpace(firstRuntimeSkillValue(doc.ID, doc.Name))
 	name := strings.TrimSpace(firstRuntimeSkillValue(doc.Name, doc.ID))
 	return tools.AdminSkillInfo{
-		ID:       id,
-		Name:     name,
-		Category: strings.TrimSpace(doc.Category),
-		Enabled:  enabled,
-		Builtin:  builtin,
+		ID:             id,
+		Name:           name,
+		Category:       strings.TrimSpace(doc.Category),
+		Enabled:        enabled,
+		Builtin:        builtin,
+		Paths:          append([]string(nil), doc.Paths...),
+		UserInvocable:  doc.UserInvocable,
+		ModelInvocable: doc.ModelInvocable,
 	}
 }
 

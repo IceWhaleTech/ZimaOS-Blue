@@ -152,6 +152,43 @@ func TestMergeTaskSuccessCriteria_LocksExecutionEquivalenceContract(t *testing.T
 	}
 }
 
+func TestMergeTaskSuccessCriteria_UsesRequiredObservationsForExecutionEquivalence(t *testing.T) {
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"routing_contract": map[string]interface{}{
+				"gate_type": "execution_equivalence",
+			},
+			"harness_contract": map[string]interface{}{
+				"required_observations": []interface{}{"evidence_tool_used", "planner_memory_skipped"},
+			},
+		},
+	}
+
+	got := mergeTaskSuccessCriteria(task, []string{"planner invented another criterion"})
+	want := []string{"evidence_tool_used", "planner_memory_skipped"}
+	if len(got) != len(want) {
+		t.Fatalf("mergeTaskSuccessCriteria() len = %d, want %d (%#v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("mergeTaskSuccessCriteria()[%d] = %q, want %q (%#v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestMergeTaskSuccessCriteria_DefaultsExecutionEquivalenceToContractSentinel(t *testing.T) {
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"gate_type": "execution_equivalence",
+		},
+	}
+
+	got := mergeTaskSuccessCriteria(task, []string{"planner invented another criterion"})
+	if len(got) != 1 || got[0] != executionContractSatisfiedCriterion {
+		t.Fatalf("mergeTaskSuccessCriteria() = %#v, want [%s]", got, executionContractSatisfiedCriterion)
+	}
+}
+
 func TestPreferredTaskModel_UsesGroupInputModel(t *testing.T) {
 	task := &Task{
 		Metadata: map[string]interface{}{

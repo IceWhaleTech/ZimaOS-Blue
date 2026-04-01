@@ -126,6 +126,11 @@ func (t *PushTool) executeAdd(ctx context.Context, userID string, args map[strin
 	everyStr := firstCompatString(args, "every", "interval")
 	recurring := firstCompatString(args, "recurring", "repeat", "recurrence")
 	if timeStr == "" && everyStr == "" {
+		if inferredTime, ok := remindertime.InferTimeStringFromMessage(message); ok {
+			timeStr = inferredTime
+		}
+	}
+	if timeStr == "" && everyStr == "" {
 		return nil, fmt.Errorf("time or every is required for add")
 	}
 	if everyStr != "" && recurring != "" {

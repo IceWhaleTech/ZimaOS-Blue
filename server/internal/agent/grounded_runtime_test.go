@@ -895,6 +895,85 @@ func TestGroundedRuntimeCompletesExecutionContractAfterCanonicalWebQueryEvidence
 	}
 }
 
+func TestGroundedRuntimeStopsBeforeScratchpadWriteAfterLocalizedCanonicalWebQueryEvidence(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			`{"status":"continue","reason":"Run the canonical web query route.","next_tool":{"tool":"exec","args":{"command":"blue web_query query=\"Wyszukaj najnowsza dokumentacje OpenAI Responses API.\""}},"assertions":[]}`,
+			`{"status":"continue","reason":"This scratchpad write should never run.","next_tool":{"tool":"write","args":{"path":".blue/scratchpad/shared/openai-responses-api.md","content":"unexpected write"}},"assertions":[]}`,
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "status: ok",
+		"data": map[string]any{
+			"target_url": "https://developers.openai.com/api/reference/resources/responses",
+			"title":      "Responses | OpenAI API Reference",
+			"content":    "Responses | OpenAI API Reference\nCreate a model response\nPOST /responses",
+		},
+	})
+	writeTool := tools.NewMockTool("write", "mock write")
+	writeTool.SetResult(map[string]any{
+		"success": true,
+		"path":    ".blue/scratchpad/shared/openai-responses-api.md",
+		"size":    16,
+	})
+	registry.Register(execTool)
+	registry.Register(writeTool)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     nil,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-localized-web-query-stop-task",
+		UserID:      "u1",
+		Goal:        "Wyszukaj najnowsza dokumentacje OpenAI Responses API.",
+		GroundState: NewGroundTruthState(),
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"gate_type":           "execution_equivalence",
+				"primary_route":       "web_query",
+				"expected_cli_action": "blue web_query",
+				"enforce_cli_route":   true,
+				"allow_fallback":      false,
+			},
+			"group_input": map[string]any{
+				"query": "Wyszukaj najnowsza dokumentacje OpenAI Responses API.",
+			},
+			"harness_contract": map[string]any{
+				"required_observations": []any{"evidence_tool_used"},
+			},
+		},
+	}
+	step := PlanStep{Index: 0, Description: "retrieve the latest OpenAI Responses API docs", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if result.GroundingStatus != GroundingStatusGrounded {
+		t.Fatalf("grounding_status=%q, want %q", result.GroundingStatus, GroundingStatusGrounded)
+	}
+	if len(task.GroundState.Calls) != 1 {
+		t.Fatalf("grounded call count = %d, want 1", len(task.GroundState.Calls))
+	}
+	if _, ok := task.GroundState.Calls["task/grounded-localized-web-query-stop-task/tc/2"]; ok {
+		t.Fatal("unexpected scratchpad write after localized canonical web_query evidence")
+	}
+	if llmStub.plannerIndex != 1 {
+		t.Fatalf("planner rounds executed = %d, want 1", llmStub.plannerIndex)
+	}
+}
+
 func TestGroundedRuntimeCompletesExecutionContractAfterCanonicalAnalyzeEvidence(t *testing.T) {
 	llmStub := &groundedScriptLLM{
 		plannerResponses: []string{
@@ -953,6 +1032,81 @@ func TestGroundedRuntimeCompletesExecutionContractAfterCanonicalAnalyzeEvidence(
 	}
 	if !strings.Contains(result.Output, "Analysis completed for Summarize and extract the key points.") {
 		t.Fatalf("expected output to contain deterministic analyze answer, got %q", result.Output)
+	}
+	if len(result.VerificationErrors) != 0 {
+		t.Fatalf("verification_errors=%v, want none", result.VerificationErrors)
+	}
+	if llmStub.responderIndex != 0 {
+		t.Fatalf("expected responder LLM to be skipped, got responderIndex=%d", llmStub.responderIndex)
+	}
+}
+
+func TestGroundedRuntimeCompletesExecutionContractAfterCanonicalReminderEvidence(t *testing.T) {
+	llmStub := &groundedScriptLLM{
+		plannerResponses: []string{
+			"",
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    `reminder: {"id":"push_demo","message":"send weekly report","fire_at":"2026-04-02T09:00:00+08:00","session_id":"batch1-reminder-en-us-localized_route","status":"pending"}`,
+		"data": map[string]any{
+			"message":  "Reminder set: send weekly report - 2026-04-02 09:00",
+			"reminder": `{"id":"push_demo","message":"send weekly report","fire_at":"2026-04-02T09:00:00+08:00","session_id":"batch1-reminder-en-us-localized_route","status":"pending"}`,
+			"success":  "true",
+		},
+	})
+	registry.Register(execTool)
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:       llmStub,
+		ResponderLLM:     nil,
+		Registry:         registry,
+		Executor:         executor,
+		Store:            store,
+		Secret:           []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds: 6,
+	})
+	task := &Task{
+		ID:          "grounded-deterministic-canonical-reminder-task",
+		UserID:      "u1",
+		Goal:        "Schedule a reminder for tomorrow at 9 AM to send the weekly report.",
+		GroundState: NewGroundTruthState(),
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"expected_cli_action": "blue reminder add",
+				"enforce_cli_route":   true,
+				"gate_type":           "execution_equivalence",
+			},
+			"group_input": map[string]any{
+				"query":      "Schedule a reminder for tomorrow at 9 AM to send the weekly report.",
+				"session_id": "batch1-reminder-en-us-localized_route",
+			},
+			"harness_contract": map[string]any{
+				"required_observations": []any{"session_context_propagated"},
+			},
+		},
+	}
+	step := PlanStep{Index: 0, Description: "schedule the reminder through the canonical CLI route", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if result.GroundingStatus != GroundingStatusGrounded {
+		t.Fatalf("grounding_status=%q, want %q", result.GroundingStatus, GroundingStatusGrounded)
+	}
+	for _, want := range []string{
+		"Reminder set: send weekly report - 2026-04-02 09:00",
+		"batch1-reminder-en-us-localized_route",
+	} {
+		if !strings.Contains(result.Output, want) {
+			t.Fatalf("expected output to contain %q, got %q", want, result.Output)
+		}
 	}
 	if len(result.VerificationErrors) != 0 {
 		t.Fatalf("verification_errors=%v, want none", result.VerificationErrors)

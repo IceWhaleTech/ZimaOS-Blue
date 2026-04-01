@@ -4955,6 +4955,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'このスキルはセキュリティポリシーによりブロックされています。',
+      blockedByPolicyMediumRisk: 'このスキルはセキュリティポリシーによりブロックされています（中リスク）。',
       },
       quick: {
         categories: 'Browse by category',
@@ -6827,6 +6828,7 @@ export default {
     outputTruncated: '切り詰め',
     outputUnavailable: 'このカードでは出力を利用できません',
     noOutput: '出力なし',
+      noCommand: 'コマンドなし',
     running: '実行中...',
     copyCommand: 'コマンドをコピー',
     copied: 'コピーしました！',

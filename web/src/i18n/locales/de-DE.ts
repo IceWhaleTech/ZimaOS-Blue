@@ -4399,10 +4399,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Befehlsinjektion',
+          description: 'Versucht, Systembefehle auszuführen',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Kritisch',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -5062,6 +5062,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Dieses Skill ist durch die Sicherheitsrichtlinie blockiert.',
+      blockedByPolicyMediumRisk: 'Dieses Skill ist durch die Sicherheitsrichtlinie blockiert (mittleres Risiko).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6984,6 +6985,7 @@ export default {
     outputTruncated: 'gekürzt',
     outputUnavailable: 'Ausgabe ist in dieser Karte nicht verfügbar',
     noOutput: 'Keine Ausgabe',
+      noCommand: 'Kein Befehl',
     running: 'Wird ausgeführt...',
     copyCommand: 'Befehl kopieren',
     copied: 'Kopiert!',

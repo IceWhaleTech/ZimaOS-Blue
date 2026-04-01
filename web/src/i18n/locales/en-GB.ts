@@ -4726,6 +4726,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'This skill is blocked by the security policy.',
+      blockedByPolicyMediumRisk: 'This skill is blocked by security policy (medium risk).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6465,6 +6466,7 @@ export default {
     outputTruncated: 'truncated',
     outputUnavailable: 'Output unavailable in this card',
     noOutput: 'No output',
+      noCommand: 'No command',
     running: 'Running...',
     copyCommand: 'Copy command',
     copied: 'Copied!',

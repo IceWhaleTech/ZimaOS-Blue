@@ -215,3 +215,101 @@ func TestSQLiteStore_ReadsUseReaderDB(t *testing.T) {
 		t.Fatalf("LatestScorecardForItem returned %#v", latestScorecard)
 	}
 }
+
+func TestSQLiteStore_GroupReadsFallBackWhenReaderMissesFreshGroup(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	staleReader, err := sql.Open("sqlite3", filepath.Join(tmpDir, "stale-reader.db"))
+	if err != nil {
+		t.Fatalf("open stale reader sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = staleReader.Close() })
+	if _, err := NewSQLiteStoreWithReadDB(staleReader, staleReader); err != nil {
+		t.Fatalf("initialize stale reader schema: %v", err)
+	}
+
+	writeDB, err := sql.Open("sqlite3", filepath.Join(tmpDir, "writer.db"))
+	if err != nil {
+		t.Fatalf("open writer sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = writeDB.Close() })
+
+	store, err := NewSQLiteStoreWithReadDB(writeDB, staleReader)
+	if err != nil {
+		t.Fatalf("NewSQLiteStoreWithReadDB failed: %v", err)
+	}
+
+	readerSeed := &RunGroup{
+		ID:          "reader-group",
+		Kind:        RunGroupKindEval,
+		Title:       "reader seed",
+		Status:      RunGroupStatusQueued,
+		OwnerUserID: "user-1",
+	}
+	readerStore, err := NewSQLiteStoreWithReadDB(staleReader, staleReader)
+	if err != nil {
+		t.Fatalf("reader seed store: %v", err)
+	}
+	if err := readerStore.CreateGroup(ctx, readerSeed); err != nil {
+		t.Fatalf("seed reader group: %v", err)
+	}
+
+	group := &RunGroup{
+		ID:          "writer-group",
+		Kind:        RunGroupKindEval,
+		Title:       "writer group",
+		Status:      RunGroupStatusQueued,
+		OwnerUserID: "user-1",
+		Subject:     "fallback",
+		SchedulerConfig: GroupSchedulerConfig{
+			MaxConcurrency: 1,
+			MaxAttempts:    1,
+			LeaseTTL:       15 * time.Second,
+		},
+		ScoringConfig: GroupScoringConfig{
+			Mode:        ScoringModeRule,
+			RuleProfile: "agent_task",
+		},
+	}
+	if err := store.CreateGroup(ctx, group); err != nil {
+		t.Fatalf("CreateGroup failed: %v", err)
+	}
+	if err := store.CreateGroupItems(ctx, []RunGroupItem{{
+		ID:          "writer-item",
+		GroupID:     group.ID,
+		Index:       0,
+		RunKind:     RunKindAgentTask,
+		Profile:     "agent_task",
+		Input:       map[string]interface{}{"goal": "fallback"},
+		Expected:    map[string]interface{}{"contains": "done"},
+		Status:      RunGroupItemStatusQueued,
+		MaxAttempts: 1,
+	}}); err != nil {
+		t.Fatalf("CreateGroupItems failed: %v", err)
+	}
+
+	gotGroup, err := store.GetGroup(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroup fallback failed: %v", err)
+	}
+	if gotGroup.ID != group.ID {
+		t.Fatalf("GetGroup returned %q, want %q", gotGroup.ID, group.ID)
+	}
+
+	groups, err := store.ListGroups(ctx, RunGroupFilter{OwnerUserID: "user-1", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListGroups fallback failed: %v", err)
+	}
+	if len(groups) != 2 {
+		t.Fatalf("ListGroups returned %d groups, want 2 (%#v)", len(groups), groups)
+	}
+
+	count, err := store.CountGroupItemsByStatuses(ctx, group.ID, []RunGroupItemStatus{RunGroupItemStatusQueued})
+	if err != nil {
+		t.Fatalf("CountGroupItemsByStatuses fallback failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("CountGroupItemsByStatuses = %d, want 1", count)
+	}
+}

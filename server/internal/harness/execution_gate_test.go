@@ -464,7 +464,7 @@ func TestController_EvaluateExecutionEquivalence_FailsReminderSessionRegression(
 						Payload: map[string]interface{}{
 							"tool_name": "exec",
 							"arguments": map[string]interface{}{
-								"command": "blue reminder.add",
+								"command": "blue reminder add",
 							},
 						},
 					},

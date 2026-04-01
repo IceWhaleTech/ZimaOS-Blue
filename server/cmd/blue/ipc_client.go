@@ -19,6 +19,11 @@ var (
 	ipcExit          = os.Exit
 )
 
+const (
+	defaultIPCRequestTimeout = 2 * time.Minute
+	analyzeIPCRequestTimeout = 10 * time.Minute
+)
+
 // dialSock connects to the blue IPC socket.
 func dialSock() (net.Conn, error) {
 	paths := candidateIPCSocketPaths()
@@ -41,9 +46,9 @@ func ipcRoundTrip(req *sockipc.Request) (*sockipc.Response, error) {
 	}
 	defer conn.Close()
 
-	// Set read deadline so we don't hang if the server is slow.
-	// The exec tool's default timeout is 30s; leave headroom for the response.
-	conn.SetDeadline(time.Now().Add(25 * time.Second))
+	// Keep the client-side deadline aligned with the server-side skill fallback
+	// timeout so long-running skills do not fail locally before the gateway does.
+	conn.SetDeadline(time.Now().Add(ipcRequestTimeout(req)))
 
 	if err := sockipc.WriteJSON(conn, req); err != nil {
 		return nil, fmt.Errorf("write: %w", err)
@@ -53,6 +58,19 @@ func ipcRoundTrip(req *sockipc.Request) (*sockipc.Response, error) {
 		return nil, fmt.Errorf("read: %w", err)
 	}
 	return resp, nil
+}
+
+func ipcRequestTimeout(req *sockipc.Request) time.Duration {
+	cmd := ""
+	if req != nil {
+		cmd = strings.ToLower(strings.TrimSpace(req.Cmd))
+	}
+	switch {
+	case cmd == "analyze" || strings.HasPrefix(cmd, "analyze."):
+		return analyzeIPCRequestTimeout
+	default:
+		return defaultIPCRequestTimeout
+	}
 }
 
 // ipcFallback forwards an unrecognized CLI command as an IPC request.
@@ -147,6 +165,8 @@ func normalizeIPCCommand(cmd string, args []string) (string, map[string]string, 
 	switch strings.TrimSpace(cmd) {
 	case "context":
 		return normalizeContextIPCCommand(params, positional)
+	case "reminder":
+		return normalizeReminderIPCCommand(params, positional)
 	case "/install":
 		return normalizeSlashSkillCommand("skill.install", "id", params, positional)
 	case "/install-url", "/install_url":
@@ -174,6 +194,55 @@ func normalizeIPCCommand(cmd string, args []string) (string, map[string]string, 
 	default:
 		return cmd, params, positional
 	}
+}
+
+func normalizeReminderIPCCommand(params map[string]string, positional []string) (string, map[string]string, []string) {
+	if params == nil {
+		params = make(map[string]string)
+	}
+
+	// Prefer explicit action=... when present, otherwise accept positional action:
+	//   blue reminder add ...
+	//   blue reminder list
+	//   blue reminder delete <id>
+	actionRaw := strings.ToLower(strings.TrimSpace(params["action"]))
+	if actionRaw == "" && len(positional) > 0 {
+		actionRaw = strings.ToLower(strings.TrimSpace(positional[0]))
+		if actionRaw != "" && !strings.HasPrefix(actionRaw, "-") && !strings.Contains(actionRaw, "=") {
+			positional = append([]string(nil), positional[1:]...)
+		} else {
+			actionRaw = ""
+		}
+	}
+
+	var action string
+	switch actionRaw {
+	case "list", "get", "status":
+		action = "list"
+	case "add", "create", "send", "notify":
+		action = "add"
+	case "delete", "remove", "rm":
+		action = "delete"
+	case "clear":
+		action = "clear"
+	case "":
+		// No action provided; fall back to legacy dotted commands or skill fallback.
+		return "reminder", params, positional
+	default:
+		// Unknown action token; keep it positional so query mapping can apply if appropriate.
+		return "reminder", params, append([]string{actionRaw}, positional...)
+	}
+
+	// Optional ergonomic alias: `blue reminder delete <id>` (positional id).
+	if action == "delete" && strings.TrimSpace(params["id"]) == "" && len(positional) > 0 {
+		if id := strings.TrimSpace(positional[0]); id != "" && !strings.HasPrefix(id, "-") && !strings.Contains(id, "=") {
+			params["id"] = id
+			positional = positional[1:]
+		}
+	}
+
+	delete(params, "action")
+	return "reminder." + action, params, positional
 }
 
 func normalizeContextIPCCommand(params map[string]string, positional []string) (string, map[string]string, []string) {

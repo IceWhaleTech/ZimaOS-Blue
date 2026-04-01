@@ -33,8 +33,9 @@ func newRuntimeExecSupportBundle(options runtimeExecSupportOptions) runtimeExecS
 		bundle.Approvals,
 		bundle.DirStore,
 		tools.BuiltinRuntimeConfig{
-			DataDir: strings.TrimSpace(options.dataDir),
-			Ripgrep: options.ripgrep,
+			DataDir:      strings.TrimSpace(options.dataDir),
+			WorkspaceDir: strings.TrimSpace(options.workspaceDir),
+			Ripgrep:      options.ripgrep,
 		},
 	)
 

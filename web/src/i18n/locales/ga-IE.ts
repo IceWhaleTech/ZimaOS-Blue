@@ -4134,10 +4134,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Instealladh Ordú',
+          description: 'Déanann sé iarracht orduithe córais a chur i gcrích',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Criticiúil',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4793,6 +4793,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Tá an scil seo bactha ag an mbeartas slándála.',
+      blockedByPolicyMediumRisk: 'Tá an scil seo bactha ag an mbeartas slándála (meán-riosca).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6579,6 +6580,7 @@ export default {
     outputTruncated: 'giorraithe',
     outputUnavailable: 'Níl an t-aschur ar fáil ar an gcárta seo',
     noOutput: 'Gan aschur',
+      noCommand: 'No command',
     running: 'Ag rith...',
     copyCommand: 'Cóipeáil ordú',
     copied: 'Cóipeáilte!',

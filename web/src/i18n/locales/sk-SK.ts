@@ -4106,10 +4106,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Príkazové vstrekovanie',
+          description: 'Pokusy o spustenie systémových príkazov',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Kritické',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4766,6 +4766,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Tento skill je blokovany bezpecnostnou politikou.',
+      blockedByPolicyMediumRisk: 'Tento skill je blokovaný bezpečnostnou politikou (stredné riziko).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6549,6 +6550,7 @@ export default {
     outputTruncated: 'skrátené',
     outputUnavailable: 'Výstup nie je dostupný v tejto karte',
     noOutput: 'Žiadny výstup',
+      noCommand: 'No command',
     running: 'Vykonávanie...',
     copyCommand: 'Kopírovať príkaz',
     copied: 'Skopírované!',

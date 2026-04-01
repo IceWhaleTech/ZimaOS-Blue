@@ -343,6 +343,25 @@ func TestSkillIntegration_PushAdd_NaturalChineseTime(t *testing.T) {
 	}
 }
 
+func TestSkillIntegration_PushAdd_InfersLocalizedTomorrowTimeFromMessage(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "reminder.add", Params: map[string]string{
+		"message":    "Naplanuj pripominku na zitra v 9 pro odeslani tydenniho reportu.",
+		"session_id": "conv-reminder-localized",
+	}})
+	if resp.Status != "ok" {
+		t.Fatalf("reminder.add inferred time: status=%q error=%q", resp.Status, resp.Error)
+	}
+	if !strings.Contains(resp.Data["reminder"], "conv-reminder-localized") {
+		t.Fatalf("reminder = %q, want propagated session_id", resp.Data["reminder"])
+	}
+	if !strings.Contains(resp.Data["reminder"], "T09:00:00") {
+		t.Fatalf("reminder = %q, want inferred 09:00 fire_at", resp.Data["reminder"])
+	}
+}
+
 func TestSkillIntegration_PushAdd_EveryUntil(t *testing.T) {
 	conn, cleanup := setupAllSkills(t)
 	defer cleanup()

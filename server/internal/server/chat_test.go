@@ -3548,7 +3548,7 @@ func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *
 	conv, _ := store.CreateConversation(context.Background(), "Pseudo Tool Call SendMessage")
 
 	registry := llm.NewProviderRegistry()
-	pseudoContent := "好的，我来给你设一个 10 秒后的提醒。to=functions.exec {\"command\":\"blue reminder.add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"...\"}\n```\nLet's do that exactly.{\"command\":\"blue help reminder\",...}\n```"
+	pseudoContent := "好的，我来给你设一个 10 秒后的提醒。to=functions.exec {\"command\":\"blue reminder add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"...\"}\n```\nLet's do that exactly.{\"command\":\"blue help reminder\",...}\n```"
 	scripted := &scriptedChatProvider{
 		name: "scripted",
 		responses: []llm.ChatResponse{
@@ -3628,7 +3628,7 @@ func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *
 		if m.Role != "assistant" {
 			continue
 		}
-		if strings.Contains(m.Content, `{"command":"blue reminder.add`) || strings.Contains(m.Content, "Let's do that exactly") {
+		if strings.Contains(m.Content, `{"command":"blue reminder add`) || strings.Contains(m.Content, "Let's do that exactly") {
 			t.Fatalf("expected malformed pseudo tool-call text to be discarded from stored assistant message, got=%q", m.Content)
 		}
 	}

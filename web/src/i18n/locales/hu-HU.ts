@@ -4142,10 +4142,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Parancsinjekció',
+          description: 'Megkísérli a rendszerparancsok végrehajtását',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Kritikus',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4802,6 +4802,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Ezt a skillt a biztonsagi szabalyzat blokkolta.',
+      blockedByPolicyMediumRisk: 'Ezt a skillt a biztonsági szabályzat blokkolta (közepes kockázat).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6582,6 +6583,7 @@ export default {
     outputTruncated: 'csonkolt',
     outputUnavailable: 'A kimenet nem érhető el ezen a kártyán',
     noOutput: 'Nincs kimenet',
+      noCommand: 'No command',
     running: 'Futtatás...',
     copyCommand: 'Parancs másolása',
     copied: 'Másolva!',

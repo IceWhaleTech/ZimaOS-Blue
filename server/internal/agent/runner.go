@@ -1153,6 +1153,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at planning: %v", err))
 		return
 	}
+	prepareTaskCoordinationMetadata(task, r.subagents != nil)
 	r.publishEvent(task.UserID, TaskEvent{
 		TaskID:    task.ID,
 		EventType: "task_planning",
@@ -1279,6 +1280,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			Message:   step.Description,
 		})
 
+		groundingSnapshot := snapshotTaskGrounding(task)
 		output, err := r.executeStep(ctx, task, step)
 		if err != nil {
 			if errors.Is(ctx.Err(), context.Canceled) {
@@ -1299,6 +1301,8 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 				StepIndex: i,
 				Message:   taskStepRetryMessage(i),
 			})
+			restoreTaskGrounding(task, groundingSnapshot)
+			_ = r.store.Update(ctx, task)
 			output, err = r.executeStep(ctx, task, step)
 		}
 		if err != nil {
@@ -1642,6 +1646,12 @@ type planResult struct {
 	FallbackPlan    []string
 }
 
+type taskGroundingSnapshot struct {
+	GroundingStatus    string
+	VerifiedOutput     string
+	VerificationErrors []string
+}
+
 func buildPlanningSystemPrompt() string {
 	var sb strings.Builder
 	sb.WriteString("You are a deterministic task planner for ZimaOS Blue. Plan the work before execution.\n\n")
@@ -1666,6 +1676,7 @@ func buildPlanningSystemPrompt() string {
 	sb.WriteString("- Make fallback_plan safe, bounded, and finite; no loops, no open-ended retries, and no retrying the same action without a change.\n")
 	sb.WriteString("- Normalize the goal, but do not invent missing requirements.\n")
 	sb.WriteString("- If the task may write a large file, plan to split content into smaller write chunks and continue with append=true instead of one huge write payload.\n")
+	sb.WriteString("- If coordination context is present, shape the plan so independent work can be delegated safely and worker handoffs stay explicit.\n")
 
 	sb.WriteString("\n## Output Rules\n")
 	sb.WriteString("- No markdown, no code fences, no commentary, and no prose outside the JSON object.\n")
@@ -1675,7 +1686,7 @@ func buildPlanningSystemPrompt() string {
 	return strings.TrimSpace(sb.String())
 }
 
-func buildPlanningUserPrompt(goal, conversationCtx, memoryCtx, routingCtx string) string {
+func buildPlanningUserPrompt(goal, conversationCtx, memoryCtx, routingCtx, coordinationCtx string) string {
 	var sb strings.Builder
 	if strings.TrimSpace(conversationCtx) != "" {
 		sb.WriteString("Recent conversation context:\n")
@@ -1689,6 +1700,10 @@ func buildPlanningUserPrompt(goal, conversationCtx, memoryCtx, routingCtx string
 	}
 	if strings.TrimSpace(routingCtx) != "" {
 		sb.WriteString(routingCtx)
+		sb.WriteString("\n\n")
+	}
+	if strings.TrimSpace(coordinationCtx) != "" {
+		sb.WriteString(coordinationCtx)
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString("Goal: ")
@@ -1718,7 +1733,13 @@ func (r *Runner) generatePlanForTask(ctx context.Context, task *Task, goal, conv
 	}
 
 	systemPrompt := buildPlanningSystemPrompt()
-	userMsg := buildPlanningUserPrompt(goal, conversationCtx, memoryTrace.Context, buildTaskRoutingContractContext(plannerTaskMetadata(task)))
+	userMsg := buildPlanningUserPrompt(
+		goal,
+		conversationCtx,
+		memoryTrace.Context,
+		buildTaskRoutingContractContext(plannerTaskMetadata(task)),
+		buildTaskCoordinationPromptContext(task),
+	)
 
 	resp, err := r.llm.Chat(ctx, llm.ChatRequest{
 		Model: preferredTaskModel(task),
@@ -1765,9 +1786,13 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 	ctx = tools.WithWritePathGuard(ctx, r.writeGuard)
 	ctx = tools.WithExecPathGuard(ctx, r.execGuard)
 	if workspaceRoot := strings.TrimSpace(task.WorkspaceRoot); workspaceRoot != "" {
-		ctx = tools.WithFSRootOverride(ctx, []string{workspaceRoot}, map[string]string{
+		aliases := map[string]string{
 			"workspace": workspaceRoot,
-		})
+		}
+		if coordination := coordinationDetailsForTask(task); coordination.ScratchpadPath != "" {
+			aliases[coordination.ScratchpadAlias] = coordination.ScratchpadPath
+		}
+		ctx = tools.WithFSRootOverride(ctx, []string{workspaceRoot}, aliases)
 	}
 	if r.groundedRuntime == nil {
 		// Backward-compatible fallback used by focused prompt/unit tests that
@@ -1788,6 +1813,10 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 			if s.Output != "" && s.Status == StepStatusCompleted {
 				contextMsg.WriteString(fmt.Sprintf("   Result: %s\n", truncate(s.Output, 200)))
 			}
+		}
+		if coordinationCtx := buildTaskCoordinationPromptContext(task); coordinationCtx != "" {
+			contextMsg.WriteString("\n")
+			contextMsg.WriteString(coordinationCtx)
 		}
 		contextMsg.WriteString(fmt.Sprintf("\nNow execute step %d: %s", step.Index+1, step.Description))
 
@@ -1855,6 +1884,14 @@ func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
 	sb.WriteString("Stay focused on the current step while using the full plan as context.\n")
 	sb.WriteString("If a tool fails, inspect the result, adjust the approach, and avoid repeating identical failing calls.\n")
 	sb.WriteString("When the step is complete or blocked, stop calling tools and explain the result or blocker concisely.\n")
+	if hasStepTool(tools, "subagents") {
+		sb.WriteString("If subagents are available, use them for bounded independent work such as parallel research, verification, or isolated implementation slices.\n")
+		sb.WriteString("Follow the coordinator workflow: research -> synthesis -> implementation -> verification.\n")
+		sb.WriteString("After research, synthesize the findings yourself before follow-up work. Write self-contained worker prompts with concrete files, constraints, and done criteria.\n")
+		sb.WriteString("Do not send multiple workers to edit the same files concurrently unless only one worker is writing.\n")
+		sb.WriteString("Continue the same worker when it already has the exact file or error context. Spawn a fresh worker for clean-slate verification, narrow implementation after broad research, or retries after the previous approach was wrong.\n")
+		sb.WriteString("Never write vague delegation such as 'based on your findings'; workers cannot see your conversation.\n")
+	}
 
 	sb.WriteString("\n## Coding Task Defaults\n")
 	sb.WriteString("For coding tasks, first check whether mainstream skills are available: superpowers and ui-ux-pro-max-skill.\n")
@@ -1866,6 +1903,8 @@ func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
 	if hasStepTool(tools, "ask") {
 		sb.WriteString("\n## Ask Tool\n")
 		sb.WriteString("When you encounter ambiguity, need user preferences, or face multiple valid options, use the ask tool instead of guessing.\n")
+		sb.WriteString("If tools can resolve the uncertainty, verify it yourself instead of asking.\n")
+		sb.WriteString("Use ask for genuinely missing requirements or risky confirmations, not for facts you can verify yourself.\n")
 		sb.WriteString("Preferred format: {\"questions\":[{\"question\":\"Which approach?\",\"type\":\"radio\",\"options\":[\"Option A\",\"Option B\"]}]}\n")
 		sb.WriteString("Text-input format: {\"questions\":[{\"question\":\"What details should I use?\",\"type\":\"text\"}]}\n")
 		sb.WriteString("Single-question shorthand: {\"q\":\"Which approach?\",\"a\":[\"Option A\",\"Option B\"]} or {\"mq\":\"...\",\"a\":[...]}\n")
@@ -1878,6 +1917,85 @@ func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
 }
 
 var errNoProgressAbort = errors.New("agent stopped due to no progress")
+
+func repairExecutionContractToolCalls(task *Task, toolCatalog []llm.Tool, calls []llm.ToolCall) ([]llm.ToolCall, bool) {
+	if len(calls) == 0 {
+		return calls, false
+	}
+	expectedCLIAction, enforce := groundedExpectedCLIAction(task)
+	if !enforce || expectedCLIAction == "" {
+		return calls, false
+	}
+	canonicalToolName := groundedCanonicalCLIToolName(toolCatalog)
+	if canonicalToolName == "" {
+		return calls, false
+	}
+
+	first := calls[0]
+	decision := plannerDecisionFromToolCall(first)
+	canonicalCommand := groundedCanonicalCLICommand(task, expectedCLIAction, decision)
+	if canonicalCommand == "" || !shouldRepairExecutionContractToolCall(first, expectedCLIAction, canonicalCommand) {
+		return calls, false
+	}
+
+	rewrittenArgs, err := json.Marshal(map[string]any{"command": canonicalCommand})
+	if err != nil {
+		return calls, false
+	}
+	repaired := llm.ToolCall{
+		ID:        first.ID,
+		Name:      canonicalToolName,
+		Arguments: string(rewrittenArgs),
+	}
+	return []llm.ToolCall{repaired}, true
+}
+
+func shouldRepairExecutionContractToolCall(call llm.ToolCall, expectedCLIAction, canonicalCommand string) bool {
+	normalizedExpected := normalizeGroundedCLICommand(expectedCLIAction)
+	normalizedCanonical := normalizeGroundedCLICommand(canonicalCommand)
+	if normalizedExpected == "" || normalizedCanonical == "" {
+		return false
+	}
+	actualTool := normalizeGroundToolName(call.Name)
+	expectedSkill := normalizeGroundToolName(groundedCLICommandSkillToken(expectedCLIAction))
+
+	if actualTool == "bash" {
+		actualCommand := agentToolCallCommand(call)
+		if actualCommand == "" {
+			return false
+		}
+		return groundedCLICommandMatches(actualCommand, normalizedExpected) &&
+			normalizeGroundedCLICommand(actualCommand) != normalizedCanonical
+	}
+
+	return expectedSkill != "" && actualTool == expectedSkill
+}
+
+func plannerDecisionFromToolCall(call llm.ToolCall) *PlannerDecision {
+	args := make(map[string]any)
+	if strings.TrimSpace(call.Arguments) != "" {
+		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+			args = map[string]any{}
+		}
+	}
+	return &PlannerDecision{
+		NextTool: &PlannerToolCall{
+			Tool: call.Name,
+			Args: args,
+		},
+	}
+}
+
+func agentToolCallCommand(call llm.ToolCall) string {
+	decision := plannerDecisionFromToolCall(call)
+	if decision == nil || decision.NextTool == nil {
+		return ""
+	}
+	return firstNonEmptyString(
+		strings.TrimSpace(asString(decision.NextTool.Args["command"])),
+		strings.TrimSpace(asString(decision.NextTool.Args["cmd"])),
+	)
+}
 
 func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex int, actionDescription, systemPrompt, userPrompt string, cachedTools []llm.Tool) (string, error) {
 	messages := []llm.Message{
@@ -1918,6 +2036,10 @@ func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex
 		})
 		if err != nil {
 			return lastContent, err
+		}
+
+		if repaired, ok := repairExecutionContractToolCalls(task, cachedTools, resp.Message.ToolCalls); ok {
+			resp.Message.ToolCalls = repaired
 		}
 
 		lastContent = strings.TrimSpace(resp.Message.Content)
@@ -2508,26 +2630,36 @@ func mergeTaskFallbackPlan(task *Task, planned []string) []string {
 	return effectiveFallbackPlan(values)
 }
 
+const executionContractSatisfiedCriterion = "execution_contract_satisfied"
+
 func authoritativeTaskSuccessCriteria(task *Task) []string {
 	if !taskUsesExecutionEquivalenceGate(task) {
 		return nil
 	}
-	values := append([]string(nil), task.SuccessCriteria...)
-	explicit := false
+	var values []string
+	if task != nil {
+		values = append(values, executionEquivalenceCriteria(task.SuccessCriteria)...)
+	}
 	for _, source := range taskMetadataSources(task) {
-		for _, key := range []string{"task_success_criteria", "success_criteria", "deliverables"} {
-			criteria := metadataStringSlice(source, key)
-			if len(criteria) == 0 {
-				continue
-			}
-			explicit = true
-			values = append(values, criteria...)
+		for _, key := range []string{"required_observations", "task_success_criteria", "success_criteria", "deliverables"} {
+			values = append(values, executionEquivalenceCriteria(metadataStringSlice(source, key))...)
 		}
 	}
-	if !explicit && len(task.SuccessCriteria) == 0 {
-		return nil
+	if len(values) == 0 {
+		return []string{executionContractSatisfiedCriterion}
 	}
 	return effectiveSuccessCriteria(values)
+}
+
+func executionEquivalenceCriteria(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		switch normalizeGroundedExecutionCriterion(value) {
+		case "evidence_tool_used", "planner_memory_skipped", "session_context_propagated", executionContractSatisfiedCriterion:
+			out = append(out, normalizeGroundedExecutionCriterion(value))
+		}
+	}
+	return out
 }
 
 func authoritativeTaskFallbackPlan(task *Task) []string {
@@ -2666,6 +2798,26 @@ func metadataStringValue(meta map[string]interface{}, key string) string {
 	}
 	value, _ := raw.(string)
 	return strings.TrimSpace(value)
+}
+
+func snapshotTaskGrounding(task *Task) taskGroundingSnapshot {
+	if task == nil {
+		return taskGroundingSnapshot{}
+	}
+	return taskGroundingSnapshot{
+		GroundingStatus:    task.GroundingStatus,
+		VerifiedOutput:     task.VerifiedOutput,
+		VerificationErrors: append([]string(nil), task.VerificationErrors...),
+	}
+}
+
+func restoreTaskGrounding(task *Task, snapshot taskGroundingSnapshot) {
+	if task == nil {
+		return
+	}
+	task.GroundingStatus = snapshot.GroundingStatus
+	task.VerifiedOutput = snapshot.VerifiedOutput
+	task.VerificationErrors = append([]string(nil), snapshot.VerificationErrors...)
 }
 
 func firstNonEmptyString(values ...string) string {

@@ -170,6 +170,9 @@ func (p *Reminder) Validate(input map[string]any) error {
 		if _, ok := input["message"]; !ok {
 			return fmt.Errorf("message is required for add action")
 		}
+		if inferredTime := inferReminderTimeFromInput(input); inferredTime != "" {
+			input["time"] = inferredTime
+		}
 		if _, hasTime := input["time"]; !hasTime {
 			if _, hasEvery := input["every"]; !hasEvery {
 				return fmt.Errorf("time or every is required for add action")
@@ -200,6 +203,24 @@ func normalizeReminderSkillInput(input map[string]any) {
 	if action != "" {
 		input["action"] = action
 	}
+}
+
+func inferReminderTimeFromInput(input map[string]any) string {
+	if _, hasTime := input["time"]; hasTime {
+		return ""
+	}
+	if _, hasEvery := input["every"]; hasEvery {
+		return ""
+	}
+	message := firstTrimmedStringValue(input, "message")
+	if message == "" {
+		return ""
+	}
+	inferredTime, ok := remindertime.InferTimeStringFromMessage(message)
+	if !ok {
+		return ""
+	}
+	return inferredTime
 }
 
 func normalizeReminderSkillAction(raw string, input map[string]any) string {

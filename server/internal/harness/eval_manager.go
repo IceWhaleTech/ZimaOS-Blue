@@ -2,6 +2,8 @@ package harness
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -474,6 +476,9 @@ func (c *Controller) loadEvalRunGroupSnapshot(ctx context.Context, evalRun *Eval
 		return nil, fmt.Errorf("eval run is required")
 	}
 	group, err := c.GetGroup(ctx, evalRun.GroupID)
+	if errors.Is(err, sql.ErrNoRows) {
+		group, err = c.repairMissingEvalRunGroup(ctx, evalRun)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -485,6 +490,83 @@ func (c *Controller) loadEvalRunGroupSnapshot(ctx context.Context, evalRun *Eval
 		evalRun: evalRun,
 		group:   group,
 	}, nil
+}
+
+func (c *Controller) repairMissingEvalRunGroup(ctx context.Context, evalRun *EvalRun) (*RunGroup, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	if evalRun == nil || strings.TrimSpace(evalRun.GroupID) == "" {
+		return nil, sql.ErrNoRows
+	}
+
+	items, err := c.store.ListGroupItems(ctx, evalRun.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	evalSpec, err := c.store.GetEvalSpec(ctx, evalRun.EvalSpecID)
+	if err != nil {
+		return nil, err
+	}
+	dataset, err := c.store.GetDataset(ctx, evalSpec.DatasetID)
+	if err != nil {
+		return nil, err
+	}
+	versionID := resolveEvalRunDatasetVersionID(evalRun, evalSpec)
+	if versionID == "" {
+		return nil, fmt.Errorf("dataset version is required")
+	}
+	version, err := c.store.GetDatasetVersion(ctx, versionID)
+	if err != nil {
+		return nil, err
+	}
+
+	groupSpec, err := materializeEvalGroupSpec(evalSpec, dataset, version, EvalRunSpec{
+		EvalSpecID:        evalRun.EvalSpecID,
+		OwnerUserID:       evalRun.OwnerUserID,
+		Title:             evalRun.Title,
+		BaselineEvalRunID: evalRun.BaselineEvalRunID,
+		TriggerKind:       evalRun.TriggerKind,
+		TriggerRef:        evalRun.TriggerRef,
+		Metadata:          cloneMetadataMap(evalRun.Metadata),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	group := &RunGroup{
+		ID:              evalRun.GroupID,
+		Kind:            groupSpec.Kind,
+		Title:           groupSpec.Title,
+		Status:          evalRun.Status,
+		OwnerUserID:     groupSpec.OwnerUserID,
+		Subject:         groupSpec.Subject,
+		SchedulerConfig: groupSpec.SchedulerConfig,
+		ScoringConfig:   groupSpec.ScoringConfig,
+		Metadata:        cloneMetadataMap(groupSpec.Metadata),
+		Summary:         cloneMetadataMap(evalRun.Summary),
+		CreatedAt:       evalRun.CreatedAt,
+		UpdatedAt:       evalRun.UpdatedAt,
+		StartedAt:       cloneTimePtr(evalRun.StartedAt),
+		FinishedAt:      cloneTimePtr(evalRun.FinishedAt),
+	}
+	if group.Metadata == nil {
+		group.Metadata = map[string]interface{}{}
+	}
+	group.Metadata["repaired_from_eval_run"] = true
+
+	if err := c.store.CreateGroup(ctx, group); err != nil {
+		if existing, getErr := c.store.GetGroup(ctx, group.ID); getErr == nil && existing != nil {
+			return c.refreshLoadedGroupSummary(ctx, existing)
+		}
+		return nil, err
+	}
+
+	return c.refreshLoadedGroupSummary(ctx, group)
 }
 
 func (c *Controller) loadEvalRunSpecContext(ctx context.Context, evalRun *EvalRun) (*evalRunSpecContext, error) {

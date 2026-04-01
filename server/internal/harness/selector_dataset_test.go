@@ -25,6 +25,12 @@ func TestSelectorCuratedDatasetManifest_DecodesAndCountsCases(t *testing.T) {
 	if manifest.Defaults.Scheduler.MaxConcurrency != selectorCuratedMaxConcurrency {
 		t.Fatalf("defaults.scheduler.max_concurrency = %d, want %d", manifest.Defaults.Scheduler.MaxConcurrency, selectorCuratedMaxConcurrency)
 	}
+	if manifest.Defaults.Scheduler.MaxAttempts != selectorCuratedMaxAttempts {
+		t.Fatalf("defaults.scheduler.max_attempts = %d, want %d", manifest.Defaults.Scheduler.MaxAttempts, selectorCuratedMaxAttempts)
+	}
+	if manifest.Defaults.Scheduler.RetryBackoff != selectorCuratedRetryBackoff {
+		t.Fatalf("defaults.scheduler.retry_backoff = %s, want %s", manifest.Defaults.Scheduler.RetryBackoff, selectorCuratedRetryBackoff)
+	}
 	if len(manifest.Items) != SelectorCuratedCaseCount() {
 		t.Fatalf("items len = %d, want %d", len(manifest.Items), SelectorCuratedCaseCount())
 	}
@@ -84,6 +90,12 @@ func TestMaterializeEvalGroupSpec_SelectorCuratedDatasetAllowsEnvOverrideForMaxC
 	if groupSpec.SchedulerConfig.MaxConcurrency != 16 {
 		t.Fatalf("group scheduler max_concurrency = %d, want 16", groupSpec.SchedulerConfig.MaxConcurrency)
 	}
+	if groupSpec.SchedulerConfig.MaxAttempts != selectorCuratedMaxAttempts {
+		t.Fatalf("group scheduler max_attempts = %d, want %d", groupSpec.SchedulerConfig.MaxAttempts, selectorCuratedMaxAttempts)
+	}
+	if groupSpec.SchedulerConfig.RetryBackoff != selectorCuratedRetryBackoff {
+		t.Fatalf("group scheduler retry_backoff = %s, want %s", groupSpec.SchedulerConfig.RetryBackoff, selectorCuratedRetryBackoff)
+	}
 }
 
 func TestMaterializeEvalGroupSpec_SelectorCuratedDatasetAllowsGlobalEnvOverrideForMaxConcurrency(t *testing.T) {
@@ -105,6 +117,12 @@ func TestMaterializeEvalGroupSpec_SelectorCuratedDatasetAllowsGlobalEnvOverrideF
 	}
 	if groupSpec.SchedulerConfig.MaxConcurrency != 12 {
 		t.Fatalf("group scheduler max_concurrency = %d, want 12", groupSpec.SchedulerConfig.MaxConcurrency)
+	}
+	if groupSpec.SchedulerConfig.MaxAttempts != selectorCuratedMaxAttempts {
+		t.Fatalf("group scheduler max_attempts = %d, want %d", groupSpec.SchedulerConfig.MaxAttempts, selectorCuratedMaxAttempts)
+	}
+	if groupSpec.SchedulerConfig.RetryBackoff != selectorCuratedRetryBackoff {
+		t.Fatalf("group scheduler retry_backoff = %s, want %s", groupSpec.SchedulerConfig.RetryBackoff, selectorCuratedRetryBackoff)
 	}
 }
 
@@ -297,6 +315,12 @@ func TestMaterializeEvalGroupSpec_SelectorCuratedDatasetPreservesCaseIDsAndExpec
 	if groupSpec.SchedulerConfig.MaxConcurrency != selectorCuratedMaxConcurrency {
 		t.Fatalf("group scheduler max_concurrency = %d, want %d", groupSpec.SchedulerConfig.MaxConcurrency, selectorCuratedMaxConcurrency)
 	}
+	if groupSpec.SchedulerConfig.MaxAttempts != selectorCuratedMaxAttempts {
+		t.Fatalf("group scheduler max_attempts = %d, want %d", groupSpec.SchedulerConfig.MaxAttempts, selectorCuratedMaxAttempts)
+	}
+	if groupSpec.SchedulerConfig.RetryBackoff != selectorCuratedRetryBackoff {
+		t.Fatalf("group scheduler retry_backoff = %s, want %s", groupSpec.SchedulerConfig.RetryBackoff, selectorCuratedRetryBackoff)
+	}
 
 	selected := findSelectorGroupItem(t, groupSpec.Items, "selected-browser-zh-cn")
 	if selected.Expected["canonical_skill_id"] != "browser" {
@@ -363,6 +387,12 @@ func TestSelectorCuratedDatasetSpecs_CreateReusableEvalAssets(t *testing.T) {
 	}
 	if evalSpec.SchedulerConfig.MaxConcurrency != selectorCuratedMaxConcurrency {
 		t.Fatalf("eval spec scheduler max_concurrency = %d, want %d", evalSpec.SchedulerConfig.MaxConcurrency, selectorCuratedMaxConcurrency)
+	}
+	if evalSpec.SchedulerConfig.MaxAttempts != selectorCuratedMaxAttempts {
+		t.Fatalf("eval spec scheduler max_attempts = %d, want %d", evalSpec.SchedulerConfig.MaxAttempts, selectorCuratedMaxAttempts)
+	}
+	if evalSpec.SchedulerConfig.RetryBackoff != selectorCuratedRetryBackoff {
+		t.Fatalf("eval spec scheduler retry_backoff = %s, want %s", evalSpec.SchedulerConfig.RetryBackoff, selectorCuratedRetryBackoff)
 	}
 	if metadataString(evalSpec.RuntimePolicy, "target_endpoint") != selectorDryRunTarget {
 		t.Fatalf("eval spec target_endpoint = %q, want %q", metadataString(evalSpec.RuntimePolicy, "target_endpoint"), selectorDryRunTarget)

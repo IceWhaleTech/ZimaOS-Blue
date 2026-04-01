@@ -1701,6 +1701,123 @@ func TestController_SubmitEvalRunMaterializesGroupAndReport(t *testing.T) {
 	}
 }
 
+func TestController_GetEvalRunRepairsMissingGroupAndAllowsDispatchToResume(t *testing.T) {
+	controller := newTestController(t)
+	controller.RegisterDriver(&autoCompleteGroupDriver{
+		kind:   RunKindAgentTask,
+		status: RunStatusCompleted,
+		result: "verified result",
+		delay:  10 * time.Millisecond,
+	})
+
+	dataset, err := controller.CreateDataset(context.Background(), DatasetSpec{
+		Name:           "Repair Eval Dataset",
+		OwnerUserID:    "user-1",
+		Subject:        "agent_task",
+		DefaultRunKind: RunKindAgentTask,
+		DefaultProfile: "agent_task",
+	})
+	if err != nil {
+		t.Fatalf("CreateDataset failed: %v", err)
+	}
+
+	version, err := controller.CreateDatasetVersion(context.Background(), dataset.ID, DatasetVersionSpec{
+		Version: "v1",
+		Manifest: map[string]interface{}{
+			"defaults": map[string]interface{}{
+				"run_kind": "agent_task",
+				"profile":  "agent_task",
+			},
+			"items": []interface{}{
+				map[string]interface{}{
+					"id": "case-1",
+					"input": map[string]interface{}{
+						"goal": "finish and verify",
+					},
+					"expected": map[string]interface{}{
+						"contains": "verified",
+					},
+				},
+			},
+		},
+		CreatedBy: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateDatasetVersion failed: %v", err)
+	}
+
+	evalSpec, err := controller.CreateEvalSpec(context.Background(), EvalSpecSpec{
+		Name:             "Repair Eval",
+		OwnerUserID:      "user-1",
+		DatasetID:        dataset.ID,
+		DatasetVersionID: version.ID,
+		RunKind:          RunKindAgentTask,
+		Profile:          "agent_task",
+		ScoringConfig: GroupScoringConfig{
+			Mode:          ScoringModeRule,
+			PassThreshold: 0.5,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSpec failed: %v", err)
+	}
+
+	evalRun, err := controller.SubmitEvalRun(context.Background(), EvalRunSpec{
+		EvalSpecID:  evalSpec.ID,
+		OwnerUserID: "user-1",
+		Title:       "repair-run-1",
+	})
+	if err != nil {
+		t.Fatalf("SubmitEvalRun failed: %v", err)
+	}
+
+	if _, err := controller.store.execContext(context.Background(), `DELETE FROM harness_run_groups WHERE id = ?`, evalRun.GroupID); err != nil {
+		t.Fatalf("delete group failed: %v", err)
+	}
+
+	// Accessing the eval run should repair the missing group record in place.
+	gotEvalRun, err := controller.GetEvalRun(context.Background(), evalRun.ID)
+	if err != nil {
+		t.Fatalf("GetEvalRun failed: %v", err)
+	}
+	if gotEvalRun.GroupID != evalRun.GroupID {
+		t.Fatalf("group id = %q, want %q", gotEvalRun.GroupID, evalRun.GroupID)
+	}
+
+	restoredGroup, err := controller.GetGroup(context.Background(), evalRun.GroupID)
+	if err != nil {
+		t.Fatalf("GetGroup after repair failed: %v", err)
+	}
+	if restoredGroup.Metadata["repaired_from_eval_run"] != true {
+		t.Fatalf("expected repaired_from_eval_run metadata, got %#v", restoredGroup.Metadata)
+	}
+
+	dispatcher := NewGroupDispatcher(controller)
+	dispatcher.SetRunPollInterval(10 * time.Millisecond)
+	if err := dispatcher.DispatchOnce(context.Background()); err != nil {
+		t.Fatalf("DispatchOnce failed: %v", err)
+	}
+
+	waitForCondition(t, "repaired eval run completion", func() bool {
+		got, err := controller.GetEvalRun(context.Background(), evalRun.ID)
+		if err != nil || got == nil {
+			return false
+		}
+		return got.Status == RunGroupStatusCompleted
+	})
+
+	report, err := controller.GetEvalRunReport(context.Background(), evalRun.ID)
+	if err != nil {
+		t.Fatalf("GetEvalRunReport failed: %v", err)
+	}
+	if report.EvalRun.Status != RunGroupStatusCompleted {
+		t.Fatalf("eval run status = %s, want completed", report.EvalRun.Status)
+	}
+	if report.GroupReport.Group == nil || report.GroupReport.Group.ID != evalRun.GroupID {
+		t.Fatalf("group report = %#v, want id %q", report.GroupReport.Group, evalRun.GroupID)
+	}
+}
+
 func TestController_EvalRunSyncRefreshesDirtyGroupSummary(t *testing.T) {
 	controller := newTestController(t)
 

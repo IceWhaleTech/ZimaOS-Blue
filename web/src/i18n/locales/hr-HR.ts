@@ -4114,10 +4114,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Ubrizgavanje naredbe',
+          description: 'Pokušava izvršiti naredbe sustava',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Kritično',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4773,6 +4773,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Ovaj skill je blokiran sigurnosnom politikom.',
+      blockedByPolicyMediumRisk: 'Ovaj skill je blokiran sigurnosnom politikom (srednji rizik).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6546,6 +6547,7 @@ export default {
     outputTruncated: 'skraćeno',
     outputUnavailable: 'Izlaz nije dostupan na ovoj kartici',
     noOutput: 'Nema izlaza',
+      noCommand: 'No command',
     running: 'Izvršavanje...',
     copyCommand: 'Kopiraj naredbu',
     copied: 'Kopirano!',

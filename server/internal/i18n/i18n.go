@@ -886,3 +886,19 @@ func AddTranslation(lang Language, key, value string) {
 	}
 	translations[lang][key] = value
 }
+
+// Message keys for security pattern descriptions (external content sanitizer)
+const (
+	MsgSecPatternJailbreak          = "security.pattern.jailbreak"
+	MsgSecPatternIgnoreInstructions = "security.pattern.ignore_instructions"
+	MsgSecPatternNewInstructions    = "security.pattern.new_instructions"
+	MsgSecPatternRoleOverride       = "security.pattern.role_override"
+	MsgSecPatternSystemPrompt       = "security.pattern.system_prompt"
+	MsgSecPatternCommandExecution   = "security.pattern.command_execution"
+	MsgSecPatternDataExfiltration   = "security.pattern.data_exfiltration"
+	MsgSecPatternDelimiterInjection = "security.pattern.delimiter_injection"
+	MsgSecPatternElevatedAccess     = "security.pattern.elevated_access"
+	MsgSecPatternRmRf               = "security.pattern.rm_rf"
+	MsgSecPatternDeleteAll          = "security.pattern.delete_all"
+	MsgSecPatternRoleSeparator      = "security.pattern.role_separator"
+)

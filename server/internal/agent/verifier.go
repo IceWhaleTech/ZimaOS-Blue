@@ -101,6 +101,9 @@ func (v *GroundedVerifier) deterministicResponse(input ResponderInput) *Grounded
 		if response := deterministicAnalyzeGroundedResponse(toolCallID, call, result); response != nil {
 			return response
 		}
+		if response := deterministicReminderGroundedResponse(toolCallID, call, result); response != nil {
+			return response
+		}
 	}
 	return nil
 }
@@ -183,13 +186,7 @@ func deterministicWebResultReady(value any) bool {
 		return false
 	}
 	for _, payload := range payloads {
-		status := strings.ToLower(strings.TrimSpace(asString(extractField(payload, "status"))))
-		nextAction := strings.ToLower(strings.TrimSpace(asString(extractField(payload, "next_action"))))
-		if nextAction == "retry_browser" || nextAction == "authorize_provider" {
-			continue
-		}
-		switch status {
-		case "", "ok", "partial":
+		if deterministicWebPayloadReady(payload) {
 			return true
 		}
 	}
@@ -201,6 +198,9 @@ func deterministicWebEvidenceFields(value any) (string, string, string) {
 	var url string
 	var snippet string
 	for _, payload := range deterministicStructuredPayloads(value) {
+		if !deterministicWebPayloadReady(payload) {
+			continue
+		}
 		if title == "" {
 			title = deterministicExcerpt(firstNonEmptyString(
 				strings.TrimSpace(asString(extractField(payload, "title"))),
@@ -231,6 +231,67 @@ func deterministicWebEvidenceFields(value any) (string, string, string) {
 		}
 	}
 	return title, url, snippet
+}
+
+func deterministicWebPayloadReady(payload map[string]any) bool {
+	if len(payload) == 0 {
+		return false
+	}
+	status := strings.ToLower(strings.TrimSpace(asString(extractField(payload, "status"))))
+	nextAction := strings.ToLower(strings.TrimSpace(asString(extractField(payload, "next_action"))))
+	if nextAction == "retry_browser" || nextAction == "authorize_provider" {
+		return false
+	}
+	switch status {
+	case "ok", "partial":
+		return true
+	case "failed", "error", "needs_browser", "login_wall", "challenge":
+		return false
+	}
+	if status != "" {
+		return false
+	}
+	if groundedNeedsBrowser(payload) {
+		return false
+	}
+	if deterministicHasNestedStructuredPayload(payload) {
+		return false
+	}
+	return deterministicPayloadHasWebEvidence(payload)
+}
+
+func deterministicHasNestedStructuredPayload(payload map[string]any) bool {
+	for _, key := range []string{"data", "page", "result"} {
+		next := extractField(payload, key)
+		if next == nil {
+			continue
+		}
+		if nested, ok := next.(map[string]any); ok && len(nested) > 0 {
+			return true
+		}
+		if nested := parseGroundedNestedPayload(next); nested != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func deterministicPayloadHasWebEvidence(payload map[string]any) bool {
+	if firstNonEmptyString(
+		strings.TrimSpace(asString(extractField(payload, "title"))),
+		strings.TrimSpace(asString(extractField(payload, "page_title"))),
+		strings.TrimSpace(asString(extractField(payload, "final_url"))),
+		strings.TrimSpace(asString(extractField(payload, "target_url"))),
+		strings.TrimSpace(asString(extractField(payload, "url"))),
+		strings.TrimSpace(asString(extractField(payload, "input"))),
+		strings.TrimSpace(asString(extractField(payload, "snippet"))),
+		strings.TrimSpace(asString(extractField(payload, "summary"))),
+		strings.TrimSpace(asString(extractField(payload, "message"))),
+		strings.TrimSpace(asString(extractField(payload, "content"))),
+	) != "" {
+		return true
+	}
+	return deterministicSourceUsable(payload)
 }
 
 func deterministicAnalyzeGroundedResponse(toolCallID string, call GroundedToolCall, result GroundedToolResult) *GroundedResponse {
@@ -305,6 +366,90 @@ func deterministicAnalyzeSummary(answer, topic string) string {
 		return fmt.Sprintf("Grounded analyze result collected for %s.", topic)
 	default:
 		return "Grounded analyze result collected."
+	}
+}
+
+func deterministicReminderGroundedResponse(toolCallID string, call GroundedToolCall, result GroundedToolResult) *GroundedResponse {
+	if !deterministicReminderEvidenceEnabled(call, result) {
+		return nil
+	}
+	confirmation, fireAt, sessionID := deterministicReminderEvidenceFields(call, result)
+	excerpts := deterministicClaimExcerpts(confirmation, fireAt, sessionID)
+	if len(excerpts) == 0 {
+		return nil
+	}
+	claims := make([]ResponseClaim, 0, len(excerpts))
+	for _, excerpt := range excerpts {
+		claims = append(claims, ResponseClaim{
+			Type:        ClaimTypeCommandExcerpt,
+			ToolCallIDs: []string{toolCallID},
+			Excerpt:     excerpt,
+		})
+	}
+	return &GroundedResponse{
+		Summary: deterministicReminderSummary(confirmation, fireAt),
+		Claims:  claims,
+	}
+}
+
+func deterministicReminderEvidenceEnabled(call GroundedToolCall, result GroundedToolResult) bool {
+	if !groundedResultCarriesReminderEvidence(call, result) {
+		return false
+	}
+	return groundedReminderResultReady(result.Result)
+}
+
+func deterministicReminderEvidenceFields(call GroundedToolCall, result GroundedToolResult) (string, string, string) {
+	confirmation := ""
+	stdoutFallback := ""
+	fireAt := ""
+	sessionID := ""
+	for _, payload := range deterministicStructuredPayloads(result.Result) {
+		if confirmation == "" {
+			confirmation = deterministicExcerpt(firstNonEmptyString(
+				strings.TrimSpace(asString(extractField(payload, "message"))),
+			), 220)
+		}
+		if stdoutFallback == "" {
+			stdoutFallback = deterministicExcerpt(strings.TrimSpace(asString(extractField(payload, "stdout"))), 220)
+		}
+		if reminder := parseGroundedNestedPayload(extractField(payload, "reminder")); reminder != nil {
+			if fireAt == "" {
+				fireAt = deterministicExcerpt(firstNonEmptyString(
+					strings.TrimSpace(asString(extractField(reminder, "fire_at"))),
+					strings.TrimSpace(asString(extractField(reminder, "fireAt"))),
+				), 96)
+			}
+			if sessionID == "" {
+				sessionID = deterministicExcerpt(firstNonEmptyString(
+					strings.TrimSpace(asString(extractField(reminder, "session_id"))),
+					strings.TrimSpace(asString(extractField(reminder, "sessionId"))),
+				), 160)
+			}
+		}
+	}
+	if confirmation == "" {
+		confirmation = stdoutFallback
+	}
+	if sessionID == "" {
+		sessionID = deterministicExcerpt(firstNonEmptyString(
+			strings.TrimSpace(asString(extractField(call.Args, "session_id"))),
+			strings.TrimSpace(asString(extractField(call.Args, "sessionId"))),
+		), 160)
+	}
+	return confirmation, fireAt, sessionID
+}
+
+func deterministicReminderSummary(confirmation, fireAt string) string {
+	switch {
+	case confirmation != "" && fireAt != "":
+		return fmt.Sprintf("Grounded reminder scheduled for %s.", fireAt)
+	case confirmation != "":
+		return "Grounded reminder scheduling confirmed."
+	case fireAt != "":
+		return fmt.Sprintf("Grounded reminder scheduled for %s.", fireAt)
+	default:
+		return "Grounded reminder scheduling confirmed."
 	}
 }
 

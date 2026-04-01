@@ -52,6 +52,11 @@ func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
 		timeStr := req.Params["time"]
 		everyStr := req.Params["every"]
 		if timeStr == "" && everyStr == "" {
+			if inferredTime, ok := remindertime.InferTimeStringFromMessage(message); ok {
+				timeStr = inferredTime
+			}
+		}
+		if timeStr == "" && everyStr == "" {
 			return ErrResponse("missing time or every")
 		}
 

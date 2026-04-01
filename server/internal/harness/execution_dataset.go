@@ -3,6 +3,7 @@ package harness
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 )
@@ -11,9 +12,11 @@ const (
 	Batch1ExecutionDatasetName        = "skill-exec-batch1"
 	Batch1ExecutionDatasetDescription = "Curated batch-1 execution equivalence dataset for tool-to-skill migration."
 	Batch1ExecutionDatasetSubject     = "skill_execution_batch1"
-	Batch1ExecutionDatasetVersion     = "skill-exec-batch1-v3"
+	Batch1ExecutionDatasetVersion     = "skill-exec-batch1-v5"
 	Batch1ExecutionEvalName           = "Skill Execution Batch 1"
 	batch1ExecutionMaxConcurrency     = 4
+	batch1ExecutionMaxAttempts        = 3
+	batch1ExecutionRetryBackoff       = 20 * time.Second
 
 	batch1ExecutionProfile         = "skill_execution_batch1"
 	batch1ExecutionPolicyModelHint = "claude-haiku-4-5-20251001"
@@ -40,9 +43,13 @@ func Batch1ExecutionDatasetManifest() DatasetManifest {
 			Subject: Batch1ExecutionDatasetSubject,
 		},
 		Defaults: DatasetManifestDefaults{
-			RunKind:       RunKindAgentTask,
-			Profile:       batch1ExecutionProfile,
-			Scheduler:     GroupSchedulerConfig{MaxConcurrency: batch1ExecutionMaxConcurrency, MaxAttempts: 1},
+			RunKind: RunKindAgentTask,
+			Profile: batch1ExecutionProfile,
+			Scheduler: GroupSchedulerConfig{
+				MaxConcurrency: batch1ExecutionMaxConcurrency,
+				MaxAttempts:    batch1ExecutionMaxAttempts,
+				RetryBackoff:   batch1ExecutionRetryBackoff,
+			},
 			Scoring:       GroupScoringConfig{Mode: ScoringModeRule, PassThreshold: 1},
 			RuntimePolicy: batch1ExecutionRuntimePolicy(),
 		},
@@ -103,7 +110,8 @@ func Batch1ExecutionEvalSpecSpec(datasetID, datasetVersionID, ownerUserID string
 		DatasetVersionID: strings.TrimSpace(datasetVersionID),
 		SchedulerConfig: GroupSchedulerConfig{
 			MaxConcurrency: batch1ExecutionMaxConcurrency,
-			MaxAttempts:    1,
+			MaxAttempts:    batch1ExecutionMaxAttempts,
+			RetryBackoff:   batch1ExecutionRetryBackoff,
 		},
 		RuntimePolicy: batch1ExecutionRuntimePolicy(),
 		ScoringConfig: GroupScoringConfig{

@@ -24,6 +24,7 @@ function createTestI18n(locale = 'en-US') {
           collapse: 'Show less',
           expand: 'Show more',
           commandHidden: 'Command hidden',
+      noCommand: 'No command',
           hideCommand: 'Hide command',
           showCommand: 'Show command',
           builtin: 'Built-in',
@@ -158,4 +159,59 @@ describe('CardExec', () => {
     await showButton!.trigger('click')
     expect(wrapper.text()).toContain('$ ls -la')
   })
+})
+
+describe('CardExec - Empty Command Handling', () => {
+	it('shows "No command" when command is empty string', () => {
+		const wrapper = mount(CardExec, {
+			props: {
+				card: {
+					type: 'exec',
+					status: 'success',
+					command: '',
+					stdout: 'some output',
+				},
+			},
+			global: {
+				plugins: [createTestI18n()],
+			},
+		})
+		expect(wrapper.text()).toContain('No command')
+		expect(wrapper.text()).not.toContain('Command hidden')
+	})
+
+	it('shows "No command" when command is undefined', () => {
+		const wrapper = mount(CardExec, {
+			props: {
+				card: {
+					type: 'exec',
+					status: 'success',
+					stdout: 'some output',
+				},
+			},
+			global: {
+				plugins: [createTestI18n()],
+			},
+		})
+		expect(wrapper.text()).toContain('No command')
+		expect(wrapper.text()).not.toContain('Command hidden')
+	})
+
+	it('does not show hide/show buttons when command is empty', () => {
+		const wrapper = mount(CardExec, {
+			props: {
+				card: {
+					type: 'exec',
+					status: 'success',
+					command: '',
+					stdout: 'some output',
+				},
+			},
+			global: {
+				plugins: [createTestI18n()],
+			},
+		})
+		expect(wrapper.text()).not.toContain('Hide command')
+		expect(wrapper.text()).not.toContain('Show command')
+	})
 })

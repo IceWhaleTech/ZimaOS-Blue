@@ -5,6 +5,7 @@ import { useProviderPoolStore } from '@/stores/providerPool'
 import { useSettingsStore } from '@/stores/settings'
 import { i18n } from '@/i18n'
 import { getStoredAccessToken } from '@/utils/authStorage'
+import { consumeSSEJsonStream } from '@/utils/sseStream'
 
 type ApiClientModule = typeof import('@/api/client')
 let apiClientModulePromise: Promise<ApiClientModule> | null = null
@@ -102,40 +103,14 @@ export function useEventStream() {
       }
 
       connected.value = true
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (connected.value) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        let currentEventType = ''
-        for (const line of lines) {
-          console.log('[EventStream] Processing line:', line)
-          if (line.startsWith('event: ')) {
-            currentEventType = line.slice(7).trim()
-            console.log('[EventStream] Event type set to:', currentEventType)
-          } else if (line.startsWith('data: ')) {
-            const raw = line.slice(6).trim()
-            console.log('[EventStream] Raw data:', raw)
-            try {
-              const data = JSON.parse(raw)
-              console.log('[EventStream] Parsed data:', data)
-              handleEvent(currentEventType, data)
-            } catch (e) {
-              console.error('[EventStream] JSON parse error:', e)
-              // ignore non-JSON
-            }
-            currentEventType = ''
-          }
-          // ignore comments (lines starting with ':')
-        }
-      }
+      await consumeSSEJsonStream(response.body, {
+        onMessage: (event, data) => {
+          handleEvent(event, data)
+        },
+        onParseError: ({ error }) => {
+          console.error('[EventStream] JSON parse error:', error)
+        },
+      })
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       console.warn('[EventStream] connection error:', err)

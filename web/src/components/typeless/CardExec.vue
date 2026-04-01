@@ -242,7 +242,7 @@ const outputSections = computed<OutputSection[]>(() => {
 
 const expanded = ref(false)
 const commandCopied = ref(false)
-const showCommand = ref(!commandRedacted.value)
+const showCommand = ref(!commandRedacted.value && !!props.card.command)
 const maxCollapsedLines = 14
 
 const totalOutputLines = computed(() =>
@@ -380,7 +380,7 @@ watch(
                   : 'text-gray-400 dark:text-gray-500 italic'
               "
             >
-              {{ showCommand && command ? `$ ${command}` : t('execCard.commandHidden', 'Command hidden') }}
+              {{ command ? (showCommand ? `$ ${command}` : t('execCard.commandHidden', 'Command hidden')) : t('execCard.noCommand', 'No command') }}
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">

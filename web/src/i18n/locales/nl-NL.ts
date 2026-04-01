@@ -4134,10 +4134,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Commando-injectie',
+          description: 'Probeert systeemopdrachten uit te voeren',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Kritiek',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4793,6 +4793,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Deze skill is geblokkeerd door het beveiligingsbeleid.',
+      blockedByPolicyMediumRisk: 'Deze skill is geblokkeerd door het beveiligingsbeleid (middelmatig risico).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6677,6 +6678,7 @@ export default {
     outputTruncated: 'afgekapt',
     outputUnavailable: 'Uitvoer is niet beschikbaar in deze kaart',
     noOutput: 'Geen uitvoer',
+      noCommand: 'Geen opdracht',
     running: 'Uitvoeren...',
     copyCommand: 'Opdracht kopiëren',
     copied: 'Gekopieerd!',

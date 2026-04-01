@@ -87,7 +87,16 @@ func bindRuntimeToolSelection(
 	// Keep a selector available even when startup config leaves smart selection off.
 	// The runtime setting still gates actual usage, but dry-run and later toggles
 	// should not require a process restart just to materialize the selector.
-	chat.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, nil))
+	baseSelector := agentcore.NewSkillSelector(workspaceDir, nil)
+	baseSelector.SetDynamicExposureEnabledFunc(func() bool {
+		if settings := chat.GetSettingsHandler(); settings != nil {
+			if enabled, ok := settings.GetSkillDynamicExposureExplicit(); ok {
+				return enabled
+			}
+		}
+		return cfg.ToolCalling.SkillDynamicExposure
+	})
+	chat.SetSkillSelector(baseSelector)
 
 	if !cfg.ToolCalling.SmartSkillSelection {
 		return nil
@@ -97,6 +106,15 @@ func bindRuntimeToolSelection(
 		ONNXEnabled:  cfg.ToolCalling.SkillRerankEnabled && cfg.ToolCalling.SkillRerankONNXEnabled,
 		AutoDownload: cfg.ToolCalling.SkillRerankONNXAutoDownload,
 	})
-	chat.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, reranker))
+	rerankSelector := agentcore.NewSkillSelector(workspaceDir, reranker)
+	rerankSelector.SetDynamicExposureEnabledFunc(func() bool {
+		if settings := chat.GetSettingsHandler(); settings != nil {
+			if enabled, ok := settings.GetSkillDynamicExposureExplicit(); ok {
+				return enabled
+			}
+		}
+		return cfg.ToolCalling.SkillDynamicExposure
+	})
+	chat.SetSkillSelector(rerankSelector)
 	return reranker
 }

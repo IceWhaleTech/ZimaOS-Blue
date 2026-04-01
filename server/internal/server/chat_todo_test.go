@@ -605,7 +605,7 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 	})
 
 	t.Run("continues on pseudo tool-call command/workdir json text", func(t *testing.T) {
-		current := "收到，开始设置提醒。\nWorking on task: add reminder for 10 seconds later.{\"command\":\"blue reminder.add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/tmp/workspace\"}{\"command\":\"blue help reminder\",...}"
+		current := "收到，开始设置提醒。\nWorking on task: add reminder for 10 seconds later.{\"command\":\"blue reminder add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/tmp/workspace\"}{\"command\":\"blue help reminder\",...}"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if !ok || reason != "pseudo_tool_call" {
 			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)

@@ -4157,10 +4157,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Έγχυση εντολών',
+          description: 'Προσπάθειες εκτέλεσης εντολών συστήματος',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Κριτική',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4816,6 +4816,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Auto to skill exei blokaristei apo tin politiki asfaleias.',
+      blockedByPolicyMediumRisk: 'Αυτό το skill έχει μπλοκαριστεί από την πολιτική ασφάλειας (μέτριος κίνδυνος).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6614,6 +6615,7 @@ export default {
     outputTruncated: 'περικόπηκε',
     outputUnavailable: 'Η έξοδος δεν είναι διαθέσιμη σε αυτήν την κάρτα',
     noOutput: 'Χωρίς έξοδο',
+      noCommand: 'No command',
     running: 'Εκτέλεση...',
     copyCommand: 'Αντιγραφή εντολής',
     copied: 'Αντιγράφηκε!',

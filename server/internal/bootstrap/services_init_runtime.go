@@ -67,8 +67,12 @@ func initServicesRuntimeRegistries(
 		resolveBuiltinToolAllowedPaths(appCfg, cfg.DataDir),
 		0,
 		tools.BuiltinRuntimeConfig{
-			DataDir: cfg.DataDir,
-			Ripgrep: appCfg.ToolCalling.Ripgrep,
+			DataDir:      cfg.DataDir,
+			WorkspaceDir: ResolveWorkspaceDir(cfg.DataDir, appCfg),
+			Ripgrep:      appCfg.ToolCalling.Ripgrep,
+			SkillDynamicExposureEnabled: func() bool {
+				return appCfg.ToolCalling.SkillDynamicExposure
+			},
 		},
 	)
 	tools.AttachPDFServiceToWebTools(s.ToolRegistry, s.PDFService)

@@ -45,6 +45,13 @@ func isSummaryPrompt(req llm.ChatRequest) bool {
 	return strings.Contains(req.Messages[0].Content, "final user-facing report")
 }
 
+func isPlanningPrompt(req llm.ChatRequest) bool {
+	if len(req.Messages) == 0 {
+		return false
+	}
+	return strings.Contains(req.Messages[0].Content, "deterministic task planner for ZimaOS Blue")
+}
+
 func extractCriteriaFromPrompt(prompt string) []string {
 	lines := strings.Split(prompt, "\n")
 	results := make([]string, 0)
@@ -1205,6 +1212,40 @@ func (m *scriptedLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatRes
 	}, nil
 }
 
+type executionRetryScriptLLM struct {
+	planResponses           []string
+	groundedPlannerResponse []string
+	planIdx                 int
+	groundedPlannerIdx      int
+}
+
+func (m *executionRetryScriptLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	switch {
+	case isPlanningPrompt(req):
+		content := `{"goal":"test","subtasks":[{"description":"step one"}],"success_criteria":[],"fallback_plan":[]}`
+		if m.planIdx < len(m.planResponses) {
+			content = m.planResponses[m.planIdx]
+			m.planIdx++
+		}
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: content},
+		}, nil
+	case isGroundedPlannerPrompt(req):
+		content := `{"status":"complete","reason":"done","assertions":[]}`
+		if m.groundedPlannerIdx < len(m.groundedPlannerResponse) {
+			content = m.groundedPlannerResponse[m.groundedPlannerIdx]
+			m.groundedPlannerIdx++
+		}
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: content},
+		}, nil
+	default:
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: defaultResponseForRequest(req)},
+		}, nil
+	}
+}
+
 func TestRunner_GenerateSummary_UsesOpenClawStyleReportPrompt(t *testing.T) {
 	llmStub := &captureResponseLLM{response: `Summary: Implemented the parser update and finished validation. One verification step still needs manual review.
 
@@ -2355,6 +2396,89 @@ func TestRunner_VerifyRecoveryFailure_MarksFailed(t *testing.T) {
 	}
 	runner.Cancel(task.ID)
 	t.Fatal("task did not reach terminal state within deadline")
+}
+
+func TestRunner_RetryClearsRejectedGroundingBeforeSuccessfulReplay(t *testing.T) {
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	execTool := tools.NewMockTool("exec", "mock exec")
+	execTool.SetResult(map[string]any{
+		"exit_code": 0,
+		"stdout":    "content: Responses | OpenAI API Reference",
+		"data": map[string]any{
+			"target_url": "https://developers.openai.com/api/reference/resources/responses",
+			"title":      "Responses | OpenAI API Reference",
+			"content":    "Responses | OpenAI API Reference\nCreate a model response\nPOST /responses",
+		},
+	})
+	writeTool := tools.NewMockTool("write", "mock write")
+	writeTool.SetResult(map[string]any{
+		"success": true,
+		"path":    ".blue/scratchpad/shared/responses-api-search.md",
+		"size":    4,
+	})
+	registry.Register(execTool)
+	registry.Register(writeTool)
+
+	llmStub := &executionRetryScriptLLM{
+		planResponses: []string{
+			`{"goal":"Wyszukaj najnowsza dokumentacje OpenAI Responses API.","subtasks":[{"description":"Zapisz claim zadania i znajdz najnowsza dokumentacje Responses API."}],"success_criteria":["planner invented docs deliverable"],"fallback_plan":["report blocker"]}`,
+		},
+		groundedPlannerResponse: []string{
+			`{"status":"continue","reason":"Run the canonical web query route.","next_tool":{"tool":"exec","args":{"command":"blue web_query query=\"Wyszukaj najnowsza dokumentacje OpenAI Responses API.\""}},"assertions":[]}`,
+			`{"status":"complete","reason":"Scratchpad should already exist.","assertions":[{"type":"tool_called","tool":"write"}]}`,
+			`{"status":"continue","reason":"Write the scratchpad claim.","next_tool":{"tool":"write","args":{"path":".blue/scratchpad/shared/responses-api-search.md","content":"seed"}},"assertions":[]}`,
+			`{"status":"complete","reason":"The retry now has enough evidence.","assertions":[]}`,
+		},
+	}
+
+	runner := NewRunner(store, llmStub, registry, tools.NewExecutor(registry), nil, RunnerConfig{TaskTimeout: 10 * time.Second})
+	task := &Task{
+		ID:     "retry-grounding-reset",
+		UserID: "u1",
+		Goal:   "Wyszukaj najnowsza dokumentacje OpenAI Responses API.",
+		Status: TaskStatusPending,
+		Metadata: map[string]any{
+			"routing_contract": map[string]any{
+				"gate_type":           "execution_equivalence",
+				"primary_route":       "web_query",
+				"expected_cli_action": "blue web_query",
+				"enforce_cli_route":   true,
+				"allow_fallback":      false,
+			},
+			"harness_contract": map[string]any{
+				"required_observations": []any{"evidence_tool_used"},
+			},
+			"group_input": map[string]any{
+				"query": "Wyszukaj najnowsza dokumentacje OpenAI Responses API.",
+			},
+		},
+	}
+	if err := store.Create(context.Background(), task); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	runner.execute(context.Background(), task, "")
+
+	got, err := store.Get(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got.Status != TaskStatusCompleted {
+		t.Fatalf("status = %q, want completed; result=%q", got.Status, got.Result)
+	}
+	if got.GroundingStatus == GroundingStatusRejected {
+		t.Fatalf("grounding_status = %q, want non-rejected", got.GroundingStatus)
+	}
+	if len(got.VerificationErrors) != 0 {
+		t.Fatalf("verification_errors = %#v, want none", got.VerificationErrors)
+	}
+	if len(got.SuccessCriteria) != 1 || got.SuccessCriteria[0] != "evidence_tool_used" {
+		t.Fatalf("success_criteria = %#v, want [evidence_tool_used]", got.SuccessCriteria)
+	}
+	if !strings.Contains(got.Result, "Verification: PASS") {
+		t.Fatalf("expected final result to include grounded verification pass, got %q", got.Result)
+	}
 }
 
 func TestAgentQuestion_JSON(t *testing.T) {

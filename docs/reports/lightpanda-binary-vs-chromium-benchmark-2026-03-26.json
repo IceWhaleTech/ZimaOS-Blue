@@ -1,0 +1,291 @@
+{
+  "generated_at": "2026-03-26T06:02:26Z",
+  "hostname": "Orcas-MacBook-Pro.local",
+  "goos": "darwin",
+  "goarch": "arm64",
+  "warm_runs": 3,
+  "lightpanda_runtime": "docker_nightly",
+  "lightpanda_docker_image": "lightpanda/browser:nightly",
+  "notes": [
+    "Cold timings exclude one-time browser/binary download and measure engine startup + navigate + operation.",
+    "Warm timings reuse an already-started engine and report p50 over measured iterations after one uncounted priming run.",
+    "lightpanda_binary is measured through Blue's current browser-lite backend contract, so screenshot remains unsupported by design.",
+    "lightpanda_binary used the official Docker image lightpanda/browser:nightly and attached through Blue's relay-mode browser-lite backend."
+  ],
+  "results": [
+    {
+      "scenario": {
+        "id": "synthetic_static_article",
+        "label": "Synthetic static article / readable tree",
+        "category": "synthetic",
+        "url": "http://127.0.0.1:51434/article",
+        "operation": "a11y_tree",
+        "timeout_ms": 15000,
+        "notes": "Measures navigate + accessibility tree on a simple readable page."
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 737.818167,
+          "cold_error": "EOF"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 4281.105875,
+          "warm_runs_ms": [
+            17.289042,
+            10.778125,
+            9.182958
+          ],
+          "warm_p50_ms": 10.778125,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "synthetic_dense_dom",
+        "label": "Synthetic dense DOM / readable tree",
+        "category": "synthetic",
+        "url": "http://127.0.0.1:51434/dense",
+        "operation": "a11y_tree",
+        "timeout_ms": 20000,
+        "notes": "Measures navigate + accessibility tree on a large local DOM."
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 466.752375,
+          "cold_error": "EOF"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 1797.152541,
+          "warm_runs_ms": [
+            90.551625,
+            66.43975,
+            72.8255
+          ],
+          "warm_p50_ms": 72.8255,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "synthetic_js_shell",
+        "label": "Synthetic JS shell / hydrated app",
+        "category": "synthetic",
+        "url": "http://127.0.0.1:51434/js-shell",
+        "operation": "a11y_tree",
+        "timeout_ms": 20000,
+        "notes": "Shim would fail fast here; lp binary and Chromium execute the client-side render."
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 594.483875,
+          "cold_error": "EOF"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 2290.36725,
+          "warm_runs_ms": [
+            18.938,
+            14.46975,
+            10.152208
+          ],
+          "warm_p50_ms": 14.46975,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "synthetic_screenshot_baseline",
+        "label": "Synthetic screenshot baseline",
+        "category": "synthetic",
+        "url": "http://127.0.0.1:51434/article",
+        "operation": "screenshot",
+        "timeout_ms": 20000,
+        "notes": "Current Blue browser-lite contract keeps screenshots Chromium-only."
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "unsupported",
+          "cold_ms": 517.998375,
+          "cold_error": "unsupported_capability: screenshots requires Chromium"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 2034.036208,
+          "warm_runs_ms": [
+            385.473459,
+            399.181125,
+            429.254375
+          ],
+          "warm_p50_ms": 399.181125,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_example",
+        "label": "https://example.com",
+        "category": "real",
+        "url": "https://example.com",
+        "operation": "a11y_tree",
+        "timeout_ms": 45000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 936.0725,
+          "cold_error": "tab not found"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 3050.265708,
+          "warm_runs_ms": [
+            28.773792,
+            12.461583,
+            8.541709
+          ],
+          "warm_p50_ms": 12.461583,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_mdn_html",
+        "label": "https://developer.mozilla.org/en-US/docs/Web/HTML",
+        "category": "real",
+        "url": "https://developer.mozilla.org/en-US/docs/Web/HTML",
+        "operation": "a11y_tree",
+        "timeout_ms": 60000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 2323.523125,
+          "cold_error": "tab not found"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 3044.341916,
+          "warm_runs_ms": [
+            182.125,
+            147.463083,
+            195.759375
+          ],
+          "warm_p50_ms": 182.125,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_apple",
+        "label": "https://www.apple.com/",
+        "category": "real",
+        "url": "https://www.apple.com/",
+        "operation": "a11y_tree",
+        "timeout_ms": 60000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 2566.673458,
+          "cold_error": "tab not found"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 14080.212333,
+          "warm_runs_ms": [
+            581.517583,
+            428.5085,
+            496.5265
+          ],
+          "warm_p50_ms": 496.5265,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_github",
+        "label": "https://github.com/",
+        "category": "real",
+        "url": "https://github.com/",
+        "operation": "a11y_tree",
+        "timeout_ms": 60000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 2594.5615,
+          "cold_error": "tab not found"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 4537.864208,
+          "warm_runs_ms": [
+            527.654959,
+            445.887,
+            446.59625
+          ],
+          "warm_p50_ms": 446.59625,
+          "successful_runs": 3
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "id": "site_figma",
+        "label": "https://www.figma.com/",
+        "category": "real",
+        "url": "https://www.figma.com/",
+        "operation": "a11y_tree",
+        "timeout_ms": 60000
+      },
+      "engines": [
+        {
+          "engine": "lightpanda_binary",
+          "status": "error",
+          "cold_ms": 2869.749584,
+          "cold_error": "tab not found"
+        },
+        {
+          "engine": "chromium_managed",
+          "status": "ok",
+          "cold_ms": 3119.253333,
+          "warm_runs_ms": [
+            239.569416,
+            224.902833,
+            223.513208
+          ],
+          "warm_p50_ms": 224.902833,
+          "successful_runs": 3
+        }
+      ]
+    }
+  ]
+}

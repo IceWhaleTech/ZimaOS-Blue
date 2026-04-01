@@ -49,7 +49,7 @@ func (t *AgentsListTool) Definition() ToolDefinition {
 func (t *SubagentsTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "subagents",
-		Description: "Inspect effective subagent policy, or spawn a harness-backed child agent when action=spawn or action=run.",
+		Description: "Inspect effective subagent policy, or spawn a harness-backed child agent when action=spawn or action=run. Child agents inherit the current workspace, making them suitable for bounded worker coordination and shared scratchpad workflows.",
 		Icon:        "subagents",
 		Parameters: map[string]interface{}{
 			"type": "object",

@@ -34,6 +34,9 @@ type Manifest struct {
 	Category        string            `json:"category,omitempty" yaml:"category,omitempty"`
 	Icon            string            `json:"icon,omitempty" yaml:"icon,omitempty"`
 	Tags            []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Paths           []string          `json:"paths,omitempty" yaml:"paths,omitempty"`
+	UserInvocable   bool              `json:"user_invocable" yaml:"user_invocable"`
+	ModelInvocable  bool              `json:"model_invocable" yaml:"model_invocable"`
 	Invocation      string            `json:"invocation,omitempty" yaml:"invocation,omitempty"`
 	Examples        []string          `json:"examples,omitempty" yaml:"examples,omitempty"`
 	CapabilityTags  []string          `json:"capability_tags,omitempty" yaml:"capability_tags,omitempty"`
@@ -117,8 +120,19 @@ type ManifestSkill struct {
 	manifest *Manifest
 }
 
+func NormalizeManifestDefaults(m *Manifest) {
+	if m == nil {
+		return
+	}
+	if !m.UserInvocable && !m.ModelInvocable && len(m.Paths) == 0 {
+		m.UserInvocable = true
+		m.ModelInvocable = true
+	}
+}
+
 // NewManifestSkill creates a skill from a parsed manifest.
 func NewManifestSkill(m *Manifest) *ManifestSkill {
+	NormalizeManifestDefaults(m)
 	return &ManifestSkill{manifest: m}
 }
 

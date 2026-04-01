@@ -4293,10 +4293,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Инъекция команд',
+          description: 'Попытки выполнить системные команды',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Критический',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4953,6 +4953,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Этот навык заблокирован политикой безопасности.',
+      blockedByPolicyMediumRisk: 'Этот навык заблокирован политикой безопасности (средний риск).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6842,6 +6843,7 @@ export default {
     outputTruncated: 'обрезано',
     outputUnavailable: 'Вывод недоступен в этой карточке',
     noOutput: 'Нет вывода',
+      noCommand: 'Нет команды',
     running: 'Выполняется...',
     copyCommand: 'Копировать команду',
     copied: 'Скопировано!',

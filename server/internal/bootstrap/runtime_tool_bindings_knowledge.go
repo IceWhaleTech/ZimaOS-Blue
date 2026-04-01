@@ -18,19 +18,7 @@ func bindRuntimeKnowledgeSkills(
 	deepResearchSkill runtimeDeepResearchSkillTarget,
 	deepResearchService *deepresearch.Service,
 ) {
-	if analyzeTool != nil {
-		if browserBackend != nil {
-			analyzeTool.SetBrowser(browserBackend)
-		} else if lazyBrowser != nil {
-			analyzeTool.SetBrowser(tools.NewLazyRodBrowserBackend(lazyBrowser))
-		}
-		if registry != nil {
-			analyzeTool.SetExecutor(tools.NewExecutor(registry))
-		}
-		if analyzeSkill != nil {
-			analyzeSkill.SetExecutor(analyzeTool)
-		}
-	}
+	bindRuntimeAnalyzeSkillDependencies(registry, analyzeTool, browserBackend, lazyBrowser, analyzeSkill)
 	if webQuerySkill != nil && registry != nil {
 		if tool := registry.Get("web_query"); tool != nil {
 			webQuerySkill.SetSearcher(tool)

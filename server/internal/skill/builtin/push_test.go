@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/remindertime"
 )
 
 type mockReminderPushService struct {
@@ -11,6 +13,7 @@ type mockReminderPushService struct {
 	lastMessage   string
 	lastRecurring string
 	lastSessionID string
+	lastFireAt    time.Time
 	lastDeleteID  string
 	listResult    []PushInfo
 	clearCount    int64
@@ -21,6 +24,7 @@ func (m *mockReminderPushService) Add(_ context.Context, ownerID, message string
 	m.lastMessage = message
 	m.lastRecurring = recurring
 	m.lastSessionID = sessionID
+	m.lastFireAt = fireAt
 	return PushInfo{
 		ID:        "push_1",
 		Message:   message,
@@ -104,5 +108,46 @@ func TestReminderSkill_ExecuteAcceptsAliases(t *testing.T) {
 	}
 	if svc.lastRecurring != "daily" {
 		t.Fatalf("recurring = %q, want daily", svc.lastRecurring)
+	}
+}
+
+func TestReminderSkill_ValidateInfersMissingTimeFromLocalizedMessage(t *testing.T) {
+	r := NewReminder()
+	input := map[string]any{
+		"action":  "add",
+		"message": "Programa un recordatori per dema a les 9 per enviar l'informe setmanal.",
+	}
+	if err := r.Validate(input); err != nil {
+		t.Fatalf("expected localized reminder message to infer time: %v", err)
+	}
+	got, _ := input["time"].(string)
+	if got == "" {
+		t.Fatal("expected inferred time to be populated")
+	}
+	if _, err := remindertime.Parse(got); err != nil {
+		t.Fatalf("inferred time %q should parse: %v", got, err)
+	}
+}
+
+func TestReminderSkill_ExecuteInfersMissingTimeFromLocalizedMessage(t *testing.T) {
+	svc := &mockReminderPushService{}
+	r := NewReminder()
+	r.SetPushService(svc)
+
+	res, err := r.Execute(context.Background(), map[string]any{
+		"action":  "add",
+		"message": "Naplanuj pripominku na zitra v 9 pro odeslani tydenniho reportu.",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got error=%s", res.Error)
+	}
+	if svc.lastFireAt.IsZero() {
+		t.Fatal("expected inferred fire time to be forwarded to service")
+	}
+	if svc.lastFireAt.Hour() != 9 || svc.lastFireAt.Minute() != 0 {
+		t.Fatalf("fireAt = %s, want hour 9 minute 0", svc.lastFireAt.Format(time.RFC3339))
 	}
 }

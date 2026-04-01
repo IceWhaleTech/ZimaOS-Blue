@@ -115,7 +115,7 @@ Available Commands:
   logs          View service logs
   media         Media generation commands
   gateway       Manage API gateway
-  remind        Manage reminders
+  reminder      Schedule and manage reminders
   help          Show this help message
 
 Flags:
@@ -214,7 +214,7 @@ func printLauncherCommandHelp(topic string) bool {
 		"logs":     "View service logs.\nUsage: blue logs [flags]",
 		"media":    "Media generation commands.\nUsage: blue media [subcommand]",
 		"gateway":  "Manage API gateway.\nUsage: blue gateway [subcommand]",
-		"remind":   "Manage reminders.\nUsage: blue remind [subcommand]",
+		"reminder": "Schedule and manage reminders.\nUsage: blue reminder <action> [key=value ...]",
 	}
 	doc, ok := commandHelp[topic]
 	if !ok {

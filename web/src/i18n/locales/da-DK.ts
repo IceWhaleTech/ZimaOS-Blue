@@ -4106,10 +4106,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Kommandoindsprøjtning',
+          description: 'Forsøger at udføre systemkommandoer',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Kritisk',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4765,6 +4765,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Denne skill er blokeret af sikkerhedspolitikken.',
+      blockedByPolicyMediumRisk: 'Denne skill er blokeret af sikkerhedspolitikken (mellem risiko).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6640,6 +6641,7 @@ export default {
     outputTruncated: 'afkortet',
     outputUnavailable: 'Output er ikke tilgængelig på dette kort',
     noOutput: 'Ingen output',
+      noCommand: 'No command',
     running: 'Kører...',
     copyCommand: 'Kopiér kommando',
     copied: 'Kopieret!',

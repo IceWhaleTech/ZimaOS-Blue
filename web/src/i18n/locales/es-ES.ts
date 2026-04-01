@@ -4352,10 +4352,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Inyección de comandos',
+          description: 'Intenta ejecutar comandos del sistema',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Crítico',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -5015,6 +5015,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Este skill esta bloqueado por la politica de seguridad.',
+      blockedByPolicyMediumRisk: 'Este skill está bloqueado por la política de seguridad (riesgo medio).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6920,6 +6921,7 @@ export default {
     outputTruncated: 'truncado',
     outputUnavailable: 'La salida no está disponible en esta tarjeta',
     noOutput: 'Sin salida',
+      noCommand: 'Sin comando',
     running: 'Ejecutando...',
     copyCommand: 'Copiar comando',
     copied: '¡Copiado!',

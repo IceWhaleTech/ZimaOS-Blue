@@ -64,11 +64,16 @@ type AdminChannelService interface {
 
 // AdminSkillInfo is a simplified skill representation.
 type AdminSkillInfo struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Category string `json:"category,omitempty"`
-	Enabled  bool   `json:"enabled"`
-	Builtin  bool   `json:"builtin"`
+	ID               string   `json:"id"`
+	Name             string   `json:"name"`
+	Category         string   `json:"category,omitempty"`
+	Enabled          bool     `json:"enabled"`
+	Builtin          bool     `json:"builtin"`
+	Paths            []string `json:"paths,omitempty"`
+	UserInvocable    bool     `json:"user_invocable"`
+	ModelInvocable   bool     `json:"model_invocable"`
+	ActivationState  string   `json:"activation_state,omitempty"`
+	ActivationSource string   `json:"activation_source,omitempty"`
 }
 
 // AdminSkillService provides skill management.

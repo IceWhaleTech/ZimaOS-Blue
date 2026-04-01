@@ -93,7 +93,7 @@ func promptCacheEvent(cacheRead, cacheCreation int) string {
 }
 
 // LogTokenChurn logs a per-request summary of token reuse vs churn.
-func LogTokenChurn(provider, model, promptCacheKey string, inputTokens, cacheRead, cacheCreation int) {
+func LogTokenChurn(provider, model, promptCacheKey string, inputTokens, cacheRead, cacheCreation int, observation *PromptCacheBreakObservation) {
 	if inputTokens == 0 {
 		return
 	}
@@ -112,6 +112,12 @@ func LogTokenChurn(provider, model, promptCacheKey string, inputTokens, cacheRea
 	}
 	if promptCacheKey != "" {
 		attrs = append(attrs, "prompt_cache_key", promptCacheKey)
+	}
+	if observation != nil {
+		attrs = append(attrs,
+			"cache_break_reasons", observation.Reasons,
+			"cache_break_summary", observation.Summary,
+		)
 	}
 	slog.Info("[prompt-cache] token churn", attrs...)
 }

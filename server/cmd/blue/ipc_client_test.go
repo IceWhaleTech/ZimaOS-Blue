@@ -1,6 +1,32 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
+)
+
+func TestIPCRequestTimeout_Default(t *testing.T) {
+	if got := ipcRequestTimeout(&sockipc.Request{Cmd: "reminder.add"}); got != defaultIPCRequestTimeout {
+		t.Fatalf("ipcRequestTimeout(default) = %s, want %s", got, defaultIPCRequestTimeout)
+	}
+}
+
+func TestIPCRequestTimeout_AnalyzeUsesLongerTimeout(t *testing.T) {
+	if got := ipcRequestTimeout(&sockipc.Request{Cmd: "analyze"}); got != analyzeIPCRequestTimeout {
+		t.Fatalf("ipcRequestTimeout(analyze) = %s, want %s", got, analyzeIPCRequestTimeout)
+	}
+	if got := ipcRequestTimeout(&sockipc.Request{Cmd: "analyze.report"}); got != analyzeIPCRequestTimeout {
+		t.Fatalf("ipcRequestTimeout(analyze.report) = %s, want %s", got, analyzeIPCRequestTimeout)
+	}
+}
+
+func TestIPCRequestTimeout_NilRequestFallsBackToDefault(t *testing.T) {
+	if got := ipcRequestTimeout(nil); got != 2*time.Minute {
+		t.Fatalf("ipcRequestTimeout(nil) = %s, want %s", got, 2*time.Minute)
+	}
+}
 
 func TestParseIPCArgs_AggregatesRepeatedOptionParams(t *testing.T) {
 	params, positional := parseIPCArgs([]string{

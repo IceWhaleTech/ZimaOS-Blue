@@ -21,6 +21,7 @@ const (
 	analyzeMaxURLs           = 5
 	analyzeMaxSearches       = 3
 	analyzeMaxTextLen        = 50000
+	analyzeWebReadMaxChars   = 15000
 	analyzeScrapeMaxAttempts = 3
 	analyzeScrapeIdleMS      = 400
 	analyzeScrapeTimeoutMS   = 2000
@@ -194,6 +195,7 @@ func (t *AnalyzeTool) Definition() ToolDefinition {
 
 // Execute runs the analysis pipeline.
 func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	normalizeAnalyzeToolArgs(args)
 	topic := firstCompatString(args, "topic", "subject")
 	if topic == "" {
 		return nil, errors.New("topic is required")
@@ -219,6 +221,36 @@ func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) 
 	}
 
 	return t.runFullAnalysis(ctx, topic, args, lang, resolveAnalyzeOutputMode(args), bridge, browser, executor, mediaDir)
+}
+
+func normalizeAnalyzeToolArgs(args map[string]interface{}) {
+	if len(args) == 0 {
+		return
+	}
+
+	if topic := strings.TrimSpace(firstCompatString(args, "topic", "subject")); topic != "" {
+		args["topic"] = topic
+	}
+
+	if len(analyzeCollectStringInputs(args["urls"], analyzeMaxURLs)) == 0 {
+		if url := strings.TrimSpace(firstCompatString(args, "url", "href", "link", "source")); url != "" {
+			args["urls"] = []interface{}{url}
+		}
+	}
+
+	if len(analyzeCollectStringInputs(args["search_queries"], analyzeMaxSearches)) == 0 {
+		if raw, ok := compatArgValue(args, "searchQueries", "queries"); ok {
+			args["search_queries"] = raw
+		} else if query := strings.TrimSpace(firstCompatString(args, "query")); query != "" {
+			args["search_queries"] = []interface{}{query}
+		}
+	}
+
+	if strings.TrimSpace(firstCompatString(args, "text")) == "" {
+		if text := strings.TrimSpace(firstCompatString(args, "content")); text != "" {
+			args["text"] = text
+		}
+	}
 }
 
 func promoteAnalyzeTopicSources(args map[string]interface{}, topic string) {
@@ -515,9 +547,9 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 
 	// URLs — scrape via browser
 	if len(urls) > 0 {
-		if browser == nil {
+		if executor == nil && browser == nil {
 			emitAnalyzeProgress(ctx, "url_fetch_backend", analyzeLocalized(lang, "Webpage collection unavailable", "网页采集不可用"), "failed", map[string]interface{}{
-				"detail": analyzeLocalized(lang, "Browser backend unavailable", "浏览器后端不可用"),
+				"detail": analyzeLocalized(lang, "No page-reading backend available", "缺少网页读取后端"),
 			})
 		} else {
 			for i, url := range urls {
@@ -528,7 +560,14 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 					"source_kind":  "url",
 					"source_label": url,
 				})
-				content := t.scrapeURL(ctx, browser, url)
+
+				content, requiresBrowser := t.readURL(ctx, executor, url)
+				if content == "" || requiresBrowser {
+					if browserContent := t.scrapeURL(ctx, browser, url); browserContent != "" {
+						content = browserContent
+					}
+				}
+
 				if content != "" {
 					stats.CollectedSources++
 					stats.URLCollected++
@@ -543,6 +582,7 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 					})
 					continue
 				}
+
 				emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "url_fetch", i+1, len(urls)), "failed", map[string]interface{}{
 					"current":      i + 1,
 					"total":        len(urls),
@@ -821,6 +861,72 @@ func (t *AnalyzeTool) scrapeURL(ctx context.Context, browser BrowserBackend, url
 		}
 	}
 	return ""
+}
+
+func (t *AnalyzeTool) readURL(ctx context.Context, executor *Executor, url string) (string, bool) {
+	if executor == nil {
+		return "", false
+	}
+
+	result, err := executor.Execute(ctx, "web_read", map[string]interface{}{
+		"url":       url,
+		"format":    webReadFormatText,
+		"max_chars": analyzeWebReadMaxChars,
+	})
+	if err != nil {
+		return "", false
+	}
+
+	resultStr, ok := result.(string)
+	if !ok {
+		return "", false
+	}
+
+	var resp webReadResponse
+	if err := json.Unmarshal([]byte(resultStr), &resp); err != nil {
+		return "", false
+	}
+
+	content := strings.TrimSpace(resp.Content)
+	if content == "" {
+		return "", analyzeWebReadRequiresBrowser(resp)
+	}
+
+	details := make([]string, 0, 3)
+	if title := strings.TrimSpace(resp.Title); title != "" {
+		details = append(details, fmt.Sprintf("Title: %s", title))
+	}
+	finalURL := strings.TrimSpace(resp.FinalURL)
+	if finalURL == "" {
+		finalURL = strings.TrimSpace(resp.URL)
+	}
+	if finalURL == "" {
+		finalURL = strings.TrimSpace(url)
+	}
+	if finalURL != "" {
+		details = append(details, fmt.Sprintf("URL: %s", finalURL))
+	}
+	if source := strings.TrimSpace(resp.Source); source != "" {
+		details = append(details, fmt.Sprintf("Source: %s", source))
+	}
+
+	if len(details) == 0 {
+		return content, analyzeWebReadRequiresBrowser(resp)
+	}
+	return strings.Join(details, "\n") + "\n\n" + content, analyzeWebReadRequiresBrowser(resp)
+}
+
+func analyzeWebReadRequiresBrowser(resp webReadResponse) bool {
+	if resp.InteractiveRequired {
+		return true
+	}
+	for _, code := range resp.WarningCodes {
+		switch strings.ToLower(strings.TrimSpace(code)) {
+		case webFetchWarningCodeLoginWall, webFetchWarningCodeChallenge, webFetchWarningCodeBrowserRequired:
+			return true
+		}
+	}
+	return false
 }
 
 // webSearch calls the web_search tool via executor.

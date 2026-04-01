@@ -11,10 +11,72 @@ import (
 	"unicode"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/remindertime"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 var groundedURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
+var groundedReminderClockPattern = regexp.MustCompile(`(?i)(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|点|點|时|時|시|uhr|ora|orara|ore|മണിക്ക്|h)?`)
+var groundedReminderStandaloneHourPattern = regexp.MustCompile(`\b([01]?\d|2[0-3])\b`)
+var groundedCanonicalCLINow = func() time.Time { return timeutil.NowTime().In(time.Local) }
+
+var groundedReminderTomorrowCues = []string{
+	"tomorrow",
+	"mañana",
+	"manana",
+	"demain",
+	"amárach",
+	"amárach",
+	"sutra",
+	"holnap",
+	"domani",
+	"明日",
+	"明早",
+	"明天",
+	"내일",
+	"നാളെ",
+	"i morgen",
+	"morgen",
+	"jutro",
+	"amanhã",
+	"amanha",
+	"maine",
+	"завтра",
+	"zajtra",
+	"i morgon",
+}
+
+var groundedReminderMorningCues = []string{
+	"morning",
+	"mañana",
+	"matin",
+	"amárach",
+	"jutro",
+	"morgen",
+	"domani",
+	"明早",
+	"明日朝",
+	"朝",
+	"아침",
+	"രാവിലെ",
+	"上午",
+}
+
+var groundedReminderPMCues = []string{
+	"pm",
+	"p.m.",
+	"afternoon",
+	"evening",
+	"tonight",
+	"下午",
+	"晚上",
+	"今晚",
+	"夕方",
+	"夜",
+	"저녁",
+}
 
 // RuntimeState represents the explicit orchestrator FSM state.
 type RuntimeState string
@@ -434,6 +496,7 @@ func (r *GroundedRuntime) ExecuteStep(ctx context.Context, task *Task, step Plan
 				PriorToolCallIDs:   toolCallIDs,
 				PreviousViolations: previousViolations,
 				RoutingContract:    buildTaskRoutingContractContext(plannerTaskMetadata(task)),
+				CoordinationCtx:    buildTaskCoordinationPromptContext(task),
 			})
 			if err != nil {
 				if fallback, note := groundedPlannerErrorFallback(task, toolCatalog, err); fallback != nil && ctx.Err() == nil {
@@ -501,7 +564,7 @@ func (r *GroundedRuntime) ExecuteStep(ctx context.Context, task *Task, step Plan
 				VerificationErrors: failures,
 			}, fmt.Errorf("%s", strings.Join(failures, "; "))
 		}
-		if groundedShouldCompleteExecutionContract(task) {
+		if groundedExecutionSatisfiesExecutionContract(task, exec) || groundedShouldCompleteExecutionContract(task) {
 			previousViolations = append(previousViolations, "execution routing contract evidence is already satisfied; stop after grounded web evidence instead of additional route hops")
 			decisionStatus = PlannerDecisionComplete
 			if r.store != nil {
@@ -757,11 +820,12 @@ func groundedCanonicalCLICommand(task *Task, expectedCLIAction string, decision 
 		return command
 	}
 	skillToken := groundedCLICommandSkillToken(command)
-	if skillToken == "" {
+	baseSkill, skillAction := groundedCLICommandSkillParts(command)
+	if skillToken == "" || baseSkill == "" {
 		return command
 	}
-	query := groundedCanonicalCLIQuery(task, skillToken, decision)
-	switch strings.ToLower(skillToken) {
+	query := groundedCanonicalCLIQuery(task, baseSkill, decision)
+	switch strings.ToLower(baseSkill) {
 	case "web_search", "web_query":
 		if query != "" {
 			return command + " query=" + strconv.Quote(query)
@@ -775,8 +839,38 @@ func groundedCanonicalCLICommand(task *Task, expectedCLIAction string, decision 
 			command += " url=" + strconv.Quote(url)
 		}
 		return command
+	case "reminder":
+		args := groundedCanonicalReminderCLIArgs(task, decision, skillAction)
+		if args.Message != "" {
+			command += " message=" + strconv.Quote(args.Message)
+		}
+		if args.Time != "" {
+			command += " time=" + strconv.Quote(args.Time)
+		}
+		if args.Every != "" {
+			command += " every=" + strconv.Quote(args.Every)
+		}
+		if args.Until != "" {
+			command += " until=" + strconv.Quote(args.Until)
+		}
+		if args.Recurring != "" {
+			command += " recurring=" + strconv.Quote(args.Recurring)
+		}
+		if args.SessionID != "" {
+			command += " session_id=" + strconv.Quote(args.SessionID)
+		}
+		return command
 	}
 	return command
+}
+
+type groundedReminderCLIArgs struct {
+	Message   string
+	Time      string
+	Every     string
+	Until     string
+	Recurring string
+	SessionID string
 }
 
 func groundedCanonicalAnalyzeCLIArgs(task *Task, decision *PlannerDecision) (string, string) {
@@ -816,9 +910,229 @@ func groundedPlannerSuggestedCLIQuery(skillToken string, decision *PlannerDecisi
 			return ""
 		}
 		return groundedPlannerArgString(args, "topic", "query", "input", "path", "target")
+	case "reminder":
+		if normalizeGroundToolName(decision.NextTool.Tool) != "reminder" {
+			return ""
+		}
+		return groundedPlannerArgString(args, "message", "content", "text", "query", "input")
 	default:
 		return ""
 	}
+}
+
+func groundedCanonicalReminderCLIArgs(task *Task, decision *PlannerDecision, skillAction string) groundedReminderCLIArgs {
+	args := groundedPlannerSuggestedReminderArgs(decision)
+	query := groundedTaskQuery(task)
+
+	if args.Message == "" {
+		args.Message = groundedCanonicalReminderMessage(query)
+	}
+	if args.Time == "" && args.Every == "" {
+		args.Time = groundedCanonicalReminderTime(query)
+	}
+	if args.Message == "" {
+		args.Message = strings.TrimSpace(query)
+	}
+	args.Time = groundedNormalizeReminderTimeArg(firstNonEmptyString(args.Time, query))
+	args.Every = groundedNormalizeReminderIntervalArg(args.Every)
+	args.Until = groundedNormalizeReminderTimeArg(args.Until)
+
+	if args.Time == "" && args.Every == "" && strings.EqualFold(strings.TrimSpace(skillAction), "add") {
+		args.Time = groundedNormalizeReminderTimeArg(query)
+	}
+	if args.SessionID == "" {
+		args.SessionID = groundedTaskSessionID(task)
+	}
+	return args
+}
+
+func groundedPlannerSuggestedReminderArgs(decision *PlannerDecision) groundedReminderCLIArgs {
+	if decision == nil || decision.NextTool == nil || normalizeGroundToolName(decision.NextTool.Tool) != "reminder" {
+		return groundedReminderCLIArgs{}
+	}
+	args := decision.NextTool.Args
+	return groundedReminderCLIArgs{
+		Message:   groundedPlannerArgString(args, "message", "content", "text", "input", "query"),
+		Time:      groundedPlannerArgString(args, "time", "when", "at", "fire_at", "fireAt", "delay", "in"),
+		Every:     groundedPlannerArgString(args, "every", "interval"),
+		Until:     groundedPlannerArgString(args, "until", "until_at", "untilAt"),
+		Recurring: groundedPlannerArgString(args, "recurring", "repeat", "recurrence"),
+		SessionID: groundedPlannerArgString(args, "session_id", "sessionId", "session", "conversation_id", "conversationId"),
+	}
+}
+
+func groundedCanonicalReminderMessage(query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return ""
+	}
+
+	candidate := query
+	if _, end, ok := groundedReminderTimeSpan(query); ok && end < len(query) {
+		if trailing := strings.TrimSpace(query[end:]); trailing != "" {
+			candidate = trailing
+		}
+	}
+
+	candidate = groundedStripURLs(candidate)
+	candidate = groundedStripReminderCueTerms(candidate)
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return query
+	}
+	return candidate
+}
+
+func groundedStripReminderCueTerms(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	cue := routingcue.SkillTerms("reminder")
+	terms := make([]string, 0, len(cue.Actions)+len(cue.Objects)+len(groundedReminderTomorrowCues))
+	terms = append(terms, cue.Actions...)
+	terms = append(terms, cue.Objects...)
+	terms = append(terms, groundedReminderTomorrowCues...)
+	for _, term := range terms {
+		trimmed := strings.TrimSpace(term)
+		if trimmed == "" {
+			continue
+		}
+		text = strings.ReplaceAll(text, trimmed, " ")
+	}
+	replacer := strings.NewReplacer(
+		"帮我", " ",
+		"幫我", " ",
+		"提醒我", " ",
+		"请", " ",
+		"請", " ",
+		"一个", " ",
+		"一個", " ",
+		"的", " ",
+		"我", " ",
+		"來", " ",
+		"来", " ",
+		"for", " ",
+		"to", " ",
+		"about", " ",
+		"at", " ",
+		"para", " ",
+		"pour", " ",
+	)
+	text = replacer.Replace(text)
+	return strings.Join(strings.Fields(text), " ")
+}
+
+func groundedCanonicalReminderTime(query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return ""
+	}
+	return groundedNormalizeReminderTimeArg(query)
+}
+
+func groundedNormalizeReminderIntervalArg(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if _, err := remindertime.ParseDuration(value); err == nil {
+		return value
+	}
+	return ""
+}
+
+func groundedNormalizeReminderTimeArg(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	referenceNow := groundedCanonicalCLINow().In(time.Local)
+	if parsed, err := remindertime.ParseAt(value, referenceNow); err == nil {
+		return parsed.In(referenceNow.Location()).Format("2006-01-02 15:04")
+	}
+	if absolute := groundedCanonicalReminderAbsoluteTime(value); absolute != "" {
+		return absolute
+	}
+	return ""
+}
+
+func groundedCanonicalReminderAbsoluteTime(query string) string {
+	if !groundedContainsAnyFold(query, groundedReminderTomorrowCues...) {
+		return ""
+	}
+	hour, minute, ok := groundedExtractReminderClock(query)
+	if !ok {
+		return ""
+	}
+	lower := strings.ToLower(query)
+	if groundedContainsAnyFold(lower, groundedReminderPMCues...) && hour < 12 {
+		hour += 12
+	}
+	if groundedContainsAnyFold(lower, groundedReminderMorningCues...) && hour == 12 {
+		hour = 0
+	}
+	now := groundedCanonicalCLINow()
+	target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location()).Add(24 * time.Hour)
+	return target.Format("2006-01-02 15:04")
+}
+
+func groundedReminderTimeSpan(query string) (int, int, bool) {
+	if !groundedContainsAnyFold(query, groundedReminderTomorrowCues...) {
+		return 0, 0, false
+	}
+	if loc := groundedReminderClockPattern.FindStringIndex(query); len(loc) == 2 {
+		return loc[0], loc[1], true
+	}
+	return 0, 0, false
+}
+
+func groundedExtractReminderClock(query string) (int, int, bool) {
+	matches := groundedReminderClockPattern.FindAllStringSubmatch(query, -1)
+	for _, match := range matches {
+		if len(match) < 4 {
+			continue
+		}
+		hour, err := strconv.Atoi(strings.TrimSpace(match[1]))
+		if err != nil || hour < 0 || hour > 23 {
+			continue
+		}
+		minute := 0
+		if strings.TrimSpace(match[2]) != "" {
+			minute, err = strconv.Atoi(strings.TrimSpace(match[2]))
+			if err != nil || minute < 0 || minute > 59 {
+				continue
+			}
+		}
+		suffix := strings.ToLower(strings.TrimSpace(match[3]))
+		if strings.HasPrefix(suffix, "p") && hour < 12 {
+			hour += 12
+		}
+		if strings.HasPrefix(suffix, "a") && hour == 12 {
+			hour = 0
+		}
+		return hour, minute, true
+	}
+	if match := groundedReminderStandaloneHourPattern.FindStringSubmatch(query); len(match) >= 2 {
+		hour, err := strconv.Atoi(strings.TrimSpace(match[1]))
+		if err == nil && hour >= 0 && hour <= 23 {
+			return hour, 0, true
+		}
+	}
+	return 0, 0, false
+}
+
+func groundedContainsAnyFold(text string, needles ...string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	if lower == "" {
+		return false
+	}
+	for _, needle := range needles {
+		if trimmed := strings.ToLower(strings.TrimSpace(needle)); trimmed != "" && strings.Contains(lower, trimmed) {
+			return true
+		}
+	}
+	return false
 }
 
 func groundedCanonicalAnalyzeURL(task *Task, decision *PlannerDecision) string {
@@ -861,6 +1175,17 @@ func groundedTaskQuery(task *Task) string {
 		metadataStringValue(groupInput, "query"),
 		metadataStringValue(groupInput, "goal"),
 		task.Goal,
+	)
+}
+
+func groundedTaskSessionID(task *Task) string {
+	meta := plannerTaskMetadata(task)
+	groupInput := metadataMapValue(meta, "group_input")
+	return firstNonEmptyString(
+		metadataStringValue(groupInput, "session_id"),
+		metadataStringValue(groupInput, "sessionId"),
+		metadataStringValue(meta, "session_id"),
+		metadataStringValue(meta, "sessionId"),
 	)
 }
 
@@ -919,17 +1244,90 @@ func groundedCLICommandSkillToken(command string) string {
 	return ""
 }
 
+func groundedCLICommandSkillParts(command string) (string, string) {
+	fields := strings.Fields(strings.TrimSpace(command))
+	if len(fields) < 2 || fields[0] != "blue" {
+		return "", ""
+	}
+
+	token := strings.TrimSpace(fields[1])
+	if token == "" {
+		return "", ""
+	}
+
+	// Dotted alias: blue reminder.add ...
+	if dot := strings.Index(token, "."); dot > 0 && dot < len(token)-1 {
+		return strings.TrimSpace(token[:dot]), strings.TrimSpace(token[dot+1:])
+	}
+
+	// Positional action: blue reminder add ...
+	if len(fields) >= 3 && groundedSkillSupportsPositionalAction(token) {
+		if action := groundedNormalizePositionalAction(token, fields[2]); action != "" {
+			return token, action
+		}
+	}
+
+	return token, ""
+}
+
 func groundedCLICommandHasArgs(command string) bool {
-	skillToken := groundedCLICommandSkillToken(command)
+	fields := strings.Fields(strings.TrimSpace(command))
+	if len(fields) < 2 || fields[0] != "blue" {
+		return false
+	}
+
+	skillToken := strings.TrimSpace(fields[1])
 	if skillToken == "" {
 		return false
 	}
-	prefix := "blue " + skillToken
-	trimmed := strings.TrimSpace(command)
-	if !strings.HasPrefix(trimmed, prefix) {
+
+	// For action-oriented skills, treat `blue reminder add` as the canonical
+	// action form (not "having args") so callers can still have us ground
+	// message/time args onto it.
+	if len(fields) >= 3 {
+		baseSkill, skillAction := groundedCLICommandSkillParts(command)
+		if groundedSkillSupportsPositionalAction(baseSkill) && skillAction != "" {
+			// Any tokens after the action count as args.
+			return len(fields) > 3
+		}
+	}
+
+	// Default: any tokens after `blue <skill>` count as args.
+	return len(fields) > 2
+}
+
+func groundedSkillSupportsPositionalAction(skill string) bool {
+	switch strings.ToLower(strings.TrimSpace(skill)) {
+	case "reminder":
+		return true
+	default:
 		return false
 	}
-	return strings.TrimSpace(strings.TrimPrefix(trimmed, prefix)) != ""
+}
+
+func groundedNormalizePositionalAction(skill, raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" || strings.HasPrefix(raw, "-") || strings.Contains(raw, "=") {
+		return ""
+	}
+
+	switch strings.ToLower(strings.TrimSpace(skill)) {
+	case "reminder":
+		switch raw {
+		case "list", "get", "status":
+			return "list"
+		case "add", "create", "send", "notify":
+			return "add"
+		case "delete", "remove", "rm":
+			return "delete"
+		case "clear":
+			return "clear"
+		default:
+			return ""
+		}
+	default:
+		return ""
+	}
 }
 
 func groundedPlannerDecisionToolName(decision *PlannerDecision) string {
@@ -1042,6 +1440,23 @@ func groundedShouldCompleteExecutionContract(task *Task) bool {
 	if skillToken == "analyze" {
 		return groundedHasSuccessfulAnalyzeEvidence(task.GroundState)
 	}
+	if skillToken == "reminder" {
+		criteria := groundedExecutionObservationCriteria(task)
+		if len(criteria) == 0 {
+			return groundedHasSuccessfulReminderEvidence(task.GroundState, groundedTaskSessionID(task))
+		}
+		for _, criterion := range criteria {
+			switch normalizeGroundedExecutionCriterion(criterion) {
+			case "session_context_propagated":
+				if !groundedHasSuccessfulReminderEvidence(task.GroundState, groundedTaskSessionID(task)) {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		return true
+	}
 	if !isGroundedWebToolFamily(skillToken) {
 		return false
 	}
@@ -1053,6 +1468,78 @@ func groundedShouldCompleteExecutionContract(task *Task) bool {
 		switch normalizeGroundedExecutionCriterion(criterion) {
 		case "evidence_tool_used":
 			if !groundedHasSuccessfulWebEvidence(task.GroundState) {
+				return false
+			}
+		case "planner_memory_skipped":
+			if !shouldSkipPlannerMemory(groundedTaskQuery(task)) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func groundedExecutionSatisfiesExecutionContract(task *Task, exec *GroundedExecution) bool {
+	if task == nil || exec == nil {
+		return false
+	}
+	expectedCLIAction, enforce := groundedExpectedCLIAction(task)
+	if !enforce {
+		return false
+	}
+	command := firstNonEmptyString(
+		strings.TrimSpace(asString(exec.Call.Args["command"])),
+		strings.TrimSpace(asString(exec.Call.Args["cmd"])),
+	)
+	if !groundedCLICommandMatches(command, expectedCLIAction) {
+		return false
+	}
+	if !exec.Result.OK || exec.Result.ExitCode != 0 {
+		return false
+	}
+	skillToken := normalizeGroundToolName(groundedCLICommandSkillToken(expectedCLIAction))
+	if skillToken == "" {
+		return false
+	}
+	if skillToken == "analyze" {
+		return groundedResultCarriesAnalyzeEvidence(exec.Call, exec.Result) &&
+			groundedResultHasAnalyzeEvidence(exec.Result.Result)
+	}
+	if skillToken == "reminder" {
+		criteria := groundedExecutionObservationCriteria(task)
+		if len(criteria) == 0 {
+			return groundedResultCarriesReminderEvidence(exec.Call, exec.Result) &&
+				groundedReminderResultReady(exec.Result.Result) &&
+				groundedReminderSessionPropagated(exec.Call, exec.Result, groundedTaskSessionID(task))
+		}
+		for _, criterion := range criteria {
+			switch normalizeGroundedExecutionCriterion(criterion) {
+			case "session_context_propagated":
+				if !(groundedResultCarriesReminderEvidence(exec.Call, exec.Result) &&
+					groundedReminderResultReady(exec.Result.Result) &&
+					groundedReminderSessionPropagated(exec.Call, exec.Result, groundedTaskSessionID(task))) {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		return true
+	}
+	if !isGroundedWebToolFamily(skillToken) {
+		return false
+	}
+	criteria := groundedExecutionObservationCriteria(task)
+	if len(criteria) == 0 {
+		return false
+	}
+	for _, criterion := range criteria {
+		switch normalizeGroundedExecutionCriterion(criterion) {
+		case "evidence_tool_used":
+			if !(groundedResultCarriesWebEvidence(exec.Call, exec.Result) &&
+				groundedResultHasUsefulEvidence(exec.Result)) {
 				return false
 			}
 		case "planner_memory_skipped":
@@ -1120,6 +1607,28 @@ func groundedHasSuccessfulAnalyzeEvidence(state *GroundTruthState) bool {
 	return false
 }
 
+func groundedHasSuccessfulReminderEvidence(state *GroundTruthState, expectedSessionID string) bool {
+	if state == nil {
+		return false
+	}
+	for toolCallID, result := range state.Results {
+		if !result.OK || result.ExitCode != 0 {
+			continue
+		}
+		call := state.Calls[toolCallID]
+		if !groundedResultCarriesReminderEvidence(call, result) {
+			continue
+		}
+		if !groundedReminderResultReady(result.Result) {
+			continue
+		}
+		if groundedReminderSessionPropagated(call, result, expectedSessionID) {
+			return true
+		}
+	}
+	return false
+}
+
 func groundedResultCarriesWebEvidence(call GroundedToolCall, result GroundedToolResult) bool {
 	if isGroundedWebToolFamily(firstNonEmptyString(call.Tool, result.Tool)) {
 		return true
@@ -1154,6 +1663,23 @@ func groundedResultCarriesAnalyzeEvidence(call GroundedToolCall, result Grounded
 	return normalizeGroundToolName(groundedCLICommandSkillToken(command)) == "analyze"
 }
 
+func groundedResultCarriesReminderEvidence(call GroundedToolCall, result GroundedToolResult) bool {
+	if normalizeGroundToolName(firstNonEmptyString(call.Tool, result.Tool)) == "reminder" {
+		return true
+	}
+	if normalizeGroundToolName(firstNonEmptyString(call.Tool, result.Tool)) != "bash" {
+		return false
+	}
+	command := firstNonEmptyString(
+		strings.TrimSpace(asString(call.Args["command"])),
+		strings.TrimSpace(asString(call.Args["cmd"])),
+	)
+	if command == "" {
+		return false
+	}
+	return normalizeGroundToolName(groundedCLICommandSkillToken(command)) == "reminder"
+}
+
 func groundedResultHasUsefulEvidence(result GroundedToolResult) bool {
 	if groundedResultTitle(result.Result) != "" {
 		return true
@@ -1173,6 +1699,41 @@ func groundedResultHasAnalyzeEvidence(value any) bool {
 	return false
 }
 
+func groundedReminderResultReady(value any) bool {
+	for _, payload := range deterministicStructuredPayloads(value) {
+		if firstNonEmptyString(
+			strings.TrimSpace(asString(extractField(payload, "message"))),
+			strings.TrimSpace(asString(extractField(payload, "stdout"))),
+		) != "" {
+			return true
+		}
+		if reminder := parseGroundedNestedPayload(extractField(payload, "reminder")); reminder != nil {
+			if firstNonEmptyString(
+				strings.TrimSpace(asString(extractField(reminder, "message"))),
+				strings.TrimSpace(asString(extractField(reminder, "fire_at"))),
+				strings.TrimSpace(asString(extractField(reminder, "fireAt"))),
+			) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func groundedReminderSessionPropagated(call GroundedToolCall, result GroundedToolResult, expectedSessionID string) bool {
+	if strings.TrimSpace(expectedSessionID) == "" {
+		return true
+	}
+	if strings.Contains(serializedResult(result.Result), expectedSessionID) {
+		return true
+	}
+	command := firstNonEmptyString(
+		strings.TrimSpace(asString(call.Args["command"])),
+		strings.TrimSpace(asString(call.Args["cmd"])),
+	)
+	return strings.Contains(command, expectedSessionID)
+}
+
 func groundedCommandHistorySucceeded(state *GroundTruthState, expectedCLIAction string) bool {
 	if state == nil || strings.TrimSpace(expectedCLIAction) == "" {
 		return false
@@ -1182,6 +1743,25 @@ func groundedCommandHistorySucceeded(state *GroundTruthState, expectedCLIAction 
 			continue
 		}
 		if groundedCLICommandMatches(fact.Command, expectedCLIAction) {
+			return true
+		}
+	}
+	for toolCallID, call := range state.Calls {
+		if normalizeGroundToolName(call.Tool) != "bash" {
+			continue
+		}
+		command := firstNonEmptyString(
+			strings.TrimSpace(asString(call.Args["command"])),
+			strings.TrimSpace(asString(call.Args["cmd"])),
+		)
+		if !groundedCLICommandMatches(command, expectedCLIAction) {
+			continue
+		}
+		result, ok := state.Results[toolCallID]
+		if !ok {
+			continue
+		}
+		if result.OK && result.ExitCode == 0 {
 			return true
 		}
 	}

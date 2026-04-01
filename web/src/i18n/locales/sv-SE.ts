@@ -4103,10 +4103,10 @@ export default {
           severity: 'High',
         },
         commandInjection: {
-          name: 'Command Injection',
-          description: 'Attempts to execute system commands',
+          name: 'Kommandoinjektion',
+          description: 'Försök att köra systemkommandon',
           example: '; rm -rf / ; echo',
-          severity: 'Critical',
+          severity: 'Kritisk',
         },
         promptInjection: {
           name: 'Prompt Injection',
@@ -4762,6 +4762,7 @@ export default {
       },
       messages: {
         blockedByPolicy: 'Den haer skillen blockeras av säkerhetspolicyn.',
+      blockedByPolicyMediumRisk: 'Den här skillen blockeras av säkerhetspolicyn (medelrisk).',
       },
       quick: {
         categories: 'Browse by category',
@@ -6644,6 +6645,7 @@ export default {
     outputTruncated: 'trunkerad',
     outputUnavailable: 'Utdata är inte tillgänglig i det här kortet',
     noOutput: 'Ingen utdata',
+      noCommand: 'Inget kommando',
     running: 'Kör...',
     copyCommand: 'Kopiera kommando',
     copied: 'Kopierat!',

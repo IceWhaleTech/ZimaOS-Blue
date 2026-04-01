@@ -17,10 +17,10 @@ type Registry struct {
 	gen uint64
 
 	// cached sorted lists
-	listCache        []*SkillInfo
-	listCacheGen     uint64
-	enabledCache     []*SkillInfo
-	enabledCacheGen  uint64
+	listCache       []*SkillInfo
+	listCacheGen    uint64
+	enabledCache    []*SkillInfo
+	enabledCacheGen uint64
 }
 
 // NewRegistry creates a new skill registry
@@ -41,6 +41,7 @@ func (r *Registry) Register(skill Skill, builtin bool) error {
 	if manifest == nil {
 		return fmt.Errorf("skill manifest is nil")
 	}
+	NormalizeManifestDefaults(manifest)
 
 	if manifest.ID == "" {
 		return fmt.Errorf("skill ID is required")

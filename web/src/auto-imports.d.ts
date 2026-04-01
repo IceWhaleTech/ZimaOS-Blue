@@ -172,7 +172,7 @@ declare global {
   export type { Platform } from './composables/useTauri'
   import('./composables/useTauri')
   // @ts-ignore
-  export type { ToolResultItem, StreamUIPhase, PendingModelAutoFallback } from './stores/chat'
+  export type { ToolResultItem, StreamUIPhase, StreamUIState, ActiveMessageStreamState, PendingModelAutoFallback } from './stores/chat'
   import('./stores/chat')
   // @ts-ignore
   export type { EventState, EventStateTransition, TrackedEvent } from './stores/companion'

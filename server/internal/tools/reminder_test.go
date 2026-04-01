@@ -14,6 +14,7 @@ type mockPushService struct {
 	addMessage   string
 	addRecurring string
 	addSession   string
+	addFireAt    time.Time
 	addUntil     *time.Time
 	listResult   []PushResult
 	deletedID    string
@@ -22,12 +23,13 @@ type mockPushService struct {
 	err          error
 }
 
-func (m *mockPushService) Add(_ context.Context, ownerID, message string, _ time.Time, recurring, sessionID string, untilAt *time.Time) (PushResult, error) {
+func (m *mockPushService) Add(_ context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string, untilAt *time.Time) (PushResult, error) {
 	m.addCalled = true
 	m.addOwner = ownerID
 	m.addMessage = message
 	m.addRecurring = recurring
 	m.addSession = sessionID
+	m.addFireAt = fireAt
 	m.addUntil = untilAt
 	if m.err != nil {
 		return PushResult{}, m.err
@@ -175,6 +177,25 @@ func TestPushToolExecuteAdd_MissingTime(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for missing time")
+	}
+}
+
+func TestPushToolExecuteAdd_InfersMissingTimeFromLocalizedMessage(t *testing.T) {
+	svc := &mockPushService{}
+	tool := NewPushTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":  "add",
+		"message": "帮我明早 9 点提醒我发送周报。",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.addFireAt.IsZero() {
+		t.Fatal("expected inferred fire time to be forwarded")
+	}
+	if svc.addFireAt.Hour() != 9 || svc.addFireAt.Minute() != 0 {
+		t.Fatalf("fireAt = %s, want hour 9 minute 0", svc.addFireAt.Format(time.RFC3339))
 	}
 }
 

@@ -176,7 +176,7 @@ func (c *Controller) Submit(ctx context.Context, spec RunSpec) (*Run, error) {
 		})
 		return nil, err
 	}
-	return c.Get(ctx, run.ID)
+	return c.finishSubmittedRun(ctx, run)
 }
 
 func (c *Controller) SpawnChild(ctx context.Context, parentID string, spec RunSpec) (*Run, error) {
@@ -271,7 +271,28 @@ func (c *Controller) SpawnChild(ctx context.Context, parentID string, spec RunSp
 		_ = c.AppendEvent(ctx, RunEvent{RunID: child.ID, RootRunID: child.RootRunID, ParentRunID: child.ParentRunID, Type: "run_failed", Message: err.Error(), CreatedAt: finished})
 		return nil, err
 	}
-	return c.Get(ctx, child.ID)
+	return c.finishSubmittedRun(ctx, child)
+}
+
+func (c *Controller) finishSubmittedRun(ctx context.Context, run *Run) (*Run, error) {
+	if run == nil {
+		return nil, nil
+	}
+	finalRun, err := c.Get(ctx, run.ID)
+	if err == nil {
+		return finalRun, nil
+	}
+	if !errorsIsNoRows(err) {
+		return nil, err
+	}
+
+	// Freshly inserted runs can be temporarily invisible on the reader handle
+	// even though creation and driver start have already completed on the writer.
+	stored, storedErr := c.GetStored(ctx, run.ID)
+	if storedErr != nil {
+		return nil, err
+	}
+	return c.syncRun(ctx, stored)
 }
 
 func (c *Controller) Get(ctx context.Context, id string) (*Run, error) {

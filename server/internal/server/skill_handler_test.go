@@ -3,6 +3,10 @@ package server
 import (
 	"archive/zip"
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/labstack/echo/v4"
 )
 
@@ -461,6 +466,143 @@ func TestSkillHandler_GetSkillContentRejectsTraversalID(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
 	}
+}
+
+func TestSkillHandler_InstallUninstallSkill_WithMarketplaceCompatibility(t *testing.T) {
+	registry := skill.NewRegistry()
+
+	rawSkill := `---
+id: market-test-skill
+name: Market Test Skill
+version: 1.0.0
+description: Marketplace install test
+permissions:
+  - none
+---
+# Market Test Skill
+This is a test skill.
+`
+	sum := sha256.Sum256([]byte(rawSkill))
+	checksum := hex.EncodeToString(sum[:])
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	seedStore, err := skillmarket.NewStore(db)
+	if err != nil {
+		t.Fatalf("new skillmarket store: %v", err)
+	}
+
+	doc := &skillmarket.SkillDocument{
+		ID:          "market-test-skill",
+		Slug:        "market-test-skill",
+		Name:        "Market Test Skill",
+		Description: "Marketplace install test",
+		SourceID:    "test",
+		SourceName:  "Test",
+		SourceGroup: "test",
+		SourceType:  "test",
+		Published:   true,
+		SkillContent: rawSkill,
+	}
+	version := &skillmarket.SkillVersion{
+		SkillID:    doc.ID,
+		Version:    "1.0.0",
+		RawSkillMD: rawSkill,
+		Checksum:   checksum,
+		SourceURL:  "https://example.com/market-test-skill/SKILL.md",
+	}
+	report := &skillmarket.SecurityReport{
+		SkillID:             doc.ID,
+		Version:             version.Version,
+		Score:               100,
+		RiskLevel:           skillmarket.RiskLow,
+		SecurityBadge:       skillmarket.BadgeGreen,
+		VulnerabilityStatus: skillmarket.VulnerabilityStatusNotApplicable,
+		ScannerVersion:      "test",
+		LLMStatus:           "skipped",
+	}
+	if err := seedStore.UpsertSkill(context.Background(), doc, version, report); err != nil {
+		t.Fatalf("seed skillmarket store: %v", err)
+	}
+
+	activeDir := t.TempDir()
+	cacheRoot := t.TempDir()
+	market, err := skillmarket.NewService(db, skillmarket.Options{
+		Config: skillmarket.Config{
+			Enabled:         true,
+			CacheRoot:       cacheRoot,
+			ActiveSkillsDir: activeDir,
+		},
+		Registry: registry,
+	})
+	if err != nil {
+		t.Fatalf("new skillmarket service: %v", err)
+	}
+	t.Cleanup(func() { _ = market.Close() })
+
+	handler := NewSkillHandler(registry)
+	handler.SetMarketplaceFactory(func() (*skillmarket.Service, error) { return market, nil })
+
+	e := echo.New()
+
+	t.Run("install returns legacy success contract", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install/market-test-skill", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues("market-test-skill")
+
+		if err := handler.InstallSkill(c); err != nil {
+			t.Fatalf("InstallSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if success, _ := payload["success"].(bool); !success {
+			t.Fatalf("success = %v, want true", payload["success"])
+		}
+		if _, ok := payload["message"].(string); !ok {
+			t.Fatalf("message missing or not string: %T", payload["message"])
+		}
+		if registry.Get("market-test-skill") == nil {
+			t.Fatalf("expected registry to contain installed skill")
+		}
+	})
+
+	t.Run("uninstall works without skillsDir configured", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/uninstall/market-test-skill", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues("market-test-skill")
+
+		if err := handler.UninstallSkill(c); err != nil {
+			t.Fatalf("UninstallSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if success, _ := payload["success"].(bool); !success {
+			t.Fatalf("success = %v, want true", payload["success"])
+		}
+		if registry.Get("market-test-skill") != nil {
+			t.Fatalf("expected registry to not contain uninstalled skill")
+		}
+	})
 }
 
 func TestSkillHandler_InstallSkillRejectsTraversalID(t *testing.T) {

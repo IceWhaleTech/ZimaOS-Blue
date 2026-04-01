@@ -136,6 +136,9 @@ type ToolCallingConfig struct {
 	// SkillSelectorConfidenceThreshold is the confidence threshold for auto-selection.
 	SkillSelectorConfidenceThreshold float64 `yaml:"skill_selector_confidence_threshold" json:"skill_selector_confidence_threshold"`
 
+	// SkillDynamicExposure enables runtime nested-skill discovery and path-based activation.
+	SkillDynamicExposure bool `yaml:"skill_dynamic_exposure" json:"skill_dynamic_exposure"`
+
 	// ToolRouterDynamicExposure enables query-based tool exposure filtering.
 	ToolRouterDynamicExposure bool `yaml:"tool_router_dynamic_exposure" json:"tool_router_dynamic_exposure"`
 
@@ -351,6 +354,7 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 		SkillRerankONNXEnabled:           false,
 		SkillRerankONNXAutoDownload:      false,
 		SkillSelectorConfidenceThreshold: 0.78,
+		SkillDynamicExposure:             false,
 		ToolRouterDynamicExposure:        false,
 		ToolRouterSchemaCompression:      false,
 		Profile:                          "",

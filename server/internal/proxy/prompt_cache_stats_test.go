@@ -15,7 +15,10 @@ func TestLogTokenChurn_IncludesPromptCacheKeyAndEvent(t *testing.T) {
 		slog.SetDefault(prev)
 	})
 
-	LogTokenChurn("openai", "gpt-5", "pcache-key-1", 120, 90, 15)
+	LogTokenChurn("openai", "gpt-5", "pcache-key-1", 120, 90, 15, &PromptCacheBreakObservation{
+		Reasons: []string{"tool_schemas_changed"},
+		Summary: "tool schema changed: web_query",
+	})
 
 	out := buf.String()
 	if !strings.Contains(out, `"prompt_cache_key":"pcache-key-1"`) {
@@ -23,5 +26,11 @@ func TestLogTokenChurn_IncludesPromptCacheKeyAndEvent(t *testing.T) {
 	}
 	if !strings.Contains(out, `"cache_event":"hit+create"`) {
 		t.Fatalf("expected cache_event in log output, got %q", out)
+	}
+	if !strings.Contains(out, `"cache_break_reasons":["tool_schemas_changed"]`) {
+		t.Fatalf("expected cache_break_reasons in log output, got %q", out)
+	}
+	if !strings.Contains(out, `"cache_break_summary":"tool schema changed: web_query"`) {
+		t.Fatalf("expected cache_break_summary in log output, got %q", out)
 	}
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
@@ -20,8 +21,10 @@ import (
 const maxFileWriteChunkBytes = 32 << 10 // 32 KiB per write call; prefer write_begin/write_chunk/write_commit for larger files.
 
 type BuiltinRuntimeConfig struct {
-	DataDir string
-	Ripgrep config.ToolCallingRipgrepConfig
+	DataDir                     string
+	WorkspaceDir                string
+	Ripgrep                     config.ToolCallingRipgrepConfig
+	SkillDynamicExposureEnabled func() bool
 }
 
 // FileReadTool reads content from a file.
@@ -34,6 +37,7 @@ type FileReadTool struct {
 	pdfService     PDFService
 	documentReader DocumentReadService
 	scope          *fsToolScope
+	skillExposure  *skillmanifest.SkillExposureManager
 }
 
 // DocumentReadService extracts readable text from local office-style documents.
@@ -68,6 +72,13 @@ func (f *FileReadTool) SetDocumentReadService(service DocumentReadService) {
 		return
 	}
 	f.documentReader = service
+}
+
+func (f *FileReadTool) SetSkillExposureManager(manager *skillmanifest.SkillExposureManager) {
+	if f == nil {
+		return
+	}
+	f.skillExposure = manager
 }
 
 // Definition returns the tool's definition.
@@ -177,6 +188,7 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	if info.IsDir() {
 		return nil, errors.New("path is a directory, not a file")
 	}
+	f.observeSkillExposure(absPath)
 
 	if strings.EqualFold(filepath.Ext(absPath), ".pdf") && f.pdfService != nil {
 		return f.executePDFRead(ctx, absPath, relPath, args)
@@ -247,6 +259,13 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	jsonResult, _ := json.Marshal(response)
 	return string(jsonResult), nil
+}
+
+func (f *FileReadTool) observeSkillExposure(absPath string) {
+	if f == nil || f.skillExposure == nil {
+		return
+	}
+	f.skillExposure.ObserveToolPath("file_read", absPath)
 }
 
 func (f *FileReadTool) shouldUseDocumentReader(path string) bool {
@@ -360,8 +379,9 @@ type FileWriteTool struct {
 	// AllowedPaths restricts file access to specific directories.
 	AllowedPaths []string
 	// MaxFileSize is the maximum file size to write (default 2 MiB).
-	MaxFileSize int64
-	scope       *fsToolScope
+	MaxFileSize   int64
+	scope         *fsToolScope
+	skillExposure *skillmanifest.SkillExposureManager
 }
 
 // NewFileWriteTool creates a new file write tool.
@@ -374,6 +394,13 @@ func NewFileWriteTool(allowedPaths []string, maxFileSize int64) *FileWriteTool {
 		MaxFileSize:  maxFileSize,
 		scope:        newFSToolScope(allowedPaths),
 	}
+}
+
+func (f *FileWriteTool) SetSkillExposureManager(manager *skillmanifest.SkillExposureManager) {
+	if f == nil {
+		return
+	}
+	f.skillExposure = manager
 }
 
 // Definition returns the tool's definition.
@@ -502,6 +529,7 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 			"success":       true,
 			"line":          line,
 		}
+		f.observeSkillExposure(absPath)
 		jsonResult, _ := json.Marshal(response)
 		return string(jsonResult), nil
 	}
@@ -537,8 +565,16 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		"success":       true,
 		"append":        appendMode,
 	}
+	f.observeSkillExposure(absPath)
 	jsonResult, _ := json.Marshal(response)
 	return string(jsonResult), nil
+}
+
+func (f *FileWriteTool) observeSkillExposure(absPath string) {
+	if f == nil || f.skillExposure == nil {
+		return
+	}
+	f.skillExposure.ObserveToolPath("file_write", absPath)
 }
 
 // validatePath checks if the path is allowed.
@@ -738,14 +774,21 @@ func RegisterBuiltinToolsWithRuntimeConfig(registry *Registry, webSearchConfig W
 	}
 	ripgrep := newBuiltinRipgrepResolver(runtimeCfg)
 	writeSessions := NewWriteSessionManager(maxFileSize)
-	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
-	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
+	skillExposure := builtinSkillExposureManager(runtimeCfg)
+	read := NewFileReadTool(allowedPaths, maxFileSize)
+	read.SetSkillExposureManager(skillExposure)
+	registry.Register(read)
+	write := NewFileWriteTool(allowedPaths, maxFileSize)
+	write.SetSkillExposureManager(skillExposure)
+	registry.Register(write)
 	registry.Register(NewFileDeleteTool(allowedPaths))
 	registry.Register(NewFileWriteBeginTool(allowedPaths, writeSessions))
 	registry.Register(NewFileWriteChunkTool(writeSessions))
 	registry.Register(NewFileWriteCommitTool(writeSessions))
 	registry.Register(NewFileWriteAbortTool(writeSessions))
-	registry.Register(NewEditTool(allowedPaths, maxFileSize))
+	edit := NewEditTool(allowedPaths, maxFileSize)
+	edit.SetSkillExposureManager(skillExposure)
+	registry.Register(edit)
 	registry.Register(NewGrepToolWithRipgrep(allowedPaths, maxFileSize, ripgrep))
 	registry.Register(NewRgToolWithRipgrep(allowedPaths, maxFileSize, ripgrep))
 	registry.Register(NewFindToolWithRipgrep(allowedPaths, ripgrep))
@@ -768,6 +811,7 @@ func RegisterApprovalAwareFileToolsWithRuntimeConfig(registry *Registry, allowed
 		return
 	}
 	ripgrep := newBuiltinRipgrepResolver(runtimeCfg)
+	skillExposure := builtinSkillExposureManager(runtimeCfg)
 	var (
 		pdfService     PDFService
 		documentReader DocumentReadService
@@ -780,6 +824,7 @@ func RegisterApprovalAwareFileToolsWithRuntimeConfig(registry *Registry, allowed
 	}
 	read := NewFileReadTool(allowedPaths, maxFileSize)
 	read.scope = read.scope.withApprovalFlow(approvals, dirStore)
+	read.SetSkillExposureManager(skillExposure)
 	if pdfService != nil {
 		read.SetPDFService(pdfService)
 	}
@@ -790,6 +835,7 @@ func RegisterApprovalAwareFileToolsWithRuntimeConfig(registry *Registry, allowed
 
 	write := NewFileWriteTool(allowedPaths, maxFileSize)
 	write.scope = write.scope.withApprovalFlow(approvals, dirStore)
+	write.SetSkillExposureManager(skillExposure)
 	registry.Register(write)
 
 	del := NewFileDeleteTool(allowedPaths)
@@ -806,6 +852,7 @@ func RegisterApprovalAwareFileToolsWithRuntimeConfig(registry *Registry, allowed
 
 	edit := NewEditTool(allowedPaths, maxFileSize)
 	edit.Scope = edit.Scope.withApprovalFlow(approvals, dirStore)
+	edit.SetSkillExposureManager(skillExposure)
 	registry.Register(edit)
 
 	grep := NewGrepToolWithRipgrep(allowedPaths, maxFileSize, ripgrep)
@@ -836,6 +883,16 @@ func newBuiltinRipgrepResolver(runtimeCfg BuiltinRuntimeConfig) ripgrepResolver 
 	if err != nil {
 		return nil
 	}
+	return manager
+}
+
+func builtinSkillExposureManager(runtimeCfg BuiltinRuntimeConfig) *skillmanifest.SkillExposureManager {
+	workspaceDir := strings.TrimSpace(runtimeCfg.WorkspaceDir)
+	if workspaceDir == "" {
+		return nil
+	}
+	manager := skillmanifest.SharedSkillExposureManager(workspaceDir)
+	manager.SetDynamicExposureEnabledFunc(runtimeCfg.SkillDynamicExposureEnabled)
 	return manager
 }
 
