@@ -407,6 +407,58 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 	if toolDebug != nil {
 		response["tool_debug"] = toolDebug
 	}
+	if selection.DiscoveryDecision != nil {
+		copied := *selection.DiscoveryDecision
+		surfaceReason := selectorDryRunDiscoverySurfaceReason(selection, h.GetSkillDynamicExposure())
+		response["discovery_decision"] = copied
+		if copied.CanonicalTarget != "" && copied.CanonicalTarget != agentcore.CanonicalUnknown {
+			response["selected_canonical_skill"] = string(copied.CanonicalTarget)
+		}
+		if alias := strings.TrimSpace(copied.AliasResolved); alias != "" {
+			response["selected_alias"] = alias
+		}
+		observation := copied.ToObservation()
+		response["execution_profile"] = string(observation.ExecutionProfile)
+		response["skill_exec_cutover"] = observation.SkillExecCutover
+		response["forked_skill_execution"] = observation.ForkedSkillExecution
+		if surfaceReason != "" {
+			response["selected_native_surface_reason"] = surfaceReason
+		}
+		if outcome := strings.TrimSpace(observation.ClarifyOutcome); outcome != "" {
+			response["clarify_outcome"] = outcome
+		}
+		discoveryRuntime := map[string]interface{}{
+			"dynamic_exposure_enabled": h.GetSkillDynamicExposure(),
+			"native_surface_mode":      string(copied.NativeSurfaceMode),
+			"selected_native_mode":     string(selection.NativeMode),
+			"surface_reason":           surfaceReason,
+			"execution_profile":        string(observation.ExecutionProfile),
+			"skill_exec_cutover":       observation.SkillExecCutover,
+			"forked_skill_execution":   observation.ForkedSkillExecution,
+		}
+		if copied.CanonicalTarget != "" && copied.CanonicalTarget != agentcore.CanonicalUnknown {
+			discoveryRuntime["canonical_target"] = string(copied.CanonicalTarget)
+		}
+		if alias := strings.TrimSpace(copied.AliasResolved); alias != "" {
+			discoveryRuntime["selected_alias"] = alias
+		}
+		if entry, ok := agentcore.GetDiscoveryEntry(copied.CanonicalTarget); ok {
+			response["selected_canonical_entry"] = entry
+			response["selected_canonical_cutover_eligible"] = entry.CutoverEligible
+			discoveryRuntime["cutover_eligible"] = entry.CutoverEligible
+			discoveryRuntime["entry_kind"] = entry.Kind
+			if len(entry.Aliases) > 0 {
+				discoveryRuntime["aliases"] = append([]string(nil), entry.Aliases...)
+			}
+			if len(entry.CapabilityTags) > 0 {
+				discoveryRuntime["capability_tags"] = append([]string(nil), entry.CapabilityTags...)
+			}
+			if len(entry.SearchHints) > 0 {
+				discoveryRuntime["search_hints"] = append([]string(nil), entry.SearchHints...)
+			}
+		}
+		response["discovery_runtime"] = discoveryRuntime
+	}
 
 	var selectedDecision *agentcore.Decision
 	selectedSkillName := ""
@@ -523,6 +575,30 @@ func selectorDryRunOutcome(decision agentcore.Decision) string {
 		return "selected"
 	default:
 		return "none"
+	}
+}
+
+func selectorDryRunDiscoverySurfaceReason(selection chatToolSurfaceSelection, skillDynamicExposure bool) string {
+	if selection.DiscoveryDecision == nil {
+		return ""
+	}
+	switch selection.NativeMode {
+	case chatNativeToolSurfaceModeClarifyNone:
+		return "clarify_required"
+	case chatNativeToolSurfaceModeSkillExec:
+		if skillDynamicExposure {
+			return "discover_first_cutover"
+		}
+		return "legacy_exec_collapse_compat"
+	default:
+		switch {
+		case selection.DiscoveryDecision.CanonicalTarget == agentcore.CanonicalUnknown:
+			return "legacy_no_canonical_match"
+		case selection.DiscoveryDecision.NativeSurfaceMode == agentcore.NativeSurfaceModeLegacy:
+			return "legacy_non_cutover_skill"
+		default:
+			return "cutover_blocked_or_unavailable"
+		}
 	}
 }
 

@@ -414,6 +414,59 @@ func TestSkillHandler_InstallSkill(t *testing.T) {
 		}
 	})
 
+	t.Run("install legacy remote skill returns compatibility warning", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = io.WriteString(w, `---
+name: legacy_remote_skill
+description: Legacy remote skill
+---
+
+# Legacy Remote Skill
+
+## Command Usage
+
+`+"```bash"+`
+blue legacy_remote_skill action=list
+`+"```"+`
+`)
+		}))
+		defer server.Close()
+
+		handler.remoteSkills["legacy-remote-skill"] = &RemoteSkill{
+			ID:          "legacy-remote-skill",
+			Name:        "Legacy Remote Skill",
+			Version:     "1.0.0",
+			Description: "Legacy remote skill",
+			SourceID:    "custom",
+			SourceName:  "Custom",
+			DownloadURL: server.URL + "/SKILL.md",
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install/legacy-remote-skill", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues("legacy-remote-skill")
+
+		if err := handler.InstallSkill(c); err != nil {
+			t.Fatalf("InstallSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload struct {
+			Warnings []string `json:"warnings"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
+			t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
+		}
+	})
+
 	t.Run("install already installed skill", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/skill-store/install/test-skill", nil)
 		rec := httptest.NewRecorder()
@@ -497,15 +550,15 @@ This is a test skill.
 	}
 
 	doc := &skillmarket.SkillDocument{
-		ID:          "market-test-skill",
-		Slug:        "market-test-skill",
-		Name:        "Market Test Skill",
-		Description: "Marketplace install test",
-		SourceID:    "test",
-		SourceName:  "Test",
-		SourceGroup: "test",
-		SourceType:  "test",
-		Published:   true,
+		ID:           "market-test-skill",
+		Slug:         "market-test-skill",
+		Name:         "Market Test Skill",
+		Description:  "Marketplace install test",
+		SourceID:     "test",
+		SourceName:   "Test",
+		SourceGroup:  "test",
+		SourceType:   "test",
+		Published:    true,
 		SkillContent: rawSkill,
 	}
 	version := &skillmarket.SkillVersion{
@@ -668,6 +721,51 @@ card_support: none
 		}
 		if _, err := os.Stat(filepath.Join(handler.skillsDir, "url_installed_skill", "SKILL.md")); err != nil {
 			t.Fatalf("expected SKILL.md to be written: %v", err)
+		}
+	})
+
+	t.Run("installs legacy skill markdown without blocking on missing contract fields", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte(`---
+name: legacy_url_skill
+description: Installed from legacy direct URL
+---
+
+# Legacy URL Skill
+
+## Command Usage
+
+` + "```bash" + `
+blue legacy_url_skill action=list
+` + "```" + `
+`))
+		}))
+		defer server.Close()
+
+		body := fmt.Sprintf(`{"url":"%s/SKILL.md"}`, server.URL)
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install-url", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.InstallFromURL(c); err != nil {
+			t.Fatalf("InstallFromURL failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		if registry.Get("legacy_url_skill") == nil {
+			t.Fatalf("expected legacy installed skill to be registered")
+		}
+		var payload struct {
+			Warnings []string `json:"warnings"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
+			t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
 		}
 	})
 
@@ -1081,6 +1179,43 @@ card_support: none
 		}
 	})
 
+	t.Run("uploads legacy SKILL.md without blocking on missing contract fields", func(t *testing.T) {
+		req, contentType := newMultipartUploadRequest(t, "/skills/upload", "SKILL.md", []byte(`---
+name: uploaded_legacy_skill
+description: Uploaded using legacy frontmatter
+---
+
+# Uploaded Legacy Skill
+
+## Command Usage
+
+`+"```bash"+`
+blue uploaded_legacy_skill action=list
+`+"```"+`
+`))
+		req.Header.Set(echo.HeaderContentType, contentType)
+		rec := httptest.NewRecorder()
+
+		if err := handler.UploadSkill(e.NewContext(req, rec)); err != nil {
+			t.Fatalf("UploadSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "uploaded_legacy_skill", "SKILL.md")); err != nil {
+			t.Fatalf("expected legacy SKILL.md install to exist: %v", err)
+		}
+		var payload struct {
+			Warnings []string `json:"warnings"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
+			t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
+		}
+	})
+
 	t.Run("uploads archive with AGENT.md entry", func(t *testing.T) {
 		var archive bytes.Buffer
 		zipWriter := zip.NewWriter(&archive)
@@ -1136,6 +1271,56 @@ card_support: none
 		}
 		if _, err := os.Stat(filepath.Join(handler.skillsDir, "uploaded_agent_skill", "SKILL.md")); err != nil {
 			t.Fatalf("expected compatibility SKILL.md to exist: %v", err)
+		}
+	})
+
+	t.Run("uploads legacy archive with AGENT.md entry without blocking on missing contract fields", func(t *testing.T) {
+		var archive bytes.Buffer
+		zipWriter := zip.NewWriter(&archive)
+		agentFile, err := zipWriter.Create("bundle/legacy-agent-skill/AGENT.md")
+		if err != nil {
+			t.Fatalf("zipWriter.Create(AGENT.md) error = %v", err)
+		}
+		if _, err := agentFile.Write([]byte(`---
+name: uploaded_legacy_agent_skill
+description: Uploaded from legacy archive
+---
+
+# Uploaded Legacy Agent Skill
+
+## Command Usage
+
+` + "```bash" + `
+blue uploaded_legacy_agent_skill action=list
+` + "```" + `
+`)); err != nil {
+			t.Fatalf("agentFile.Write() error = %v", err)
+		}
+		if err := zipWriter.Close(); err != nil {
+			t.Fatalf("zipWriter.Close() error = %v", err)
+		}
+
+		req, contentType := newMultipartUploadRequest(t, "/skills/upload", "legacy-agent-skill.zip", archive.Bytes())
+		req.Header.Set(echo.HeaderContentType, contentType)
+		rec := httptest.NewRecorder()
+
+		if err := handler.UploadSkill(e.NewContext(req, rec)); err != nil {
+			t.Fatalf("UploadSkill failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "uploaded_legacy_agent_skill", "AGENT.md")); err != nil {
+			t.Fatalf("expected legacy AGENT.md install to exist: %v", err)
+		}
+		var payload struct {
+			Warnings []string `json:"warnings"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
+			t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
 		}
 	})
 

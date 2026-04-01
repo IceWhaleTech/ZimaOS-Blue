@@ -907,10 +907,10 @@ onUnmounted(() => {
             <div class="settings-module__header">
               <div>
                 <span class="settings-module__eyebrow">{{
-                  t('settings.externalAgents.eyebrow', 'ACP / A2A')
+                  t('settings.externalAgents.eyebrow')
                 }}</span>
                 <h2 class="settings-module__title">
-                  {{ t('settings.externalAgents.title', 'External Agents') }}
+                  {{ t('settings.externalAgents.title') }}
                 </h2>
               </div>
             </div>

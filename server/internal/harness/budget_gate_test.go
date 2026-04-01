@@ -61,6 +61,30 @@ func TestController_EvaluateSkillCutoverBudgetGate_PassesForExecOnlySurface(t *t
 	if report.Metrics.NonAllowedNativeToolCaseCount != 0 {
 		t.Fatalf("non_allowed_native_tool_case_count = %#v, want 0", report.Metrics.NonAllowedNativeToolCaseCount)
 	}
+	if got := report.Metrics.SelectedCanonicalSkillBreakdown[harnessCanonicalWebQuerySkill]; got != 1 {
+		t.Fatalf("metrics.selected_canonical_skill_breakdown[web_query] = %#v, want 1", got)
+	}
+	if got := report.Metrics.SelectedCanonicalSkillBreakdown["exec"]; got != 1 {
+		t.Fatalf("metrics.selected_canonical_skill_breakdown[exec] = %#v, want 1", got)
+	}
+	if got := report.Metrics.NativeSurfaceModeBreakdown["skill_exec"]; got != 1 {
+		t.Fatalf("metrics.native_surface_mode_breakdown[skill_exec] = %#v, want 1", got)
+	}
+	if got := report.Metrics.NativeSurfaceModeBreakdown["clarify_none"]; got != 1 {
+		t.Fatalf("metrics.native_surface_mode_breakdown[clarify_none] = %#v, want 1", got)
+	}
+	if got := report.Metrics.NativeSurfaceReasonBreakdown["discover_first_cutover"]; got != 1 {
+		t.Fatalf("metrics.native_surface_reason_breakdown[discover_first_cutover] = %#v, want 1", got)
+	}
+	if got := report.Metrics.NativeSurfaceReasonBreakdown["clarify_required"]; got != 1 {
+		t.Fatalf("metrics.native_surface_reason_breakdown[clarify_required] = %#v, want 1", got)
+	}
+	if got := report.Metrics.ExecutionProfileBreakdown["prefer_fork"]; got != 1 {
+		t.Fatalf("metrics.execution_profile_breakdown[prefer_fork] = %#v, want 1", got)
+	}
+	if got := report.Metrics.ExecutionProfileBreakdown["inline"]; got != 1 {
+		t.Fatalf("metrics.execution_profile_breakdown[inline] = %#v, want 1", got)
+	}
 }
 
 func TestController_EvaluateSkillCutoverBudgetGate_FailsForNonExecSurface(t *testing.T) {
@@ -104,8 +128,8 @@ func TestController_EvaluateSkillCutoverBudgetGate_FailsForNonExecSurface(t *tes
 	if report.Metrics.NonAllowedNativeToolCaseCount == 0 {
 		t.Fatalf("non_allowed_native_tool_case_count = %#v, want > 0", report.Metrics.NonAllowedNativeToolCaseCount)
 	}
-	if report.Metrics.MedianSchemaByteReductionRate != 0 {
-		t.Fatalf("median_schema_byte_reduction_rate = %#v, want 0", report.Metrics.MedianSchemaByteReductionRate)
+	if report.Metrics.MedianSchemaByteReductionRate <= 0 {
+		t.Fatalf("median_schema_byte_reduction_rate = %#v, want > 0 because clarify cases now hide native tools", report.Metrics.MedianSchemaByteReductionRate)
 	}
 }
 

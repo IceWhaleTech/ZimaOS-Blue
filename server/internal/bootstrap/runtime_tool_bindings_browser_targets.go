@@ -16,9 +16,10 @@ func bindRuntimeBrowserTargets(
 	skillService builtin.BrowserServiceInterface,
 	accessTargets ...runtimeBrowserAccessTarget,
 ) {
-	if browserTool != nil {
-		browserTool.SetMediaDir(mediaDir)
-	}
+	// browserTool is nil after migration - browser is now skill-based only
+	// Media dir is set via browserSkill instead
+	_ = browserTool
+	_ = mediaDir // used by browserSkill.SetMediaDir below
 	for _, target := range accessTargets {
 		if target == nil {
 			continue

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1032,6 +1033,61 @@ version: 1.0.0
 	}
 	if !strings.Contains(rec.Body.String(), "already installed as browser") {
 		t.Fatalf("expected canonical conflict message, body=%s", rec.Body.String())
+	}
+}
+
+func TestMarketInstallSkillFallbackReturnsLegacyCompatibilityWarnings(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = io.WriteString(w, `---
+name: legacy_market_skill
+description: Legacy marketplace fallback skill
+---
+
+# Legacy Market Skill
+
+## Command Usage
+
+`+"```bash"+`
+blue legacy_market_skill action=list
+`+"```"+`
+`)
+	}))
+	defer server.Close()
+
+	handler.remoteSkills["legacy-market-skill"] = &RemoteSkill{
+		ID:          "legacy-market-skill",
+		Name:        "Legacy Market Skill",
+		Version:     "1.0.0",
+		Description: "Legacy marketplace fallback skill",
+		SourceID:    "custom",
+		SourceName:  "Custom",
+		DownloadURL: server.URL + "/SKILL.md",
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skills/install", strings.NewReader(`{"id":"legacy-market-skill"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	if err := handler.MarketInstallSkill(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("MarketInstallSkill failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var payload struct {
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
+		t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
 	}
 }
 

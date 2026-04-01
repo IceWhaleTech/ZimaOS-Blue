@@ -33,6 +33,13 @@ var (
 	templateCacheMu sync.RWMutex
 )
 
+// goosToSuffix maps runtime.GOOS to AGENTS file suffix.
+var goosToSuffix = map[string]string{
+	"darwin":  "_darwin",
+	"linux":   "_linux",
+	"windows": "_windows",
+}
+
 // loadTemplateSet reads all .md files from templates/<locale>/ in the embedded FS.
 func loadTemplateSet(locale string) *templateSet {
 	ts := &templateSet{}
@@ -41,6 +48,13 @@ func loadTemplateSet(locale string) *templateSet {
 	if err != nil {
 		return nil
 	}
+
+	// Determine AGENTS file suffix based on runtime OS
+	agentsSuffix := ""
+	if suffix, ok := goosToSuffix[runtime.GOOS]; ok {
+		agentsSuffix = suffix
+	}
+
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -58,7 +72,10 @@ func loadTemplateSet(locale string) *templateSet {
 		case "IDENTITY.md":
 			ts.identity = content
 		case "AGENTS.md":
-			ts.agents = applyRuntimeCommandCompatibility(content, runtime.GOOS)
+			ts.agents = content
+		case "AGENTS" + agentsSuffix + ".md":
+			// Load platform-specific AGENTS file, overriding the generic one
+			ts.agents = content
 		case "TOOLS.md":
 			ts.tools = content
 		case "MEMORY.md":
@@ -70,127 +87,6 @@ func loadTemplateSet(locale string) *templateSet {
 		}
 	}
 	return ts
-}
-
-func applyRuntimeCommandCompatibility(content, goos string) string {
-	start, end, heading, bullets, ok := splitCommandCompatibilitySection(content)
-	if !ok {
-		return content
-	}
-
-	filtered := filterCommandCompatibilityBullets(bullets, goos)
-	if len(filtered) == 0 {
-		return content
-	}
-
-	section := heading + "\n" + strings.Join(filtered, "\n")
-	prefix := strings.TrimRight(content[:start], "\n")
-	suffix := strings.TrimLeft(content[end:], "\n")
-	if suffix == "" {
-		return prefix + "\n\n" + section + "\n"
-	}
-	return prefix + "\n\n" + section + "\n\n" + suffix
-}
-
-func splitCommandCompatibilitySection(content string) (start, end int, heading string, bullets []string, ok bool) {
-	marker := "OS/Shell"
-	markerIdx := strings.Index(content, marker)
-	if markerIdx < 0 {
-		return 0, 0, "", nil, false
-	}
-
-	headingStart := strings.LastIndex(content[:markerIdx], "\n## ")
-	if headingStart >= 0 {
-		headingStart++
-	} else if strings.HasPrefix(content, "## ") {
-		headingStart = 0
-	} else {
-		return 0, 0, "", nil, false
-	}
-
-	sectionEnd := len(content)
-	if rel := strings.Index(content[headingStart+1:], "\n## "); rel >= 0 {
-		sectionEnd = headingStart + 1 + rel
-	}
-
-	lines := strings.Split(strings.TrimSpace(content[headingStart:sectionEnd]), "\n")
-	if len(lines) == 0 {
-		return 0, 0, "", nil, false
-	}
-
-	heading = strings.TrimSpace(lines[0])
-	for _, line := range lines[1:] {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- ") {
-			bullets = append(bullets, trimmed)
-		}
-	}
-	if heading == "" || len(bullets) == 0 {
-		return 0, 0, "", nil, false
-	}
-
-	return headingStart, sectionEnd, heading, bullets, true
-}
-
-func filterCommandCompatibilityBullets(bullets []string, goos string) []string {
-	var out []string
-	for _, bullet := range bullets {
-		switch {
-		case isCommandOSDetectionBullet(bullet):
-			continue
-		case isCommandMacOSBullet(bullet):
-			if goos == "darwin" {
-				out = append(out, bullet)
-			}
-		case isCommandLinuxBullet(bullet):
-			if goos == "linux" {
-				out = append(out, bullet)
-			}
-		case isCommandWindowsBullet(bullet), isCommandPowerShell51Bullet(bullet), isCommandPowerShell7Bullet(bullet), isCommandCmdBullet(bullet):
-			if goos == "windows" {
-				out = append(out, bullet)
-			}
-		case isCommandMixedShellFallbackBullet(bullet):
-			if goos == "windows" {
-				out = append(out, bullet)
-			}
-		default:
-			out = append(out, bullet)
-		}
-	}
-	return out
-}
-
-func isCommandOSDetectionBullet(line string) bool {
-	return strings.Contains(line, "`uname`") && strings.Contains(line, "`$OSTYPE`") && strings.Contains(line, "`$PSVersionTable`")
-}
-
-func isCommandMacOSBullet(line string) bool {
-	return strings.Contains(line, "`macOS`")
-}
-
-func isCommandLinuxBullet(line string) bool {
-	return strings.Contains(line, "`Linux`")
-}
-
-func isCommandWindowsBullet(line string) bool {
-	return strings.Contains(line, "`Windows`")
-}
-
-func isCommandPowerShell51Bullet(line string) bool {
-	return strings.Contains(line, "`PowerShell 5.1`")
-}
-
-func isCommandPowerShell7Bullet(line string) bool {
-	return strings.Contains(line, "`PowerShell 7+`")
-}
-
-func isCommandCmdBullet(line string) bool {
-	return strings.Contains(line, "`cmd`")
-}
-
-func isCommandMixedShellFallbackBullet(line string) bool {
-	return strings.Contains(line, "`PowerShell`") && strings.Contains(line, "`cmd`")
 }
 
 // availableLocales returns all locale directory names from the embedded FS.
@@ -220,7 +116,6 @@ func getTemplates(locale string) *templateSet {
 	templateCacheMu.RUnlock()
 
 	ts := resolveTemplates(locale)
-
 	templateCacheMu.Lock()
 	templateCache[locale] = ts
 	templateCacheMu.Unlock()
@@ -239,12 +134,14 @@ func resolveTemplates(locale string) *templateSet {
 	if ts := loadTemplateSet(locale); ts != nil {
 		return mergeTemplateSetWithFallback(ts, en)
 	}
+
 	// 2. Alias (e.g. "zh-HK" → "zh-TW")
 	if alias, ok := localeAliases[locale]; ok {
 		if ts := loadTemplateSet(alias); ts != nil {
 			return mergeTemplateSetWithFallback(ts, en)
 		}
 	}
+
 	// 3. Try uppercase region: "zh-tw" → "zh-TW"
 	if idx := strings.IndexByte(locale, '-'); idx > 0 && idx+1 < len(locale) {
 		normalized := locale[:idx] + "-" + strings.ToUpper(locale[idx+1:])
@@ -258,12 +155,14 @@ func resolveTemplates(locale string) *templateSet {
 			}
 		}
 	}
+
 	// 4. Language prefix: "zh-CN" → "zh"
 	if len(locale) >= 2 {
 		if ts := loadTemplateSet(locale[:2]); ts != nil {
 			return mergeTemplateSetWithFallback(ts, en)
 		}
 	}
+
 	// 5. Fallback to English
 	return en
 }
@@ -354,12 +253,10 @@ func NormalizeDefaultTemplateToEnglish(name, content string) string {
 	if trimmed == "" {
 		return content
 	}
-
 	en := strings.TrimSpace(templateContentByFile(getTemplates("en"), name))
 	if en == "" {
 		return content
 	}
-
 	for _, locale := range availableLocales() {
 		ts := getTemplates(locale)
 		if strings.TrimSpace(templateContentByFile(ts, name)) == trimmed {

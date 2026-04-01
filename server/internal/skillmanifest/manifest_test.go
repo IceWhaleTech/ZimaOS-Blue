@@ -127,6 +127,88 @@ card_support: batch
 	}
 }
 
+func TestParseEntry_StrictContractAllowsLegacyFallback(t *testing.T) {
+	content := `---
+name: legacy_search
+description: Search the web
+---
+# Legacy Search
+
+## Command Usage
+
+` + "```bash" + `
+blue legacy_search query="latest docs"
+` + "```" + `
+`
+
+	doc, err := ParseEntry("legacy_search", "/tmp/SKILL.md", []byte(content), Options{
+		RequireContract:     true,
+		AllowLegacyFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("ParseEntry error: %v", err)
+	}
+	if doc.Invocation != `blue legacy_search query="latest docs"` {
+		t.Fatalf("invocation = %q", doc.Invocation)
+	}
+	if len(doc.ValidationNotes) == 0 {
+		t.Fatal("expected validation notes for legacy fallback")
+	}
+	if doc.Manifest == nil || doc.Manifest.Metadata["validation_notes"] == "" {
+		t.Fatalf("expected manifest validation note metadata, got %+v", doc.Manifest)
+	}
+}
+
+func TestParseEntry_StrictContractLegacyFallbackStillRejectsNoFrontmatter(t *testing.T) {
+	content := "# Just a skill\n\nNo frontmatter here."
+
+	_, err := ParseEntry("skill", "/tmp/SKILL.md", []byte(content), Options{
+		RequireContract:     true,
+		AllowLegacyFallback: true,
+	})
+	if err == nil {
+		t.Fatal("expected strict contract validation error")
+	}
+	if !strings.Contains(err.Error(), "missing required frontmatter field: name") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestParseEntry_StrictContractLegacyFallbackRepairsInvalidContractFields(t *testing.T) {
+	content := `---
+name: legacy_reminder
+description: Legacy reminder skill
+invocation: reminder add message=ping
+examples: reminder add message=ping
+card_support: realtime
+---
+# Legacy Reminder
+
+## Command Usage
+
+` + "```bash" + `
+blue legacy_reminder action=list
+` + "```" + `
+`
+
+	doc, err := ParseEntry("legacy_reminder", "/tmp/SKILL.md", []byte(content), Options{
+		RequireContract:     true,
+		AllowLegacyFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("ParseEntry error: %v", err)
+	}
+	if doc.Invocation != `blue legacy_reminder action=list` {
+		t.Fatalf("invocation = %q", doc.Invocation)
+	}
+	if len(doc.Examples) == 0 || doc.Examples[0] != doc.Invocation {
+		t.Fatalf("examples = %v", doc.Examples)
+	}
+	if doc.CardSupport != "none" {
+		t.Fatalf("card_support = %q, want none", doc.CardSupport)
+	}
+}
+
 func TestParseEntry_PermissiveModeDerivesLegacyFields(t *testing.T) {
 	content := `---
 name: web_search
@@ -467,6 +549,17 @@ func TestDisabledPlaceholderSkills_AreDisabledAndEmbeddedSynced(t *testing.T) {
 				t.Fatalf("read asset skill: %v", err)
 			}
 
+			strictAssetDoc, err := ParseEntry(id, assetPath, assetData, Options{RequireContract: true})
+			if err != nil {
+				t.Fatalf("ParseEntry asset strict contract error: %v", err)
+			}
+			if strictAssetDoc.Manifest == nil {
+				t.Fatal("expected strict asset manifest")
+			}
+			if strictAssetDoc.Enabled {
+				t.Fatalf("expected %s strict asset skill to be disabled", id)
+			}
+
 			assetDoc, err := ParseEntry(id, assetPath, assetData, Options{})
 			if err != nil {
 				t.Fatalf("ParseEntry asset error: %v", err)
@@ -481,6 +574,17 @@ func TestDisabledPlaceholderSkills_AreDisabledAndEmbeddedSynced(t *testing.T) {
 			}
 			if embeddedDoc.Enabled {
 				t.Fatalf("expected %s embedded skill to be disabled", id)
+			}
+
+			strictEmbeddedDoc, _, err := ReadEmbedded(id, Options{RequireContract: true})
+			if err != nil {
+				t.Fatalf("ReadEmbedded strict contract error: %v", err)
+			}
+			if strictEmbeddedDoc.Manifest == nil {
+				t.Fatal("expected strict embedded manifest")
+			}
+			if strictEmbeddedDoc.Enabled {
+				t.Fatalf("expected %s strict embedded skill to be disabled", id)
 			}
 			if string(assetData) != string(embeddedData) {
 				t.Fatalf("embedded %s skill copy is stale; run `make copy-skills`", id)

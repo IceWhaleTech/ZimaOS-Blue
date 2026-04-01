@@ -36,6 +36,7 @@ import (
 )
 
 const maxArchiveDownloadBytes = 128 << 20
+const maxSemanticCandidates = 200
 
 type Options struct {
 	Config                   Config
@@ -414,6 +415,11 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) (*SearchRespons
 	}
 	if len(candidates) == 0 {
 		return emptySearchResponse(query), nil
+	}
+
+	// Limit candidates for semantic search
+	if len(candidates) > maxSemanticCandidates {
+		candidates = candidates[:maxSemanticCandidates]
 	}
 
 	candidates, backfillErr := s.ensureSkillEmbeddings(ctx, candidates)
@@ -1365,6 +1371,14 @@ func extractClawHubSecuritySignals(raw map[string]interface{}) *SourceSecuritySi
 		}
 		mergeClawHubSecurityCandidate(signals, candidate)
 	}
+	// Extract security labels from raw response if present (e.g., ["Benign"])
+	if labels := collectNamedStringList(raw, "securityLabels", "security_labels"); len(labels) > 0 {
+		if badgeFromLabels := securityLabelsToBadge(labels); badgeFromLabels != "" {
+			if signals.SecurityBadge == "" {
+				signals.SecurityBadge = badgeFromLabels
+			}
+		}
+	}
 	if !hasSourceSecuritySignals(signals) {
 		return nil
 	}
@@ -1521,6 +1535,21 @@ func normalizeExternalSecurityBadge(value string) string {
 	default:
 		return ""
 	}
+}
+
+// securityLabelsToBadge converts security labels (e.g., ["Benign", "Verified"]) to badge values
+func securityLabelsToBadge(labels []string) string {
+	for _, label := range labels {
+		switch strings.TrimSpace(strings.ToLower(label)) {
+		case "benign", "safe", "verified", "trusted":
+			return BadgeGreen
+		case "suspicious", "caution", "review":
+			return BadgeYellow
+		case "malicious", "dangerous", "blocked", "banned":
+			return BadgeRed
+		}
+	}
+	return ""
 }
 
 func namedString(node map[string]interface{}, keys ...string) string {

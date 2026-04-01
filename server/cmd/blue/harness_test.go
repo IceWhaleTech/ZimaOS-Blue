@@ -1042,3 +1042,72 @@ func TestRunHarnessCutoverReadinessReturnsStructuredReport(t *testing.T) {
 		t.Fatalf("evaluated_gates_ready = %#v, want false", report.EvaluatedGatesReady)
 	}
 }
+
+func TestPrintSelectorGateSummaryIncludesDiscoverBreakdowns(t *testing.T) {
+	resetHarnessCLIState(t)
+	jsonOutput = false
+
+	out := captureStdout(t, func() {
+		printSelectorGateSummary(&harnesspkg.SelectorGateReport{
+			TargetEvalRunID: "eval-selector-1",
+			Passed:          true,
+			Metrics: harnesspkg.SelectorGateMetrics{
+				CaseCount:                       2,
+				PassedCount:                     2,
+				PassRate:                        1,
+				SelectedCanonicalSkillBreakdown: map[string]int{"web_query": 1, "exec": 1},
+				NativeSurfaceModeBreakdown:      map[string]int{"skill_exec": 1, "clarify_none": 1},
+				NativeSurfaceReasonBreakdown:    map[string]int{"discover_first_cutover": 1, "clarify_required": 1},
+				ExecutionProfileBreakdown:       map[string]int{"prefer_fork": 1, "inline": 1},
+			},
+		})
+	})
+
+	if !strings.Contains(out, "Canonical skills: exec=1, web_query=1") {
+		t.Fatalf("selector summary missing canonical skills breakdown:\n%s", out)
+	}
+	if !strings.Contains(out, "Native surface modes: clarify_none=1, skill_exec=1") {
+		t.Fatalf("selector summary missing native surface mode breakdown:\n%s", out)
+	}
+	if !strings.Contains(out, "Native surface reasons: clarify_required=1, discover_first_cutover=1") {
+		t.Fatalf("selector summary missing native surface reason breakdown:\n%s", out)
+	}
+	if !strings.Contains(out, "Execution profiles: inline=1, prefer_fork=1") {
+		t.Fatalf("selector summary missing execution profile breakdown:\n%s", out)
+	}
+}
+
+func TestPrintBudgetGateSummaryIncludesDiscoverBreakdowns(t *testing.T) {
+	resetHarnessCLIState(t)
+	jsonOutput = false
+
+	out := captureStdout(t, func() {
+		printBudgetGateSummary(&harnesspkg.SkillCutoverBudgetReport{
+			TargetEvalRunID: "eval-budget-1",
+			Passed:          true,
+			Metrics: harnesspkg.SkillCutoverBudgetMetrics{
+				CaseCount:                       2,
+				ComparableCaseCount:             2,
+				MedianSchemaByteReductionRate:   0.85,
+				MedianLatencyIncreaseRate:       0.04,
+				SelectedCanonicalSkillBreakdown: map[string]int{"web_query": 1, "exec": 1},
+				NativeSurfaceModeBreakdown:      map[string]int{"skill_exec": 1, "clarify_none": 1},
+				NativeSurfaceReasonBreakdown:    map[string]int{"discover_first_cutover": 1, "clarify_required": 1},
+				ExecutionProfileBreakdown:       map[string]int{"prefer_fork": 1, "inline": 1},
+			},
+		})
+	})
+
+	if !strings.Contains(out, "Canonical skills: exec=1, web_query=1") {
+		t.Fatalf("budget summary missing canonical skills breakdown:\n%s", out)
+	}
+	if !strings.Contains(out, "Native surface modes: clarify_none=1, skill_exec=1") {
+		t.Fatalf("budget summary missing native surface mode breakdown:\n%s", out)
+	}
+	if !strings.Contains(out, "Native surface reasons: clarify_required=1, discover_first_cutover=1") {
+		t.Fatalf("budget summary missing native surface reason breakdown:\n%s", out)
+	}
+	if !strings.Contains(out, "Execution profiles: inline=1, prefer_fork=1") {
+		t.Fatalf("budget summary missing execution profile breakdown:\n%s", out)
+	}
+}

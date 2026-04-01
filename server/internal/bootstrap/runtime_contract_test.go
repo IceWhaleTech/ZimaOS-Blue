@@ -543,8 +543,11 @@ func TestRuntimeContractBinding_BindsToolingThroughBoundary(t *testing.T) {
 	if tooling.uiReviewerTool == nil {
 		t.Fatalf("expected tooling contract to return a ui reviewer tool, got %#v", tooling)
 	}
-	if browserTool := tools.GetBrowserTool(registry); browserTool == nil || browserTool.Backend() != backendIface {
-		t.Fatalf("expected tooling contract to register browser tool with backend, got %#v", browserTool)
+	// Browser tool is no longer registered as native tool - now skill-based only
+	// The browser backend is still wired into browserSkill for internal use
+	_ = backendIface
+	if tools.GetBrowserTool(registry) != nil {
+		t.Fatalf("expected browser tool to NOT be registered as native tool after migration, got %#v", tools.GetBrowserTool(registry))
 	}
 	for _, name := range []string{"reminder", "message", "image", "ppt", "tts"} {
 		if registry.Get(name) == nil {

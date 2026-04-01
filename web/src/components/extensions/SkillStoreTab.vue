@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { debounce } from '@/utils/debounce'
 import { useI18n } from 'vue-i18n'
 import {
   type MarketplaceAdviceResponse,
@@ -59,6 +60,11 @@ const discoverActivity = ref<
     timestamp: number
   }>
 >([])
+// Request cancellation and caching
+let searchAbortController: AbortController | null = null
+const searchCache = ref<Map<string, { data: any; timestamp: number }>>(new Map())
+const CACHE_TTL = 10000 // 10 seconds
+
 const selectedSkillId = ref<string | null>(null)
 const selectedDetail = ref<MarketplaceSkillDetail | null>(null)
 const detailLoading = ref(false)
@@ -659,6 +665,31 @@ function badgeLabel(skill?: RemoteSkill | null): string {
   if (badge === 'green') return marketplaceText('badges.green', 'Security')
   if (badge === 'red') return marketplaceText('badges.red', 'Blocked')
   return marketplaceText('badges.yellow', 'Warning')
+}
+
+function curatedLabelText(value?: string | null): string {
+  const raw = value?.trim()
+  if (!raw) return ''
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const known: Record<string, { key: string; fallback: string }> = {
+    featured: { key: 'featured', fallback: 'Featured' },
+    trending: { key: 'trending', fallback: 'Trending' },
+    newest: { key: 'newest', fallback: 'Newest' },
+    new: { key: 'new', fallback: 'New' },
+    recommended: { key: 'recommended', fallback: 'Recommended' },
+    verified: { key: 'verified', fallback: 'Verified' },
+    'staff pick': { key: 'staffPick', fallback: 'Staff pick' },
+    "editor's pick": { key: 'editorsPick', fallback: "Editor's pick" },
+  }
+
+  const match = known[normalized]
+  if (!match) return raw
+  return marketplaceText(`curatedLabels.${match.key}`, match.fallback)
 }
 
 function securityBadgeClass(skill?: RemoteSkill | null): string {
@@ -1787,6 +1818,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   componentDisposed = true
+  searchAbortController?.abort()
+  searchCache.value.clear()
   latestDiscoverPollId += 1
   offSSEEvent('skill.market.discover.progress', handleDiscoverProgressEvent)
   offSSEEvent('skill.market.embedding.progress', handleEmbeddingProgressEvent)
@@ -2294,7 +2327,7 @@ onBeforeUnmount(() => {
                 <span class="source-chip">{{ sourceLabel(skill) }}</span>
                 <span class="meta-chip meta-chip-soft">{{ categoryLabel(skill.category) }}</span>
                 <span v-if="skill.curated_label" class="meta-chip meta-chip-hot">
-                  {{ skill.curated_label }}
+                  {{ curatedLabelText(skill.curated_label) }}
                 </span>
               </div>
               <span :class="['shield-chip', securityBadgeClass(skill)]">
@@ -3023,7 +3056,7 @@ onBeforeUnmount(() => {
 .hero-copy h2 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.12;
   letter-spacing: -0.02em;
 }
@@ -3353,7 +3386,7 @@ onBeforeUnmount(() => {
 
 .discover-progress__percent strong {
   color: var(--text-primary);
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -3821,7 +3854,7 @@ onBeforeUnmount(() => {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 18px 28px -24px var(--market-accent-glow);
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1;
   flex-shrink: 0;
@@ -3837,7 +3870,7 @@ onBeforeUnmount(() => {
 .card-hero h4 {
   margin: 0 0 4px;
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: 12px;
   line-height: 1.15;
   letter-spacing: -0.02em;
 }
@@ -3847,11 +3880,16 @@ onBeforeUnmount(() => {
   min-height: 44px;
   color: var(--text-secondary);
   line-height: 1.4;
-  font-size: 0.84rem;
+  font-size: 10.5px;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.skill-card:hover .card-hero p,
+.skill-card.active .card-hero p {
+  -webkit-line-clamp: 6;
 }
 
 .card-tag-row,
@@ -4051,7 +4089,7 @@ onBeforeUnmount(() => {
 .detail-main h3 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 1.6rem;
+  font-size: 1.25rem;
   line-height: 1.08;
   letter-spacing: -0.03em;
 }
@@ -4173,7 +4211,7 @@ onBeforeUnmount(() => {
 
 .detail-hero-stat strong {
   color: var(--text-primary);
-  font-size: clamp(1.18rem, 0.7vw + 1.02rem, 1.7rem);
+  font-size: clamp(1.02rem, 0.55vw + 0.92rem, 1.35rem);
   line-height: 1;
   letter-spacing: -0.04em;
 }
@@ -4216,7 +4254,7 @@ onBeforeUnmount(() => {
 .detail-install-copy p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 10.5px;
   line-height: 1.5;
 }
 
@@ -4225,7 +4263,7 @@ onBeforeUnmount(() => {
 .section-heading p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 10.5px;
   line-height: 1.55;
 }
 
@@ -4477,7 +4515,7 @@ onBeforeUnmount(() => {
 .risk-modal__copy h3 {
   margin: 0;
   color: var(--text-primary);
-  font-size: clamp(1.25rem, 0.9vw + 1rem, 1.65rem);
+  font-size: clamp(1.08rem, 0.8vw + 0.92rem, 1.35rem);
   line-height: 1.08;
   letter-spacing: -0.03em;
 }
@@ -4485,7 +4523,7 @@ onBeforeUnmount(() => {
 .risk-modal__copy p,
 .risk-modal__signal {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 10.5px;
   line-height: 1.55;
 }
 
@@ -4515,7 +4553,7 @@ onBeforeUnmount(() => {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 18px 28px -24px var(--market-accent-glow);
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 700;
 }
 
@@ -4527,7 +4565,7 @@ onBeforeUnmount(() => {
 
 .risk-modal__subject-copy strong {
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: 12px;
   line-height: 1.25;
 }
 

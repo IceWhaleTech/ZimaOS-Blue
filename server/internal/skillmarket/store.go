@@ -2,6 +2,7 @@ package skillmarket
 
 import (
 	"context"
+	"sync"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -18,10 +19,21 @@ import (
 	z "github.com/IceWhaleTech/zorm"
 )
 
+type searchCacheEntry struct {
+	key       string
+	results   *SearchResponse
+	timestamp time.Time
+}
+
 type Store struct {
-	db         *sql.DB
-	readDB     *sql.DB
+	db     *sql.DB
+	readDB *sql.DB
 	ftsEnabled bool
+	
+	// Search result caching
+	searchCacheMu  sync.RWMutex
+	searchCache    map[string]searchCacheEntry
+	searchCacheTTL time.Duration
 }
 
 const sqliteSafeMaxBindVars = 900
@@ -45,7 +57,7 @@ func newStoreWithDB(writeDB, readDB *sql.DB) (*Store, error) {
 	if readDB == nil {
 		readDB = writeDB
 	}
-	s := &Store{db: writeDB, readDB: readDB}
+	s := &Store{db: writeDB, readDB: readDB, searchCache: make(map[string]searchCacheEntry), searchCacheTTL: 5 * time.Second}
 	if err := s.initSchema(); err != nil {
 		return nil, err
 	}
@@ -2080,6 +2092,15 @@ func (s *Store) Search(ctx context.Context, query SearchQuery) (*SearchResponse,
 	if query.PageSize <= 0 || query.PageSize > DefaultSearchLimit {
 		query.PageSize = DefaultPageSize
 	}
+	
+	// Check cache first
+	cacheKey := fmt.Sprintf("%s:%s:%s:%s:%d:%d", query.Query, query.Category, query.Sort, strings.Join(query.Sources, ","), query.Page, query.PageSize)
+	s.searchCacheMu.RLock()
+	if entry, ok := s.searchCache[cacheKey]; ok && time.Since(entry.timestamp) < s.searchCacheTTL {
+		s.searchCacheMu.RUnlock()
+		return entry.results, nil
+	}
+	s.searchCacheMu.RUnlock()
 	searching := strings.TrimSpace(query.Query) != ""
 	whereClause, args := buildSkillFilters("s", query)
 

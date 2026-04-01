@@ -2,6 +2,14 @@
 name: timer
 version: "0.1.0"
 description: "Disabled placeholder for session-local countdown timers. ZimaOS Blue does not currently register a live builtin timer skill at runtime."
+invocation: "blue timer action=start duration=5m"
+examples:
+  - "blue timer action=start duration=5m"
+capability_tags:
+  - timer
+  - countdown
+interaction_mode: stateless
+card_support: none
 enabled: false
 category: internal
 tags:

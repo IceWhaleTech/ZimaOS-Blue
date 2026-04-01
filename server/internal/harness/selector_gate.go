@@ -256,8 +256,16 @@ func buildSelectorGateMetrics(report *EvalRunReport) SelectorGateMetrics {
 		if card, ok := latestCards[item.ID]; ok && strings.TrimSpace(card.RunID) != "" {
 			runID = strings.TrimSpace(card.RunID)
 		}
-		if run, ok := runByID[runID]; ok && comparisonStructuredBool(structuredRunResult(&run), "skill_need_clarify") {
-			clarifyCount++
+		if run, ok := runByID[runID]; ok {
+			structured := structuredRunResult(&run)
+			if comparisonStructuredBool(structured, "skill_need_clarify") {
+				clarifyCount++
+			}
+			observation := decodeDiscoverFirstObservation(structured)
+			incrementBreakdownValue(&metrics.SelectedCanonicalSkillBreakdown, observation.SelectedCanonicalSkill)
+			incrementBreakdownValue(&metrics.NativeSurfaceModeBreakdown, observation.NativeSurfaceMode)
+			incrementBreakdownValue(&metrics.NativeSurfaceReasonBreakdown, observation.NativeSurfaceReason)
+			incrementBreakdownValue(&metrics.ExecutionProfileBreakdown, observation.ExecutionProfile)
 		}
 	}
 
@@ -273,6 +281,18 @@ func buildSelectorGateMetrics(report *EvalRunReport) SelectorGateMetrics {
 				if itemPassed {
 					criticalPassed++
 				}
+			}
+			runID := strings.TrimSpace(item.LatestRunID)
+			if card, ok := latestCards[item.ID]; ok && strings.TrimSpace(card.RunID) != "" {
+				runID = strings.TrimSpace(card.RunID)
+			}
+			if run, ok := runByID[runID]; ok {
+				structured := structuredRunResult(&run)
+				observation := decodeDiscoverFirstObservation(structured)
+				incrementBreakdownValue(&metrics.SelectedCanonicalSkillBreakdown, observation.SelectedCanonicalSkill)
+				incrementBreakdownValue(&metrics.NativeSurfaceModeBreakdown, observation.NativeSurfaceMode)
+				incrementBreakdownValue(&metrics.NativeSurfaceReasonBreakdown, observation.NativeSurfaceReason)
+				incrementBreakdownValue(&metrics.ExecutionProfileBreakdown, observation.ExecutionProfile)
 			}
 		}
 	}

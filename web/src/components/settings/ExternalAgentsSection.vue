@@ -57,15 +57,12 @@ const currentSelectionLabel = computed(() => {
     return selectedProfile.value.title || selectedProfile.value.name
   }
   return (
-    draft.value.title || draft.value.name || t('settings.externalAgents.newProfile', 'New profile')
+    draft.value.title || draft.value.name || t('settings.externalAgents.newProfile')
   )
 })
 const currentSelectionSummary = computed(() => {
   if (!selectedProfile.value) {
-    return t(
-      'settings.externalAgents.draftHint',
-      'Choose a connection type, then fill the required fields below.'
-    )
+    return t('settings.externalAgents.draftHint')
   }
   return `${profileModeLabel(selectedProfile.value)} · ${draftRouteValue()}`
 })
@@ -80,25 +77,22 @@ const checklistItems = computed(() => [
   {
     key: 'name',
     done: Boolean(draft.value.name.trim()),
-    label: t('settings.externalAgents.requiredName', 'Give the profile a name'),
+    label: t('settings.externalAgents.requiredName'),
   },
   {
     key: 'route',
     done: isRouteReady(),
     label:
       draft.value.protocol === 'acp'
-        ? t('settings.externalAgents.requiredAcpRoute', 'Add the local command Blue should run')
-        : t('settings.externalAgents.requiredA2aRoute', 'Add an endpoint or agent card URL'),
+        ? t('settings.externalAgents.requiredAcpRoute')
+        : t('settings.externalAgents.requiredA2aRoute'),
   },
   {
     key: 'checks',
     done: Boolean(selectedProfile.value?.last_verified_at || selectedProfile.value?.last_health_at),
     label: selectedProfile.value
-      ? t(
-          'settings.externalAgents.requiredChecks',
-          'Run verify and health checks before using it in chat'
-        )
-      : t('settings.externalAgents.saveThenCheck', 'Save first, then run verify and health checks'),
+      ? t('settings.externalAgents.requiredChecks')
+      : t('settings.externalAgents.saveThenCheck'),
   },
 ])
 
@@ -149,41 +143,26 @@ function profileToDraft(profile: AgentProfile): ProfileDraft {
 
 function protocolTitle(protocol: ProtocolKind): string {
   return protocol === 'acp'
-    ? t('settings.externalAgents.acpPlainTitle', 'Local tools (ACP)')
-    : t('settings.externalAgents.a2aPlainTitle', 'Remote agents (A2A)')
+    ? t('settings.externalAgents.acpPlainTitle')
+    : t('settings.externalAgents.a2aPlainTitle')
 }
 
 function protocolDescription(protocol: ProtocolKind): string {
   return protocol === 'acp'
-    ? t('settings.externalAgents.acpOverview', 'Run a local CLI or bridge command on this machine.')
-    : t(
-        'settings.externalAgents.a2aOverview',
-        'Call a remote agent card or RPC endpoint over the network.'
-      )
+    ? t('settings.externalAgents.acpOverview')
+    : t('settings.externalAgents.a2aOverview')
 }
 
 function protocolListDescription(protocol: ProtocolKind): string {
   return protocol === 'acp'
-    ? t(
-        'settings.externalAgents.acpListHelp',
-        'Use ACP when Blue should launch a local adapter or coding CLI on this device.'
-      )
-    : t(
-        'settings.externalAgents.a2aListHelp',
-        'Use A2A when Blue should call a remote service by endpoint or agent card URL.'
-      )
+    ? t('settings.externalAgents.acpListHelp')
+    : t('settings.externalAgents.a2aListHelp')
 }
 
 function protocolSetupDescription(protocol: ProtocolKind): string {
   return protocol === 'acp'
-    ? t(
-        'settings.externalAgents.acpSetupHelp',
-        'Blue will start this command locally whenever the ACP adapter is needed.'
-      )
-    : t(
-        'settings.externalAgents.a2aSetupHelp',
-        'Blue will connect to this remote agent over HTTP using an endpoint or card URL.'
-      )
+    ? t('settings.externalAgents.acpSetupHelp')
+    : t('settings.externalAgents.a2aSetupHelp')
 }
 
 function selectProfile(profileID: string) {
@@ -243,7 +222,7 @@ function duplicateSelection() {
     title: next.title ? `${next.title} Copy` : '',
   }
   showNotice(
-    t('settings.externalAgents.duplicateReady', 'Copied into a new editable draft.'),
+    t('settings.externalAgents.duplicateReady'),
     'info'
   )
 }
@@ -255,22 +234,31 @@ function parseCommandText(value: string): string[] {
     .filter(Boolean)
 }
 
-function parseRecordText(value: string, label: string): Record<string, string> | undefined {
+function parseJSONObject(value: string, label: string): Record<string, unknown> {
   const trimmed = value.trim()
   if (!trimmed) {
-    return undefined
+    return {}
   }
   let parsed: unknown
   try {
     parsed = JSON.parse(trimmed)
   } catch {
-    throw new Error(`${label} must be valid JSON`)
+    throw new Error(t('settings.externalAgents.errors.labelMustBeValidJson', { label }))
   }
   if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error(`${label} must be a JSON object`)
+    throw new Error(t('settings.externalAgents.errors.labelMustBeJsonObject', { label }))
   }
+  return parsed as Record<string, unknown>
+}
+
+function parseRecordText(value: string, label: string): Record<string, string> | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+  const parsed = parseJSONObject(trimmed, label)
   return Object.fromEntries(
-    Object.entries(parsed as Record<string, unknown>).map(([key, item]) => [key, String(item)])
+    Object.entries(parsed).map(([key, item]) => [key, String(item)])
   )
 }
 
@@ -279,22 +267,13 @@ function parseMetadataText(value: string): Record<string, unknown> | undefined {
   if (!trimmed) {
     return undefined
   }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(trimmed)
-  } catch {
-    throw new Error('Metadata must be valid JSON')
-  }
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error('Metadata must be a JSON object')
-  }
-  return parsed as Record<string, unknown>
+  return parseJSONObject(trimmed, t('settings.externalAgents.metadata'))
 }
 
 function buildProfilePayload(): AgentProfile {
   const name = draft.value.name.trim()
   if (!name) {
-    throw new Error('Profile name is required')
+    throw new Error(t('settings.externalAgents.errors.nameRequired'))
   }
 
   const payload: AgentProfile = {
@@ -319,7 +298,7 @@ function buildProfilePayload(): AgentProfile {
   if (draft.value.protocol === 'acp') {
     const command = parseCommandText(draft.value.commandText)
     if (command.length === 0) {
-      throw new Error('ACP profiles need a command and arguments')
+      throw new Error(t('settings.externalAgents.errors.acpCommandRequired'))
     }
     payload.command = command
     if (draft.value.cwd.trim()) {
@@ -335,7 +314,7 @@ function buildProfilePayload(): AgentProfile {
   }
 
   if (!draft.value.endpointUrl.trim() && !draft.value.cardUrl.trim()) {
-    throw new Error('A2A profiles need an endpoint URL or agent card URL')
+    throw new Error(t('settings.externalAgents.errors.a2aRouteRequired'))
   }
   if (draft.value.endpointUrl.trim()) {
     payload.endpoint_url = draft.value.endpointUrl.trim()
@@ -392,7 +371,7 @@ async function loadProfiles(preferredID = '') {
     showNotice(
       extractErrorMessage(
         error,
-        t('settings.externalAgents.loadFailed', 'Failed to load external agent profiles.')
+        t('settings.externalAgents.loadFailed')
       ),
       'error'
     )
@@ -405,20 +384,20 @@ function summarizeProfile(profile: AgentProfile): string {
   if (profile.protocol === 'acp') {
     return (
       (profile.command || []).join(' ') ||
-      t('settings.externalAgents.notAvailable', 'Not available')
+      t('settings.externalAgents.notAvailable')
     )
   }
   return (
     profile.endpoint_url ||
     profile.card_url ||
-    t('settings.externalAgents.remoteAgent', 'Remote agent')
+    t('settings.externalAgents.remoteAgent')
   )
 }
 
 function profileModeLabel(profile: AgentProfile): string {
   return profile.builtin
-    ? t('settings.externalAgents.builtinTemplate', 'Built-in template')
-    : t('settings.externalAgents.customProfile', 'Custom profile')
+    ? t('settings.externalAgents.builtinTemplate')
+    : t('settings.externalAgents.customProfile')
 }
 
 function statusLabel(profile: AgentProfile): string {
@@ -426,8 +405,8 @@ function statusLabel(profile: AgentProfile): string {
     return profile.health_status
   }
   return profile.builtin
-    ? t('settings.externalAgents.ready', 'Ready')
-    : t('settings.externalAgents.custom', 'Custom')
+    ? t('settings.externalAgents.ready')
+    : t('settings.externalAgents.custom')
 }
 
 function profileStatusTone(profile: AgentProfile): 'neutral' | 'healthy' | 'warning' | 'error' {
@@ -462,7 +441,7 @@ function profileStatusTone(profile: AgentProfile): 'neutral' | 'healthy' | 'warn
 
 function formatCompactTimestamp(value?: string): string {
   if (!value) {
-    return t('settings.externalAgents.notAvailable', 'Not available')
+    return t('settings.externalAgents.notAvailable')
   }
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
@@ -473,23 +452,23 @@ function formatCompactTimestamp(value?: string): string {
 
 function profileLastActivity(profile: AgentProfile): string {
   if (profile.last_health_at) {
-    return `${t('settings.externalAgents.health', 'Health')} · ${formatCompactTimestamp(profile.last_health_at)}`
+    return `${t('settings.externalAgents.health')} · ${formatCompactTimestamp(profile.last_health_at)}`
   }
   if (profile.last_verified_at) {
-    return `${t('settings.externalAgents.verify', 'Verify')} · ${formatCompactTimestamp(profile.last_verified_at)}`
+    return `${t('settings.externalAgents.verify')} · ${formatCompactTimestamp(profile.last_verified_at)}`
   }
-  return t('settings.externalAgents.notAvailable', 'Not available')
+  return t('settings.externalAgents.notAvailable')
 }
 
 function draftRouteValue(): string {
   if (draft.value.protocol === 'acp') {
     const command = parseCommandText(draft.value.commandText)
-    return command[0] || t('settings.externalAgents.pendingSetup', 'Pending setup')
+    return command[0] || t('settings.externalAgents.pendingSetup')
   }
   const hasEndpoint = Boolean(draft.value.endpointUrl.trim())
   const hasCard = Boolean(draft.value.cardUrl.trim())
   if (hasEndpoint && hasCard) {
-    return t('settings.externalAgents.endpointAndCard', 'Endpoint + card')
+    return t('settings.externalAgents.endpointAndCard')
   }
   if (hasEndpoint) {
     return draft.value.endpointUrl.trim()
@@ -497,46 +476,40 @@ function draftRouteValue(): string {
   if (hasCard) {
     return draft.value.cardUrl.trim()
   }
-  return t('settings.externalAgents.pendingSetup', 'Pending setup')
+  return t('settings.externalAgents.pendingSetup')
 }
 
 function draftRouteHint(): string {
   if (draft.value.protocol === 'acp') {
     const details = []
     if (parseCommandText(draft.value.commandText).length > 0) {
-      details.push(t('settings.externalAgents.commandConfigured', 'Command configured'))
+      details.push(t('settings.externalAgents.commandConfigured'))
     }
     if (draft.value.cwd.trim()) {
-      details.push(t('settings.externalAgents.cwd', 'Working directory'))
+      details.push(t('settings.externalAgents.cwd'))
     }
     if (draft.value.envText.trim()) {
-      details.push(t('settings.externalAgents.environment', 'Environment overrides'))
+      details.push(t('settings.externalAgents.environment'))
     }
     return (
       details.join(' · ') ||
-      t(
-        'settings.externalAgents.acpRouteHint',
-        'Add the command and arguments Blue should launch locally.'
-      )
+      t('settings.externalAgents.acpRouteHint')
     )
   }
 
   const details = []
   if (draft.value.endpointUrl.trim()) {
-    details.push(t('settings.externalAgents.endpoint', 'Endpoint URL'))
+    details.push(t('settings.externalAgents.endpoint'))
   }
   if (draft.value.cardUrl.trim()) {
-    details.push(t('settings.externalAgents.cardUrl', 'Agent Card URL'))
+    details.push(t('settings.externalAgents.cardUrl'))
   }
   if (draft.value.headersText.trim()) {
-    details.push(t('settings.externalAgents.headers', 'Request headers'))
+    details.push(t('settings.externalAgents.headers'))
   }
   return (
     details.join(' · ') ||
-    t(
-      'settings.externalAgents.a2aRouteHint',
-      'Add the remote endpoint or agent card that Blue should call.'
-    )
+    t('settings.externalAgents.a2aRouteHint')
   )
 }
 
@@ -550,10 +523,7 @@ function isRouteReady(): boolean {
 async function saveDraft() {
   if (isBuiltinSelection.value) {
     showNotice(
-      t(
-        'settings.externalAgents.builtinLocked',
-        'Built-in profiles are read-only. Duplicate one to customize it.'
-      ),
+      t('settings.externalAgents.builtinLocked'),
       'info'
     )
     return
@@ -563,12 +533,12 @@ async function saveDraft() {
     const payload = buildProfilePayload()
     const response = await agentSessionsApi.saveProfile(payload)
     await loadProfiles(response.data.id)
-    showNotice(t('settings.externalAgents.saved', 'External agent profile saved.'), 'success')
+    showNotice(t('settings.externalAgents.saved'), 'success')
   } catch (error) {
     showNotice(
       extractErrorMessage(
         error,
-        t('settings.externalAgents.saveFailed', 'Failed to save external agent profile.')
+        t('settings.externalAgents.saveFailed')
       ),
       'error'
     )
@@ -582,9 +552,9 @@ function verifyMessage(result: ProfileVerifyResult): string {
     return result.message
   }
   if (result.ok) {
-    return t('settings.externalAgents.verifyOk', 'Profile verification succeeded.')
+    return t('settings.externalAgents.verifyOk')
   }
-  return t('settings.externalAgents.verifyFailed', 'Profile verification failed.')
+  return t('settings.externalAgents.verifyFailed')
 }
 
 function healthMessage(result: ProfileHealthResult): string {
@@ -592,9 +562,9 @@ function healthMessage(result: ProfileHealthResult): string {
     return result.message
   }
   if (result.healthy) {
-    return t('settings.externalAgents.healthOk', 'Health check succeeded.')
+    return t('settings.externalAgents.healthOk')
   }
-  return t('settings.externalAgents.healthFailed', 'Health check failed.')
+  return t('settings.externalAgents.healthFailed')
 }
 
 async function verifyCurrent() {
@@ -612,7 +582,7 @@ async function verifyCurrent() {
     showNotice(
       extractErrorMessage(
         error,
-        t('settings.externalAgents.verifyFailed', 'Failed to verify external agent profile.')
+        t('settings.externalAgents.verifyRequestFailed')
       ),
       'error'
     )
@@ -624,10 +594,7 @@ async function verifyCurrent() {
 async function checkCurrentHealth() {
   if (!selectedProfile.value) {
     showNotice(
-      t(
-        'settings.externalAgents.saveBeforeHealth',
-        'Save the profile before running a health check.'
-      ),
+      t('settings.externalAgents.saveBeforeHealth'),
       'info'
     )
     return
@@ -641,7 +608,7 @@ async function checkCurrentHealth() {
     showNotice(
       extractErrorMessage(
         error,
-        t('settings.externalAgents.healthFailed', 'Failed to check external agent health.')
+        t('settings.externalAgents.healthRequestFailed')
       ),
       'error'
     )
@@ -660,17 +627,14 @@ onMounted(() => {
     <header class="external-agents__hero">
       <div class="external-agents__hero-copy">
         <p class="external-agents__eyebrow">
-          {{ t('settings.externalAgents.eyebrow', 'ACP / A2A') }}
+          {{ t('settings.externalAgents.eyebrow') }}
         </p>
         <h3 class="external-agents__hero-title">
-          {{ t('settings.externalAgents.title', 'External Agents') }}
+          {{ t('settings.externalAgents.title') }}
         </h3>
         <p class="external-agents__copy">
           {{
-            t(
-              'settings.externalAgents.description',
-              'Manage local ACP bridge commands plus remote A2A agent cards or RPC endpoints.'
-            )
+            t('settings.externalAgents.description')
           }}
         </p>
       </div>
@@ -682,7 +646,7 @@ onMounted(() => {
           data-testid="external-agents-new-acp"
           @click="startNewProfile('acp')"
         >
-          {{ t('settings.externalAgents.newAcp', 'New ACP') }}
+          {{ t('settings.externalAgents.newAcp') }}
         </button>
         <button
           type="button"
@@ -690,7 +654,7 @@ onMounted(() => {
           data-testid="external-agents-new-a2a"
           @click="startNewProfile('a2a')"
         >
-          {{ t('settings.externalAgents.newA2a', 'New A2A') }}
+          {{ t('settings.externalAgents.newA2a') }}
         </button>
         <button
           type="button"
@@ -750,7 +714,7 @@ onMounted(() => {
         <div class="external-agents__panel-header">
           <div>
             <p class="external-agents__eyebrow">
-              {{ t('settings.externalAgents.availableProfiles', 'Available Profiles') }}
+              {{ t('settings.externalAgents.availableProfiles') }}
             </p>
             <h4 class="external-agents__panel-title">{{ activeProtocolTitle }}</h4>
             <p class="external-agents__panel-copy">
@@ -775,8 +739,8 @@ onMounted(() => {
           >
             {{
               activeProtocol === 'acp'
-                ? t('settings.externalAgents.newAcp', 'New ACP')
-                : t('settings.externalAgents.newA2a', 'New A2A')
+                ? t('settings.externalAgents.newAcp')
+                : t('settings.externalAgents.newA2a')
             }}
           </button>
         </div>
@@ -821,8 +785,8 @@ onMounted(() => {
             <p class="external-agents__eyebrow">
               {{
                 selectedProfile
-                  ? t('settings.externalAgents.editor', 'Profile Editor')
-                  : t('settings.externalAgents.newProfile', 'New profile')
+                  ? t('settings.externalAgents.editor')
+                  : t('settings.externalAgents.newProfile')
               }}
             </p>
             <h4 class="external-agents__panel-title">{{ currentSelectionLabel }}</h4>
@@ -836,7 +800,7 @@ onMounted(() => {
               class="external-agents__button external-agents__button--quiet"
               @click="duplicateSelection"
             >
-              {{ t('settings.externalAgents.duplicate', 'Duplicate') }}
+              {{ t('settings.externalAgents.duplicate') }}
             </button>
             <button
               type="button"
@@ -845,7 +809,7 @@ onMounted(() => {
               :disabled="verifying"
               @click="verifyCurrent"
             >
-              {{ t('settings.externalAgents.verify', 'Verify') }}
+              {{ t('settings.externalAgents.verify') }}
             </button>
             <button
               type="button"
@@ -854,7 +818,7 @@ onMounted(() => {
               :disabled="checkingHealth || !selectedProfile"
               @click="checkCurrentHealth"
             >
-              {{ t('settings.externalAgents.health', 'Health') }}
+              {{ t('settings.externalAgents.health') }}
             </button>
             <button
               type="button"
@@ -870,13 +834,10 @@ onMounted(() => {
 
         <div v-if="isBuiltinSelection" class="external-agents__locked">
           <div class="external-agents__locked-copy">
-            <strong>{{ t('settings.externalAgents.builtinTemplate', 'Built-in template') }}</strong>
+            <strong>{{ t('settings.externalAgents.builtinTemplate') }}</strong>
             <p>
               {{
-                t(
-                  'settings.externalAgents.builtinHelp',
-                  'Built-in profiles stay read-only so the seeded Claude, Codex, Gemini, and generic A2A entries remain stable.'
-                )
+                t('settings.externalAgents.builtinHelp')
               }}
             </p>
           </div>
@@ -885,7 +846,7 @@ onMounted(() => {
             class="external-agents__button external-agents__button--quiet"
             @click="duplicateSelection"
           >
-            {{ t('settings.externalAgents.duplicate', 'Duplicate') }}
+            {{ t('settings.externalAgents.duplicate') }}
           </button>
         </div>
 
@@ -893,7 +854,7 @@ onMounted(() => {
           <div class="external-agents__section-head">
             <div>
               <h5 class="external-agents__section-title">
-                {{ t('settings.externalAgents.connectionType', 'Connection type') }}
+                {{ t('settings.externalAgents.connectionType') }}
               </h5>
               <p class="external-agents__section-copy">
                 {{ protocolSetupDescription(draft.protocol) }}
@@ -902,7 +863,7 @@ onMounted(() => {
 
             <article class="external-agents__route-preview">
               <span class="external-agents__route-label">
-                {{ t('settings.externalAgents.route', 'Route') }}
+                {{ t('settings.externalAgents.route') }}
               </span>
               <strong class="external-agents__route-value">{{ draftRouteValue() }}</strong>
               <p class="external-agents__route-copy">{{ draftRouteHint() }}</p>
@@ -960,14 +921,11 @@ onMounted(() => {
           <div class="external-agents__section-head">
             <div>
               <h5 class="external-agents__section-title">
-                {{ t('settings.externalAgents.basicInfo', 'Basic info') }}
+                {{ t('settings.externalAgents.basicInfo') }}
               </h5>
               <p class="external-agents__section-copy">
                 {{
-                  t(
-                    'settings.externalAgents.basicInfoHelp',
-                    'Use a clear name and short description so the profile is easy to spot later.'
-                  )
+                  t('settings.externalAgents.basicInfoHelp')
                 }}
               </p>
             </div>
@@ -1008,19 +966,13 @@ onMounted(() => {
           <div class="external-agents__section-head">
             <div>
               <h5 class="external-agents__section-title">
-                {{ t('settings.externalAgents.connectionDetails', 'Connection details') }}
+                {{ t('settings.externalAgents.connectionDetails') }}
               </h5>
               <p class="external-agents__section-copy">
                 {{
                   draft.protocol === 'acp'
-                    ? t(
-                        'settings.externalAgents.acpConnectionHelp',
-                        'Tell Blue which local command it should run, plus any working directory or env overrides.'
-                      )
-                    : t(
-                        'settings.externalAgents.a2aConnectionHelp',
-                        'Tell Blue which remote endpoint or agent card it should call.'
-                      )
+                    ? t('settings.externalAgents.acpConnectionHelp')
+                    : t('settings.externalAgents.a2aConnectionHelp')
                 }}
               </p>
             </div>
@@ -1029,7 +981,7 @@ onMounted(() => {
           <div class="external-agents__form-grid">
             <template v-if="draft.protocol === 'acp'">
               <label class="external-agents__field external-agents__field--full">
-                <span>{{ t('settings.externalAgents.command', 'Command and Args') }}</span>
+                <span>{{ t('settings.externalAgents.command') }}</span>
                 <textarea
                   v-model="draft.commandText"
                   class="external-agents__textarea"
@@ -1039,16 +991,13 @@ onMounted(() => {
                 />
                 <p class="external-agents__field-help">
                   {{
-                    t(
-                      'settings.externalAgents.commandHint',
-                      'Built-in ACP profiles use npx-based bridge launchers so Blue can start the adapter without assuming a separately installed binary.'
-                    )
+                    t('settings.externalAgents.commandHint')
                   }}
                 </p>
               </label>
 
               <label class="external-agents__field">
-                <span>{{ t('settings.externalAgents.cwd', 'Working Directory') }}</span>
+                <span>{{ t('settings.externalAgents.cwd') }}</span>
                 <input
                   v-model="draft.cwd"
                   class="external-agents__input"
@@ -1058,7 +1007,7 @@ onMounted(() => {
               </label>
 
               <label class="external-agents__field external-agents__field--full">
-                <span>{{ t('settings.externalAgents.environment', 'Environment Overrides') }}</span>
+                <span>{{ t('settings.externalAgents.environment') }}</span>
                 <textarea
                   v-model="draft.envText"
                   class="external-agents__textarea"
@@ -1070,7 +1019,7 @@ onMounted(() => {
 
             <template v-else>
               <label class="external-agents__field">
-                <span>{{ t('settings.externalAgents.endpoint', 'Endpoint URL') }}</span>
+                <span>{{ t('settings.externalAgents.endpoint') }}</span>
                 <input
                   v-model="draft.endpointUrl"
                   class="external-agents__input"
@@ -1081,7 +1030,7 @@ onMounted(() => {
               </label>
 
               <label class="external-agents__field">
-                <span>{{ t('settings.externalAgents.cardUrl', 'Agent Card URL') }}</span>
+                <span>{{ t('settings.externalAgents.cardUrl') }}</span>
                 <input
                   v-model="draft.cardUrl"
                   class="external-agents__input"
@@ -1092,7 +1041,7 @@ onMounted(() => {
               </label>
 
               <label class="external-agents__field external-agents__field--full">
-                <span>{{ t('settings.externalAgents.headers', 'Request Headers') }}</span>
+                <span>{{ t('settings.externalAgents.headers') }}</span>
                 <textarea
                   v-model="draft.headersText"
                   class="external-agents__textarea"
@@ -1108,14 +1057,11 @@ onMounted(() => {
           <div class="external-agents__section-head">
             <div>
               <h5 class="external-agents__section-title">
-                {{ t('settings.externalAgents.accessControl', 'Credentials and routing') }}
+                {{ t('settings.externalAgents.accessControl') }}
               </h5>
               <p class="external-agents__section-copy">
                 {{
-                  t(
-                    'settings.externalAgents.accessControlHelp',
-                    'Only fill these fields when the target needs auth, provider wiring, or extra headers.'
-                  )
+                  t('settings.externalAgents.accessControlHelp')
                 }}
               </p>
             </div>
@@ -1123,7 +1069,7 @@ onMounted(() => {
 
           <div class="external-agents__form-grid">
             <label class="external-agents__field">
-              <span>{{ t('settings.externalAgents.credentialSource', 'Credential Source') }}</span>
+              <span>{{ t('settings.externalAgents.credentialSource') }}</span>
               <input
                 v-model="draft.credentialProviderId"
                 class="external-agents__input"
@@ -1133,7 +1079,7 @@ onMounted(() => {
             </label>
 
             <label v-if="draft.protocol === 'acp'" class="external-agents__field">
-              <span>{{ t('settings.externalAgents.authMethod', 'Auth Method') }}</span>
+              <span>{{ t('settings.externalAgents.authMethod') }}</span>
               <input
                 v-model="draft.authMethodId"
                 class="external-agents__input"
@@ -1146,14 +1092,11 @@ onMounted(() => {
 
         <details class="external-agents__advanced">
           <summary class="external-agents__advanced-summary">
-            {{ t('settings.externalAgents.advancedOptions', 'Advanced options') }}
+            {{ t('settings.externalAgents.advancedOptions') }}
           </summary>
           <p class="external-agents__section-copy">
             {{
-              t(
-                'settings.externalAgents.advancedOptionsHelp',
-                'IDs and raw metadata are usually only needed for imports or automation.'
-              )
+              t('settings.externalAgents.advancedOptionsHelp')
             }}
           </p>
 
@@ -1168,7 +1111,7 @@ onMounted(() => {
             </label>
 
             <label class="external-agents__field external-agents__field--full">
-              <span>{{ t('settings.externalAgents.metadata', 'Metadata') }}</span>
+              <span>{{ t('settings.externalAgents.metadata') }}</span>
               <textarea
                 v-model="draft.metadataText"
                 class="external-agents__textarea"

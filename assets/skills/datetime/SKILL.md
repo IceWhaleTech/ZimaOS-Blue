@@ -2,6 +2,15 @@
 name: datetime
 version: "0.1.0"
 description: "Disabled placeholder for date/time/timezone helpers. ZimaOS Blue does not currently register a dedicated builtin datetime skill in the live runtime."
+invocation: "blue datetime action=now timezone=UTC"
+examples:
+  - "blue datetime action=now timezone=UTC"
+capability_tags:
+  - datetime
+  - time
+  - timezone
+interaction_mode: stateless
+card_support: none
 enabled: false
 category: internal
 tags:

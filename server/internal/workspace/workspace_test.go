@@ -395,51 +395,75 @@ func TestLocaleTemplates(t *testing.T) {
 	}
 }
 
-func TestAgentsTemplate_CommandCompatibilityIsRuntimeSpecific(t *testing.T) {
+func TestAgentsTemplate_LoadsPlatformSpecificTemplate(t *testing.T) {
+	suffixByGOOS := map[string]string{
+		"darwin":  "_darwin",
+		"linux":   "_linux",
+		"windows": "_windows",
+	}
+
+	suffix, ok := suffixByGOOS[runtime.GOOS]
+	if !ok {
+		t.Skipf("unsupported runtime.GOOS in test expectations: %s", runtime.GOOS)
+	}
+
 	for _, locale := range []string{"en", "zh"} {
 		ts := getTemplates(locale)
 		if ts == nil {
 			t.Fatalf("expected %s templates", locale)
 		}
 
-		got := ts.agents
-		if strings.Contains(got, "`uname` / `$OSTYPE` / `$PSVersionTable`") {
-			t.Fatalf("%s AGENTS command compatibility should not ask LLM to detect OS/shell", locale)
+		wantBytes, err := fs.ReadFile(templatesFS, "templates/"+locale+"/AGENTS"+suffix+".md")
+		if err != nil {
+			t.Fatalf("read platform AGENTS for %s: %v", locale, err)
 		}
 
-		switch runtime.GOOS {
-		case "darwin":
-			if !strings.Contains(got, "`macOS`") {
-				t.Fatalf("%s darwin runtime should keep macOS command guidance", locale)
-			}
-			for _, needle := range []string{"`Linux`", "`Windows`", "`PowerShell 5.1`", "`PowerShell 7+`", "`cmd`"} {
-				if strings.Contains(got, needle) {
-					t.Fatalf("%s darwin runtime should not include %s guidance", locale, needle)
-				}
-			}
-		case "linux":
-			if !strings.Contains(got, "`Linux`") {
-				t.Fatalf("%s linux runtime should keep Linux command guidance", locale)
-			}
-			for _, needle := range []string{"`macOS`", "`Windows`", "`PowerShell 5.1`", "`PowerShell 7+`", "`cmd`"} {
-				if strings.Contains(got, needle) {
-					t.Fatalf("%s linux runtime should not include %s guidance", locale, needle)
-				}
-			}
-		case "windows":
-			for _, needle := range []string{"`Windows`", "`PowerShell 5.1`", "`PowerShell 7+`", "`cmd`"} {
-				if !strings.Contains(got, needle) {
-					t.Fatalf("%s windows runtime should include %s guidance", locale, needle)
-				}
-			}
-			for _, needle := range []string{"`macOS`", "`Linux`"} {
-				if strings.Contains(got, needle) {
-					t.Fatalf("%s windows runtime should not include %s guidance", locale, needle)
-				}
-			}
-		default:
-			t.Skipf("unsupported runtime.GOOS in test expectations: %s", runtime.GOOS)
+		got := strings.TrimSpace(ts.agents)
+		want := strings.TrimSpace(string(wantBytes))
+		if got != want {
+			t.Fatalf("%s AGENTS should load platform-specific template %q", locale, "AGENTS"+suffix+".md")
 		}
+
+		if strings.Contains(got, "`uname` / `$OSTYPE` / `$PSVersionTable`") {
+			t.Fatalf("%s AGENTS should come from the platform-specific file, not the generic OS/Shell checklist", locale)
+		}
+	}
+}
+
+func TestEnsureWorkspace_WritesDetectedAgentsTemplate(t *testing.T) {
+	t.Setenv("LANG", "en_US.UTF-8")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LANGUAGE", "")
+
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	if err := mgr.EnsureWorkspace(); err != nil {
+		t.Fatalf("EnsureWorkspace: %v", err)
+	}
+
+	gotBytes, err := os.ReadFile(filepath.Join(dir, FileAGENTS))
+	if err != nil {
+		t.Fatalf("read workspace AGENTS.md: %v", err)
+	}
+
+	got := strings.TrimSpace(string(gotBytes))
+	want := strings.TrimSpace(getTemplates(DetectLocale()).agents)
+	if got != want {
+		t.Fatal("workspace AGENTS.md should match the detected template content written by EnsureWorkspace")
+	}
+}
+
+func TestLocalizedAgentsTemplate_RemainsLocalizedAfterPlatformSplit(t *testing.T) {
+	ts := getTemplates("fr")
+	if ts == nil {
+		t.Fatal("expected fr templates")
+	}
+
+	if !strings.Contains(ts.agents, "Les informations privées restent privées") {
+		t.Fatal("fr AGENTS should remain localized after loading the platform-specific template")
+	}
+	if strings.Contains(ts.agents, "Private things stay private") {
+		t.Fatal("fr AGENTS should not fall back to English content")
 	}
 }
 

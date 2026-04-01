@@ -107,6 +107,29 @@ func (h *SkillHandler) MarketAdviseSkills(c echo.Context) error {
 }
 
 func (h *SkillHandler) MarketSearchSkills(c echo.Context) error {
+	// Rate limiting: 5 requests per second per IP
+	ip := c.RealIP()
+	now := time.Now()
+
+	h.rateLimitMu.Lock()
+	entry, exists := h.rateLimits[ip]
+	if !exists || now.After(entry.reset) {
+		// First request or window expired, create new entry
+		h.rateLimits[ip] = &rateLimitEntry{
+			count: 1,
+			reset: now.Add(time.Second),
+		}
+	} else {
+		entry.count++
+		if entry.count > 5 {
+			h.rateLimitMu.Unlock()
+			return c.JSON(http.StatusTooManyRequests, map[string]string{
+				"error": "rate limit exceeded: 5 requests per second",
+			})
+		}
+	}
+	h.rateLimitMu.Unlock()
+
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
 	semantic := c.QueryParam("semantic") == "true" || c.QueryParam("semantic") == "1"
@@ -132,12 +155,14 @@ func (h *SkillHandler) MarketSearchSkills(c echo.Context) error {
 	}
 	market, err := h.ensureMarketplace()
 	if err != nil || market == nil {
+		c.Response().Header().Set("Cache-Control", "max-age=5, public")
 		return c.JSON(http.StatusOK, h.fallbackMarketSearch(c.Request().Context(), query))
 	}
 	result, err := market.Search(c.Request().Context(), query)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	c.Response().Header().Set("Cache-Control", "max-age=5, public")
 	return c.JSON(http.StatusOK, result)
 }
 
@@ -886,7 +911,9 @@ func (h *SkillHandler) legacyMarketInstall(ctx context.Context, id, userID strin
 	}
 	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
 
-	return legacyInstallResult(id, skillDir, rs), nil
+	result := legacyInstallResult(id, skillDir, rs)
+	result.Warnings = append(result.Warnings, manifestValidationWarnings(manifest)...)
+	return result, nil
 }
 
 func (h *SkillHandler) legacyMarketUpdate(ctx context.Context, id, userID string) (*skillmarket.InstallResult, error) {

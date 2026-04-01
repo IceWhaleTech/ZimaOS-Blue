@@ -203,6 +203,15 @@ type SkillHandler struct {
 	skillAdvisor    *skilladvisor.Service
 	skillSelector   InstalledSkillSelector
 	selectOptions   func() agentcore.SelectOptions
+
+	// Rate limiting for marketplace search
+	rateLimitMu sync.RWMutex
+	rateLimits  map[string]*rateLimitEntry
+}
+
+type rateLimitEntry struct {
+	count int
+	reset time.Time
 }
 
 // NewSkillHandler creates a new skill handler
@@ -226,6 +235,8 @@ func NewSkillHandler(registry *skill.Registry) *SkillHandler {
 			MaxSize:    10,
 			DefaultTTL: 60 * time.Second,
 		}, "skill_categories"),
+
+		rateLimits: make(map[string]*rateLimitEntry),
 	}
 
 	// Register default sources
@@ -961,7 +972,7 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 				"message": "failed to extract uploaded archive: " + err.Error(),
 			})
 		}
-		bundle, err := skillmanifest.ValidateArchiveInstallRoot(extractDir, "", skillmanifest.Options{RequireContract: true})
+		bundle, err := skillmanifest.ValidateArchiveInstallRoot(extractDir, "", installManifestParseOptions())
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]interface{}{
 				"success": false,
@@ -981,7 +992,7 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 	}
 
 	if installBundle == nil {
-		bundle, err := skillmanifest.ValidateInstalledDir(installRoot, "", skillmanifest.Options{RequireContract: true})
+		bundle, err := skillmanifest.ValidateInstalledDir(installRoot, "", installManifestParseOptions())
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]interface{}{
 				"success": false,
@@ -1033,7 +1044,7 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
 		"success":    true,
 		"message":    "skill uploaded and installed",
 		"entry_file": entryFile,
@@ -1042,7 +1053,7 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 			"name":    manifest.Name,
 			"version": manifest.Version,
 		},
-	})
+	}, manifestValidationWarnings(manifest)))
 }
 
 func isSkillArchiveFilename(name string) bool {
@@ -1867,11 +1878,11 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 			})
 		}
 		h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
 			"success": true,
 			"message": fmt.Sprintf("skill %s installed from GitHub", rs.Name),
 			"skill":   rs,
-		})
+		}, manifestValidationWarnings(manifest)))
 	}
 
 	// Non-GitHub: download SKILL.md
@@ -1922,11 +1933,11 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 	}
 
 	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("skill %s installed to %s", rs.Name, skillDir),
 		"skill":   rs,
-	})
+	}, manifestValidationWarnings(manifest)))
 }
 
 // UninstallSkill uninstalls a skill by removing its directory.
@@ -3394,6 +3405,46 @@ type InstallFromURLRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
+func installManifestParseOptions() skillmanifest.Options {
+	return skillmanifest.Options{
+		RequireContract:     true,
+		AllowLegacyFallback: true,
+	}
+}
+
+func manifestValidationWarnings(manifest *skill.Manifest) []string {
+	if manifest == nil || manifest.Metadata == nil {
+		return nil
+	}
+	raw := strings.TrimSpace(manifest.Metadata["validation_notes"])
+	if raw == "" {
+		return nil
+	}
+	lines := strings.Split(raw, "\n")
+	warnings := make([]string, 0, len(lines))
+	seen := make(map[string]struct{}, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		warnings = append(warnings, line)
+	}
+	return warnings
+}
+
+func attachWarnings(payload map[string]interface{}, warnings []string) map[string]interface{} {
+	if len(warnings) == 0 {
+		return payload
+	}
+	payload["warnings"] = warnings
+	return payload
+}
+
 // InstallFromURL installs a skill from a URL. Supports both direct SKILL.md URLs
 // and GitHub directory URLs (downloads all files in the directory).
 func (h *SkillHandler) InstallFromURL(c echo.Context) error {
@@ -3459,11 +3510,11 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("register: %v", err)})
 		}
 
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
 			"success":    true,
 			"entry_file": entryDoc.Name,
 			"skill":      map[string]interface{}{"id": skillID, "path": skillDir},
-		})
+		}, manifestValidationWarnings(manifest)))
 	}
 
 	// Non-GitHub: download single file
@@ -3531,11 +3582,11 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("register: %v", err)})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
 		"success":    true,
 		"entry_file": entryName,
 		"skill":      map[string]interface{}{"id": skillID, "path": skillDir},
-	})
+	}, manifestValidationWarnings(manifest)))
 }
 
 // parseSkillContent parses SKILL.md content and returns skill ID and manifest
@@ -3547,7 +3598,7 @@ func (h *SkillHandler) parseSkillContent(content, sourceURL, overrideName, overr
 	if base := strings.TrimSuffix(filepath.Base(strings.TrimSpace(sourceURL)), filepath.Ext(strings.TrimSpace(sourceURL))); base != "" && !strings.EqualFold(base, "SKILL") {
 		dirName = base
 	}
-	doc, err := skillmanifest.ParseEntry(dirName, sourceURL, []byte(content), skillmanifest.Options{RequireContract: true})
+	doc, err := skillmanifest.ParseEntry(dirName, sourceURL, []byte(content), installManifestParseOptions())
 	if err != nil {
 		return "", nil, err
 	}

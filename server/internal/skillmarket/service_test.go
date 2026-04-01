@@ -2066,3 +2066,124 @@ func newRewriteHostTransport(t *testing.T, server *httptest.Server) http.RoundTr
 	}
 	return rewriteHostTransport{t: t, target: target}
 }
+
+// TestExtractClawHubSecuritySignalsFromSecurityLabels tests that security labels like ["Benign"] are correctly converted to badges
+func TestExtractClawHubSecuritySignalsFromSecurityLabels(t *testing.T) {
+	tests := []struct {
+		name           string
+		securityLabels []interface{}
+		wantBadge      string
+		extraSignals   map[string]interface{}
+	}{
+		{
+			name:           "Benign label should map to green badge",
+			securityLabels: []interface{}{"Benign"},
+			wantBadge:      BadgeGreen,
+			extraSignals:   map[string]interface{}{"score": float64(96)},
+		},
+		{
+			name:           "Safe label should map to green badge",
+			securityLabels: []interface{}{"Safe"},
+			wantBadge:      BadgeGreen,
+			extraSignals:   map[string]interface{}{"score": float64(96)},
+		},
+		{
+			name:           "Verified label should map to green badge",
+			securityLabels: []interface{}{"Verified"},
+			wantBadge:      BadgeGreen,
+			extraSignals:   map[string]interface{}{"score": float64(96)},
+		},
+		{
+			name:           "Trusted label should map to green badge",
+			securityLabels: []interface{}{"Trusted"},
+			wantBadge:      BadgeGreen,
+			extraSignals:   map[string]interface{}{"score": float64(96)},
+		},
+		{
+			name:           "Suspicious label should map to yellow badge",
+			securityLabels: []interface{}{"Suspicious"},
+			wantBadge:      BadgeYellow,
+			extraSignals:   map[string]interface{}{"score": float64(50)},
+		},
+		{
+			name:           "Caution label should map to yellow badge",
+			securityLabels: []interface{}{"Caution"},
+			wantBadge:      BadgeYellow,
+			extraSignals:   map[string]interface{}{"score": float64(50)},
+		},
+		{
+			name:           "Malicious label should map to red badge",
+			securityLabels: []interface{}{"Malicious"},
+			wantBadge:      BadgeRed,
+			extraSignals:   map[string]interface{}{"score": float64(20)},
+		},
+		{
+			name:           "Dangerous label should map to red badge",
+			securityLabels: []interface{}{"Dangerous"},
+			wantBadge:      BadgeRed,
+			extraSignals:   map[string]interface{}{"score": float64(20)},
+		},
+		{
+			name:           "Multiple benign labels should map to green",
+			securityLabels: []interface{}{"Benign", "Verified"},
+			wantBadge:      BadgeGreen,
+			extraSignals:   map[string]interface{}{"score": float64(96)},
+		},
+		{
+			name:           "Mixed labels should pick first matching",
+			securityLabels: []interface{}{"Benign", "Suspicious"},
+			wantBadge:      BadgeGreen,
+			extraSignals:   map[string]interface{}{"score": float64(96)},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := map[string]interface{}{
+				"securityLabels": tt.securityLabels,
+			}
+			// Merge extra signals
+			for k, v := range tt.extraSignals {
+				raw[k] = v
+			}
+			signals := extractClawHubSecuritySignals(raw)
+			if signals == nil {
+				t.Fatal("expected security signals")
+			}
+			if signals.SecurityBadge != tt.wantBadge {
+				t.Fatalf("security badge = %q, want %q", signals.SecurityBadge, tt.wantBadge)
+			}
+		})
+	}
+}
+
+// TestExtractClawHubSecuritySignalsLabelsOverrideEmptyBadge tests that securityLabels works when badge is empty
+func TestExtractClawHubSecuritySignalsLabelsOverrideEmptyBadge(t *testing.T) {
+	signals := extractClawHubSecuritySignals(map[string]interface{}{
+		"securityScan": map[string]interface{}{
+			"score":     float64(96),
+			"riskLevel": "low",
+			// badge is intentionally empty
+		},
+		"securityLabels": []interface{}{"Benign"},
+	})
+	if signals == nil {
+		t.Fatal("expected security signals")
+	}
+	if signals.SecurityBadge != BadgeGreen {
+		t.Fatalf("security badge = %q, want %q (from securityLabels)", signals.SecurityBadge, BadgeGreen)
+	}
+}
+
+// TestExtractClawHubSecuritySignalsLabelsWithSnakeCase tests that security_labels also works
+func TestExtractClawHubSecuritySignalsLabelsWithSnakeCase(t *testing.T) {
+	signals := extractClawHubSecuritySignals(map[string]interface{}{
+		"security_labels": []interface{}{"Benign"},
+	})
+	if signals == nil {
+		t.Fatal("expected security signals")
+	}
+	if signals.SecurityBadge != BadgeGreen {
+		t.Fatalf("security badge = %q, want %q", signals.SecurityBadge, BadgeGreen)
+	}
+}

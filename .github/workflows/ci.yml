@@ -19,11 +19,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Verify OpenClaw submodule
-        run: |
-          git submodule status -- third_party/openclaw
-          test -f third_party/openclaw/README.md
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}

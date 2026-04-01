@@ -5822,10 +5822,11 @@ const (
 )
 
 type chatToolSurfaceSelection struct {
-	RoutedDefs    []tools.ToolDefinition
-	NativeDefs    []tools.ToolDefinition
-	NativeMode    chatNativeToolSurfaceMode
-	SkillDecision *agentcore.Decision
+	RoutedDefs        []tools.ToolDefinition
+	NativeDefs        []tools.ToolDefinition
+	NativeMode        chatNativeToolSurfaceMode
+	SkillDecision     *agentcore.Decision
+	DiscoveryDecision *agentcore.CapabilityDiscoveryDecision
 }
 
 func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage, model, sessionID, explicitProviderID string, state memory.ConversationCommandState, webSearchEnabled, deepResearchEnabled *bool) []tools.ToolDefinition {
@@ -5861,27 +5862,62 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	}
 	selection.SkillDecision = &decision
 
-	if decision.NeedClarify {
+	skillDynamicExposure := h.settingsHandler != nil && h.settingsHandler.GetSkillDynamicExposure()
+	discoveryDecision := agentcore.BuildDiscoveryDecision(decision, skillDynamicExposure)
+	selection.DiscoveryDecision = &discoveryDecision
+
+	h.logDiscoveryDecision(userMessage, discoveryDecision)
+
+	switch discoveryDecision.NativeSurfaceMode {
+	case agentcore.NativeSurfaceModeClarifyNone:
 		selection.NativeDefs = nil
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
 		return selection
-	}
-
-	selectedSkill := strings.TrimSpace(decision.SelectedSkill)
-	if selectedSkill == "" || !cutoverSkillAllowedByPreferences(selectedSkill, webSearchEnabled, deepResearchEnabled) {
+	case agentcore.NativeSurfaceModeSkillExec:
+		// Validate capability toggles for cutover-eligible canonical skills
+		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
+			return selection
+		}
+		execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
+		if !ok {
+			return selection
+		}
+		selection.NativeDefs = []tools.ToolDefinition{execDef}
+		selection.NativeMode = chatNativeToolSurfaceModeSkillExec
+		return selection
+	default:
+		// NativeSurfaceModeLegacy: keep routed native defs
 		return selection
 	}
-
-	execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
-	if !ok {
-		return selection
-	}
-
-	selection.NativeDefs = []tools.ToolDefinition{execDef}
-	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
-	return selection
 }
 
+// discoveryCutoverAllowedByPreferences checks if a canonical skill is allowed by capability toggles.
+func discoveryCutoverAllowedByPreferences(canonical agentcore.CanonicalSkillID, webSearchEnabled, deepResearchEnabled *bool) bool {
+	switch canonical {
+	case agentcore.CanonicalWebQuery:
+		return webSearchEnabled == nil || *webSearchEnabled
+	case agentcore.CanonicalDeepResearch:
+		return deepResearchEnabled == nil || *deepResearchEnabled
+	default:
+		return true
+	}
+}
+
+// logDiscoveryDecision logs observability for discover-first cutover decisions.
+func (h *ChatHandler) logDiscoveryDecision(query string, d agentcore.CapabilityDiscoveryDecision) {
+	obs := d.ToObservation()
+	logger.Debug().
+		Str("query", query).
+		Str("selected_canonical_skill", obs.SelectedCanonicalSkill).
+		Str("selected_alias", obs.SelectedAlias).
+		Str("native_surface_mode", string(obs.NativeSurfaceMode)).
+		Str("execution_profile", string(obs.ExecutionProfile)).
+		Bool("skill_exec_cutover", obs.SkillExecCutover).
+		Str("clarify_outcome", obs.ClarifyOutcome).
+		Bool("forked_skill_execution", obs.ForkedSkillExecution).
+		Str("fallback_reason", obs.FallbackReason).
+		Msg("[chat] discover-first decision")
+}
 func cutoverSkillAllowedByPreferences(skill string, webSearchEnabled, deepResearchEnabled *bool) bool {
 	switch strings.ToLower(strings.TrimSpace(skill)) {
 	case "web_search", "web", "web-query", "web_query":
@@ -7662,15 +7698,28 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	}
 	selection.SkillDecision = &decision
 
-	if decision.NeedClarify {
+	skillDynamicExposure := h.settingsHandler != nil && h.settingsHandler.GetSkillDynamicExposure()
+	discoveryDecision := agentcore.BuildDiscoveryDecision(decision, skillDynamicExposure)
+	selection.DiscoveryDecision = &discoveryDecision
+
+	switch discoveryDecision.NativeSurfaceMode {
+	case agentcore.NativeSurfaceModeClarifyNone:
 		selection.NativeDefs = nil
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
 		return selection
+	case agentcore.NativeSurfaceModeLegacy:
+		return selection
 	}
 
-	selectedSkill := strings.TrimSpace(decision.SelectedSkill)
-	if selectedSkill == "" || !cutoverSkillAllowedByPreferences(selectedSkill, webSearchEnabled, deepResearchEnabled) {
-		return selection
+	if skillDynamicExposure {
+		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
+			return selection
+		}
+	} else {
+		selectedSkill := strings.TrimSpace(decision.SelectedSkill)
+		if selectedSkill == "" || !cutoverSkillAllowedByPreferences(selectedSkill, webSearchEnabled, deepResearchEnabled) {
+			return selection
+		}
 	}
 
 	execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)

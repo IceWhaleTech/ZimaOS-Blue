@@ -563,6 +563,90 @@ func TestSelectorDryRunIncludesSkillAdvice(t *testing.T) {
 	}
 }
 
+func TestSelectorDryRunIncludesDiscoverFirstMetadata(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+	dynamicExposure := true
+	h.settings.SkillDynamicExposure = &dynamicExposure
+
+	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
+
+	if body["selected_alias"] != "web_search" {
+		t.Fatalf("selected_alias = %#v, want web_search", body["selected_alias"])
+	}
+	if body["selected_canonical_skill"] != "web_query" {
+		t.Fatalf("selected_canonical_skill = %#v, want web_query", body["selected_canonical_skill"])
+	}
+	if body["execution_profile"] != "prefer_fork" {
+		t.Fatalf("execution_profile = %#v, want prefer_fork", body["execution_profile"])
+	}
+	if body["skill_exec_cutover"] != true {
+		t.Fatalf("skill_exec_cutover = %#v, want true", body["skill_exec_cutover"])
+	}
+	if body["forked_skill_execution"] != true {
+		t.Fatalf("forked_skill_execution = %#v, want true", body["forked_skill_execution"])
+	}
+	if body["selected_native_surface_reason"] != "discover_first_cutover" {
+		t.Fatalf("selected_native_surface_reason = %#v, want discover_first_cutover", body["selected_native_surface_reason"])
+	}
+	discoveryDecision, ok := body["discovery_decision"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected discovery_decision payload, got=%T", body["discovery_decision"])
+	}
+	if discoveryDecision["canonical_target"] != "web_query" {
+		t.Fatalf("discovery_decision.canonical_target = %#v, want web_query", discoveryDecision["canonical_target"])
+	}
+	if discoveryDecision["execution_profile"] != "prefer_fork" {
+		t.Fatalf("discovery_decision.execution_profile = %#v, want prefer_fork", discoveryDecision["execution_profile"])
+	}
+	canonicalEntry, ok := body["selected_canonical_entry"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected selected_canonical_entry payload, got=%T", body["selected_canonical_entry"])
+	}
+	if canonicalEntry["canonical_id"] != "web_query" {
+		t.Fatalf("selected_canonical_entry.canonical_id = %#v, want web_query", canonicalEntry["canonical_id"])
+	}
+	if body["selected_canonical_cutover_eligible"] != true {
+		t.Fatalf("selected_canonical_cutover_eligible = %#v, want true", body["selected_canonical_cutover_eligible"])
+	}
+	discoveryRuntime, ok := body["discovery_runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected discovery_runtime payload, got=%T", body["discovery_runtime"])
+	}
+	if discoveryRuntime["surface_reason"] != "discover_first_cutover" {
+		t.Fatalf("discovery_runtime.surface_reason = %#v, want discover_first_cutover", discoveryRuntime["surface_reason"])
+	}
+	if discoveryRuntime["entry_kind"] != "skill" {
+		t.Fatalf("discovery_runtime.entry_kind = %#v, want skill", discoveryRuntime["entry_kind"])
+	}
+	aliases, ok := discoveryRuntime["aliases"].([]any)
+	if !ok || len(aliases) == 0 {
+		t.Fatalf("expected discovery_runtime.aliases, got=%v", discoveryRuntime["aliases"])
+	}
+}
+
+func TestSelectorDryRunIncludesLegacyCompatDiscoverReasonWhenDynamicExposureDisabled(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+
+	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
+
+	if body["selected_native_surface_mode"] != "skill_exec" {
+		t.Fatalf("selected_native_surface_mode = %#v, want skill_exec", body["selected_native_surface_mode"])
+	}
+	if body["selected_native_surface_reason"] != "legacy_exec_collapse_compat" {
+		t.Fatalf("selected_native_surface_reason = %#v, want legacy_exec_collapse_compat", body["selected_native_surface_reason"])
+	}
+	discoveryRuntime, ok := body["discovery_runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected discovery_runtime payload, got=%T", body["discovery_runtime"])
+	}
+	if discoveryRuntime["dynamic_exposure_enabled"] != false {
+		t.Fatalf("discovery_runtime.dynamic_exposure_enabled = %#v, want false", discoveryRuntime["dynamic_exposure_enabled"])
+	}
+	if discoveryRuntime["surface_reason"] != "legacy_exec_collapse_compat" {
+		t.Fatalf("discovery_runtime.surface_reason = %#v, want legacy_exec_collapse_compat", discoveryRuntime["surface_reason"])
+	}
+}
+
 func TestSelectorDryRun_MultilingualCuratedRoutes(t *testing.T) {
 	h := newSelectorDryRunTestHandler(t)
 

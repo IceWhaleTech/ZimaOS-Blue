@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -5436,6 +5437,79 @@ func TestStreamMessageShortAffirmative_InjectsContinuationHint(t *testing.T) {
 	}
 	if !foundContinuationHint {
 		t.Fatalf("expected continuation hint in system messages, got: %+v", lastReq.Messages)
+	}
+}
+
+func TestStreamMessageDiscoverFirstCutoverUsesExecOnlySurface(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "discover-first stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	toolRegistry := tools.NewRegistry()
+	for _, def := range []tools.ToolDefinition{
+		{Name: "browser", Description: "Open and interact with web pages"},
+		{Name: "deep_research", Description: "Run deep research"},
+		{Name: "exec", Description: "Execute skill and shell commands"},
+		{Name: "read", Description: "Read workspace files"},
+		{Name: "web_search", Description: "Search the web"},
+		{Name: "write", Description: "Write workspace files"},
+	} {
+		toolRegistry.ExposeDefinition(def)
+	}
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	smartSkill := true
+	dynamicExposure := true
+	settings.settings.SmartSkillSelection = &smartSkill
+	settings.settings.SkillDynamicExposure = &dynamicExposure
+	handler.SetSettingsHandler(settings)
+	handler.SetToolSelector(tools.DefaultToolSelector())
+	handler.SetToolRouter(tools.DefaultToolRouter())
+	handler.SetToolPolicyResolver(tools.NewToolPolicyResolver(&config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	}))
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs", "latest")
+	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages after login or click flows", "blue browser.navigate url=https://example.com", "browser", "login", "click")
+	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze multiple links and synthesize a report", `blue analyze topic="multi-link report" --json`, "analysis", "report", "summary", "link", "url")
+	writeSettingsSelectorSkill(t, workspaceDir, "deep_research", "perform cited timeline comparisons and deep research", `blue deep_research query="OpenAI vs Anthropic agent runtime"`, "research", "citation", "timeline", "compare")
+	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+
+	e := echo.New()
+	reqBody := `{"message":"搜索最新 OpenAI Responses API 文档。","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+	if !strings.Contains(rec.Body.String(), `"done":true`) {
+		t.Fatalf("expected done marker in stream body, got: %s", rec.Body.String())
+	}
+
+	lastReq := capture.LastRequest()
+	if len(lastReq.Tools) != 1 || lastReq.Tools[0].Name != "exec" {
+		t.Fatalf("stream provider tools = %#v, want exec-only discover-first cutover", lastReq.Tools)
 	}
 }
 

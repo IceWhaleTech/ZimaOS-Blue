@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1231,6 +1232,10 @@ func printSelectorGateSummary(report *harnesspkg.SelectorGateReport) {
 		fmt.Printf("Route agreement: %.2f (%d/%d)\n", report.Metrics.RouteAgreementRate, report.Metrics.RouteAgreementCount, report.Metrics.RouteCaseCount)
 	}
 	fmt.Printf("Clarify delta: %.2f\n", report.Metrics.ClarifyRateDelta)
+	printHarnessBreakdownSummary("Canonical skills", report.Metrics.SelectedCanonicalSkillBreakdown)
+	printHarnessBreakdownSummary("Native surface modes", report.Metrics.NativeSurfaceModeBreakdown)
+	printHarnessBreakdownSummary("Native surface reasons", report.Metrics.NativeSurfaceReasonBreakdown)
+	printHarnessBreakdownSummary("Execution profiles", report.Metrics.ExecutionProfileBreakdown)
 	if failed := failedSelectorGateChecks(report.Checks); len(failed) > 0 {
 		fmt.Printf("Failed checks: %s\n", strings.Join(failed, ", "))
 	}
@@ -1286,6 +1291,10 @@ func printBudgetGateSummary(report *harnesspkg.SkillCutoverBudgetReport) {
 	fmt.Printf("Median schema-byte reduction: %.2f\n", report.Metrics.MedianSchemaByteReductionRate)
 	fmt.Printf("Median latency increase: %.2f\n", report.Metrics.MedianLatencyIncreaseRate)
 	fmt.Printf("Non-allowed native tool cases: %d\n", report.Metrics.NonAllowedNativeToolCaseCount)
+	printHarnessBreakdownSummary("Canonical skills", report.Metrics.SelectedCanonicalSkillBreakdown)
+	printHarnessBreakdownSummary("Native surface modes", report.Metrics.NativeSurfaceModeBreakdown)
+	printHarnessBreakdownSummary("Native surface reasons", report.Metrics.NativeSurfaceReasonBreakdown)
+	printHarnessBreakdownSummary("Execution profiles", report.Metrics.ExecutionProfileBreakdown)
 	if failed := failedBudgetGateChecks(report.Checks); len(failed) > 0 {
 		fmt.Printf("Failed checks: %s\n", strings.Join(failed, ", "))
 	}
@@ -1382,6 +1391,35 @@ func failedCutoverReadinessReasons(report *harnesspkg.SkillCutoverReadinessRepor
 		out = append(out, "cutover_not_ready")
 	}
 	return out
+}
+
+func printHarnessBreakdownSummary(label string, breakdown map[string]int) {
+	formatted := formatHarnessBreakdown(breakdown)
+	if formatted == "" {
+		return
+	}
+	fmt.Printf("%s: %s\n", label, formatted)
+}
+
+func formatHarnessBreakdown(breakdown map[string]int) string {
+	if len(breakdown) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(breakdown))
+	for key := range breakdown {
+		if strings.TrimSpace(key) != "" {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", key, breakdown[key]))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func batch1ExecutionSkillsForHelp() []string {

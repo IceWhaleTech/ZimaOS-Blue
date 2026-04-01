@@ -379,18 +379,67 @@ func selectorEvalResponse(skill string, clarify bool, outcome string) map[string
 }
 
 func selectorEvalResponseWithTools(skill string, selectedTools []string, clarify bool, outcome string) map[string]interface{} {
+	selectedAlias := strings.TrimSpace(skill)
 	skill = canonicalHarnessRouteName(skill)
 	selectedTools = canonicalHarnessRouteNames(selectedTools)
+	selectedNativeTools := append([]string(nil), selectedTools...)
+	nativeSurfaceMode := "legacy"
+	nativeSurfaceReason := "legacy_native_surface"
+	if clarify {
+		selectedNativeTools = nil
+		nativeSurfaceMode = "clarify_none"
+		nativeSurfaceReason = "clarify_required"
+	} else if len(selectedNativeTools) == 1 && selectedNativeTools[0] == "exec" {
+		nativeSurfaceMode = "skill_exec"
+		if skill == "exec" {
+			nativeSurfaceReason = "legacy_exec_collapse_compat"
+		} else {
+			nativeSurfaceReason = "discover_first_cutover"
+		}
+	}
+	executionProfile := selectorEvalExecutionProfile(skill)
 	toolPayload := make([]interface{}, 0, len(selectedTools))
 	for _, tool := range selectedTools {
 		if tool = strings.TrimSpace(tool); tool != "" {
 			toolPayload = append(toolPayload, tool)
 		}
 	}
+	nativeToolPayload := make([]interface{}, 0, len(selectedNativeTools))
+	for _, tool := range selectedNativeTools {
+		if tool = strings.TrimSpace(tool); tool != "" {
+			nativeToolPayload = append(nativeToolPayload, tool)
+		}
+	}
 	response := map[string]interface{}{
-		"selected_tools":        toolPayload,
-		"selected_tool_surface": selectorEvalToolSurface(selectedTools),
-		"skill_decision":        map[string]interface{}{"selected_skill": skill, "need_clarify": clarify},
+		"selected_tools":                 toolPayload,
+		"selected_tool_surface":          selectorEvalToolSurface(selectedTools),
+		"selected_native_tools":          nativeToolPayload,
+		"selected_native_tool_surface":   selectorEvalToolSurface(selectedNativeTools),
+		"selected_native_surface_mode":   nativeSurfaceMode,
+		"selected_native_surface_reason": nativeSurfaceReason,
+		"selected_canonical_skill":       skill,
+		"selected_alias":                 firstNonEmpty(selectedAlias, skill),
+		"execution_profile":              executionProfile,
+		"skill_exec_cutover":             nativeSurfaceMode == "skill_exec",
+		"forked_skill_execution":         executionProfile == "prefer_fork" || executionProfile == "require_fork",
+		"skill_decision":                 map[string]interface{}{"selected_skill": skill, "need_clarify": clarify},
+		"discovery_decision": map[string]interface{}{
+			"canonical_target":    skill,
+			"alias_resolved":      firstNonEmpty(selectedAlias, skill),
+			"need_clarify":        clarify,
+			"execution_profile":   executionProfile,
+			"native_surface_mode": nativeSurfaceMode,
+		},
+		"discovery_runtime": map[string]interface{}{
+			"canonical_target":       skill,
+			"selected_alias":         firstNonEmpty(selectedAlias, skill),
+			"selected_native_mode":   nativeSurfaceMode,
+			"native_surface_mode":    nativeSurfaceMode,
+			"surface_reason":         nativeSurfaceReason,
+			"execution_profile":      executionProfile,
+			"skill_exec_cutover":     nativeSurfaceMode == "skill_exec",
+			"forked_skill_execution": executionProfile == "prefer_fork" || executionProfile == "require_fork",
+		},
 		"skill_prompt_hint":     "Use the curated selector route.",
 		"canonical_skill_id":    skill,
 		"skill_need_clarify":    clarify,
@@ -406,6 +455,17 @@ func selectorEvalResponseWithTools(skill string, selectedTools []string, clarify
 	var cloned map[string]interface{}
 	_ = json.Unmarshal(raw, &cloned)
 	return cloned
+}
+
+func selectorEvalExecutionProfile(skill string) string {
+	switch canonicalHarnessRouteName(skill) {
+	case harnessCanonicalWebQuerySkill, "analyze":
+		return "prefer_fork"
+	case "deep_research":
+		return "require_fork"
+	default:
+		return "inline"
+	}
 }
 
 func selectorEvalToolSurface(selectedTools []string) map[string]interface{} {

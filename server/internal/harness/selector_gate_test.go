@@ -107,6 +107,30 @@ func TestController_EvaluateSelectorGate_PassesWithOptionalComparisonThresholds(
 	if got := report.Metrics.PrimaryRouteBreakdown["exec"].RouteCompatibleRate; got != 1 {
 		t.Fatalf("metrics.primary_route_breakdown[exec].route_compatible_rate = %#v, want 1", got)
 	}
+	if got := report.Metrics.SelectedCanonicalSkillBreakdown[harnessCanonicalWebQuerySkill]; got != 1 {
+		t.Fatalf("metrics.selected_canonical_skill_breakdown[web_query] = %#v, want 1", got)
+	}
+	if got := report.Metrics.SelectedCanonicalSkillBreakdown["exec"]; got != 1 {
+		t.Fatalf("metrics.selected_canonical_skill_breakdown[exec] = %#v, want 1", got)
+	}
+	if got := report.Metrics.NativeSurfaceModeBreakdown["legacy"]; got != 1 {
+		t.Fatalf("metrics.native_surface_mode_breakdown[legacy] = %#v, want 1", got)
+	}
+	if got := report.Metrics.NativeSurfaceModeBreakdown["clarify_none"]; got != 1 {
+		t.Fatalf("metrics.native_surface_mode_breakdown[clarify_none] = %#v, want 1", got)
+	}
+	if got := report.Metrics.NativeSurfaceReasonBreakdown["legacy_native_surface"]; got != 1 {
+		t.Fatalf("metrics.native_surface_reason_breakdown[legacy_native_surface] = %#v, want 1", got)
+	}
+	if got := report.Metrics.NativeSurfaceReasonBreakdown["clarify_required"]; got != 1 {
+		t.Fatalf("metrics.native_surface_reason_breakdown[clarify_required] = %#v, want 1", got)
+	}
+	if got := report.Metrics.ExecutionProfileBreakdown["prefer_fork"]; got != 1 {
+		t.Fatalf("metrics.execution_profile_breakdown[prefer_fork] = %#v, want 1", got)
+	}
+	if got := report.Metrics.ExecutionProfileBreakdown["inline"]; got != 1 {
+		t.Fatalf("metrics.execution_profile_breakdown[inline] = %#v, want 1", got)
+	}
 	if check := selectorGateCheckByName(t, report.Checks, "route_agreement_rate"); !check.Passed {
 		t.Fatalf("route_agreement_rate check = %#v, want pass", check)
 	}

@@ -215,25 +215,29 @@ type SelectorGateSegmentMetrics struct {
 }
 
 type SelectorGateMetrics struct {
-	CaseCount               int                                   `json:"case_count"`
-	PassedCount             int                                   `json:"passed_count"`
-	PassRate                float64                               `json:"pass_rate"`
-	CriticalCaseCount       int                                   `json:"critical_case_count"`
-	CriticalPassedCount     int                                   `json:"critical_passed_count"`
-	CriticalPassRate        float64                               `json:"critical_pass_rate"`
-	RouteCaseCount          int                                   `json:"route_case_count"`
-	RouteAgreementCount     int                                   `json:"route_agreement_count"`
-	RouteAgreementRate      float64                               `json:"route_agreement_rate"`
-	RouteCompatibleCount    int                                   `json:"route_compatible_count"`
-	RouteCompatibleRate     float64                               `json:"route_compatible_rate"`
-	RouteImprovementCount   int                                   `json:"route_improvement_count"`
-	RouteDisagreementCount  int                                   `json:"route_disagreement_count"`
-	CriticalRegressionCount int                                   `json:"critical_regression_count"`
-	BaseClarifyRate         float64                               `json:"base_clarify_rate"`
-	TargetClarifyRate       float64                               `json:"target_clarify_rate"`
-	ClarifyRateDelta        float64                               `json:"clarify_rate_delta"`
-	LocaleBreakdown         map[string]SelectorGateSegmentMetrics `json:"locale_breakdown,omitempty"`
-	PrimaryRouteBreakdown   map[string]SelectorGateSegmentMetrics `json:"primary_route_breakdown,omitempty"`
+	CaseCount                       int                                   `json:"case_count"`
+	PassedCount                     int                                   `json:"passed_count"`
+	PassRate                        float64                               `json:"pass_rate"`
+	CriticalCaseCount               int                                   `json:"critical_case_count"`
+	CriticalPassedCount             int                                   `json:"critical_passed_count"`
+	CriticalPassRate                float64                               `json:"critical_pass_rate"`
+	RouteCaseCount                  int                                   `json:"route_case_count"`
+	RouteAgreementCount             int                                   `json:"route_agreement_count"`
+	RouteAgreementRate              float64                               `json:"route_agreement_rate"`
+	RouteCompatibleCount            int                                   `json:"route_compatible_count"`
+	RouteCompatibleRate             float64                               `json:"route_compatible_rate"`
+	RouteImprovementCount           int                                   `json:"route_improvement_count"`
+	RouteDisagreementCount          int                                   `json:"route_disagreement_count"`
+	CriticalRegressionCount         int                                   `json:"critical_regression_count"`
+	BaseClarifyRate                 float64                               `json:"base_clarify_rate"`
+	TargetClarifyRate               float64                               `json:"target_clarify_rate"`
+	ClarifyRateDelta                float64                               `json:"clarify_rate_delta"`
+	LocaleBreakdown                 map[string]SelectorGateSegmentMetrics `json:"locale_breakdown,omitempty"`
+	PrimaryRouteBreakdown           map[string]SelectorGateSegmentMetrics `json:"primary_route_breakdown,omitempty"`
+	SelectedCanonicalSkillBreakdown map[string]int                        `json:"selected_canonical_skill_breakdown,omitempty"`
+	NativeSurfaceModeBreakdown      map[string]int                        `json:"native_surface_mode_breakdown,omitempty"`
+	NativeSurfaceReasonBreakdown    map[string]int                        `json:"native_surface_reason_breakdown,omitempty"`
+	ExecutionProfileBreakdown       map[string]int                        `json:"execution_profile_breakdown,omitempty"`
 }
 
 type SelectorGateCheck struct {

@@ -93,6 +93,56 @@ func TestBuildTaskCoordinationPromptContext_IncludesScratchpadAndDelegationHints
 	}
 }
 
+func TestBuildTaskCoordinationPromptContext_IncludesExecutionProfileHints(t *testing.T) {
+	task := &Task{
+		WorkspaceRoot: t.TempDir(),
+		Metadata: map[string]interface{}{
+			"routing_contract": map[string]interface{}{
+				"primary_route": "web_query",
+			},
+		},
+	}
+	prepareTaskCoordinationMetadata(task, true)
+
+	out := buildTaskCoordinationPromptContext(task)
+	required := []string{
+		"Discover-first route: web_query",
+		"execution profile: prefer_fork",
+		"Prefer an isolated worker",
+		"fresh context instead of letting the implementation worker self-certify",
+	}
+	for _, want := range required {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected coordination prompt to include %q, got: %s", want, out)
+		}
+	}
+}
+
+func TestBuildTaskCoordinationPromptContext_IncludesRequireForkHintsForDeepResearch(t *testing.T) {
+	task := &Task{
+		WorkspaceRoot: t.TempDir(),
+		Metadata: map[string]interface{}{
+			"routing_contract": map[string]interface{}{
+				"primary_route": "deep_research",
+			},
+		},
+	}
+	prepareTaskCoordinationMetadata(task, true)
+
+	out := buildTaskCoordinationPromptContext(task)
+	required := []string{
+		"Discover-first route: deep_research",
+		"execution profile: require_fork",
+		"Delegate this execution to an isolated worker",
+		"separate fresh-context worker",
+	}
+	for _, want := range required {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected coordination prompt to include %q, got: %s", want, out)
+		}
+	}
+}
+
 func TestRepairExecutionContractToolCalls_RewritesBareReminderCLIWithCanonicalArgs(t *testing.T) {
 	withFixedGroundedCanonicalNow(t, time.Date(2026, 3, 31, 10, 0, 0, 0, time.FixedZone("CET", 1*60*60)))
 

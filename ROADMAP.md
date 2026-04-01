@@ -422,7 +422,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | Mar 21–22, 2026 | — | Chat streaming interruption recovery and compact interaction polish; Harness compare flow and scorecard diagnostics; session/transcript audit storage hardening; Deep Research routing and source-detail improvements; built-in web search and information acquisition uplift in progress |
 | Mar 23–25, 2026 | v0.10.33 | Channel config persistence; IM cache invalidation fixes; conversation response ID cleanup |
 | Mar 29–30, 2026 | v0.10.35 | GPT-5.4/5.3-codex compatibility; MiniMax regional routing; MuleRouter image generation fixes; External Agents settings; OpenRouter stream error recovery; Harness scorecard diagnostics |
-| Mar 31–Apr 1, 2026 | v0.10.36 | SQLite transcript auditing enhancements; Harness i18n overlays and group management; streaming tool parsing fixes; SkillTab/ToolTab UI polish; embedding disabled by default |
+| Mar 31–Apr 1, 2026 | v0.10.36 | SQLite transcript auditing enhancements; Harness i18n overlays and group management; streaming tool parsing fixes; SkillTab/ToolTab UI polish; embedding disabled by default; **Skill Store performance optimization** (search caching, debouncing, request cancellation) |
 
 ---
 

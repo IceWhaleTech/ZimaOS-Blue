@@ -1,0 +1,310 @@
+name: Budget Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: Blue API base URL, for example https://blue.example.com/api/v1
+        required: false
+        type: string
+        default: ""
+      owner:
+        description: Harness owner user id
+        required: false
+        type: string
+        default: "release-gate"
+      candidate_id:
+        description: Stable candidate id for streak and readiness checks
+        required: false
+        type: string
+        default: ""
+      candidate_label:
+        description: Human-readable candidate label
+        required: false
+        type: string
+        default: ""
+      eval_spec_id:
+        description: Optional selector eval spec id override used when creating a fresh eval run
+        required: false
+        type: string
+        default: ""
+      eval_run_id:
+        description: Optional existing selector eval run id to reuse
+        required: false
+        type: string
+        default: ""
+      baseline_id:
+        description: Optional budget baseline id override
+        required: false
+        type: string
+        default: ""
+      base_eval_run_id:
+        description: Optional budget base eval run id override
+        required: false
+        type: string
+        default: ""
+      min_median_schema_byte_reduction_rate:
+        description: Minimum median schema-byte reduction rate
+        required: false
+        type: string
+        default: "0.80"
+      max_median_latency_increase_rate:
+        description: Maximum median latency increase rate
+        required: false
+        type: string
+        default: "0.10"
+      allowed_final_native_tools:
+        description: Comma-separated allowed final native tools
+        required: false
+        type: string
+        default: "exec"
+      require_consecutive_green:
+        description: Require this many consecutive green budget runs
+        required: false
+        type: string
+        default: "2"
+      history_limit_runs:
+        description: Number of prior workflow runs to inspect for history
+        required: false
+        type: string
+        default: "10"
+      history_branch:
+        description: Optional branch filter for history artifact downloads
+        required: false
+        type: string
+        default: ""
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  budget-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      INPUT_SERVER_URL: ${{ github.event.inputs.server_url || '' }}
+      INPUT_OWNER: ${{ github.event.inputs.owner || '' }}
+      INPUT_CANDIDATE_ID: ${{ github.event.inputs.candidate_id || '' }}
+      INPUT_CANDIDATE_LABEL: ${{ github.event.inputs.candidate_label || '' }}
+      INPUT_EVAL_SPEC_ID: ${{ github.event.inputs.eval_spec_id || '' }}
+      INPUT_EVAL_RUN_ID: ${{ github.event.inputs.eval_run_id || '' }}
+      INPUT_BASELINE_ID: ${{ github.event.inputs.baseline_id || '' }}
+      INPUT_BASE_EVAL_RUN_ID: ${{ github.event.inputs.base_eval_run_id || '' }}
+      INPUT_MIN_MEDIAN_SCHEMA_BYTE_REDUCTION_RATE: ${{ github.event.inputs.min_median_schema_byte_reduction_rate || '0.80' }}
+      INPUT_MAX_MEDIAN_LATENCY_INCREASE_RATE: ${{ github.event.inputs.max_median_latency_increase_rate || '0.10' }}
+      INPUT_ALLOWED_FINAL_NATIVE_TOOLS: ${{ github.event.inputs.allowed_final_native_tools || 'exec' }}
+      INPUT_REQUIRE_CONSECUTIVE_GREEN: ${{ github.event.inputs.require_consecutive_green || '2' }}
+      INPUT_HISTORY_LIMIT_RUNS: ${{ github.event.inputs.history_limit_runs || '10' }}
+      INPUT_HISTORY_BRANCH: ${{ github.event.inputs.history_branch || '' }}
+      SECRET_SERVER_URL: ${{ secrets.BLUE_BUDGET_GATE_SERVER_URL }}
+      FALLBACK_SERVER_URL: ${{ secrets.BLUE_HARNESS_SERVER_URL }}
+      SECRET_BASELINE_ID: ${{ secrets.BLUE_BUDGET_GATE_BASELINE_ID }}
+      SECRET_BASE_EVAL_RUN_ID: ${{ secrets.BLUE_BUDGET_GATE_BASE_EVAL_RUN_ID }}
+      BLUE_API_KEY: ${{ secrets.BLUE_BUDGET_GATE_API_KEY || secrets.BLUE_HARNESS_API_KEY }}
+      BLUE_BEARER_TOKEN: ${{ secrets.BLUE_BUDGET_GATE_BEARER_TOKEN || secrets.BLUE_HARNESS_BEARER_TOKEN }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve workflow configuration
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          branch_ref="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-detached}}"
+          branch_slug="$(printf '%s' "$branch_ref" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//')"
+          if [ -z "$branch_slug" ]; then
+            branch_slug="detached"
+          fi
+
+          server_url="${INPUT_SERVER_URL:-${SECRET_SERVER_URL:-${FALLBACK_SERVER_URL:-}}}"
+          owner="${INPUT_OWNER:-release-gate}"
+          candidate_label="${INPUT_CANDIDATE_LABEL:-$branch_slug}"
+          candidate_id="${INPUT_CANDIDATE_ID:-$candidate_label}"
+          baseline_id="${INPUT_BASELINE_ID:-${SECRET_BASELINE_ID:-}}"
+          base_eval_run_id="${INPUT_BASE_EVAL_RUN_ID:-${SECRET_BASE_EVAL_RUN_ID:-}}"
+          history_branch="${INPUT_HISTORY_BRANCH:-$branch_ref}"
+
+          skip_reason=""
+          if [ -z "$server_url" ]; then
+            skip_reason="No server URL configured. Set workflow input server_url or repository secret BLUE_BUDGET_GATE_SERVER_URL or BLUE_HARNESS_SERVER_URL."
+          elif [ -z "${INPUT_EVAL_RUN_ID}" ] && [ -z "$baseline_id" ] && [ -z "$base_eval_run_id" ]; then
+            skip_reason="No budget comparison base configured. Provide eval_run_id, baseline_id, or base_eval_run_id, or configure BLUE_BUDGET_GATE_BASELINE_ID or BLUE_BUDGET_GATE_BASE_EVAL_RUN_ID."
+          fi
+
+          {
+            echo "server_url=$server_url"
+            echo "owner=$owner"
+            echo "candidate_id=$candidate_id"
+            echo "candidate_label=$candidate_label"
+            echo "baseline_id=$baseline_id"
+            echo "base_eval_run_id=$base_eval_run_id"
+            echo "history_branch=$history_branch"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -n "$skip_reason" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=$skip_reason" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Budget Gate"
+              echo
+              echo "Skipped: $skip_reason"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run budget gate
+        if: steps.resolve.outputs.skip != 'true'
+        id: gate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          args=(
+            python3 scripts/budget_gate_runner.py
+            --blue-base-url "${{ steps.resolve.outputs.server_url }}"
+            --owner "${{ steps.resolve.outputs.owner }}"
+            --candidate-id "${{ steps.resolve.outputs.candidate_id }}"
+            --candidate-label "${{ steps.resolve.outputs.candidate_label }}"
+            --output-json docs/reports/budget_gate_report.json
+            --output-md docs/reports/budget_gate_report.md
+          )
+
+          if [ -n "${INPUT_EVAL_SPEC_ID}" ]; then
+            args+=(--eval-spec-id "${INPUT_EVAL_SPEC_ID}")
+          fi
+          if [ -n "${INPUT_EVAL_RUN_ID}" ]; then
+            args+=(--eval-run-id "${INPUT_EVAL_RUN_ID}")
+          fi
+          if [ -n "${{ steps.resolve.outputs.baseline_id }}" ]; then
+            args+=(--baseline-id "${{ steps.resolve.outputs.baseline_id }}")
+          fi
+          if [ -n "${{ steps.resolve.outputs.base_eval_run_id }}" ]; then
+            args+=(--base-eval-run-id "${{ steps.resolve.outputs.base_eval_run_id }}")
+          fi
+          if [ -n "${INPUT_MIN_MEDIAN_SCHEMA_BYTE_REDUCTION_RATE}" ]; then
+            args+=(--min-median-schema-byte-reduction-rate "${INPUT_MIN_MEDIAN_SCHEMA_BYTE_REDUCTION_RATE}")
+          fi
+          if [ -n "${INPUT_MAX_MEDIAN_LATENCY_INCREASE_RATE}" ]; then
+            args+=(--max-median-latency-increase-rate "${INPUT_MAX_MEDIAN_LATENCY_INCREASE_RATE}")
+          fi
+          if [ -n "${INPUT_ALLOWED_FINAL_NATIVE_TOOLS}" ]; then
+            args+=(--allowed-final-native-tools "${INPUT_ALLOWED_FINAL_NATIVE_TOOLS}")
+          fi
+
+          "${args[@]}"
+
+      - name: Download budget gate history artifacts
+        if: always() && steps.resolve.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/budget_gate_artifact_fetcher.py \
+            --repo "${GITHUB_REPOSITORY}" \
+            --github-token "${GITHUB_TOKEN}" \
+            --workflow budget-gate.yml \
+            --branch "${{ steps.resolve.outputs.history_branch }}" \
+            --exclude-run-id "${GITHUB_RUN_ID}" \
+            --limit-runs "${INPUT_HISTORY_LIMIT_RUNS}" \
+            --output-dir docs/reports/budget_gate_history_artifacts/downloaded \
+            --output-json docs/reports/budget_gate_history_artifacts/download-manifest.json
+
+      - name: Build budget gate history summary
+        if: always() && steps.resolve.outputs.skip != 'true'
+        id: history
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 scripts/budget_gate_history_report.py \
+            --reports docs/reports/budget_gate_report.json "docs/reports/budget_gate_history_artifacts/downloaded/budget_reports/*.json" \
+            --candidate-id "${{ steps.resolve.outputs.candidate_id }}" \
+            --candidate-label "${{ steps.resolve.outputs.candidate_label }}" \
+            --require-consecutive-green "${INPUT_REQUIRE_CONSECUTIVE_GREEN}" \
+            --output-json docs/reports/budget_gate_history_report.json \
+            --output-md docs/reports/budget_gate_history_report.md
+
+      - name: Publish budget gate summary
+        if: always() && steps.resolve.outputs.skip != 'true'
+        shell: bash
+        run: |
+          {
+            echo "## Budget Gate"
+            echo
+            if [ -f docs/reports/budget_gate_report.md ]; then
+              cat docs/reports/budget_gate_report.md
+            else
+              echo "Report missing: docs/reports/budget_gate_report.md"
+            fi
+            if [ -f docs/reports/budget_gate_history_report.md ]; then
+              echo
+              cat docs/reports/budget_gate_history_report.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload budget gate artifacts
+        if: always() && steps.resolve.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: budget-gate-report
+          if-no-files-found: warn
+          path: |
+            docs/reports/budget_gate_report.json
+            docs/reports/budget_gate_report.md
+            docs/reports/budget_gate_history_report.json
+            docs/reports/budget_gate_history_report.md
+            docs/reports/budget_gate_history_artifacts/download-manifest.json
+
+      - name: Enforce budget gate verdict
+        if: always() && steps.resolve.outputs.skip != 'true'
+        shell: bash
+        env:
+          REQUIRE_CONSECUTIVE_GREEN: ${{ env.INPUT_REQUIRE_CONSECUTIVE_GREEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          report_path = Path("docs/reports/budget_gate_report.json")
+          if not report_path.is_file():
+              print("budget gate report was not generated", file=sys.stderr)
+              sys.exit(1)
+
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          if not bool(report.get("passed")):
+              print(f"budget gate failed with status={report.get('status')}", file=sys.stderr)
+              sys.exit(1)
+
+          required = int(os.environ.get("REQUIRE_CONSECUTIVE_GREEN", "0") or 0)
+          if required > 0:
+              history_path = Path("docs/reports/budget_gate_history_report.json")
+              if not history_path.is_file():
+                  print("budget gate history report was not generated", file=sys.stderr)
+                  sys.exit(1)
+              history = json.loads(history_path.read_text(encoding="utf-8"))
+              if not bool(history.get("requirement_passed")):
+                  current = history.get("consecutive_green_count")
+                  print(
+                      f"budget gate history requirement failed: {current}/{required} consecutive green runs",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+          print("budget gate and history checks passed")
+          PY

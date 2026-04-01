@@ -16,9 +16,9 @@ func withRuntimeToolingSkillFallbacks(options routeRuntimeContractToolingOptions
 }
 
 func bindRuntimeToolingBrowserRuntime(options routeRuntimeContractToolingOptions) {
-	if options.browserBackend != nil {
-		tools.RegisterBrowserTool(options.registry, options.browserBackend)
-	}
+	// Browser tool registration removed - browser now fully migrated to skill/exec routing
+	// The browser backend is still wired into browserSkill for internal use
+	_ = options.browserBackend
 	if options.sttService != nil {
 		tools.AttachSTTServiceToWebTools(options.registry, options.sttService)
 	}
@@ -38,7 +38,10 @@ func runtimeToolingBrowserMediaDirTarget(registry *tools.Registry) runtimeBrowse
 	if registry == nil {
 		return nil
 	}
-	return tools.GetBrowserTool(registry)
+	// Browser tool no longer registered as native tool - now skill-based only
+	// This function returns nil which is handled gracefully by callers
+	_ = tools.GetBrowserTool(registry) // kept for import compatibility
+	return nil
 }
 
 func runtimeToolingBrowserAccessTargets(registry *tools.Registry) []runtimeBrowserAccessTarget {

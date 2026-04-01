@@ -32,7 +32,8 @@ type ErrorRule struct {
 }
 
 type Options struct {
-	RequireContract bool
+	RequireContract     bool
+	AllowLegacyFallback bool
 }
 
 type Document struct {
@@ -225,14 +226,28 @@ func ParseEntry(dirName, sourcePath string, data []byte, opts Options) (Document
 	}
 	doc.ID = normalizeSkillID(firstNonBlank(doc.ID, doc.Name, dirName))
 
+	strictIssues := validateStrictContract(meta, &doc)
 	if opts.RequireContract {
-		if issues := validateStrictContract(meta, &doc); len(issues) > 0 {
-			return Document{}, &ValidationError{Issues: issues}
+		if len(strictIssues) > 0 {
+			if opts.AllowLegacyFallback && canUseLegacyContractFallback(meta, &doc, strictIssues) {
+				doc.ValidationNotes = appendUnique(doc.ValidationNotes, legacyContractValidationNote(strictIssues))
+				repairLegacyContractFields(&doc, strictIssues)
+				deriveLegacyDefaults(&doc)
+			} else {
+				return Document{}, &ValidationError{Issues: strictIssues}
+			}
 		}
 	} else {
+		if len(strictIssues) > 0 && canUseLegacyContractFallback(meta, &doc, strictIssues) {
+			doc.ValidationNotes = appendUnique(doc.ValidationNotes, legacyContractValidationNote(strictIssues))
+			repairLegacyContractFields(&doc, strictIssues)
+		}
 		deriveLegacyDefaults(&doc)
 	}
 
+	if shouldPromoteIDToName(meta, doc.Name, dirName) && doc.ID != "" {
+		doc.Name = doc.ID
+	}
 	if doc.Name == "" {
 		doc.Name = doc.ID
 	}
@@ -284,6 +299,9 @@ func ParseEntry(dirName, sourcePath string, data []byte, opts Options) (Document
 			"entry_file":  doc.EntryFile,
 		},
 	}
+	if len(doc.ValidationNotes) > 0 {
+		doc.Manifest.Metadata["validation_notes"] = strings.Join(doc.ValidationNotes, "\n")
+	}
 	return doc, nil
 }
 
@@ -313,6 +331,80 @@ func splitFrontmatter(content string) (map[string]any, string, error) {
 		return nil, "", fmt.Errorf("parse frontmatter: %w", err)
 	}
 	return meta, strings.TrimSpace(parts[2]), nil
+}
+
+func canUseLegacyContractFallback(meta map[string]any, doc *Document, issues []string) bool {
+	if len(meta) == 0 || doc == nil {
+		return false
+	}
+	if strings.TrimSpace(doc.Description) == "" {
+		return false
+	}
+	explicitID := strings.TrimSpace(stringValue(meta["id"]))
+	explicitName := strings.TrimSpace(stringValue(meta["name"]))
+	explicitDescription := strings.TrimSpace(stringValue(meta["description"]))
+	if explicitID == "" && explicitName == "" && explicitDescription == "" {
+		return false
+	}
+	resolvedID := normalizeSkillID(firstNonBlank(doc.ID, doc.Name))
+	if isGenericDerivedInstallID(resolvedID) && explicitID == "" && explicitName == "" {
+		return false
+	}
+	for _, issue := range issues {
+		lower := strings.ToLower(strings.TrimSpace(issue))
+		if strings.Contains(lower, "frontmatter field name must be a string") ||
+			strings.Contains(lower, "frontmatter field description must be a string") {
+			return false
+		}
+	}
+	return true
+}
+
+func legacyContractValidationNote(issues []string) string {
+	if len(issues) == 0 {
+		return ""
+	}
+	return "legacy manifest compatibility fallback applied: " + strings.Join(issues, "; ")
+}
+
+func repairLegacyContractFields(doc *Document, issues []string) {
+	if doc == nil {
+		return
+	}
+	for _, issue := range issues {
+		switch {
+		case strings.Contains(issue, "missing required frontmatter field: invocation"),
+			strings.Contains(issue, "frontmatter field invocation must be a string"),
+			strings.Contains(issue, "frontmatter invocation must be a parseable `blue ...` command"):
+			doc.Invocation = ""
+		case strings.Contains(issue, "missing required frontmatter field: examples"),
+			strings.Contains(issue, "frontmatter field examples must be a YAML list of strings"),
+			strings.Contains(issue, "frontmatter examples must be parseable `blue ...` commands"):
+			doc.Examples = nil
+		case strings.Contains(issue, "missing required frontmatter field: capability_tags"),
+			strings.Contains(issue, "frontmatter field capability_tags must be a YAML list of strings"):
+			doc.CapabilityTags = nil
+		case strings.Contains(issue, "missing required frontmatter field: card_support"),
+			strings.Contains(issue, "frontmatter field card_support must be one of none, batch, streaming, both"):
+			doc.CardSupport = ""
+		}
+	}
+}
+
+func shouldPromoteIDToName(meta map[string]any, currentName, dirName string) bool {
+	if strings.TrimSpace(stringValue(meta["name"])) != "" {
+		return false
+	}
+	return isGenericDerivedInstallID(firstNonBlank(currentName, dirName))
+}
+
+func isGenericDerivedInstallID(value string) bool {
+	switch normalizeSkillID(value) {
+	case "", "skill", "claude", "agent":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseFrontmatter(meta map[string]any, doc *Document) {

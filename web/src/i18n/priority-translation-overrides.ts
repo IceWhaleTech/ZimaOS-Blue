@@ -1625,10 +1625,6 @@ export default {
       "creative": "Creatiu",
       "enterApiKey": "Introduïu la clau de l'API...",
       "enterNewApiKey": "Introduïu una nova clau d'API...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "protocol": "Protocol"
-      },
       "languageSaved": "Idioma guardat",
       "llmProviderSetupLink": "Configura el proveïdor de LLM",
       "maxTokens": "Límit de contingut",
@@ -3950,10 +3946,6 @@ export default {
       "creative": "Kreativní",
       "enterApiKey": "Zadejte klíč API...",
       "enterNewApiKey": "Zadejte nový klíč API...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "metadata": "Metadata"
-      },
       "languageSaved": "Jazyk uložen",
       "llmProviderSetupLink": "Nakonfigurujte poskytovatele LLM",
       "maxTokens": "Limit obsahu",
@@ -6404,11 +6396,6 @@ export default {
       "creative": "Kreativ",
       "enterApiKey": "Indtast API-nøgle...",
       "enterNewApiKey": "Indtast ny API-nøgle...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "metadata": "Metadata",
-        "status": "Status"
-      },
       "languageSaved": "Sprog gemt",
       "llmProviderSetupLink": "Konfigurer LLM-udbyder",
       "maxTokens": "Indholdsgrænse",
@@ -8186,10 +8173,6 @@ export default {
         "tokenDetected": "Token automatisch erkannt von",
         "tokenHint": "Holen Sie sich Ihr Zugriffstoken aus den Einstellungen der Antigravity IDE-Erweiterung",
         "tokenPlaceholder": "Geben Sie Ihr Antigravity-Zugriffstoken ein"
-      },
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "status": "Status"
       },
       "failover": {
         "circuitBreakerEnabled": "Leistungsschalter"
@@ -10428,9 +10411,6 @@ export default {
       "creative": "Δημιουργικό",
       "enterApiKey": "Εισαγάγετε το κλειδί API...",
       "enterNewApiKey": "Εισαγάγετε νέο κλειδί API...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
-      },
       "languageSaved": "Η γλώσσα αποθηκεύτηκε",
       "llmProviderSetupLink": "Διαμόρφωση παρόχου LLM",
       "maxTokens": "Όριο περιεχομένου",
@@ -12140,9 +12120,6 @@ export default {
         "tokenHint": "Obtenga su token de acceso desde la configuración de la extensión Antigravity IDE",
         "tokenPlaceholder": "Ingrese su token de acceso a Antigravity"
       },
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
-      },
       "llmProviderSetupLink": "Configurar proveedor LLM",
       "tab": {
         "general": "generales"
@@ -13797,9 +13774,6 @@ export default {
         "tokenDetected": "Jeton détecté automatiquement à partir de",
         "tokenHint": "Obtenez votre jeton d'accès à partir des paramètres de l'extension Antigravity IDE",
         "tokenPlaceholder": "Entrez votre jeton d'accès Antigravity"
-      },
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
       },
       "failover": {
         "configuration": "Configuration"
@@ -16145,9 +16119,6 @@ export default {
       "creative": "Cruthaitheach",
       "enterApiKey": "Cuir isteach eochair API...",
       "enterNewApiKey": "Cuir isteach eochair API nua...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
-      },
       "languageSaved": "Teanga shábháil",
       "llmProviderSetupLink": "Cumraigh soláthraí LLM",
       "maxTokens": "Teorainn Ábhar",
@@ -18594,10 +18565,6 @@ export default {
       "creative": "Kreativno",
       "enterApiKey": "Unesite API ključ...",
       "enterNewApiKey": "Unesite novi API ključ...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "status": "Status"
-      },
       "languageSaved": "Jezik spremljen",
       "llmProviderSetupLink": "Konfigurirajte pružatelja LLM-a",
       "maxTokens": "Ograničenje sadržaja",
@@ -20989,9 +20956,6 @@ export default {
       "creative": "Kreatív",
       "enterApiKey": "Írja be az API-kulcsot...",
       "enterNewApiKey": "Adja meg az új API-kulcsot...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
-      },
       "languageSaved": "Nyelv mentve",
       "llmProviderSetupLink": "LLM szolgáltató konfigurálása",
       "maxTokens": "Tartalomkorlát",
@@ -22881,9 +22845,6 @@ export default {
         "tokenHint": "Ottieni il tuo token di accesso dalle impostazioni dell'estensione IDE Antigravity",
         "tokenPlaceholder": "Inserisci il tuo token di accesso Antigravity"
       },
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
-      },
       "llmProviderSetupLink": "Configura il fornitore LLM",
       "tab": {
         "backup": "Backup"
@@ -23601,9 +23562,6 @@ export default {
       }
     },
     "settings": {
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
-      },
       "llmProviderSetupLink": "LLM プロバイダーを構成する"
     },
     "skillStore": {
@@ -24590,9 +24548,6 @@ export default {
         "tokenDetected": "다음에서 토큰이 자동 감지되었습니다.",
         "tokenHint": "Antigravity IDE 확장 설정에서 액세스 토큰을 받으세요.",
         "tokenPlaceholder": "반중력 액세스 토큰을 입력하세요."
-      },
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
       },
       "llmProviderSetupLink": "LLM 공급자 구성",
       "tts": {
@@ -26846,9 +26801,6 @@ export default {
       "creative": "ക്രിയേറ്റീവ്",
       "enterApiKey": "API കീ നൽകുക...",
       "enterNewApiKey": "പുതിയ API കീ നൽകുക...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
-      },
       "languageSaved": "ഭാഷ സംരക്ഷിച്ചു",
       "llmProviderSetupLink": "LLM ദാതാവിനെ കോൺഫിഗർ ചെയ്യുക",
       "maxTokens": "ഉള്ളടക്ക പരിധി",
@@ -29375,11 +29327,6 @@ export default {
       "creative": "Kreativt",
       "enterApiKey": "Skriv inn API-nøkkel...",
       "enterNewApiKey": "Skriv inn ny API-nøkkel...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "metadata": "Metadata",
-        "status": "Status"
-      },
       "languageSaved": "Språket er lagret",
       "llmProviderSetupLink": "Konfigurer LLM-leverandør",
       "maxTokens": "Innholdsgrense",
@@ -31919,12 +31866,6 @@ export default {
       "creative": "Creatief",
       "enterApiKey": "Voer API-sleutel in...",
       "enterNewApiKey": "Voer een nieuwe API-sleutel in...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "metadata": "Metagegevens",
-        "protocol": "Protocol",
-        "status": "Status"
-      },
       "languageSaved": "Taal opgeslagen",
       "llmProviderSetupLink": "LLM-provider configureren",
       "maxTokens": "Inhoudslimiet",
@@ -34402,10 +34343,6 @@ export default {
       "creative": "Twórczy",
       "enterApiKey": "Wprowadź klucz API...",
       "enterNewApiKey": "Wprowadź nowy klucz API...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "status": "Stan"
-      },
       "languageSaved": "Język został zapisany",
       "llmProviderSetupLink": "Skonfiguruj dostawcę LLM",
       "maxTokens": "Limit zawartości",
@@ -36261,10 +36198,6 @@ export default {
         "tokenDetected": "Token detectado automaticamente de",
         "tokenHint": "Obtenha seu token de acesso nas configurações da extensão Antigravity IDE",
         "tokenPlaceholder": "Insira seu token de acesso antigravidade"
-      },
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "status": "Estado"
       },
       "llmProviderSetupLink": "Configurar provedor LLM",
       "tab": {
@@ -38140,9 +38073,6 @@ export default {
         "tokenDetected": "Token detectado automaticamente de",
         "tokenHint": "Obtenha o seu token de acesso nas definições da extensão Antigravity IDE",
         "tokenPlaceholder": "Introduza o seu token de acesso antigravidade"
-      },
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
       },
       "llmProviderSetupLink": "Configurar o fornecedor LLM",
       "tab": {
@@ -40727,10 +40657,6 @@ export default {
       "creative": "Creativ",
       "enterApiKey": "Introduceți cheia API...",
       "enterNewApiKey": "Introduceți o nouă cheie API...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "protocol": "Protocol"
-      },
       "languageSaved": "Limba salvată",
       "llmProviderSetupLink": "Configurați furnizorul LLM",
       "maxTokens": "Limită de conținut",
@@ -42624,9 +42550,6 @@ export default {
         "tokenDetected": "Токен автоматически обнаружен из",
         "tokenHint": "Получите токен доступа в настройках расширения Antigradity IDE.",
         "tokenPlaceholder": "Введите свой токен доступа к Антигравитации"
-      },
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
       },
       "llmProviderSetupLink": "Настроить поставщика LLM",
       "tts": {
@@ -45081,9 +45004,6 @@ export default {
       "creative": "Kreatívne",
       "enterApiKey": "Zadajte kľúč API...",
       "enterNewApiKey": "Zadajte nový kľúč API...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A"
-      },
       "languageSaved": "Jazyk bol uložený",
       "llmProviderSetupLink": "Nakonfigurujte poskytovateľa LLM",
       "maxTokens": "Limit obsahu",
@@ -47536,11 +47456,6 @@ export default {
       "creative": "Kreativt",
       "enterApiKey": "Ange API-nyckel...",
       "enterNewApiKey": "Ange ny API-nyckel...",
-      "externalAgents": {
-        "eyebrow": "ACP / A2A",
-        "metadata": "Metadata",
-        "status": "Status"
-      },
       "languageSaved": "Språket har sparats",
       "llmProviderSetupLink": "Konfigurera LLM-leverantör",
       "maxTokens": "Innehållsgräns",
@@ -48240,5 +48155,8 @@ export default {
       "tokens": "~{count} tokens"
     }
   },
-  "en-GB": {}
+  "en-GB": {
+    "settings": {
+    }
+  }
 }

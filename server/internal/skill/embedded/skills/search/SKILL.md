@@ -2,6 +2,15 @@
 name: search
 version: "0.1.0"
 description: "Disabled placeholder for the deprecated search skill name. ZimaOS Blue now uses web_query as the canonical public web skill."
+invocation: "blue search query=\"release notes\""
+examples:
+  - "blue search query=\"release notes\""
+capability_tags:
+  - search
+  - deprecated
+  - web
+interaction_mode: stateless
+card_support: none
 enabled: false
 category: internal
 tags:

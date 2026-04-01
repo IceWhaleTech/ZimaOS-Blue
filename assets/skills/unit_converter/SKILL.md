@@ -2,6 +2,15 @@
 name: unit_converter
 version: "0.1.0"
 description: "Disabled placeholder for unit conversion helpers. ZimaOS Blue does not currently register a dedicated builtin unit_converter skill in the live runtime."
+invocation: "blue unit_converter value=1 from=m to=ft"
+examples:
+  - "blue unit_converter value=1 from=m to=ft"
+capability_tags:
+  - units
+  - conversion
+  - calculator
+interaction_mode: stateless
+card_support: none
 enabled: false
 category: internal
 tags:
