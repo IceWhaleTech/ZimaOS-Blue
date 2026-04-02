@@ -98,7 +98,10 @@ func (m *Manager) ListSessions(ctx context.Context, opts *ListOptions) ([]*Sessi
 func (m *Manager) EndSession(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.endSessionLocked(ctx, id)
+}
 
+func (m *Manager) endSessionLocked(ctx context.Context, id string) error {
 	session, ok := m.activeSessions[id]
 	if !ok {
 		// Try to get from storage
@@ -392,14 +395,16 @@ func (m *Manager) buildFlowGraph(sessionID string, events []*SessionEvent) *Flow
 }
 
 func (m *Manager) cleanupOldestSession(ctx context.Context) {
-	var oldest *Session
+	var oldestID string
+	var oldestStartedAt time.Time
 	for _, session := range m.activeSessions {
-		if oldest == nil || session.StartedAt.Before(oldest.StartedAt) {
-			oldest = session
+		if oldestID == "" || session.StartedAt.Before(oldestStartedAt) {
+			oldestID = session.ID
+			oldestStartedAt = session.StartedAt
 		}
 	}
-	if oldest != nil {
-		_ = m.EndSession(ctx, oldest.ID)
+	if oldestID != "" {
+		_ = m.endSessionLocked(ctx, oldestID)
 	}
 }
 

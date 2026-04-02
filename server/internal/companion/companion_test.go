@@ -438,6 +438,65 @@ func TestManager(t *testing.T) {
 		}
 	})
 
+	t.Run("CreateSession_ConcurrentLimitEvictsOldestWithoutDeadlock", func(t *testing.T) {
+		manager.config.Performance.MaxConcurrentSessions = 1
+
+		first := &Session{
+			Platform: PlatformTelegram,
+			UserID:   "limit-user-1",
+		}
+		firstCreated, err := manager.CreateSession(ctx, first)
+		if err != nil {
+			t.Fatalf("failed to create first session: %v", err)
+		}
+
+		done := make(chan error, 1)
+		var secondCreated *Session
+		go func() {
+			second := &Session{
+				Platform: PlatformTelegram,
+				UserID:   "limit-user-2",
+			}
+			var createErr error
+			secondCreated, createErr = manager.CreateSession(ctx, second)
+			done <- createErr
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("failed to create second session: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("CreateSession blocked under concurrent limit")
+		}
+
+		if secondCreated == nil || secondCreated.ID == "" {
+			t.Fatal("expected second session to be created")
+		}
+		if secondCreated.ID == firstCreated.ID {
+			t.Fatal("expected second session to have a different ID")
+		}
+
+		active := manager.GetActiveSessions()
+		if len(active) != 1 {
+			t.Fatalf("expected exactly one active session, got %d", len(active))
+		}
+		if active[0].ID != secondCreated.ID {
+			t.Fatalf("expected active session %s, got %s", secondCreated.ID, active[0].ID)
+		}
+
+		firstReloaded, err := manager.GetSession(ctx, firstCreated.ID)
+		if err != nil {
+			t.Fatalf("failed to reload first session: %v", err)
+		}
+		if firstReloaded.Status != SessionStatusEnded {
+			t.Fatalf("expected first session to be ended, got %s", firstReloaded.Status)
+		}
+
+		manager.config.Performance.MaxConcurrentSessions = 1000
+	})
+
 	t.Run("GetSession", func(t *testing.T) {
 		sessions := manager.GetActiveSessions()
 		if len(sessions) == 0 {
