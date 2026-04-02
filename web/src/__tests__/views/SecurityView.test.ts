@@ -68,6 +68,7 @@ vi.mock('@/api/connections', () => ({
 }))
 
 const replaceMock = vi.fn()
+const pushMock = vi.fn()
 const routeMock = {
   query: {} as Record<string, unknown>,
 }
@@ -79,6 +80,7 @@ vi.mock('vue-router', async () => {
     useRoute: () => routeMock,
     useRouter: () => ({
       replace: replaceMock,
+      push: pushMock,
     }),
   }
 })
@@ -116,10 +118,6 @@ vi.mock('@/components/security/MonitoringRetentionSettings.vue', () => ({
 
 vi.mock('@/components/settings/NetworkSettings.vue', () => ({
   default: { name: 'NetworkSettings', template: '<div class="network-settings-stub"></div>' },
-}))
-
-vi.mock('@/views/HarnessGroupsView.vue', () => ({
-  default: { name: 'HarnessGroupsView', template: '<div class="harness-groups-view-stub"></div>' },
 }))
 
 const localStorageMock = (() => {
@@ -180,7 +178,8 @@ function createTestI18n() {
           },
         },
         sandbox: {
-          notSupportedDesc: 'Sandbox execution is not available on this platform or has not been configured.',
+          notSupportedDesc:
+            'Sandbox execution is not available on this platform or has not been configured.',
           config: {
             status: 'Status',
             defaultTimeout: 'Default Timeout',
@@ -229,6 +228,7 @@ describe('SecurityView approved browser sites', () => {
     localStorageMock.setItem('security_last_scan_timestamp', new Date().toISOString())
     vi.clearAllMocks()
     replaceMock.mockReset()
+    pushMock.mockReset()
 
     vi.mocked(securityApi.getPromptFirewall).mockResolvedValue({
       data: { enabled: true, rules: [], rule_count: 0 },
@@ -239,7 +239,9 @@ describe('SecurityView approved browser sites', () => {
         directory_whitelist: [],
       },
     } as never)
-    vi.mocked(settingsApi.patch).mockImplementation(async (payload: unknown) => ({ data: payload }) as never)
+    vi.mocked(settingsApi.patch).mockImplementation(
+      async (payload: unknown) => ({ data: payload }) as never
+    )
     vi.mocked(approvalApi.listApprovedDirectories).mockResolvedValue({
       data: { entries: [] },
     } as never)
@@ -475,14 +477,14 @@ describe('SecurityView approved browser sites', () => {
     wrapper.unmount()
   })
 
-  it('keeps network settings under controls while exposing a harness tab', async () => {
+  it('keeps network settings under controls without exposing a harness tab', async () => {
     const wrapper = mountSecurityView()
 
     await flushPromises()
 
     const tabLabels = wrapper.findAll('button[role="tab"]').map((node) => node.text())
 
-    expect(tabLabels.some((label) => label.includes('Harness'))).toBe(true)
+    expect(tabLabels.some((label) => label.includes('Harness'))).toBe(false)
     expect(tabLabels.some((label) => label.trim() === 'Network')).toBe(false)
 
     const controlsTab = wrapper.findAll('button[role="tab"]').find((node) => {
@@ -495,41 +497,32 @@ describe('SecurityView approved browser sites', () => {
 
     expect(wrapper.findComponent({ name: 'NetworkSettings' }).exists()).toBe(true)
 
-    const harnessTab = wrapper.findAll('button[role="tab"]').find((node) => {
-      return node.text().includes('Harness')
-    })
-    expect(harnessTab).toBeTruthy()
-    expect(harnessTab!.text()).toContain('Beta')
-
-    await harnessTab!.trigger('click')
-    await flushPromises()
-
-    expect(wrapper.findComponent({ name: 'HarnessGroupsView' }).exists()).toBe(true)
-
     wrapper.unmount()
   })
 
-  it('honors the harness tab query and renders the harness panel inside security', async () => {
+  it('normalizes a legacy harness tab query back to overview', async () => {
     routeMock.query = { tab: 'harness' }
 
     const wrapper = mountSecurityView()
 
     await flushPromises()
 
-    const harnessTab = wrapper.findAll('button[role="tab"]').find((node) => {
-      return node.text().includes('Harness')
+    const selectedTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.attributes('aria-selected') === 'true'
     })
-    expect(harnessTab).toBeTruthy()
-    expect(harnessTab!.attributes('aria-selected')).toBe('true')
-    expect(wrapper.findComponent({ name: 'HarnessGroupsView' }).exists()).toBe(true)
-    expect(replaceMock).not.toHaveBeenCalled()
+
+    expect(selectedTab?.text()).toContain('Overview')
+    expect(wrapper.text()).not.toContain('Open in Automation')
+    expect(replaceMock).toHaveBeenCalledWith({
+      query: {
+        tab: 'overview',
+      },
+    })
 
     wrapper.unmount()
   })
 
-  it('shows the harness tab for security users without requiring tools permission', async () => {
-    routeMock.query = { tab: 'harness' }
-
+  it('does not render a harness tab for security-only users', async () => {
     const wrapper = mountSecurityView({
       role: 'user',
       permissions: [PagePermissions.SECURITY],
@@ -538,12 +531,9 @@ describe('SecurityView approved browser sites', () => {
 
     await flushPromises()
 
-    const harnessTab = wrapper.findAll('button[role="tab"]').find((node) => {
-      return node.text().includes('Harness')
-    })
-    expect(harnessTab).toBeTruthy()
-    expect(harnessTab!.attributes('aria-selected')).toBe('true')
-    expect(wrapper.findComponent({ name: 'HarnessGroupsView' }).exists()).toBe(true)
+    const tabLabels = wrapper.findAll('button[role="tab"]').map((node) => node.text())
+    expect(tabLabels.some((label) => label.includes('Harness'))).toBe(false)
+    expect(pushMock).not.toHaveBeenCalled()
 
     wrapper.unmount()
   })

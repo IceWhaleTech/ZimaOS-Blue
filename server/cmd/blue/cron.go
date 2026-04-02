@@ -89,11 +89,10 @@ var (
 )
 
 func init() {
-	cronAddCmd.Flags().StringVar(&cronName, "name", "", "job name (required)")
+	cronAddCmd.Flags().StringVar(&cronName, "name", "", "job name (optional, auto-generated if empty)")
 	cronAddCmd.Flags().StringVar(&cronSchedule, "cron", "", "cron expression (required)")
 	cronAddCmd.Flags().StringVar(&cronHandler, "handler", "http", "job handler (http, command)")
 	cronAddCmd.Flags().StringVar(&cronPayload, "payload", "", "job payload as JSON")
-	cronAddCmd.MarkFlagRequired("name")
 	cronAddCmd.MarkFlagRequired("cron")
 
 	cronCmd.AddCommand(cronListCmd)

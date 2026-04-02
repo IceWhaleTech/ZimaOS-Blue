@@ -99,6 +99,7 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 					"description": "run to start a research job, status to get progress or final results for an existing job",
 				},
 				"query":                map[string]interface{}{"type": "string", "description": "Research query or objective. Required for action=run."},
+				"input":                map[string]interface{}{"type": "string", "description": "Alias for query. Accepted for compatibility when older callers send input=..."},
 				"mode":                 map[string]interface{}{"type": "string", "description": "Research depth: fast, standard, deep"},
 				"route_mode":           map[string]interface{}{"type": "string", "description": "Routing mode: web"},
 				"lang":                 map[string]interface{}{"type": "string", "description": "Preferred output language"},
@@ -118,6 +119,9 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 					"required": []string{"query"},
 				},
 				map[string]interface{}{
+					"required": []string{"input"},
+				},
+				map[string]interface{}{
 					"required": []string{"job_id"},
 				},
 				map[string]interface{}{
@@ -126,6 +130,23 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 			},
 		},
 	}
+}
+
+func firstDeepResearchQuery(args map[string]interface{}) string {
+	return strings.TrimSpace(firstCompatString(
+		args,
+		"query",
+		"q",
+		"search",
+		"input",
+		"objective",
+		"prompt",
+		"message",
+		"content",
+		"text",
+		"topic",
+		"question",
+	))
 }
 
 func normalizeDeepResearchAction(raw string) string {
@@ -145,7 +166,7 @@ func resolveDeepResearchAction(args map[string]interface{}) string {
 		return action
 	}
 	if strings.TrimSpace(firstCompatString(args, "job_id", "jobId", "id")) != "" &&
-		strings.TrimSpace(firstCompatString(args, "query", "objective", "prompt", "message")) == "" {
+		firstDeepResearchQuery(args) == "" {
 		return DeepResearchActionStatus
 	}
 	return DeepResearchActionRun
@@ -197,7 +218,7 @@ func (t *DeepResearchTool) executeRun(ctx context.Context, args map[string]inter
 	if t == nil || t.service == nil {
 		return nil, errors.New("research service not available")
 	}
-	query := strings.TrimSpace(firstCompatString(args, "query", "objective", "prompt", "message"))
+	query := firstDeepResearchQuery(args)
 	if query == "" {
 		return nil, errors.New("query is required")
 	}

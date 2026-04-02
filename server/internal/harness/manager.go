@@ -19,6 +19,7 @@ type Controller struct {
 	resolver       *PolicyResolver
 	judgeEvaluator JudgeEvaluator
 	reflector      ProposalReflector
+	runTrace       RunTraceProvider
 
 	mu          sync.RWMutex
 	drivers     map[RunKind]Driver
@@ -550,7 +551,16 @@ func (c *Controller) SyncSnapshot(ctx context.Context, snapshot *Run) error {
 		snapshot.Metadata = current.Metadata
 	}
 	normalizeRunLifecycleTimes(current, snapshot)
-	return c.store.UpdateRun(ctx, snapshot)
+	if err := c.store.UpdateRun(ctx, snapshot); err != nil {
+		return err
+	}
+	if current.Status != snapshot.Status && isTerminalRunStatus(snapshot.Status) {
+		_ = c.appendStageEvent(ctx, snapshot, RuntimeStageFinalize, "run terminal state synced", map[string]interface{}{
+			"status": snapshot.Status,
+			"error":  strings.TrimSpace(snapshot.Error),
+		})
+	}
+	return nil
 }
 
 func (c *Controller) driverFor(kind RunKind) (Driver, error) {

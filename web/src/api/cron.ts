@@ -29,7 +29,7 @@ export interface JobExecution {
 }
 
 export interface CreateCronJobRequest {
-  name: string
+  name?: string
   description?: string
   schedule: string
   handler: string
@@ -37,7 +37,7 @@ export interface CreateCronJobRequest {
 }
 
 export interface UpdateCronJobRequest {
-  name: string
+  name?: string
   description?: string
   schedule: string
   payload?: Record<string, unknown>

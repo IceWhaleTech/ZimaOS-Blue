@@ -465,6 +465,9 @@ type SkillResponse struct {
 	ModelInvocable   bool              `json:"model_invocable"`
 	ActivationState  string            `json:"activation_state,omitempty"`
 	ActivationSource string            `json:"activation_source,omitempty"`
+	ContractStatus   string            `json:"contract_status,omitempty"`
+	ContractSource   string            `json:"contract_source,omitempty"`
+	ContractNotes    []string          `json:"contract_notes,omitempty"`
 }
 
 // skillsHiddenFromSkillTab lists skill IDs that are displayed in the Tools tab
@@ -491,8 +494,10 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 				continue
 			}
 			meta := defaultSkillExposureMetadata()
+			contractMeta := skillContractMetadata{}
 			if doc, ok := parseSkillDocumentFromEntryPath(ls.FilePath); ok {
 				meta = skillExposureMetadataFromDocument(doc)
+				contractMeta = skillContractMetadataFromDocument(doc)
 			}
 			if view, ok := findSkillExposureView(exposureLookup, ls.ID, ls.Name); ok {
 				meta = applySkillExposureView(meta, view)
@@ -500,7 +505,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 			if !meta.UserInvocable {
 				continue
 			}
-			response = append(response, SkillResponse{
+			item := SkillResponse{
 				ID:               ls.ID,
 				Name:             ls.Name,
 				Version:          ls.Version,
@@ -514,7 +519,9 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 				ModelInvocable:   meta.ModelInvocable,
 				ActivationState:  meta.ActivationState,
 				ActivationSource: meta.ActivationSource,
-			})
+			}
+			applySkillContractResponse(&item, contractMeta)
+			response = append(response, item)
 			seen[ls.ID] = struct{}{}
 		}
 	}
@@ -539,7 +546,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 		if _, exists := seen[id]; exists {
 			continue
 		}
-		response = append(response, SkillResponse{
+		item := SkillResponse{
 			ID:               id,
 			Name:             info.Manifest.Name,
 			Version:          info.Manifest.Version,
@@ -556,7 +563,9 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 			ModelInvocable:   meta.ModelInvocable,
 			ActivationState:  meta.ActivationState,
 			ActivationSource: meta.ActivationSource,
-		})
+		}
+		applySkillContractResponse(&item, skillContractMetadataFromManifest(info.Manifest))
+		response = append(response, item)
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -593,7 +602,11 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 					enabled = info.Enabled
 					builtin = info.Builtin
 				}
-				return c.JSON(http.StatusOK, marketDetailCompatibilityPayload(&RemoteSkill{
+				contractMeta := skillContractMetadata{}
+				if doc, ok := parseSkillDocumentFromEntryPath(ls.FilePath); ok {
+					contractMeta = skillContractMetadataFromDocument(doc)
+				}
+				return c.JSON(http.StatusOK, attachSkillContract(marketDetailCompatibilityPayload(&RemoteSkill{
 					ID:            ls.ID,
 					Name:          ls.Name,
 					Version:       ls.Version,
@@ -607,7 +620,7 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 					Installed:     true,
 					SecurityBadge: skillmarket.BadgeYellow,
 					RiskLevel:     "unknown",
-				}, true, enabled, builtin))
+				}, true, enabled, builtin), contractMeta))
 			}
 		}
 	}
@@ -616,7 +629,7 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 	// is absent or does not include this skill.
 	for _, candidate := range skillIDAliases(id) {
 		if info := h.registry.GetInfo(candidate); info != nil && info.Manifest != nil {
-			return c.JSON(http.StatusOK, marketDetailCompatibilityPayload(&RemoteSkill{
+			return c.JSON(http.StatusOK, attachSkillContract(marketDetailCompatibilityPayload(&RemoteSkill{
 				ID:            info.Manifest.ID,
 				Name:          info.Manifest.Name,
 				Version:       info.Manifest.Version,
@@ -630,7 +643,7 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 				Installed:     true,
 				SecurityBadge: skillmarket.BadgeYellow,
 				RiskLevel:     "unknown",
-			}, true, info.Enabled, info.Builtin))
+			}, true, info.Enabled, info.Builtin), skillContractMetadataFromManifest(info.Manifest)))
 		}
 	}
 
@@ -683,7 +696,7 @@ func (h *SkillHandler) installedSkillDetailPayload(id string) (map[string]interf
 			tags = append([]string(nil), info.Manifest.Tags...)
 		}
 	}
-	return marketDetailCompatibilityPayload(&RemoteSkill{
+	return attachSkillContract(marketDetailCompatibilityPayload(&RemoteSkill{
 		ID:            resolved.ID,
 		Name:          name,
 		Version:       version,
@@ -697,7 +710,7 @@ func (h *SkillHandler) installedSkillDetailPayload(id string) (map[string]interf
 		Installed:     true,
 		SecurityBadge: skillmarket.BadgeYellow,
 		RiskLevel:     "unknown",
-	}, true, enabled, builtin), true
+	}, true, enabled, builtin), skillContractMetadataFromDocument(resolved.Document)), true
 }
 
 // GetSkillContent returns the content (SKILL.md/readme) of a skill
@@ -722,13 +735,13 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 			}
 		}
 		if content != "" {
-			return c.JSON(http.StatusOK, map[string]interface{}{
+			return c.JSON(http.StatusOK, attachSkillContract(map[string]interface{}{
 				"id":         resolved.ID,
 				"name":       name,
 				"content":    content,
 				"source":     "directory",
 				"entry_file": resolved.Document.EntryFile,
-			})
+			}, skillContractMetadataFromDocument(resolved.Document)))
 		}
 	}
 
@@ -753,13 +766,17 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 				if info != nil {
 					name = info.Manifest.Name
 				}
-				return c.JSON(http.StatusOK, map[string]interface{}{
+				contractMeta := skillContractMetadata{}
+				if doc, ok := parseSkillDocumentFromEntryPath(entryDoc.Path); ok {
+					contractMeta = skillContractMetadataFromDocument(doc)
+				}
+				return c.JSON(http.StatusOK, attachSkillContract(map[string]interface{}{
 					"id":         candidate,
 					"name":       name,
 					"content":    string(data),
 					"source":     "directory",
 					"entry_file": entryDoc.Name,
-				})
+				}, contractMeta))
 			}
 		}
 	}
@@ -1044,7 +1061,7 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
+	return c.JSON(http.StatusOK, attachSkillContract(attachWarnings(map[string]interface{}{
 		"success":    true,
 		"message":    "skill uploaded and installed",
 		"entry_file": entryFile,
@@ -1053,7 +1070,7 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 			"name":    manifest.Name,
 			"version": manifest.Version,
 		},
-	}, manifestValidationWarnings(manifest)))
+	}, manifestValidationWarnings(manifest)), skillContractMetadataFromManifest(manifest)))
 }
 
 func isSkillArchiveFilename(name string) bool {
@@ -3276,8 +3293,10 @@ func (h *SkillHandler) ListLocalSkills(c echo.Context) error {
 	result := make([]map[string]interface{}, 0, len(skills))
 	for _, s := range skills {
 		meta := defaultSkillExposureMetadata()
+		contractMeta := skillContractMetadata{}
 		if doc, ok := parseSkillDocumentFromEntryPath(s.FilePath); ok {
 			meta = skillExposureMetadataFromDocument(doc)
+			contractMeta = skillContractMetadataFromDocument(doc)
 		}
 		if view, ok := findSkillExposureView(exposureLookup, s.ID, s.Name); ok {
 			meta = applySkillExposureView(meta, view)
@@ -3285,7 +3304,7 @@ func (h *SkillHandler) ListLocalSkills(c echo.Context) error {
 		if !meta.UserInvocable {
 			continue
 		}
-		result = append(result, map[string]interface{}{
+		result = append(result, attachSkillContract(map[string]interface{}{
 			"id":                s.ID,
 			"name":              s.Name,
 			"description":       s.Description,
@@ -3302,7 +3321,7 @@ func (h *SkillHandler) ListLocalSkills(c echo.Context) error {
 			"model_invocable":   meta.ModelInvocable,
 			"activation_state":  meta.ActivationState,
 			"activation_source": meta.ActivationSource,
-		})
+		}, contractMeta))
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -3353,7 +3372,7 @@ func (h *SkillHandler) VerifySkill(c echo.Context) error {
 			version = firstString(info.Manifest.Version, version)
 			description = firstString(info.Manifest.Description, description)
 		}
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		return c.JSON(http.StatusOK, attachSkillContract(map[string]interface{}{
 			"id":          resolved.ID,
 			"visible":     true,
 			"enabled":     enabled,
@@ -3361,12 +3380,12 @@ func (h *SkillHandler) VerifySkill(c echo.Context) error {
 			"name":        name,
 			"version":     version,
 			"description": description,
-		})
+		}, skillContractMetadataFromDocument(resolved.Document)))
 	}
 
 	for _, candidate := range skillIDAliases(id) {
 		if info := h.registry.GetInfo(candidate); info != nil && info.Manifest != nil {
-			return c.JSON(http.StatusOK, map[string]interface{}{
+			return c.JSON(http.StatusOK, attachSkillContract(map[string]interface{}{
 				"id":          info.Manifest.ID,
 				"visible":     true,
 				"enabled":     info.Enabled,
@@ -3374,11 +3393,15 @@ func (h *SkillHandler) VerifySkill(c echo.Context) error {
 				"name":        info.Manifest.Name,
 				"version":     info.Manifest.Version,
 				"description": info.Manifest.Description,
-			})
+			}, skillContractMetadataFromManifest(info.Manifest)))
 		}
 		if h.localScanner != nil {
 			if ls := h.localScanner.Get(candidate); ls != nil {
-				return c.JSON(http.StatusOK, map[string]interface{}{
+				contractMeta := skillContractMetadata{}
+				if doc, ok := parseSkillDocumentFromEntryPath(ls.FilePath); ok {
+					contractMeta = skillContractMetadataFromDocument(doc)
+				}
+				return c.JSON(http.StatusOK, attachSkillContract(map[string]interface{}{
 					"id":          ls.ID,
 					"visible":     true,
 					"enabled":     true,
@@ -3386,7 +3409,7 @@ func (h *SkillHandler) VerifySkill(c echo.Context) error {
 					"name":        ls.Name,
 					"version":     ls.Version,
 					"description": ls.Description,
-				})
+				}, contractMeta))
 			}
 		}
 	}
@@ -3407,7 +3430,7 @@ type InstallFromURLRequest struct {
 
 func installManifestParseOptions() skillmanifest.Options {
 	return skillmanifest.Options{
-		RequireContract:     true,
+		RequireContract:     false,
 		AllowLegacyFallback: true,
 	}
 }
@@ -3416,25 +3439,7 @@ func manifestValidationWarnings(manifest *skill.Manifest) []string {
 	if manifest == nil || manifest.Metadata == nil {
 		return nil
 	}
-	raw := strings.TrimSpace(manifest.Metadata["validation_notes"])
-	if raw == "" {
-		return nil
-	}
-	lines := strings.Split(raw, "\n")
-	warnings := make([]string, 0, len(lines))
-	seen := make(map[string]struct{}, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if _, ok := seen[line]; ok {
-			continue
-		}
-		seen[line] = struct{}{}
-		warnings = append(warnings, line)
-	}
-	return warnings
+	return metadataLines(manifest.Metadata["validation_notes"])
 }
 
 func attachWarnings(payload map[string]interface{}, warnings []string) map[string]interface{} {
@@ -3510,11 +3515,11 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("register: %v", err)})
 		}
 
-		return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
+		return c.JSON(http.StatusOK, attachSkillContract(attachWarnings(map[string]interface{}{
 			"success":    true,
 			"entry_file": entryDoc.Name,
 			"skill":      map[string]interface{}{"id": skillID, "path": skillDir},
-		}, manifestValidationWarnings(manifest)))
+		}, manifestValidationWarnings(manifest)), skillContractMetadataFromManifest(manifest)))
 	}
 
 	// Non-GitHub: download single file
@@ -3582,11 +3587,11 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("register: %v", err)})
 	}
 
-	return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
+	return c.JSON(http.StatusOK, attachSkillContract(attachWarnings(map[string]interface{}{
 		"success":    true,
 		"entry_file": entryName,
 		"skill":      map[string]interface{}{"id": skillID, "path": skillDir},
-	}, manifestValidationWarnings(manifest)))
+	}, manifestValidationWarnings(manifest)), skillContractMetadataFromManifest(manifest)))
 }
 
 // parseSkillContent parses SKILL.md content and returns skill ID and manifest

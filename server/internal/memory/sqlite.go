@@ -37,12 +37,13 @@ type MessageStats struct {
 
 // Conversation represents a conversation.
 type Conversation struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	UserID    string    `json:"user_id,omitempty"`
-	Pinned    bool      `json:"pinned"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	Title              string    `json:"title"`
+	UserID             string    `json:"user_id,omitempty"`
+	Pinned             bool      `json:"pinned"`
+	AutoTitleFinalized bool      `json:"-"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // MessageAttachment represents an attachment in a message.
@@ -157,6 +158,7 @@ func (s *Store) migrate() error {
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL,
 		pinned BOOLEAN DEFAULT 0,
+		auto_title_finalized BOOLEAN NOT NULL DEFAULT 0,
 		created_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL
 	);
@@ -245,6 +247,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE messages ADD COLUMN tool_name TEXT",
 		"ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT ''",
 		"ALTER TABLE conversations ADD COLUMN pinned BOOLEAN DEFAULT 0",
+		"ALTER TABLE conversations ADD COLUMN auto_title_finalized BOOLEAN NOT NULL DEFAULT 0",
 	}
 
 	for _, migration := range migrations {
@@ -425,8 +428,14 @@ func (s *Store) DeleteConversation(ctx context.Context, id string, userID ...str
 	return nil
 }
 
-// UpdateConversationTitle updates a conversation's title.
-func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string, userID ...string) error {
+func (s *Store) updateConversationTitle(
+	ctx context.Context,
+	id,
+	title string,
+	finalizeAutoTitle bool,
+	onlyIfAutoTitlePending bool,
+	userID ...string,
+) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -435,18 +444,51 @@ func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string, u
 	if scopedUserID != "" {
 		conds = append(conds, z.Eq("user_id", scopedUserID))
 	}
+	if onlyIfAutoTitlePending {
+		conds = append(conds, z.Eq("auto_title_finalized", false))
+	}
+
+	values := z.V{
+		"title":      title,
+		"updated_at": formatStoreTime(timeutil.NowTime()),
+	}
+	fields := []string{"title", "updated_at"}
+	if finalizeAutoTitle {
+		values["auto_title_finalized"] = true
+		fields = append(fields, "auto_title_finalized")
+	}
+
 	affected, err := s.conversations(ctx).Update(
-		z.V{"title": title, "updated_at": formatStoreTime(timeutil.NowTime())},
-		z.Fields("title", "updated_at"),
+		values,
+		z.Fields(fields...),
 		z.Where(conds...),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to update conversation title: %w", err)
+		return 0, fmt.Errorf("failed to update conversation title: %w", err)
 	}
 	if scopedUserID != "" && affected == 0 {
-		return ErrNotFound
+		return 0, ErrNotFound
 	}
-	return nil
+	return affected, nil
+}
+
+// UpdateConversationTitle updates a conversation title and prevents future auto-generated title writes.
+func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string, userID ...string) error {
+	_, err := s.updateConversationTitle(ctx, id, title, true, false, userID...)
+	return err
+}
+
+// FinalizeAutoConversationTitle updates a title only while auto titling is still pending.
+// It atomically locks the conversation so automatic title generation can only succeed once.
+func (s *Store) FinalizeAutoConversationTitle(ctx context.Context, id, title string, userID ...string) (bool, error) {
+	affected, err := s.updateConversationTitle(ctx, id, title, true, true, userID...)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 // PinConversation pins a conversation.

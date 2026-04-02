@@ -85,16 +85,21 @@ function createTestRouter() {
       { path: '/', redirect: '/chat' },
       { path: '/home', name: 'Home', component: { template: '<div>Home</div>' } },
       { path: '/chat', name: 'Chat', component: { template: '<div>Chat</div>' } },
-      { path: '/cron', name: 'Cron', component: { template: '<div>Cron</div>' } },
-      { path: '/channels', name: 'Channels', component: { template: '<div>Channels</div>' } },
-      { path: '/plugins', name: 'Plugins', component: { template: '<div>Plugins</div>' } },
-      { path: '/security', name: 'Security', component: { template: '<div>Security</div>' } },
+      { path: '/automation', name: 'Cron', component: { template: '<div>Automation</div>' } },
+      { path: '/cron', redirect: '/automation' },
       {
-        path: '/security/harness/:id',
+        path: '/automation/harness',
+        name: 'HarnessGroups',
+        component: { template: '<div>Harness</div>' },
+      },
+      {
+        path: '/automation/harness/:id',
         name: 'HarnessGroupDetail',
         component: { template: '<div>Harness Detail</div>' },
       },
-      { path: '/harness', name: 'HarnessGroups', component: { template: '<div>Harness</div>' } },
+      { path: '/channels', name: 'Channels', component: { template: '<div>Channels</div>' } },
+      { path: '/plugins', name: 'Plugins', component: { template: '<div>Plugins</div>' } },
+      { path: '/security', name: 'Security', component: { template: '<div>Security</div>' } },
       { path: '/settings', name: 'Settings', component: { template: '<div>Settings</div>' } },
       { path: '/profile', name: 'Profile', component: { template: '<div>Profile</div>' } },
     ],
@@ -248,8 +253,8 @@ describe('AppSidebar', () => {
     )
   })
 
-  it('highlights automation inside the configuration section on cron route', async () => {
-    const { wrapper } = await mountSidebar('/cron')
+  it('highlights automation inside the configuration section on the automation route', async () => {
+    const { wrapper } = await mountSidebar('/automation')
 
     expect(wrapper.get('[data-testid="sidebar-nav-automation"]').classes()).toContain(
       'sidebar-nav-item-active'
@@ -257,12 +262,14 @@ describe('AppSidebar', () => {
     expect(wrapper.get('[data-testid="sidebar-nav-settings"]').exists()).toBe(true)
   })
 
-  it('keeps Security highlighted on harness detail routes', async () => {
-    const { wrapper } = await mountSidebar('/security/harness/group-1')
+  it('keeps automation highlighted on canonical harness routes', async () => {
+    const { wrapper } = await mountSidebar('/automation/harness/group-1')
 
-    expect(wrapper.find('[data-testid="sidebar-nav-harness"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="sidebar-nav-security"]').classes()).toContain(
+    expect(wrapper.get('[data-testid="sidebar-nav-automation"]').classes()).toContain(
       'sidebar-nav-item-active'
+    )
+    expect(wrapper.get('[data-testid="sidebar-nav-security"]').classes()).toContain(
+      'sidebar-nav-item-inactive'
     )
   })
 

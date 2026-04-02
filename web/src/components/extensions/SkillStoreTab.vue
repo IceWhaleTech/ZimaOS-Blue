@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { debounce } from '@/utils/debounce'
 import { useI18n } from 'vue-i18n'
 import {
   type MarketplaceAdviceResponse,
@@ -34,6 +33,7 @@ const loadingMore = ref(false)
 const refreshing = ref(false)
 const initializingMarketplace = ref(false)
 const error = ref<string | null>(null)
+const DISCOVER_POLL_INTERVAL_MS = 2000
 let latestSkillsRequestId = 0
 let latestDetailRequestId = 0
 let latestDiscoverPollId = 0
@@ -60,11 +60,6 @@ const discoverActivity = ref<
     timestamp: number
   }>
 >([])
-// Request cancellation and caching
-let searchAbortController: AbortController | null = null
-const searchCache = ref<Map<string, { data: any; timestamp: number }>>(new Map())
-const CACHE_TTL = 10000 // 10 seconds
-
 const selectedSkillId = ref<string | null>(null)
 const selectedDetail = ref<MarketplaceSkillDetail | null>(null)
 const detailLoading = ref(false)
@@ -670,11 +665,7 @@ function badgeLabel(skill?: RemoteSkill | null): string {
 function curatedLabelText(value?: string | null): string {
   const raw = value?.trim()
   if (!raw) return ''
-  const normalized = raw
-    .toLowerCase()
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  const normalized = raw.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
 
   const known: Record<string, { key: string; fallback: string }> = {
     featured: { key: 'featured', fallback: 'Featured' },
@@ -1292,14 +1283,13 @@ function shouldProbeVisibleResults(status?: DiscoverStatusResponse | null): bool
 async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null) {
   const requestId = ++latestDiscoverPollId
   let status = initial ?? null
-  const deadline = Date.now() + 10 * 60 * 1000
   if (status) {
     recordDiscoverActivity(
       status,
       (status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') || 'status'
     )
   }
-  while (Date.now() < deadline) {
+  while (true) {
     if (shouldStopDiscoverPolling(requestId)) return null
     if (!status || status.running) {
       const response = await skillApi.discoverStatus()
@@ -1322,10 +1312,9 @@ async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null
       }
       return status
     }
-    await sleep(2000)
+    await sleep(DISCOVER_POLL_INTERVAL_MS)
     status = null
   }
-  throw new Error(skillStoreText('fetchError', 'Failed to fetch skills') + ': discover timed out')
 }
 
 async function loadMarketplaceCatalog() {
@@ -1410,9 +1399,19 @@ async function triggerRefresh() {
       (response.data.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') ||
         'started'
     )
-    await waitForDiscoverCompletion(response.data)
-    if (componentDisposed) return
-    await loadMarketplaceCatalogPreservingResults()
+    void (async () => {
+      try {
+        await waitForDiscoverCompletion(response.data)
+        if (componentDisposed) return
+        await loadMarketplaceCatalogPreservingResults()
+      } catch (err) {
+        if (componentDisposed) return
+        error.value =
+          err instanceof Error
+            ? err.message
+            : skillStoreText('fetchError', 'Failed to fetch skills')
+      }
+    })()
   } catch (err) {
     if (componentDisposed) return
     error.value =
@@ -1566,37 +1565,38 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
       }
     }
     pendingRiskSkill.value = null
-      } catch (err) {
-        const message = getErrorMessage(err) || skillStoreText('installError', 'Failed to install skill')
-        const normalized = message.toLowerCase()
-        if (
-          normalized.includes('risk acknowledgement') ||
-          normalized.includes('ack_risk') ||
-          normalized.includes('ack risk')
-        ) {
-          pendingRiskSkill.value = skill
-        } else if (
-          normalized.includes('blocked by security policy') ||
-          normalized.includes('security policy')
-        ) {
-          // Check if it's specifically a medium risk block
-          if (normalized.includes('medium risk')) {
-            error.value = marketplaceText(
-              'messages.blockedByPolicyMediumRisk',
-              'This skill is blocked by security policy (medium risk).'
-            )
-          } else {
-            error.value = marketplaceText(
-              'messages.blockedByPolicy',
-              'This skill is blocked by the security policy.'
-            )
-          }
-        } else {
-          error.value = message
-        }
+  } catch (err) {
+    const message =
+      getErrorMessage(err) || skillStoreText('installError', 'Failed to install skill')
+    const normalized = message.toLowerCase()
+    if (
+      normalized.includes('risk acknowledgement') ||
+      normalized.includes('ack_risk') ||
+      normalized.includes('ack risk')
+    ) {
+      pendingRiskSkill.value = skill
+    } else if (
+      normalized.includes('blocked by security policy') ||
+      normalized.includes('security policy')
+    ) {
+      // Check if it's specifically a medium risk block
+      if (normalized.includes('medium risk')) {
+        error.value = marketplaceText(
+          'messages.blockedByPolicyMediumRisk',
+          'This skill is blocked by security policy (medium risk).'
+        )
+      } else {
+        error.value = marketplaceText(
+          'messages.blockedByPolicy',
+          'This skill is blocked by the security policy.'
+        )
       }
-    installingSkillId.value = null
+    } else {
+      error.value = message
+    }
   }
+  installingSkillId.value = null
+}
 
 function closeRiskModal() {
   pendingRiskSkill.value = null
@@ -1818,8 +1818,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   componentDisposed = true
-  searchAbortController?.abort()
-  searchCache.value.clear()
   latestDiscoverPollId += 1
   offSSEEvent('skill.market.discover.progress', handleDiscoverProgressEvent)
   offSSEEvent('skill.market.embedding.progress', handleEmbeddingProgressEvent)
@@ -2455,152 +2453,141 @@ onBeforeUnmount(() => {
             :style="skillAccentStyle(detailSkill)"
           >
             <header class="detail-header">
-              <div class="detail-hero-main">
-                <div class="detail-icon" aria-hidden="true">
-                  <span>{{ skillMonogram(detailSkill) }}</span>
+              <div class="detail-hero-layout">
+                <div class="detail-hero-main">
+                  <div class="detail-icon" aria-hidden="true">
+                    <span>{{ skillMonogram(detailSkill) }}</span>
+                  </div>
+                  <div class="detail-main">
+                    <h3>{{ detailSkill.name }}</h3>
+                    <code class="detail-slug">{{ detailSkill.id }}</code>
+                    <div class="detail-pill-row">
+                      <span class="detail-version-pill">{{ skillVersionLabel(detailSkill) }}</span>
+                      <span v-if="detailInstalled" class="meta-chip meta-chip-installed">{{
+                        skillStoreText('installed', 'Installed')
+                      }}</span>
+                    </div>
+                    <p v-if="detailSkill.curated_reason" class="detail-callout">
+                      {{ detailSkill.curated_reason }}
+                    </p>
+                  </div>
                 </div>
-                <div class="detail-main">
-                  <div class="detail-topline">
-                    <span class="source-chip">{{ sourceLabel(detailSkill) }}</span>
-                    <span class="meta-chip meta-chip-soft">{{
-                      categoryLabel(detailSkill.category)
-                    }}</span>
-                    <span :class="['shield-chip', detailBadgeClass(detailSkill.security_badge)]">
-                      {{ badgeLabel(detailSkill) }}
-                    </span>
-                  </div>
-                  <h3>{{ detailSkill.name }}</h3>
-                  <code class="detail-slug">{{ detailSkill.id }}</code>
-                  <div class="detail-pill-row">
-                    <span class="detail-version-pill">{{ skillVersionLabel(detailSkill) }}</span>
-                    <span v-if="detailInstalled" class="meta-chip meta-chip-installed">{{
-                      skillStoreText('installed', 'Installed')
-                    }}</span>
-                  </div>
-                  <p class="detail-subtitle">{{ cardDescription(detailSkill) }}</p>
-                  <p class="detail-source-note">
-                    <span
-                      >{{ marketplaceText('detail.catalogSource', 'Catalog source') }}
-                      {{ sourceLabel(detailSkill) }}</span
-                    >
+
+                <aside class="detail-header-side">
+                  <div class="detail-utility-actions">
                     <button
                       type="button"
-                      class="detail-inline-link"
+                      class="detail-utility-button"
+                      :aria-label="marketplaceText('actions.viewSource', 'View source')"
                       @click="openSkillSource(detailSkill)"
                     >
-                      {{ marketplaceText('actions.viewSource', 'View source') }}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M14 5h5v5" />
+                        <path d="M10 14 19 5" />
+                        <path d="M19 14v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3" />
+                      </svg>
                     </button>
-                  </p>
-                  <div v-if="visibleSkillTags(detailSkill).length" class="detail-tag-row">
-                    <span
-                      v-for="tag in visibleSkillTags(detailSkill, 4)"
-                      :key="`${detailSkill.id}-${tag}`"
-                      class="meta-chip meta-chip-soft"
+                    <button
+                      type="button"
+                      class="detail-utility-button"
+                      :aria-label="closeDetailLabel"
+                      @click="closeSkillDetail"
                     >
-                      {{ tag }}
-                    </span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M18 6 6 18" />
+                        <path d="m6 6 12 12" />
+                      </svg>
+                    </button>
                   </div>
-                  <p v-if="detailSkill.curated_reason" class="detail-callout">
-                    {{ detailSkill.curated_reason }}
-                  </p>
-                </div>
-              </div>
 
-              <div class="detail-header-side">
-                <div class="detail-utility-actions">
-                  <button
-                    type="button"
-                    class="detail-utility-button"
-                    :aria-label="marketplaceText('actions.viewSource', 'View source')"
-                    @click="openSkillSource(detailSkill)"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <path d="M14 5h5v5" />
-                      <path d="M10 14 19 5" />
-                      <path d="M19 14v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="detail-utility-button"
-                    :aria-label="closeDetailLabel"
-                    @click="closeSkillDetail"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <path d="M18 6 6 18" />
-                      <path d="m6 6 12 12" />
-                    </svg>
-                  </button>
-                </div>
+                  <div class="detail-hero-stats detail-hero-stats--compact">
+                    <article class="detail-hero-stat">
+                      <span
+                        class="detail-hero-stat__icon detail-hero-stat__icon--downloads"
+                        aria-hidden="true"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.8"
+                        >
+                          <path d="M12 3v12" />
+                          <path d="m7 10 5 5 5-5" />
+                          <path d="M5 21h14" />
+                        </svg>
+                      </span>
+                      <strong>{{ formatNumber(detailSkill.downloads) }}</strong>
+                      <small>{{ skillStoreText('detail.meta.downloads', 'Downloads') }}</small>
+                    </article>
+                    <article class="detail-hero-stat">
+                      <span
+                        class="detail-hero-stat__icon detail-hero-stat__icon--stars"
+                        aria-hidden="true"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.8"
+                        >
+                          <path
+                            d="m12 3.6 2.6 5.3 5.9.9-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.9Z"
+                          />
+                        </svg>
+                      </span>
+                      <strong>{{ formatNumber(detailSkill.stars) }}</strong>
+                      <small>{{ skillStoreText('detail.meta.stars', 'Stars') }}</small>
+                    </article>
+                  </div>
+
+                  <section class="detail-install-panel">
+                    <div class="detail-install-copy">
+                      <span class="section-label">{{
+                        marketplaceText('detail.installTitle', 'Install')
+                      }}</span>
+                      <p class="detail-install-headline">
+                        {{
+                          marketplaceText(
+                            'detail.installHeading',
+                            'Add this skill to your workspace'
+                          )
+                        }}
+                      </p>
+                      <p>{{ installHint(detailSkill) }}</p>
+                    </div>
+                    <div class="detail-actions detail-actions--inline">
+                      <button
+                        v-if="detailSkill.installable"
+                        :class="[
+                          'install-button',
+                          `install-${detailSkill.security_badge || 'yellow'}`,
+                        ]"
+                        :disabled="
+                          installingSkillId === detailSkill.id ||
+                          detailSkill.security_badge === 'red'
+                        "
+                        @click="installSkill(detailSkill)"
+                      >
+                        <span v-if="detailSkill.security_badge === 'red'">{{
+                          marketplaceText('actions.blocked', 'Blocked')
+                        }}</span>
+                        <span v-else-if="detailInstalled">{{
+                          skillStoreText('installed', 'Installed')
+                        }}</span>
+                        <span v-else>{{ skillStoreText('install', 'Install') }}</span>
+                      </button>
+                      <button v-else class="source-button" @click="openSkillSource(detailSkill)">
+                        {{ marketplaceText('actions.viewSource', 'View source') }}
+                      </button>
+                      <button class="btn-ghost" @click="openSkillSource(detailSkill)">
+                        {{ skillStoreText('detail.openLink', 'Open Link') }}
+                      </button>
+                    </div>
+                  </section>
+                </aside>
               </div>
             </header>
-
-            <div class="detail-hero-stats">
-              <article class="detail-hero-stat">
-                <span
-                  class="detail-hero-stat__icon detail-hero-stat__icon--downloads"
-                  aria-hidden="true"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path d="M12 3v12" />
-                    <path d="m7 10 5 5 5-5" />
-                    <path d="M5 21h14" />
-                  </svg>
-                </span>
-                <strong>{{ formatNumber(detailSkill.downloads) }}</strong>
-                <small>{{ skillStoreText('detail.meta.downloads', 'Downloads') }}</small>
-              </article>
-              <article class="detail-hero-stat">
-                <span
-                  class="detail-hero-stat__icon detail-hero-stat__icon--stars"
-                  aria-hidden="true"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path
-                      d="m12 3.6 2.6 5.3 5.9.9-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.9Z"
-                    />
-                  </svg>
-                </span>
-                <strong>{{ formatNumber(detailSkill.stars) }}</strong>
-                <small>{{ skillStoreText('detail.meta.stars', 'Stars') }}</small>
-              </article>
-            </div>
-
-            <section class="detail-install-panel">
-              <div class="detail-install-copy">
-                <span class="section-label">{{
-                  marketplaceText('detail.installTitle', 'Install')
-                }}</span>
-                <h4>
-                  {{ marketplaceText('detail.installHeading', 'Add this skill to your workspace') }}
-                </h4>
-                <p>{{ installHint(detailSkill) }}</p>
-              </div>
-              <div class="detail-actions detail-actions--inline">
-                <button
-                  v-if="detailSkill.installable"
-                  :class="['install-button', `install-${detailSkill.security_badge || 'yellow'}`]"
-                  :disabled="
-                    installingSkillId === detailSkill.id || detailSkill.security_badge === 'red'
-                  "
-                  @click="installSkill(detailSkill)"
-                >
-                  <span v-if="detailSkill.security_badge === 'red'">{{
-                    marketplaceText('actions.blocked', 'Blocked')
-                  }}</span>
-                  <span v-else-if="detailInstalled">{{
-                    skillStoreText('installed', 'Installed')
-                  }}</span>
-                  <span v-else>{{ skillStoreText('install', 'Install') }}</span>
-                </button>
-                <button v-else class="source-button" @click="openSkillSource(detailSkill)">
-                  {{ marketplaceText('actions.viewSource', 'View source') }}
-                </button>
-                <button class="btn-ghost" @click="openSkillSource(detailSkill)">
-                  {{ skillStoreText('detail.openLink', 'Open Link') }}
-                </button>
-              </div>
-            </section>
 
             <div class="detail-meta">
               <div class="meta-item">
@@ -2874,7 +2861,11 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="modal-actions risk-modal__actions">
-            <button class="btn-ghost risk-modal__cancel-button" type="button" @click="closeRiskModal">
+            <button
+              class="btn-ghost risk-modal__cancel-button"
+              type="button"
+              @click="closeRiskModal"
+            >
               {{ commonText('cancel', 'Cancel') }}
             </button>
             <button
@@ -3805,7 +3796,6 @@ onBeforeUnmount(() => {
 
 .card-topline,
 .card-footer,
-.detail-topline,
 .evidence-item header {
   display: flex;
   justify-content: space-between;
@@ -3892,8 +3882,7 @@ onBeforeUnmount(() => {
   -webkit-line-clamp: 6;
 }
 
-.card-tag-row,
-.detail-tag-row {
+.card-tag-row {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
@@ -3979,9 +3968,9 @@ onBeforeUnmount(() => {
 
 .detail-meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .store-detail-modal-backdrop {
@@ -4002,10 +3991,10 @@ onBeforeUnmount(() => {
 }
 
 .store-detail-modal-shell {
-  width: min(980px, 100%);
+  width: min(920px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .store-detail-modal-handle {
@@ -4030,43 +4019,53 @@ onBeforeUnmount(() => {
     );
 }
 
+.detail-hero-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 290px);
+  gap: 12px;
+  width: 100%;
+}
+
 .detail-hero-main {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 
 .detail-main {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
   min-width: 0;
 }
 
 .detail-header-side {
+  width: 100%;
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
 }
 
 .detail-utility-actions {
   display: flex;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .detail-utility-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
+  width: 42px;
+  height: 42px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.92);
   color: var(--text-secondary);
   cursor: pointer;
-  box-shadow: 0 18px 28px -24px rgba(15, 23, 42, 0.32);
+  box-shadow: 0 14px 24px -22px rgba(15, 23, 42, 0.32);
   transition:
     transform 0.2s ease,
     color 0.2s ease,
@@ -4082,22 +4081,22 @@ onBeforeUnmount(() => {
 }
 
 .detail-utility-button svg {
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
 }
 
 .detail-main h3 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 1.25rem;
-  line-height: 1.08;
+  font-size: 1.14rem;
+  line-height: 1.12;
   letter-spacing: -0.03em;
 }
 
 .detail-slug {
   display: inline-flex;
   width: fit-content;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--panel-bg);
@@ -4117,33 +4116,12 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border: 1px solid rgba(34, 197, 94, 0.22);
   background: rgba(34, 197, 94, 0.12);
   color: #16a34a;
   font-size: 12px;
   font-weight: 700;
-}
-
-.detail-source-note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-}
-
-.detail-inline-link {
-  border: 0;
-  background: transparent;
-  color: var(--market-accent);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 0;
-  cursor: pointer;
-}
-
-.detail-inline-link:hover {
-  text-decoration: underline;
 }
 
 .detail-actions {
@@ -4153,10 +4131,10 @@ onBeforeUnmount(() => {
 }
 
 .detail-actions--inline {
-  flex-direction: row;
+  flex-direction: column;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
+  align-items: stretch;
+  justify-content: flex-start;
   min-width: 0;
 }
 
@@ -4164,19 +4142,19 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .detail-hero-stat {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-height: 96px;
+  gap: 4px;
+  min-height: 80px;
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 14px 12px;
-  border-radius: 18px;
+  padding: 10px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background:
     radial-gradient(circle at top right, var(--market-accent-soft) 0%, transparent 56%),
@@ -4184,19 +4162,28 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
+.detail-hero-stats--compact .detail-hero-stat {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  text-align: start;
+}
+
 .detail-hero-stat__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  grid-row: span 2;
 }
 
 .detail-hero-stat__icon svg {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
 }
 
 .detail-hero-stat__icon--downloads {
@@ -4211,26 +4198,27 @@ onBeforeUnmount(() => {
 
 .detail-hero-stat strong {
   color: var(--text-primary);
-  font-size: clamp(1.02rem, 0.55vw + 0.92rem, 1.35rem);
+  font-size: clamp(0.94rem, 0.45vw + 0.88rem, 1.15rem);
   line-height: 1;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.02em;
 }
 
 .detail-hero-stat small {
   color: var(--text-secondary);
-  font-size: 9px;
+  font-size: 8px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 .detail-install-panel {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 10px;
-  padding: 14px 16px;
-  border-radius: 20px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 0;
+  padding: 10px;
+  border-radius: 14px;
   border: 1px solid var(--border);
   background:
     radial-gradient(circle at top right, var(--market-accent-soft) 0%, transparent 56%),
@@ -4240,25 +4228,25 @@ onBeforeUnmount(() => {
 .detail-install-copy {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
-.detail-install-copy h4 {
+.detail-install-headline {
   margin: 0;
   color: var(--text-primary);
-  font-size: 1rem;
-  line-height: 1.2;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 700;
 }
 
 .detail-install-copy p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 10.5px;
-  line-height: 1.5;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
-.detail-subtitle,
 .detail-callout,
 .section-heading p {
   margin: 0;
@@ -4283,7 +4271,7 @@ onBeforeUnmount(() => {
 }
 
 .meta-item {
-  min-height: 56px;
+  min-height: 48px;
 }
 
 .meta-item span,
@@ -4325,8 +4313,8 @@ onBeforeUnmount(() => {
 }
 
 .detail-section {
-  margin-top: 10px;
-  padding-top: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--border);
 }
 
@@ -4684,6 +4672,19 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
+  .detail-hero-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-header-side {
+    max-width: none;
+  }
+
+  .detail-actions--inline {
+    flex-direction: row;
+    align-items: center;
+  }
+
   .advisor-skill-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4702,13 +4703,8 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .detail-hero-stats {
+  .detail-hero-stats--compact {
     grid-template-columns: 1fr;
-  }
-
-  .detail-install-panel {
-    flex-direction: column;
-    align-items: stretch;
   }
 
   .advisor-skill-grid {
@@ -4776,6 +4772,11 @@ onBeforeUnmount(() => {
 
   .detail-header-side {
     justify-content: flex-start;
+  }
+
+  .detail-actions--inline {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .card-icon {

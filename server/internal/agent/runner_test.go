@@ -175,6 +175,29 @@ func (m *mockLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatRespons
 	}, nil
 }
 
+type capturingPlannerLLM struct {
+	planJSON string
+	lastReq  llm.ChatRequest
+	calls    int
+}
+
+func (m *capturingPlannerLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	m.calls++
+	m.lastReq = req
+	if m.calls == 1 && m.planJSON != "" {
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: m.planJSON},
+		}, nil
+	}
+	return &llm.ChatResponse{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: defaultResponseForRequest(req)},
+	}, nil
+}
+
+func (m *capturingPlannerLLM) LastRequest() llm.ChatRequest {
+	return m.lastReq
+}
+
 // --- Store tests ---
 
 func TestStore_CreateAndGet(t *testing.T) {
@@ -1663,6 +1686,60 @@ func TestRunner_GeneratePlanForTask_FiltersHarnessSeededSessionCompactionMemory(
 	}
 	if taskEventSeen(observer.events, "task_planner_memory_used") {
 		t.Fatalf("expected filtered session-compaction memory to stay unused, got %+v", observer.events)
+	}
+}
+
+func TestRunner_GeneratePlanForTask_UsesHarnessSeededSessionCompactionMemoryForWeeklyRetrospective(t *testing.T) {
+	goal := "梳理下我过去一周具体写了什么。"
+	observer := &captureTaskEventObserver{}
+	llmCapture := &capturingPlannerLLM{planJSON: plannerTestJSON(goal)}
+	runner := &Runner{
+		llm:           llmCapture,
+		eventObserver: observer,
+	}
+
+	plan, err := runner.generatePlanForTask(context.Background(), &Task{
+		ID:     "task-weekly-memory",
+		UserID: "user-1",
+		Goal:   goal,
+		Metadata: map[string]interface{}{
+			harnessPlannerMemorySeedKey: []map[string]interface{}{
+				{
+					"content": "上周主要写了 chat.go 的记忆注入、chat_context.go 的长会话压缩，以及对应的 provider 端到端测试。",
+					"score":   0.94,
+					"tags":    []string{"session-compaction", "session:weekly-review"},
+				},
+			},
+		},
+	}, goal, "")
+	if err != nil {
+		t.Fatalf("generatePlanForTask returned unexpected error: %v", err)
+	}
+	if plan == nil || len(plan.Steps) == 0 {
+		t.Fatalf("plan = %#v, want non-empty plan", plan)
+	}
+	if taskEventSeen(observer.events, "task_planner_memory_filtered_session_compaction") {
+		t.Fatalf("expected retrospective weekly prompt to keep session-compaction memory, got %+v", observer.events)
+	}
+	if !taskEventSeen(observer.events, "task_planner_memory_used") {
+		t.Fatalf("expected planner memory used event, got %+v", observer.events)
+	}
+
+	userPrompt := ""
+	for _, msg := range llmCapture.LastRequest().Messages {
+		if msg.Role == llm.RoleUser {
+			userPrompt = msg.Content
+			break
+		}
+	}
+	if !strings.Contains(userPrompt, "<planner_memory>") {
+		t.Fatalf("expected planner prompt to include planner memory, got %q", userPrompt)
+	}
+	if !strings.Contains(userPrompt, "source=session_compaction") {
+		t.Fatalf("expected planner prompt to include session-compaction source, got %q", userPrompt)
+	}
+	if !strings.Contains(userPrompt, "上周主要写了 chat.go") {
+		t.Fatalf("expected planner prompt to include seeded weekly worklog memory, got %q", userPrompt)
 	}
 }
 

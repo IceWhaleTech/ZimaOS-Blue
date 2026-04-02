@@ -15,12 +15,14 @@ func registerExecApprovalRoutes(execGroup *echo.Group, execApprovals *tools.Appr
 	}
 
 	execGroup.GET("/approvals/pending", func(c echo.Context) error {
-		userID := resolveRequestUserID(c)
-		req := execApprovals.GetPending(userID)
+		sessionID := strings.TrimSpace(c.QueryParam("session_id"))
+		var req *tools.ApprovalRequest
+		if sessionID != "" {
+			req = execApprovals.GetPendingBySession(sessionID)
+		}
 		if req == nil {
-			if sessionID := strings.TrimSpace(c.QueryParam("session_id")); sessionID != "" {
-				req = execApprovals.GetPendingBySession(sessionID)
-			}
+			userID := resolveRequestUserID(c)
+			req = execApprovals.GetPending(userID)
 		}
 		if req == nil {
 			return c.JSON(200, map[string]interface{}{"pending": false})

@@ -69,7 +69,7 @@ import (
 )
 
 var (
-	version   = "0.10.36"
+	version   = "0.10.37"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -77,6 +77,7 @@ var (
 const (
 	embeddedServerShutdownGracePeriod = 1200 * time.Millisecond
 	embeddedServerStopTimeout         = 1800 * time.Millisecond
+	runtimeIdleCheckpointThreshold    = 5 * time.Minute
 )
 
 func applyPendingBackupRestore(dataDir string) (bool, error) {
@@ -507,17 +508,26 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 		zapLogger.Info("Legacy harness store imported into blue.db", fields...)
 	}
+	runtimeActivity := server.NewRuntimeActivityTracker()
+	readDB := services.DB
+	if services.DBConn != nil && services.DBConn.Reader != nil {
+		readDB = services.DBConn.Reader
+	}
 	if cfg.Performance.Database.CheckpointInterval > 0 {
-		dbutil.StartPeriodicWALCheckpoint(
+		dbutil.StartIdleAwarePeriodicWALCheckpoint(
 			ctx,
 			services.DB,
 			cfg.Performance.Database.CheckpointInterval,
+			runtimeIdleCheckpointThreshold,
+			func(ctx context.Context) (bool, string, error) {
+				return runtimeActivity.CheckpointIdle(ctx, readDB, runtimeIdleCheckpointThreshold)
+			},
 			dbutil.CheckpointTruncate,
 			func(err error) {
-				zapLogger.Warn("Periodic WAL checkpoint failed", zap.Error(err))
+				zapLogger.Warn("Idle-aware WAL checkpoint failed", zap.Error(err))
 			},
 		)
-		zapLogger.Info("Periodic WAL checkpoint enabled", zap.Duration("interval", cfg.Performance.Database.CheckpointInterval))
+		zapLogger.Info("Idle-aware WAL checkpoint enabled", zap.Duration("interval", cfg.Performance.Database.CheckpointInterval), zap.Duration("idle_threshold", runtimeIdleCheckpointThreshold))
 	} else {
 		zapLogger.Info("Periodic WAL checkpoint disabled")
 	}
@@ -552,7 +562,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 			CleanupBatchSize:   cfg.Session.Audit.CleanupBatchSize,
 			Durability:         cfg.Session.ChatDBDurability,
 			WALAutoCheckpoint:  4000,
-			CheckpointInterval: 60 * time.Second,
+			CheckpointInterval: 0,
 		}
 		auditDBPath := sessionaudit.ResolveDBPath(dataDir, cfg.Session.Audit.Path)
 		var (
@@ -618,20 +628,20 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		RetentionDays:      7,
 		Path:               filepath.Join(dataDir, "backups"),
 		SkillsPath:         filepath.Join(dataDir, "workspace", ".claude", "skills"),
-		AutoBackup:         true,
+		AutoBackup:         false,
 		AutoBackupInterval: 6 * time.Hour,
-		AutoBackupOnChange: true,
+		AutoBackupOnChange: false,
 		ChangePollInterval: time.Minute,
 		ChangeDebounce:     5 * time.Minute,
 	}, dataDir, dataDir)
 	var backupHandler *backup.Handler
 	if backupManager != nil {
-		backupManager.StartAutoBackup(ctx)
 		backupHandler = backup.NewHandler(backupManager)
 		backupHandler.SetRestartFunc(func() error {
 			zapLogger.Info("Backup restore staged; triggering embedded graceful restart")
 			return triggerEmbeddedRestart(port, dataDir, cfgFile, zapLogger)
 		})
+		zapLogger.Info("Backup manager initialized with runtime auto backup disabled")
 	}
 
 	// Initialize security handler
@@ -1378,6 +1388,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
+	e.Use(runtimeActivity.MutationMiddleware())
 	echoServer = e
 
 	// Bind the listener BEFORE route registration so we can start serving

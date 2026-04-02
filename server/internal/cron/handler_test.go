@@ -89,6 +89,28 @@ func TestHandlerCreateViaJobsAlias(t *testing.T) {
 	}
 }
 
+func TestHandlerCreateViaJobsAliasAllowsMissingName(t *testing.T) {
+	_, e := setupCronHTTPHandler(t)
+
+	body := []byte(`{"schedule":"*/5 * * * *","handler":"http","payload":{"url":"https://example.com/api/webhook"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/cron/jobs", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	var job Job
+	if err := json.Unmarshal(rec.Body.Bytes(), &job); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if job.Name != "Request example.com/api/webhook" {
+		t.Fatalf("job.Name = %q, want %q", job.Name, "Request example.com/api/webhook")
+	}
+}
+
 func TestHandlerStatus(t *testing.T) {
 	svc, e := setupCronHTTPHandler(t)
 	job1, err := svc.Create("job-1", "", "* * * * *", "test-handler", nil)

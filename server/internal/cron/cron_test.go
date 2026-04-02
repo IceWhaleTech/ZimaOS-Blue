@@ -88,6 +88,39 @@ func TestCreate(t *testing.T) {
 	}
 }
 
+func TestCreateGeneratesReadableNameForCommandJobs(t *testing.T) {
+	logger := zap.NewNop()
+	s := NewService(DefaultConfig(), logger)
+	s.RegisterCommandHandler(CommandSecurityConfig{Enabled: true})
+
+	job, err := s.Create("", "", "0 * * * * *", "command", map[string]interface{}{"command": "uptime"})
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
+	}
+
+	if job.Name != "Check uptime" {
+		t.Fatalf("job.Name = %q, want %q", job.Name, "Check uptime")
+	}
+}
+
+func TestCreateGeneratesReadableNameForHTTPJobs(t *testing.T) {
+	logger := zap.NewNop()
+	s := NewService(DefaultConfig(), logger)
+	s.RegisterBuiltinHandlers()
+
+	job, err := s.Create("", "", "0 * * * * *", "http", map[string]interface{}{
+		"url":    "https://example.com/api/webhook?token=123",
+		"method": "POST",
+	})
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
+	}
+
+	if job.Name != "POST example.com/api/webhook" {
+		t.Fatalf("job.Name = %q, want %q", job.Name, "POST example.com/api/webhook")
+	}
+}
+
 func TestCreateInvalidSchedule(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := DefaultConfig()
@@ -287,6 +320,29 @@ func TestUpdate(t *testing.T) {
 
 	if updated.Schedule != "30 * * * * *" {
 		t.Errorf("expected schedule '30 * * * * *', got '%s'", updated.Schedule)
+	}
+}
+
+func TestUpdateBlankNameRegeneratesReadableTitle(t *testing.T) {
+	logger := zap.NewNop()
+	s := NewService(DefaultConfig(), logger)
+	s.RegisterCommandHandler(CommandSecurityConfig{Enabled: true})
+
+	job, err := s.Create("Original name", "", "0 * * * * *", "command", map[string]interface{}{"command": "uptime"})
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
+	}
+
+	if err := s.Update(job.ID, "", "", "0 * * * * *", map[string]interface{}{"command": "df -h"}); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	updated, exists := s.Get(job.ID)
+	if !exists {
+		t.Fatal("expected job to exist after update")
+	}
+	if updated.Name != "Check disk usage" {
+		t.Fatalf("updated.Name = %q, want %q", updated.Name, "Check disk usage")
 	}
 }
 

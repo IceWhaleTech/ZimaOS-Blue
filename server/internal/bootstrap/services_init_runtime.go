@@ -20,12 +20,12 @@ import (
 func initServicesMemoryAndMedia(
 	s *Services,
 	cfg *ServerConfig,
-	appCfg *config.Config,
-	trace *StartupTrace,
+	appCfg *config.Config, trace *StartupTrace,
 ) error {
 	chatDBPath := filepath.Join(cfg.DataDir, "blue.db")
 	chatStoreOpts := memory.DefaultChatStoreOptions(chatDBPath)
 	chatStoreOpts.Durability = appCfg.Session.ChatDBDurability
+	chatStoreOpts.CheckpointInterval = 0
 	chatStoreOpts.AttachmentExternalStore = appCfg.Session.ChatAttachmentExternalStore
 	if chatStoreOpts.AttachmentExternalStore {
 		chatStoreOpts.AttachmentDir = filepath.Join(cfg.DataDir, "message_attachments")

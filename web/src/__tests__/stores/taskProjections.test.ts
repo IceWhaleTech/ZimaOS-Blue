@@ -66,10 +66,18 @@ describe('taskProjections store', () => {
               title: 'Current task',
               status: 'running',
               stage: 'working',
-              progress: 45,
-              actions: {
-                items: [
-                  {
+            progress: 45,
+            subagent_summary: {
+              total: 2,
+              running: 1,
+              completed: 1,
+              latest_title: 'Check failing test',
+              latest_status: 'running',
+              latest_updated_at: '2026-03-20T12:00:00.000Z',
+            },
+            actions: {
+              items: [
+                {
                     id: 'cancel',
                     label: 'Cancel',
                     method: 'POST',
@@ -97,6 +105,11 @@ describe('taskProjections store', () => {
               stage: 'completed',
               progress: 100,
               actions: { items: [] },
+              run_status: 'completed',
+              verification_status: 'passed',
+              score: 0.91,
+              evidence_count: 4,
+              detail_href: '/automation/harness/group-1',
               updated_at: '2026-03-20T11:59:00.000Z',
             },
           ],
@@ -138,7 +151,23 @@ describe('taskProjections store', () => {
     expect(store.currentActiveTasks).toHaveLength(1)
     expect(store.currentTerminalTasks).toHaveLength(1)
     expect(store.backgroundTasks).toHaveLength(1)
+    expect(store.recentOutcome).toBeNull()
     expect(store.hasActiveTasks).toBe(true)
+    expect(store.currentTasks[0]?.subagent_summary).toMatchObject({
+      total: 2,
+      running: 1,
+      completed: 1,
+      latest_title: 'Check failing test',
+      latest_status: 'running',
+      latest_updated_at: '2026-03-20T12:00:00.000Z',
+    })
+    expect(store.currentTerminalTasks[0]).toMatchObject({
+      run_status: 'completed',
+      verification_status: 'passed',
+      score: 0.91,
+      evidence_count: 4,
+      detail_href: '/automation/harness/group-1',
+    })
 
     store.stopPolling()
   })
@@ -201,6 +230,83 @@ describe('taskProjections store', () => {
 
     expect(taskProjectionApi.getTask).toHaveBeenCalledWith('task-bg-1')
     expect(mocks.notificationStore.success).toHaveBeenCalledTimes(1)
+    expect(store.recentOutcome).toMatchObject({
+      id: 'task-bg-1',
+      status: 'completed',
+      stage: 'completed',
+      progress: 100,
+    })
+
+    store.stopPolling()
+  })
+
+  it('captures current task terminal transitions and allows recent outcomes to be dismissed or expire', async () => {
+    let currentStatus: 'running' | 'completed' = 'running'
+    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
+      if (scope === 'current') {
+        return {
+          data: [
+            {
+              id: 'task-current-transition',
+              kind: 'agent_task',
+              scope: 'current',
+              conversation_id: 'conv-1',
+              title: 'Current task',
+              status: currentStatus,
+              stage: currentStatus === 'completed' ? 'completed' : 'working',
+              progress: currentStatus === 'completed' ? 100 : 55,
+              result_preview:
+                currentStatus === 'completed' ? 'The fix landed and verification passed.' : '',
+              actions: {
+                items:
+                  currentStatus === 'completed'
+                    ? []
+                    : [
+                        {
+                          id: 'cancel',
+                          label: 'Cancel',
+                          method: 'POST',
+                          path: '/tasks/task-current-transition/actions/cancel',
+                          variant: 'danger',
+                        },
+                      ],
+              },
+              updated_at:
+                currentStatus === 'completed'
+                  ? '2026-03-20T12:15:00.000Z'
+                  : '2026-03-20T12:10:00.000Z',
+            },
+          ],
+        } as never
+      }
+      return { data: [] } as never
+    })
+
+    const store = useTaskProjectionsStore()
+    await store.setConversation('conv-1')
+
+    currentStatus = 'completed'
+    await store.refreshNow()
+
+    expect(store.recentOutcome).toMatchObject({
+      id: 'task-current-transition',
+      status: 'completed',
+      stage: 'completed',
+      result_preview: 'The fix landed and verification passed.',
+    })
+
+    store.dismissRecentOutcome()
+    expect(store.recentOutcome).toBeNull()
+
+    currentStatus = 'running'
+    await store.refreshNow()
+
+    currentStatus = 'completed'
+    await store.refreshNow()
+    expect(store.recentOutcome?.id).toBe('task-current-transition')
+
+    vi.advanceTimersByTime(5 * 60 * 1000)
+    expect(store.recentOutcome).toBeNull()
 
     store.stopPolling()
   })

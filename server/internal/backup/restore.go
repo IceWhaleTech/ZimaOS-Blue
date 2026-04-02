@@ -76,9 +76,22 @@ type RestoreResult struct {
 
 // Restore restores a backup
 func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (*RestoreResult, error) {
+	startedAt := time.Now()
 	result := &RestoreResult{
 		Success: true,
 	}
+
+	backupLogf(
+		"restore started backup_id=%s overwrite=%t restore_config=%t restore_data=%t restore_skills=%t create_checkpoint=%t dry_run=%t skip_verify=%t",
+		id,
+		opts.OverwriteExisting,
+		opts.RestoreConfig,
+		opts.RestoreData,
+		opts.RestoreSkills,
+		opts.CreateCheckpoint,
+		opts.DryRun,
+		opts.SkipVerify,
+	)
 
 	m.mu.RLock()
 	_, exists := m.backups[id]
@@ -89,8 +102,7 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 
 	// Security: Log warning if verification is skipped
 	if opts.SkipVerify {
-		// Note: In production, consider rejecting this entirely or requiring admin confirmation
-		fmt.Println("[SECURITY WARNING] Backup verification skipped - this may restore tampered data")
+		backupLogf("restore verification skipped backup_id=%s", id)
 	}
 
 	if opts.CreateCheckpoint && !opts.DryRun {
@@ -98,6 +110,7 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 		if reason == "" {
 			reason = "pre_restore"
 		}
+		backupLogf("restore creating checkpoint backup_id=%s reason=%s", id, reason)
 		checkpoint, err := m.CreateCheckpoint(ctx, reason)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create restore checkpoint: %w", err)
@@ -105,10 +118,12 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 		result.CheckpointID = checkpoint.ID
 		result.CheckpointAt = checkpoint.CreatedAt.Format(time.RFC3339)
 		result.CheckpointReason = checkpoint.CheckpointReason
+		backupLogf("restore created checkpoint backup_id=%s checkpoint_id=%s", id, checkpoint.ID)
 	}
 
 	// Verify backup first (unless skipped)
 	if !opts.SkipVerify {
+		backupLogf("restore verifying backup backup_id=%s", id)
 		if err := m.Verify(id); err != nil {
 			return nil, fmt.Errorf("backup verification failed: %w", err)
 		}
@@ -265,6 +280,7 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 	// Checkpoint WAL for all restored databases so committed frames are merged
 	// into the main DB files and WAL is truncated safely.
 	if !opts.DryRun && result.Success {
+		backupLogf("restore checkpointing restored sqlite databases backup_id=%s", id)
 		if opts.RestoreData {
 			if err := database.CheckpointAllDatabasesInDir(m.dataDir, database.CheckpointTruncate); err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("warning: failed to checkpoint WAL in data dir: %v", err))
@@ -276,6 +292,16 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 			}
 		}
 	}
+
+	backupLogf(
+		"restore completed backup_id=%s success=%t files_restored=%d files_skipped=%d errors=%d duration=%s",
+		id,
+		result.Success,
+		result.FilesRestored,
+		result.FilesSkipped,
+		len(result.Errors),
+		time.Since(startedAt),
+	)
 
 	return result, nil
 }
@@ -412,6 +438,8 @@ func (m *Manager) StageRestore(ctx context.Context, id string) (*PendingRestore,
 		return nil, fmt.Errorf("failed to write pending restore marker: %w", err)
 	}
 
+	backupLogf("restore staged for restart backup_id=%s marker=%s", id, markerPath)
+
 	return pending, nil
 }
 
@@ -452,6 +480,8 @@ func (m *Manager) ApplyPendingRestore(ctx context.Context) (*RestoreResult, erro
 		return nil, nil // No pending restore
 	}
 
+	backupLogf("applying pending restore backup_id=%s", pending.BackupID)
+
 	// Perform the actual restore
 	opts := DefaultRestoreOptions()
 	opts.OverwriteExisting = true
@@ -466,6 +496,8 @@ func (m *Manager) ApplyPendingRestore(ctx context.Context) (*RestoreResult, erro
 	if err != nil {
 		return result, fmt.Errorf("failed to apply pending restore: %w", err)
 	}
+
+	backupLogf("applied pending restore backup_id=%s success=%t", pending.BackupID, result != nil && result.Success)
 
 	return result, nil
 }

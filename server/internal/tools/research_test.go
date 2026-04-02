@@ -120,6 +120,32 @@ func TestResearchRunToolSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 }
 
+func TestDeepResearchToolAcceptsInputAlias(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.Query != "research via input alias" {
+				t.Fatalf("query = %q, want %q", req.Query, "research via input alias")
+			}
+			return &ResearchJob{ID: "job-input", Status: "pending", Query: req.Query, EffectiveRouteMode: "web"}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "research via input alias",
+		"wait":  false,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["accepted"]; got != true {
+		t.Fatalf("accepted = %v, want true", got)
+	}
+	if got := payload["query"]; got != "research via input alias" {
+		t.Fatalf("query = %v, want research via input alias", got)
+	}
+}
+
 func TestDeepResearchTool_StatusAction(t *testing.T) {
 	service := &mockResearchService{
 		get: func(id, userID string) (*ResearchJob, error) {

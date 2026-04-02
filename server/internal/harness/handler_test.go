@@ -151,6 +151,96 @@ func TestHandler_GetRunDetailIncludesAvailableActions(t *testing.T) {
 	}
 }
 
+func TestHandler_GetRunDetailIncludesRunTrace(t *testing.T) {
+	controller := newTestController(t)
+	driver := &stubDriver{kind: RunKindAgentTask}
+	controller.RegisterDriver(driver)
+	controller.SetRunTraceProvider(NewRunTraceCollector(controller))
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:   RunKindAgentTask,
+		Goal:   "Trace this run",
+		UserID: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	startedAt := time.Now().UTC().Add(-1500 * time.Millisecond)
+	finishedAt := startedAt.Add(1500 * time.Millisecond)
+	run.Status = RunStatusCompleted
+	run.StartedAt = &startedAt
+	run.FinishedAt = &finishedAt
+	run.UpdatedAt = finishedAt
+	if err := controller.store.UpdateRun(context.Background(), run); err != nil {
+		t.Fatalf("UpdateRun failed: %v", err)
+	}
+	if err := controller.AppendEvent(context.Background(), RunEvent{
+		RunID:     run.ID,
+		RootRunID: run.RootRunID,
+		Type:      "trace_started",
+		Message:   "driver start completed",
+		CreatedAt: startedAt,
+	}); err != nil {
+		t.Fatalf("AppendEvent(trace_started) failed: %v", err)
+	}
+	if err := controller.AppendEvent(context.Background(), RunEvent{
+		RunID:       run.ID,
+		RootRunID:   run.RootRunID,
+		Type:        "stage_changed",
+		Message:     "run finalized",
+		CreatedAt:   finishedAt,
+		PayloadJSON: marshalInterface(map[string]interface{}{"stage": RuntimeStageFinalize, "status": RunStatusCompleted}),
+	}); err != nil {
+		t.Fatalf("AppendEvent(stage_changed) failed: %v", err)
+	}
+	if err := controller.store.AttachArtifact(context.Background(), ArtifactRef{
+		ID:        "artifact-trace",
+		RunID:     run.ID,
+		Kind:      "trace",
+		Label:     "trace log",
+		PathOrURL: "/tmp/trace.log",
+	}); err != nil {
+		t.Fatalf("AttachArtifact failed: %v", err)
+	}
+
+	handler := NewHandler(controller)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/runs/"+run.ID+"/detail", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(run.ID)
+
+	if err := handler.GetRunDetail(c); err != nil {
+		t.Fatalf("GetRunDetail returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var detail RunDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if detail.RunTrace == nil {
+		t.Fatalf("expected run_trace in detail, got %#v", detail)
+	}
+	if detail.RunTrace.RunID != run.ID || detail.RunTrace.Status != RunStatusCompleted {
+		t.Fatalf("unexpected trace header: %#v", detail.RunTrace)
+	}
+	if !hasTraceStage(detail.RunTrace.Stages, RuntimeStageFinalize) {
+		t.Fatalf("unexpected trace stages: %#v", detail.RunTrace.Stages)
+	}
+	if !hasTraceEvent(detail.RunTrace.Events, "trace_started") {
+		t.Fatalf("unexpected trace events: %#v", detail.RunTrace.Events)
+	}
+	if len(detail.RunTrace.Artifacts) != 1 || detail.RunTrace.Artifacts[0].Label != "trace log" {
+		t.Fatalf("unexpected trace artifacts: %#v", detail.RunTrace.Artifacts)
+	}
+}
+
 func TestHandler_PerformRunActionResumesScopedRun(t *testing.T) {
 	controller := newTestController(t)
 	driver := &stubDriver{

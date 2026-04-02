@@ -33,82 +33,68 @@ const localeKeys = [
 ] as const
 
 const requiredPaths = [
+  'common.active',
   'common.all',
+  'common.cancel',
+  'common.error',
+  'common.loading',
   'common.notAvailable',
+  'common.refresh',
   'common.updatedAt',
-  'nav.harness',
-  'harness.builder.title',
-  'harness.datasets.title',
-  'harness.dataset.publishVersion',
-  'harness.evalSpec.title',
-  'harness.evalRuns.title',
-  'harness.evalRun.report',
-  'harness.quickEval.title',
-  'harness.quickEval.systemWillDo',
-  'harness.quickEval.caseRequired',
-  'harness.quickEval.caseTemplateHint',
-  'harness.quickEval.conversationCaseCount',
-  'harness.quickEval.conversationEmpty',
-  'harness.quickEval.conversationHint',
-  'harness.quickEval.conversationLoadFailed',
-  'harness.quickEval.conversationRequired',
-  'harness.quickEval.draftCases',
-  'harness.quickEval.editManifest',
-  'harness.quickEval.launchHint',
-  'harness.quickEval.previewManifest',
-  'harness.quickEval.smokeLabel',
-  'harness.quickEval.regressionLabel',
-  'harness.quickEval.researchLabel',
-  'harness.quickEval.selectConversation',
-  'harness.quickEval.smokeDatasetName',
-  'harness.quickEval.untitledConversation',
-  'harness.quickEval.useConversation',
-  'harness.baseline.title',
-  'harness.compare.title',
+  'nav.automation',
+  'automation.tabs.harness',
+  'automation.tabs.harnessDesc',
   'harness.groups.subtitle',
-  'harness.groups.controlPlaneDescription',
   'harness.groups.totalGroups',
+  'harness.groups.avgPassRate',
+  'harness.groups.loading',
+  'harness.groups.terminalOnly',
+  'harness.groups.searchPlaceholder',
+  'harness.groups.noSubject',
+  'harness.groups.kind',
+  'harness.groups.owner',
+  'harness.groups.itemCount',
+  'harness.groups.passRate',
+  'harness.groups.score',
+  'harness.groups.running',
+  'harness.groups.failed',
+  'harness.groups.passed',
   'harness.groups.emptyDescription',
-  'harness.group.artifacts',
+  'harness.groups.startedAt',
+  'harness.groups.finishedAt',
+  'harness.group.noSubject',
+  'harness.group.cancelled',
+  'harness.group.retryResult',
   'harness.group.retryFailed',
-  'harness.group.verificationPassRate',
-  'harness.group.evidenceBackedPassRate',
-  'harness.group.retryRecovered',
-  'harness.group.failureLabels',
-  'harness.group.noFailureLabels',
-  'harness.group.verification',
-  'harness.group.evidenceScore',
+  'harness.group.loading',
+  'harness.group.totalAttempts',
+  'harness.group.scoreDistribution',
+  'harness.group.scoringMode',
+  'harness.group.passVerdict',
+  'harness.group.failVerdict',
+  'harness.group.partialVerdict',
+  'harness.group.errorVerdict',
+  'harness.group.queuedCount',
+  'harness.group.failedCount',
   'harness.group.failureLabel',
-  'harness.group.retryable',
-  'harness.group.outcomeScore',
-  'harness.group.executionScore',
-  'harness.group.remediation',
-  'harness.group.remediationMissingArtifact',
-  'harness.group.remediationRunFailed',
-  'harness.group.remediationGeneric',
-  'harness.group.verificationChecks',
-  'harness.group.expectedArtifacts',
-  'harness.group.traceSummary',
-  'harness.group.expectedValue',
-  'harness.group.actualValue',
-  'harness.group.eventCount',
-  'harness.group.artifactCount',
-  'harness.group.observedTools',
-  'harness.group.scorecardInsights',
-  'harness.group.scorecardInsightsHint',
-  'harness.group.reviewProposals',
-  'harness.group.noScorecardInsights',
-  'harness.group.calibrationRef',
-  'harness.group.takeawayCandidateCount',
-  'harness.group.proposalCount',
-  'harness.group.proposalIds',
-  'harness.group.noProposalIds',
-  'harness.group.unprofiled',
-  'harness.compare.verificationPassRateDelta',
-  'harness.compare.evidenceBackedPassRateDelta',
-  'harness.compare.retryRecoveredDelta',
-  'harness.compare.failureLabelDelta',
-  'harness.compare.noFailureLabelDelta',
+  'harness.group.noFailureLabels',
+  'harness.group.failedItems',
+  'harness.group.noFailedItems',
+  'harness.group.attempts',
+  'harness.group.noFailureReason',
+  'harness.group.linkedRuns',
+  'harness.group.noLinkedRuns',
+  'harness.group.artifacts',
+  'harness.group.noArtifacts',
+  'chat.deepResearchHoverDescription',
+  'chat.taskStagePartial',
+  'chat.taskHarnessRunStatus',
+  'chat.taskHarnessVerificationStatus',
+  'chat.taskHarnessEvidenceCount',
+  'chat.taskHarnessRecorded',
+  'chat.taskHarnessViewDetails',
+  'chat.taskHarnessRerun',
+  'chat.taskHarnessVerificationPassed',
 ] as const
 
 const localeModules = import.meta.glob('@/i18n/locales/*.ts', { eager: true }) as Record<
@@ -157,10 +143,18 @@ describe('Harness locale coverage', () => {
       const file = `${locale}.ts`
       const source = localeSourceByFile.get(file)
       expect(source, `${file} should be loadable as raw source`).toBeTruthy()
-      expect(source, `${file} should expose common.all`).toMatch(/"all"\s*:/)
-      expect(source, `${file} should expose common.notAvailable`).toMatch(/"notAvailable"\s*:/)
-      expect(source, `${file} should expose common.updatedAt`).toMatch(/"updatedAt"\s*:/)
-      expect(source, `${file} should expose nav.harness`).toMatch(/"harness"\s*:/)
+      expect(source, `${file} should expose common.all`).toMatch(/['"]?all['"]?\s*:/)
+      expect(source, `${file} should expose common.notAvailable`).toMatch(
+        /['"]?notAvailable['"]?\s*:/
+      )
+      expect(source, `${file} should expose common.updatedAt`).toMatch(/['"]?updatedAt['"]?\s*:/)
+      expect(source, `${file} should expose nav.automation`).toMatch(/['"]?automation['"]?\s*:/)
+      expect(source, `${file} should expose automation.tabs.harness`).toMatch(
+        /['"]?harness['"]?\s*:/
+      )
+      expect(source, `${file} should expose automation.tabs.harnessDesc`).toMatch(
+        /['"]?harnessDesc['"]?\s*:/
+      )
     }
   })
 
@@ -176,31 +170,23 @@ describe('Harness locale coverage', () => {
     }
   })
 
-  it('preserves the Harness product name for Chinese locales', () => {
+  it('preserves the localized automation harness copy for Chinese locales', () => {
     const zhCN = localeMessagesByFile.get('zh-CN.ts') as LocaleMessages
     const zhTW = localeMessagesByFile.get('zh-TW.ts') as LocaleMessages
 
-    expect(getPathValue(zhCN, 'nav.harness')).toBe('Harness')
-    expect(getPathValue(zhCN, 'harness.quickEval.systemWillDo')).toBe('Harness 将自动完成')
-    expect(getPathValue(zhCN, 'harness.quickEval.useConversation')).toBe('使用会话')
-    expect(getPathValue(zhCN, 'harness.quickEval.selectConversation')).toBe('选择会话')
-    expect(getPathValue(zhCN, 'harness.quickEval.draftCases')).toBe('草稿用例')
-    expect(getPathValue(zhCN, 'harness.quickEval.previewManifest')).toBe('预览用例 JSON')
-    expect(getPathValue(zhCN, 'harness.quickEval.editManifest')).toBe('编辑用例 JSON')
-    expect(getPathValue(zhCN, 'harness.quickEval.smokeLabel')).toBe('冒烟')
-    expect(getPathValue(zhCN, 'harness.quickEval.regressionLabel')).toBe('回归')
-    expect(getPathValue(zhCN, 'harness.quickEval.researchLabel')).toBe('研究')
-    expect(getPathValue(zhCN, 'harness.quickEval.smokeDatasetName')).toBe('冒烟数据集')
-    expect(getPathValue(zhTW, 'nav.harness')).toBe('Harness')
-    expect(getPathValue(zhTW, 'harness.quickEval.systemWillDo')).toBe('Harness 將自動完成')
-    expect(getPathValue(zhTW, 'harness.quickEval.useConversation')).toBe('使用對話')
-    expect(getPathValue(zhTW, 'harness.quickEval.selectConversation')).toBe('選擇對話')
-    expect(getPathValue(zhTW, 'harness.quickEval.draftCases')).toBe('草稿案例')
-    expect(getPathValue(zhTW, 'harness.quickEval.previewManifest')).toBe('預覽案例 JSON')
-    expect(getPathValue(zhTW, 'harness.quickEval.editManifest')).toBe('編輯案例 JSON')
-    expect(getPathValue(zhTW, 'harness.quickEval.smokeLabel')).toBe('冒煙')
-    expect(getPathValue(zhTW, 'harness.quickEval.regressionLabel')).toBe('回歸')
-    expect(getPathValue(zhTW, 'harness.quickEval.researchLabel')).toBe('研究')
-    expect(getPathValue(zhTW, 'harness.quickEval.smokeDatasetName')).toBe('冒煙資料集')
+    expect(getPathValue(zhCN, 'automation.tabs.harness')).toBe('Harness')
+    expect(getPathValue(zhCN, 'automation.tabs.harnessDesc')).toBe(
+      '查看运行记录、评测分组和评分结果。'
+    )
+    expect(getPathValue(zhCN, 'harness.groups.totalGroups')).toBe('分组数')
+    expect(getPathValue(zhCN, 'harness.group.retryFailed')).toBe('重试失败项')
+    expect(getPathValue(zhCN, 'harness.group.failedItems')).toBe('失败样本')
+    expect(getPathValue(zhTW, 'automation.tabs.harness')).toBe('Harness')
+    expect(getPathValue(zhTW, 'automation.tabs.harnessDesc')).toBe(
+      '查看執行記錄、評測群組和評分結果。'
+    )
+    expect(getPathValue(zhTW, 'harness.groups.totalGroups')).toBe('群組數')
+    expect(getPathValue(zhTW, 'harness.group.retryFailed')).toBe('重試失敗項')
+    expect(getPathValue(zhTW, 'harness.group.failedItems')).toBe('失敗樣本')
   })
 })

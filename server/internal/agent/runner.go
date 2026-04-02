@@ -3459,6 +3459,34 @@ func containsAnyPlannerSignal(query string, signals []string) bool {
 	return false
 }
 
+func matchesPlannerRetrospectiveWorklogIntent(normalized string) bool {
+	timeWindowSignals := []string{
+		"past week", "last week", "this week", "recently",
+		"过去一周", "最近一周", "上周", "这周", "最近",
+	}
+	summarySignals := []string{
+		"recap", "summarize", "summary", "review", "outline",
+		"梳理", "总结", "回顾", "盘点",
+	}
+	workSignals := []string{
+		"what did i write", "what i wrote", "what did i work on", "what i worked on",
+		"wrote", "written", "worked on", "changed", "shipped", "implemented",
+		"写了什么", "写过什么", "做了什么", "改了什么", "提交了什么",
+	}
+	selfSignals := []string{
+		"i ", "i'", "i’m", "i've", "my ",
+		"我", "我的",
+	}
+	hasTimeWindow := containsAnyPlannerSignal(normalized, timeWindowSignals)
+	if !hasTimeWindow {
+		return false
+	}
+	hasWorklog := containsAnyPlannerSignal(normalized, workSignals)
+	hasSummary := containsAnyPlannerSignal(normalized, summarySignals)
+	hasSelf := containsAnyPlannerSignal(normalized, selfSignals)
+	return hasWorklog || (hasSummary && hasSelf)
+}
+
 func plannerMemoryTags(metadata map[string]string) []string {
 	if len(metadata) == 0 {
 		return nil
@@ -3502,7 +3530,9 @@ func shouldUseSessionCompactionPlannerMemory(query string) bool {
 		"remember", "memory", "preference", "profile", "previously said", "as i said",
 		"记得", "记忆", "偏好", "之前说过", "习惯",
 	}
-	return containsAnyPlannerSignal(normalized, codingSignals) || containsAnyPlannerSignal(normalized, memoryCueSignals)
+	return containsAnyPlannerSignal(normalized, codingSignals) ||
+		containsAnyPlannerSignal(normalized, memoryCueSignals) ||
+		matchesPlannerRetrospectiveWorklogIntent(normalized)
 }
 
 func plannerMemoryMinScore(metadata map[string]string) float32 {

@@ -13,7 +13,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import type { ComponentPublicInstance } from 'vue'
-import { useChatStore, type ActiveMessageStreamState } from '@/stores/chat'
+import { useChatStore, type ActiveMessageStreamState, type StreamUIState } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useTaskProjectionsStore } from '@/stores/taskProjections'
@@ -25,10 +25,7 @@ import type VirtualScrollComponent from '@/components/VirtualScroll.vue'
 import type { UserTaskProjection } from '@/api/tasks'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
-import {
-  clearConversationIncrementalStates,
-  parseTypelessContentIncremental,
-} from '@/utils/typeless'
+import { clearConversationIncrementalStates } from '@/utils/typeless'
 import { formatTokens } from '@/utils/format'
 import { findLatestTodoChecklistSummary } from '@/utils/todoChecklist'
 import { reportStartupMark } from '@/utils/startupTrace'
@@ -54,9 +51,7 @@ const MediaParamPanel = defineAsyncComponent(() => import('@/components/MediaPar
 const UserTaskProjectionCard = defineAsyncComponent(
   () => import('@/components/UserTaskProjectionCard.vue')
 )
-const UserTaskProjectionDock = defineAsyncComponent(
-  () => import('@/components/UserTaskProjectionDock.vue')
-)
+const ChatActivityDock = defineAsyncComponent(() => import('@/components/ChatActivityDock.vue'))
 
 const { t, te, locale } = useI18n()
 const router = useRouter()
@@ -198,16 +193,8 @@ watch(locale, (newLocale) => {
 // Trial quota animation state
 const tokenAnimating = ref(false)
 const previousTokens = ref<number | null>(null)
-const RE_TYPELESS_CARD_PLACEHOLDER = /\[\[TYPELESS_CARD:[^\]]+\]\]/g
+const ACTIVITY_DOCK_EXPANDED_KEY = 'zima.chat.activity_dock_expanded.v1'
 const ACTIVE_TODO_PANEL_COLLAPSED_KEY = 'zima.chat.active_todo_collapsed.v1'
-
-const hasBackgroundTasks = computed(() => taskProjections.backgroundTasks.length > 0)
-const messageAreaPaddingClass = computed(() => {
-  if (isMobile.value) {
-    return hasBackgroundTasks.value ? 'pb-16' : 'pb-6'
-  }
-  return hasBackgroundTasks.value ? 'pb-12' : 'pb-8'
-})
 
 const messagesContainer = ref<HTMLElement | null>(null)
 const virtualScrollRef = ref<InstanceType<typeof VirtualScrollComponent> | null>(null)
@@ -316,19 +303,104 @@ watch(showTalkMode, (open) => {
 })
 
 const currentConversationActiveTasks = computed(() => taskProjections.currentActiveTasks)
+const activityDockExpanded = ref(loadActivityDockExpanded())
 
 const hasCancelableWork = computed(() => {
-  if (chatStore.streaming || chatStore.isRecovering || mediaGen.generating.value) return true
+  if (
+    chatStore.streaming ||
+    chatStore.sending ||
+    chatStore.isRecovering ||
+    mediaGen.generating.value
+  ) {
+    return true
+  }
+  if (
+    chatStore.streamUIState.phase === 'recovering' ||
+    chatStore.streamUIState.phase === 'awaiting_confirmation' ||
+    chatStore.streamUIState.phase === 'interrupted'
+  ) {
+    return true
+  }
   return currentConversationActiveTasks.value.length > 0
+})
+
+const activityDockStreamState = computed<StreamUIState>(() => {
+  const base = chatStore.streamUIState
+  if (base.phase !== 'idle' && base.phase !== 'completed') {
+    return base
+  }
+  if (showAwaitingConfirmation.value) {
+    return {
+      ...base,
+      phase: 'awaiting_confirmation',
+      label: base.label || 'Waiting for your confirmation to continue',
+      detail: base.detail,
+      updatedAt: Date.now(),
+    }
+  }
+  if (chatStore.toolExecuting) {
+    return {
+      ...base,
+      phase: 'executing',
+      label: base.label || chatStore.statusSummary || chatStore.streamProgress || 'Processing',
+      detail: base.detail,
+      updatedAt: Date.now(),
+    }
+  }
+  if (mediaGen.generating.value) {
+    return {
+      ...base,
+      phase: 'executing',
+      label: base.label || 'Generating media',
+      detail: base.detail,
+      updatedAt: Date.now(),
+    }
+  }
+  if (chatStore.streaming) {
+    return {
+      ...base,
+      phase: 'streaming',
+      label: base.label || chatStore.statusSummary || chatStore.streamProgress || 'Thinking',
+      detail: base.detail,
+      updatedAt: Date.now(),
+    }
+  }
+  if (chatStore.sending) {
+    return {
+      ...base,
+      phase: 'connecting',
+      label: base.label || 'Thinking',
+      detail: base.detail,
+      updatedAt: Date.now(),
+    }
+  }
+  return base
 })
 
 const chatInputDisabled = computed(
   () => (chatStore.sending && !chatStore.isPreTTFT) || chatStore.isRecovering
 )
 
-const showStreamStatusRail = computed(
-  () => chatStore.streamUIState.phase !== 'idle' && chatStore.streamUIState.phase !== 'completed'
+const hasActivityDock = computed(
+  () =>
+    hasCancelableWork.value ||
+    currentConversationActiveTasks.value.length > 0 ||
+    taskProjections.backgroundTasks.length > 0 ||
+    !!taskProjections.recentOutcome ||
+    !!activeTodoSummary.value
 )
+
+const messageAreaPaddingClass = computed(() => {
+  if (!hasActivityDock.value) {
+    return isMobile.value ? 'pb-6' : 'pb-8'
+  }
+  if (isMobile.value) {
+    return activityDockExpanded.value ? 'pb-20' : 'pb-14'
+  }
+  return activityDockExpanded.value ? 'pb-16' : 'pb-12'
+})
+
+const showExternalStreamDockStatus = computed(() => false)
 
 const executingConversationIds = computed(() => {
   const ids = new Set<string>()
@@ -354,30 +426,6 @@ const executingConversationIds = computed(() => {
   return [...ids]
 })
 
-function hasVisibleTextOutsideCards(content: string): boolean {
-  return content.replace(RE_TYPELESS_CARD_PLACEHOLDER, '').trim().length > 0
-}
-
-const shouldCompactStreamingActions = computed(() => {
-  if (!hasCancelableWork.value) return false
-
-  const lastMessage = [...chatStore.messages]
-    .reverse()
-    .find((message) => message.role === 'assistant')
-  if (!lastMessage || lastMessage.role !== 'assistant') return false
-  if (typeof lastMessage.content !== 'string' || !lastMessage.content.trim()) return false
-
-  const parsed = parseTypelessContentIncremental(
-    lastMessage.content,
-    lastMessage.render_key || lastMessage.id,
-    lastMessage.conversation_id,
-    lastMessage.todo_card_id?.trim()
-  )
-
-  if (!parsed || parsed.cards.length === 0) return false
-  return !hasVisibleTextOutsideCards(parsed.text)
-})
-
 async function openProjectedTask(task: UserTaskProjection) {
   try {
     if (isMobile.value && task.conversation_id) {
@@ -386,6 +434,16 @@ async function openProjectedTask(task: UserTaskProjection) {
     await taskProjections.openTask(task)
   } catch (e) {
     console.error('Failed to open projected task:', e)
+  }
+}
+
+async function navigateProjectedTask(target: string) {
+  const href = String(target || '').trim()
+  if (!href) return
+  try {
+    await router.push(href)
+  } catch (e) {
+    console.error('Failed to navigate projected task:', e)
   }
 }
 
@@ -507,7 +565,7 @@ let lastRenderMetaLookupKey = ''
 let lastRenderMetaLookupMessage: MessageMemoSource | null = null
 let lastRenderMetaLookupValue: MessageRenderMeta | null = null
 let lastActiveMessageStreamStateDeps:
-  | [
+  | readonly [
       phase: string,
       awaitingConfirmation: boolean,
       toolExecuting: boolean,
@@ -592,7 +650,7 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     ? chatStore.selectedMessageIds.has(message.id)
     : false
   const showExternalStatusRail =
-    showStreamStatusRail.value && isStreaming && message.id === streamingMessageId.value
+    showExternalStreamDockStatus.value && isStreaming && message.id === streamingMessageId.value
   const streamState = getActiveMessageStreamState(isStreaming, showExternalStatusRail)
 
   const cached = messageRenderMetaCache.get(cacheKey)
@@ -720,6 +778,26 @@ function loadActiveTodoPanelCollapsed(): boolean {
     return localStorage.getItem(ACTIVE_TODO_PANEL_COLLAPSED_KEY) === '1'
   } catch {
     return false
+  }
+}
+
+function loadActivityDockExpanded(): boolean {
+  try {
+    return localStorage.getItem(ACTIVITY_DOCK_EXPANDED_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+function persistActivityDockExpanded(value: boolean) {
+  try {
+    if (value) {
+      localStorage.removeItem(ACTIVITY_DOCK_EXPANDED_KEY)
+      return
+    }
+    localStorage.setItem(ACTIVITY_DOCK_EXPANDED_KEY, '0')
+  } catch {
+    // Ignore storage errors
   }
 }
 
@@ -863,29 +941,8 @@ let focusedTodoMessageTimer: ReturnType<typeof setTimeout> | null = null
 const activeTodoSummary = computed(() =>
   findLatestTodoChecklistSummary(chatStore.messages, chatStore.recentTodoCompletion)
 )
-const activeTodoProgressText = computed(() => {
-  const summary = activeTodoSummary.value
-  if (!summary) return ''
-
-  return chatTextWithNamedFallback(
-    'chat.activeTodo.progress',
-    `${summary.completedCount} out of ${summary.totalCount} tasks completed`,
-    {
-      completed: summary.completedCount,
-      total: summary.totalCount,
-    }
-  )
-})
 const activeTodoJumpMessageId = computed(
   () => activeTodoSummary.value?.focusMessageId || activeTodoSummary.value?.messageId || ''
-)
-const activeTodoPanelToggleTitle = computed(() =>
-  activeTodoPanelCollapsed.value
-    ? chatTextWithFallback('chat.activeTodo.expand', 'Expand todo list')
-    : chatTextWithFallback('chat.activeTodo.collapse', 'Collapse todo list')
-)
-const activeTodoPanelJumpTitle = computed(() =>
-  chatTextWithFallback('chat.activeTodo.jumpToMessage', 'Jump to checklist message')
 )
 
 // Provider status computed properties
@@ -1376,12 +1433,10 @@ function handleVisibleRangeChange(start: number, _end: number) {
 
   virtualLoadMoreInFlight = true
   virtualLoadMoreLastAt = now
-  chatStore
-    .loadMoreMessages()
-    .finally(() => {
-      virtualLoadMoreInFlight = false
-      isUserNearBottom.value = checkIfNearBottom()
-    })
+  chatStore.loadMoreMessages().finally(() => {
+    virtualLoadMoreInFlight = false
+    isUserNearBottom.value = checkIfNearBottom()
+  })
 }
 
 async function handleSend(message: string, attachments?: FileAttachment[]) {
@@ -1939,6 +1994,10 @@ function handleActiveTodoPanelJump() {
 
 watch(activeTodoPanelCollapsed, (value) => {
   persistActiveTodoPanelCollapsed(value)
+})
+
+watch(activityDockExpanded, (value) => {
+  persistActivityDockExpanded(value)
 })
 
 watch(
@@ -3336,13 +3395,6 @@ onUnmounted(() => {
                         >
                           {{ providerInlineGuidanceCopy.primaryAction }}
                         </button>
-                        <button
-                          data-testid="chat-provider-guidance-routing"
-                          class="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                          @click.stop="handleRoutingMenuButtonClick"
-                        >
-                          {{ t('chat.routingMode.title') }}
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -3457,45 +3509,9 @@ onUnmounted(() => {
                     :collapse-by-default="true"
                     @action="performProjectedTaskAction"
                     @open="openProjectedTask"
+                    @navigate="navigateProjectedTask"
                   />
                 </div>
-
-                <Transition name="fade">
-                  <div v-if="showStreamStatusRail" class="flex justify-center py-2">
-                    <div class="chat-stream-status-rail">
-                      <div class="chat-stream-status-rail__copy">
-                        <span class="chat-stream-status-rail__badge">
-                          {{ chatStore.streamUIState.phase.replace('_', ' ') }}
-                        </span>
-                        <span class="chat-stream-status-rail__label">
-                          {{ chatStore.streamUIState.label || t('chat.waitingThinking') }}
-                        </span>
-                        <span
-                          v-if="chatStore.streamUIState.detail"
-                          class="chat-stream-status-rail__detail"
-                        >
-                          {{ chatStore.streamUIState.detail }}
-                        </span>
-                      </div>
-                      <div class="chat-stream-status-rail__actions">
-                        <button
-                          v-if="chatStore.streamUIState.phase === 'interrupted'"
-                          class="chat-stream-status-rail__action"
-                          @click="handleStreamRetry"
-                        >
-                          {{ t('common.retry') }}
-                        </button>
-                        <button
-                          v-if="chatStore.isRecovering"
-                          class="chat-stream-status-rail__action is-danger"
-                          @click="handleCancel"
-                        >
-                          {{ t('chat.stopGenerating') }}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </Transition>
 
                 <!-- Context trim indicator (pruning/compaction) -->
                 <Transition name="fade">
@@ -3667,42 +3683,6 @@ onUnmounted(() => {
                     </span>
                     {{ t('chat.stillListening') }}
                   </div>
-                </div>
-
-                <!-- Streaming action buttons -->
-                <div
-                  v-if="chatStore.messages.length > 0 && !chatStore.isMultiSelectMode"
-                  class="chat-streaming-actions flex justify-center gap-2 pb-4"
-                  :class="shouldCompactStreamingActions ? 'pt-1' : 'pt-4'"
-                >
-                  <!-- Stop button (shown during streaming or async tasks) -->
-                  <button
-                    v-if="
-                      chatStore.streaming ||
-                      mediaGen.generating.value ||
-                      currentConversationActiveTasks.length > 0
-                    "
-                    class="flex items-center gap-2 px-4 py-2 glass-card text-red-400 hover:bg-red-500/10 rounded-lg text-sm transition-colors cursor-pointer"
-                    @click="handleCancel"
-                  >
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
-                      />
-                    </svg>
-                    {{ t('chat.stopGenerating') }}
-                  </button>
-
-                  <!-- Continue/Regenerate buttons removed — will be replaced by suggested follow-up prompts -->
                 </div>
               </template>
             </div>
@@ -3916,13 +3896,6 @@ onUnmounted(() => {
 
             <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
             <div class="chat-input-dock flex-shrink-0">
-              <div v-if="hasBackgroundTasks" class="max-w-5xl mx-auto px-3 sm:px-4 py-1">
-                <UserTaskProjectionDock
-                  :tasks="taskProjections.backgroundTasks"
-                  @open="openProjectedTask"
-                  @action="performProjectedTaskAction"
-                />
-              </div>
               <!-- Media generation param panel -->
               <div v-if="mediaGen.showPanel.value" class="max-w-4xl mx-auto px-3 sm:px-4">
                 <MediaParamPanel
@@ -3939,101 +3912,32 @@ onUnmounted(() => {
                   @switch-category="mediaGen.switchCategory($event)"
                 />
               </div>
-              <div
-                v-if="activeTodoSummary"
-                class="active-todo-panel-wrap w-full max-w-3xl mx-auto px-2.5 sm:px-3.5"
-                data-testid="active-todo-panel"
-              >
-                <section
-                  class="active-todo-panel"
-                  :class="{
-                    'is-complete': activeTodoSummary.allCompleted,
-                    'is-expanded': !activeTodoPanelCollapsed,
-                  }"
-                  aria-live="polite"
-                >
-                  <div class="active-todo-panel__header">
-                    <button
-                      type="button"
-                      class="active-todo-panel__summary active-todo-panel__summary--interactive"
-                      :title="activeTodoPanelJumpTitle"
-                      data-testid="active-todo-panel-jump"
-                      @click="handleActiveTodoPanelJump"
-                    >
-                      <span class="active-todo-panel__icon" aria-hidden="true">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="1.8"
-                            d="M8.75 6.75h10.5M8.75 12h10.5m-10.5 5.25h10.5M4.75 6.75h.01M4.75 12h.01M4.75 17.25h.01"
-                          />
-                        </svg>
-                      </span>
-                      <span class="active-todo-panel__progress">{{ activeTodoProgressText }}</span>
-                    </button>
-                    <div class="active-todo-panel__header-actions">
-                      <button
-                        type="button"
-                        class="active-todo-panel__icon-btn"
-                        :title="activeTodoPanelToggleTitle"
-                        data-testid="active-todo-panel-toggle"
-                        @click="toggleActiveTodoPanel"
-                      >
-                        <svg
-                          class="active-todo-panel__toggle-icon"
-                          :class="{ 'is-collapsed': activeTodoPanelCollapsed }"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 9l6 6 6-6"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  <ol v-if="!activeTodoPanelCollapsed" class="active-todo-panel__list">
-                    <li
-                      v-for="(item, index) in activeTodoSummary.items"
-                      :key="`${activeTodoSummary.messageId}-${index}`"
-                      class="active-todo-panel__item"
-                      :class="{ 'is-checked': item.checked }"
-                    >
-                      <span
-                        class="active-todo-panel__check"
-                        :class="{ 'is-checked': item.checked }"
-                        aria-hidden="true"
-                      >
-                        <svg
-                          v-if="item.checked"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2.4"
-                            d="M5 12.5l4.2 4.2L19 7.5"
-                          />
-                        </svg>
-                      </span>
-                      <span class="active-todo-panel__index">{{ index + 1 }}.</span>
-                      <span class="active-todo-panel__text">{{ item.text }}</span>
-                    </li>
-                  </ol>
-                </section>
+              <div v-if="hasActivityDock" class="max-w-5xl mx-auto px-3 sm:px-4 py-1">
+                <ChatActivityDock
+                  v-model:expanded="activityDockExpanded"
+                  :stream-state="activityDockStreamState"
+                  :can-stop="hasCancelableWork"
+                  :current-tasks="currentConversationActiveTasks"
+                  :background-tasks="taskProjections.backgroundTasks"
+                  :recent-outcome="taskProjections.recentOutcome"
+                  :todo-summary="activeTodoSummary"
+                  :todo-collapsed="activeTodoPanelCollapsed"
+                  @cancel="handleCancel"
+                  @retry="handleStreamRetry"
+                  @action="performProjectedTaskAction"
+                  @open="openProjectedTask"
+                  @navigate="navigateProjectedTask"
+                  @dismiss-outcome="taskProjections.dismissRecentOutcome()"
+                  @todo-toggle="toggleActiveTodoPanel"
+                  @todo-jump="handleActiveTodoPanelJump"
+                />
               </div>
               <ChatInput
                 ref="chatInputRef"
                 :disabled="chatInputDisabled"
                 :streaming="chatStore.streaming"
                 :can-cancel="hasCancelableWork"
+                :show-inline-cancel="false"
                 :conversation-id="chatStore.currentConversationId || undefined"
                 @send="handleSend"
                 @draft-change="handleDraftChange"

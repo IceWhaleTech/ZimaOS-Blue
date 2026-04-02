@@ -78,9 +78,22 @@ func main() {
 
 	// Direct exec — we're already in Terminal or on non-macOS.
 	env := os.Environ()
-	if err := syscall.Exec(cliPath, os.Args, env); err != nil {
+	if err := syscall.Exec(cliPath, execArgv(cliPath, os.Args), env); err != nil {
 		log.Fatalf("[launcher] exec %s: %v", cliPath, err)
 	}
+}
+
+// execArgv returns argv for re-execing the embedded CLI.
+// Using cliPath as argv[0] keeps process inspection honest; otherwise the
+// re-execed .bluecli process still appears as the launcher binary name.
+func execArgv(cliPath string, argv []string) []string {
+	if len(argv) == 0 {
+		return []string{cliPath}
+	}
+	out := make([]string, 0, len(argv))
+	out = append(out, cliPath)
+	out = append(out, argv[1:]...)
+	return out
 }
 
 // shellQuote wraps a string in single quotes for safe shell embedding.

@@ -423,9 +423,14 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 }
 
 func normalizeDeepResearchCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
-	normalized := make(map[string]interface{}, len(args)+1)
+	normalized := make(map[string]interface{}, len(args)+2)
 	for k, v := range args {
 		normalized[k] = v
+	}
+	if strings.TrimSpace(asString(normalized["query"])) == "" {
+		if query := firstDeepResearchQuery(normalized); query != "" {
+			normalized["query"] = query
+		}
 	}
 	if action := strings.TrimSpace(asString(normalized["action"])); action != "" {
 		return normalized
@@ -437,7 +442,7 @@ func normalizeDeepResearchCompatArgs(rawName string, args map[string]interface{}
 		normalized["action"] = DeepResearchActionRun
 	default:
 		if strings.TrimSpace(firstCompatStringDeep(normalized, "job_id", "jobId", "id")) != "" &&
-			strings.TrimSpace(firstCompatStringDeep(normalized, "query", "objective", "prompt", "message")) == "" {
+			firstDeepResearchQuery(normalized) == "" {
 			normalized["action"] = DeepResearchActionStatus
 		}
 	}

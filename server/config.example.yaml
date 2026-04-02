@@ -307,7 +307,7 @@ performance:
     wal_mode: true
     cache_size: 2000
     page_size: 4096
-    checkpoint_interval: "5m"
+    checkpoint_interval: "5m"  # idle-aware: only runs wal_checkpoint(TRUNCATE) after 5m of no task/chat mutations
     batch_size: 1000
     slow_query_threshold: "100ms"
     enable_query_cache: true

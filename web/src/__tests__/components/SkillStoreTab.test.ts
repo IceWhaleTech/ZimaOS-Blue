@@ -342,6 +342,78 @@ describe('SkillStoreTab', () => {
     await flushPromises()
   })
 
+  it('keeps cached results visible while long-running discover continues in the background', async () => {
+    vi.useFakeTimers()
+    vi.mocked(skillApi.discoverStatus).mockReset()
+    vi.mocked(skillApi.discoverStatus).mockResolvedValue({
+      data: {
+        running: true,
+        started_at: '2026-03-22T00:00:00Z',
+        total_sources: 3,
+        processed_sources: 1,
+        current_source_name: 'Tencent SkillHub',
+      },
+    } as never)
+
+    const wrapper = await mountSkillStore()
+
+    expect(wrapper.findAll('.skill-card')).toHaveLength(1)
+    expect(wrapper.find('.error-banner').exists()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    await flushPromises()
+
+    expect(wrapper.findAll('.skill-card')).toHaveLength(1)
+    expect(wrapper.find('.error-banner').exists()).toBe(false)
+    expect(wrapper.get('.discover-progress').text()).toContain('Tencent SkillHub')
+  })
+
+  it('submits refresh as a background discover task instead of waiting in the foreground', async () => {
+    vi.useFakeTimers()
+    vi.mocked(skillApi.discoverRefresh).mockResolvedValue({
+      data: {
+        accepted: true,
+        running: true,
+        started_at: '2026-03-22T00:00:00Z',
+        total_sources: 3,
+        processed_sources: 0,
+      },
+    } as never)
+    vi.mocked(skillApi.discoverStatus).mockReset()
+    vi.mocked(skillApi.discoverStatus)
+      .mockResolvedValueOnce({
+        data: {
+          running: false,
+          finished_at: '2026-03-22T00:00:00Z',
+          result: { sources_processed: 1, discovered: 1, updated: 0, failed: 0 },
+        },
+      } as never)
+      .mockResolvedValue({
+        data: {
+          running: true,
+          started_at: '2026-03-22T00:00:00Z',
+          total_sources: 3,
+          processed_sources: 1,
+          current_source_name: 'Tencent SkillHub',
+        },
+      } as never)
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('.hero-actions button').trigger('click')
+    await flushPromises()
+
+    expect(skillApi.discoverRefresh).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('.hero-actions button').text()).toContain('Refresh sources')
+    expect(wrapper.find('.error-banner').exists()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(2100)
+    await flushPromises()
+
+    expect(skillApi.discoverStatus).toHaveBeenCalled()
+    expect(wrapper.get('.discover-progress').text()).toContain('Tencent SkillHub')
+  })
+
   it('refreshes visible results after progress events without resetting filters', async () => {
     vi.useFakeTimers()
     const wrapper = await mountSkillStore()

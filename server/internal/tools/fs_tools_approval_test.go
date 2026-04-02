@@ -302,6 +302,8 @@ func TestFSToolApprovalDenyAndTimeoutReturnHelpfulErrors(t *testing.T) {
 		}
 		broker := sse.NewBroker()
 		defer broker.Close()
+		sub := broker.Subscribe("default")
+		defer broker.Unsubscribe("default", sub)
 		approvals := NewApprovalManager(broker)
 		approvals.timeout = 25 * time.Millisecond
 

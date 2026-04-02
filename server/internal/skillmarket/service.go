@@ -299,6 +299,48 @@ func (s *Service) Stop() {
 	})
 }
 
+func noopCancel() {}
+
+func withOptionalTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return ctx, noopCancel
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 || remaining <= timeout {
+			return ctx, noopCancel
+		}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+func (s *Service) discoverTimeout() time.Duration {
+	if s.cfg.DiscoverTimeout > 0 {
+		return s.cfg.DiscoverTimeout
+	}
+	return DefaultDiscoverTimeout
+}
+
+func (s *Service) discoverStepTimeout(source Source) time.Duration {
+	if s.cfg.DiscoverStepTimeout > 0 {
+		return s.cfg.DiscoverStepTimeout
+	}
+	switch source.Type {
+	case "html_catalog", "seed_page":
+		return 45 * time.Second
+	default:
+		return DefaultDiscoverStepTimeout
+	}
+}
+
+func (s *Service) newDiscoverContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return withOptionalTimeout(ctx, s.discoverTimeout())
+}
+
+func (s *Service) newDiscoverStepContext(ctx context.Context, source Source) (context.Context, context.CancelFunc) {
+	return withOptionalTimeout(ctx, s.discoverStepTimeout(source))
+}
+
 func (s *Service) Close() error {
 	s.Stop()
 	if !s.ownsDB || s.store == nil || s.store.db == nil {
@@ -393,7 +435,9 @@ func (s *Service) StartDiscoverAsync() (DiscoverStatus, bool) {
 	s.emitDiscoverEvent("started", 0, 0, 0)
 
 	go func() {
-		result, err := s.discoverOnce(context.Background())
+		ctx, cancel := s.newDiscoverContext(context.Background())
+		defer cancel()
+		result, err := s.discoverOnce(ctx)
 		s.finishDiscover(result, err)
 	}()
 	return status, true
@@ -516,19 +560,14 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 		return nil, fmt.Errorf("skill is catalog-only and cannot be installed automatically")
 	}
 	installFromArchive := shouldInstallFromArchive(detail.Skill, version)
-	var report *SecurityReport
-	if !installFromArchive {
-		report, err = s.store.GetSecurityReport(ctx, req.ID, version.Version)
-		if err != nil {
-			return nil, err
-		}
-		if report != nil && (report.RiskLevel == RiskCritical || report.RiskLevel == RiskHigh || report.SecurityBadge == BadgeRed) {
-			return nil, fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
-		}
-		if report != nil && report.SecurityBadge == BadgeYellow && !req.AckRisk {
-			return nil, fmt.Errorf("installation requires risk acknowledgement")
-		}
+	catalogReport, err := s.store.GetSecurityReport(ctx, req.ID, version.Version)
+	if err != nil {
+		return nil, err
 	}
+	if err := enforceInstallSecurityPolicy(catalogReport, req.AckRisk); err != nil {
+		return nil, err
+	}
+	report := catalogReport
 
 	cacheDir := filepath.Join(s.cfg.CacheRoot, req.ID, version.Version)
 	activeDir := filepath.Join(s.cfg.ActiveSkillsDir, req.ID)
@@ -541,8 +580,9 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 	installRoot := tempDir
 	installVersion := *version
 	installDoc := detail.Skill
+	archiveWarnings := []string{}
 	if installFromArchive {
-		installRoot, installVersion, err = s.materializeArchiveVersion(ctx, detail.Skill, version, tempDir)
+		installRoot, installVersion, archiveWarnings, err = s.materializeArchiveVersion(ctx, detail.Skill, version, tempDir)
 		if err != nil {
 			return nil, err
 		}
@@ -584,17 +624,11 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 			return nil, err
 		}
 	}
-	if report.SecurityBadge == BadgeRed || report.RiskLevel == RiskCritical || report.RiskLevel == RiskHigh {
-		return nil, fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
+	warnings := installWarningsForReport(catalogReport, report)
+	if len(archiveWarnings) > 0 {
+		warnings = append(warnings, archiveWarnings...)
 	}
-	if report.SecurityBadge == BadgeYellow && !req.AckRisk {
-		return nil, fmt.Errorf("installation requires risk acknowledgement")
-	}
-
-	warnings := []string{}
-	if report.SecurityBadge == BadgeYellow {
-		warnings = append(warnings, "Skill requires medium-risk permissions. Review the security report before enabling auto-update.")
-	}
+	warnings = dedupeStrings(warnings)
 
 	if err := s.promoteInstall(installRoot, cacheDir, activeDir); err != nil {
 		return nil, err
@@ -614,6 +648,93 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 		Security:    report,
 		InstalledAt: timeutil.NowTime(),
 	}, nil
+}
+
+func enforceInstallSecurityPolicy(report *SecurityReport, ackRisk bool) error {
+	if report == nil {
+		return nil
+	}
+	if isInstallBlockedBySecurityPolicy(report) {
+		return fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
+	}
+	if requiresInstallRiskAcknowledgement(report) && !ackRisk {
+		return fmt.Errorf("installation requires risk acknowledgement")
+	}
+	return nil
+}
+
+func isInstallBlockedBySecurityPolicy(report *SecurityReport) bool {
+	return report != nil && (report.RiskLevel == RiskCritical || report.RiskLevel == RiskHigh || report.SecurityBadge == BadgeRed)
+}
+
+func requiresInstallRiskAcknowledgement(report *SecurityReport) bool {
+	return report != nil && report.SecurityBadge == BadgeYellow
+}
+
+func installWarningsForReport(catalogReport, installedReport *SecurityReport) []string {
+	if installedReport == nil {
+		return nil
+	}
+	switch {
+	case isInstallBlockedBySecurityPolicy(installedReport):
+		if installPolicyRank(installedReport) > installPolicyRank(catalogReport) {
+			return []string{fmt.Sprintf(
+				"Installed payload scan escalated this skill from %s to %s. Review the security report before using this skill.",
+				installPolicyLabel(catalogReport),
+				installPolicyLabel(installedReport),
+			)}
+		}
+		return []string{fmt.Sprintf(
+			"Installed payload scan flagged this skill as %s. Review the security report before using this skill.",
+			installPolicyLabel(installedReport),
+		)}
+	case requiresInstallRiskAcknowledgement(installedReport):
+		if installPolicyRank(installedReport) > installPolicyRank(catalogReport) {
+			return []string{fmt.Sprintf(
+				"Installed payload scan escalated this skill from %s to %s. Review the security report before enabling auto-update.",
+				installPolicyLabel(catalogReport),
+				installPolicyLabel(installedReport),
+			)}
+		}
+		return []string{"Skill requires medium-risk permissions. Review the security report before enabling auto-update."}
+	default:
+		return nil
+	}
+}
+
+func installPolicyRank(report *SecurityReport) int {
+	switch {
+	case report == nil:
+		return 0
+	case isInstallBlockedBySecurityPolicy(report):
+		return 3
+	case requiresInstallRiskAcknowledgement(report):
+		return 2
+	default:
+		return 1
+	}
+}
+
+func installPolicyLabel(report *SecurityReport) string {
+	if report == nil {
+		return "unknown risk"
+	}
+	switch {
+	case report.RiskLevel == RiskCritical:
+		return "critical risk"
+	case report.RiskLevel == RiskHigh:
+		return "high risk"
+	case report.SecurityBadge == BadgeRed && report.RiskLevel != "" && report.RiskLevel != RiskHigh && report.RiskLevel != RiskCritical:
+		return fmt.Sprintf("%s risk with a red security badge", report.RiskLevel)
+	case report.SecurityBadge == BadgeRed:
+		return "red security badge"
+	case report.RiskLevel == RiskMedium || report.SecurityBadge == BadgeYellow:
+		return "medium risk"
+	case report.RiskLevel == RiskLow || report.SecurityBadge == BadgeGreen:
+		return "low risk"
+	default:
+		return "elevated risk"
+	}
 }
 
 func (s *Service) Uninstall(ctx context.Context, skillID string) error {
@@ -692,7 +813,9 @@ func (s *Service) Discover(ctx context.Context) (*DiscoverResult, error) {
 			panic(r)
 		}
 	}()
-	result, err := s.discoverOnce(ctx)
+	discoverCtx, cancel := s.newDiscoverContext(ctx)
+	defer cancel()
+	result, err := s.discoverOnce(discoverCtx)
 	s.finishDiscover(result, err)
 	return result, err
 }
@@ -876,7 +999,6 @@ func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
 	}
 
 	completed := 0
-	var firstErr error
 	for completed < len(jobs) {
 		progressed := false
 		for _, job := range jobs {
@@ -885,11 +1007,18 @@ func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
 			}
 			progressed = true
 			s.setDiscoverProgress(job.Source(), countCompletedJobs(jobs), aggregateDiscoverResult(jobs))
-			stats, err := job.Step(ctx)
+			stepCtx, cancel := s.newDiscoverStepContext(ctx, job.Source())
+			stats, err := job.Step(stepCtx)
+			cancel()
 			s.setDiscoverProgress(job.Source(), countCompletedJobs(jobs), aggregateDiscoverResult(jobs))
 			s.emitDiscoverEvent("batch", stats.Inserted, stats.Updated, stats.Failed)
-			if err != nil && firstErr == nil {
-				firstErr = err
+			if err != nil && s.logger != nil {
+				s.logger.Warn(
+					"skillmarket discover source step failed",
+					zap.String("source_id", job.Source().ID),
+					zap.String("source_type", job.Source().Type),
+					zap.Error(err),
+				)
 			}
 			if job.Done() {
 				s.completeDiscoverJob(ctx, job, err)
@@ -902,7 +1031,7 @@ func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
 			break
 		}
 	}
-	return aggregateDiscoverResult(jobs), firstErr
+	return aggregateDiscoverResult(jobs), nil
 }
 
 func (s *Service) ensureDefaultSources(ctx context.Context) error {
@@ -1371,11 +1500,17 @@ func extractClawHubSecuritySignals(raw map[string]interface{}) *SourceSecuritySi
 		}
 		mergeClawHubSecurityCandidate(signals, candidate)
 	}
-	// Extract security labels from raw response if present (e.g., ["Benign"])
+	// Extract security labels from response if present (e.g., ["Benign"]).
+	// ClawHub may attach labels at the top level or under latestVersion.
 	if labels := collectNamedStringList(raw, "securityLabels", "security_labels"); len(labels) > 0 {
 		if badgeFromLabels := securityLabelsToBadge(labels); badgeFromLabels != "" {
-			if signals.SecurityBadge == "" {
-				signals.SecurityBadge = badgeFromLabels
+			signals.SecurityBadge = moreSevereBadge(signals.SecurityBadge, badgeFromLabels)
+		}
+	}
+	if latest := namedMap(raw, "latestVersion"); len(latest) > 0 {
+		if labels := collectNamedStringList(latest, "securityLabels", "security_labels"); len(labels) > 0 {
+			if badgeFromLabels := securityLabelsToBadge(labels); badgeFromLabels != "" {
+				signals.SecurityBadge = moreSevereBadge(signals.SecurityBadge, badgeFromLabels)
 			}
 		}
 	}
@@ -1402,6 +1537,11 @@ func mergeClawHubSecurityCandidate(signals *SourceSecuritySignals, node map[stri
 	}
 	if badge := normalizeExternalSecurityBadge(namedString(node, "securityBadge", "security_badge", "badge", "status")); badge != "" {
 		signals.SecurityBadge = moreSevereBadge(signals.SecurityBadge, badge)
+	}
+	if labels := collectNamedStringList(node, "securityLabels", "security_labels", "securityLabel", "security_label"); len(labels) > 0 {
+		if badgeFromLabels := securityLabelsToBadge(labels); badgeFromLabels != "" {
+			signals.SecurityBadge = moreSevereBadge(signals.SecurityBadge, badgeFromLabels)
+		}
 	}
 	if vulnStatus := normalizeVulnerabilityStatus(namedString(node, "vulnerabilityStatus", "vulnerability_status")); vulnStatus != "" {
 		signals.VulnerabilityStatus = mergeVulnerabilityStatus(signals.VulnerabilityStatus, vulnStatus)
@@ -2560,42 +2700,53 @@ func shouldInstallFromArchive(doc SkillDocument, version *SkillVersion) bool {
 	return looksLikeArchiveURL(version.SourceURL)
 }
 
-func (s *Service) materializeArchiveVersion(ctx context.Context, doc SkillDocument, version *SkillVersion, tempDir string) (string, SkillVersion, error) {
+func (s *Service) materializeArchiveVersion(ctx context.Context, doc SkillDocument, version *SkillVersion, tempDir string) (string, SkillVersion, []string, error) {
 	downloadURL := strings.TrimSpace(doc.DownloadURL)
 	if downloadURL == "" && version != nil {
 		downloadURL = strings.TrimSpace(version.SourceURL)
 	}
 	if downloadURL == "" {
-		return "", SkillVersion{}, fmt.Errorf("skill archive download url unavailable")
+		return "", SkillVersion{}, nil, fmt.Errorf("skill archive download url unavailable")
 	}
 
 	archivePath, finalURL, contentType, err := s.downloadArchive(ctx, downloadURL, tempDir)
 	if err != nil {
-		return "", SkillVersion{}, err
+		return "", SkillVersion{}, nil, err
 	}
 	extractDir := filepath.Join(tempDir, "archive")
 	if err := os.MkdirAll(extractDir, 0o755); err != nil {
-		return "", SkillVersion{}, err
+		return "", SkillVersion{}, nil, err
 	}
 	if err := extractArchiveFile(archivePath, extractDir, finalURL, contentType); err != nil {
-		return "", SkillVersion{}, err
+		return "", SkillVersion{}, nil, err
 	}
 
-	bundle, err := skillmanifest.ValidateArchiveInstallRoot(extractDir, doc.ID, skillmanifest.Options{RequireContract: true})
+	bundle, err := skillmanifest.ValidateArchiveInstallRoot(extractDir, doc.ID, skillmanifest.Options{
+		RequireContract:     false,
+		AllowLegacyFallback: true,
+	})
 	if err != nil {
-		return "", SkillVersion{}, err
+		return "", SkillVersion{}, nil, err
 	}
 	installRoot := bundle.Root
 	rawBytes := bundle.Raw
 	parsed, err := parseSkillMarkdown(string(rawBytes), doc.ID)
 	if err != nil {
-		return "", SkillVersion{}, err
+		return "", SkillVersion{}, nil, err
 	}
 	if normalizeSkillID(parsed.Manifest.ID) != normalizeSkillID(doc.ID) {
-		return "", SkillVersion{}, fmt.Errorf("archive skill id mismatch: expected %s, found %s", doc.ID, parsed.Manifest.ID)
+		return "", SkillVersion{}, nil, fmt.Errorf("archive skill id mismatch: expected %s, found %s", doc.ID, parsed.Manifest.ID)
+	}
+	archiveWarnings := []string{}
+	if bundle != nil && bundle.Document.Manifest != nil && bundle.Document.Manifest.Metadata != nil {
+		raw := strings.TrimSpace(bundle.Document.Manifest.Metadata["validation_notes"])
+		if raw != "" {
+			archiveWarnings = dedupeStrings(append(archiveWarnings, strings.Split(raw, "\n")...))
+			parsed.Manifest.Metadata["validation_notes"] = raw
+		}
 	}
 	if err := writeManifestJSON(installRoot, parsed.Manifest); err != nil {
-		return "", SkillVersion{}, err
+		return "", SkillVersion{}, nil, err
 	}
 
 	installVersion := SkillVersion{}
@@ -2623,7 +2774,7 @@ func (s *Service) materializeArchiveVersion(ctx context.Context, doc SkillDocume
 	}
 	installVersion.ScannedAt = timeutil.NowTime()
 
-	return installRoot, installVersion, nil
+	return installRoot, installVersion, archiveWarnings, nil
 }
 
 func buildInstalledDocument(doc SkillDocument, version *SkillVersion, report *SecurityReport) (SkillDocument, error) {

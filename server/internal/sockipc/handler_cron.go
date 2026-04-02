@@ -38,9 +38,6 @@ func RegisterCronHandlers(srv *Server, backend CronBackend, log *zap.Logger) {
 	srv.Handle("cron.create", func(ctx context.Context, req *Request) *Response {
 
 		name := req.Params["name"]
-		if name == "" {
-			return ErrResponse("missing name")
-		}
 		schedule := req.Params["schedule"]
 		if schedule == "" {
 			return ErrResponse("missing schedule")

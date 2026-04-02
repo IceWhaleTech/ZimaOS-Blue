@@ -785,6 +785,140 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 	t.Fatal("timed out waiting for discover status to complete")
 }
 
+func TestMarketDiscoverSkillsUsesSingleFlightWhileRunning(t *testing.T) {
+	requestStarted := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	closeRelease := func() {
+		releaseOnce.Do(func() {
+			close(release)
+		})
+	}
+	var requestCount int
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/skills":
+			mu.Lock()
+			requestCount++
+			mu.Unlock()
+			select {
+			case requestStarted <- struct{}{}:
+			default:
+			}
+			<-release
+			_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"total":0,"skills":[]}}`))
+		case "/search/code":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		case "/api/v1/skills":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		case "/":
+			_, _ = w.Write([]byte(`<html><body>empty catalog</body></html>`))
+		default:
+			http.NotFound(w, r)
+			return
+		}
+	}))
+	defer server.Close()
+	defer closeRelease()
+
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "market.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := testSkillMarketConfig(t.TempDir(), activeDir)
+	cfg.TencentSkillHubAPIBaseURL = server.URL
+	cfg.GitHubAPIBaseURL = server.URL
+	cfg.ClawHubBaseURL = server.URL
+	cfg.SkillHubBaseURL = server.URL
+	cfg.SkillStackBaseURL = server.URL
+	cfg.SkillsMPBaseURL = server.URL
+	cfg.LLMSkillsBaseURL = server.URL
+	cfg.SeedURLs = nil
+	market, err := skillmarket.NewService(db, skillmarket.Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		HTTPClient:   server.Client(),
+		Scanner:      skillmarket.NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("new market: %v", err)
+	}
+	defer market.Close()
+	if _, err := db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable default sources: %v", err)
+	}
+	if err := market.Store().UpsertSource(context.Background(), skillmarket.Source{
+		ID:          "tencent-skillhub",
+		Type:        "lightmake_api",
+		BaseURL:     server.URL,
+		DisplayName: "Tencent SkillHub",
+		SourceGroup: "skillhub",
+		Enabled:     true,
+		Priority:    5,
+	}); err != nil {
+		t.Fatalf("UpsertSource(tencent-skillhub) error = %v", err)
+	}
+
+	handler := NewSkillHandler(skill.NewRegistry())
+	handler.SetMarketplace(market)
+	e := echo.New()
+
+	req1 := httptest.NewRequest(http.MethodPost, "/skills/discover/refresh", nil)
+	rec1 := httptest.NewRecorder()
+	ctx1 := e.NewContext(req1, rec1)
+	if err := handler.MarketDiscoverSkills(ctx1); err != nil {
+		t.Fatalf("first MarketDiscoverSkills() error = %v", err)
+	}
+
+	select {
+	case <-requestStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for initial discover request to start")
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/skills/discover/refresh", nil)
+	rec2 := httptest.NewRecorder()
+	ctx2 := e.NewContext(req2, rec2)
+	if err := handler.MarketDiscoverSkills(ctx2); err != nil {
+		t.Fatalf("second MarketDiscoverSkills() error = %v", err)
+	}
+	if rec2.Code != http.StatusAccepted {
+		t.Fatalf("duplicate refresh status = %d, want %d", rec2.Code, http.StatusAccepted)
+	}
+
+	var duplicatePayload struct {
+		Accepted bool   `json:"accepted"`
+		Running  bool   `json:"running"`
+		Message  string `json:"message"`
+	}
+	if err := json.Unmarshal(rec2.Body.Bytes(), &duplicatePayload); err != nil {
+		t.Fatalf("decode duplicate refresh payload: %v", err)
+	}
+	if duplicatePayload.Accepted {
+		t.Fatalf("expected duplicate refresh to be rejected, payload=%s", rec2.Body.String())
+	}
+	if !duplicatePayload.Running {
+		t.Fatalf("expected duplicate refresh to report running state, payload=%s", rec2.Body.String())
+	}
+	if duplicatePayload.Message != "discover already running" {
+		t.Fatalf("duplicate message = %q, want %q", duplicatePayload.Message, "discover already running")
+	}
+
+	mu.Lock()
+	gotRequestCount := requestCount
+	mu.Unlock()
+	if gotRequestCount != 1 {
+		t.Fatalf("upstream discover request count = %d, want 1", gotRequestCount)
+	}
+
+	closeRelease()
+}
+
 func TestMarketFeaturedAndFiltersFallback(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "legacy-featured.db"))
 	if err != nil {

@@ -2,6 +2,7 @@ package agentcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -318,6 +319,90 @@ func TestSkillSelector_DynamicExposureActivatesConditionalSkillAndInvalidatesCac
 	}
 	if !foundActivated {
 		t.Fatalf("expected pkg_helper in activated conditional skills, got %v", afterDebug.ActivatedConditionalSkills)
+	}
+}
+
+func TestSelect_WithBudget_LoadsSubset(t *testing.T) {
+	decision, err := applyTokenBudgetToDecision(Decision{
+		SelectedSkill: "alpha_helper",
+		Candidates: []SkillCandidate{
+			{Name: "alpha_helper"},
+			{Name: "beta_helper"},
+			{Name: "gamma_helper"},
+		},
+	}, []SkillDoc{
+		{Name: "browser"},
+		{Name: "alpha_helper"},
+		{Name: "beta_helper"},
+		{Name: "gamma_helper"},
+	}, TokenBudget{
+		MaxTokens: 500,
+	}, false)
+	if err != nil {
+		t.Fatalf("applyTokenBudgetToDecision error: %v", err)
+	}
+	if !decision.TokenBudgetTrimmed {
+		t.Fatalf("expected budget trim, got %#v", decision)
+	}
+	if got := decision.LoadedSkills; len(got) != 2 || got[0] != "browser" || got[1] != "alpha_helper" {
+		t.Fatalf("loaded_skills = %#v, want [browser alpha_helper]", got)
+	}
+	if got := decision.SkippedSkills; len(got) != 2 || got[0] != "beta_helper" || got[1] != "gamma_helper" {
+		t.Fatalf("skipped_skills = %#v, want [beta_helper gamma_helper]", got)
+	}
+	if decision.TokenBudgetUsed != 400 {
+		t.Fatalf("token_budget_used = %d, want 400", decision.TokenBudgetUsed)
+	}
+}
+
+func TestSelect_BudgetExhausted_ReturnsErrorWithPartial(t *testing.T) {
+	decision, err := applyTokenBudgetToDecision(Decision{
+		SelectedSkill: "alpha_helper",
+		Candidates: []SkillCandidate{
+			{Name: "alpha_helper"},
+			{Name: "beta_helper"},
+		},
+	}, []SkillDoc{
+		{Name: "browser"},
+		{Name: "alpha_helper"},
+		{Name: "beta_helper"},
+	}, TokenBudget{
+		MaxTokens: 500,
+	}, true)
+	if !errors.Is(err, ErrTokenBudgetExhausted) {
+		t.Fatalf("error = %v, want ErrTokenBudgetExhausted", err)
+	}
+	if got := decision.LoadedSkills; len(got) != 2 || got[0] != "browser" || got[1] != "alpha_helper" {
+		t.Fatalf("loaded_skills = %#v, want [browser alpha_helper]", got)
+	}
+	if got := decision.SkippedSkills; len(got) != 1 || got[0] != "beta_helper" {
+		t.Fatalf("skipped_skills = %#v, want [beta_helper]", got)
+	}
+}
+
+func TestSelect_PinnedSkillsAlwaysLoaded(t *testing.T) {
+	decision, err := applyTokenBudgetToDecision(Decision{
+		SelectedSkill: "alpha_helper",
+		Candidates: []SkillCandidate{
+			{Name: "alpha_helper"},
+		},
+	}, []SkillDoc{
+		{Name: "browser"},
+		{Name: "alpha_helper"},
+	}, TokenBudget{
+		MaxTokens: 50,
+	}, false)
+	if err != nil {
+		t.Fatalf("applyTokenBudgetToDecision error: %v", err)
+	}
+	if got := decision.LoadedSkills; len(got) == 0 || got[0] != "browser" {
+		t.Fatalf("loaded_skills = %#v, want pinned browser to stay loaded", got)
+	}
+	if got := decision.SkippedSkills; len(got) != 1 || got[0] != "alpha_helper" {
+		t.Fatalf("skipped_skills = %#v, want [alpha_helper]", got)
+	}
+	if decision.TokenBudgetUsed != 200 {
+		t.Fatalf("token_budget_used = %d, want 200", decision.TokenBudgetUsed)
 	}
 }
 

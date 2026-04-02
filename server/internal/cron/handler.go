@@ -127,7 +127,7 @@ func (h *Handler) SetServiceInitHook(fn func(*Service)) {
 
 // CreateRequest represents a create job request.
 type CreateRequest struct {
-	Name        string                 `json:"name" validate:"required"`
+	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	Schedule    string                 `json:"schedule" validate:"required"`
 	Handler     string                 `json:"handler" validate:"required"`
@@ -136,7 +136,7 @@ type CreateRequest struct {
 
 // UpdateRequest represents an update job request.
 type UpdateRequest struct {
-	Name        string                 `json:"name" validate:"required"`
+	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	Schedule    string                 `json:"schedule" validate:"required"`
 	Payload     map[string]interface{} `json:"payload"`
@@ -249,8 +249,8 @@ func (h *Handler) Create(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	if req.Name == "" || req.Schedule == "" || req.Handler == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name, schedule, and handler are required"})
+	if req.Schedule == "" || req.Handler == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "schedule and handler are required"})
 	}
 
 	var job *Job

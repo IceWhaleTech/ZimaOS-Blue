@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/labstack/echo/v4"
 )
@@ -335,6 +336,9 @@ version: 1.0.0
 	if payload["enabled"] != false {
 		t.Fatalf("expected disabled registry state to be preserved, got %#v", payload["enabled"])
 	}
+	if payload["contract_status"] != skillmanifest.ContractStatusLegacyFallback {
+		t.Fatalf("expected legacy contract status, got %#v", payload["contract_status"])
+	}
 }
 
 func TestSkillVisibility_GetSkillResolvesPeerAgentsRootWhenManagedDirIsClaude(t *testing.T) {
@@ -427,6 +431,9 @@ version: 1.0.0
 	}
 	if !contains(payload["content"].(string), "# Browser") {
 		t.Fatalf("expected skill content, got %#v", payload["content"])
+	}
+	if payload["contract_status"] != skillmanifest.ContractStatusLegacyFallback {
+		t.Fatalf("expected legacy contract status, got %#v", payload["contract_status"])
 	}
 }
 
@@ -1384,6 +1391,14 @@ version: 1.0.0
 		if count != 1 {
 			t.Errorf("expected 1 skill, got %v", count)
 		}
+		skills := result["skills"].([]interface{})
+		if len(skills) != 1 {
+			t.Fatalf("expected one local skill payload, got %d", len(skills))
+		}
+		item := skills[0].(map[string]interface{})
+		if item["contract_status"] != skillmanifest.ContractStatusLegacyFallback {
+			t.Fatalf("expected legacy fallback contract status, got %#v", item["contract_status"])
+		}
 	})
 
 	t.Run("local skills use canonical installed mapping", func(t *testing.T) {
@@ -1433,6 +1448,64 @@ version: 1.0.0
 		item := skills[0].(map[string]interface{})
 		if item["id"] != "browser" || item["installed"] != true {
 			t.Fatalf("unexpected local skill payload: %#v", item)
+		}
+	})
+
+	t.Run("plain markdown local skills expose generated contract status", func(t *testing.T) {
+		registry := skill.NewRegistry()
+		handler := newTestSkillHandler(t, registry)
+
+		tempDir, err := os.MkdirTemp("", "local-generated-skill-*")
+		if err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		skillDir := filepath.Join(tempDir, "plain-thirdparty")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`
+# Plain Third Party Skill
+
+Installs without frontmatter.
+
+blue plain-thirdparty action=list
+`), 0o644); err != nil {
+			t.Fatalf("write plain markdown skill: %v", err)
+		}
+
+		scanner := skillstore.NewLocalSkillScanner(tempDir)
+		if err := scanner.Scan(); err != nil {
+			t.Fatalf("scan local skills: %v", err)
+		}
+		handler.SetLocalScanner(scanner)
+
+		req := httptest.NewRequest(http.MethodGet, "/skills/local", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.ListLocalSkills(c); err != nil {
+			t.Fatalf("ListLocalSkills failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+
+		var result struct {
+			Skills []map[string]any `json:"skills"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		if len(result.Skills) != 1 {
+			t.Fatalf("expected 1 skill, got %d", len(result.Skills))
+		}
+		if result.Skills[0]["contract_status"] != skillmanifest.ContractStatusGenerated {
+			t.Fatalf("expected generated contract status, got %#v", result.Skills[0]["contract_status"])
+		}
+		if result.Skills[0]["contract_source"] != skillmanifest.ContractSourceGeneratedSafeDefaults {
+			t.Fatalf("expected generated contract source, got %#v", result.Skills[0]["contract_source"])
 		}
 	})
 }

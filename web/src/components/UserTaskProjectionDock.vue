@@ -11,6 +11,11 @@ import {
   projectTaskControlActions,
   type ProjectedUserTaskAction,
 } from '@/utils/taskProjectionActions'
+import {
+  projectHarnessQuickLinks,
+  projectHarnessSummary,
+  type ProjectedHarnessQuickLink,
+} from '@/utils/taskProjectionHarness'
 
 const TASK_DOCK_COLLAPSED_KEY = 'zima.chat.task_projection_dock_collapsed.v1'
 
@@ -21,6 +26,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   action: [task: UserTaskProjection, actionId: UserTaskActionID, payload?: unknown]
   open: [task: UserTaskProjection]
+  navigate: [href: string]
 }>()
 
 const { t, te } = useI18n()
@@ -62,6 +68,8 @@ function stageLabel(stage?: string) {
       return t('chat.taskStageVerifying', 'Verifying')
     case 'waiting_user':
       return t('chat.taskStageWaiting', 'Waiting')
+    case 'partial':
+      return t('chat.taskStagePartial', 'Partially passed')
     default:
       return stage || t('chat.taskRunningElsewhere', 'Running')
   }
@@ -88,6 +96,14 @@ function kindLabel(task: UserTaskProjection): string {
 
 function taskControlActions(task: UserTaskProjection): ProjectedUserTaskAction[] {
   return projectTaskControlActions(task, translate)
+}
+
+function harnessSummary(task: UserTaskProjection): string[] {
+  return projectHarnessSummary(task, translate)
+}
+
+function harnessQuickLinks(task: UserTaskProjection): ProjectedHarnessQuickLink[] {
+  return projectHarnessQuickLinks(task, translate)
 }
 
 function actionButtonClass(action: ProjectedUserTaskAction): string {
@@ -207,6 +223,18 @@ watch(collapsed, (value) => {
               >
                 {{ taskSubtitle(task) }}
               </div>
+              <div
+                v-if="harnessSummary(task).length"
+                class="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400"
+              >
+                <span
+                  v-for="item in harnessSummary(task)"
+                  :key="`${task.id}-${item}`"
+                  class="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800"
+                >
+                  {{ item }}
+                </span>
+              </div>
               <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                 <div
                   class="h-full bg-blue-500 transition-all duration-300"
@@ -225,6 +253,15 @@ watch(collapsed, (value) => {
                 @click="emit('open', task)"
               >
                 {{ t('chat.taskBackToConversation', 'Back to task') }}
+              </button>
+              <button
+                v-for="link in harnessQuickLinks(task)"
+                :key="`${task.id}-${link.id}`"
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                @click="emit('navigate', link.href)"
+              >
+                {{ link.label }}
               </button>
               <button
                 v-for="action in taskControlActions(task)"

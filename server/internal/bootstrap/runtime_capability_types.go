@@ -13,6 +13,7 @@ import (
 type HarnessRuntimeBundle struct {
 	Controller       *harness.Controller
 	GroupDispatcher  *harness.GroupDispatcher
+	RunTracer        *harness.RunTraceCollector
 	RuntimeObserver  tools.RuntimeEventObserver
 	SubagentExecutor tools.SubagentExecutor
 	WriteGuard       tools.WritePathGuard

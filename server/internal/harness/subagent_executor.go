@@ -17,6 +17,17 @@ type HarnessSubagentExecutor struct {
 	pollInterval time.Duration
 }
 
+type isolatedSubagentExecution struct {
+	parentRun *Run
+	localCtx  context.Context
+	resultCh  chan isolatedSubagentOutcome
+}
+
+type isolatedSubagentOutcome struct {
+	result *tools.SubagentResult
+	err    error
+}
+
 func NewSubagentExecutor(manager *Controller, agents *config.AgentsConfig) *HarnessSubagentExecutor {
 	if manager == nil {
 		return nil
@@ -33,34 +44,47 @@ func NewSubagentExecutor(manager *Controller, agents *config.AgentsConfig) *Harn
 }
 
 func (e *HarnessSubagentExecutor) ExecuteSubagent(ctx context.Context, req tools.SubagentRequest) (*tools.SubagentResult, error) {
+	return e.ExecuteIsolated(ctx, req)
+}
+
+func (e *HarnessSubagentExecutor) ExecuteIsolated(ctx context.Context, req tools.SubagentRequest) (*tools.SubagentResult, error) {
+	execution, immediate, err := e.startIsolatedExecution(ctx, req)
+	if err != nil || !req.Wait {
+		return immediate, err
+	}
+	outcome := <-execution.resultCh
+	return outcome.result, outcome.err
+}
+
+func (e *HarnessSubagentExecutor) startIsolatedExecution(ctx context.Context, req tools.SubagentRequest) (*isolatedSubagentExecution, *tools.SubagentResult, error) {
 	if e == nil || e.manager == nil {
-		return nil, newGuardPipelineError(RuntimeStageExecute, "runtime_unavailable", "subagent executor is not configured", nil)
+		return nil, nil, newGuardPipelineError(RuntimeStageExecute, "runtime_unavailable", "subagent executor is not configured", nil)
 	}
 	req.Goal = strings.TrimSpace(req.Goal)
 	req.AgentID = strings.TrimSpace(req.AgentID)
 	req.Model = strings.TrimSpace(req.Model)
 	req.Context = strings.TrimSpace(req.Context)
 	if req.Goal == "" {
-		return nil, newGuardPipelineError(RuntimeStageNormalize, "goal_required", "goal is required", nil)
+		return nil, nil, newGuardPipelineError(RuntimeStageNormalize, "goal_required", "goal is required", nil)
 	}
 
 	parentID := strings.TrimSpace(tools.GetRunID(ctx))
 	if parentID == "" {
-		return nil, newGuardPipelineError(RuntimeStagePolicy, "parent_required", "subagents require a harness-backed parent run", nil)
+		return nil, nil, newGuardPipelineError(RuntimeStagePolicy, "parent_required", "subagents require a harness-backed parent run", nil)
 	}
 	parent, err := e.manager.GetStored(ctx, parentID)
 	if err != nil {
 		if errorsIsNoRows(err) {
-			return nil, newGuardPipelineError(RuntimeStagePolicy, "parent_not_found", "parent harness run was not found", map[string]interface{}{
+			return nil, nil, newGuardPipelineError(RuntimeStagePolicy, "parent_not_found", "parent harness run was not found", map[string]interface{}{
 				"parent_run_id": parentID,
 			})
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	parentCfg := e.effectiveAgentConfig(parent.AgentID)
 	if !parentCfg.Subagents.Enabled {
-		return nil, newGuardPipelineError(RuntimeStagePolicy, "subagent_disabled", "subagents are disabled for the current agent", map[string]interface{}{
+		return nil, nil, newGuardPipelineError(RuntimeStagePolicy, "subagent_disabled", "subagents are disabled for the current agent", map[string]interface{}{
 			"agent_id": strings.TrimSpace(parent.AgentID),
 		})
 	}
@@ -83,6 +107,8 @@ func (e *HarnessSubagentExecutor) ExecuteSubagent(ctx context.Context, req tools
 	if req.Context != "" {
 		spec.Metadata["context"] = req.Context
 	}
+	spec.Metadata["subagent_isolated"] = true
+	spec.Metadata["subagent_parent_run_id"] = parent.ID
 	if strings.TrimSpace(parentCfg.Subagents.CallbackMode) != "" {
 		spec.Metadata["callback_mode"] = strings.TrimSpace(parentCfg.Subagents.CallbackMode)
 	}
@@ -94,17 +120,35 @@ func (e *HarnessSubagentExecutor) ExecuteSubagent(ctx context.Context, req tools
 
 	child, err := e.manager.SpawnChild(ctx, parent.ID, spec)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	e.appendSubagentEvent(ctx, child, "subagent_start", "isolated subagent started", map[string]interface{}{
+		"context_isolated": true,
+		"wait":             req.Wait,
+	})
+	immediate := runToSubagentResult(child, false)
 	if !req.Wait {
-		return runToSubagentResult(child, false), nil
+		return nil, immediate, nil
 	}
 
-	waited, err := e.waitForTerminal(ctx, child.ID)
-	if err != nil {
-		return nil, err
+	execution := &isolatedSubagentExecution{
+		parentRun: parent,
+		localCtx:  context.Background(),
+		resultCh:  make(chan isolatedSubagentOutcome, 1),
 	}
-	return runToSubagentResult(waited, true), nil
+	go func() {
+		waited, waitErr := e.waitForTerminal(ctx, child.ID)
+		if waitErr != nil {
+			execution.resultCh <- isolatedSubagentOutcome{err: waitErr}
+			return
+		}
+		e.appendSubagentEvent(context.Background(), waited, "subagent_complete", "isolated subagent reached terminal state", map[string]interface{}{
+			"context_isolated": true,
+			"status":           string(waited.Status),
+		})
+		execution.resultCh <- isolatedSubagentOutcome{result: runToSubagentResult(waited, true)}
+	}()
+	return execution, immediate, nil
 }
 
 func (e *HarnessSubagentExecutor) waitForTerminal(ctx context.Context, runID string) (*Run, error) {
@@ -142,6 +186,9 @@ func (e *HarnessSubagentExecutor) waitForTerminal(ctx context.Context, runID str
 			case context.DeadlineExceeded:
 				code = "subagent_timeout"
 			}
+			e.appendSubagentEvent(context.Background(), run, code, ctx.Err().Error(), map[string]interface{}{
+				"context_isolated": true,
+			})
 			return nil, newGuardPipelineErrorWithCause(RuntimeStageExecute, code, ctx.Err().Error(), ctx.Err(), map[string]interface{}{
 				"run_id":     runID,
 				"wait_state": "pending_subagent_completion",
@@ -317,20 +364,36 @@ func runToSubagentResult(run *Run, waited bool) *tools.SubagentResult {
 		return nil
 	}
 	return &tools.SubagentResult{
+		RunID:           run.ID,
+		RootRunID:       run.RootRunID,
+		ParentRunID:     run.ParentRunID,
+		Status:          string(run.Status),
+		Goal:            run.Goal,
+		Result:          run.Result,
+		Error:           run.Error,
+		AgentID:         run.AgentID,
+		Model:           run.Model,
+		Depth:           run.Depth,
+		Waited:          waited,
+		Terminal:        isTerminalRunStatus(run.Status),
+		Completed:       run.Status == RunStatusCompleted,
+		ContextIsolated: true,
+	}
+}
+
+func (e *HarnessSubagentExecutor) appendSubagentEvent(ctx context.Context, run *Run, eventType, message string, payload map[string]interface{}) {
+	if e == nil || e.manager == nil || run == nil {
+		return
+	}
+	_ = e.manager.AppendEvent(ctx, RunEvent{
 		RunID:       run.ID,
 		RootRunID:   run.RootRunID,
 		ParentRunID: run.ParentRunID,
-		Status:      string(run.Status),
-		Goal:        run.Goal,
-		Result:      run.Result,
-		Error:       run.Error,
-		AgentID:     run.AgentID,
-		Model:       run.Model,
-		Depth:       run.Depth,
-		Waited:      waited,
-		Terminal:    isTerminalRunStatus(run.Status),
-		Completed:   run.Status == RunStatusCompleted,
-	}
+		Type:        strings.TrimSpace(eventType),
+		Message:     strings.TrimSpace(message),
+		PayloadJSON: observerPayloadJSON(payload),
+		CreatedAt:   time.Now().UTC(),
+	})
 }
 
 func isTerminalRunStatus(status RunStatus) bool {

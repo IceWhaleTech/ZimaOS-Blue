@@ -86,12 +86,13 @@ func openStoreReaderDB(dbPath string) (*sql.DB, error) {
 }
 
 type conversationRow struct {
-	ID        string  `json:"id" zorm:"id"`
-	Title     string  `json:"title" zorm:"title"`
-	UserID    *string `json:"user_id" zorm:"user_id"`
-	Pinned    bool    `json:"pinned" zorm:"pinned"`
-	CreatedAt string  `json:"created_at" zorm:"created_at"`
-	UpdatedAt string  `json:"updated_at" zorm:"updated_at"`
+	ID                 string  `json:"id" zorm:"id"`
+	Title              string  `json:"title" zorm:"title"`
+	UserID             *string `json:"user_id" zorm:"user_id"`
+	Pinned             bool    `json:"pinned" zorm:"pinned"`
+	AutoTitleFinalized bool    `json:"auto_title_finalized" zorm:"auto_title_finalized"`
+	CreatedAt          string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt          string  `json:"updated_at" zorm:"updated_at"`
 }
 
 type messageRow struct {
@@ -146,12 +147,13 @@ func formatStoreTime(t time.Time) string {
 
 func conversationValues(conv *Conversation) z.V {
 	return z.V{
-		"id":         conv.ID,
-		"title":      conv.Title,
-		"user_id":    conv.UserID,
-		"pinned":     conv.Pinned,
-		"created_at": formatStoreTime(conv.CreatedAt),
-		"updated_at": formatStoreTime(conv.UpdatedAt),
+		"id":                   conv.ID,
+		"title":                conv.Title,
+		"user_id":              conv.UserID,
+		"pinned":               conv.Pinned,
+		"auto_title_finalized": conv.AutoTitleFinalized,
+		"created_at":           formatStoreTime(conv.CreatedAt),
+		"updated_at":           formatStoreTime(conv.UpdatedAt),
 	}
 }
 
@@ -217,11 +219,12 @@ func messageValues(msg Message, toolCallsJSON, statsJSON, attachmentsJSON []byte
 
 func rowToConversation(row conversationRow) *Conversation {
 	conv := &Conversation{
-		ID:        row.ID,
-		Title:     row.Title,
-		Pinned:    row.Pinned,
-		CreatedAt: parseStoreTime(row.CreatedAt),
-		UpdatedAt: parseStoreTime(row.UpdatedAt),
+		ID:                 row.ID,
+		Title:              row.Title,
+		Pinned:             row.Pinned,
+		AutoTitleFinalized: row.AutoTitleFinalized,
+		CreatedAt:          parseStoreTime(row.CreatedAt),
+		UpdatedAt:          parseStoreTime(row.UpdatedAt),
 	}
 	if row.UserID != nil {
 		conv.UserID = strings.TrimSpace(*row.UserID)

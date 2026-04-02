@@ -24,9 +24,6 @@ import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
 import DataMaskingSettings from '@/components/security/DataMaskingSettings.vue'
 import MonitoringRetentionSettings from '@/components/security/MonitoringRetentionSettings.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
-import HarnessGroupsView from '@/views/HarnessGroupsView.vue'
-import { useAuthStore } from '@/stores/auth'
-import { PagePermissions } from '@/constants/pagePermissions'
 import type { LogEntry } from '@/api/system'
 import {
   formatSecurityScanSummary,
@@ -36,10 +33,9 @@ import {
 const { t, te } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const authStore = useAuthStore()
 
 // Tab definitions
-type TabId = 'overview' | 'controls' | 'harness' | 'monitoring' | 'logs'
+type TabId = 'overview' | 'controls' | 'monitoring' | 'logs'
 
 interface SecurityTabMeta {
   id: TabId
@@ -63,13 +59,6 @@ const baseTabs: SecurityTabMeta[] = [
     fallbackLabel: 'Security Controls',
   },
   {
-    id: 'harness',
-    labelKey: 'security.tabs.harness',
-    icon: 'folder-lock',
-    fallbackLabel: 'Harness',
-    badge: 'Beta',
-  },
-  {
     id: 'monitoring',
     labelKey: 'security.tabs.monitoring',
     icon: 'activity',
@@ -83,14 +72,7 @@ const baseTabs: SecurityTabMeta[] = [
   },
 ]
 
-const hasHarnessAccess = computed(() => authStore.hasPermission(PagePermissions.SECURITY))
-
-function isTabAvailable(tabId: TabId): boolean {
-  if (tabId === 'harness') return hasHarnessAccess.value
-  return true
-}
-
-const tabs = computed(() => baseTabs.filter((tab) => isTabAvailable(tab.id)))
+const tabs = computed(() => baseTabs)
 
 function getRequestedTab(): string {
   const raw = route.query.tab
@@ -99,11 +81,11 @@ function getRequestedTab(): string {
 
 function normalizeTabId(rawTab: string): TabId {
   if (rawTab === 'network') return 'controls'
+  if (rawTab === 'harness') return 'overview'
   let normalized: TabId
   switch (rawTab) {
     case 'overview':
     case 'controls':
-    case 'harness':
     case 'monitoring':
     case 'logs':
       normalized = rawTab
@@ -112,11 +94,10 @@ function normalizeTabId(rawTab: string): TabId {
       normalized = 'overview'
       break
   }
-  return isTabAvailable(normalized) ? normalized : 'overview'
+  return normalized
 }
 
 const activeTab = ref<TabId>(normalizeTabId(getRequestedTab()))
-const harnessTabMounted = ref(activeTab.value === 'harness')
 
 function replaceTabQuery(tabId: TabId) {
   const requestedTab = getRequestedTab()
@@ -131,9 +112,6 @@ function replaceTabQuery(tabId: TabId) {
 
 function selectTab(tabId: TabId) {
   activeTab.value = tabId
-  if (tabId === 'harness') {
-    harnessTabMounted.value = true
-  }
   replaceTabQuery(tabId)
   if (tabId === 'logs' && logs.value.length === 0) {
     void fetchLogs()
@@ -2656,14 +2634,6 @@ onUnmounted(() => {
 
             <DataMaskingSettings />
             <NetworkSettings :show-port-section="false" :show-security-sections="true" />
-          </div>
-
-          <div
-            v-if="harnessTabMounted"
-            v-show="activeTab === 'harness'"
-            class="security-section-stack security-embedded-stack"
-          >
-            <HarnessGroupsView />
           </div>
 
           <div

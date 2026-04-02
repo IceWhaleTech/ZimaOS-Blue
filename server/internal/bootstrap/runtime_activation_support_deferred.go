@@ -60,6 +60,7 @@ func bindRuntimeActivationApproval(
 		harnessRuntime:  options.harnessRuntime,
 		execApprovals:   options.execApprovals,
 		registry:        runtimeActivationToolRegistry(options.services),
+		auxiliaryLLM:    activation.auxiliaryLLM,
 		metrics:         options.metrics,
 		detailTarget:    options.detailTarget,
 		handlerTarget:   options.approvalHandler,

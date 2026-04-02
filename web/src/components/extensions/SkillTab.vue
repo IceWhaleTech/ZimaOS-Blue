@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { skillApi, type Skill } from '@/api/skill'
+import { skillApi, type Skill, type SkillContractMetadata } from '@/api/skill'
+import SkillContractNotice from './SkillContractNotice.vue'
 import { useSkillStore } from '@/stores/skill'
 import { parseFrontmatter } from '@/utils/frontmatter'
 import { renderMarkdown as renderMarkdownHtml } from '@/utils/markdown'
@@ -20,6 +21,7 @@ const filterStatus = ref<'all' | 'enabled' | 'disabled'>('all')
 const selectedSkillId = ref<string | null>(null)
 const showDetailModal = ref(false)
 const contentBySkillId = ref<Record<string, string>>({})
+const contentContractBySkillId = ref<Record<string, SkillContractMetadata>>({})
 const contentLoadingIds = ref<Set<string>>(new Set())
 const uninstallingSkillId = ref<string | null>(null)
 
@@ -251,6 +253,24 @@ const selectedSkillContent = computed(() => {
 
 const selectedSkillContentParsed = computed(() => parseFrontmatter(selectedSkillContent.value))
 const selectedSkillDocContent = computed(() => selectedSkillContentParsed.value.body)
+const selectedSkillContract = computed<SkillContractMetadata | null>(() => {
+  if (!selectedSkill.value) return null
+
+  const cachedContract = contentContractBySkillId.value[selectedSkill.value.id] || {}
+  const mergedNotes = Array.from(
+    new Set([...(selectedSkill.value.contract_notes || []), ...(cachedContract.contract_notes || [])])
+  ).filter(Boolean)
+
+  const contract = {
+    contract_status: cachedContract.contract_status || selectedSkill.value.contract_status,
+    contract_source: cachedContract.contract_source || selectedSkill.value.contract_source,
+    contract_notes: mergedNotes,
+  }
+  if (!contract.contract_status && !contract.contract_source && !contract.contract_notes?.length) {
+    return null
+  }
+  return contract
+})
 
 const selectedSkillContentLoading = computed(() => {
   if (!selectedSkill.value) return false
@@ -299,9 +319,18 @@ async function ensureSkillContent(skillId: string) {
   setLoading(skillId, true)
   try {
     const response = await skillApi.getContent(skillId)
+    const contentResponse = response.data
     contentBySkillId.value = {
       ...contentBySkillId.value,
-      [skillId]: response.data.content || '',
+      [skillId]: contentResponse.content || '',
+    }
+    contentContractBySkillId.value = {
+      ...contentContractBySkillId.value,
+      [skillId]: {
+        contract_status: contentResponse.contract_status,
+        contract_source: contentResponse.contract_source,
+        contract_notes: contentResponse.contract_notes,
+      },
     }
   } catch {
     contentBySkillId.value = {
@@ -731,6 +760,12 @@ async function handleUninstall(skill: Skill) {
                       <strong>{{ getSkillBadge(selectedSkill) }}</strong>
                     </div>
                   </div>
+
+                  <SkillContractNotice
+                    v-if="selectedSkillContract"
+                    class="detail-contract-panel"
+                    :contract="selectedSkillContract"
+                  />
                 </section>
               </aside>
 
@@ -1649,6 +1684,10 @@ async function handleUninstall(skill: Skill) {
 .detail-overview-panel .detail-meta-grid {
   margin-top: 10px;
   grid-template-columns: 1fr;
+}
+
+.detail-contract-panel {
+  margin-top: 10px;
 }
 
 .detail-hero-stat {

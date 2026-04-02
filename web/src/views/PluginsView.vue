@@ -2,7 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import type { UploadSkillResult, URLSkillInstallResult } from '@/api/skill'
 import { SkillTab, SkillStoreTab, ToolTab } from '@/components/extensions'
+import SkillContractNotice from '@/components/extensions/SkillContractNotice.vue'
 import { useSkillStore } from '@/stores/skill'
 
 const { t } = useI18n()
@@ -18,6 +20,7 @@ const installUrl = ref('')
 const uploadFile = ref<File | null>(null)
 const uploading = ref(false)
 const uploadError = ref('')
+const lastInstallResult = ref<(URLSkillInstallResult | UploadSkillResult) | null>(null)
 
 const tabs = computed(() => [
   {
@@ -54,6 +57,17 @@ const skillStoreInitialQuery = computed(() => {
   if (typeof value === 'string') return value.trim()
   if (Array.isArray(value)) return String(value[0] || '').trim()
   return ''
+})
+const installResultSkillName = computed(() => {
+  const skill = lastInstallResult.value?.skill
+  return skill?.name?.trim() || skill?.id?.trim() || t('plugins.installSkillTitle')
+})
+const installResultMessage = computed(() => {
+  const result = lastInstallResult.value
+  if (!result) return ''
+  if (result.message?.trim()) return result.message
+  if (result.entry_file?.trim()) return `Entry file: ${result.entry_file}`
+  return 'Review the contract summary below.'
 })
 
 watch(
@@ -93,6 +107,10 @@ function closeUploadModal() {
   showUploadModal.value = false
 }
 
+function dismissInstallResult() {
+  lastInstallResult.value = null
+}
+
 function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
   if (input.files && input.files[0]) {
@@ -116,6 +134,7 @@ function handleDragOver(event: DragEvent) {
 async function installSkill() {
   uploading.value = true
   uploadError.value = ''
+  lastInstallResult.value = null
 
   try {
     if (installMethod.value === 'url') {
@@ -123,13 +142,23 @@ async function installSkill() {
         uploadError.value = t('plugins.urlRequired')
         return
       }
-      await skillStore.installFromURL({ url: installUrl.value.trim() })
+      const result = await skillStore.installFromURL({ url: installUrl.value.trim() })
+      if (!result?.success) {
+        uploadError.value = result?.message || t('plugins.installFailed')
+        return
+      }
+      lastInstallResult.value = result
     } else {
       if (!uploadFile.value) {
         uploadError.value = t('plugins.fileRequired')
         return
       }
-      await skillStore.uploadSkill(uploadFile.value)
+      const result = await skillStore.uploadSkill(uploadFile.value)
+      if (!result?.success) {
+        uploadError.value = result?.message || t('plugins.installFailed')
+        return
+      }
+      lastInstallResult.value = result
     }
     closeUploadModal()
     installUrl.value = ''
@@ -155,6 +184,35 @@ async function installSkill() {
             {{ activeTabMeta.description }}
           </p>
         </div>
+      </section>
+
+      <section
+        v-if="lastInstallResult?.success"
+        class="install-result-banner dashboard-card-surface"
+        :data-contract-status="lastInstallResult.contract_status || 'unknown'"
+      >
+        <div class="install-result-banner__header">
+          <div class="install-result-banner__copy">
+            <span class="install-result-banner__eyebrow">Install result</span>
+            <h2 class="install-result-banner__title">{{ installResultSkillName }}</h2>
+            <p class="install-result-banner__message">{{ installResultMessage }}</p>
+          </div>
+
+          <button
+            type="button"
+            class="install-result-banner__dismiss"
+            aria-label="Dismiss install result"
+            @click="dismissInstallResult"
+          >
+            ×
+          </button>
+        </div>
+
+        <SkillContractNotice
+          compact
+          :contract="lastInstallResult"
+          :warnings="lastInstallResult.warnings"
+        />
       </section>
 
       <section class="plugins-shell">
@@ -364,6 +422,89 @@ async function installSkill() {
   width: 100%;
   max-width: 82rem;
   margin: 0 auto;
+}
+
+.install-result-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: 100%;
+  max-width: 82rem;
+  margin: 0 auto 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 1rem;
+  background: var(--surface-strong);
+  box-shadow: var(--shell-shadow);
+}
+
+.install-result-banner[data-contract-status='strict_contract'] {
+  border-color: rgba(110, 231, 183, 0.38);
+}
+
+.install-result-banner[data-contract-status='legacy_fallback'] {
+  border-color: rgba(251, 191, 36, 0.34);
+}
+
+.install-result-banner[data-contract-status='generated_contract'] {
+  border-color: rgba(96, 165, 250, 0.34);
+}
+
+.install-result-banner__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.install-result-banner__copy {
+  min-width: 0;
+}
+
+.install-result-banner__eyebrow {
+  display: inline-flex;
+  margin-bottom: 0.28rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.install-result-banner__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.install-result-banner__message {
+  margin: 0.32rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.install-result-banner__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-secondary);
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.install-result-banner__dismiss:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text-primary);
 }
 
 :root.dark .plugins-page,
@@ -610,6 +751,13 @@ html.dark .plugins-tab-button--active .plugins-tab-button__icon {
 [data-theme='dark'] .plugins-tab-button--active .plugins-tab-button__state,
 html.dark .plugins-tab-button--active .plugins-tab-button__state {
   background: #cbd5e1;
+}
+
+:root.dark .install-result-banner__dismiss,
+[data-theme='dark'] .install-result-banner__dismiss,
+html.dark .install-result-banner__dismiss {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
 }
 
 :deep(.skill-tab),

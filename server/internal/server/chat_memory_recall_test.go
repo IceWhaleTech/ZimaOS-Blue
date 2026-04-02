@@ -133,6 +133,35 @@ func TestChatRecallMemories_LabelsLongTermMemorySource(t *testing.T) {
 	}
 }
 
+func TestChatRecallMemories_UsesSessionCompactionForRetrospectiveWeekPrompt(t *testing.T) {
+	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	backend := &stubPromptMemoryBackend{
+		results: []memory.SearchResult{{
+			Chunk: memory.MemoryChunk{
+				Content:  "上周主要在 server/internal/server/chat.go 和 server/internal/server/chat_context.go 里写了长会话压缩与记忆注入。",
+				Metadata: map[string]string{"tag_0": "session-compaction", "tag_1": "session:weekly-review"},
+			},
+			Score: 0.93,
+		}},
+	}
+	baseSvc.SetBackend(backend)
+	handler := &ChatHandler{layeredMemory: layered}
+
+	got := handler.recallMemories(context.Background(), "梳理下我过去一周具体写了什么。", MemoryRecallModeBalanced)
+	if !backend.called {
+		t.Fatal("expected retrospective week prompt to trigger memory recall")
+	}
+	if !strings.Contains(got, "<memory_context>") {
+		t.Fatalf("expected memory context wrapper, got %q", got)
+	}
+	if !strings.Contains(got, "source=session_compaction") {
+		t.Fatalf("expected session-compaction source label, got %q", got)
+	}
+	if !strings.Contains(got, "上周主要在 server/internal/server/chat.go") {
+		t.Fatalf("expected recalled weekly worklog memory, got %q", got)
+	}
+}
+
 func TestChatRecallMemories_RealBackendProjectFactStillInjects(t *testing.T) {
 	layered, baseSvc := newLayeredMemoryServiceForTest(t)
 	if _, err := baseSvc.Remember(context.Background(), "Alpha project timeline April 2026", []string{"project"}); err != nil {

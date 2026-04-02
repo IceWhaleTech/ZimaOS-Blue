@@ -34,6 +34,118 @@ func (d *runtimeEvidenceDriver) ListRuntimeEvidence(_ context.Context, run *Run)
 	return out, nil
 }
 
+func TestController_GetGroupReportIncludesRuntimeTraces(t *testing.T) {
+	controller := newTestController(t)
+	controller.SetRunTraceProvider(NewRunTraceCollector(controller))
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "runtime traces",
+		OwnerUserID: "user-1",
+		Items: []RunGroupItemSpec{
+			{
+				RunKind: RunKindAgentTask,
+				Input:   map[string]interface{}{"goal": "trace linked run"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	items, err := controller.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListGroupItems failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("ListGroupItems len = %d, want 1", len(items))
+	}
+
+	startedAt := time.Now().UTC().Add(-2 * time.Second)
+	finishedAt := startedAt.Add(1200 * time.Millisecond)
+	run := &Run{
+		ID:           uuid.NewString(),
+		RootRunID:    "",
+		GroupID:      group.ID,
+		GroupItemID:  items[0].ID,
+		AttemptIndex: 1,
+		Kind:         RunKindAgentTask,
+		Status:       RunStatusCompleted,
+		UserID:       "user-1",
+		Goal:         "trace linked run",
+		CreatedAt:    startedAt,
+		UpdatedAt:    finishedAt,
+		StartedAt:    &startedAt,
+		FinishedAt:   &finishedAt,
+	}
+	run.RootRunID = run.ID
+	if err := controller.store.CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun failed: %v", err)
+	}
+
+	item := items[0]
+	item.LatestRunID = run.ID
+	item.AttemptCount = 1
+	item.Status = RunGroupItemStatusPassed
+	if err := controller.store.UpdateGroupItem(ctx, &item); err != nil {
+		t.Fatalf("UpdateGroupItem failed: %v", err)
+	}
+
+	if err := controller.AppendEvent(ctx, RunEvent{
+		RunID:       run.ID,
+		RootRunID:   run.RootRunID,
+		Type:        "stage_changed",
+		Message:     "driver dispatch started",
+		CreatedAt:   startedAt,
+		PayloadJSON: marshalInterface(map[string]interface{}{"stage": RuntimeStageExecute, "status": RunStatusExecuting, "driver_type": "test_driver"}),
+	}); err != nil {
+		t.Fatalf("AppendEvent(stage_changed) failed: %v", err)
+	}
+	if err := controller.AppendEvent(ctx, RunEvent{
+		RunID:     run.ID,
+		RootRunID: run.RootRunID,
+		Type:      "trace_started",
+		Message:   "driver start completed",
+		CreatedAt: startedAt,
+	}); err != nil {
+		t.Fatalf("AppendEvent(trace_started) failed: %v", err)
+	}
+	if err := controller.store.AttachArtifact(ctx, ArtifactRef{
+		ID:        uuid.NewString(),
+		RunID:     run.ID,
+		Kind:      "trace",
+		Label:     "trace log",
+		PathOrURL: "/tmp/trace.log",
+	}); err != nil {
+		t.Fatalf("AttachArtifact failed: %v", err)
+	}
+
+	report, err := controller.GetGroupReport(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroupReport failed: %v", err)
+	}
+	if report == nil || len(report.RuntimeTraces) != 1 {
+		t.Fatalf("runtime traces = %#v, want 1 entry", report)
+	}
+	trace, ok := report.RuntimeTraces[run.ID]
+	if !ok {
+		t.Fatalf("runtime traces missing run %q: %#v", run.ID, report.RuntimeTraces)
+	}
+	if trace.RunID != run.ID || trace.Status != RunStatusCompleted {
+		t.Fatalf("unexpected runtime trace header: %#v", trace)
+	}
+	if !hasTraceStage(trace.Stages, RuntimeStageExecute) {
+		t.Fatalf("unexpected runtime trace stages: %#v", trace.Stages)
+	}
+	if !hasTraceEvent(trace.Events, "trace_started") {
+		t.Fatalf("unexpected runtime trace events: %#v", trace.Events)
+	}
+	if len(trace.Artifacts) != 1 || trace.Artifacts[0].Label != "trace log" {
+		t.Fatalf("unexpected runtime trace artifacts: %#v", trace.Artifacts)
+	}
+}
+
 func TestController_RefreshGroupSummaryNoOpPreservesUpdatedAt(t *testing.T) {
 	controller := newTestController(t)
 

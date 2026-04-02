@@ -13,6 +13,9 @@ const (
 	DefaultPageSize    = 20
 	DefaultSearchLimit = 100
 
+	DefaultDiscoverTimeout     = 8 * time.Minute
+	DefaultDiscoverStepTimeout = 90 * time.Second
+
 	RiskLow      = "low"
 	RiskMedium   = "medium"
 	RiskHigh     = "high"
@@ -85,6 +88,8 @@ type Config struct {
 	HTMLCatalogCrawlBatchPages int
 	HTMLCatalogCrawlMaxPages   int
 	SeedPageMaxConcurrency     int
+	DiscoverTimeout            time.Duration
+	DiscoverStepTimeout        time.Duration
 }
 
 func DefaultConfig(dataDir, activeSkillsDir string) Config {
@@ -120,6 +125,8 @@ func DefaultConfig(dataDir, activeSkillsDir string) Config {
 		HTMLCatalogCrawlBatchPages: 4,
 		HTMLCatalogCrawlMaxPages:   200,
 		SeedPageMaxConcurrency:     1,
+		DiscoverTimeout:            DefaultDiscoverTimeout,
+		DiscoverStepTimeout:        DefaultDiscoverStepTimeout,
 		CuratedConfigURLs: []string{
 			"https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-Blue/main/server/skillmarket_curated.yaml",
 			"https://raw.gitmirror.com/IceWhaleTech/ZimaOS-Blue/main/server/skillmarket_curated.yaml",

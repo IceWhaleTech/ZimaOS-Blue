@@ -21,6 +21,20 @@ import (
 var skillScriptPathRegexp = regexp.MustCompile(`(?i)(?:^|[\s` + "`" + `\(\[])((?:\./)?scripts/[a-z0-9._/\-]+)`)
 var nonSlugChars = regexp.MustCompile(`[^a-z0-9._-]+`)
 
+const (
+	ManifestMetadataContractStatus = "contract_status"
+	ManifestMetadataContractSource = "contract_source"
+	ManifestMetadataContractNotes  = "contract_notes"
+
+	ContractStatusStrict         = "strict_contract"
+	ContractStatusLegacyFallback = "legacy_fallback"
+	ContractStatusGenerated      = "generated_contract"
+
+	ContractSourceDeclaredFrontmatter   = "declared_frontmatter"
+	ContractSourceLegacyFrontmatter     = "legacy_frontmatter_fallback"
+	ContractSourceGeneratedSafeDefaults = "generated_safe_defaults"
+)
+
 type Route struct {
 	Intent string
 	Action string
@@ -72,6 +86,12 @@ type Document struct {
 
 type ValidationError struct {
 	Issues []string
+}
+
+type contractMetadata struct {
+	status string
+	source string
+	notes  []string
 }
 
 func (e *ValidationError) Error() string {
@@ -227,9 +247,11 @@ func ParseEntry(dirName, sourcePath string, data []byte, opts Options) (Document
 	doc.ID = normalizeSkillID(firstNonBlank(doc.ID, doc.Name, dirName))
 
 	strictIssues := validateStrictContract(meta, &doc)
+	legacyFallbackApplied := false
 	if opts.RequireContract {
 		if len(strictIssues) > 0 {
 			if opts.AllowLegacyFallback && canUseLegacyContractFallback(meta, &doc, strictIssues) {
+				legacyFallbackApplied = true
 				doc.ValidationNotes = appendUnique(doc.ValidationNotes, legacyContractValidationNote(strictIssues))
 				repairLegacyContractFields(&doc, strictIssues)
 				deriveLegacyDefaults(&doc)
@@ -239,11 +261,13 @@ func ParseEntry(dirName, sourcePath string, data []byte, opts Options) (Document
 		}
 	} else {
 		if len(strictIssues) > 0 && canUseLegacyContractFallback(meta, &doc, strictIssues) {
+			legacyFallbackApplied = true
 			doc.ValidationNotes = appendUnique(doc.ValidationNotes, legacyContractValidationNote(strictIssues))
 			repairLegacyContractFields(&doc, strictIssues)
 		}
 		deriveLegacyDefaults(&doc)
 	}
+	contractMeta := deriveContractMetadata(meta, strictIssues, legacyFallbackApplied)
 
 	if shouldPromoteIDToName(meta, doc.Name, dirName) && doc.ID != "" {
 		doc.Name = doc.ID
@@ -298,6 +322,15 @@ func ParseEntry(dirName, sourcePath string, data []byte, opts Options) (Document
 			"source_path": doc.Location,
 			"entry_file":  doc.EntryFile,
 		},
+	}
+	if contractMeta.status != "" {
+		doc.Manifest.Metadata[ManifestMetadataContractStatus] = contractMeta.status
+	}
+	if contractMeta.source != "" {
+		doc.Manifest.Metadata[ManifestMetadataContractSource] = contractMeta.source
+	}
+	if len(contractMeta.notes) > 0 {
+		doc.Manifest.Metadata[ManifestMetadataContractNotes] = strings.Join(contractMeta.notes, "\n")
 	}
 	if len(doc.ValidationNotes) > 0 {
 		doc.Manifest.Metadata["validation_notes"] = strings.Join(doc.ValidationNotes, "\n")
@@ -365,6 +398,39 @@ func legacyContractValidationNote(issues []string) string {
 		return ""
 	}
 	return "legacy manifest compatibility fallback applied: " + strings.Join(issues, "; ")
+}
+
+func generatedContractValidationNote(meta map[string]any, issues []string) string {
+	base := "generated safe structural contract defaults because strict frontmatter contract was missing"
+	if len(meta) > 0 {
+		base = "generated safe structural contract defaults because strict frontmatter contract was incomplete or invalid"
+	}
+	if len(issues) == 0 {
+		return base
+	}
+	return base + ": " + strings.Join(issues, "; ")
+}
+
+func deriveContractMetadata(meta map[string]any, strictIssues []string, legacyFallbackApplied bool) contractMetadata {
+	switch {
+	case len(strictIssues) == 0:
+		return contractMetadata{
+			status: ContractStatusStrict,
+			source: ContractSourceDeclaredFrontmatter,
+		}
+	case legacyFallbackApplied:
+		return contractMetadata{
+			status: ContractStatusLegacyFallback,
+			source: ContractSourceLegacyFrontmatter,
+			notes:  appendUnique(nil, legacyContractValidationNote(strictIssues)),
+		}
+	default:
+		return contractMetadata{
+			status: ContractStatusGenerated,
+			source: ContractSourceGeneratedSafeDefaults,
+			notes:  appendUnique(nil, generatedContractValidationNote(meta, strictIssues)),
+		}
+	}
 }
 
 func repairLegacyContractFields(doc *Document, issues []string) {

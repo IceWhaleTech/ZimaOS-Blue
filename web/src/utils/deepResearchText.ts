@@ -123,7 +123,6 @@ export function localizeResearchSurfaceTitle(translate: Translate): string {
     optionalTranslate('chat.deepResearchTitle', translate) ||
     optionalTranslate('ui.deepResearchTitle', translate) ||
     optionalTranslate('chat.researchTitle', translate) ||
-    optionalTranslate('harness.quickEval.researchLabel', translate) ||
     'Deep Research'
   )
 }

@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -10,13 +11,14 @@ func bindHarnessRuntimeApproval(
 	handler *networkapi.ApprovalHandler,
 	execApprovals *tools.ApprovalManager,
 	registry *tools.Registry,
+	auxiliaryLLM llm.Provider,
 	metrics workflowRuntimeMetricsRecorder,
 	detailTarget approvalRuntimeDetailTarget,
 	handlerTarget approvalRuntimeHandlerTarget,
 	workflowTarget workflowRuntimeHookTarget,
 	approverTargets ...runtimeToolApproverTarget,
 ) {
-	binding := newApprovalRuntimeBinding(bundle, handler, execApprovals, registry, metrics)
+	binding := newApprovalRuntimeBinding(bundle, handler, execApprovals, registry, auxiliaryLLM, metrics)
 	binding.applyDetail(detailTarget)
 	binding.applyHandler(handlerTarget)
 	newWorkflowHarnessDriverBinding(bundle).register(workflowTarget)

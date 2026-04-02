@@ -8,7 +8,19 @@ export interface SkillParameter {
   default?: unknown
 }
 
-export interface Skill {
+export type SkillContractStatus = 'strict_contract' | 'legacy_fallback' | 'generated_contract'
+export type SkillContractSource =
+  | 'declared_frontmatter'
+  | 'legacy_frontmatter_fallback'
+  | 'generated_safe_defaults'
+
+export interface SkillContractMetadata {
+  contract_status?: SkillContractStatus | string
+  contract_source?: SkillContractSource | string
+  contract_notes?: string[]
+}
+
+export interface Skill extends SkillContractMetadata {
   id: string
   name: string
   version: string
@@ -143,7 +155,7 @@ export interface RemoteSkill {
   trending_score?: number
 }
 
-export interface LocalSkill {
+export interface LocalSkill extends SkillContractMetadata {
   id: string
   name: string
   description: string
@@ -331,6 +343,25 @@ export interface SkillContentResponse {
   name: string
   content: string
   source: 'database' | 'builtin' | 'none' | 'directory'
+  entry_file?: string
+  contract_status?: SkillContractStatus | string
+  contract_source?: SkillContractSource | string
+  contract_notes?: string[]
+}
+
+export interface SkillInstallResult extends SkillContractMetadata {
+  success: boolean
+  message?: string
+  entry_file?: string
+  warnings?: string[]
+}
+
+export interface URLSkillInstallResult extends SkillInstallResult {
+  skill?: { id: string; name?: string; version?: string; description?: string; path?: string }
+}
+
+export interface UploadSkillResult extends SkillInstallResult {
+  skill?: { id: string; name: string; version: string }
 }
 
 export interface MarketplaceSkillDetail {
@@ -527,10 +558,7 @@ export const skillApi = {
       `/skill-store/install/${id}`
     ),
   installFromURL: (req: InstallFromURLRequest) =>
-    api.post<{
-      success: boolean
-      skill?: { id: string; name: string; version: string; description: string }
-    }>('/skill-store/install-url', req),
+    api.post<URLSkillInstallResult>('/skill-store/install-url', req),
   uninstall: (id: string) =>
     api.post<{ success: boolean; message: string }>(`/skill-store/uninstall/${id}`),
   refresh: () =>
@@ -548,11 +576,7 @@ export const skillApi = {
   upload: (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post<{
-      success: boolean
-      message?: string
-      skill?: { id: string; name: string; version: string }
-    }>('/skills/upload', formData, {
+    return api.post<UploadSkillResult>('/skills/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },

@@ -12,6 +12,8 @@ import (
 func TestExecApprovalAdapter_MapsResolveStatuses(t *testing.T) {
 	broker := sse.NewBroker()
 	defer broker.Close()
+	sub := broker.Subscribe("test-user")
+	defer broker.Unsubscribe("test-user", sub)
 
 	mgr := tools.NewApprovalManager(broker)
 	adapter := execApprovalAdapter{mgr: mgr}

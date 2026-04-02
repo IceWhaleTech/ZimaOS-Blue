@@ -302,6 +302,124 @@ func TestSendMessage_GenericPromptSkipsSessionCompactionMemory(t *testing.T) {
 	}
 }
 
+func TestSendMessage_RetrospectiveWeekPromptIncludesCompressedHistoryAndSessionMemory(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "weekly retrospective memory")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	captureProvider := &requestCaptureProvider{}
+	registry := llm.NewProviderRegistry()
+	registry.Register(captureProvider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	defer handler.Close()
+	handler.SetProviderPool(newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{{
+		ProviderID:    "p-context",
+		ModelID:       "capture-model",
+		ContextWindow: 768,
+	}}))
+
+	prompt := "梳理下我过去一周具体写了什么。"
+	buildSeedMessages := func(repeat int) []memory.Message {
+		return []memory.Message{
+			{Role: "user", Content: strings.Repeat("这周我在 server/internal/server/chat.go 里处理 provider fallback 和记忆注入。 ", repeat)},
+			{Role: "assistant", Content: strings.Repeat("我记录了 chat.go、chat_context.go 和 runner.go 的修改点。 ", repeat)},
+			{Role: "user", Content: strings.Repeat("另外还整理了 harness 和端到端测试计划。 ", repeat)},
+			{Role: "assistant", Content: strings.Repeat("好的，我会保留这些具体文件和测试场景。 ", repeat)},
+			{Role: "user", Content: "继续保留这些修改上下文"},
+			{Role: "assistant", Content: "已记录最近的变更脉络"},
+			{Role: "user", Content: "等会儿帮我回顾"},
+			{Role: "assistant", Content: "没问题"},
+		}
+	}
+
+	var seed []memory.Message
+	for repeat := 4; repeat <= 32; repeat++ {
+		candidate := buildSeedMessages(repeat)
+		candidateWithPrompt := append(append([]memory.Message{}, candidate...), memory.Message{Role: "user", Content: prompt})
+		budget := handler.measurePreparedInputBudget("capture-model", 64, removeOrphanedToolResults(convertToLLMMessages(candidateWithPrompt)))
+		if budget.ContextUsageRatio() >= smartContextSoftCompressionThreshold {
+			seed = candidate
+			break
+		}
+	}
+	if len(seed) == 0 {
+		t.Fatal("failed to build a long enough conversation fixture for compressed history")
+	}
+	for i, msg := range seed {
+		if _, err := store.AddMessage(context.Background(), conv.ID, msg); err != nil {
+			t.Fatalf("AddMessage seed %d: %v", i, err)
+		}
+	}
+	handler.summaryCache.Put(conv.ID, &ConversationSummary{
+		Text:         "Goal\n- 回顾最近一周写过的内容\n\nAccomplished\n- 完成长会话压缩、记忆召回和 provider fallback 测试",
+		MessageCount: len(seed) + 1,
+	})
+
+	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	handler.SetLayeredMemory(layered)
+	backend := &stubPromptMemoryBackend{
+		results: []memory.SearchResult{{
+			Chunk: memory.MemoryChunk{
+				Content:  "上周主要写了 server/internal/server/chat.go 的记忆注入逻辑，以及 server/internal/server/chat_context.go 的长会话压缩。",
+				Metadata: map[string]string{"tag_0": "session-compaction", "tag_1": "session:weekly-review"},
+			},
+			Score: 0.94,
+		}},
+	}
+	baseSvc.SetBackend(backend)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"`+prompt+`","provider":"capture","model":"capture-model","max_tokens":64}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !backend.called {
+		t.Fatal("expected provider send path to recall memories for retrospective week prompt")
+	}
+
+	lastReq := captureProvider.LastRequest()
+	if !containsMemoryContext(lastReq.Messages) {
+		t.Fatalf("expected provider request to include memory context, got %+v", lastReq.Messages)
+	}
+	if got := memoryContextContent(lastReq.Messages); !strings.Contains(got, "source=session_compaction") {
+		t.Fatalf("memory context = %q, want session-compaction source", got)
+	}
+
+	foundAnchor := false
+	foundHistorySummary := false
+	for _, msg := range lastReq.Messages {
+		if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, "Current-turn anchor") && strings.Contains(msg.Content, prompt) {
+			foundAnchor = true
+		}
+		if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, historicalContextBackgroundPrefix) && strings.Contains(msg.Content, "回顾最近一周写过的内容") {
+			foundHistorySummary = true
+		}
+	}
+	if !foundAnchor {
+		t.Fatalf("expected compressed history anchor in provider request, got %+v", lastReq.Messages)
+	}
+	if !foundHistorySummary {
+		t.Fatalf("expected compressed history summary in provider request, got %+v", lastReq.Messages)
+	}
+}
+
 func TestProcessChannelMessage_FinalReplyTriggersPostTurnSaveOnly(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {

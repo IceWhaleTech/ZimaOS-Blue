@@ -126,6 +126,7 @@ const mocks = vi.hoisted(() => ({
     currentActiveTasks: [] as Array<Record<string, unknown>>,
     currentTerminalTasks: [] as Array<Record<string, unknown>>,
     backgroundTasks: [] as Array<Record<string, unknown>>,
+    recentOutcome: null as null | Record<string, unknown>,
     loading: false,
     hydrated: true,
     hasActiveTasks: false,
@@ -133,8 +134,16 @@ const mocks = vi.hoisted(() => ({
     setConversation: vi.fn(),
     performTaskAction: vi.fn(),
     cancelTask: vi.fn(),
+    resumeTask: vi.fn(),
     openTask: vi.fn(),
+    dismissRecentOutcome: vi.fn(),
     stopPolling: vi.fn(),
+  },
+  notificationStore: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    remove: vi.fn(),
   },
   mediaGenerate: {
     showPanel: { value: false },
@@ -188,6 +197,10 @@ vi.mock('@/stores/deepResearchJobs', () => ({
 
 vi.mock('@/stores/taskProjections', () => ({
   useTaskProjectionsStore: () => mocks.taskProjectionsStore,
+}))
+
+vi.mock('@/stores/notification', () => ({
+  useNotificationStore: () => mocks.notificationStore,
 }))
 
 vi.mock('@/api/chat', () => ({
@@ -328,11 +341,14 @@ describe('ChatView provider gating', () => {
     mocks.taskProjectionsStore.currentActiveTasks = []
     mocks.taskProjectionsStore.currentTerminalTasks = []
     mocks.taskProjectionsStore.backgroundTasks = []
+    mocks.taskProjectionsStore.recentOutcome = null
     mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.performTaskAction.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.resumeTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.dismissRecentOutcome.mockReset()
     mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.fetchActiveJobs.mockResolvedValue(undefined)
     mocks.mediaGenerate.classify.mockResolvedValue(false)
@@ -375,6 +391,7 @@ describe('ChatView provider gating', () => {
           ExecApprovalDialog: { template: '<div class="exec-approval-stub" />' },
           MediaParamPanel: { template: '<div class="media-param-panel-stub" />' },
           UserTaskProjectionCard: { template: '<div class="agent-task-panel-stub" />' },
+          ChatActivityDock: { template: '<div class="chat-activity-dock-stub" />' },
           UserTaskProjectionDock: { template: '<div class="deep-research-task-dock-stub" />' },
           Teleport: true,
           Transition: true,
@@ -410,6 +427,7 @@ describe('ChatView provider gating', () => {
     expect(wrapper.get('[data-testid="chat-provider-guidance-action"]').text()).toContain(
       'Configure Provider'
     )
+    expect(wrapper.find('[data-testid="chat-provider-guidance-routing"]').exists()).toBe(false)
   })
 
   it('blocks send when configured providers are unavailable and restores the draft', async () => {
@@ -451,7 +469,7 @@ describe('ChatView provider gating', () => {
     )
   })
 
-  it('anchors the routing menu to the clicked guidance button when providers need attention', async () => {
+  it('does not show the routing button inside provider guidance when providers need attention', async () => {
     mocks.providerPoolStore.providers = [
       {
         id: 'openai',
@@ -472,27 +490,11 @@ describe('ChatView provider gating', () => {
     mocks.providerPoolStore.activeProviders = []
 
     const wrapper = await mountChatView()
-    const guidanceRoutingButton = wrapper.get('[data-testid="chat-provider-guidance-routing"]')
-    const buttonEl = guidanceRoutingButton.element as HTMLButtonElement
 
-    vi.spyOn(buttonEl, 'getBoundingClientRect').mockReturnValue({
-      x: 840,
-      y: 580,
-      width: 120,
-      height: 44,
-      top: 580,
-      right: 960,
-      bottom: 624,
-      left: 840,
-      toJSON: () => ({}),
-    } as DOMRect)
-
-    await guidanceRoutingButton.trigger('click')
-    await settleView()
-
-    const menuStyle = wrapper.get('.routing-menu-floating').attributes('style')
-    expect(menuStyle).not.toContain('left: 0px')
-    expect(menuStyle).not.toContain('top: 0px')
+    expect(wrapper.get('[data-testid="chat-provider-guidance-card"]').text()).toContain(
+      'No AI provider is available right now'
+    )
+    expect(wrapper.find('[data-testid="chat-provider-guidance-routing"]').exists()).toBe(false)
   })
 
   it('does not render the removed runtime controls on the chat page', async () => {

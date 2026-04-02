@@ -3,6 +3,7 @@ package skillmarket
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -105,7 +106,13 @@ func (s *Service) completeDiscoverJob(ctx context.Context, job discoverJob, step
 	if stepErr != nil && result.Status == "failed" {
 		run.ErrorText = stepErr.Error()
 	}
-	if err := s.store.CompleteCrawlRun(ctx, run); err != nil && s.logger != nil {
+	completeCtx := ctx
+	cancel := noopCancel
+	if completeCtx == nil || completeCtx.Err() != nil {
+		completeCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	}
+	defer cancel()
+	if err := s.store.CompleteCrawlRun(completeCtx, run); err != nil && s.logger != nil {
 		s.logger.Warn("complete crawl run failed", zap.Error(err))
 	}
 }

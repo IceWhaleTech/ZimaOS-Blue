@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserTaskActionID, UserTaskProjection, UserTaskResearchSource } from '@/api/tasks'
 import {
@@ -11,6 +11,11 @@ import {
   projectTaskControlActions,
   type ProjectedUserTaskAction,
 } from '@/utils/taskProjectionActions'
+import {
+  projectHarnessQuickLinks,
+  projectHarnessSummary,
+  type ProjectedHarnessQuickLink,
+} from '@/utils/taskProjectionHarness'
 
 const { t, te } = useI18n()
 
@@ -27,6 +32,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   action: [task: UserTaskProjection, actionId: UserTaskActionID, payload?: unknown]
   open: [task: UserTaskProjection]
+  navigate: [href: string]
 }>()
 
 const expanded = ref(true)
@@ -59,6 +65,8 @@ const stageLabel = computed(() => {
       return t('chat.taskStageWaiting', 'Waiting')
     case 'completed':
       return t('chat.taskStageCompleted', 'Completed')
+    case 'partial':
+      return t('chat.taskStagePartial', 'Partially passed')
     case 'failed':
       return t('chat.taskStageFailed', 'Failed')
     case 'cancelled':
@@ -72,6 +80,8 @@ const stageClass = computed(() => {
   switch (props.task.stage) {
     case 'completed':
       return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+    case 'partial':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
     case 'failed':
       return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200'
     case 'cancelled':
@@ -87,6 +97,8 @@ const progressClass = computed(() => {
   switch (props.task.stage) {
     case 'completed':
       return 'bg-emerald-500'
+    case 'partial':
+      return 'bg-amber-500'
     case 'failed':
       return 'bg-rose-500'
     case 'cancelled':
@@ -104,6 +116,10 @@ function translate(key: string, fallback: string): string {
 
 const controlActions = computed<ProjectedUserTaskAction[]>(() =>
   projectTaskControlActions(props.task, translate)
+)
+const harnessSummary = computed(() => projectHarnessSummary(props.task, translate))
+const harnessQuickLinks = computed<ProjectedHarnessQuickLink[]>(() =>
+  projectHarnessQuickLinks(props.task, translate)
 )
 const canOpenConversation = computed(() => canOpenTaskConversation(props.task))
 
@@ -140,6 +156,26 @@ const usesCollapsedHeaderOnly = computed(() => isTerminal.value && props.collaps
 const researchSources = computed<UserTaskResearchSource[]>(() =>
   props.task.kind === 'research' ? props.task.research_sources || [] : []
 )
+const subagentSummary = computed(() => props.task.subagent_summary || null)
+const subagentSummaryChips = computed(() => {
+  const summary = subagentSummary.value
+  if (!summary?.total) return []
+
+  const chips = [`${summary.total} ${summary.total === 1 ? 'subagent' : 'subagents'}`]
+  if (summary.running) chips.push(`${summary.running} running`)
+  if (summary.waiting_user) chips.push(`${summary.waiting_user} waiting`)
+  if (summary.failed) chips.push(`${summary.failed} failed`)
+  if (summary.completed) chips.push(`${summary.completed} completed`)
+  if (summary.cancelled) chips.push(`${summary.cancelled} cancelled`)
+  return chips
+})
+const subagentLatestLabel = computed(() => {
+  const summary = subagentSummary.value
+  if (!summary?.latest_title) return ''
+  const parts = [summary.latest_title]
+  if (summary.latest_status) parts.push(summary.latest_status.replace(/_/g, ' '))
+  return parts.join(' · ')
+})
 
 const blockerLabel = computed(() => {
   if (!props.task.blocker) return ''
@@ -248,6 +284,24 @@ function emitTaskAction(actionID: UserTaskActionID) {
             <p v-if="localizedSubtitle" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {{ localizedSubtitle }}
             </p>
+            <div
+              v-if="subagentSummaryChips.length"
+              class="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400"
+            >
+              <span
+                v-for="item in subagentSummaryChips"
+                :key="`${task.id}-${item}`"
+                class="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800"
+              >
+                {{ item }}
+              </span>
+            </div>
+            <p
+              v-if="subagentLatestLabel"
+              class="mt-2 text-[11px] text-slate-500 dark:text-slate-400"
+            >
+              {{ subagentLatestLabel }}
+            </p>
           </div>
         </div>
 
@@ -259,6 +313,15 @@ function emitTaskAction(actionID: UserTaskActionID) {
             @click="emit('open', task)"
           >
             {{ t('chat.taskOpenConversation', 'Open conversation') }}
+          </button>
+          <button
+            v-for="link in harnessQuickLinks"
+            :key="`${task.id}-${link.id}`"
+            type="button"
+            class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            @click="emit('navigate', link.href)"
+          >
+            {{ link.label }}
           </button>
           <button
             v-for="action in controlActions"
@@ -288,6 +351,15 @@ function emitTaskAction(actionID: UserTaskActionID) {
             {{ t('chat.taskOpenConversation', 'Open conversation') }}
           </button>
           <button
+            v-for="link in harnessQuickLinks"
+            :key="`${task.id}-collapsed-${link.id}`"
+            type="button"
+            class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            @click="emit('navigate', link.href)"
+          >
+            {{ link.label }}
+          </button>
+          <button
             v-for="action in controlActions"
             :key="`${task.id}-collapsed-${action.id}`"
             type="button"
@@ -309,6 +381,19 @@ function emitTaskAction(actionID: UserTaskActionID) {
 
       <div class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
         {{ Math.max(0, Math.min(100, Math.round(Number(task.progress || 0)))) }}%
+      </div>
+
+      <div
+        v-if="harnessSummary.length"
+        class="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400"
+      >
+        <span
+          v-for="item in harnessSummary"
+          :key="`${task.id}-${item}`"
+          class="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800"
+        >
+          {{ item }}
+        </span>
       </div>
 
       <div

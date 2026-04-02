@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +37,10 @@ var sqliteQuickCheckTimeout = func() time.Duration {
 	}
 	return parsed
 }()
+
+func sqliteLogf(format string, args ...interface{}) {
+	log.Printf("[sqlite] "+format, args...)
+}
 
 // IsSQLiteCorruptionError reports whether err looks like SQLite file corruption.
 func IsSQLiteCorruptionError(err error) bool {
@@ -146,7 +151,10 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 			}
 		}
 		if shouldQuickCheckSQLitePath(dbPath) {
+			quickCheckStartedAt := time.Now()
+			sqliteLogf("startup quick_check started db_path=%s timeout=%s", dbPath, sqliteQuickCheckTimeout)
 			if err := quickCheckOpenDatabase(db); err != nil {
+				sqliteLogf("startup quick_check failed db_path=%s duration=%s error=%v", dbPath, time.Since(quickCheckStartedAt), err)
 				_ = db.Close()
 				if IsSQLiteCorruptionError(err) {
 					if !triedCheckpoint {
@@ -192,6 +200,7 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 				}
 				return nil, WrapSQLiteOpenError(dbPath, err)
 			}
+			sqliteLogf("startup quick_check completed db_path=%s duration=%s", dbPath, time.Since(quickCheckStartedAt))
 		}
 
 		return db, nil
@@ -263,7 +272,7 @@ func quickCheckOpenDatabase(db *sql.DB) error {
 // sqlite3 CLI's .recover command, then atomically replaces the original file.
 // The corrupt copy is rotated aside only during installation and removed once
 // the recovered database has been verified and installed successfully.
-func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
+func RepairSQLiteDatabase(dbPath string) (result *SQLiteRepairResult, err error) {
 	dbPath = strings.TrimSpace(dbPath)
 	if dbPath == "" {
 		return nil, fmt.Errorf("database path is empty")
@@ -277,6 +286,17 @@ func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
 	if _, err := exec.LookPath("sqlite3"); err != nil {
 		return nil, fmt.Errorf("sqlite3 CLI is unavailable: %w", err)
 	}
+	startedAt := time.Now()
+	sqliteLogf("repair started db_path=%s timeout=%s", dbPath, sqliteRecoverTimeout)
+	defer func() {
+		if err != nil {
+			sqliteLogf("repair failed db_path=%s duration=%s error=%v", dbPath, time.Since(startedAt), err)
+			return
+		}
+		if result != nil {
+			sqliteLogf("repair completed db_path=%s duration=%s partial_import=%t warning=%q", dbPath, time.Since(startedAt), result.PartialImport, result.RecoverWarning)
+		}
+	}()
 
 	suffix := time.Now().UTC().Format("20060102T150405.000000000")
 	snapshotPath := dbPath + ".repair-src." + suffix
@@ -327,11 +347,12 @@ func RepairSQLiteDatabase(dbPath string) (*SQLiteRepairResult, error) {
 	replacedOriginal = false
 	removeSQLiteArtifacts(backupPath)
 
-	return &SQLiteRepairResult{
+	result = &SQLiteRepairResult{
 		Repaired:       true,
 		PartialImport:  recoverErr != nil,
 		RecoverWarning: repairWarningString(recoverErr),
-	}, nil
+	}
+	return result, nil
 }
 
 func repairWarningString(err error) string {
@@ -560,7 +581,7 @@ func CheckpointWAL(ctx context.Context, db *sql.DB, mode CheckpointMode) error {
 }
 
 // CheckpointWALForDatabase opens a SQLite database by path and checkpoints WAL.
-func CheckpointWALForDatabase(dbPath string, mode CheckpointMode) error {
+func CheckpointWALForDatabase(dbPath string, mode CheckpointMode) (err error) {
 	if strings.TrimSpace(dbPath) == "" {
 		return fmt.Errorf("database path is empty")
 	}
@@ -570,6 +591,15 @@ func CheckpointWALForDatabase(dbPath string, mode CheckpointMode) error {
 		}
 		return fmt.Errorf("failed to stat database %s: %w", dbPath, err)
 	}
+	startedAt := time.Now()
+	sqliteLogf("wal checkpoint started db_path=%s mode=%s", dbPath, mode)
+	defer func() {
+		if err != nil {
+			sqliteLogf("wal checkpoint failed db_path=%s mode=%s duration=%s error=%v", dbPath, mode, time.Since(startedAt), err)
+			return
+		}
+		sqliteLogf("wal checkpoint completed db_path=%s mode=%s duration=%s", dbPath, mode, time.Since(startedAt))
+	}()
 
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -634,12 +664,17 @@ func StartPeriodicWALCheckpoint(ctx context.Context, db *sql.DB, interval time.D
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				startedAt := time.Now()
+				sqliteLogf("scheduled wal checkpoint started interval=%s mode=%s", interval, mode)
 				checkpointCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				err := CheckpointWAL(checkpointCtx, db, mode)
 				cancel()
 				if err != nil {
+					sqliteLogf("scheduled wal checkpoint failed interval=%s mode=%s duration=%s error=%v", interval, mode, time.Since(startedAt), err)
 					onError(err)
+					continue
 				}
+				sqliteLogf("scheduled wal checkpoint completed interval=%s mode=%s duration=%s", interval, mode, time.Since(startedAt))
 			}
 		}
 	}()
@@ -772,10 +807,19 @@ func CheckDatabaseIntegrity(dbPath string) error {
 // QuickCheckDatabase performs a quick integrity check on the database.
 // This is faster than full integrity check but may miss some issues.
 // Uses a timeout to prevent hanging on severely corrupted databases.
-func QuickCheckDatabase(dbPath string) error {
+func QuickCheckDatabase(dbPath string) (err error) {
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return nil
 	}
+	startedAt := time.Now()
+	sqliteLogf("quick check started db_path=%s timeout=%s", dbPath, sqliteQuickCheckTimeout)
+	defer func() {
+		if err != nil {
+			sqliteLogf("quick check failed db_path=%s duration=%s error=%v", dbPath, time.Since(startedAt), err)
+			return
+		}
+		sqliteLogf("quick check completed db_path=%s duration=%s", dbPath, time.Since(startedAt))
+	}()
 
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -825,4 +869,62 @@ type RecoveryResult struct {
 	Error string `json:"error,omitempty"`
 	// FilesRecovered lists the files that were recovered
 	FilesRecovered []string `json:"files_recovered,omitempty"`
+}
+
+type IdleCheckpointProbe func(context.Context) (idle bool, reason string, err error)
+
+// StartIdleAwarePeriodicWALCheckpoint runs wal_checkpoint(mode) on a fixed
+// interval, but only when the caller-provided probe reports the runtime is idle.
+func StartIdleAwarePeriodicWALCheckpoint(ctx context.Context, db *sql.DB, interval, idleThreshold time.Duration, probe IdleCheckpointProbe, mode CheckpointMode, onError func(error)) {
+	if db == nil || interval <= 0 {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if onError == nil {
+		onError = func(error) {}
+	}
+	if probe == nil {
+		probe = func(context.Context) (bool, string, error) { return true, "", nil }
+	}
+
+	mode = normalizeCheckpointMode(mode)
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				probeCtx, cancelProbe := context.WithTimeout(ctx, 5*time.Second)
+				idle, reason, probeErr := probe(probeCtx)
+				cancelProbe()
+				if probeErr != nil {
+					sqliteLogf("idle-aware wal checkpoint probe failed interval=%s idle_threshold=%s error=%v", interval, idleThreshold, probeErr)
+					onError(probeErr)
+					continue
+				}
+				if !idle {
+					sqliteLogf("idle-aware wal checkpoint skipped interval=%s idle_threshold=%s reason=%s", interval, idleThreshold, reason)
+					continue
+				}
+
+				startedAt := time.Now()
+				sqliteLogf("idle-aware wal checkpoint started interval=%s idle_threshold=%s mode=%s", interval, idleThreshold, mode)
+				checkpointCtx, cancelCheckpoint := context.WithTimeout(ctx, 30*time.Second)
+				err := CheckpointWAL(checkpointCtx, db, mode)
+				cancelCheckpoint()
+				if err != nil {
+					sqliteLogf("idle-aware wal checkpoint failed interval=%s idle_threshold=%s mode=%s duration=%s error=%v", interval, idleThreshold, mode, time.Since(startedAt), err)
+					onError(err)
+					continue
+				}
+				sqliteLogf("idle-aware wal checkpoint completed interval=%s idle_threshold=%s mode=%s duration=%s", interval, idleThreshold, mode, time.Since(startedAt))
+			}
+		}
+	}()
 }

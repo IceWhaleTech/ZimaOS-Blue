@@ -10766,6 +10766,14 @@ func channelConversationID(channelName, chatID string) string {
 	return "ch:" + channelName
 }
 
+func buildIMConversationPlaceholderTitle(channelName, username string) string {
+	title := fmt.Sprintf("%s chat", channelName)
+	if trimmedUsername := strings.TrimSpace(username); trimmedUsername != "" {
+		title = fmt.Sprintf("%s - %s", channelName, trimmedUsername)
+	}
+	return title
+}
+
 func formatIMBrowserProgress(card map[string]interface{}, lang i18n.Language) string {
 	if cardType, _ := card["type"].(string); cardType != "browser-progress" {
 		return ""
@@ -11921,10 +11929,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	// Ensure conversation exists in store (create if first message)
 	if h.store != nil {
 		if _, err := h.store.GetConversation(ctx, convID); err != nil {
-			title := fmt.Sprintf("%s chat", msg.ChannelName)
-			if msg.Username != "" {
-				title = fmt.Sprintf("%s - %s", msg.ChannelName, msg.Username)
-			}
+			title := buildIMConversationPlaceholderTitle(msg.ChannelName, msg.Username)
 			_, _ = h.store.CreateConversationWithID(ctx, convID, title)
 		}
 	}
@@ -12194,6 +12199,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		responseContent := sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, req.Model)
 		assistantMsg, _ := h.persistChannelResponseMessage(ctx, convID, responseContent)
 		h.afterAssistantPersistedHooks(turnHookCtx, assistantMsg)
+		go h.generateConversationTitleWithOptions(convID, "", pendingState.RoutingMessage, responseContent, string(lang), conversationTitleOptions{
+			PreferModelTitle: true,
+			PlaceholderTitle: buildIMConversationPlaceholderTitle(msg.ChannelName, msg.Username),
+		})
 		if resp.ProviderID != "" {
 			baseURL := ""
 			if h.providerPool != nil {
@@ -12725,6 +12734,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	responseContent = stripDuplicateTodoChecklistForPersistence(responseContent, autoContinueState.TodoContent)
 	assistantMsg, _ := h.persistChannelResponseMessage(ctx, convID, responseContent)
 	h.afterAssistantPersistedHooks(turnHookCtx, assistantMsg)
+	go h.generateConversationTitleWithOptions(convID, "", routingMessage, responseContent, string(lang), conversationTitleOptions{
+		PreferModelTitle: true,
+		PlaceholderTitle: buildIMConversationPlaceholderTitle(msg.ChannelName, msg.Username),
+	})
 
 	// Update provider affinity for prompt cache stickiness (IM path)
 	if resp.ProviderID != "" {
@@ -12903,6 +12916,34 @@ func containsAnyPromptMemorySignal(query string, signals []string) bool {
 	return false
 }
 
+func matchesPromptRetrospectiveWorklogIntent(normalized string) bool {
+	timeWindowSignals := []string{
+		"past week", "last week", "this week", "recently",
+		"过去一周", "最近一周", "上周", "这周", "最近",
+	}
+	summarySignals := []string{
+		"recap", "summarize", "summary", "review", "outline",
+		"梳理", "总结", "回顾", "盘点",
+	}
+	workSignals := []string{
+		"what did i write", "what i wrote", "what did i work on", "what i worked on",
+		"wrote", "written", "worked on", "changed", "shipped", "implemented",
+		"写了什么", "写过什么", "做了什么", "改了什么", "提交了什么",
+	}
+	selfSignals := []string{
+		"i ", "i'", "i’m", "i've", "my ",
+		"我", "我的",
+	}
+	hasTimeWindow := containsAnyPromptMemorySignal(normalized, timeWindowSignals)
+	if !hasTimeWindow {
+		return false
+	}
+	hasWorklog := containsAnyPromptMemorySignal(normalized, workSignals)
+	hasSummary := containsAnyPromptMemorySignal(normalized, summarySignals)
+	hasSelf := containsAnyPromptMemorySignal(normalized, selfSignals)
+	return hasWorklog || (hasSummary && hasSelf)
+}
+
 func promptMemoryTags(metadata map[string]string) []string {
 	if len(metadata) == 0 {
 		return nil
@@ -12946,7 +12987,9 @@ func shouldUsePromptSessionCompactionMemory(userMessage string) bool {
 		"remember", "memory", "preference", "profile", "previously said", "as i said",
 		"记得", "记忆", "偏好", "之前说过", "习惯",
 	}
-	return containsAnyPromptMemorySignal(normalized, codingSignals) || containsAnyPromptMemorySignal(normalized, memoryCueSignals)
+	return containsAnyPromptMemorySignal(normalized, codingSignals) ||
+		containsAnyPromptMemorySignal(normalized, memoryCueSignals) ||
+		matchesPromptRetrospectiveWorklogIntent(normalized)
 }
 
 func promptMemoryMinScore(baseMinScore float64, metadata map[string]string) float64 {
@@ -25100,14 +25143,67 @@ STREAM_LOOP:
 	return nil
 }
 
+type conversationTitleOptions struct {
+	PreferModelTitle bool
+	PlaceholderTitle string
+}
+
+func shouldAutoGenerateConversationTitle(
+	currentTitle string,
+	userMessage string,
+	opts conversationTitleOptions,
+) bool {
+	currentTitle = strings.TrimSpace(currentTitle)
+	if currentTitle == "" || isDefaultTitle(currentTitle) {
+		return true
+	}
+	if placeholder := strings.TrimSpace(opts.PlaceholderTitle); placeholder != "" && currentTitle == placeholder {
+		return true
+	}
+
+	userMsgPrefix := strings.TrimSpace(userMessage)
+	if len([]rune(userMsgPrefix)) > 50 {
+		userMsgPrefix = string([]rune(userMsgPrefix)[:50])
+	}
+	trimmedCurrentTitle := strings.TrimSuffix(currentTitle, "...")
+	return strings.HasPrefix(userMsgPrefix, trimmedCurrentTitle) || currentTitle == userMessage
+}
+
+func truncateAutoTitleFallback(title string, maxRunes int) string {
+	title = sanitizeTitle(strings.TrimSpace(title))
+	if title == "" {
+		return ""
+	}
+	runes := []rune(title)
+	if len(runes) <= maxRunes {
+		return title
+	}
+	return string(runes[:maxRunes]) + "..."
+}
+
 // generateConversationTitle generates a title using LLM summarization.
 // Falls back to truncating the user message if LLM is unavailable.
 // If aiResponse starts with a markdown heading (#), use that as the title.
 // targetLang specifies the language for the generated title (e.g., "en", "zh", "ja").
 // This function is safe to call in a goroutine - it recovers from panics.
-// Title is only generated once — if the conversation already has a non-default,
-// non-fallback title, it will not be updated.
+// Automatic title finalization is persisted atomically, so the auto-generated
+// title can only win once even across concurrent updates.
 func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiResponse, targetLang string) {
+	h.generateConversationTitleWithOptions(convID, userID, userMessage, aiResponse, targetLang, conversationTitleOptions{})
+}
+
+func (h *ChatHandler) generateConversationTitleWithOptions(
+	convID,
+	userID,
+	userMessage,
+	aiResponse,
+	targetLang string,
+	opts conversationTitleOptions,
+) {
+	if h == nil || h.store == nil {
+		return
+	}
+
 	// Recover from any panics to prevent crashing the server
 	defer func() {
 		if r := recover(); r != nil {
@@ -25115,20 +25211,13 @@ func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiR
 		}
 	}()
 
-	// Check if conversation already has a title that shouldn't be overwritten.
-	// The frontend sets a truncated user-message as fallback title on creation.
-	// We only proceed if the title is a default placeholder or that fallback.
+	// Check if conversation already has a finalized title that shouldn't be overwritten.
 	conv, err := h.store.GetConversation(context.Background(), convID)
-	if err == nil && conv != nil && conv.Title != "" && !isDefaultTitle(conv.Title) {
-		currentTitle := conv.Title
-		userMsgPrefix := userMessage
-		if len([]rune(userMsgPrefix)) > 50 {
-			userMsgPrefix = string([]rune(userMsgPrefix)[:50])
+	if err == nil && conv != nil {
+		if conv.AutoTitleFinalized {
+			return
 		}
-		// If current title doesn't match the user message prefix, it's a custom/LLM title — skip
-		if !strings.HasPrefix(userMsgPrefix, strings.TrimSuffix(currentTitle, "...")) &&
-			currentTitle != userMessage &&
-			len(currentTitle) > 0 {
+		if !shouldAutoGenerateConversationTitle(conv.Title, userMessage, opts) {
 			return
 		}
 	}
@@ -25139,10 +25228,10 @@ func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiR
 		return
 	}
 
-	// If the message is short enough, the frontend fallback is already good — skip LLM call.
-	// But still notify in case the SSE was missed.
+	// For web chat, short first turns already make reasonable titles; IM can opt
+	// into preferring a generated title even for short messages.
 	msgRunes := []rune(sanitizeTitle(userMessage))
-	if len(msgRunes) <= 30 {
+	if !opts.PreferModelTitle && len(msgRunes) <= 30 {
 		h.updateTitleAndNotify(convID, userID, string(msgRunes))
 		return
 	}
@@ -25177,7 +25266,13 @@ func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiR
 	// Try to use LLM to generate a concise title
 	title := h.generateTitleWithLLM(userMessage, targetLang)
 	if title == "" {
-		// Fallback: use truncated user message (same as frontend already set — no SSE needed)
+		// IM conversations start with a placeholder title, so keep a compact
+		// fallback rather than leaving the placeholder in place.
+		if opts.PreferModelTitle {
+			if fallback := truncateAutoTitleFallback(userMessage, 30); fallback != "" {
+				h.updateTitleAndNotify(convID, userID, fallback)
+			}
+		}
 		return
 	}
 	title = sanitizeTitle(title)
@@ -25350,7 +25445,12 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 
 // updateTitleAndNotify updates the conversation title in DB and pushes an SSE event.
 func (h *ChatHandler) updateTitleAndNotify(convID, userID, title string) {
-	if err := h.store.UpdateConversationTitle(context.Background(), convID, title); err != nil {
+	title = sanitizeTitle(strings.TrimSpace(title))
+	if title == "" || h.store == nil {
+		return
+	}
+	updated, err := h.store.FinalizeAutoConversationTitle(context.Background(), convID, title)
+	if err != nil || !updated {
 		return
 	}
 	if h.sseBroker != nil && userID != "" {

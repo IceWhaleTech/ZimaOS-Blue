@@ -138,6 +138,39 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 		req.BindingHash = approvalBindingHash(req)
 	}
 	req.ExpiresAt = timeutil.NowMilli() + m.timeout.Milliseconds()
+	if ctx.Err() != nil {
+		code := "exec_approval_aborted"
+		switch {
+		case context.Canceled == ctx.Err():
+			code = "exec_approval_cancelled"
+		case context.DeadlineExceeded == ctx.Err():
+			code = "exec_approval_timeout"
+		}
+		return ApprovalDeny, newToolRuntimeError(code, ctx.Err().Error(), ctx.Err(), map[string]interface{}{
+			"approval_id": req.ID,
+			"kind":        strings.TrimSpace(req.Type),
+			"command":     strings.TrimSpace(req.Command),
+			"directory":   strings.TrimSpace(req.Directory),
+			"policy_mode": "ask",
+		})
+	}
+	if m.broker == nil || m.broker.ClientCount(userID) == 0 {
+		return ApprovalDeny, newToolRuntimeError(
+			"exec_approval_delivery_unavailable",
+			fmt.Sprintf("approval cannot be delivered: no active SSE client for user %q", userID),
+			nil,
+			map[string]interface{}{
+				"approval_id":      req.ID,
+				"user_id":          userID,
+				"session_id":       strings.TrimSpace(req.SessionID),
+				"kind":             strings.TrimSpace(req.Type),
+				"command":          strings.TrimSpace(req.Command),
+				"directory":        strings.TrimSpace(req.Directory),
+				"delivery_target":  "sse",
+				"required_channel": "web",
+			},
+		)
+	}
 
 	ch := make(chan ApprovalDecision, 1)
 	m.mu.Lock()

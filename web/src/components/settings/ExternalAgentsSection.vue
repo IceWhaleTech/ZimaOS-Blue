@@ -40,7 +40,6 @@ const noticeMessage = ref('')
 const noticeTone = ref<NoticeTone>('info')
 const protocolOrder: ProtocolKind[] = ['acp', 'a2a']
 const activeProtocol = ref<ProtocolKind>('acp')
-
 const draft = ref<ProfileDraft>(createDraft('acp'))
 
 const selectedProfile = computed(
@@ -50,51 +49,15 @@ const isBuiltinSelection = computed(() => selectedProfile.value?.builtin === tru
 const activeProfiles = computed(() =>
   profiles.value.filter((profile) => profile.protocol === activeProtocol.value)
 )
-const activeProtocolCount = computed(() => activeProfiles.value.length)
-const activeProtocolTitle = computed(() => protocolTitle(activeProtocol.value))
-const currentSelectionLabel = computed(() => {
-  if (selectedProfile.value) {
-    return selectedProfile.value.title || selectedProfile.value.name
-  }
-  return (
-    draft.value.title || draft.value.name || t('settings.externalAgents.newProfile')
-  )
-})
-const currentSelectionSummary = computed(() => {
-  if (!selectedProfile.value) {
-    return t('settings.externalAgents.draftHint')
-  }
-  return `${profileModeLabel(selectedProfile.value)} · ${draftRouteValue()}`
-})
-const protocolCards = computed(() =>
-  protocolOrder.map((protocol) => ({
-    protocol,
-    title: protocolTitle(protocol),
-    count: profiles.value.filter((profile) => profile.protocol === protocol).length,
-  }))
+const currentSelectionLabel = computed(
+  () => draft.value.title || draft.value.name || t('settings.externalAgents.newProfile')
 )
-const checklistItems = computed(() => [
-  {
-    key: 'name',
-    done: Boolean(draft.value.name.trim()),
-    label: t('settings.externalAgents.requiredName'),
-  },
-  {
-    key: 'route',
-    done: isRouteReady(),
-    label:
-      draft.value.protocol === 'acp'
-        ? t('settings.externalAgents.requiredAcpRoute')
-        : t('settings.externalAgents.requiredA2aRoute'),
-  },
-  {
-    key: 'checks',
-    done: Boolean(selectedProfile.value?.last_verified_at || selectedProfile.value?.last_health_at),
-    label: selectedProfile.value
-      ? t('settings.externalAgents.requiredChecks')
-      : t('settings.externalAgents.saveThenCheck'),
-  },
-])
+const currentSelectionMeta = computed(() => {
+  if (selectedProfile.value) {
+    return profileModeLabel(selectedProfile.value)
+  }
+  return protocolTitle(draft.value.protocol)
+})
 
 function createDraft(protocol: ProtocolKind): ProfileDraft {
   return {
@@ -147,22 +110,8 @@ function protocolTitle(protocol: ProtocolKind): string {
     : t('settings.externalAgents.a2aPlainTitle')
 }
 
-function protocolDescription(protocol: ProtocolKind): string {
-  return protocol === 'acp'
-    ? t('settings.externalAgents.acpOverview')
-    : t('settings.externalAgents.a2aOverview')
-}
-
-function protocolListDescription(protocol: ProtocolKind): string {
-  return protocol === 'acp'
-    ? t('settings.externalAgents.acpListHelp')
-    : t('settings.externalAgents.a2aListHelp')
-}
-
-function protocolSetupDescription(protocol: ProtocolKind): string {
-  return protocol === 'acp'
-    ? t('settings.externalAgents.acpSetupHelp')
-    : t('settings.externalAgents.a2aSetupHelp')
+function protocolCount(protocol: ProtocolKind): number {
+  return profiles.value.filter((profile) => profile.protocol === protocol).length
 }
 
 function selectProfile(profileID: string) {
@@ -185,16 +134,12 @@ function startNewProfile(protocol: ProtocolKind) {
 
 function setActiveProtocol(protocol: ProtocolKind) {
   activeProtocol.value = protocol
-  if (!selectedProfile.value) {
-    draft.value.protocol = protocol
+  if (selectedProfile.value?.protocol === protocol) {
     return
   }
-  if (selectedProfile.value.protocol === protocol) {
-    return
-  }
-  const match = profiles.value.find((profile) => profile.protocol === protocol)
-  if (match) {
-    selectProfile(match.id)
+  const firstProfile = profiles.value.find((profile) => profile.protocol === protocol)
+  if (firstProfile) {
+    selectProfile(firstProfile.id)
     return
   }
   startNewProfile(protocol)
@@ -221,10 +166,7 @@ function duplicateSelection() {
     name: next.name ? `${next.name}-copy` : '',
     title: next.title ? `${next.title} Copy` : '',
   }
-  showNotice(
-    t('settings.externalAgents.duplicateReady'),
-    'info'
-  )
+  clearNotice()
 }
 
 function parseCommandText(value: string): string[] {
@@ -360,7 +302,7 @@ async function loadProfiles(preferredID = '') {
       (selectedProfileID.value &&
       profiles.value.some((profile) => profile.id === selectedProfileID.value)
         ? selectedProfileID.value
-        : profiles.value[0]?.id || '')
+        : profiles.value.find((profile) => profile.protocol === activeProtocol.value)?.id || '')
 
     if (nextSelection) {
       selectProfile(nextSelection)
@@ -368,13 +310,7 @@ async function loadProfiles(preferredID = '') {
       startNewProfile(activeProtocol.value)
     }
   } catch (error) {
-    showNotice(
-      extractErrorMessage(
-        error,
-        t('settings.externalAgents.loadFailed')
-      ),
-      'error'
-    )
+    showNotice(extractErrorMessage(error, t('settings.externalAgents.loadFailed')), 'error')
   } finally {
     loading.value = false
   }
@@ -382,16 +318,9 @@ async function loadProfiles(preferredID = '') {
 
 function summarizeProfile(profile: AgentProfile): string {
   if (profile.protocol === 'acp') {
-    return (
-      (profile.command || []).join(' ') ||
-      t('settings.externalAgents.notAvailable')
-    )
+    return (profile.command || []).join(' ') || t('settings.externalAgents.notAvailable')
   }
-  return (
-    profile.endpoint_url ||
-    profile.card_url ||
-    t('settings.externalAgents.remoteAgent')
-  )
+  return profile.endpoint_url || profile.card_url || t('settings.externalAgents.remoteAgent')
 }
 
 function profileModeLabel(profile: AgentProfile): string {
@@ -401,12 +330,7 @@ function profileModeLabel(profile: AgentProfile): string {
 }
 
 function statusLabel(profile: AgentProfile): string {
-  if (profile.health_status) {
-    return profile.health_status
-  }
-  return profile.builtin
-    ? t('settings.externalAgents.ready')
-    : t('settings.externalAgents.custom')
+  return profile.health_status || profileModeLabel(profile)
 }
 
 function profileStatusTone(profile: AgentProfile): 'neutral' | 'healthy' | 'warning' | 'error' {
@@ -439,93 +363,9 @@ function profileStatusTone(profile: AgentProfile): 'neutral' | 'healthy' | 'warn
   return 'neutral'
 }
 
-function formatCompactTimestamp(value?: string): string {
-  if (!value) {
-    return t('settings.externalAgents.notAvailable')
-  }
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleDateString()
-}
-
-function profileLastActivity(profile: AgentProfile): string {
-  if (profile.last_health_at) {
-    return `${t('settings.externalAgents.health')} · ${formatCompactTimestamp(profile.last_health_at)}`
-  }
-  if (profile.last_verified_at) {
-    return `${t('settings.externalAgents.verify')} · ${formatCompactTimestamp(profile.last_verified_at)}`
-  }
-  return t('settings.externalAgents.notAvailable')
-}
-
-function draftRouteValue(): string {
-  if (draft.value.protocol === 'acp') {
-    const command = parseCommandText(draft.value.commandText)
-    return command[0] || t('settings.externalAgents.pendingSetup')
-  }
-  const hasEndpoint = Boolean(draft.value.endpointUrl.trim())
-  const hasCard = Boolean(draft.value.cardUrl.trim())
-  if (hasEndpoint && hasCard) {
-    return t('settings.externalAgents.endpointAndCard')
-  }
-  if (hasEndpoint) {
-    return draft.value.endpointUrl.trim()
-  }
-  if (hasCard) {
-    return draft.value.cardUrl.trim()
-  }
-  return t('settings.externalAgents.pendingSetup')
-}
-
-function draftRouteHint(): string {
-  if (draft.value.protocol === 'acp') {
-    const details = []
-    if (parseCommandText(draft.value.commandText).length > 0) {
-      details.push(t('settings.externalAgents.commandConfigured'))
-    }
-    if (draft.value.cwd.trim()) {
-      details.push(t('settings.externalAgents.cwd'))
-    }
-    if (draft.value.envText.trim()) {
-      details.push(t('settings.externalAgents.environment'))
-    }
-    return (
-      details.join(' · ') ||
-      t('settings.externalAgents.acpRouteHint')
-    )
-  }
-
-  const details = []
-  if (draft.value.endpointUrl.trim()) {
-    details.push(t('settings.externalAgents.endpoint'))
-  }
-  if (draft.value.cardUrl.trim()) {
-    details.push(t('settings.externalAgents.cardUrl'))
-  }
-  if (draft.value.headersText.trim()) {
-    details.push(t('settings.externalAgents.headers'))
-  }
-  return (
-    details.join(' · ') ||
-    t('settings.externalAgents.a2aRouteHint')
-  )
-}
-
-function isRouteReady(): boolean {
-  if (draft.value.protocol === 'acp') {
-    return parseCommandText(draft.value.commandText).length > 0
-  }
-  return Boolean(draft.value.endpointUrl.trim() || draft.value.cardUrl.trim())
-}
-
 async function saveDraft() {
   if (isBuiltinSelection.value) {
-    showNotice(
-      t('settings.externalAgents.builtinLocked'),
-      'info'
-    )
+    showNotice(t('settings.externalAgents.builtinLocked'), 'info')
     return
   }
   saving.value = true
@@ -535,13 +375,7 @@ async function saveDraft() {
     await loadProfiles(response.data.id)
     showNotice(t('settings.externalAgents.saved'), 'success')
   } catch (error) {
-    showNotice(
-      extractErrorMessage(
-        error,
-        t('settings.externalAgents.saveFailed')
-      ),
-      'error'
-    )
+    showNotice(extractErrorMessage(error, t('settings.externalAgents.saveFailed')), 'error')
   } finally {
     saving.value = false
   }
@@ -551,20 +385,18 @@ function verifyMessage(result: ProfileVerifyResult): string {
   if (result.message) {
     return result.message
   }
-  if (result.ok) {
-    return t('settings.externalAgents.verifyOk')
-  }
-  return t('settings.externalAgents.verifyFailed')
+  return result.ok
+    ? t('settings.externalAgents.verifyOk')
+    : t('settings.externalAgents.verifyFailed')
 }
 
 function healthMessage(result: ProfileHealthResult): string {
   if (result.message) {
     return result.message
   }
-  if (result.healthy) {
-    return t('settings.externalAgents.healthOk')
-  }
-  return t('settings.externalAgents.healthFailed')
+  return result.healthy
+    ? t('settings.externalAgents.healthOk')
+    : t('settings.externalAgents.healthFailed')
 }
 
 async function verifyCurrent() {
@@ -580,10 +412,7 @@ async function verifyCurrent() {
     showNotice(verifyMessage(result.data), result.data.ok ? 'success' : 'info')
   } catch (error) {
     showNotice(
-      extractErrorMessage(
-        error,
-        t('settings.externalAgents.verifyRequestFailed')
-      ),
+      extractErrorMessage(error, t('settings.externalAgents.verifyRequestFailed')),
       'error'
     )
   } finally {
@@ -593,10 +422,7 @@ async function verifyCurrent() {
 
 async function checkCurrentHealth() {
   if (!selectedProfile.value) {
-    showNotice(
-      t('settings.externalAgents.saveBeforeHealth'),
-      'info'
-    )
+    showNotice(t('settings.externalAgents.saveBeforeHealth'), 'info')
     return
   }
   checkingHealth.value = true
@@ -606,10 +432,7 @@ async function checkCurrentHealth() {
     showNotice(healthMessage(result.data), result.data.healthy ? 'success' : 'info')
   } catch (error) {
     showNotice(
-      extractErrorMessage(
-        error,
-        t('settings.externalAgents.healthRequestFailed')
-      ),
+      extractErrorMessage(error, t('settings.externalAgents.healthRequestFailed')),
       'error'
     )
   } finally {
@@ -624,22 +447,29 @@ onMounted(() => {
 
 <template>
   <div class="external-agents" data-testid="external-agents-section">
-    <header class="external-agents__hero">
-      <div class="external-agents__hero-copy">
-        <p class="external-agents__eyebrow">
-          {{ t('settings.externalAgents.eyebrow') }}
-        </p>
-        <h3 class="external-agents__hero-title">
-          {{ t('settings.externalAgents.title') }}
-        </h3>
-        <p class="external-agents__copy">
-          {{
-            t('settings.externalAgents.description')
-          }}
-        </p>
+    <div class="external-agents__toolbar">
+      <div class="external-agents__protocol-tabs">
+        <button
+          v-for="protocol in protocolOrder"
+          :key="protocol"
+          type="button"
+          class="external-agents__protocol-tab"
+          :class="{ 'external-agents__protocol-tab--active': activeProtocol === protocol }"
+          :data-testid="`external-agents-protocol-card-${protocol}`"
+          @click="setActiveProtocol(protocol)"
+        >
+          <span
+            class="external-agents__badge external-agents__badge--protocol"
+            :class="`external-agents__badge--${protocol}`"
+          >
+            {{ protocol.toUpperCase() }}
+          </span>
+          <span class="external-agents__protocol-title">{{ protocolTitle(protocol) }}</span>
+          <span class="external-agents__count">{{ protocolCount(protocol) }}</span>
+        </button>
       </div>
 
-      <div class="external-agents__hero-actions">
+      <div class="external-agents__actions">
         <button
           type="button"
           class="external-agents__button external-agents__button--quiet"
@@ -665,7 +495,7 @@ onMounted(() => {
           {{ t('common.refresh', 'Refresh') }}
         </button>
       </div>
-    </header>
+    </div>
 
     <div
       v-if="noticeMessage"
@@ -676,62 +506,13 @@ onMounted(() => {
       {{ noticeMessage }}
     </div>
 
-    <section class="external-agents__protocol-strip">
-      <div class="external-agents__protocol-tabs">
-        <button
-          v-for="item in protocolCards"
-          :key="item.protocol"
-          type="button"
-          class="external-agents__protocol-tab"
-          :class="{ 'external-agents__protocol-tab--active': activeProtocol === item.protocol }"
-          :data-testid="`external-agents-protocol-card-${item.protocol}`"
-          @click="setActiveProtocol(item.protocol)"
-        >
-          <span
-            class="external-agents__badge external-agents__badge--protocol"
-            :class="`external-agents__badge--${item.protocol}`"
-          >
-            {{ item.protocol.toUpperCase() }}
-          </span>
-          <strong class="external-agents__protocol-tab-title">{{ item.title }}</strong>
-          <span class="external-agents__count">{{ item.count }}</span>
-        </button>
-      </div>
-
-      <div class="external-agents__protocol-summary">
-        <div class="external-agents__protocol-summary-copy">
-          <strong class="external-agents__protocol-summary-title">{{ activeProtocolTitle }}</strong>
-          <p class="external-agents__protocol-summary-text">
-            {{ protocolDescription(activeProtocol) }}
-          </p>
-        </div>
-        <span class="external-agents__count">{{ activeProtocolCount }}</span>
-      </div>
-    </section>
-
     <div class="external-agents__workspace">
       <aside class="external-agents__panel external-agents__panel--sidebar">
-        <div class="external-agents__panel-header">
-          <div>
-            <p class="external-agents__eyebrow">
-              {{ t('settings.externalAgents.availableProfiles') }}
-            </p>
-            <h4 class="external-agents__panel-title">{{ activeProtocolTitle }}</h4>
-            <p class="external-agents__panel-copy">
-              {{ protocolListDescription(activeProtocol) }}
-            </p>
-          </div>
-          <span class="external-agents__count">{{ activeProfiles.length }}</span>
-        </div>
-
         <div v-if="loading" class="external-agents__empty">
           {{ t('common.loading', 'Loading') }}
         </div>
         <div v-else-if="activeProfiles.length === 0" class="external-agents__empty">
-          <strong>{{ activeProtocolTitle }}</strong>
-          <p>
-            {{ protocolListDescription(activeProtocol) }}
-          </p>
+          <p>{{ protocolTitle(activeProtocol) }}</p>
           <button
             type="button"
             class="external-agents__button external-agents__button--quiet"
@@ -755,11 +536,11 @@ onMounted(() => {
             @click="selectProfile(profile.id)"
           >
             <div class="external-agents__profile-top">
-              <div class="external-agents__profile-title-group">
+              <div class="external-agents__profile-main">
                 <strong class="external-agents__profile-name">
                   {{ profile.title || profile.name }}
                 </strong>
-                <span class="external-agents__profile-type">{{ profileModeLabel(profile) }}</span>
+                <p class="external-agents__profile-summary">{{ summarizeProfile(profile) }}</p>
               </div>
               <span
                 class="external-agents__badge external-agents__badge--status"
@@ -768,32 +549,18 @@ onMounted(() => {
                 {{ statusLabel(profile) }}
               </span>
             </div>
-
-            <p class="external-agents__profile-summary">{{ summarizeProfile(profile) }}</p>
-
-            <div class="external-agents__profile-meta">
-              <span class="external-agents__meta-chip">{{ profile.id }}</span>
-              <span class="external-agents__meta-chip">{{ profileLastActivity(profile) }}</span>
-            </div>
           </button>
         </div>
       </aside>
 
       <section class="external-agents__panel external-agents__panel--editor">
-        <div class="external-agents__panel-header">
-          <div>
-            <p class="external-agents__eyebrow">
-              {{
-                selectedProfile
-                  ? t('settings.externalAgents.editor')
-                  : t('settings.externalAgents.newProfile')
-              }}
-            </p>
-            <h4 class="external-agents__panel-title">{{ currentSelectionLabel }}</h4>
-            <p class="external-agents__panel-copy">{{ currentSelectionSummary }}</p>
+        <div class="external-agents__editor-head">
+          <div class="external-agents__editor-copy">
+            <h4 class="external-agents__editor-title">{{ currentSelectionLabel }}</h4>
+            <p class="external-agents__editor-meta">{{ currentSelectionMeta }}</p>
           </div>
 
-          <div class="external-agents__panel-actions">
+          <div class="external-agents__actions">
             <button
               v-if="selectedProfile && !isBuiltinSelection"
               type="button"
@@ -833,13 +600,9 @@ onMounted(() => {
         </div>
 
         <div v-if="isBuiltinSelection" class="external-agents__locked">
-          <div class="external-agents__locked-copy">
+          <div>
             <strong>{{ t('settings.externalAgents.builtinTemplate') }}</strong>
-            <p>
-              {{
-                t('settings.externalAgents.builtinHelp')
-              }}
-            </p>
+            <p>{{ t('settings.externalAgents.builtinHelp') }}</p>
           </div>
           <button
             type="button"
@@ -850,104 +613,98 @@ onMounted(() => {
           </button>
         </div>
 
-        <section class="external-agents__section">
-          <div class="external-agents__section-head">
-            <div>
-              <h5 class="external-agents__section-title">
-                {{ t('settings.externalAgents.connectionType') }}
-              </h5>
-              <p class="external-agents__section-copy">
-                {{ protocolSetupDescription(draft.protocol) }}
-              </p>
-            </div>
+        <div class="external-agents__protocol-switch">
+          <button
+            type="button"
+            class="external-agents__protocol-switch-button"
+            :class="{ 'external-agents__protocol-switch-button--active': draft.protocol === 'acp' }"
+            :disabled="isBuiltinSelection"
+            @click="setDraftProtocol('acp')"
+          >
+            ACP
+          </button>
+          <button
+            type="button"
+            class="external-agents__protocol-switch-button"
+            :class="{ 'external-agents__protocol-switch-button--active': draft.protocol === 'a2a' }"
+            :disabled="isBuiltinSelection"
+            @click="setDraftProtocol('a2a')"
+          >
+            A2A
+          </button>
+        </div>
 
-            <article class="external-agents__route-preview">
-              <span class="external-agents__route-label">
-                {{ t('settings.externalAgents.route') }}
-              </span>
-              <strong class="external-agents__route-value">{{ draftRouteValue() }}</strong>
-              <p class="external-agents__route-copy">{{ draftRouteHint() }}</p>
-            </article>
-          </div>
-
-          <div class="external-agents__protocol-switch">
-            <button
-              type="button"
-              class="external-agents__protocol-switch-card"
-              :class="{ 'external-agents__protocol-switch-card--active': draft.protocol === 'acp' }"
+        <div class="external-agents__form-grid">
+          <label class="external-agents__field">
+            <span>{{ t('common.name', 'Name') }}</span>
+            <input
+              v-model="draft.name"
+              class="external-agents__input"
+              data-testid="external-agents-name"
               :disabled="isBuiltinSelection"
-              @click="setDraftProtocol('acp')"
-            >
-              <span
-                class="external-agents__badge external-agents__badge--protocol external-agents__badge--acp"
-              >
-                ACP
-              </span>
-              <strong>{{ protocolTitle('acp') }}</strong>
-              <p>{{ protocolDescription('acp') }}</p>
-            </button>
+            />
+          </label>
 
-            <button
-              type="button"
-              class="external-agents__protocol-switch-card"
-              :class="{ 'external-agents__protocol-switch-card--active': draft.protocol === 'a2a' }"
-              :disabled="isBuiltinSelection"
-              @click="setDraftProtocol('a2a')"
-            >
-              <span
-                class="external-agents__badge external-agents__badge--protocol external-agents__badge--a2a"
-              >
-                A2A
-              </span>
-              <strong>{{ protocolTitle('a2a') }}</strong>
-              <p>{{ protocolDescription('a2a') }}</p>
-            </button>
-          </div>
-
-          <div class="external-agents__checklist">
-            <div
-              v-for="item in checklistItems"
-              :key="item.key"
-              class="external-agents__checklist-item"
-              :class="{ 'external-agents__checklist-item--done': item.done }"
-            >
-              <span class="external-agents__check-dot"></span>
-              <span>{{ item.label }}</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="external-agents__section">
-          <div class="external-agents__section-head">
-            <div>
-              <h5 class="external-agents__section-title">
-                {{ t('settings.externalAgents.basicInfo') }}
-              </h5>
-              <p class="external-agents__section-copy">
-                {{
-                  t('settings.externalAgents.basicInfoHelp')
-                }}
-              </p>
-            </div>
-          </div>
-
-          <div class="external-agents__form-grid">
-            <label class="external-agents__field">
-              <span>{{ t('common.name', 'Name') }}</span>
-              <input
-                v-model="draft.name"
-                class="external-agents__input"
-                data-testid="external-agents-name"
+          <template v-if="draft.protocol === 'acp'">
+            <label class="external-agents__field external-agents__field--full">
+              <span>{{ t('settings.externalAgents.command') }}</span>
+              <textarea
+                v-model="draft.commandText"
+                class="external-agents__textarea"
+                data-testid="external-agents-command"
                 :disabled="isBuiltinSelection"
+                placeholder="npx&#10;-y&#10;@zed-industries/codex-acp"
+              />
+            </label>
+          </template>
+
+          <template v-else>
+            <label class="external-agents__field">
+              <span>{{ t('settings.externalAgents.endpoint') }}</span>
+              <input
+                v-model="draft.endpointUrl"
+                class="external-agents__input"
+                data-testid="external-agents-endpoint"
+                :disabled="isBuiltinSelection"
+                placeholder="https://agent.example.com/rpc"
               />
             </label>
 
+            <label class="external-agents__field">
+              <span>{{ t('settings.externalAgents.cardUrl') }}</span>
+              <input
+                v-model="draft.cardUrl"
+                class="external-agents__input"
+                data-testid="external-agents-card-url"
+                :disabled="isBuiltinSelection"
+                placeholder="https://agent.example.com/.well-known/agent-card.json"
+              />
+            </label>
+          </template>
+        </div>
+
+        <details class="external-agents__advanced">
+          <summary class="external-agents__advanced-summary">
+            {{ t('settings.externalAgents.advancedOptions') }}
+          </summary>
+
+          <div class="external-agents__form-grid">
             <label class="external-agents__field">
               <span>{{ t('common.title', 'Title') }}</span>
               <input
                 v-model="draft.title"
                 class="external-agents__input"
                 :disabled="isBuiltinSelection"
+              />
+            </label>
+
+            <label class="external-agents__field">
+              <span>{{ t('settings.externalAgents.credentialSource') }}</span>
+              <input
+                v-model="draft.credentialProviderId"
+                class="external-agents__input"
+                :disabled="isBuiltinSelection"
+                placeholder="openai-codex"
               />
             </label>
 
@@ -959,43 +716,8 @@ onMounted(() => {
                 :disabled="isBuiltinSelection"
               />
             </label>
-          </div>
-        </section>
 
-        <section class="external-agents__section">
-          <div class="external-agents__section-head">
-            <div>
-              <h5 class="external-agents__section-title">
-                {{ t('settings.externalAgents.connectionDetails') }}
-              </h5>
-              <p class="external-agents__section-copy">
-                {{
-                  draft.protocol === 'acp'
-                    ? t('settings.externalAgents.acpConnectionHelp')
-                    : t('settings.externalAgents.a2aConnectionHelp')
-                }}
-              </p>
-            </div>
-          </div>
-
-          <div class="external-agents__form-grid">
             <template v-if="draft.protocol === 'acp'">
-              <label class="external-agents__field external-agents__field--full">
-                <span>{{ t('settings.externalAgents.command') }}</span>
-                <textarea
-                  v-model="draft.commandText"
-                  class="external-agents__textarea"
-                  data-testid="external-agents-command"
-                  :disabled="isBuiltinSelection"
-                  placeholder="npx&#10;-y&#10;@zed-industries/codex-acp"
-                />
-                <p class="external-agents__field-help">
-                  {{
-                    t('settings.externalAgents.commandHint')
-                  }}
-                </p>
-              </label>
-
               <label class="external-agents__field">
                 <span>{{ t('settings.externalAgents.cwd') }}</span>
                 <input
@@ -1003,6 +725,16 @@ onMounted(() => {
                   class="external-agents__input"
                   :disabled="isBuiltinSelection"
                   placeholder="/workspace/project"
+                />
+              </label>
+
+              <label class="external-agents__field">
+                <span>{{ t('settings.externalAgents.authMethod') }}</span>
+                <input
+                  v-model="draft.authMethodId"
+                  class="external-agents__input"
+                  :disabled="isBuiltinSelection"
+                  placeholder="oauth"
                 />
               </label>
 
@@ -1018,28 +750,6 @@ onMounted(() => {
             </template>
 
             <template v-else>
-              <label class="external-agents__field">
-                <span>{{ t('settings.externalAgents.endpoint') }}</span>
-                <input
-                  v-model="draft.endpointUrl"
-                  class="external-agents__input"
-                  data-testid="external-agents-endpoint"
-                  :disabled="isBuiltinSelection"
-                  placeholder="https://agent.example.com/rpc"
-                />
-              </label>
-
-              <label class="external-agents__field">
-                <span>{{ t('settings.externalAgents.cardUrl') }}</span>
-                <input
-                  v-model="draft.cardUrl"
-                  class="external-agents__input"
-                  data-testid="external-agents-card-url"
-                  :disabled="isBuiltinSelection"
-                  placeholder="https://agent.example.com/.well-known/agent-card.json"
-                />
-              </label>
-
               <label class="external-agents__field external-agents__field--full">
                 <span>{{ t('settings.externalAgents.headers') }}</span>
                 <textarea
@@ -1050,57 +760,7 @@ onMounted(() => {
                 />
               </label>
             </template>
-          </div>
-        </section>
 
-        <section class="external-agents__section">
-          <div class="external-agents__section-head">
-            <div>
-              <h5 class="external-agents__section-title">
-                {{ t('settings.externalAgents.accessControl') }}
-              </h5>
-              <p class="external-agents__section-copy">
-                {{
-                  t('settings.externalAgents.accessControlHelp')
-                }}
-              </p>
-            </div>
-          </div>
-
-          <div class="external-agents__form-grid">
-            <label class="external-agents__field">
-              <span>{{ t('settings.externalAgents.credentialSource') }}</span>
-              <input
-                v-model="draft.credentialProviderId"
-                class="external-agents__input"
-                :disabled="isBuiltinSelection"
-                placeholder="openai-codex"
-              />
-            </label>
-
-            <label v-if="draft.protocol === 'acp'" class="external-agents__field">
-              <span>{{ t('settings.externalAgents.authMethod') }}</span>
-              <input
-                v-model="draft.authMethodId"
-                class="external-agents__input"
-                :disabled="isBuiltinSelection"
-                placeholder="oauth"
-              />
-            </label>
-          </div>
-        </section>
-
-        <details class="external-agents__advanced">
-          <summary class="external-agents__advanced-summary">
-            {{ t('settings.externalAgents.advancedOptions') }}
-          </summary>
-          <p class="external-agents__section-copy">
-            {{
-              t('settings.externalAgents.advancedOptionsHelp')
-            }}
-          </p>
-
-          <div class="external-agents__form-grid">
             <label class="external-agents__field">
               <span>{{ t('common.id', 'ID') }}</span>
               <input
@@ -1133,9 +793,8 @@ onMounted(() => {
   width: 100%;
 }
 
-.external-agents__hero,
-.external-agents__panel-header,
-.external-agents__section-head,
+.external-agents__toolbar,
+.external-agents__editor-head,
 .external-agents__locked {
   display: flex;
   align-items: flex-start;
@@ -1144,71 +803,93 @@ onMounted(() => {
   gap: 0.4rem;
 }
 
-.external-agents__hero {
-  padding-bottom: 0.1rem;
+.external-agents__toolbar {
+  padding-bottom: 0.12rem;
   border-bottom: 1px solid rgba(226, 232, 240, 0.88);
 }
 
-.external-agents__hero-copy,
-.external-agents__locked-copy {
-  display: grid;
-  gap: 0.14rem;
-  min-width: 0;
-}
-
-.external-agents__hero-title,
-.external-agents__panel-title {
-  margin: 0;
-  color: rgba(15, 23, 42, 0.94);
-  font-size: 0.73rem;
-  font-weight: 700;
-  line-height: 1.18;
-}
-
-.external-agents__copy,
-.external-agents__panel-copy,
-.external-agents__section-copy,
-.external-agents__field-help,
-.external-agents__notice,
-.external-agents__empty,
-.external-agents__locked p,
-.external-agents__route-copy {
-  margin: 0;
-  color: rgba(71, 85, 105, 0.92);
-  font-size: 0.6rem;
-  line-height: 1.26;
-}
-
-.external-agents__eyebrow {
-  margin: 0;
-  color: rgba(var(--settings-accent, 37, 99, 235), 0.92);
-  font-size: 0.49rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.external-agents__hero-actions,
-.external-agents__panel-actions {
+.external-agents__protocol-tabs,
+.external-agents__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.22rem;
 }
 
+.external-agents__protocol-tab,
+.external-agents__protocol-switch-button,
+.external-agents__profile-card,
 .external-agents__button {
   border: 1px solid rgba(203, 213, 225, 0.96);
-  border-radius: 0.58rem;
+  border-radius: 0.62rem;
   background: #ffffff;
   color: rgba(15, 23, 42, 0.96);
-  font-size: 0.58rem;
-  font-weight: 600;
-  line-height: 1.2;
-  padding: 0.22rem 0.38rem;
-  cursor: pointer;
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
+    box-shadow 160ms ease,
     color 160ms ease;
+}
+
+.external-agents__protocol-tab,
+.external-agents__button {
+  cursor: pointer;
+}
+
+.external-agents__protocol-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  padding: 0.22rem 0.3rem;
+}
+
+.external-agents__protocol-tab:hover,
+.external-agents__protocol-tab--active,
+.external-agents__protocol-switch-button:hover,
+.external-agents__protocol-switch-button--active,
+.external-agents__profile-card:hover,
+.external-agents__profile-card--active {
+  border-color: rgba(148, 163, 184, 0.62);
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+}
+
+.external-agents__protocol-title,
+.external-agents__editor-title,
+.external-agents__profile-name,
+.external-agents__advanced-summary {
+  color: rgba(15, 23, 42, 0.95);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.external-agents__editor-title {
+  margin: 0;
+}
+
+.external-agents__editor-copy,
+.external-agents__profile-main {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.external-agents__editor-meta,
+.external-agents__profile-summary,
+.external-agents__locked p,
+.external-agents__empty,
+.external-agents__notice {
+  margin: 0;
+  color: rgba(71, 85, 105, 0.92);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.external-agents__button {
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 0.22rem 0.38rem;
 }
 
 .external-agents__button:hover {
@@ -1216,7 +897,8 @@ onMounted(() => {
   background: rgba(248, 250, 252, 0.96);
 }
 
-.external-agents__button:disabled {
+.external-agents__button:disabled,
+.external-agents__protocol-switch-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -1240,17 +922,11 @@ onMounted(() => {
 .external-agents__notice,
 .external-agents__empty,
 .external-agents__locked,
-.external-agents__section,
 .external-agents__advanced {
   padding: 0.42rem 0.46rem;
   border-radius: 0.72rem;
   border: 1px solid rgba(226, 232, 240, 0.96);
   background: rgba(248, 250, 252, 0.84);
-}
-
-.external-agents__empty {
-  display: grid;
-  gap: 0.18rem;
 }
 
 .external-agents__notice--success {
@@ -1265,120 +941,9 @@ onMounted(() => {
   color: rgba(185, 28, 28, 0.94);
 }
 
-.external-agents__protocol-tab,
-.external-agents__protocol-switch-card,
-.external-agents__profile-card {
-  border: 1px solid rgba(226, 232, 240, 0.96);
-  border-radius: 0.68rem;
-  background: #ffffff;
-  cursor: pointer;
-  text-align: left;
-  transition:
-    border-color 160ms ease,
-    background-color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.external-agents__protocol-strip {
-  display: grid;
-  gap: 0.18rem;
-}
-
-.external-agents__protocol-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.18rem;
-}
-
-.external-agents__protocol-tab {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.24rem;
-  min-width: 0;
-  padding: 0.24rem 0.32rem;
-}
-
-.external-agents__protocol-tab:hover,
-.external-agents__protocol-tab--active,
-.external-agents__protocol-switch-card:hover,
-.external-agents__protocol-switch-card--active,
-.external-agents__profile-card:hover,
-.external-agents__profile-card--active {
-  border-color: rgba(148, 163, 184, 0.62);
-  background: rgba(248, 250, 252, 0.96);
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
-}
-
-.external-agents__protocol-tab-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: rgba(15, 23, 42, 0.95);
-  font-size: 0.6rem;
-  font-weight: 700;
-  line-height: 1.16;
-}
-
-.external-agents__protocol-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.28rem;
-  padding: 0.24rem 0.32rem;
-  border-radius: 0.64rem;
-  border: 1px solid rgba(226, 232, 240, 0.96);
-  background: rgba(248, 250, 252, 0.74);
-}
-
-.external-agents__protocol-summary-copy {
-  display: grid;
-  gap: 0.04rem;
-  min-width: 0;
-}
-
-.external-agents__protocol-summary-title {
-  color: rgba(15, 23, 42, 0.95);
-  font-size: 0.6rem;
-  font-weight: 700;
-  line-height: 1.16;
-}
-
-.external-agents__protocol-summary-text {
-  margin: 0;
-  color: rgba(100, 116, 139, 0.92);
-  font-size: 0.56rem;
-  line-height: 1.18;
-}
-
-.external-agents__profile-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.24rem;
-}
-
-.external-agents__profile-name,
-.external-agents__section-title,
-.external-agents__route-value,
-.external-agents__advanced-summary {
-  color: rgba(15, 23, 42, 0.95);
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1.22;
-}
-
-.external-agents__profile-type {
-  margin: 0;
-  color: rgba(100, 116, 139, 0.92);
-  font-size: 0.55rem;
-  line-height: 1.2;
-}
-
 .external-agents__workspace {
   display: grid;
-  grid-template-columns: minmax(15rem, 0.76fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(14rem, 0.72fr) minmax(0, 1.28fr);
   gap: 0.42rem;
 }
 
@@ -1403,7 +968,7 @@ onMounted(() => {
   border: 1px solid rgba(203, 213, 225, 0.96);
   background: rgba(248, 250, 252, 0.94);
   color: rgba(71, 85, 105, 0.94);
-  font-size: 0.49rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -1423,8 +988,7 @@ onMounted(() => {
 }
 
 .external-agents__badge--status {
-  border-color: rgba(203, 213, 225, 0.96);
-  background: rgba(248, 250, 252, 0.96);
+  white-space: nowrap;
 }
 
 .external-agents__badge--healthy {
@@ -1454,139 +1018,34 @@ onMounted(() => {
   display: grid;
   gap: 0.14rem;
   padding: 0.34rem 0.38rem;
+  text-align: left;
+  cursor: pointer;
 }
 
-.external-agents__profile-title-group {
-  display: grid;
-  gap: 0.08rem;
-  min-width: 0;
-}
-
-.external-agents__profile-summary {
-  margin: 0;
-  color: rgba(30, 41, 59, 0.9);
-  font-size: 0.57rem;
-  line-height: 1.22;
-  word-break: break-word;
-}
-
-.external-agents__profile-meta {
+.external-agents__profile-top {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.14rem;
-}
-
-.external-agents__meta-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.08rem 0.24rem;
-  border-radius: 999px;
-  background: rgba(241, 245, 249, 0.96);
-  color: rgba(71, 85, 105, 0.92);
-  font-size: 0.49rem;
-  line-height: 1.2;
-}
-
-.external-agents__locked {
-  align-items: center;
-}
-
-.external-agents__section {
-  display: grid;
-  gap: 0.32rem;
-}
-
-.external-agents__section-head {
-  gap: 0.28rem;
-}
-
-.external-agents__route-preview {
-  display: grid;
-  gap: 0.1rem;
-  min-width: min(100%, 11rem);
-  padding: 0.3rem 0.34rem;
-  border-radius: 0.62rem;
-  border: 1px solid rgba(226, 232, 240, 0.96);
-  background: #ffffff;
-}
-
-.external-agents__route-label {
-  color: rgba(100, 116, 139, 0.9);
-  font-size: 0.47rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.24rem;
 }
 
 .external-agents__protocol-switch {
-  display: grid;
+  display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.2rem;
+  gap: 0.16rem;
+  padding: 0.14rem;
+  border-radius: 0.72rem;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  background: rgba(248, 250, 252, 0.84);
 }
 
-.external-agents__protocol-switch-card {
-  display: grid;
-  gap: 0.08rem;
-  min-width: 0;
-  padding: 0.28rem 0.32rem;
-}
-
-.external-agents__protocol-switch-card:disabled {
-  cursor: not-allowed;
-  opacity: 0.66;
-}
-
-.external-agents__protocol-switch-card strong {
-  min-width: 0;
-  color: rgba(15, 23, 42, 0.95);
-  font-size: 0.58rem;
+.external-agents__protocol-switch-button {
+  min-width: 5rem;
+  padding: 0.22rem 0.42rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  line-height: 1.18;
-}
-
-.external-agents__protocol-switch-card p {
-  margin: 0;
-  color: rgba(100, 116, 139, 0.92);
-  font-size: 0.53rem;
-  line-height: 1.18;
-  word-break: break-word;
-}
-
-.external-agents__checklist {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.18rem;
-}
-
-.external-agents__checklist-item {
-  display: flex;
-  align-items: center;
-  gap: 0.24rem;
-  min-width: 0;
-  padding: 0.22rem 0.28rem;
-  border-radius: 0.54rem;
-  background: rgba(255, 255, 255, 0.82);
-  color: rgba(71, 85, 105, 0.94);
-  font-size: 0.54rem;
-  line-height: 1.16;
-}
-
-.external-agents__checklist-item--done {
-  background: rgba(240, 253, 244, 0.9);
-  color: rgba(21, 128, 61, 0.94);
-}
-
-.external-agents__check-dot {
-  flex: 0 0 auto;
-  width: 0.28rem;
-  height: 0.28rem;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.8);
-}
-
-.external-agents__checklist-item--done .external-agents__check-dot {
-  background: rgba(22, 163, 74, 0.92);
+  line-height: 1.35;
+  cursor: pointer;
 }
 
 .external-agents__form-grid {
@@ -1603,7 +1062,7 @@ onMounted(() => {
 
 .external-agents__field > span {
   color: rgba(30, 41, 59, 0.92);
-  font-size: 0.55rem;
+  font-size: 0.82rem;
   font-weight: 600;
 }
 
@@ -1620,7 +1079,7 @@ onMounted(() => {
   color: rgba(15, 23, 42, 0.96);
   padding: 0.26rem 0.34rem;
   font: inherit;
-  font-size: 0.58rem;
+  font-size: 0.82rem;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -1681,23 +1140,23 @@ onMounted(() => {
 }
 
 @media (max-width: 760px) {
-  .external-agents__hero,
-  .external-agents__panel-header,
-  .external-agents__section-head,
+  .external-agents__toolbar,
+  .external-agents__editor-head,
   .external-agents__locked {
     flex-direction: column;
     align-items: stretch;
   }
 
   .external-agents__protocol-tabs,
-  .external-agents__protocol-switch,
+  .external-agents__actions,
   .external-agents__form-grid,
-  .external-agents__checklist {
+  .external-agents__protocol-switch {
     grid-template-columns: 1fr;
   }
 
-  .external-agents__protocol-summary {
-    justify-content: flex-start;
+  .external-agents__protocol-tabs,
+  .external-agents__actions {
+    display: grid;
   }
 
   .external-agents__field--full {
@@ -1707,15 +1166,13 @@ onMounted(() => {
 
 :global(.dark) .external-agents__panel,
 :global(.dark) .external-agents__protocol-tab,
-:global(.dark) .external-agents__protocol-summary,
-:global(.dark) .external-agents__protocol-switch-card,
+:global(.dark) .external-agents__protocol-switch,
+:global(.dark) .external-agents__protocol-switch-button,
 :global(.dark) .external-agents__profile-card,
 :global(.dark) .external-agents__notice,
 :global(.dark) .external-agents__empty,
 :global(.dark) .external-agents__locked,
-:global(.dark) .external-agents__section,
 :global(.dark) .external-agents__advanced,
-:global(.dark) .external-agents__route-preview,
 :global(.dark) .external-agents__input,
 :global(.dark) .external-agents__textarea {
   background: rgba(15, 23, 42, 0.76);
@@ -1723,32 +1180,20 @@ onMounted(() => {
   color: rgba(226, 232, 240, 0.94);
 }
 
-:global(.dark) .external-agents__hero {
+:global(.dark) .external-agents__toolbar {
   border-bottom-color: rgba(51, 65, 85, 0.86);
 }
 
-:global(.dark) .external-agents__hero-title,
-:global(.dark) .external-agents__panel-title,
-:global(.dark) .external-agents__section-title,
-:global(.dark) .external-agents__route-value,
-:global(.dark) .external-agents__protocol-tab-title,
-:global(.dark) .external-agents__protocol-summary-title,
+:global(.dark) .external-agents__protocol-title,
+:global(.dark) .external-agents__editor-title,
+:global(.dark) .external-agents__profile-name,
 :global(.dark) .external-agents__advanced-summary,
-:global(.dark) .external-agents__field > span,
-:global(.dark) .external-agents__protocol-switch-card strong,
-:global(.dark) .external-agents__profile-name {
+:global(.dark) .external-agents__field > span {
   color: rgba(241, 245, 249, 0.95);
 }
 
-:global(.dark) .external-agents__copy,
-:global(.dark) .external-agents__panel-copy,
-:global(.dark) .external-agents__section-copy,
-:global(.dark) .external-agents__field-help,
+:global(.dark) .external-agents__editor-meta,
 :global(.dark) .external-agents__profile-summary,
-:global(.dark) .external-agents__profile-type,
-:global(.dark) .external-agents__route-copy,
-:global(.dark) .external-agents__protocol-summary-text,
-:global(.dark) .external-agents__protocol-switch-card p,
 :global(.dark) .external-agents__locked p,
 :global(.dark) .external-agents__empty {
   color: rgba(203, 213, 225, 0.88);
@@ -1756,8 +1201,7 @@ onMounted(() => {
 
 :global(.dark) .external-agents__button,
 :global(.dark) .external-agents__count,
-:global(.dark) .external-agents__badge,
-:global(.dark) .external-agents__meta-chip {
+:global(.dark) .external-agents__badge {
   background: rgba(30, 41, 59, 0.94);
   border-color: rgba(71, 85, 105, 0.92);
   color: rgba(226, 232, 240, 0.92);
@@ -1766,8 +1210,8 @@ onMounted(() => {
 :global(.dark) .external-agents__button:hover,
 :global(.dark) .external-agents__protocol-tab:hover,
 :global(.dark) .external-agents__protocol-tab--active,
-:global(.dark) .external-agents__protocol-switch-card:hover,
-:global(.dark) .external-agents__protocol-switch-card--active,
+:global(.dark) .external-agents__protocol-switch-button:hover,
+:global(.dark) .external-agents__protocol-switch-button--active,
 :global(.dark) .external-agents__profile-card:hover,
 :global(.dark) .external-agents__profile-card--active {
   background: rgba(30, 41, 59, 0.98);
@@ -1779,10 +1223,6 @@ onMounted(() => {
   background: rgba(var(--settings-accent, 37, 99, 235), 0.9);
   border-color: rgba(var(--settings-accent, 37, 99, 235), 0.3);
   color: #ffffff;
-}
-
-:global(.dark) .external-agents__advanced-summary::after {
-  color: rgba(203, 213, 225, 0.88);
 }
 
 :global(.dark) .external-agents__notice--success {
@@ -1797,22 +1237,8 @@ onMounted(() => {
   color: rgba(254, 202, 202, 0.94);
 }
 
-:global(.dark) .external-agents__checklist-item {
-  background: rgba(15, 23, 42, 0.78);
-  color: rgba(226, 232, 240, 0.9);
-}
-
-:global(.dark) .external-agents__checklist-item--done {
-  background: rgba(20, 83, 45, 0.45);
-  color: rgba(187, 247, 208, 0.94);
-}
-
-:global(.dark) .external-agents__check-dot {
-  background: rgba(100, 116, 139, 0.88);
-}
-
-:global(.dark) .external-agents__checklist-item--done .external-agents__check-dot {
-  background: rgba(34, 197, 94, 0.92);
+:global(.dark) .external-agents__advanced-summary::after {
+  color: rgba(203, 213, 225, 0.88);
 }
 
 :global(.dark) .external-agents__badge--acp {

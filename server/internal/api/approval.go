@@ -119,6 +119,7 @@ type ApprovalHandler struct {
 	waiters      map[string]chan string
 	broker       *sse.Broker
 	execResolver ExecApprovalResolver // optional, for exec tool approvals
+	riskScorer   ToolApprovalRiskScorer
 	timeout      time.Duration
 	observer     tools.RuntimeEventObserver
 }
@@ -151,6 +152,14 @@ func (h *ApprovalHandler) SetObserver(observer tools.RuntimeEventObserver) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.observer = observer
+}
+
+// SetRiskScorer wires an optional context-aware scorer that can escalate
+// ambiguous auto-approved tool calls into explicit approval requests.
+func (h *ApprovalHandler) SetRiskScorer(scorer ToolApprovalRiskScorer) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.riskScorer = scorer
 }
 
 // RegisterRoutes registers approval endpoints on the given group.
@@ -319,9 +328,10 @@ func (h *ApprovalHandler) AuthorizeToolCall(ctx context.Context, req tools.ToolA
 		source = overrideSource
 		riskLevel = maxApprovalRiskLevel(riskLevel, overrideRisk)
 	}
+	mode, source, riskLevel = h.applyRiskScore(ctx, req, mode, source, riskLevel)
 	approval := tools.ToolApprovalEnvelope{
 		Mode:         mode,
-		PolicySource: nonEmpty(strings.TrimSpace(req.PolicySource), source),
+		PolicySource: nonEmpty(source, strings.TrimSpace(req.PolicySource)),
 		RiskLevel:    riskLevel,
 		BindingHash:  strings.TrimSpace(req.BindingHash),
 	}
@@ -390,6 +400,37 @@ func (h *ApprovalHandler) waitForApproval(ctx context.Context, userID string, re
 	}
 	req.CreatedAt = timeutil.NowTime().UTC().Format("2006-01-02T15:04:05Z")
 	req.ExpiresAt = timeutil.NowMilli() + h.timeout.Milliseconds()
+	if ctx.Err() != nil {
+		code := "tool_approval_aborted"
+		switch ctx.Err() {
+		case context.Canceled:
+			code = "tool_approval_cancelled"
+		case context.DeadlineExceeded:
+			code = "tool_approval_timeout"
+		}
+		return "", newToolApprovalRuntimeError(code, ctx.Err().Error(), ctx.Err(), map[string]interface{}{
+			"approval_id":  req.ID,
+			"tool_name":    strings.TrimSpace(req.ToolName),
+			"tool_call_id": strings.TrimSpace(req.ToolCallID),
+			"session_id":   req.SessionID,
+		})
+	}
+	if h.broker == nil || h.broker.ClientCount(req.UserID) == 0 {
+		return "", newToolApprovalRuntimeError(
+			"tool_approval_delivery_unavailable",
+			fmt.Sprintf("tool approval cannot be delivered: no active SSE client for user %q", req.UserID),
+			nil,
+			map[string]interface{}{
+				"approval_id":      req.ID,
+				"user_id":          req.UserID,
+				"session_id":       req.SessionID,
+				"tool_name":        strings.TrimSpace(req.ToolName),
+				"tool_call_id":     strings.TrimSpace(req.ToolCallID),
+				"delivery_target":  "sse",
+				"required_channel": "web",
+			},
+		)
+	}
 
 	ch := make(chan string, 1)
 	h.mu.Lock()

@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { reactive } from 'vue'
 import ChatView from '@/views/ChatView.vue'
-import { i18n, localeKeys, setLocale } from '@/i18n'
+import { i18n, setLocale } from '@/i18n'
 
 const mocks = vi.hoisted(() => ({
   chatStore: {
@@ -127,6 +127,7 @@ const mocks = vi.hoisted(() => ({
     currentActiveTasks: [] as Array<Record<string, unknown>>,
     currentTerminalTasks: [] as Array<Record<string, unknown>>,
     backgroundTasks: [] as Array<Record<string, unknown>>,
+    recentOutcome: null as null | Record<string, unknown>,
     loading: false,
     hydrated: true,
     hasActiveTasks: false,
@@ -136,6 +137,7 @@ const mocks = vi.hoisted(() => ({
     cancelTask: vi.fn(),
     resumeTask: vi.fn(),
     openTask: vi.fn(),
+    dismissRecentOutcome: vi.fn(),
     stopPolling: vi.fn(),
   },
   mediaGenerate: {
@@ -368,9 +370,16 @@ vi.mock('@/components/UserTaskProjectionCard.vue', () =>
     props: {
       task: { type: Object, default: null },
     },
-    emits: ['action', 'open'],
+    emits: ['action', 'open', 'navigate'],
     template: `
       <div class="agent-task-panel-stub">
+        <button
+          v-if="task && task.detail_href"
+          class="task-projection-card-navigate-stub"
+          @click="$emit('navigate', task.detail_href)"
+        >
+          Open run details
+        </button>
         <button
           v-if="task && task.actions && Array.isArray(task.actions.items) && task.actions.items[0]"
           class="task-projection-card-action-stub"
@@ -383,15 +392,167 @@ vi.mock('@/components/UserTaskProjectionCard.vue', () =>
   })
 )
 
+vi.mock('@/components/ChatActivityDock.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ChatActivityDock',
+    props: {
+      streamState: { type: Object, default: () => ({ phase: 'idle' }) },
+      canStop: { type: Boolean, default: false },
+      currentTasks: { type: Array, default: () => [] },
+      backgroundTasks: { type: Array, default: () => [] },
+      recentOutcome: { type: Object, default: null },
+      todoSummary: { type: Object, default: null },
+      todoCollapsed: { type: Boolean, default: false },
+    },
+    emits: [
+      'update:expanded',
+      'cancel',
+      'retry',
+      'action',
+      'open',
+      'navigate',
+      'dismiss-outcome',
+      'todo-toggle',
+      'todo-jump',
+    ],
+    template: `
+      <section
+        v-if="
+          canStop ||
+          (streamState && streamState.phase !== 'idle' && streamState.phase !== 'completed') ||
+          (Array.isArray(currentTasks) && currentTasks.length > 0) ||
+          (Array.isArray(backgroundTasks) && backgroundTasks.length > 0) ||
+          recentOutcome ||
+          todoSummary
+        "
+        data-testid="chat-activity-dock"
+        class="chat-activity-dock-stub"
+      >
+        <div class="chat-activity-dock-stub__header">
+          <span class="chat-activity-dock-stub__label">
+            {{ (streamState && (streamState.label || streamState.phase)) || '' }}
+          </span>
+          <button
+            v-if="streamState && streamState.phase === 'interrupted' && streamState.canRetry"
+            type="button"
+            data-testid="chat-activity-dock-retry"
+            @click="$emit('retry')"
+          >
+            Retry
+          </button>
+          <button
+            v-if="canStop"
+            type="button"
+            data-testid="chat-activity-dock-stop"
+            @click="$emit('cancel')"
+          >
+            Stop generating
+          </button>
+        </div>
+
+        <div
+          v-if="Array.isArray(currentTasks) && currentTasks.length > 0"
+          data-testid="chat-activity-dock-current"
+        >
+          <div v-for="task in currentTasks" :key="'current-' + task.id">
+            <button
+              v-if="task.detail_href"
+              class="task-projection-card-navigate-stub"
+              @click="$emit('navigate', task.detail_href)"
+            >
+              Open run details
+            </button>
+            <button
+              v-if="task.actions && Array.isArray(task.actions.items) && task.actions.items[0]"
+              class="task-projection-card-action-stub"
+              @click="$emit('action', task, task.actions.items[0].id)"
+            >
+              {{ task.actions.items[0].label }}
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="Array.isArray(backgroundTasks) && backgroundTasks.length > 0"
+          data-testid="chat-activity-dock-background"
+        >
+          <div v-for="task in backgroundTasks" :key="'background-' + task.id">
+            <button
+              v-if="task.detail_href"
+              class="task-projection-card-navigate-stub"
+              @click="$emit('navigate', task.detail_href)"
+            >
+              Open run details
+            </button>
+            <button
+              v-if="task.actions && Array.isArray(task.actions.items) && task.actions.items[0]"
+              class="task-projection-card-action-stub"
+              @click="$emit('action', task, task.actions.items[0].id)"
+            >
+              {{ task.actions.items[0].label }}
+            </button>
+          </div>
+        </div>
+
+        <section v-if="recentOutcome" data-testid="chat-activity-dock-outcome">
+          <span>{{ recentOutcome.title }}</span>
+          <button
+            type="button"
+            data-testid="chat-activity-dock-dismiss-outcome"
+            @click="$emit('dismiss-outcome')"
+          >
+            Dismiss
+          </button>
+        </section>
+
+        <section v-if="todoSummary" data-testid="chat-activity-dock-todo">
+          <div class="chat-activity-dock__todo-summary">
+            {{ todoSummary.completedCount }} out of {{ todoSummary.totalCount }} tasks completed
+          </div>
+          <button
+            type="button"
+            data-testid="chat-activity-dock-todo-jump"
+            @click="$emit('todo-jump')"
+          >
+            Jump to checklist message
+          </button>
+          <button
+            type="button"
+            data-testid="chat-activity-dock-todo-toggle"
+            @click="$emit('todo-toggle')"
+          >
+            {{ todoCollapsed ? 'Expand todo list' : 'Collapse todo list' }}
+          </button>
+          <ol v-if="!todoCollapsed" class="chat-activity-dock__todo-list">
+            <li
+              v-for="(item, index) in todoSummary.items"
+              :key="todoSummary.messageId + '-' + index"
+            >
+              {{ item.text }}
+            </li>
+          </ol>
+        </section>
+      </section>
+    `,
+  })
+)
+
 vi.mock('@/components/UserTaskProjectionDock.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'UserTaskProjectionDock',
     props: {
       tasks: { type: Array, default: () => [] },
     },
-    emits: ['action', 'open'],
+    emits: ['action', 'open', 'navigate'],
     template: `
       <div class="deep-research-task-dock-stub">
+        <button
+          v-if="Array.isArray(tasks) && tasks[0] && tasks[0].detail_href"
+          class="task-projection-dock-navigate-stub"
+          @click="$emit('navigate', tasks[0].detail_href)"
+        >
+          Open run details
+        </button>
         <button
           v-if="
             Array.isArray(tasks) &&
@@ -491,6 +652,7 @@ async function mountChatViewWithMessages(
       { path: '/chat', component: { template: '<div />' } },
       { path: '/settings', component: { template: '<div />' } },
       { path: '/security', component: { template: '<div />' } },
+      { path: '/automation/harness/:id', component: { template: '<div />' } },
     ],
   })
   router.push('/chat')
@@ -532,11 +694,7 @@ async function expandCardById(wrapper: ReturnType<typeof mount>, cardId: string)
 
 describe('ChatView page-level card actions', () => {
   beforeAll(async () => {
-    // Preload the locales used in this suite so the localization assertion
-    // does not spend its test timeout budget on dynamic locale imports.
-    for (const locale of localeKeys) {
-      await setLocale(locale)
-    }
+    await setLocale('zh-CN')
     await setLocale('en-US')
   })
 
@@ -652,12 +810,14 @@ describe('ChatView page-level card actions', () => {
     mocks.taskProjectionsStore.currentActiveTasks = []
     mocks.taskProjectionsStore.currentTerminalTasks = []
     mocks.taskProjectionsStore.backgroundTasks = []
+    mocks.taskProjectionsStore.recentOutcome = null
     mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.performTaskAction.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.resumeTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.dismissRecentOutcome.mockReset()
     mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
@@ -798,35 +958,37 @@ describe('ChatView page-level card actions', () => {
       },
     ])
 
-    const panel = wrapper.get('[data-testid="active-todo-panel"]')
-    expect(panel.text()).toContain('1 out of 3 tasks completed')
+    const dock = wrapper.get('[data-testid="chat-activity-dock"]')
+    const panel = wrapper.get('[data-testid="chat-activity-dock-todo"]')
+    expect(dock.text()).toContain('1 out of 3 tasks completed')
     expect(panel.text()).toContain('梳理 ChatView/ChatInput 与 todo 状态来源')
     expect(panel.text()).toContain('实现输入框上方的活跃 todo 状态展示与样式')
     expect(panel.text()).toContain('补上或更新前端测试，验证状态展示逻辑')
     expect(panel.text()).not.toContain('旧任务')
-    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(true)
+    expect(wrapper.find('.chat-activity-dock__todo-list').exists()).toBe(true)
 
-    await wrapper.get('[data-testid="active-todo-panel-jump"]').trigger('click')
+    await wrapper.get('[data-testid="chat-activity-dock-todo-jump"]').trigger('click')
     await flushPromises()
 
     expect(scrollIntoViewMock).toHaveBeenCalled()
     expect(wrapper.get('[data-message-id="msg-latest"]').classes()).toContain('is-todo-focused')
 
-    await wrapper.get('[data-testid="active-todo-panel-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="chat-activity-dock-todo-toggle"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(false)
+    expect(wrapper.find('.chat-activity-dock__todo-list').exists()).toBe(false)
     expect(localStorageMock.getItem('zima.chat.active_todo_collapsed.v1')).toBe('1')
 
-    await wrapper.get('[data-testid="active-todo-panel-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="chat-activity-dock-todo-toggle"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(true)
+    expect(wrapper.find('.chat-activity-dock__todo-list').exists()).toBe(true)
     expect(localStorageMock.getItem('zima.chat.active_todo_collapsed.v1')).toBeNull()
 
     const dockChildren = Array.from(wrapper.get('.chat-input-dock').element.children)
     const panelIndex = dockChildren.findIndex(
-      (child) => child instanceof HTMLElement && child.dataset.testid === 'active-todo-panel'
+      (child) =>
+        child instanceof HTMLElement && !!child.querySelector('[data-testid="chat-activity-dock"]')
     )
     const inputIndex = dockChildren.findIndex(
       (child) => child instanceof HTMLElement && child.classList.contains('chat-input-stub')
@@ -849,7 +1011,7 @@ describe('ChatView page-level card actions', () => {
       },
     ])
 
-    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="chat-activity-dock-todo"]').exists()).toBe(false)
   })
 
   it('hides the active todo panel when the latest checklist has an explicit completion signal', async () => {
@@ -866,7 +1028,7 @@ describe('ChatView page-level card actions', () => {
       },
     ])
 
-    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="chat-activity-dock-todo"]').exists()).toBe(false)
   })
 
   it('toggles waiting indicator, stop button, and input disabled state across conversation switches', async () => {
@@ -880,8 +1042,7 @@ describe('ChatView page-level card actions', () => {
     ])
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
-    expect(wrapper.get('.chat-streaming-actions').classes()).toContain('pt-4')
+    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
@@ -903,7 +1064,7 @@ describe('ChatView page-level card actions', () => {
     const otherWrapper = await mountChatViewWithMessages([])
 
     expect(otherWrapper.text()).not.toContain('Waiting for your confirmation to continue')
-    expect(findButtonByText(otherWrapper, 'Stop generating')).toBeUndefined()
+    expect(otherWrapper.find('[data-testid="chat-activity-dock-stop"]').exists()).toBe(false)
     expect(otherWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('false')
     expect(otherWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('false')
     expect(otherWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('false')
@@ -927,13 +1088,13 @@ describe('ChatView page-level card actions', () => {
     ])
 
     expect(restoredWrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(findButtonByText(restoredWrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(restoredWrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
   })
 
-  it('uses tighter stop-button spacing when the last streaming assistant message only contains cards', async () => {
+  it('shows the unified activity dock when the last streaming assistant message only contains cards', async () => {
     const cardOnlyMessage = makeTypelessBlock({
       type: 'result',
       id: 'card-only-result',
@@ -949,10 +1110,9 @@ describe('ChatView page-level card actions', () => {
       { id: 'msg-streaming-card-only', content: cardOnlyMessage },
     ])
 
-    const actionRow = wrapper.get('.chat-streaming-actions')
-    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
-    expect(actionRow.classes()).toContain('pt-1')
-    expect(actionRow.classes()).not.toContain('pt-4')
+    expect(wrapper.get('[data-testid="chat-activity-dock"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
+    expect(wrapper.find('.chat-streaming-actions').exists()).toBe(false)
   })
 
   it('switches conversation through ConversationList click and updates streaming controls', async () => {
@@ -1010,7 +1170,7 @@ describe('ChatView page-level card actions', () => {
     ])
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
 
     const convoButtons = wrapper.findAll('.conversation-select-stub')
     expect(convoButtons).toHaveLength(2)
@@ -1022,7 +1182,7 @@ describe('ChatView page-level card actions', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('Waiting for your confirmation to continue')
-    expect(findButtonByText(wrapper, 'Stop generating')).toBeUndefined()
+    expect(wrapper.find('[data-testid="chat-activity-dock-stop"]').exists()).toBe(false)
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('false')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('false')
 
@@ -1033,7 +1193,7 @@ describe('ChatView page-level card actions', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
   })
@@ -1253,6 +1413,33 @@ describe('ChatView page-level card actions', () => {
     )
     expect(consoleErrorSpy).toHaveBeenCalled()
     consoleErrorSpy.mockRestore()
+  })
+
+  it('navigates to harness details from projected task shortcuts', async () => {
+    const task = {
+      id: 'task-harness-nav',
+      kind: 'agent_task',
+      scope: 'current',
+      conversation_id: 'conv-1',
+      title: 'Harness regression',
+      status: 'failed',
+      stage: 'partial',
+      progress: 100,
+      actions: { items: [] },
+      detail_href: '/automation/harness/group-1',
+      updated_at: '2026-03-20T12:00:00.000Z',
+    }
+
+    mocks.taskProjectionsStore.currentTasks = [task]
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-harness-nav', content: 'Harness task completed.' },
+    ])
+
+    await wrapper.get('.task-projection-card-navigate-stub').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.vm.$route.path).toBe('/automation/harness/group-1')
   })
 
   it('submits use_browser from a web-fetch card rendered inside ChatView', async () => {

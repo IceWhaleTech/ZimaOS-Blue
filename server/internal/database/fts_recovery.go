@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 type sqliteFTSRepairPlan struct {
@@ -104,7 +105,7 @@ var sqliteKnownFTSRepairPlans = []sqliteFTSRepairPlan{
 
 // RepairKnownFTSIndexes rebuilds application-owned FTS virtual tables when their
 // shadow tables are corrupted but the source tables are still intact.
-func RepairKnownFTSIndexes(dbPath string) ([]string, error) {
+func RepairKnownFTSIndexes(dbPath string) (repaired []string, err error) {
 	dbPath = strings.TrimSpace(dbPath)
 	if dbPath == "" {
 		return nil, fmt.Errorf("database path is empty")
@@ -115,6 +116,17 @@ func RepairKnownFTSIndexes(dbPath string) ([]string, error) {
 	if _, err := os.Stat(dbPath); err != nil {
 		return nil, fmt.Errorf("failed to stat database %s: %w", dbPath, err)
 	}
+	startedAt := time.Now()
+	sqliteLogf("fts repair started db_path=%s", dbPath)
+	defer func() {
+		if err != nil {
+			sqliteLogf("fts repair failed db_path=%s duration=%s error=%v", dbPath, time.Since(startedAt), err)
+			return
+		}
+		if len(repaired) > 0 {
+			sqliteLogf("fts repair completed db_path=%s duration=%s tables=%v", dbPath, time.Since(startedAt), repaired)
+		}
+	}()
 
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -126,7 +138,7 @@ func RepairKnownFTSIndexes(dbPath string) ([]string, error) {
 		return nil, fmt.Errorf("set busy timeout for %s: %w", dbPath, err)
 	}
 
-	repaired := make([]string, 0)
+	repaired = make([]string, 0)
 	for _, plan := range sqliteKnownFTSRepairPlans {
 		present, contentExists, err := sqliteFTSPlanPresence(db, plan)
 		if err != nil {

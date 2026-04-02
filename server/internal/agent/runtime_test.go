@@ -250,6 +250,21 @@ func TestGroundedCanonicalCLICommand_PrefersPlannerDecisionQuery(t *testing.T) {
 	}
 }
 
+func TestGroundedCanonicalCLICommand_ExpandsDeepResearchQueryFromTask(t *testing.T) {
+	task := &Task{
+		Goal: "Research the latest memory architecture approaches",
+		Metadata: map[string]any{
+			"group_input": map[string]any{
+				"input": "global SOTA AI memory research 2024 2025",
+			},
+		},
+	}
+	got := groundedCanonicalCLICommand(task, "blue deep_research", nil)
+	if got != `blue deep_research query="global SOTA AI memory research 2024 2025"` {
+		t.Fatalf("command = %q", got)
+	}
+}
+
 func TestGroundedCanonicalCLICommand_UsesAnalyzeTopicArgument(t *testing.T) {
 	task := &Task{
 		Goal: "Inspect the workspace README",

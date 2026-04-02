@@ -9,6 +9,7 @@ export type UserTaskStage =
   | 'verifying'
   | 'waiting_user'
   | 'completed'
+  | 'partial'
   | 'failed'
   | 'cancelled'
 
@@ -37,6 +38,18 @@ export interface UserTaskResearchSource {
   fetched_at?: string
   relevance_score?: number
   credibility_score?: number
+}
+
+export interface UserTaskSubagentSummary {
+  total: number
+  running?: number
+  waiting_user?: number
+  completed?: number
+  failed?: number
+  cancelled?: number
+  latest_title?: string
+  latest_status?: string
+  latest_updated_at?: string
 }
 
 export interface UserTaskActionDescriptor {
@@ -83,7 +96,13 @@ export interface UserTaskProjection {
   error_preview?: string
   artifacts?: UserTaskArtifact[]
   research_sources?: UserTaskResearchSource[]
+  subagent_summary?: UserTaskSubagentSummary
   actions: UserTaskActions
+  run_status?: string
+  verification_status?: string
+  score?: number
+  evidence_count?: number
+  detail_href?: string
   updated_at: string
   finished_at?: string
 }

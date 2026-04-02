@@ -17,6 +17,7 @@ function createTestI18n() {
           taskStageVerifying: 'Verifying',
           taskStageWaiting: 'Waiting',
           taskStageCompleted: 'Completed',
+          taskStagePartial: 'Partially passed',
           taskStageFailed: 'Failed',
           taskStageCancelled: 'Cancelled',
           taskKindResearch: 'Deep Research',
@@ -36,6 +37,18 @@ function createTestI18n() {
           deepResearchCredibility: 'Cred',
           deepResearchStageCompleted: 'Completed',
           deepResearchActionCompleted: 'Completed',
+          taskHarnessRunStatus: 'Run',
+          taskHarnessVerificationStatus: 'Verification',
+          taskHarnessEvidenceCount: 'Evidence',
+          taskHarnessRecorded: 'Recorded',
+          taskHarnessViewDetails: 'View run details',
+          taskHarnessAddToRegression: 'Add to regression',
+          taskHarnessRerun: 'Rerun',
+        },
+        harness: {
+          groups: {
+            score: 'Score',
+          },
         },
       },
       'zh-CN': {
@@ -134,6 +147,84 @@ describe('UserTaskProjectionCard', () => {
       expect.objectContaining({ id: 'task-1' }),
       'cancel',
     ])
+  })
+
+  it('renders harness summary chips and emits navigation shortcuts', async () => {
+    const wrapper = mount(UserTaskProjectionCard, {
+      props: {
+        task: {
+          id: 'task-harness-1',
+          kind: 'agent_task',
+          scope: 'current',
+          title: 'Regression validation',
+          status: 'failed',
+          stage: 'partial',
+          progress: 100,
+          actions: { items: [] },
+          run_status: 'completed',
+          verification_status: 'partial',
+          score: 0.76,
+          evidence_count: 5,
+          detail_href: '/automation/harness/group-1',
+          updated_at: '2026-03-20T12:00:00.000Z',
+        },
+      },
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    expect(wrapper.text()).toContain('Partially passed')
+    expect(wrapper.text()).toContain('Run: Completed')
+    expect(wrapper.text()).toContain('Verification: Partially passed')
+    expect(wrapper.text()).toContain('Score: 0.76')
+    expect(wrapper.text()).toContain('Evidence: 5')
+    expect(wrapper.text()).toContain('Recorded')
+    expect(wrapper.text()).toContain('View run details')
+    expect(wrapper.text()).toContain('Rerun')
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'View run details')!
+      .trigger('click')
+
+    expect(wrapper.emitted('navigate')?.[0]).toEqual(['/automation/harness/group-1'])
+  })
+
+  it('renders subagent summary chips and the latest child run label', () => {
+    const wrapper = mount(UserTaskProjectionCard, {
+      props: {
+        task: {
+          id: 'task-subagents-1',
+          kind: 'agent_task',
+          scope: 'current',
+          title: 'Parallel fix-up',
+          status: 'running',
+          stage: 'working',
+          progress: 58,
+          subagent_summary: {
+            total: 4,
+            running: 2,
+            waiting_user: 1,
+            completed: 1,
+            latest_title: 'Check failing specs',
+            latest_status: 'waiting_user',
+            latest_updated_at: '2026-03-20T12:05:00.000Z',
+          },
+          actions: { items: [] },
+          updated_at: '2026-03-20T12:10:00.000Z',
+        },
+      },
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    expect(wrapper.text()).toContain('4 subagents')
+    expect(wrapper.text()).toContain('2 running')
+    expect(wrapper.text()).toContain('1 waiting')
+    expect(wrapper.text()).toContain('1 completed')
+    expect(wrapper.text()).toContain('Check failing specs · waiting user')
   })
 
   it('localizes collapsed research details and shows the source inventory once expanded', async () => {

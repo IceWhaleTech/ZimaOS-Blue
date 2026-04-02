@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 func TestApprovalManagerBindingHashRequiredForResolveWithBinding(t *testing.T) {
 	broker := sse.NewBroker()
 	defer broker.Close()
+	sub := broker.Subscribe("test-user")
+	defer broker.Unsubscribe("test-user", sub)
 
 	mgr := NewApprovalManager(broker)
 	ctx := WithSessionID(context.Background(), "conv-1")
@@ -61,6 +64,8 @@ func TestApprovalManagerBindingHashRequiredForResolveWithBinding(t *testing.T) {
 func TestApprovalManagerObserverReceivesLifecycleEvents(t *testing.T) {
 	broker := sse.NewBroker()
 	defer broker.Close()
+	sub := broker.Subscribe("test-user")
+	defer broker.Unsubscribe("test-user", sub)
 
 	mgr := NewApprovalManager(broker)
 	observer := &runtimeObserverStub{}
@@ -116,5 +121,39 @@ func TestApprovalManagerObserverReceivesLifecycleEvents(t *testing.T) {
 	}
 	if observer.approvalResolved[0].Decision != string(ApprovalAllowOnce) {
 		t.Fatalf("decision = %q, want %q", observer.approvalResolved[0].Decision, string(ApprovalAllowOnce))
+	}
+}
+
+func TestApprovalManagerReturnsImmediateDeliveryErrorWithoutActiveClient(t *testing.T) {
+	mgr := NewApprovalManager(sse.NewBroker())
+
+	start := time.Now()
+	decision, err := mgr.RequestApproval(context.Background(), ApprovalRequest{
+		Type:      "command",
+		Command:   "echo no-client",
+		UserID:    "test-user",
+		SessionID: "conv-no-client",
+	})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected delivery-unavailable error")
+	}
+	if decision != ApprovalDeny {
+		t.Fatalf("decision = %q, want %q", decision, ApprovalDeny)
+	}
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("expected immediate failure without timeout wait, elapsed=%s", elapsed)
+	}
+	if got := mgr.PendingCount(); got != 0 {
+		t.Fatalf("pending count = %d, want 0", got)
+	}
+
+	var runtimeErr ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T: %v", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "exec_approval_delivery_unavailable" {
+		t.Fatalf("code = %q, want exec_approval_delivery_unavailable", runtimeErr.ToolRuntimeCode())
 	}
 }

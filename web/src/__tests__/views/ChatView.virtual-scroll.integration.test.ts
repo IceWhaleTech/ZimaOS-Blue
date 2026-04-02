@@ -60,6 +60,7 @@ const mocks = vi.hoisted(() => ({
     currentActiveTasks: [] as Array<Record<string, unknown>>,
     currentTerminalTasks: [] as Array<Record<string, unknown>>,
     backgroundTasks: [] as Array<Record<string, unknown>>,
+    recentOutcome: null as null | Record<string, unknown>,
     loading: false,
     hydrated: true,
     hasActiveTasks: false,
@@ -69,6 +70,7 @@ const mocks = vi.hoisted(() => ({
     cancelTask: vi.fn(),
     resumeTask: vi.fn(),
     openTask: vi.fn(),
+    dismissRecentOutcome: vi.fn(),
     stopPolling: vi.fn(),
   },
   mediaGenerate: {
@@ -331,6 +333,13 @@ vi.mock('@/components/UserTaskProjectionCard.vue', () =>
   })
 )
 
+vi.mock('@/components/ChatActivityDock.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ChatActivityDock',
+    template: '<div class="chat-activity-dock-stub" />',
+  })
+)
+
 vi.mock('@/components/UserTaskProjectionDock.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'UserTaskProjectionDock',
@@ -519,12 +528,14 @@ describe('ChatView virtual scroll integration', () => {
     mocks.taskProjectionsStore.currentActiveTasks = []
     mocks.taskProjectionsStore.currentTerminalTasks = []
     mocks.taskProjectionsStore.backgroundTasks = []
+    mocks.taskProjectionsStore.recentOutcome = null
     mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.performTaskAction.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.resumeTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.dismissRecentOutcome.mockReset()
     mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()

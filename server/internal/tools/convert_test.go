@@ -143,9 +143,11 @@ func TestConvertToolRequestLocalPathApprovalAllowAlwaysPersistsDirectory(t *test
 		t.Fatalf("new dir allowlist store: %v", err)
 	}
 
-	broker := sse.NewBroker()
-	approvals := NewApprovalManager(broker)
 	userID := "user-convert-test"
+	broker := sse.NewBroker()
+	sub := broker.Subscribe(userID)
+	defer broker.Unsubscribe(userID, sub)
+	approvals := NewApprovalManager(broker)
 	tool := NewConvertTool(service, approvals, dirStore, nil)
 
 	localFile := filepath.Join(t.TempDir(), "outside", "input.txt")

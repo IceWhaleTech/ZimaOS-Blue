@@ -53,10 +53,16 @@ func newHarnessRuntimeBundleWithReadDB(writeDB, readDB *sql.DB, cfg *config.Conf
 	if reflectService != nil {
 		controller.SetReflector(reflectService)
 	}
+	runTracer := harness.NewRunTraceCollector(controller)
+	if runTracer != nil {
+		controller.SetRunTraceProvider(runTracer)
+		controller.UseExecutionMiddleware(runTracer.Middleware())
+	}
 
 	return &HarnessRuntimeBundle{
 		Controller:       controller,
 		GroupDispatcher:  harness.NewGroupDispatcher(controller),
+		RunTracer:        runTracer,
 		RuntimeObserver:  harness.NewRuntimeObserver(controller),
 		SubagentExecutor: harness.NewSubagentExecutor(controller, &cfg.Agents),
 		WriteGuard:       harness.NewWritePathGuard(controller),

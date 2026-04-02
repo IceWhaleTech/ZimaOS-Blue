@@ -164,6 +164,18 @@ func TestUserTaskProjectionService_ListScopesAndBlockers(t *testing.T) {
 	if current[0].Status != "waiting_user" || current[0].Stage != "waiting_user" {
 		t.Fatalf("unexpected waiting mapping: %#v", current[0])
 	}
+	if current[0].SubagentSummary == nil {
+		t.Fatalf("expected subagent summary on current task")
+	}
+	if current[0].SubagentSummary.Total != 1 || current[0].SubagentSummary.Running != 1 {
+		t.Fatalf("unexpected subagent summary counts: %#v", current[0].SubagentSummary)
+	}
+	if current[0].SubagentSummary.LatestTitle != "internal subagent" {
+		t.Fatalf("latest subagent title = %q, want internal subagent", current[0].SubagentSummary.LatestTitle)
+	}
+	if current[0].SubagentSummary.LatestStatus != "running" {
+		t.Fatalf("latest subagent status = %q, want running", current[0].SubagentSummary.LatestStatus)
+	}
 	if len(current[0].Artifacts) != 1 || current[0].Artifacts[0].Kind != "report" {
 		t.Fatalf("artifacts = %#v, want only visible report", current[0].Artifacts)
 	}
@@ -429,8 +441,11 @@ func TestUserTaskProjectionService_ProjectsAutoHarnessGroups(t *testing.T) {
 	if len(current[0].Actions.Items) != 1 || current[0].Actions.Items[0].ID != "cancel" {
 		t.Fatalf("expected auto harness group cancel descriptor, got %#v", current[0].Actions.Items)
 	}
-	if len(current[0].Artifacts) != 1 || current[0].Artifacts[0].URL != "/harness/"+group.ID {
+	if len(current[0].Artifacts) != 1 || current[0].Artifacts[0].URL != "/automation/harness/"+group.ID {
 		t.Fatalf("artifacts = %#v, want harness report link", current[0].Artifacts)
+	}
+	if current[0].DetailHref != "/automation/harness/"+group.ID {
+		t.Fatalf("detail href = %q, want canonical automation route", current[0].DetailHref)
 	}
 
 	items[0].Status = RunGroupItemStatusFailed
@@ -456,6 +471,9 @@ func TestUserTaskProjectionService_ProjectsAutoHarnessGroups(t *testing.T) {
 	}
 	if current[0].ErrorPreview == "" {
 		t.Fatalf("expected failed auto harness preview")
+	}
+	if current[0].RunStatus != "failed" {
+		t.Fatalf("run status = %q, want failed", current[0].RunStatus)
 	}
 }
 

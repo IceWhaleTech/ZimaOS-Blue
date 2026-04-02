@@ -170,12 +170,11 @@ describe('ChatInput cancel affordance', () => {
     i18n.global.locale.value = 'en-US'
   })
 
-  it('shows cancel when canCancel is true without streaming', async () => {
+  it('keeps send available when canCancel is true without streaming', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
     const wrapper = mount(ChatInput, {
-      shallow: true,
       props: {
         streaming: false,
         canCancel: true,
@@ -189,12 +188,7 @@ describe('ChatInput cancel affordance', () => {
       },
     })
 
-    await wrapper.vm.$nextTick()
-
-    const cancelButton = wrapper
-      .findAll('button')
-      .find((button) => button.classes().includes('desktop-cancel-btn'))
-    expect(cancelButton?.exists()).toBe(true)
+    await settleComposer(wrapper)
 
     await wrapper.find('textarea').setValue('hello')
     const sendButton = wrapper
@@ -205,6 +199,33 @@ describe('ChatInput cancel affordance', () => {
 
     expect(wrapper.emitted('send')).toHaveLength(1)
     expect(wrapper.emitted('inject')).toBeUndefined()
+  })
+
+  it('hides the inline cancel affordance when showInlineCancel is false', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(ChatInput, {
+      props: {
+        streaming: false,
+        canCancel: true,
+        showInlineCancel: false,
+      },
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          ImagePreview: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await settleComposer(wrapper)
+
+    const cancelButton = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('title') === 'Cancel')
+    expect(cancelButton).toBeUndefined()
   })
 
   it('restores draft message for the current conversation on mount', async () => {

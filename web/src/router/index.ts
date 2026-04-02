@@ -148,6 +148,35 @@ function isLoginRouteLocation(path: string, name: unknown): boolean {
   return path === '/login' || name === 'Login'
 }
 
+function normalizeRoutePermissions(meta: {
+  permission?: unknown
+  permissions?: unknown
+}): string[] {
+  const permissions = new Set<string>()
+  const singlePermission = String(meta.permission ?? '').trim()
+  if (singlePermission) {
+    permissions.add(singlePermission)
+  }
+  if (Array.isArray(meta.permissions)) {
+    for (const permission of meta.permissions) {
+      const normalized = String(permission ?? '').trim()
+      if (normalized) {
+        permissions.add(normalized)
+      }
+    }
+  }
+  return [...permissions]
+}
+
+function hasRequiredRoutePermissions(requiredPermissions: string[]): boolean {
+  if (requiredPermissions.length === 0) return true
+  const authStore = useAuthStore()
+  if (requiredPermissions.length === 1) {
+    return authStore.hasPermission(requiredPermissions[0]!)
+  }
+  return authStore.hasAnyPermission(requiredPermissions)
+}
+
 function shouldUseOptimisticStartupPreviewCheck(path: string, name: unknown): boolean {
   if (!isDesktop || previewModeChecked) return false
   if (isChatRouteLocation(path, name)) return true
@@ -397,11 +426,11 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/browser-automation',
-    redirect: '/cron',
+    redirect: '/automation',
   },
   {
     path: '/auto-reply',
-    redirect: '/cron',
+    redirect: '/automation',
   },
   {
     path: '/channels',
@@ -411,21 +440,33 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/workflows',
-    redirect: '/cron',
+    redirect: '/automation',
   },
   {
     path: '/webhooks',
-    redirect: '/cron',
+    redirect: '/automation',
   },
   {
-    path: '/cron',
+    path: '/automation/harness',
+    name: 'HarnessGroups',
+    component: () => import('@/views/HarnessGroupsView.vue'),
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+  },
+  {
+    path: '/automation/harness/:id',
+    name: 'HarnessGroupDetail',
+    component: () => import('@/views/HarnessGroupDetailView.vue'),
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+  },
+  {
+    path: '/automation',
     name: 'CronJobs',
     component: () => import('@/views/CronView.vue'),
     meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
-    path: '/automation',
-    redirect: '/cron',
+    path: '/cron',
+    redirect: '/automation',
   },
   {
     path: '/audit',
@@ -451,15 +492,16 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/security/harness/:id',
-    name: 'HarnessGroupDetail',
-    component: () => import('@/views/HarnessGroupDetailView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.SECURITY },
+    redirect: (to) => ({
+      name: 'HarnessGroupDetail',
+      params: { id: to.params.id },
+    }),
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/harness',
-    name: 'HarnessGroups',
-    redirect: { name: 'Security', query: { tab: 'harness' } },
-    meta: { requiresAuth: true, permission: PagePermissions.SECURITY },
+    redirect: { name: 'HarnessGroups' },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/harness/:id',
@@ -467,11 +509,11 @@ const routes: RouteRecordRaw[] = [
       name: 'HarnessGroupDetail',
       params: { id: to.params.id },
     }),
-    meta: { requiresAuth: true, permission: PagePermissions.SECURITY },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/sandbox',
-    redirect: '/cron',
+    redirect: '/automation',
   },
   {
     path: '/tenants',
@@ -514,7 +556,7 @@ router.afterEach(() => {
 })
 
 function hydrateAuthenticatedChatRouteInBackground(
-  requiredPermission: string | undefined,
+  requiredPermissions: string[],
   requiresAdmin: unknown
 ) {
   const authStore = useAuthStore()
@@ -527,7 +569,7 @@ function hydrateAuthenticatedChatRouteInBackground(
       return
     }
 
-    if (requiredPermission && !authStore.hasPermission(requiredPermission)) {
+    if (!hasRequiredRoutePermissions(requiredPermissions)) {
       void router.replace({ name: 'Chat' })
     }
   })
@@ -568,7 +610,7 @@ router.beforeEach(async (to, from, next) => {
     let isAuthenticated = !!token
     const requiresAuth = to.meta.requiresAuth
     const requiresAdmin = to.meta.requiresAdmin
-    const requiredPermission = to.meta.permission as string | undefined
+    const requiredPermissions = normalizeRoutePermissions(to.meta)
 
     // Allow connection error page without checks
     if (to.name === 'ConnectionError') {
@@ -645,7 +687,7 @@ router.beforeEach(async (to, from, next) => {
       clearStoredPreviewToken()
       clearStoredAccessToken()
       isAuthenticated = false
-      if ((requiresAuth || requiredPermission) && to.name !== 'Login') {
+      if ((requiresAuth || requiredPermissions.length > 0) && to.name !== 'Login') {
         void preloadLoginView().catch(() => {})
         next({ name: 'Login', query: { redirect: to.fullPath } })
         return
@@ -657,7 +699,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Redirect to login if auth required but not authenticated
-    if ((requiresAuth || requiredPermission) && !isAuthenticated) {
+    if ((requiresAuth || requiredPermissions.length > 0) && !isAuthenticated) {
       void preloadLoginView().catch(() => {})
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return
@@ -684,7 +726,7 @@ router.beforeEach(async (to, from, next) => {
       const authStore = useAuthStore()
       if (!authStore.user) {
         if (isChatRouteLocation(to.path, to.name)) {
-          hydrateAuthenticatedChatRouteInBackground(requiredPermission, requiresAdmin)
+          hydrateAuthenticatedChatRouteInBackground(requiredPermissions, requiresAdmin)
           reportStartupMark('router_guard_ready')
           next()
           return
@@ -702,7 +744,7 @@ router.beforeEach(async (to, from, next) => {
       }
 
       // Check page-level permissions
-      if (requiredPermission && !authStore.hasPermission(requiredPermission)) {
+      if (!hasRequiredRoutePermissions(requiredPermissions)) {
         next({ name: 'Chat' })
         return
       }

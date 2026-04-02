@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
 	"github.com/labstack/echo/v4"
 )
@@ -457,13 +458,25 @@ blue legacy_remote_skill action=list
 		}
 
 		var payload struct {
-			Warnings []string `json:"warnings"`
+			Warnings       []string `json:"warnings"`
+			ContractStatus string   `json:"contract_status"`
+			ContractSource string   `json:"contract_source"`
+			ContractNotes  []string `json:"contract_notes"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 			t.Fatalf("decode payload: %v", err)
 		}
 		if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
 			t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
+		}
+		if payload.ContractStatus != skillmanifest.ContractStatusLegacyFallback {
+			t.Fatalf("contract_status = %q, want %q", payload.ContractStatus, skillmanifest.ContractStatusLegacyFallback)
+		}
+		if payload.ContractSource != skillmanifest.ContractSourceLegacyFrontmatter {
+			t.Fatalf("contract_source = %q, want %q", payload.ContractSource, skillmanifest.ContractSourceLegacyFrontmatter)
+		}
+		if len(payload.ContractNotes) == 0 || !strings.Contains(payload.ContractNotes[0], "legacy manifest compatibility fallback applied") {
+			t.Fatalf("contract_notes = %v, want legacy compatibility note", payload.ContractNotes)
 		}
 	})
 
@@ -766,6 +779,66 @@ blue legacy_url_skill action=list
 		}
 		if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
 			t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
+		}
+	})
+
+	t.Run("installs plain markdown skill without frontmatter contract", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte(`
+# Plain Third Party Skill
+
+Installs without frontmatter.
+
+blue plain-thirdparty action=list
+`))
+		}))
+		defer server.Close()
+
+		body := fmt.Sprintf(`{"url":"%s/plain-thirdparty.md"}`, server.URL)
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install-url", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.InstallFromURL(c); err != nil {
+			t.Fatalf("InstallFromURL failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var payload struct {
+			EntryFile      string   `json:"entry_file"`
+			ContractStatus string   `json:"contract_status"`
+			ContractSource string   `json:"contract_source"`
+			ContractNotes  []string `json:"contract_notes"`
+			Skill          struct {
+				ID string `json:"id"`
+			} `json:"skill"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if strings.TrimSpace(payload.Skill.ID) == "" {
+			t.Fatalf("expected installed skill id in payload, body=%s", rec.Body.String())
+		}
+		if registry.Get(payload.Skill.ID) == nil {
+			t.Fatalf("expected plain markdown skill %q to be registered", payload.Skill.ID)
+		}
+		if payload.EntryFile != "SKILL.md" {
+			t.Fatalf("entry_file = %q, want SKILL.md", payload.EntryFile)
+		}
+		if payload.ContractStatus != skillmanifest.ContractStatusGenerated {
+			t.Fatalf("contract_status = %q, want %q", payload.ContractStatus, skillmanifest.ContractStatusGenerated)
+		}
+		if payload.ContractSource != skillmanifest.ContractSourceGeneratedSafeDefaults {
+			t.Fatalf("contract_source = %q, want %q", payload.ContractSource, skillmanifest.ContractSourceGeneratedSafeDefaults)
+		}
+		if len(payload.ContractNotes) == 0 || !strings.Contains(payload.ContractNotes[0], "generated safe structural contract defaults") {
+			t.Fatalf("contract_notes = %v, want generated contract note", payload.ContractNotes)
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, payload.Skill.ID, payload.EntryFile)); err != nil {
+			t.Fatalf("expected installed entry file to be written: %v", err)
 		}
 	})
 
@@ -1206,13 +1279,25 @@ blue uploaded_legacy_skill action=list
 			t.Fatalf("expected legacy SKILL.md install to exist: %v", err)
 		}
 		var payload struct {
-			Warnings []string `json:"warnings"`
+			Warnings       []string `json:"warnings"`
+			ContractStatus string   `json:"contract_status"`
+			ContractSource string   `json:"contract_source"`
+			ContractNotes  []string `json:"contract_notes"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 			t.Fatalf("decode payload: %v", err)
 		}
 		if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
 			t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
+		}
+		if payload.ContractStatus != skillmanifest.ContractStatusLegacyFallback {
+			t.Fatalf("contract_status = %q, want %q", payload.ContractStatus, skillmanifest.ContractStatusLegacyFallback)
+		}
+		if payload.ContractSource != skillmanifest.ContractSourceLegacyFrontmatter {
+			t.Fatalf("contract_source = %q, want %q", payload.ContractSource, skillmanifest.ContractSourceLegacyFrontmatter)
+		}
+		if len(payload.ContractNotes) == 0 || !strings.Contains(payload.ContractNotes[0], "legacy manifest compatibility fallback applied") {
+			t.Fatalf("contract_notes = %v, want legacy compatibility note", payload.ContractNotes)
 		}
 	})
 
@@ -1314,13 +1399,25 @@ blue uploaded_legacy_agent_skill action=list
 			t.Fatalf("expected legacy AGENT.md install to exist: %v", err)
 		}
 		var payload struct {
-			Warnings []string `json:"warnings"`
+			Warnings       []string `json:"warnings"`
+			ContractStatus string   `json:"contract_status"`
+			ContractSource string   `json:"contract_source"`
+			ContractNotes  []string `json:"contract_notes"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 			t.Fatalf("decode payload: %v", err)
 		}
 		if len(payload.Warnings) == 0 || !strings.Contains(payload.Warnings[0], "legacy manifest compatibility fallback applied") {
 			t.Fatalf("warnings = %v, want legacy compatibility warning", payload.Warnings)
+		}
+		if payload.ContractStatus != skillmanifest.ContractStatusLegacyFallback {
+			t.Fatalf("contract_status = %q, want %q", payload.ContractStatus, skillmanifest.ContractStatusLegacyFallback)
+		}
+		if payload.ContractSource != skillmanifest.ContractSourceLegacyFrontmatter {
+			t.Fatalf("contract_source = %q, want %q", payload.ContractSource, skillmanifest.ContractSourceLegacyFrontmatter)
+		}
+		if len(payload.ContractNotes) == 0 || !strings.Contains(payload.ContractNotes[0], "legacy manifest compatibility fallback applied") {
+			t.Fatalf("contract_notes = %v, want legacy compatibility note", payload.ContractNotes)
 		}
 	})
 

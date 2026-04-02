@@ -1,55 +1,30 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, shallowMount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 
 const listGroupsMock = vi.fn()
-const listDatasetsMock = vi.fn()
-const listDatasetVersionsMock = vi.fn()
-const listEvalSpecsMock = vi.fn()
-const listEvalRunsMock = vi.fn()
-const listBaselinesMock = vi.fn()
-const getEvalRunReportMock = vi.fn()
-const createDatasetMock = vi.fn()
-const createDatasetVersionMock = vi.fn()
-const createEvalSpecMock = vi.fn()
-const createEvalRunMock = vi.fn()
-const createGroupMock = vi.fn()
-const createBaselineMock = vi.fn()
-const compareEvalRunMock = vi.fn()
-const cancelEvalRunMock = vi.fn()
 const getGroupReportMock = vi.fn()
+const getRunDetailMock = vi.fn()
 const cancelGroupMock = vi.fn()
 const retryFailedGroupMock = vi.fn()
-const promoteGroupMock = vi.fn()
-const listConversationsMock = vi.fn()
-const getConversationMock = vi.fn()
-const listMessagesMock = vi.fn()
+const routerPushMock = vi.fn()
 const notificationSuccessMock = vi.fn()
 const notificationInfoMock = vi.fn()
 const notificationErrorMock = vi.fn()
-const routerPushMock = vi.fn()
+
+const mountedWrappers: Array<{ unmount: () => void }> = []
+const routeMock = {
+  path: '/automation/harness/group-1',
+  params: { id: 'group-1' },
+}
 
 vi.mock('@/api/harness', () => ({
   harnessApi: {
     listGroups: listGroupsMock,
-    listDatasets: listDatasetsMock,
-    listDatasetVersions: listDatasetVersionsMock,
-    listEvalSpecs: listEvalSpecsMock,
-    listEvalRuns: listEvalRunsMock,
-    listBaselines: listBaselinesMock,
-    getEvalRunReport: getEvalRunReportMock,
-    createDataset: createDatasetMock,
-    createDatasetVersion: createDatasetVersionMock,
-    createEvalSpec: createEvalSpecMock,
-    createEvalRun: createEvalRunMock,
-    createGroup: createGroupMock,
-    createBaseline: createBaselineMock,
-    compareEvalRun: compareEvalRunMock,
-    cancelEvalRun: cancelEvalRunMock,
     getGroupReport: getGroupReportMock,
+    getRunDetail: getRunDetailMock,
     cancelGroup: cancelGroupMock,
     retryFailedGroup: retryFailedGroupMock,
-    promoteGroup: promoteGroupMock,
   },
 }))
 
@@ -61,25 +36,13 @@ vi.mock('@/stores/notification', () => ({
   }),
 }))
 
-vi.mock('@/api/chat', () => ({
-  conversationApi: {
-    list: listConversationsMock,
-    get: getConversationMock,
-  },
-  messageApi: {
-    list: listMessagesMock,
-  },
-}))
-
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
   return {
     ...actual,
+    useRoute: () => routeMock,
     useRouter: () => ({
       push: routerPushMock,
-    }),
-    useRoute: () => ({
-      params: { id: 'group-1' },
     }),
   }
 })
@@ -94,53 +57,558 @@ function createTestI18n() {
     messages: {
       'en-US': {
         nav: {
+          automation: 'Automation',
           harness: 'Harness',
         },
         common: {
-          loading: 'Loading',
-          refresh: 'Refresh',
-          error: 'Error',
-          back: 'Back',
+          active: 'Active',
           all: 'All',
-          search: 'Search',
-          updatedAt: 'Updated',
+          back: 'Back',
           cancel: 'Cancel',
+          error: 'Error',
+          loading: 'Loading',
           notAvailable: 'Not available',
+          refresh: 'Refresh',
+          updatedAt: 'Updated',
+          type: 'Type',
+        },
+        harness: {
+          groups: {
+            subtitle: 'Browse groups',
+            totalGroups: 'Groups',
+            avgPassRate: 'Average pass rate',
+            loading: 'Fetching groups',
+            terminalOnly: 'Terminal',
+            searchPlaceholder: 'Search title, subject, owner, kind, or status',
+            noSubject: 'No subject provided',
+            kind: 'Kind',
+            owner: 'Owner',
+            itemCount: 'Items',
+            passRate: 'Pass rate',
+            score: 'Score',
+            running: 'Running',
+            failed: 'Failed',
+            passed: 'Passed',
+            emptyDescription: 'No groups',
+            startedAt: 'Started',
+            finishedAt: 'Finished',
+            status: 'Status',
+          },
+          group: {
+            noSubject: 'This group does not include a subject line.',
+            cancelled: 'Group cancelled',
+            retryResult: 'Failed items requeued.',
+            retryFailed: 'Retry failed',
+            loading: 'Loading the latest group report.',
+            totalAttempts: 'Attempts',
+            scoreDistribution: 'Score distribution',
+            scoringMode: 'Scoring mode',
+            passVerdict: 'Pass',
+            failVerdict: 'Fail',
+            partialVerdict: 'Partial',
+            errorVerdict: 'Error',
+            queuedCount: 'Queued',
+            failedCount: 'Failed',
+            failureLabel: 'Failure label',
+            noFailureLabels: 'No failure labels recorded.',
+            failedItems: 'Failed items',
+            noFailedItems: 'No failed items in the latest report.',
+            attempts: 'Attempts',
+            noFailureReason: 'No failure reason recorded.',
+            artifacts: 'Artifacts',
+            noArtifacts: 'No artifacts attached to the linked runs yet.',
+          },
+        },
+        automation: {
+          tabs: {
+            cron: 'Scheduled Tasks',
+            cronDesc: 'Manage cron jobs and scheduled executions',
+            harness: 'Harness',
+            harnessDesc: 'Review run records, eval groups, and scoring results.',
+          },
         },
       },
     },
   })
 }
 
+function setWindowWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    writable: true,
+    value: width,
+  })
+}
+
+function createLinkedRuns() {
+  return [
+    {
+      id: 'run-root',
+      root_run_id: 'run-root',
+      kind: 'agent_task',
+      status: 'executing',
+      goal: 'Coordinate worker tasks',
+      agent_id: 'coordinator.main',
+      model: 'gpt-5.4',
+      attempt_index: 1,
+      depth: 0,
+      progress: 0.55,
+      created_at: '2026-03-20T10:00:00Z',
+      updated_at: '2026-03-20T10:05:00Z',
+      started_at: '2026-03-20T10:00:05Z',
+    },
+    {
+      id: 'run-fetch',
+      root_run_id: 'run-root',
+      parent_run_id: 'run-root',
+      kind: 'subagent',
+      status: 'completed',
+      goal: 'Fetch evaluation fixtures',
+      agent_id: 'worker.fetch',
+      model: 'gpt-5.4-mini',
+      attempt_index: 1,
+      depth: 1,
+      progress: 1,
+      result: 'Fixtures fetched',
+      created_at: '2026-03-20T10:00:10Z',
+      updated_at: '2026-03-20T10:01:00Z',
+      started_at: '2026-03-20T10:00:12Z',
+      finished_at: '2026-03-20T10:01:00Z',
+    },
+    {
+      id: 'run-review',
+      root_run_id: 'run-root',
+      parent_run_id: 'run-root',
+      kind: 'subagent',
+      status: 'failed',
+      goal: 'Review artifact integrity',
+      agent_id: 'worker.review',
+      model: 'gpt-5.4-mini',
+      attempt_index: 1,
+      depth: 1,
+      progress: 0.9,
+      error: 'artifact missing',
+      created_at: '2026-03-20T10:00:12Z',
+      updated_at: '2026-03-20T10:03:00Z',
+      started_at: '2026-03-20T10:00:15Z',
+      finished_at: '2026-03-20T10:03:00Z',
+    },
+    {
+      id: 'run-input',
+      root_run_id: 'run-root',
+      parent_run_id: 'run-root',
+      kind: 'subagent',
+      status: 'waiting_input',
+      goal: 'Ask for the fixture directory override',
+      agent_id: 'worker.blocker',
+      model: 'gpt-5.4-mini',
+      attempt_index: 1,
+      depth: 1,
+      progress: 0.4,
+      created_at: '2026-03-20T10:00:16Z',
+      updated_at: '2026-03-20T10:04:00Z',
+      started_at: '2026-03-20T10:00:18Z',
+    },
+    {
+      id: 'run-verify',
+      root_run_id: 'run-root',
+      parent_run_id: 'run-root',
+      kind: 'subagent',
+      status: 'executing',
+      goal: 'Verify bundle outputs',
+      agent_id: 'worker.verify',
+      model: 'gpt-5.4-mini',
+      attempt_index: 1,
+      depth: 1,
+      progress: 0.62,
+      created_at: '2026-03-20T10:00:18Z',
+      updated_at: '2026-03-20T10:04:30Z',
+      started_at: '2026-03-20T10:00:20Z',
+    },
+    {
+      id: 'run-orphan',
+      root_run_id: 'run-orphan-root',
+      parent_run_id: 'missing-parent',
+      kind: 'subagent',
+      status: 'completed',
+      goal: 'Detached worker for legacy replay',
+      agent_id: 'worker.orphan',
+      model: 'gpt-5.4-mini',
+      attempt_index: 1,
+      depth: 1,
+      progress: 1,
+      result: 'Detached cleanup complete',
+      created_at: '2026-03-20T10:00:20Z',
+      updated_at: '2026-03-20T10:04:50Z',
+      started_at: '2026-03-20T10:00:25Z',
+      finished_at: '2026-03-20T10:04:50Z',
+    },
+  ]
+}
+
+function createGroupReport(overrides: Record<string, unknown> = {}) {
+  const base = {
+    group: {
+      id: 'group-1',
+      kind: 'eval',
+      title: 'Regression batch',
+      status: 'running',
+      subject: 'Validate agent task flows',
+      owner_user_id: 'owner-1',
+      scoring_config: {
+        mode: 'rule',
+      },
+      summary: {
+        counts: {
+          queued: 1,
+          running: 2,
+          passed: 8,
+          failed: 2,
+        },
+        failure_label_counts: {
+          missing_artifact: 2,
+        },
+      },
+      created_at: '2026-03-20T10:00:00Z',
+      updated_at: '2026-03-20T10:05:00Z',
+      started_at: '2026-03-20T10:00:00Z',
+      finished_at: null,
+    },
+    items: [
+      {
+        id: 'item-1',
+        group_id: 'group-1',
+        index: 0,
+        run_kind: 'agent_task',
+        input: { goal: 'finish and verify' },
+        status: 'failed',
+        latest_run_id: 'run-review',
+        attempt_count: 1,
+        max_attempts: 2,
+        created_at: '2026-03-20T10:00:00Z',
+        updated_at: '2026-03-20T10:05:00Z',
+      },
+      {
+        id: 'item-2',
+        group_id: 'group-1',
+        index: 1,
+        run_kind: 'agent_task',
+        input: { goal: 'wait for fixture path' },
+        status: 'running',
+        latest_run_id: 'run-input',
+        attempt_count: 1,
+        max_attempts: 2,
+        created_at: '2026-03-20T10:00:10Z',
+        updated_at: '2026-03-20T10:05:00Z',
+      },
+    ],
+    verdict_counts: {
+      pass: 8,
+      fail: 2,
+      partial: 0,
+      error: 0,
+    },
+    overall_score: 0.61,
+    pass_rate: 0.8,
+    linked_runs: createLinkedRuns(),
+    artifacts: [
+      {
+        id: 'artifact-1',
+        run_id: 'run-review',
+        kind: 'log',
+        label: 'stderr.log',
+        path_or_url: '/tmp/stderr.log',
+      },
+    ],
+    failed_items: [
+      {
+        item: {
+          id: 'item-1',
+          index: 0,
+        },
+        scorecard: {
+          breakdown_json: JSON.stringify({
+            failure_label: 'missing_artifact',
+            reason: 'artifact missing',
+          }),
+        },
+        run: {
+          id: 'run-review',
+          status: 'failed',
+          goal: 'Review artifact integrity',
+          error: 'artifact missing',
+        },
+      },
+    ],
+    runtime_traces: {
+      'run-verify': {
+        run_id: 'run-verify',
+        events: [
+          {
+            type: 'tool_call',
+            message: 'Running bundle verification',
+            created_at: '2026-03-20T10:04:25Z',
+          },
+        ],
+      },
+    },
+  }
+
+  return {
+    ...base,
+    ...overrides,
+    group: {
+      ...base.group,
+      ...((overrides.group as Record<string, unknown>) || {}),
+    },
+    items: (overrides.items as unknown[]) || base.items,
+    verdict_counts: (overrides.verdict_counts as Record<string, number>) || base.verdict_counts,
+    linked_runs: (overrides.linked_runs as unknown[]) || base.linked_runs,
+    artifacts: (overrides.artifacts as unknown[]) || base.artifacts,
+    failed_items: (overrides.failed_items as unknown[]) || base.failed_items,
+    runtime_traces: (overrides.runtime_traces as Record<string, unknown>) || base.runtime_traces,
+  }
+}
+
+function createRunDetail(runID: string) {
+  const run = createLinkedRuns().find((entry) => entry.id === runID) || createLinkedRuns()[0]
+
+  const reviewEvents = [
+    {
+      id: 'review-event-1',
+      run_id: 'run-review',
+      type: 'agent_note',
+      message: 'Checking generated artifact manifest',
+      created_at: '2026-03-20T10:00:30Z',
+    },
+    {
+      id: 'review-event-2',
+      run_id: 'run-review',
+      type: 'tool_call',
+      tool_name: 'shell.exec',
+      message: 'Listing artifact directory',
+      created_at: '2026-03-20T10:00:45Z',
+    },
+    {
+      id: 'review-event-3',
+      run_id: 'run-review',
+      type: 'tool_call',
+      tool_name: 'file.read',
+      message: 'Inspecting report bundle',
+      created_at: '2026-03-20T10:01:10Z',
+    },
+    {
+      id: 'review-event-4',
+      run_id: 'run-review',
+      type: 'agent_note',
+      message: 'Expected stderr.log was not found in outputs',
+      created_at: '2026-03-20T10:01:25Z',
+    },
+    {
+      id: 'review-event-5',
+      run_id: 'run-review',
+      type: 'tool_call',
+      tool_name: 'file.search',
+      message: 'Searching for missing artifact',
+      created_at: '2026-03-20T10:01:40Z',
+    },
+    {
+      id: 'review-event-6',
+      run_id: 'run-review',
+      type: 'agent_note',
+      message: 'Validation failed after artifact check',
+      created_at: '2026-03-20T10:02:00Z',
+    },
+  ]
+
+  const eventsByRun: Record<string, unknown[]> = {
+    'run-root': [
+      {
+        id: 'root-event-1',
+        run_id: 'run-root',
+        type: 'agent_note',
+        message: 'Spawning 4 workers',
+        created_at: '2026-03-20T10:00:20Z',
+      },
+      {
+        id: 'root-event-2',
+        run_id: 'run-root',
+        type: 'agent_note',
+        message: 'Waiting on worker results',
+        created_at: '2026-03-20T10:04:55Z',
+      },
+    ],
+    'run-review': reviewEvents,
+    'run-input': [
+      {
+        id: 'input-event-1',
+        run_id: 'run-input',
+        type: 'agent_note',
+        message: 'Need a fixture path before continuing',
+        created_at: '2026-03-20T10:04:00Z',
+      },
+    ],
+    'run-fetch': [
+      {
+        id: 'fetch-event-1',
+        run_id: 'run-fetch',
+        type: 'agent_note',
+        message: 'Fixture fetch completed',
+        created_at: '2026-03-20T10:01:00Z',
+      },
+    ],
+    'run-verify': [
+      {
+        id: 'verify-event-1',
+        run_id: 'run-verify',
+        type: 'tool_call',
+        tool_name: 'shell.exec',
+        message: 'Running bundle verification',
+        created_at: '2026-03-20T10:04:25Z',
+      },
+    ],
+    'run-orphan': [
+      {
+        id: 'orphan-event-1',
+        run_id: 'run-orphan',
+        type: 'agent_note',
+        message: 'Detached replay completed',
+        created_at: '2026-03-20T10:04:40Z',
+      },
+    ],
+  }
+
+  return {
+    run: {
+      ...run,
+      runtime_state: run.status === 'waiting_input' ? 'blocked' : 'executing',
+      sandbox_mode: 'workspace-write',
+      approval_mode: 'ask',
+      workspace_root: '/workspace/zima-blue',
+    },
+    actions: null,
+    events: eventsByRun[runID] || [],
+    artifacts:
+      runID === 'run-review'
+        ? [
+            {
+              id: 'artifact-run-review',
+              run_id: 'run-review',
+              kind: 'log',
+              label: 'stderr.log',
+              path_or_url: '/tmp/stderr.log',
+              mime_type: 'text/plain',
+            },
+          ]
+        : [],
+    pending_approvals: [],
+    pending_questions:
+      runID === 'run-input'
+        ? [
+            {
+              question: 'Please provide the fixture directory.',
+            },
+          ]
+        : [],
+    run_trace: {
+      run_id: runID,
+      root_run_id: run.root_run_id,
+      parent_run_id: run.parent_run_id,
+      kind: run.kind,
+      status: run.status,
+      started_at: run.started_at,
+      finished_at: run.finished_at,
+      latency_ms: runID === 'run-review' ? 1540 : 920,
+      stages: [
+        {
+          stage: 'planning',
+          message: 'Trace planning stage entered',
+          status: 'completed',
+          created_at: '2026-03-20T10:00:20Z',
+          details: { iteration: 1 },
+        },
+        {
+          stage: 'finalize',
+          message: 'Trace finalize stage recorded',
+          status: run.status === 'failed' ? 'failed' : 'completed',
+          created_at: '2026-03-20T10:02:10Z',
+          details: { terminal_status: run.status },
+        },
+      ],
+      events: [
+        {
+          type: 'trace_started',
+          message: 'Trace started',
+          created_at: '2026-03-20T10:00:20Z',
+        },
+      ],
+      artifacts:
+        runID === 'run-review'
+          ? [
+              {
+                id: 'trace-artifact-review',
+                run_id: 'run-review',
+                kind: 'log',
+                label: 'trace.log',
+                path_or_url: '/tmp/trace.log',
+              },
+            ]
+          : [],
+    },
+  }
+}
+
+async function mountHarnessGroupDetail(width = 1280) {
+  routeMock.path = '/automation/harness/group-1'
+  routeMock.params = { id: 'group-1' }
+  setWindowWidth(width)
+  const HarnessGroupDetailView = (await import('@/views/HarnessGroupDetailView.vue')).default
+  const wrapper = mount(HarnessGroupDetailView, {
+    global: {
+      plugins: [createTestI18n()],
+      stubs: {
+        RouterLink: {
+          props: ['to'],
+          template: '<a class="router-link-stub" :data-to="JSON.stringify(to)"><slot /></a>',
+        },
+      },
+    },
+  })
+  mountedWrappers.push(wrapper)
+  await flushPromises()
+  return wrapper
+}
+
 describe('Harness views', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     vi.clearAllMocks()
+    routeMock.path = '/automation/harness/group-1'
+    routeMock.params = { id: 'group-1' }
+    setWindowWidth(1280)
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    })
     listGroupsMock.mockResolvedValue({ data: [] })
-    listDatasetsMock.mockResolvedValue({ data: [] })
-    listDatasetVersionsMock.mockResolvedValue({ data: [] })
-    listEvalSpecsMock.mockResolvedValue({ data: [] })
-    listEvalRunsMock.mockResolvedValue({ data: [] })
-    listBaselinesMock.mockResolvedValue({ data: [] })
-    getEvalRunReportMock.mockResolvedValue({ data: null })
-    createDatasetMock.mockResolvedValue({ data: null })
-    createDatasetVersionMock.mockResolvedValue({ data: null })
-    createEvalSpecMock.mockResolvedValue({ data: null })
-    createEvalRunMock.mockResolvedValue({ data: null })
-    createGroupMock.mockResolvedValue({ data: null })
-    createBaselineMock.mockResolvedValue({ data: { id: 'baseline-created' } })
-    compareEvalRunMock.mockResolvedValue({ data: null })
-    promoteGroupMock.mockResolvedValue({ data: null })
-    listConversationsMock.mockResolvedValue({ data: [] })
-    getConversationMock.mockResolvedValue({ data: null })
-    listMessagesMock.mockResolvedValue({ data: [] })
-    routerPushMock.mockReset()
-    routerPushMock.mockResolvedValue(undefined)
-    notificationSuccessMock.mockReset()
-    notificationInfoMock.mockReset()
-    notificationErrorMock.mockReset()
+    getGroupReportMock.mockResolvedValue({ data: createGroupReport() })
+    getRunDetailMock.mockImplementation((id: string) =>
+      Promise.resolve({ data: createRunDetail(id) })
+    )
+    cancelGroupMock.mockResolvedValue({ data: { status: 'cancelled' } })
+    retryFailedGroupMock.mockResolvedValue({ data: { retried: 2 } })
   })
 
-  it('renders the harness groups shell with fetched groups', async () => {
+  afterEach(() => {
+    while (mountedWrappers.length) {
+      mountedWrappers.pop()?.unmount()
+    }
+    vi.useRealTimers()
+  })
+
+  it('renders the simplified harness groups list and filters it', async () => {
+    routeMock.path = '/automation/harness'
+    routeMock.params = { id: '' }
     listGroupsMock.mockResolvedValue({
       data: [
         {
@@ -149,1079 +617,225 @@ describe('Harness views', () => {
           title: 'Regression batch',
           status: 'running',
           subject: 'Validate agent task flows',
+          owner_user_id: 'owner-1',
           summary: {
             item_count: 12,
             pass_rate: 0.75,
             overall_score: 0.82,
-            verification_pass_rate: 0.83,
-            evidence_backed_pass_rate: 0.71,
-            retry_recovered_count: 2,
-            failure_label_counts: {
-              missing_artifact: 1,
-            },
             counts: {
               running: 2,
-              passed: 7,
+              passed: 9,
               failed: 1,
             },
           },
           created_at: '2026-03-20T10:00:00Z',
           updated_at: '2026-03-20T10:05:00Z',
         },
-      ],
-    })
-    listDatasetsMock.mockResolvedValue({
-      data: [
         {
-          id: 'dataset-1',
-          name: 'Smoke Dataset',
-          subject: 'agent_task',
-          default_run_kind: 'agent_task',
-          default_profile: 'smoke',
-          active_version_id: 'dataset-version-1',
-          created_at: '2026-03-20T09:00:00Z',
-          updated_at: '2026-03-20T09:05:00Z',
-        },
-      ],
-    })
-    listDatasetVersionsMock.mockResolvedValue({
-      data: [
-        {
-          id: 'dataset-version-1',
-          dataset_id: 'dataset-1',
-          version: 'v1',
-          item_count: 1,
-          created_at: '2026-03-20T09:10:00Z',
-        },
-      ],
-    })
-    listEvalSpecsMock.mockResolvedValue({
-      data: [
-        {
-          id: 'eval-spec-1',
-          name: 'Smoke Eval',
-          dataset_id: 'dataset-1',
-          dataset_version_id: 'dataset-version-1',
-          run_kind: 'agent_task',
-          profile: 'smoke',
-          scoring_config: {
-            mode: 'rule',
-            pass_threshold: 0.5,
-          },
-          created_at: '2026-03-20T09:15:00Z',
-          updated_at: '2026-03-20T09:15:00Z',
-        },
-      ],
-    })
-    listEvalRunsMock.mockResolvedValue({
-      data: [
-        {
-          id: 'eval-run-1',
-          eval_spec_id: 'eval-spec-1',
-          group_id: 'group-1',
-          dataset_version_id: 'dataset-version-1',
-          title: 'smoke-run-1',
-          status: 'running',
-          summary: {
-            pass_rate: 0.5,
-            overall_score: 0.7,
-          },
-          created_at: '2026-03-20T09:20:00Z',
-          updated_at: '2026-03-20T09:21:00Z',
-        },
-      ],
-    })
-    listBaselinesMock.mockResolvedValue({
-      data: [
-        {
-          id: 'baseline-1',
-          name: 'Release Baseline',
-          eval_spec_id: 'eval-spec-1',
-          eval_run_id: 'baseline-run-1',
-          is_default: true,
-          created_at: '2026-03-20T09:18:00Z',
-          updated_at: '2026-03-20T09:18:00Z',
-        },
-      ],
-    })
-    getEvalRunReportMock.mockResolvedValue({
-      data: {
-        eval_run: {
-          id: 'eval-run-1',
-          eval_spec_id: 'eval-spec-1',
-          group_id: 'group-1',
-          dataset_version_id: 'dataset-version-1',
-          title: 'smoke-run-1',
-          status: 'running',
-          created_at: '2026-03-20T09:20:00Z',
-          updated_at: '2026-03-20T09:21:00Z',
-        },
-        eval_spec: {
-          id: 'eval-spec-1',
-          name: 'Smoke Eval',
-          dataset_id: 'dataset-1',
-          dataset_version_id: 'dataset-version-1',
-          run_kind: 'agent_task',
-          scoring_config: {
-            mode: 'rule',
-          },
-          created_at: '2026-03-20T09:15:00Z',
-          updated_at: '2026-03-20T09:15:00Z',
-        },
-        dataset: {
-          id: 'dataset-1',
-          name: 'Smoke Dataset',
-          created_at: '2026-03-20T09:00:00Z',
-          updated_at: '2026-03-20T09:05:00Z',
-        },
-        dataset_version: {
-          id: 'dataset-version-1',
-          dataset_id: 'dataset-1',
-          version: 'v1',
-          item_count: 1,
-          created_at: '2026-03-20T09:10:00Z',
-        },
-        group_report: {
-          group: {
-            id: 'group-1',
-            kind: 'eval',
-            status: 'running',
-            summary: {
-              item_count: 12,
-              verification_pass_rate: 0.83,
-              evidence_backed_pass_rate: 0.71,
-              retry_recovered_count: 2,
-              failure_label_counts: {
-                missing_artifact: 1,
-              },
-            },
-            created_at: '2026-03-20T10:00:00Z',
-            updated_at: '2026-03-20T10:05:00Z',
-          },
-          items: [],
-          pass_rate: 0.5,
-          overall_score: 0.7,
-          linked_runs: [],
-        },
-      },
-    })
-    compareEvalRunMock.mockResolvedValue({
-      data: {
-        id: 'comparison-1',
-        eval_spec_id: 'eval-spec-1',
-        base_eval_run_id: 'baseline-run-1',
-        target_eval_run_id: 'eval-run-1',
-        baseline_id: 'baseline-1',
-        summary: {
-          comparison_kind: 'baseline',
-          baseline_name: 'Release Baseline',
-          overall_score_delta: -0.3,
-          pass_rate_delta: -0.5,
-          verification_pass_rate_delta: -0.25,
-          evidence_backed_pass_rate_delta: -0.5,
-          retry_recovered_delta: 1,
-          failure_label_delta: {
-            missing_artifact: 1,
-          },
-          regression_count: 1,
-          improvement_count: 0,
-        },
-        regressions: [
-          {
-            key: 'case-1',
-            label: 'finish and verify',
-            base_verdict: 'pass',
-            target_verdict: 'fail',
-            base_verification: 'passed',
-            target_verification: 'failed',
-            base_evidence_score: 1,
-            target_evidence_score: 0.32,
-            target_failure_label: 'missing_artifact',
-            target_reason: 'evidence mismatch',
-          },
-        ],
-        improvements: [],
-        created_at: '2026-03-20T09:22:00Z',
-      },
-    })
-
-    const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
-    const wrapper = shallowMount(HarnessGroupsView, {
-      global: {
-        plugins: [createTestI18n()],
-        stubs: {
-          RouterLink: {
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    await flushPromises()
-
-    expect(listGroupsMock).toHaveBeenCalled()
-    expect(wrapper.find('.harness-groups-page').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Harness')
-    expect(wrapper.text()).toContain('Regression batch')
-    expect(wrapper.text()).toContain('Validate agent task flows')
-    expect(wrapper.text()).toContain('12')
-    expect(wrapper.text()).toContain('Eval')
-    expect(wrapper.text()).toContain('Running')
-    expect(wrapper.text()).toContain('Verification pass rate')
-    expect(wrapper.text()).toContain('Evidence-backed pass rate')
-    expect(wrapper.text()).toContain('Retry recovered')
-    expect(wrapper.text()).toContain('Smoke Dataset')
-    expect(wrapper.text()).toContain('Smoke Eval')
-    expect(wrapper.text()).toContain('smoke-run-1')
-
-    const inspectButton = wrapper
-      .findAll('button')
-      .find((node) => node.text().trim() === 'Inspect report')
-    expect(inspectButton).toBeTruthy()
-
-    await inspectButton!.trigger('click')
-    await flushPromises()
-
-    expect(getEvalRunReportMock).toHaveBeenCalledWith('eval-run-1')
-    expect(wrapper.text()).toContain('Dataset snapshot')
-    expect(wrapper.text()).toContain('Baseline registry')
-    expect(wrapper.text()).toContain('Release Baseline')
-    expect(wrapper.text()).toContain('missing_artifact')
-
-    const compareButton = wrapper
-      .findAll('button')
-      .find((node) => node.text().trim() === 'Generate comparison')
-    expect(compareButton).toBeTruthy()
-
-    await compareButton!.trigger('click')
-    await flushPromises()
-
-    expect(compareEvalRunMock).toHaveBeenCalledWith('eval-run-1', { baseline_id: 'baseline-1' })
-    expect(wrapper.text()).toContain('Compare runs')
-    expect(wrapper.text()).toContain('Verification pass rate delta')
-    expect(wrapper.text()).toContain('Failure label delta')
-    expect(wrapper.text()).toContain('Remediation')
-    expect(wrapper.text()).toContain('Attach the expected artifact path or label')
-    expect(wrapper.text()).toContain('evidence mismatch')
-  }, 10000)
-
-  it('launches a manifest quick eval as an ephemeral group', async () => {
-    createGroupMock.mockResolvedValue({
-      data: {
-        id: 'group-quick-1',
-      },
-    })
-
-    const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
-    const wrapper = shallowMount(HarnessGroupsView, {
-      global: {
-        plugins: [createTestI18n()],
-        stubs: {
-          RouterLink: {
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    await flushPromises()
-
-    await wrapper.get('textarea[name="quick-eval-manifest"]').setValue(
-      JSON.stringify(
-        {
-          dataset: {
-            name: 'Smoke Dataset',
-            subject: 'agent_task',
-          },
-          defaults: {
-            run_kind: 'agent_task',
-            profile: 'smoke',
-            scoring: {
-              mode: 'rule',
-              pass_threshold: 0.5,
-            },
-          },
-          items: [
-            {
-              id: 'case-1',
-              input: {
-                goal: 'finish and verify',
-              },
-              expected: {
-                contains: 'verified',
-              },
-            },
-          ],
-        },
-        null,
-        2
-      )
-    )
-    await wrapper.get('form.quick-eval-card').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(createGroupMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: 'eval',
-        subject: 'agent_task',
-        metadata: expect.objectContaining({
-          quick_eval: true,
-          ephemeral: true,
-          source_mode: 'manifest',
-          source_ref: 'ui',
-          quick_eval_preset: 'smoke',
-          quick_eval_dataset_name: 'Smoke Dataset',
-          quick_eval_eval_name: 'Smoke Dataset Smoke Eval',
-        }),
-        scoring: expect.objectContaining({
-          mode: 'rule',
-          pass_threshold: 0.5,
-          rule_profile: 'smoke',
-        }),
-        items: [
-          expect.objectContaining({
-            run_kind: 'agent_task',
-            profile: 'smoke',
-            input: {
-              goal: 'finish and verify',
-            },
-            expected: {
-              contains: 'verified',
-            },
-          }),
-        ],
-      })
-    )
-    expect(createDatasetMock).not.toHaveBeenCalled()
-    expect(createDatasetVersionMock).not.toHaveBeenCalled()
-    expect(createEvalSpecMock).not.toHaveBeenCalled()
-    expect(createEvalRunMock).not.toHaveBeenCalled()
-    expect(routerPushMock).toHaveBeenCalledWith({
-      name: 'HarnessGroupDetail',
-      params: { id: 'group-quick-1' },
-    })
-    expect(wrapper.text()).toContain('Quick Eval')
-  })
-
-  it('does not launch a quick eval from the empty template', async () => {
-    const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
-    const wrapper = shallowMount(HarnessGroupsView, {
-      global: {
-        plugins: [createTestI18n()],
-        stubs: {
-          RouterLink: {
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    await flushPromises()
-
-    await wrapper.get('form.quick-eval-card').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(createGroupMock).not.toHaveBeenCalled()
-    expect(createDatasetMock).not.toHaveBeenCalled()
-    expect(createDatasetVersionMock).not.toHaveBeenCalled()
-    expect(createEvalSpecMock).not.toHaveBeenCalled()
-    expect(createEvalRunMock).not.toHaveBeenCalled()
-    expect(notificationErrorMock).toHaveBeenCalledWith(
-      'Harness',
-      'Add at least one real case before launching a quick eval.'
-    )
-  })
-
-  it('keeps dataset quick eval on the eval-run path', async () => {
-    listDatasetsMock.mockResolvedValue({
-      data: [
-        {
-          id: 'dataset-quick-1',
-          name: 'Smoke Dataset',
-          subject: 'agent_task',
-          default_run_kind: 'agent_task',
-          default_profile: 'smoke',
-          active_version_id: 'dataset-version-quick-1',
-          created_at: '2026-03-20T09:00:00Z',
-          updated_at: '2026-03-20T09:00:00Z',
-        },
-      ],
-    })
-    listDatasetVersionsMock.mockResolvedValue({
-      data: [
-        {
-          id: 'dataset-version-quick-1',
-          dataset_id: 'dataset-quick-1',
-          version: 'v1',
-          item_count: 1,
-          created_at: '2026-03-20T09:22:00Z',
-        },
-      ],
-    })
-    createEvalSpecMock.mockResolvedValue({
-      data: {
-        id: 'eval-spec-quick-1',
-        name: 'Smoke Dataset Smoke Eval',
-        dataset_id: 'dataset-quick-1',
-        dataset_version_id: 'dataset-version-quick-1',
-        run_kind: 'agent_task',
-        profile: 'smoke',
-        scoring_config: {
-          mode: 'rule',
-          pass_threshold: 0.5,
-        },
-        created_at: '2026-03-20T09:23:00Z',
-        updated_at: '2026-03-20T09:23:00Z',
-      },
-    })
-    createEvalRunMock.mockResolvedValue({
-      data: {
-        id: 'eval-run-quick-1',
-        eval_spec_id: 'eval-spec-quick-1',
-        group_id: 'group-quick-1',
-        dataset_version_id: 'dataset-version-quick-1',
-        title: 'Smoke Dataset Smoke 20260320-0924',
-        status: 'queued',
-        created_at: '2026-03-20T09:24:00Z',
-        updated_at: '2026-03-20T09:24:00Z',
-      },
-    })
-    getEvalRunReportMock.mockResolvedValue({
-      data: {
-        eval_run: {
-          id: 'eval-run-quick-1',
-          eval_spec_id: 'eval-spec-quick-1',
-          group_id: 'group-quick-1',
-          dataset_version_id: 'dataset-version-quick-1',
-          title: 'Smoke Dataset Smoke 20260320-0924',
-          status: 'queued',
-          created_at: '2026-03-20T09:24:00Z',
-          updated_at: '2026-03-20T09:24:00Z',
-        },
-        eval_spec: {
-          id: 'eval-spec-quick-1',
-          name: 'Smoke Dataset Smoke Eval',
-          dataset_id: 'dataset-quick-1',
-          dataset_version_id: 'dataset-version-quick-1',
-          run_kind: 'agent_task',
-          scoring_config: {
-            mode: 'rule',
-            pass_threshold: 0.5,
-          },
-          created_at: '2026-03-20T09:23:00Z',
-          updated_at: '2026-03-20T09:23:00Z',
-        },
-        dataset: {
-          id: 'dataset-quick-1',
-          name: 'Smoke Dataset',
-          created_at: '2026-03-20T09:00:00Z',
-          updated_at: '2026-03-20T09:00:00Z',
-        },
-        dataset_version: {
-          id: 'dataset-version-quick-1',
-          dataset_id: 'dataset-quick-1',
-          version: 'v1',
-          item_count: 1,
-          created_at: '2026-03-20T09:22:00Z',
-        },
-        group_report: {
-          group: {
-            id: 'group-quick-1',
-            kind: 'eval',
-            status: 'queued',
-            created_at: '2026-03-20T09:24:00Z',
-            updated_at: '2026-03-20T09:24:00Z',
-          },
-          items: [],
-          linked_runs: [],
-        },
-      },
-    })
-
-    const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
-    const wrapper = shallowMount(HarnessGroupsView, {
-      global: {
-        plugins: [createTestI18n()],
-        stubs: {
-          RouterLink: {
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    await flushPromises()
-
-    const datasetButton = wrapper
-      .findAll('button')
-      .find((node) => node.text().trim() === 'Reuse dataset')
-    expect(datasetButton).toBeTruthy()
-
-    await datasetButton!.trigger('click')
-    await flushPromises()
-
-    await wrapper.get('select[name="quick-eval-dataset"]').setValue('dataset-quick-1')
-    await flushPromises()
-
-    await wrapper.get('form.quick-eval-card').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(createGroupMock).not.toHaveBeenCalled()
-    expect(createEvalSpecMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dataset_id: 'dataset-quick-1',
-        dataset_version_id: 'dataset-version-quick-1',
-        run_kind: 'agent_task',
-        profile: 'smoke',
-      })
-    )
-    expect(createEvalRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eval_spec_id: 'eval-spec-quick-1',
-        trigger_kind: 'quick_eval',
-        trigger_ref: 'ui',
-      })
-    )
-    expect(getEvalRunReportMock).toHaveBeenCalledWith('eval-run-quick-1')
-    expect(routerPushMock).not.toHaveBeenCalled()
-  })
-
-  it('launches a conversation quick eval as an ephemeral group with preset-aware expectations', async () => {
-    listConversationsMock.mockResolvedValue({
-      data: [
-        {
-          id: 'conversation-1',
-          title: 'Release candidate fix',
-          created_at: '2026-03-20T09:00:00Z',
-          updated_at: '2026-03-20T09:05:00Z',
-        },
-      ],
-    })
-    getConversationMock.mockResolvedValue({
-      data: {
-        id: 'conversation-1',
-        title: 'Release candidate fix',
-        created_at: '2026-03-20T09:00:00Z',
-        updated_at: '2026-03-20T09:05:00Z',
-      },
-    })
-    listMessagesMock.mockResolvedValue({
-      data: [
-        {
-          id: 'msg-user-1',
-          conversation_id: 'conversation-1',
-          role: 'user',
-          content: 'finish and verify',
-          created_at: '2026-03-20T09:01:00Z',
-        },
-        {
-          id: 'msg-assistant-1',
-          conversation_id: 'conversation-1',
-          role: 'assistant',
-          content: 'verified',
-          provider: 'openai',
-          model: 'gpt-5.4-mini',
-          created_at: '2026-03-20T09:02:00Z',
-        },
-      ],
-    })
-    createGroupMock.mockResolvedValue({
-      data: {
-        id: 'group-conversation-1',
-      },
-    })
-
-    const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
-    const wrapper = shallowMount(HarnessGroupsView, {
-      global: {
-        plugins: [createTestI18n()],
-        stubs: {
-          RouterLink: {
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    await flushPromises()
-
-    const conversationButton = wrapper
-      .findAll('button')
-      .find((node) => node.text().trim() === 'Use conversation')
-    expect(conversationButton).toBeTruthy()
-
-    await conversationButton!.trigger('click')
-    await flushPromises()
-
-    expect(listConversationsMock).toHaveBeenCalledWith(50, 0)
-    expect(listMessagesMock).toHaveBeenCalledWith('conversation-1', 500, 0)
-
-    const preview = wrapper.get('textarea[name="quick-eval-conversation-preview"]')
-    expect((preview.element as HTMLTextAreaElement).value).toContain(
-      'Release candidate fix Smoke Dataset'
-    )
-    expect((preview.element as HTMLTextAreaElement).value).toContain('finish and verify')
-    expect((preview.element as HTMLTextAreaElement).value).toContain('"status": "completed"')
-    expect((preview.element as HTMLTextAreaElement).value).not.toContain('"contains": "verified"')
-
-    const editDraftButton = wrapper
-      .findAll('button')
-      .find((node) => node.text().trim() === 'Edit Cases JSON')
-    expect(editDraftButton).toBeTruthy()
-
-    await editDraftButton!.trigger('click')
-    await flushPromises()
-
-    const manifestEditor = wrapper.get('textarea[name="quick-eval-manifest"]')
-    expect((manifestEditor.element as HTMLTextAreaElement).value).toContain(
-      'Release candidate fix Smoke Dataset'
-    )
-
-    await conversationButton!.trigger('click')
-    await flushPromises()
-
-    await wrapper.get('select[name="quick-eval-preset"]').setValue('research')
-    await flushPromises()
-
-    const researchPreview = wrapper.get('textarea[name="quick-eval-conversation-preview"]')
-    expect((researchPreview.element as HTMLTextAreaElement).value).toContain(
-      '"required_observations"'
-    )
-    expect((researchPreview.element as HTMLTextAreaElement).value).toContain(
-      '"evidence_tool_used"'
-    )
-
-    await wrapper.get('select[name="quick-eval-conversation"]').setValue('conversation-1')
-    await flushPromises()
-
-    await wrapper.get('form.quick-eval-card').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(createGroupMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: 'eval',
-        subject: 'research',
-        metadata: expect.objectContaining({
-          quick_eval: true,
-          ephemeral: true,
-          source_mode: 'conversation',
-          source_ref: 'conversation-1',
-          quick_eval_preset: 'research',
-          quick_eval_dataset_name: 'Release candidate fix Research Dataset',
-          quick_eval_eval_name: 'Release candidate fix Research Dataset Research Eval',
-        }),
-        items: [
-          expect.objectContaining({
-            run_kind: 'research',
-            profile: 'research',
-            input: {
-              goal: 'finish and verify',
-            },
-            expected: {
-              status: 'completed',
-              required_observations: ['evidence_tool_used'],
-            },
-            metadata: expect.objectContaining({
-              conversation_id: 'conversation-1',
-              user_message_id: 'msg-user-1',
-              assistant_message_id: 'msg-assistant-1',
-              provider: 'openai',
-              model: 'gpt-5.4-mini',
-            }),
-          }),
-        ],
-      })
-    )
-    expect(createDatasetMock).not.toHaveBeenCalled()
-    expect(createDatasetVersionMock).not.toHaveBeenCalled()
-    expect(createEvalSpecMock).not.toHaveBeenCalled()
-    expect(createEvalRunMock).not.toHaveBeenCalled()
-    expect(routerPushMock).toHaveBeenCalledWith({
-      name: 'HarnessGroupDetail',
-      params: { id: 'group-conversation-1' },
-    })
-  })
-
-  it('renders the harness group detail report with failed items and runs', async () => {
-    getGroupReportMock.mockResolvedValue({
-      data: {
-        group: {
-          id: 'group-1',
-          kind: 'eval',
-          title: 'Research calibration summary',
+          id: 'group-2',
+          kind: 'experiment',
+          title: 'Nightly snapshot',
           status: 'completed',
-          subject: 'Post-research calibration',
-          owner_user_id: 'user-1',
-          scoring_config: {
-            mode: 'hybrid',
-          },
+          subject: 'Nightly evaluation',
+          owner_user_id: 'owner-2',
           summary: {
+            item_count: 4,
+            pass_rate: 1,
+            overall_score: 0.95,
             counts: {
-              passed: 1,
-              failed: 1,
-            },
-            verification_pass_rate: 0,
-            evidence_backed_pass_rate: 0,
-            failure_label_counts: {
-              missing_artifact: 1,
+              passed: 4,
             },
           },
-          created_at: '2026-03-20T10:00:00Z',
-          updated_at: '2026-03-20T10:05:00Z',
-          started_at: '2026-03-20T10:00:00Z',
-          finished_at: '2026-03-20T10:05:00Z',
+          created_at: '2026-03-20T11:00:00Z',
+          updated_at: '2026-03-20T11:05:00Z',
         },
-        items: [
-          {
-            id: 'item-1',
-            group_id: 'group-1',
-            index: 0,
-            run_kind: 'research',
-            profile: 'research',
-            input: { goal: 'Projected experiment' },
-            status: 'failed',
-            latest_run_id: 'run-1',
-            attempt_count: 1,
-            max_attempts: 1,
-            created_at: '2026-03-20T10:00:00Z',
-            updated_at: '2026-03-20T10:05:00Z',
-          },
-        ],
-        verdict_counts: {
-          pass: 0,
-          fail: 1,
-          partial: 0,
-          error: 0,
-        },
-        overall_score: 0.4,
-        pass_rate: 0,
-        linked_runs: [
-          {
-            id: 'run-1',
-            root_run_id: 'run-1',
-            kind: 'research',
-            status: 'failed',
-            goal: 'Post-research calibration',
-            error: 'conflicting primary-source evidence',
-            attempt_index: 1,
-            created_at: '2026-03-20T10:00:00Z',
-            updated_at: '2026-03-20T10:05:00Z',
-          },
-        ],
-        artifacts: [
-          {
-            id: 'artifact-1',
-            run_id: 'run-1',
-            kind: 'report',
-            label: 'projection-report',
-            path_or_url: 'https://example.com/report',
-          },
-        ],
-        scorecards: [
-          {
-            id: 'score-1',
-            group_id: 'group-1',
-            group_item_id: 'item-1',
-            run_id: 'run-1',
-            mode: 'hybrid',
-            verdict: 'fail',
-            score: 0.4,
-            breakdown_json: JSON.stringify({
-              reason: 'evidence mismatch',
-              verification_passed: false,
-              failure_label: 'missing_artifact',
-              retryable: true,
-              outcome_score: 1,
-              evidence_score: 0.4,
-              execution_score: 1,
-              judge_backend: 'llm_evaluator',
-              judge_model: 'gpt-5.4-mini',
-              calibration_ref: 'deep_research:job-1:calibration',
-              takeaway_candidate_count: 2,
-              proposal_count: 1,
-              proposal_ids: ['proposal-1'],
-            }),
-            evidence_json: JSON.stringify({
-              verification: {
-                passed: false,
-                retryable: true,
-                failure_label: 'missing_artifact',
-                summary: 'expected artifact \"result.txt\" was not produced',
-                outcome_score: 1,
-                evidence_score: 0.4,
-                execution_score: 1,
-                observations: ['tool_error_seen', 'artifact_emitted'],
-                checks: [
-                  {
-                    name: 'run_completed',
-                    expected: 'completed',
-                    actual: 'failed',
-                    passed: false,
-                  },
-                  {
-                    name: 'required_tool_call',
-                    expected: 'web.search',
-                    actual: ['web.search'],
-                    passed: true,
-                  },
-                ],
-                artifacts: [
-                  {
-                    path: 'result.txt',
-                    must_exist: true,
-                    actual: 'missing',
-                    passed: false,
-                  },
-                  {
-                    label: 'projection-report',
-                    must_exist: true,
-                    actual: 'https://example.com/report',
-                    passed: true,
-                  },
-                ],
-                trace_summary: {
-                  event_count: 7,
-                  artifact_count: 1,
-                  tool_names: ['web.search', 'functions.exec_command'],
-                },
-              },
-            }),
-            judge_trace_json: JSON.stringify({
-              proposal_skipped_reason: '',
-            }),
-            created_at: '2026-03-20T10:05:00Z',
-          },
-        ],
-        failed_items: [
-          {
-            item: {
-              id: 'item-1',
-              index: 0,
-              profile: 'research',
-            },
-            scorecard: {
-              verdict: 'fail',
-              breakdown_json: JSON.stringify({
-                reason: 'evidence mismatch',
-                verification_passed: false,
-                failure_label: 'missing_artifact',
-                evidence_score: 0.4,
-              }),
-            },
-            run: {
-              id: 'run-1',
-              status: 'failed',
-              error: 'conflicting primary-source evidence',
-            },
-          },
-        ],
-      },
+      ],
     })
 
-    const HarnessGroupDetailView = (await import('@/views/HarnessGroupDetailView.vue')).default
-    const wrapper = shallowMount(HarnessGroupDetailView, {
-      global: {
-        plugins: [createTestI18n()],
-        stubs: {
-          RouterLink: {
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    await flushPromises()
-
-    expect(getGroupReportMock).toHaveBeenCalledWith('group-1')
-    expect(wrapper.find('.harness-detail-page').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Research calibration summary')
-    expect(wrapper.text()).toContain('Post-research calibration')
-    expect(wrapper.text()).toContain('evidence mismatch')
-    expect(wrapper.text()).toContain('conflicting primary-source evidence')
-    expect(wrapper.text()).toContain('projection-report')
-    expect(wrapper.text()).toContain('Eval')
-    expect(wrapper.text()).toContain('Completed')
-    expect(wrapper.text()).toContain('Research')
-    expect(wrapper.text()).toContain('Hybrid')
-    expect(wrapper.text()).toContain('Verification pass rate')
-    expect(wrapper.text()).toContain('Evidence-backed pass rate')
-    expect(wrapper.text()).toContain('Failure label')
-    expect(wrapper.text()).toContain('missing_artifact')
-    expect(wrapper.text()).toContain('Retryable')
-    expect(wrapper.text()).toContain('Outcome score')
-    expect(wrapper.text()).toContain('Execution score')
-    expect(wrapper.text()).toContain('Remediation')
-    expect(wrapper.text()).toContain('Attach the expected artifact path or label')
-    expect(wrapper.text()).toContain('Observations')
-    expect(wrapper.text()).toContain('tool_error_seen')
-    expect(wrapper.text()).toContain('artifact_emitted')
-    expect(wrapper.text()).toContain('Calibration & proposal summary')
-    expect(wrapper.text()).toContain('llm_evaluator')
-    expect(wrapper.text()).toContain('gpt-5.4-mini')
-    expect(wrapper.text()).toContain('deep_research:job-1:calibration')
-    expect(wrapper.text()).toContain('proposal-1')
-    expect(wrapper.text()).toContain('Review in Memory')
-    expect(wrapper.text()).toContain('Verification checks')
-    expect(wrapper.text()).toContain('Expected artifacts')
-    expect(wrapper.text()).toContain('Trace summary')
-    expect(wrapper.text()).toContain('Expected')
-    expect(wrapper.text()).toContain('Actual')
-    expect(wrapper.text()).toContain('result.txt')
-    expect(wrapper.text()).toContain('Observed tools')
-    expect(wrapper.text()).toContain('web.search')
-  })
-
-  it('promotes an ephemeral group into reusable eval assets', async () => {
-    getGroupReportMock.mockResolvedValue({
-      data: {
-        group: {
-          id: 'group-1',
-          kind: 'eval',
-          title: 'Research quick eval',
-          status: 'completed',
-          subject: 'research',
-          metadata: {
-            quick_eval: true,
-            ephemeral: true,
-            quick_eval_dataset_name: 'Research quick eval',
-            quick_eval_eval_name: 'Research quick eval Research Eval',
-          },
-          created_at: '2026-03-20T10:00:00Z',
-          updated_at: '2026-03-20T10:05:00Z',
-        },
-        items: [],
-        verdict_counts: {
-          pass: 1,
-          fail: 0,
-          partial: 0,
-          error: 0,
-        },
-        linked_runs: [],
-        artifacts: [],
-        scorecards: [],
-        failed_items: [],
-      },
-    })
-    promoteGroupMock.mockResolvedValue({
-      data: {
-        dataset: {
-          id: 'dataset-1',
-          name: 'Research Cases',
-          subject: 'research',
-          created_at: '2026-03-20T10:06:00Z',
-          updated_at: '2026-03-20T10:06:00Z',
-        },
-        dataset_version: {
-          id: 'dataset-version-1',
-          dataset_id: 'dataset-1',
-          version: 'promoted-20260320-100600',
-          item_count: 1,
-          created_at: '2026-03-20T10:06:00Z',
-        },
-        eval_spec: {
-          id: 'eval-spec-1',
-          name: 'Research Eval',
-          dataset_id: 'dataset-1',
-          dataset_version_id: 'dataset-version-1',
-          run_kind: 'research',
-          profile: 'research',
-          created_at: '2026-03-20T10:06:00Z',
-          updated_at: '2026-03-20T10:06:00Z',
-        },
-      },
-    })
-
-    const HarnessGroupDetailView = (await import('@/views/HarnessGroupDetailView.vue')).default
-    const wrapper = shallowMount(HarnessGroupDetailView, {
-      global: {
-        plugins: [createTestI18n()],
-        stubs: {
-          RouterLink: {
-            template: '<a><slot /></a>',
-          },
-        },
-      },
-    })
-
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Promote to regression assets')
-    expect((wrapper.get('input[name="promotion-dataset-name"]').element as HTMLInputElement).value).toBe(
-      'Research quick eval'
-    )
-    expect((wrapper.get('input[name="promotion-eval-name"]').element as HTMLInputElement).value).toBe(
-      'Research quick eval Research Eval'
-    )
-
-    await wrapper.get('input[name="promotion-dataset-name"]').setValue('Research Cases')
-    await wrapper.get('input[name="promotion-subject"]').setValue('research')
-    await wrapper.get('textarea[name="promotion-description"]').setValue(
-      'Promoted from a successful quick eval.'
-    )
-    await wrapper.get('input[name="promotion-eval-name"]').setValue('Research Eval')
-    await wrapper.find('form.promotion-form').trigger('submit.prevent')
-    await flushPromises()
-
-    expect(promoteGroupMock).toHaveBeenCalledWith('group-1', {
-      dataset_name: 'Research Cases',
-      description: 'Promoted from a successful quick eval.',
-      subject: 'research',
-      eval_name: 'Research Eval',
-    })
-    expect(notificationSuccessMock).toHaveBeenCalledWith(
-      'Harness',
-      'Group promoted into reusable eval assets'
-    )
-    expect(wrapper.text()).toContain('Research Cases')
-    expect(wrapper.text()).toContain('promoted-20260320-100600')
-    expect(wrapper.text()).toContain('Research Eval')
-  })
-
-  it('links the harness detail back action to the security harness tab', async () => {
-    getGroupReportMock.mockResolvedValue({
-      data: {
-        group: {
-          id: 'group-1',
-          kind: 'eval',
-          title: 'Regression batch',
-          status: 'completed',
-          subject: 'Validate agent task flows',
-          created_at: '2026-03-20T10:00:00Z',
-          updated_at: '2026-03-20T10:05:00Z',
-        },
-        items: [],
-        verdict_counts: {
-          pass: 0,
-          fail: 0,
-          partial: 0,
-          error: 0,
-        },
-        linked_runs: [],
-        artifacts: [],
-        scorecards: [],
-        failed_items: [],
-      },
-    })
-
-    const HarnessGroupDetailView = (await import('@/views/HarnessGroupDetailView.vue')).default
-    const wrapper = shallowMount(HarnessGroupDetailView, {
+    const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
+    const wrapper = shallowMount(HarnessGroupsView, {
       global: {
         plugins: [createTestI18n()],
         stubs: {
           RouterLink: {
             props: ['to'],
-            template: '<a class="router-link-stub" :data-to="JSON.stringify(to)"><slot /></a>',
+            template: '<a class="group-card-link" :data-to="JSON.stringify(to)"><slot /></a>',
           },
         },
       },
     })
+    mountedWrappers.push(wrapper)
 
     await flushPromises()
 
+    expect(listGroupsMock).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Harness')
+    expect(wrapper.text()).toContain('Regression batch')
+    expect(wrapper.text()).toContain('Nightly snapshot')
+    expect(wrapper.findAll('.group-card-link')).toHaveLength(2)
+
+    await wrapper.get('input[type="search"]').setValue('nightly')
+    expect(wrapper.findAll('.group-card-link')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Nightly snapshot')
+    expect(wrapper.text()).not.toContain('Regression batch')
+
+    const terminalButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'Terminal')
+
+    expect(terminalButton).toBeTruthy()
+
+    await terminalButton!.trigger('click')
+    expect(wrapper.findAll('.group-card-link')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Nightly snapshot')
+  })
+
+  it('renders the hybrid harness detail report with run graph and summary', async () => {
+    const wrapper = await mountHarnessGroupDetail()
+
+    expect(getGroupReportMock).toHaveBeenCalledWith('group-1')
+    expect(wrapper.find('.harness-detail-page').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Regression batch')
+    expect(wrapper.text()).toContain('Validate agent task flows')
+    expect(wrapper.text()).toContain('Score distribution')
+    expect(wrapper.text()).toContain('Failed items')
+    expect(wrapper.text()).toContain('Items')
+    expect(wrapper.text()).toContain('Run graph')
+    expect(wrapper.text()).toContain('Execution summary')
+    expect(wrapper.text()).toContain('Detached workers')
+    expect(wrapper.text()).toContain('Artifacts')
+    expect(wrapper.text()).toContain('stderr.log')
+
     const backLink = wrapper.find('.back-link')
     expect(backLink.exists()).toBe(true)
-    expect(backLink.attributes('data-to')).toBe(
-      JSON.stringify({ name: 'Security', query: { tab: 'harness' } })
-    )
+    expect(backLink.attributes('data-to')).toBe(JSON.stringify({ name: 'HarnessGroups' }))
+  })
+
+  it('shows a worker batch summary and expands grouped workers on demand', async () => {
+    const wrapper = await mountHarnessGroupDetail()
+
+    expect(wrapper.text()).toContain('Spawning 4 workers')
+    expect(wrapper.find('[data-run-id="run-fetch"]').exists()).toBe(false)
+    expect(wrapper.find('[data-run-id="run-verify"]').exists()).toBe(false)
+
+    await wrapper.get('.batch-summary-card').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-run-id="run-fetch"]').exists()).toBe(true)
+    expect(wrapper.find('[data-run-id="run-verify"]').exists()).toBe(true)
+  })
+
+  it('loads run detail when a tree node is selected', async () => {
+    const wrapper = await mountHarnessGroupDetail()
+
+    await wrapper.get('[data-run-id="run-review"]').trigger('click')
+    await flushPromises()
+
+    expect(getRunDetailMock).toHaveBeenCalledWith('run-review')
+    expect(wrapper.find('.detail-drawer').text()).toContain('Run summary')
+    expect(wrapper.find('.detail-drawer').text()).toContain('worker.review')
+    expect(wrapper.find('.detail-drawer').text()).toContain('Runtime trace')
+    expect(wrapper.find('.detail-drawer').text()).toContain('Finalize')
+    expect(wrapper.find('.detail-drawer').text()).toContain('1.54 s')
+  })
+
+  it('opens the correct run from the failed items inspect action', async () => {
+    const wrapper = await mountHarnessGroupDetail()
+
+    await wrapper.get('.failed-card .inspect-run-button').trigger('click')
+    await flushPromises()
+
+    expect(getRunDetailMock).toHaveBeenCalledWith('run-review')
+    expect(wrapper.find('.detail-drawer').text()).toContain('artifact missing')
+  })
+
+  it('renders detached workers in a separate section', async () => {
+    const wrapper = await mountHarnessGroupDetail()
+
+    expect(wrapper.find('#detached-workers').exists()).toBe(true)
+    expect(wrapper.find('[data-run-id="run-orphan"]').exists()).toBe(true)
+  })
+
+  it('opens a bottom sheet on narrow screens', async () => {
+    const wrapper = await mountHarnessGroupDetail(640)
+
+    await wrapper.get('[data-run-id="run-review"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.detail-sheet').exists()).toBe(true)
+    expect(wrapper.find('.detail-drawer').exists()).toBe(false)
+  })
+
+  it('silently refreshes detail for an active selected run on the group timer', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountHarnessGroupDetail()
+
+    await wrapper.get('[data-run-id="run-root"]').trigger('click')
+    await flushPromises()
+
+    expect(getRunDetailMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(4000)
+    await flushPromises()
+
+    expect(getGroupReportMock).toHaveBeenCalledTimes(2)
+    expect(getRunDetailMock).toHaveBeenCalledTimes(2)
+    expect(getRunDetailMock).toHaveBeenLastCalledWith('run-root')
+    expect(wrapper.find('.detail-drawer').text()).toContain('coordinator.main')
+  })
+
+  it('does not refresh detail for a terminal selected run on the group timer', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountHarnessGroupDetail()
+
+    await wrapper.get('[data-run-id="run-review"]').trigger('click')
+    await flushPromises()
+
+    expect(getRunDetailMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(4000)
+    await flushPromises()
+
+    expect(getGroupReportMock).toHaveBeenCalledTimes(2)
+    expect(getRunDetailMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows only the latest timeline events by default and expands on demand', async () => {
+    const wrapper = await mountHarnessGroupDetail()
+
+    await wrapper.get('[data-run-id="run-review"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.detail-drawer .event-card')).toHaveLength(5)
+    expect(wrapper.find('.detail-drawer').text()).toContain('Show all events')
+
+    const expandButton = wrapper
+      .findAll('.detail-drawer button')
+      .find((button) => button.text().trim() === 'Show all events')
+
+    expect(expandButton).toBeTruthy()
+
+    await expandButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.detail-drawer .event-card')).toHaveLength(6)
+    expect(wrapper.find('.detail-drawer').text()).toContain('Show fewer events')
+  })
+
+  it('retries failed items from the hybrid detail view', async () => {
+    const wrapper = await mountHarnessGroupDetail()
+
+    const retryButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'Retry failed')
+
+    expect(retryButton).toBeTruthy()
+
+    await retryButton!.trigger('click')
+    await flushPromises()
+
+    expect(retryFailedGroupMock).toHaveBeenCalledWith('group-1')
+    expect(notificationSuccessMock).toHaveBeenCalledWith('Harness', 'Failed items requeued.')
+    expect(getGroupReportMock).toHaveBeenCalledTimes(2)
   })
 })

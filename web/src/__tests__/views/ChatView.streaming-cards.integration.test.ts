@@ -61,6 +61,7 @@ const mocks = vi.hoisted(() => ({
     currentActiveTasks: [] as Array<Record<string, unknown>>,
     currentTerminalTasks: [] as Array<Record<string, unknown>>,
     backgroundTasks: [] as Array<Record<string, unknown>>,
+    recentOutcome: null as null | Record<string, unknown>,
     loading: false,
     hydrated: true,
     hasActiveTasks: false,
@@ -70,6 +71,7 @@ const mocks = vi.hoisted(() => ({
     cancelTask: vi.fn(),
     resumeTask: vi.fn(),
     openTask: vi.fn(),
+    dismissRecentOutcome: vi.fn(),
     stopPolling: vi.fn(),
   },
   mediaGenerate: {
@@ -267,11 +269,21 @@ vi.mock('@/components/ChatInput.vue', () =>
         type: Boolean,
         default: false,
       },
+      showInlineCancel: {
+        type: Boolean,
+        default: true,
+      },
     },
     emits: ['send', 'draft-change', 'inject', 'cancel', 'cancel-pre-ttft', 'warmup'],
     template: `
       <div class="chat-input-stub">
-        <button v-if="canCancel" type="button" @click="$emit('cancel')">Stop generating</button>
+        <button
+          v-if="canCancel && showInlineCancel !== false"
+          type="button"
+          @click="$emit('cancel')"
+        >
+          Stop generating
+        </button>
       </div>
     `,
   })
@@ -337,6 +349,38 @@ vi.mock('@/components/UserTaskProjectionCard.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'UserTaskProjectionCard',
     template: '<div class="agent-task-panel-stub" />',
+  })
+)
+
+vi.mock('@/components/ChatActivityDock.vue', () =>
+  helpers.asAsyncSFCModule({
+    name: 'ChatActivityDock',
+    props: {
+      streamState: { type: Object, default: () => ({ phase: 'idle' }) },
+      canStop: { type: Boolean, default: false },
+      recentOutcome: { type: Object, default: null },
+      todoSummary: { type: Object, default: null },
+    },
+    emits: ['cancel', 'retry', 'dismiss-outcome', 'todo-toggle', 'todo-jump'],
+    template: `
+      <section
+        v-if="
+          canStop ||
+          (streamState && streamState.phase !== 'idle' && streamState.phase !== 'completed') ||
+          recentOutcome ||
+          todoSummary
+        "
+        data-testid="chat-activity-dock"
+        class="chat-activity-dock-stub"
+      >
+        <span class="chat-activity-dock-stub__label">
+          {{ (streamState && (streamState.label || streamState.phase)) || '' }}
+        </span>
+        <button v-if="canStop" type="button" data-testid="chat-activity-dock-stop" @click="$emit('cancel')">
+          Stop generating
+        </button>
+      </section>
+    `,
   })
 )
 
@@ -431,7 +475,7 @@ async function mountIntegratedChatView() {
       { path: '/security', component: { template: '<div />' } },
     ],
   })
-  router.push('/chat')
+  await router.push('/chat?conversationId=conv-1')
   await router.isReady()
 
   const wrapper = mount(ChatView, {
@@ -450,6 +494,13 @@ async function mountIntegratedChatView() {
 
 describe('ChatView streaming card chain integration', () => {
   beforeEach(() => {
+    const activeProvider = {
+      id: 'openai',
+      type: 'builtin',
+      enabled: true,
+      status: 'active',
+    } as Record<string, unknown>
+
     delete (globalThis as Record<string, unknown>).__zima_chat_card_disclosure_state_v1__
 
     localStorageMock.clear()
@@ -476,14 +527,14 @@ describe('ChatView streaming card chain integration', () => {
     mocks.settingsStore.setAgentMode.mockReset()
     mocks.settingsStore.setShowToolDetails.mockReset()
 
-    mocks.providerPoolStore.activeProviders = []
-    mocks.providerPoolStore.cloudProviders = []
-    mocks.providerPoolStore.enabledProviders = []
-    mocks.providerPoolStore.hasCloudProviders = false
+    mocks.providerPoolStore.activeProviders = [activeProvider]
+    mocks.providerPoolStore.cloudProviders = [activeProvider]
+    mocks.providerPoolStore.enabledProviders = [activeProvider]
+    mocks.providerPoolStore.hasCloudProviders = true
     mocks.providerPoolStore.hasLocalProviders = false
     mocks.providerPoolStore.localProviders = []
     mocks.providerPoolStore.models = []
-    mocks.providerPoolStore.providers = []
+    mocks.providerPoolStore.providers = [activeProvider]
     mocks.providerPoolStore.routingMode = 'auto'
     mocks.providerPoolStore.trialProviders = []
     mocks.providerPoolStore.trialQuota = null
@@ -539,12 +590,14 @@ describe('ChatView streaming card chain integration', () => {
     mocks.taskProjectionsStore.currentActiveTasks = []
     mocks.taskProjectionsStore.currentTerminalTasks = []
     mocks.taskProjectionsStore.backgroundTasks = []
+    mocks.taskProjectionsStore.recentOutcome = null
     mocks.taskProjectionsStore.refreshNow.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.setConversation.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.performTaskAction.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.cancelTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.resumeTask.mockReset().mockResolvedValue(undefined)
     mocks.taskProjectionsStore.openTask.mockReset().mockResolvedValue(undefined)
+    mocks.taskProjectionsStore.dismissRecentOutcome.mockReset()
     mocks.taskProjectionsStore.stopPolling.mockReset()
     mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
     mocks.deepResearchJobsStore.applyJobSnapshot.mockReset()
@@ -706,7 +759,7 @@ describe('ChatView streaming card chain integration', () => {
     expect(store.sending).toBe(false)
     expect(store.streamingContent).toContain('我继续执行第二步。')
     expect(wrapper.text()).toContain('我继续执行第二步。')
-    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
   })
 
   it('shows an executing rail and stop control when the server reports an active stream without preview text', async () => {
@@ -725,9 +778,9 @@ describe('ChatView streaming card chain integration', () => {
     expect(store.sending).toBe(false)
     expect(store.toolExecuting).toBe(true)
     expect(store.streamUIState.phase).toBe('executing')
-    expect(wrapper.find('.chat-stream-status-rail').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-activity-dock"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Processing')
-    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
   })
 
   it('does not render the previous assistant reply as active preview when only the latest user turn is persisted', async () => {

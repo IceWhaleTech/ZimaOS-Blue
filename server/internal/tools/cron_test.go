@@ -195,6 +195,23 @@ func TestCronToolCreateExecute(t *testing.T) {
 	}
 }
 
+func TestCronToolCreateExecuteAllowsMissingName(t *testing.T) {
+	svc := &stubCronService{handlers: []string{"http"}}
+	tool := NewCronTool(svc)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"schedule": "0 * * * *",
+		"handler":  "http",
+		"payload":  map[string]interface{}{"url": "https://example.com"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if svc.lastCreateName != "" {
+		t.Fatalf("lastCreateName = %q, want empty name to pass through", svc.lastCreateName)
+	}
+}
+
 func TestCronToolUpdateExecuteUsesExistingDefaults(t *testing.T) {
 	svc := &stubCronService{
 		jobs: map[string]*CronJobInfo{

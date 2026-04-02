@@ -164,8 +164,8 @@ func (t *CronTool) executeCreate(ctx context.Context, args map[string]interface{
 	name := firstCompatString(args, "name", "title")
 	schedule := firstCompatString(args, "schedule", "cron")
 	handler := firstCompatString(args, "handler", "type")
-	if name == "" || schedule == "" || handler == "" {
-		return nil, errors.New("name, schedule, and handler are required")
+	if schedule == "" || handler == "" {
+		return nil, errors.New("schedule and handler are required")
 	}
 	payload := enrichCronPayloadWithContext(ctx, asMap(firstCompatRawValue(args, "payload")))
 	job, err := t.service.CreateJob(ctx, name, firstCompatString(args, "description"), schedule, handler, payload)

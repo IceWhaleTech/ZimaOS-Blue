@@ -193,6 +193,9 @@ func (s *Service) Create(name, description, schedule, handler string, payload ma
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	name = resolveJobName(name, description, handler, payload)
+	description = normalizeJobTitleText(description)
+
 	// Normalize schedule: convert 5-field to 6-field format
 	schedule = normalizeSchedule(schedule)
 
@@ -344,8 +347,8 @@ func (s *Service) Update(id, name, description, schedule string, payload map[str
 		}
 	}
 
-	job.Name = name
-	job.Description = description
+	job.Name = resolveJobName(name, description, job.Handler, payload)
+	job.Description = normalizeJobTitleText(description)
 	job.Payload = payload
 	job.UpdatedAt = timeutil.NowTime()
 

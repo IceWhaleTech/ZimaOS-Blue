@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -28,13 +29,25 @@ const (
 	defaultSkillSelectorConfThres    = 0.78
 	skillSelectorNeedClarifyFloor    = 0.55
 	defaultSkillSelectorHintMaxCands = 3
+	defaultSkillBudgetBaseTokens     = 200
+	defaultSkillBudgetExampleTokens  = 150
 )
+
+var ErrTokenBudgetExhausted = errors.New("skill selector token budget exhausted")
+
+type TokenBudget struct {
+	MaxTokens      int
+	ReservedTokens int
+	PerSkillTokens int
+}
 
 // SelectOptions controls the progressive selector behavior.
 type SelectOptions struct {
 	Mode                string
 	EnableRerank        bool
 	ConfidenceThreshold float64
+	TokenBudget         TokenBudget
+	StrictTokenBudget   bool
 }
 
 // SkillCandidate is one ranked candidate.
@@ -46,16 +59,21 @@ type SkillCandidate struct {
 
 // Decision is the selector output.
 type Decision struct {
-	Query            string           `json:"query"`
-	SelectedSkill    string           `json:"selected_skill"`
-	Confidence       float64          `json:"confidence"`
-	NeedClarify      bool             `json:"need_clarify"`
-	Reason           string           `json:"reason"`
-	Stage            string           `json:"stage"`
-	Candidates       []SkillCandidate `json:"candidates,omitempty"`
-	MatchedSignals   []string         `json:"matched_signals,omitempty"`
-	ConflictFlags    []string         `json:"conflict_flags,omitempty"`
-	ConfidenceReason string           `json:"confidence_reason,omitempty"`
+	Query              string           `json:"query"`
+	SelectedSkill      string           `json:"selected_skill"`
+	Confidence         float64          `json:"confidence"`
+	NeedClarify        bool             `json:"need_clarify"`
+	Reason             string           `json:"reason"`
+	Stage              string           `json:"stage"`
+	Candidates         []SkillCandidate `json:"candidates,omitempty"`
+	MatchedSignals     []string         `json:"matched_signals,omitempty"`
+	ConflictFlags      []string         `json:"conflict_flags,omitempty"`
+	ConfidenceReason   string           `json:"confidence_reason,omitempty"`
+	LoadedSkills       []string         `json:"loaded_skills,omitempty"`
+	SkippedSkills      []string         `json:"skipped_skills,omitempty"`
+	TokenBudgetMax     int              `json:"token_budget_max,omitempty"`
+	TokenBudgetUsed    int              `json:"token_budget_used,omitempty"`
+	TokenBudgetTrimmed bool             `json:"token_budget_trimmed,omitempty"`
 }
 
 type skillRankedCandidate struct {
@@ -240,7 +258,7 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 		thres = defaultSkillSelectorConfThres
 	}
 
-	cacheKey := s.buildCacheKey(query, mode, opts.EnableRerank, thres)
+	cacheKey := s.buildCacheKey(query, mode, opts.EnableRerank, thres, opts.TokenBudget, opts.StrictTokenBudget)
 	if d, ok := s.getCachedDecision(cacheKey); ok {
 		return d, nil
 	}
@@ -255,23 +273,19 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 
 	if rule := stage0RuleRoute(query); rule.SelectedSkill != "" && mode != SkillSelectorModeLLMOnly {
 		rule.Candidates = buildCandidatesFromNames(rule.SelectedSkill, docs)
-		s.setCachedDecision(cacheKey, rule)
-		return rule, nil
+		return s.finalizeDecision(cacheKey, rule, docs, opts)
 	}
 
 	irDecision := s.stage1IR(query, indexCache, thres)
 	if mode == SkillSelectorModeIROnly {
-		s.setCachedDecision(cacheKey, irDecision)
-		return irDecision, nil
+		return s.finalizeDecision(cacheKey, irDecision, docs, opts)
 	}
 
 	if mode == SkillSelectorModeHybrid && !shouldTriggerRerank(query, irDecision) {
-		s.setCachedDecision(cacheKey, irDecision)
-		return irDecision, nil
+		return s.finalizeDecision(cacheKey, irDecision, docs, opts)
 	}
 	if !opts.EnableRerank || s.reranker == nil {
-		s.setCachedDecision(cacheKey, irDecision)
-		return irDecision, nil
+		return s.finalizeDecision(cacheKey, irDecision, docs, opts)
 	}
 
 	rankedDocs := make([]SkillDoc, 0, minInt(defaultSkillTopK, len(irDecision.Candidates)))
@@ -285,14 +299,12 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 		}
 	}
 	if len(rankedDocs) == 0 {
-		s.setCachedDecision(cacheKey, irDecision)
-		return irDecision, nil
+		return s.finalizeDecision(cacheKey, irDecision, docs, opts)
 	}
 
 	rr, err := s.reranker.Rerank(ctx, query, rankedDocs)
 	if err != nil {
-		s.setCachedDecision(cacheKey, irDecision)
-		return irDecision, nil
+		return s.finalizeDecision(cacheKey, irDecision, docs, opts)
 	}
 	out := irDecision
 	if rr.SelectedSkill != "" {
@@ -305,8 +317,13 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 	out.Reason = rr.ReasonShort
 	out.NeedClarify = rr.NeedClarify || out.Confidence < thres || out.Confidence < skillSelectorNeedClarifyFloor || len(out.ConflictFlags) > 0
 
-	s.setCachedDecision(cacheKey, out)
-	return out, nil
+	return s.finalizeDecision(cacheKey, out, docs, opts)
+}
+
+func (s *SkillSelector) finalizeDecision(cacheKey string, decision Decision, docs []SkillDoc, opts SelectOptions) (Decision, error) {
+	decision, budgetErr := applyTokenBudgetToDecision(decision, docs, opts.TokenBudget, opts.StrictTokenBudget)
+	s.setCachedDecision(cacheKey, decision)
+	return decision, budgetErr
 }
 
 func (s *SkillSelector) stage1IR(query string, docs []skillIndexEntry, threshold float64) Decision {
@@ -751,10 +768,134 @@ func minInt(a, b int) int {
 	return b
 }
 
-func (s *SkillSelector) buildCacheKey(query, mode string, rerank bool, threshold float64) string {
+func (s *SkillSelector) buildCacheKey(query, mode string, rerank bool, threshold float64, budget TokenBudget, strict bool) string {
 	n := strings.ToLower(strings.TrimSpace(query))
-	h := sha256.Sum256([]byte(n + "|" + mode + "|" + fmt.Sprintf("%t", rerank) + "|" + fmt.Sprintf("%.2f", threshold)))
+	payload := strings.Join([]string{
+		n,
+		mode,
+		fmt.Sprintf("%t", rerank),
+		fmt.Sprintf("%.2f", threshold),
+		fmt.Sprintf("%d", budget.MaxTokens),
+		fmt.Sprintf("%d", budget.ReservedTokens),
+		fmt.Sprintf("%d", budget.PerSkillTokens),
+		fmt.Sprintf("%t", strict),
+	}, "|")
+	h := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(h[:])
+}
+
+func applyTokenBudgetToDecision(decision Decision, docs []SkillDoc, budget TokenBudget, strict bool) (Decision, error) {
+	budget = normalizeTokenBudget(budget)
+	if budget.MaxTokens <= 0 {
+		return decision, nil
+	}
+
+	docByName := make(map[string]SkillDoc, len(docs)*2)
+	for _, doc := range docs {
+		if key := strings.ToLower(strings.TrimSpace(doc.Name)); key != "" {
+			docByName[key] = doc
+		}
+		if key := strings.ToLower(strings.TrimSpace(doc.ID)); key != "" {
+			docByName[key] = doc
+		}
+	}
+
+	maxTokens := budget.MaxTokens - budget.ReservedTokens
+	if maxTokens < 0 {
+		maxTokens = 0
+	}
+
+	loaded := make([]string, 0, len(PinnedSkills())+len(decision.Candidates))
+	skipped := make([]string, 0, len(decision.Candidates))
+	seen := make(map[string]struct{}, len(docs))
+	skippedSeen := make(map[string]struct{}, len(docs))
+	used := 0
+
+	addLoaded := func(name string) {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" {
+			return
+		}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		loaded = append(loaded, strings.TrimSpace(name))
+		if doc, ok := docByName[key]; ok {
+			used += estimateSkillDocTokens(doc, budget)
+		}
+	}
+
+	for _, pinned := range PinnedSkills() {
+		if _, ok := docByName[strings.ToLower(strings.TrimSpace(pinned))]; ok {
+			addLoaded(pinned)
+		}
+	}
+
+	queue := make([]string, 0, len(decision.Candidates)+1)
+	if strings.TrimSpace(decision.SelectedSkill) != "" {
+		queue = append(queue, decision.SelectedSkill)
+	}
+	for _, candidate := range decision.Candidates {
+		queue = append(queue, candidate.Name)
+	}
+	for _, name := range queue {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		doc, ok := docByName[key]
+		if !ok {
+			continue
+		}
+		estimate := estimateSkillDocTokens(doc, budget)
+		if maxTokens > 0 && used+estimate > maxTokens {
+			if _, seenSkip := skippedSeen[key]; !seenSkip {
+				skippedSeen[key] = struct{}{}
+				skipped = append(skipped, doc.Name)
+			}
+			continue
+		}
+		addLoaded(doc.Name)
+	}
+
+	decision.LoadedSkills = loaded
+	decision.SkippedSkills = skipped
+	decision.TokenBudgetMax = budget.MaxTokens
+	decision.TokenBudgetUsed = used
+	decision.TokenBudgetTrimmed = len(skipped) > 0
+	if strict && len(skipped) > 0 {
+		return decision, fmt.Errorf("%w: loaded=%d skipped=%d", ErrTokenBudgetExhausted, len(loaded), len(skipped))
+	}
+	return decision, nil
+}
+
+func normalizeTokenBudget(budget TokenBudget) TokenBudget {
+	if budget.PerSkillTokens <= 0 {
+		budget.PerSkillTokens = defaultSkillBudgetBaseTokens
+	}
+	if budget.ReservedTokens < 0 {
+		budget.ReservedTokens = 0
+	}
+	if budget.MaxTokens < 0 {
+		budget.MaxTokens = 0
+	}
+	return budget
+}
+
+func estimateSkillDocTokens(doc SkillDoc, budget TokenBudget) int {
+	base := budget.PerSkillTokens
+	if base <= 0 {
+		base = defaultSkillBudgetBaseTokens
+	}
+	exampleCount := len(doc.Examples)
+	if exampleCount == 0 && (strings.TrimSpace(doc.Example) != "" || strings.TrimSpace(doc.Invocation) != "") {
+		exampleCount = 1
+	}
+	return base + (exampleCount * defaultSkillBudgetExampleTokens)
 }
 
 func (s *SkillSelector) getCachedDecision(key string) (Decision, bool) {

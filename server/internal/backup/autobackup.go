@@ -42,6 +42,15 @@ func (m *Manager) StartAutoBackup(parent context.Context) {
 	m.autoDone = done
 	m.autoMu.Unlock()
 
+	backupLogf(
+		"auto backup loop starting interval_enabled=%t interval=%s change_enabled=%t poll_interval=%s debounce=%s",
+		m.config.AutoBackup,
+		m.config.AutoBackupInterval,
+		m.config.AutoBackupOnChange,
+		m.config.ChangePollInterval,
+		m.config.ChangeDebounce,
+	)
+
 	go m.runAutoBackupLoop(ctx, done)
 }
 
@@ -103,6 +112,7 @@ func (m *Manager) runAutoBackupLoop(ctx context.Context, done chan struct{}) {
 		case <-ctx.Done():
 			return
 		case <-intervalCh:
+			backupLogf("auto backup interval trigger fired interval=%s", m.config.AutoBackupInterval)
 			m.runAutoBackup(ctx)
 		case <-changeCh:
 			m.handleChangeTick(ctx)
@@ -127,6 +137,7 @@ func (m *Manager) handleChangeTick(ctx context.Context) {
 	if digest != m.lastSnapshot {
 		m.lastSnapshot = digest
 		m.pendingChange = true
+		backupLogf("auto backup detected file changes poll_interval=%s debounce=%s", m.config.ChangePollInterval, m.config.ChangeDebounce)
 	}
 	if m.pendingChange {
 		if m.config.ChangeDebounce <= 0 || m.lastAutoBackup.IsZero() || timeutil.NowTime().Sub(m.lastAutoBackup) >= m.config.ChangeDebounce {
@@ -136,24 +147,44 @@ func (m *Manager) handleChangeTick(ctx context.Context) {
 	m.autoMu.Unlock()
 
 	if shouldBackup {
+		backupLogf("auto backup change trigger fired debounce=%s", m.config.ChangeDebounce)
 		m.runAutoBackup(ctx)
 	}
 }
 
 func (m *Manager) runAutoBackup(ctx context.Context) {
+	startedAt := timeutil.NowTime()
+	backupLogf("auto backup run started")
+
 	backupCtx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	defer cancel()
 
-	if _, err := m.createWithSource(backupCtx, BackupTypeFull, BackupSourceAuto); err != nil {
+	info, err := m.createWithSource(backupCtx, BackupTypeFull, BackupSourceAuto)
+	if err != nil {
+		backupLogf("auto backup run failed duration=%s error=%v", timeutil.SinceTime(startedAt), err)
 		return
 	}
-	_, _ = m.CleanupAutoBackupsKeepLatest()
-	_, _ = m.Cleanup()
+	autoRemoved, autoCleanupErr := m.CleanupAutoBackupsKeepLatest()
+	if autoCleanupErr != nil {
+		backupLogf("auto backup cleanup(latest) failed backup_id=%s error=%v", info.ID, autoCleanupErr)
+	}
+	retentionRemoved, retentionErr := m.Cleanup()
+	if retentionErr != nil {
+		backupLogf("auto backup retention cleanup failed backup_id=%s error=%v", info.ID, retentionErr)
+	}
 
 	m.autoMu.Lock()
 	m.lastAutoBackup = timeutil.NowTime()
 	m.pendingChange = false
 	m.autoMu.Unlock()
+
+	backupLogf(
+		"auto backup run completed backup_id=%s duration=%s auto_removed=%d retention_removed=%d",
+		info.ID,
+		timeutil.SinceTime(startedAt),
+		autoRemoved,
+		retentionRemoved,
+	)
 }
 
 func (m *Manager) snapshotDigest() (string, error) {

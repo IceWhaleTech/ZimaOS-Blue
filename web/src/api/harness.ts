@@ -1,6 +1,6 @@
 import api from './client'
 
-export type HarnessRunKind = 'agent_task' | 'research' | 'subagent'
+export type HarnessRunKind = 'agent_task' | 'research' | 'subagent' | 'workflow'
 export type HarnessRunStatus =
   | 'pending'
   | 'planning'
@@ -35,6 +35,7 @@ export type HarnessRunGroupItemStatus =
 
 export type HarnessScoringMode = 'rule' | 'judge' | 'hybrid'
 export type HarnessScoreVerdict = 'pass' | 'fail' | 'partial' | 'error'
+export type HarnessApprovalMode = 'ask' | 'allow' | 'deny'
 
 export interface HarnessRunGroup {
   id: string
@@ -124,7 +125,7 @@ export interface HarnessScorecard {
   created_at: string
 }
 
-export interface HarnessRunSummary {
+export interface HarnessRun {
   id: string
   root_run_id: string
   parent_run_id?: string
@@ -133,15 +134,112 @@ export interface HarnessRunSummary {
   attempt_index?: number
   kind: HarnessRunKind
   status: HarnessRunStatus
+  runtime_state?: string
+  user_id?: string
+  conversation_id?: string
+  session_id?: string
   goal: string
   result?: string
   error?: string
   agent_id?: string
   model?: string
+  depth?: number
+  current_step?: number
+  progress?: number
+  workspace_root?: string
+  artifact_root?: string
+  sandbox_mode?: string
+  approval_mode?: HarnessApprovalMode | string
+  max_duration?: number
+  max_steps?: number
+  max_tool_rounds?: number
+  max_subagents?: number
+  max_depth?: number
+  metadata?: Record<string, unknown> | null
   created_at: string
   updated_at: string
   started_at?: string | null
   finished_at?: string | null
+}
+
+export interface HarnessRunSummary extends Pick<
+  HarnessRun,
+  | 'id'
+  | 'root_run_id'
+  | 'parent_run_id'
+  | 'group_id'
+  | 'group_item_id'
+  | 'attempt_index'
+  | 'kind'
+  | 'status'
+  | 'runtime_state'
+  | 'goal'
+  | 'result'
+  | 'error'
+  | 'agent_id'
+  | 'model'
+  | 'depth'
+  | 'progress'
+  | 'created_at'
+  | 'updated_at'
+  | 'started_at'
+  | 'finished_at'
+> {}
+
+export interface HarnessRunEvent {
+  id: string
+  run_id: string
+  root_run_id?: string
+  parent_run_id?: string
+  type: string
+  step_index?: number
+  tool_name?: string
+  capability_kind?: string
+  message?: string
+  payload_json?: string
+  created_at: string
+}
+
+export interface HarnessRunActionInputField {
+  key: string
+  label: string
+  kind?: string
+  target?: string
+  payload_key?: string
+  required?: boolean
+  placeholder?: string
+  options?: string[]
+}
+
+export interface HarnessRunActionInput {
+  title?: string
+  description?: string
+  submit_label?: string
+  fields?: HarnessRunActionInputField[]
+}
+
+export interface HarnessRunActionDescriptor {
+  id: string
+  label: string
+  method: string
+  path: string
+  variant?: string
+  requires_input?: boolean
+  input?: HarnessRunActionInput | null
+}
+
+export interface HarnessRunActionAvailability {
+  items?: HarnessRunActionDescriptor[]
+}
+
+export interface HarnessRunDetail {
+  run: HarnessRun
+  actions?: HarnessRunActionAvailability | null
+  events?: HarnessRunEvent[]
+  artifacts?: HarnessArtifactRef[]
+  pending_approvals?: Array<Record<string, unknown>>
+  pending_questions?: Array<Record<string, unknown>>
+  run_trace?: HarnessRunTrace | null
 }
 
 export interface HarnessArtifactRef {
@@ -201,6 +299,37 @@ export interface HarnessRuntimeEvidenceEntry {
   created_at: string
 }
 
+export interface HarnessRunTraceStage {
+  stage: string
+  message?: string
+  status?: string
+  details?: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface HarnessRunTraceEvent {
+  type: string
+  message?: string
+  step_index?: number
+  tool_name?: string
+  capability_kind?: string
+  created_at: string
+}
+
+export interface HarnessRunTrace {
+  run_id: string
+  root_run_id?: string
+  parent_run_id?: string
+  kind?: HarnessRunKind
+  status?: HarnessRunStatus
+  started_at?: string | null
+  finished_at?: string | null
+  latency_ms?: number
+  stages?: HarnessRunTraceStage[]
+  events?: HarnessRunTraceEvent[]
+  artifacts?: HarnessArtifactRef[]
+}
+
 export interface HarnessCheckpointArtifact {
   run_id: string
   group_item_id?: string
@@ -220,6 +349,7 @@ export interface HarnessRunGroupReport {
   artifacts?: HarnessArtifactRef[]
   scorecards?: HarnessScorecard[]
   runtime_evidence?: Record<string, HarnessRuntimeEvidenceEntry[]>
+  runtime_traces?: Record<string, HarnessRunTrace>
   item_contracts?: Record<string, HarnessContract>
   checkpoints?: HarnessCheckpointArtifact[]
 }
@@ -434,6 +564,18 @@ export interface HarnessRunGroupListParams {
   status?: HarnessRunGroupStatus | HarnessRunGroupStatus[]
 }
 
+export interface HarnessRunListParams {
+  limit?: number
+  kind?: HarnessRunKind | HarnessRunKind[]
+  kinds?: HarnessRunKind | HarnessRunKind[]
+  status?: HarnessRunStatus | HarnessRunStatus[]
+  statuses?: HarnessRunStatus | HarnessRunStatus[]
+  groupID?: string
+  groupItemID?: string
+  rootRunID?: string
+  parentRunID?: string
+}
+
 export interface HarnessDatasetListParams {
   limit?: number
 }
@@ -471,6 +613,23 @@ function normalizeQueryArray(value?: string | string[]) {
 export const harnessApi = {
   createGroup: (payload: HarnessRunGroupSpec) =>
     api.post<HarnessRunGroup>('/harness/groups', payload),
+
+  listRuns: (params: HarnessRunListParams = {}) =>
+    api.get<HarnessRun[]>('/harness/runs', {
+      params: {
+        limit: params.limit,
+        kinds: normalizeQueryArray(params.kinds || params.kind),
+        statuses: normalizeQueryArray(params.statuses || params.status),
+        group_id: params.groupID,
+        group_item_id: params.groupItemID,
+        root_run_id: params.rootRunID,
+        parent_run_id: params.parentRunID,
+      },
+    }),
+
+  getRun: (id: string) => api.get<HarnessRun>(`/harness/runs/${id}`),
+
+  getRunDetail: (id: string) => api.get<HarnessRunDetail>(`/harness/runs/${id}/detail`),
 
   listGroups: (params: HarnessRunGroupListParams = {}) =>
     api.get<HarnessRunGroup[]>('/harness/groups', {

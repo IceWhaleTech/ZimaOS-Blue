@@ -2,6 +2,19 @@ package main
 
 import "testing"
 
+func TestExecArgv_UsesCLIPathAsArgv0(t *testing.T) {
+	got := execArgv("/tmp/.bluecli", []string{"/usr/local/bin/blue", "--dev", "gateway"})
+	want := []string{"/tmp/.bluecli", "--dev", "gateway"}
+	if len(got) != len(want) {
+		t.Fatalf("execArgv() len = %d, want %d (%v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("execArgv()[%d] = %q, want %q (full=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestTryFastCmd_HelpHandledInLauncher(t *testing.T) {
 	if handled := tryFastCmd([]string{"help"}); !handled {
 		t.Fatal("expected launcher help to be handled directly")

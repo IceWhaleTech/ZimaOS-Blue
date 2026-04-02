@@ -7,6 +7,7 @@ import type {
   UserTaskActionID,
   UserTaskActions,
   UserTaskProjection,
+  UserTaskSubagentSummary,
 } from '@/api/tasks'
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
@@ -33,8 +34,33 @@ function normalizeNumber(value: unknown): number {
   return Number.isFinite(next) ? next : 0
 }
 
+function normalizeOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined
+  const next = Number(value)
+  return Number.isFinite(next) ? next : undefined
+}
+
 function normalizeBoolean(value: unknown): boolean {
   return Boolean(value)
+}
+
+function normalizeSubagentSummary(
+  summary: Partial<UserTaskSubagentSummary> | null | undefined
+): UserTaskSubagentSummary | undefined {
+  if (!summary) return undefined
+  const total = normalizeNumber(summary.total)
+  if (total <= 0) return undefined
+  return {
+    total,
+    running: normalizeOptionalNumber(summary.running),
+    waiting_user: normalizeOptionalNumber(summary.waiting_user),
+    completed: normalizeOptionalNumber(summary.completed),
+    failed: normalizeOptionalNumber(summary.failed),
+    cancelled: normalizeOptionalNumber(summary.cancelled),
+    latest_title: normalizeString(summary.latest_title) || undefined,
+    latest_status: normalizeString(summary.latest_status) || undefined,
+    latest_updated_at: normalizeString(summary.latest_updated_at) || undefined,
+  }
 }
 
 function normalizeTaskActionInputFields(
@@ -139,21 +165,31 @@ function normalizeTaskSnapshot(
     error_preview: normalizeString(snapshot.error_preview) || undefined,
     artifacts: Array.isArray(snapshot.artifacts) ? snapshot.artifacts : [],
     research_sources: Array.isArray(snapshot.research_sources) ? snapshot.research_sources : [],
+    subagent_summary: normalizeSubagentSummary(snapshot.subagent_summary),
     actions: normalizeTaskActions(snapshot.actions),
+    run_status: normalizeString(snapshot.run_status) || undefined,
+    verification_status: normalizeString(snapshot.verification_status) || undefined,
+    score: normalizeOptionalNumber(snapshot.score),
+    evidence_count: normalizeOptionalNumber(snapshot.evidence_count),
+    detail_href: normalizeString(snapshot.detail_href) || undefined,
     updated_at: normalizeString(snapshot.updated_at) || new Date().toISOString(),
     finished_at: normalizeString(snapshot.finished_at) || undefined,
   }
 }
 
 export const useTaskProjectionsStore = defineStore('taskProjections', () => {
+  const RECENT_OUTCOME_TIMEOUT_MS = 5 * 60 * 1000
   const currentConversationId = ref('')
   const currentTasks = ref<UserTaskProjection[]>([])
   const backgroundTasks = ref<UserTaskProjection[]>([])
+  const recentOutcome = ref<UserTaskProjection | null>(null)
   const loading = ref(false)
   const hydrated = ref(false)
   const activeRefresh = ref<Promise<void> | null>(null)
   const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
   const notifiedTerminalTaskIds = new Set<string>()
+  let recentOutcomeTimer: ReturnType<typeof setTimeout> | null = null
+  let previousCurrentTasks: UserTaskProjection[] = []
   let previousBackgroundTasks: UserTaskProjection[] = []
   let previousConversationId = ''
 
@@ -172,6 +208,26 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
       clearInterval(pollTimer.value)
       pollTimer.value = null
     }
+  }
+
+  function clearRecentOutcomeTimer() {
+    if (!recentOutcomeTimer) return
+    clearTimeout(recentOutcomeTimer)
+    recentOutcomeTimer = null
+  }
+
+  function setRecentOutcome(task: UserTaskProjection | null) {
+    clearRecentOutcomeTimer()
+    recentOutcome.value = task
+    if (!task) return
+    recentOutcomeTimer = setTimeout(() => {
+      recentOutcome.value = null
+      recentOutcomeTimer = null
+    }, RECENT_OUTCOME_TIMEOUT_MS)
+  }
+
+  function dismissRecentOutcome() {
+    setRecentOutcome(null)
   }
 
   function syncPolling() {
@@ -252,17 +308,11 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     }
   }
 
-  async function notifyTerminalBackgroundTransitions(conversationId: string) {
-    if (previousConversationId !== conversationId) {
-      previousConversationId = conversationId
-      previousBackgroundTasks = [...backgroundTasks.value]
-      return
-    }
+  async function collectTerminalBackgroundTransitions(): Promise<UserTaskProjection[]> {
+    const terminalTransitions: UserTaskProjection[] = []
     const nextIds = new Set(backgroundTasks.value.map((task) => task.id))
     const removed = previousBackgroundTasks.filter((task) => !nextIds.has(task.id))
-    previousBackgroundTasks = [...backgroundTasks.value]
-    previousConversationId = conversationId
-    if (removed.length === 0) return
+    if (removed.length === 0) return terminalTransitions
 
     const { taskProjectionApi } = await loadTasksApiModule()
     await Promise.all(
@@ -271,12 +321,46 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
           const response = await taskProjectionApi.getTask(task.id)
           const detail = normalizeTaskSnapshot(response.data)
           if (!detail || isTaskActive(detail)) return
+          terminalTransitions.push(detail)
           notifyTaskTerminalState(detail)
         } catch {
           // Ignore missing task details
         }
       })
     )
+    return terminalTransitions
+  }
+
+  function collectCurrentTerminalTransitions(): UserTaskProjection[] {
+    const previousActiveIds = new Set(
+      previousCurrentTasks.filter((task) => isTaskActive(task)).map((task) => task.id)
+    )
+    if (previousActiveIds.size === 0) return []
+    return currentTasks.value.filter(
+      (task) => !isTaskActive(task) && previousActiveIds.has(task.id)
+    )
+  }
+
+  async function handleTaskTransitions(conversationId: string) {
+    if (previousConversationId !== conversationId) {
+      previousConversationId = conversationId
+      previousCurrentTasks = [...currentTasks.value]
+      previousBackgroundTasks = [...backgroundTasks.value]
+      return
+    }
+
+    const currentTransitions = collectCurrentTerminalTransitions()
+    const backgroundTransitions = await collectTerminalBackgroundTransitions()
+    const latestTransition = [...currentTransitions, ...backgroundTransitions].sort(
+      compareTasksByUpdatedAt
+    )[0]
+
+    previousCurrentTasks = [...currentTasks.value]
+    previousBackgroundTasks = [...backgroundTasks.value]
+    previousConversationId = conversationId
+    if (latestTransition) {
+      setRecentOutcome(latestTransition)
+    }
   }
 
   async function refreshNow() {
@@ -289,7 +373,7 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
       try {
         await Promise.all([fetchCurrentTasks(conversationId), fetchBackgroundTasks(conversationId)])
         hydrated.value = true
-        await notifyTerminalBackgroundTransitions(conversationId)
+        await handleTaskTransitions(conversationId)
       } finally {
         loading.value = false
         activeRefresh.value = null
@@ -363,11 +447,14 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
 
   function reset() {
     stopPolling()
+    clearRecentOutcomeTimer()
     currentConversationId.value = ''
     currentTasks.value = []
     backgroundTasks.value = []
+    recentOutcome.value = null
     loading.value = false
     hydrated.value = false
+    previousCurrentTasks = []
     previousBackgroundTasks = []
     previousConversationId = ''
   }
@@ -378,6 +465,7 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     currentActiveTasks,
     currentTerminalTasks,
     backgroundTasks,
+    recentOutcome,
     loading,
     hydrated,
     hasActiveTasks,
@@ -387,6 +475,7 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     cancelTask,
     resumeTask,
     openTask,
+    dismissRecentOutcome,
     reset,
     stopPolling,
   }

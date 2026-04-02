@@ -30,6 +30,7 @@ type RunDetail struct {
 	Actions          RunActionAvailability    `json:"actions"`
 	Events           []RunEvent               `json:"events"`
 	Artifacts        []ArtifactRef            `json:"artifacts"`
+	RunTrace         *RunTrace                `json:"run_trace,omitempty"`
 	PendingApprovals []map[string]interface{} `json:"pending_approvals,omitempty"`
 	PendingQuestions []map[string]interface{} `json:"pending_questions,omitempty"`
 }
@@ -698,6 +699,11 @@ func (h *Handler) GetRunDetail(c echo.Context) error {
 		Actions:   runActionAvailability(run, "/harness/runs/"+run.ID),
 		Events:    events,
 		Artifacts: artifacts,
+	}
+	if trace, traceErr := h.manager.RunTraceSnapshot(c.Request().Context(), run.ID); traceErr == nil {
+		detail.RunTrace = trace
+	} else {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": traceErr.Error()})
 	}
 	if h.detailProvider != nil {
 		detail.PendingApprovals = h.detailProvider.PendingApprovals(run.ID)

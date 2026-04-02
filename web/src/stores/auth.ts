@@ -59,11 +59,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   function hasAnyPermission(perms: (PagePermission | string)[]): boolean {
     if (user.value?.role === 'admin') return true
+    if (!permissionsLoaded.value && token.value) return true
     return perms.some((p) => permissions.value.includes(p))
   }
 
   function hasAllPermissions(perms: (PagePermission | string)[]): boolean {
     if (user.value?.role === 'admin') return true
+    if (!permissionsLoaded.value && token.value) return true
     return perms.every((p) => permissions.value.includes(p))
   }
 

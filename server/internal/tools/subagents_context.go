@@ -24,19 +24,20 @@ type SubagentRequest struct {
 
 // SubagentResult is the normalized child-run payload returned to tools.
 type SubagentResult struct {
-	RunID       string `json:"run_id"`
-	RootRunID   string `json:"root_run_id,omitempty"`
-	ParentRunID string `json:"parent_run_id,omitempty"`
-	Status      string `json:"status"`
-	Goal        string `json:"goal,omitempty"`
-	Result      string `json:"result,omitempty"`
-	Error       string `json:"error,omitempty"`
-	AgentID     string `json:"agent_id,omitempty"`
-	Model       string `json:"model,omitempty"`
-	Depth       int    `json:"depth,omitempty"`
-	Waited      bool   `json:"waited,omitempty"`
-	Terminal    bool   `json:"terminal,omitempty"`
-	Completed   bool   `json:"completed,omitempty"`
+	RunID           string `json:"run_id"`
+	RootRunID       string `json:"root_run_id,omitempty"`
+	ParentRunID     string `json:"parent_run_id,omitempty"`
+	Status          string `json:"status"`
+	Goal            string `json:"goal,omitempty"`
+	Result          string `json:"result,omitempty"`
+	Error           string `json:"error,omitempty"`
+	AgentID         string `json:"agent_id,omitempty"`
+	Model           string `json:"model,omitempty"`
+	Depth           int    `json:"depth,omitempty"`
+	Waited          bool   `json:"waited,omitempty"`
+	Terminal        bool   `json:"terminal,omitempty"`
+	Completed       bool   `json:"completed,omitempty"`
+	ContextIsolated bool   `json:"context_isolated,omitempty"`
 }
 
 // SubagentExecutor executes harness-backed child runs for the subagents tool.

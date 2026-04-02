@@ -1023,6 +1023,34 @@ func TestGenerateConversationTitle_IgnoresChecklistHeading(t *testing.T) {
 	}
 }
 
+func TestGenerateConversationTitle_FinalizesOnlyOnce(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "New Conversation")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.generateConversationTitle(conv.ID, "", "First short title", "ok", "en")
+	handler.generateConversationTitle(conv.ID, "", "Second short title", "## Better Replacement", "en")
+
+	updatedConv, err := store.GetConversation(context.Background(), conv.ID)
+	if err != nil {
+		t.Fatalf("failed to load conversation: %v", err)
+	}
+	if updatedConv.Title != "First short title" {
+		t.Fatalf("conversation title = %q, want %q", updatedConv.Title, "First short title")
+	}
+	if !updatedConv.AutoTitleFinalized {
+		t.Fatal("expected auto title to be finalized after first successful update")
+	}
+}
+
 func TestChatOnce_InjectsLocaleFromSettingsToProxyBridge(t *testing.T) {
 	var gotLocale string
 	bridge := proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1133,6 +1161,123 @@ func TestProcessChannelMessage_DefaultModel502RollsBackToAuto(t *testing.T) {
 	}
 	if requestModels[1] != "auto" {
 		t.Fatalf("second request model = %q, want auto", requestModels[1])
+	}
+}
+
+func TestProcessChannelMessage_GeneratesIMConversationTitleOnlyOnce(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+
+	var mu sync.Mutex
+	titleRequests := 0
+	chatRequests := 0
+	bridge := proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req llm.ChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		isTitleRequest := false
+		for _, msg := range req.Messages {
+			if msg.Role == llm.RoleSystem && strings.Contains(msg.Content, "Generate a very short title") {
+				isTitleRequest = true
+				break
+			}
+		}
+
+		mu.Lock()
+		if isTitleRequest {
+			titleRequests++
+		} else {
+			chatRequests++
+		}
+		currentTitleRequests := titleRequests
+		currentChatRequests := chatRequests
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		if isTitleRequest {
+			title := "OpenClaw 更新"
+			if currentTitleRequests > 1 {
+				title = "不应覆盖"
+			}
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"title_%d","model":"auto","choices":[{"message":{"role":"assistant","content":"%s"},"finish_reason":"stop"}]}`, currentTitleRequests, title)))
+			return
+		}
+
+		content := "好的，我来整理 OpenClaw 最近更新。"
+		if currentChatRequests > 1 {
+			content = "继续补充一些最新变化。"
+		}
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"resp_%d","model":"auto","choices":[{"message":{"role":"assistant","content":"%s"},"finish_reason":"stop"}]}`, currentChatRequests, content)))
+	}))
+	handler.SetProxyBridge(bridge)
+
+	convID := channelConversationID("feishu", "chat_im_title_once")
+	firstResp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_title_once",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "alice",
+		Content:     "帮我看一下 OpenClaw 最近更新",
+	})
+	if err != nil {
+		t.Fatalf("first ProcessChannelMessage() error = %v", err)
+	}
+	if !strings.Contains(firstResp, "OpenClaw") {
+		t.Fatalf("unexpected first response %q", firstResp)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		conv, err := store.GetConversation(context.Background(), convID)
+		if err == nil && conv != nil && conv.Title == "OpenClaw 更新" && conv.AutoTitleFinalized {
+			break
+		}
+		if time.Now().After(deadline) {
+			conv, convErr := store.GetConversation(context.Background(), convID)
+			if convErr != nil {
+				t.Fatalf("timed out waiting for IM title generation; get conversation: %v", convErr)
+			}
+			t.Fatalf("timed out waiting for IM title generation; title=%q finalized=%v", conv.Title, conv.AutoTitleFinalized)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	_, err = handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_title_once",
+		ID:          "msg_2",
+		UserID:      "user_1",
+		Username:    "alice",
+		Content:     "继续",
+	})
+	if err != nil {
+		t.Fatalf("second ProcessChannelMessage() error = %v", err)
+	}
+
+	time.Sleep(150 * time.Millisecond)
+
+	conv, err := store.GetConversation(context.Background(), convID)
+	if err != nil {
+		t.Fatalf("failed to load conversation: %v", err)
+	}
+	if conv.Title != "OpenClaw 更新" {
+		t.Fatalf("conversation title = %q, want %q", conv.Title, "OpenClaw 更新")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if titleRequests != 1 {
+		t.Fatalf("title requests = %d, want 1", titleRequests)
+	}
+	if chatRequests != 2 {
+		t.Fatalf("chat requests = %d, want 2", chatRequests)
 	}
 }
 

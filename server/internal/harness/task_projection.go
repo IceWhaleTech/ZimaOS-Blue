@@ -10,23 +10,29 @@ import (
 )
 
 type UserTaskProjection struct {
-	ID              string                   `json:"id"`
-	Kind            RunKind                  `json:"kind"`
-	ConversationID  string                   `json:"conversation_id,omitempty"`
-	Scope           string                   `json:"scope"`
-	Title           string                   `json:"title"`
-	Subtitle        string                   `json:"subtitle,omitempty"`
-	Status          string                   `json:"status"`
-	Stage           string                   `json:"stage"`
-	Progress        int                      `json:"progress"`
-	Blocker         *UserTaskBlocker         `json:"blocker,omitempty"`
-	ResultPreview   string                   `json:"result_preview,omitempty"`
-	ErrorPreview    string                   `json:"error_preview,omitempty"`
-	Artifacts       []UserTaskArtifact       `json:"artifacts,omitempty"`
-	ResearchSources []UserTaskResearchSource `json:"research_sources,omitempty"`
-	Actions         UserTaskActions          `json:"actions"`
-	UpdatedAt       time.Time                `json:"updated_at"`
-	FinishedAt      *time.Time               `json:"finished_at,omitempty"`
+	ID                 string                   `json:"id"`
+	Kind               RunKind                  `json:"kind"`
+	ConversationID     string                   `json:"conversation_id,omitempty"`
+	Scope              string                   `json:"scope"`
+	Title              string                   `json:"title"`
+	Subtitle           string                   `json:"subtitle,omitempty"`
+	Status             string                   `json:"status"`
+	Stage              string                   `json:"stage"`
+	Progress           int                      `json:"progress"`
+	Blocker            *UserTaskBlocker         `json:"blocker,omitempty"`
+	ResultPreview      string                   `json:"result_preview,omitempty"`
+	ErrorPreview       string                   `json:"error_preview,omitempty"`
+	Artifacts          []UserTaskArtifact       `json:"artifacts,omitempty"`
+	ResearchSources    []UserTaskResearchSource `json:"research_sources,omitempty"`
+	SubagentSummary    *UserTaskSubagentSummary `json:"subagent_summary,omitempty"`
+	Actions            UserTaskActions          `json:"actions"`
+	RunStatus          string                   `json:"run_status,omitempty"`
+	VerificationStatus string                   `json:"verification_status,omitempty"`
+	Score              *float64                 `json:"score,omitempty"`
+	EvidenceCount      *int                     `json:"evidence_count,omitempty"`
+	DetailHref         string                   `json:"detail_href,omitempty"`
+	UpdatedAt          time.Time                `json:"updated_at"`
+	FinishedAt         *time.Time               `json:"finished_at,omitempty"`
 }
 
 type UserTaskBlocker struct {
@@ -51,6 +57,18 @@ type UserTaskResearchSource struct {
 	FetchedAt        string  `json:"fetched_at,omitempty"`
 	RelevanceScore   float64 `json:"relevance_score,omitempty"`
 	CredibilityScore float64 `json:"credibility_score,omitempty"`
+}
+
+type UserTaskSubagentSummary struct {
+	Total           int       `json:"total"`
+	Running         int       `json:"running,omitempty"`
+	WaitingUser     int       `json:"waiting_user,omitempty"`
+	Completed       int       `json:"completed,omitempty"`
+	Failed          int       `json:"failed,omitempty"`
+	Cancelled       int       `json:"cancelled,omitempty"`
+	LatestTitle     string    `json:"latest_title,omitempty"`
+	LatestStatus    string    `json:"latest_status,omitempty"`
+	LatestUpdatedAt time.Time `json:"latest_updated_at,omitempty"`
 }
 
 type UserTaskActions struct {
@@ -329,6 +347,10 @@ func (s *UserTaskProjectionService) projectionForRun(ctx context.Context, run *R
 	if err != nil {
 		return nil, err
 	}
+	subagentSummary, err := s.projectSubagentSummary(ctx, run)
+	if err != nil {
+		return nil, err
+	}
 	var approvals []map[string]interface{}
 	var questions []map[string]interface{}
 	if s.detailProvider != nil {
@@ -352,6 +374,7 @@ func (s *UserTaskProjectionService) projectionForRun(ctx context.Context, run *R
 		ErrorPreview:    trimmedPreview(run.Error, 240),
 		Artifacts:       projectUserArtifacts(artifacts),
 		ResearchSources: projectResearchSources(run),
+		SubagentSummary: subagentSummary,
 		Actions: UserTaskActions{
 			Items: taskActionDescriptors(run, nil, run.ID, scope),
 		},
@@ -374,20 +397,32 @@ func (s *UserTaskProjectionService) projectionForGroup(ctx context.Context, grou
 	title, subtitle := userTaskGroupTitleAndSubtitle(group)
 	resultPreview, errorPreview := userTaskGroupPreview(group)
 	conversationID := userTaskGroupConversationID(group)
+	score := floatMetadataPtr(group.Summary["overall_score"])
+	evidenceCount := firstIntMetadataPtr(
+		group.Summary["evidence_count"],
+		group.Summary["evidence_count_total"],
+		group.Summary["evidence_backed_count"],
+	)
+	detailHref := userTaskGroupDetailHref(group)
 
 	projection := &UserTaskProjection{
-		ID:             group.ID,
-		Kind:           kind,
-		ConversationID: conversationID,
-		Scope:          scope,
-		Title:          title,
-		Subtitle:       subtitle,
-		Status:         status,
-		Stage:          stage,
-		Progress:       normalizedGroupProjectionProgress(group),
-		ResultPreview:  resultPreview,
-		ErrorPreview:   errorPreview,
-		Artifacts:      projectGroupArtifacts(group),
+		ID:                 group.ID,
+		Kind:               kind,
+		ConversationID:     conversationID,
+		Scope:              scope,
+		Title:              title,
+		Subtitle:           subtitle,
+		Status:             status,
+		Stage:              stage,
+		Progress:           normalizedGroupProjectionProgress(group),
+		ResultPreview:      resultPreview,
+		ErrorPreview:       errorPreview,
+		Artifacts:          projectGroupArtifacts(group),
+		RunStatus:          userTaskGroupRunStatus(group),
+		VerificationStatus: userTaskGroupVerificationStatus(group),
+		Score:              score,
+		EvidenceCount:      evidenceCount,
+		DetailHref:         detailHref,
 		Actions: UserTaskActions{
 			Items: taskActionDescriptors(nil, group, group.ID, scope),
 		},
@@ -492,12 +527,78 @@ func userTaskGroupStatusParts(group *RunGroup) (string, string) {
 		return "verifying", "running"
 	case RunGroupStatusCompleted:
 		return "completed", "completed"
+	case RunGroupStatusPartial:
+		return "partial", "failed"
 	case RunGroupStatusCancelled:
 		return "cancelled", "cancelled"
-	case RunGroupStatusFailed, RunGroupStatusPartial:
+	case RunGroupStatusFailed:
 		return "failed", "failed"
 	default:
 		return "verifying", "running"
+	}
+}
+
+func userTaskGroupRunStatus(group *RunGroup) string {
+	if group == nil {
+		return ""
+	}
+	switch group.Status {
+	case RunGroupStatusPending, RunGroupStatusQueued:
+		return "planning"
+	case RunGroupStatusRunning:
+		return "running"
+	case RunGroupStatusScoring:
+		return "verifying"
+	case RunGroupStatusCompleted:
+		return "completed"
+	case RunGroupStatusPartial:
+		return "partial"
+	case RunGroupStatusFailed:
+		return "failed"
+	case RunGroupStatusCancelled:
+		return "cancelled"
+	default:
+		return ""
+	}
+}
+
+func userTaskGroupVerificationStatus(group *RunGroup) string {
+	if group == nil {
+		return ""
+	}
+	switch group.Status {
+	case RunGroupStatusPending, RunGroupStatusQueued, RunGroupStatusRunning, RunGroupStatusScoring:
+		return "verifying"
+	case RunGroupStatusPartial:
+		return "partial"
+	case RunGroupStatusFailed:
+		return "failed"
+	case RunGroupStatusCancelled:
+		return "cancelled"
+	case RunGroupStatusCompleted:
+		if verificationPassRate, ok := floatMetadataWithPresence(group.Summary["verification_pass_rate"]); ok {
+			switch {
+			case verificationPassRate >= 0.999:
+				return "passed"
+			case verificationPassRate > 0:
+				return "partial"
+			default:
+				return "completed"
+			}
+		}
+		if passRate, ok := floatMetadataWithPresence(group.Summary["pass_rate"]); ok {
+			switch {
+			case passRate >= 0.999:
+				return "passed"
+			case passRate > 0:
+				return "partial"
+			default:
+				return "completed"
+			}
+		}
+		return "completed"
+	default:
+		return ""
 	}
 }
 
@@ -675,17 +776,86 @@ func canSendUpdate(run *Run) bool {
 	}
 }
 
+func (s *UserTaskProjectionService) projectSubagentSummary(ctx context.Context, run *Run) (*UserTaskSubagentSummary, error) {
+	if s == nil || s.manager == nil || run == nil {
+		return nil, nil
+	}
+
+	children, err := s.manager.List(ctx, RunFilter{
+		UserID:      strings.TrimSpace(run.UserID),
+		Kinds:       []RunKind{RunKindSubagent},
+		ParentRunID: strings.TrimSpace(run.ID),
+		Limit:       1000,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(children) == 0 {
+		return nil, nil
+	}
+
+	summary := &UserTaskSubagentSummary{
+		Total: len(children),
+	}
+	var latest *Run
+	for index := range children {
+		child := &children[index]
+		switch summarizeSubagentStatus(child) {
+		case "waiting_user":
+			summary.WaitingUser++
+		case "completed":
+			summary.Completed++
+		case "failed":
+			summary.Failed++
+		case "cancelled":
+			summary.Cancelled++
+		default:
+			summary.Running++
+		}
+		if latest == nil || child.UpdatedAt.After(latest.UpdatedAt) {
+			latest = child
+		}
+	}
+
+	if latest != nil {
+		latestTitle, _ := userTaskTitleAndSubtitle(latest)
+		summary.LatestTitle = latestTitle
+		summary.LatestStatus = summarizeSubagentStatus(latest)
+		summary.LatestUpdatedAt = latest.UpdatedAt
+	}
+
+	return summary, nil
+}
+
+func summarizeSubagentStatus(run *Run) string {
+	if run == nil {
+		return "running"
+	}
+	switch run.Status {
+	case RunStatusWaitingInput:
+		return "waiting_user"
+	case RunStatusCompleted:
+		return "completed"
+	case RunStatusCancelled:
+		return "cancelled"
+	case RunStatusFailed, RunStatusAborted:
+		return "failed"
+	default:
+		return "running"
+	}
+}
+
 func userTaskGroupPreview(group *RunGroup) (string, string) {
 	if group == nil {
 		return "", ""
 	}
-	passRate := floatMetadata(group.Summary["pass_rate"])
-	overallScore := floatMetadata(group.Summary["overall_score"])
+	passRate, hasPassRate := floatMetadataWithPresence(group.Summary["pass_rate"])
+	overallScore, hasOverallScore := floatMetadataWithPresence(group.Summary["overall_score"])
 	summaryParts := make([]string, 0, 2)
-	if passRate > 0 {
+	if hasPassRate {
 		summaryParts = append(summaryParts, fmt.Sprintf("Pass rate %d%%", int(passRate*100+0.5)))
 	}
-	if overallScore > 0 {
+	if hasOverallScore {
 		summaryParts = append(summaryParts, fmt.Sprintf("Score %.2f", overallScore))
 	}
 	summaryText := strings.Join(summaryParts, " • ")
@@ -719,8 +889,15 @@ func projectGroupArtifacts(group *RunGroup) []UserTaskArtifact {
 	return []UserTaskArtifact{{
 		Kind:  "report",
 		Label: "Harness report",
-		URL:   "/harness/" + strings.TrimSpace(group.ID),
+		URL:   userTaskGroupDetailHref(group),
 	}}
+}
+
+func userTaskGroupDetailHref(group *RunGroup) string {
+	if group == nil || strings.TrimSpace(group.ID) == "" {
+		return ""
+	}
+	return "/automation/harness/" + strings.TrimSpace(group.ID)
 }
 
 func projectUserArtifacts(artifacts []ArtifactRef) []UserTaskArtifact {
@@ -770,6 +947,60 @@ func intMetadata(raw interface{}) int {
 	default:
 		return 0
 	}
+}
+
+func firstIntMetadataPtr(values ...interface{}) *int {
+	for _, value := range values {
+		if result := intMetadataPtr(value); result != nil {
+			return result
+		}
+	}
+	return nil
+}
+
+func intMetadataPtr(raw interface{}) *int {
+	switch value := raw.(type) {
+	case int:
+		result := value
+		return &result
+	case int64:
+		result := int(value)
+		return &result
+	case float64:
+		result := int(value)
+		return &result
+	case float32:
+		result := int(value)
+		return &result
+	default:
+		return nil
+	}
+}
+
+func floatMetadataPtr(raw interface{}) *float64 {
+	switch value := raw.(type) {
+	case float64:
+		result := value
+		return &result
+	case float32:
+		result := float64(value)
+		return &result
+	case int:
+		result := float64(value)
+		return &result
+	case int64:
+		result := float64(value)
+		return &result
+	default:
+		return nil
+	}
+}
+
+func floatMetadataWithPresence(raw interface{}) (float64, bool) {
+	if value := floatMetadataPtr(raw); value != nil {
+		return *value, true
+	}
+	return 0, false
 }
 
 func projectResearchSources(run *Run) []UserTaskResearchSource {

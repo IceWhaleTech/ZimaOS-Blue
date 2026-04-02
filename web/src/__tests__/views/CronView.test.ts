@@ -18,6 +18,10 @@ vi.mock('@/api/cron', () => ({
   },
 }))
 
+vi.mock('@/components/automation/AutomationTabs.vue', () => ({
+  default: { name: 'AutomationTabs', template: '<div class="automation-tabs-stub"></div>' },
+}))
+
 describe('CronView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -73,6 +77,36 @@ describe('CronView', () => {
     expect(wrapper.text()).toContain('Daily backup')
     expect(wrapper.text()).toContain('2026')
     expect(wrapper.text()).not.toContain('cron.calculating')
+  })
+
+  it('humanizes machine-style task names in the list', async () => {
+    vi.mocked(cronApi.list).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'job-2',
+          name: 'uptime_check',
+          schedule: '0 0 * * * *',
+          handler: 'command',
+          enabled: true,
+          status: 'active',
+          created_at: '2026-03-01T00:00:00Z',
+          updated_at: '2026-03-01T00:00:00Z',
+          run_count: 1,
+          fail_count: 0,
+          payload: { command: 'uptime' },
+        },
+      ],
+    } as never)
+
+    const wrapper = mount(CronView, {
+      global: {
+        plugins: [createPinia(), i18n],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Uptime Check')
   })
 
   it('renders execution duration from duration nanoseconds', async () => {
@@ -142,5 +176,37 @@ describe('CronView', () => {
       },
     })
     expect(request?.payload).not.toHaveProperty('timeout')
+  })
+
+  it('auto-generates a readable title when creating a task without a name', async () => {
+    const wrapper = mount(CronView, {
+      global: {
+        plugins: [createPinia(), i18n],
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('.automation-create-button').trigger('click')
+
+    const handlerCards = wrapper.findAll('.automation-handler-card')
+    await handlerCards[1]!.trigger('click')
+
+    const textInputs = wrapper.findAll('input[type="text"]')
+    await textInputs[1]!.setValue('0 * * * *')
+    await wrapper.get('input[type="url"]').setValue('https://example.com/hook')
+    await wrapper.get('form.automation-form--modal').trigger('submit')
+    await flushPromises()
+
+    const request = vi.mocked(cronApi.create).mock.calls.at(-1)?.[0]
+    expect(request).toBeDefined()
+    expect(request?.name).toMatch(/^(Request|请求) example\.com\/hook$/)
+    expect(request).toMatchObject({
+      schedule: '0 * * * *',
+      handler: 'http',
+      payload: {
+        url: 'https://example.com/hook',
+        method: 'GET',
+      },
+    })
   })
 })

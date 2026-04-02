@@ -15,12 +15,14 @@ func registerAskUserQuestionRoutes(v1 *echo.Group, authMiddleware, pageMiddlewar
 
 	askGroup := v1.Group("/ask-user-question", filterRouteMiddlewares(authMiddleware, pageMiddleware)...)
 	askGroup.GET("/pending", func(c echo.Context) error {
-		userID := resolveRequestUserID(c)
-		req := questionMgr.GetPending(userID)
+		sessionID := strings.TrimSpace(c.QueryParam("session_id"))
+		var req *tools.QuestionRequest
+		if sessionID != "" {
+			req = questionMgr.GetPendingBySession(sessionID)
+		}
 		if req == nil {
-			if sessionID := strings.TrimSpace(c.QueryParam("session_id")); sessionID != "" {
-				req = questionMgr.GetPendingBySession(sessionID)
-			}
+			userID := resolveRequestUserID(c)
+			req = questionMgr.GetPending(userID)
 		}
 		if req == nil {
 			return c.JSON(200, map[string]interface{}{"pending": false})

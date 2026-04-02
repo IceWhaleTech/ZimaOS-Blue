@@ -46,6 +46,7 @@ type runtimeDeferredApprovalWiring struct {
 	harnessRuntime  *HarnessRuntimeBundle
 	execApprovals   *tools.ApprovalManager
 	registry        *tools.Registry
+	auxiliaryLLM    llm.Provider
 	metrics         workflowRuntimeMetricsRecorder
 	detailTarget    approvalRuntimeDetailTarget
 	handlerTarget   approvalRuntimeHandlerTarget

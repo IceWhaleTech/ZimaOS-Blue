@@ -1,12 +1,26 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cronApi } from '@/api/cron'
 import type { CronJob, JobExecution } from '@/api/cron'
+import AutomationTabs from '@/components/automation/AutomationTabs.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { getErrorMessage } from '@/utils/error'
 
-const { t } = useI18n()
+type JobFormModel = {
+  name: string
+  description: string
+  schedule: string
+  handler: string
+  payload: string
+  command: string
+  workdir: string
+  timeout: number
+  url: string
+  method: string
+}
+
+const { t, locale } = useI18n()
 const notification = useNotificationStore()
 
 const loading = ref(false)
@@ -17,22 +31,10 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showExecutionsModal = ref(false)
 const advancedOptionsOpen = ref(false)
+const jobNameCustomized = ref(false)
 
 // Form
-const jobForm = ref({
-  name: '',
-  description: '',
-  schedule: '',
-  handler: 'command',
-  payload: '{}',
-  // Command handler fields
-  command: '',
-  workdir: '',
-  timeout: 60,
-  // HTTP handler fields
-  url: '',
-  method: 'GET',
-})
+const jobForm = ref<JobFormModel>(createEmptyJobForm())
 
 // Available handler types
 const handlerTypes = computed(() => [
@@ -54,6 +56,16 @@ const cronPresets = computed(() => [
   { label: t('cron.presets.everyMonth'), value: '0 0 1 * *' },
 ])
 
+const isChineseCronLocale = computed(() =>
+  String(locale.value || '')
+    .toLowerCase()
+    .startsWith('zh')
+)
+
+const suggestedCreateJobName = computed(() =>
+  showCreateModal.value ? buildAutoJobTitleFromForm(jobForm.value, false) : ''
+)
+
 const enabledJobsCount = computed(() => jobs.value.filter((job) => job.enabled).length)
 const disabledJobsCount = computed(() => jobs.value.length - enabledJobsCount.value)
 const sortedJobs = computed(() =>
@@ -64,7 +76,7 @@ const sortedJobs = computed(() =>
     const nextRunDiff = parseDateValue(left.next_run_at) - parseDateValue(right.next_run_at)
     if (nextRunDiff !== 0) return nextRunDiff
 
-    return left.name.localeCompare(right.name)
+    return getJobDisplayName(left).localeCompare(getJobDisplayName(right))
   })
 )
 
@@ -89,8 +101,220 @@ onMounted(async () => {
   await loadJobs()
 })
 
+watch(suggestedCreateJobName, (nextName) => {
+  if (!showCreateModal.value || jobNameCustomized.value) return
+  jobForm.value.name = nextName
+})
+
 function getDefaultTimeout(handler: string): number {
   return handler === 'http' ? 30 : 60
+}
+
+function createEmptyJobForm(handler = 'command'): JobFormModel {
+  return {
+    name: '',
+    description: '',
+    schedule: '',
+    handler,
+    payload: '{}',
+    command: '',
+    workdir: '',
+    timeout: getDefaultTimeout(handler),
+    url: '',
+    method: 'GET',
+  }
+}
+
+function normalizeTitleText(value: string | null | undefined): string {
+  if (!value) return ''
+  return String(value).trim().replace(/\s+/g, ' ')
+}
+
+function truncateTitle(value: string, max = 48): string {
+  const runes = Array.from(normalizeTitleText(value))
+  if (runes.length <= max) return runes.join('')
+  return `${runes.slice(0, max).join('')}...`
+}
+
+function baseCommand(value: string): string {
+  const trimmed = normalizeTitleText(value)
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/[\\/]+$/, '')
+  if (!trimmed) return ''
+  const parts = trimmed.split(/[\\/]/)
+  return parts[parts.length - 1]!.replace(/\.exe$/i, '').toLowerCase()
+}
+
+function firstCommandUrl(command: string): string {
+  return (
+    normalizeTitleText(command)
+      .split(/\s+/)
+      .map((part) => part.replace(/^['"]|['"]$/g, ''))
+      .find((part) => /^https?:\/\//i.test(part)) || ''
+  )
+}
+
+function summarizeUrl(rawUrl: string): string {
+  const trimmed = normalizeTitleText(rawUrl).replace(/^['"]|['"]$/g, '')
+  if (!trimmed) return ''
+
+  try {
+    const parsed = new URL(trimmed)
+    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase()
+    const segments = parsed.pathname.split('/').filter(Boolean).slice(0, 2)
+    const pathname = segments.length > 0 ? `/${segments.join('/')}` : ''
+    return truncateTitle(`${host}${pathname}`)
+  } catch {
+    return truncateTitle(trimmed)
+  }
+}
+
+function localizeKnownCommandTitle(command: string): string {
+  const zh = isChineseCronLocale.value
+  switch (command) {
+    case 'uptime':
+      return zh ? '检查运行时间' : 'Check uptime'
+    case 'date':
+      return zh ? '获取当前时间' : 'Capture current time'
+    case 'df':
+      return zh ? '检查磁盘使用情况' : 'Check disk usage'
+    case 'free':
+      return zh ? '检查内存使用情况' : 'Check memory usage'
+    case 'ps':
+      return zh ? '查看运行中的进程' : 'List processes'
+    default:
+      return ''
+  }
+}
+
+function localizeRunTitle(target: string): string {
+  const normalized = truncateTitle(target, 42)
+  if (!normalized) return ''
+  return isChineseCronLocale.value ? `运行 ${normalized}` : `Run ${normalized}`
+}
+
+function localizeRequestTitle(target: string, method = 'GET'): string {
+  const normalized = truncateTitle(target, 42)
+  const verb = normalizeTitleText(method).toUpperCase() || 'GET'
+  if (!normalized) return ''
+  if (isChineseCronLocale.value) {
+    return verb === 'GET' ? `请求 ${normalized}` : `${verb} 请求 ${normalized}`
+  }
+  return verb === 'GET' ? `Request ${normalized}` : `${verb} ${normalized}`
+}
+
+function localizeGenericTitle(handler: string): string {
+  if (handler === 'http') {
+    return isChineseCronLocale.value ? '定时请求' : 'Scheduled request'
+  }
+  if (handler === 'command') {
+    return isChineseCronLocale.value ? '定时命令' : 'Scheduled command'
+  }
+  return isChineseCronLocale.value ? '定时任务' : 'Scheduled task'
+}
+
+function looksLikeMachineName(value: string): boolean {
+  if (!value) return false
+  if (/[\u4e00-\u9fff]/u.test(value) || /\s/u.test(value)) return false
+  return /[_-]/.test(value) || /[a-z][A-Z]/.test(value) || /^[a-z0-9]+$/i.test(value)
+}
+
+function humanizeMachineName(value: string): string {
+  const spaced = value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+  if (!/^[A-Za-z0-9 ]+$/.test(spaced)) return spaced
+  return spaced.replace(/\b([a-z])/g, (_, char: string) => char.toUpperCase())
+}
+
+function buildCommandAutoTitle(command: string): string {
+  const normalized = normalizeTitleText(command)
+  if (!normalized) return ''
+
+  const base = baseCommand(normalized.split(/\s+/)[0] || '')
+  const knownTitle = localizeKnownCommandTitle(base)
+  if (knownTitle) return knownTitle
+
+  if ((base === 'curl' || base === 'wget') && firstCommandUrl(normalized)) {
+    return localizeRequestTitle(summarizeUrl(firstCommandUrl(normalized)))
+  }
+
+  const compact =
+    normalized.includes(' ') || normalized.includes('/')
+      ? normalized
+      : humanizeMachineName(normalized)
+  return localizeRunTitle(compact)
+}
+
+function buildHttpAutoTitle(rawUrl: string, method = 'GET'): string {
+  const normalizedUrl = normalizeTitleText(rawUrl)
+  if (!normalizedUrl) return ''
+  return localizeRequestTitle(summarizeUrl(normalizedUrl), method)
+}
+
+function buildAutoJobTitleFromForm(form: JobFormModel, allowGeneric: boolean): string {
+  const commandTitle = form.handler === 'command' ? buildCommandAutoTitle(form.command) : ''
+  if (commandTitle) return commandTitle
+
+  const httpTitle = form.handler === 'http' ? buildHttpAutoTitle(form.url, form.method) : ''
+  if (httpTitle) return httpTitle
+
+  const descriptionTitle = truncateTitle(form.description)
+  if (descriptionTitle) return descriptionTitle
+
+  return allowGeneric ? localizeGenericTitle(form.handler) : ''
+}
+
+function buildAutoJobTitleFromJob(job: CronJob, allowGeneric: boolean): string {
+  const payload = job.payload || {}
+  const commandTitle =
+    job.handler === 'command' && typeof payload.command === 'string'
+      ? buildCommandAutoTitle(payload.command)
+      : ''
+  if (commandTitle) return commandTitle
+
+  const httpTitle =
+    job.handler === 'http' && typeof payload.url === 'string'
+      ? buildHttpAutoTitle(payload.url, typeof payload.method === 'string' ? payload.method : 'GET')
+      : ''
+  if (httpTitle) return httpTitle
+
+  const descriptionTitle = truncateTitle(job.description || '')
+  if (descriptionTitle) return descriptionTitle
+
+  return allowGeneric ? localizeGenericTitle(job.handler) : ''
+}
+
+function resolveFormJobName(): string {
+  const explicitName = normalizeTitleText(jobForm.value.name)
+  if (explicitName) return explicitName
+
+  const derivedName = buildAutoJobTitleFromForm(jobForm.value, false)
+  if (derivedName) return derivedName
+
+  if (showEditModal.value && selectedJob.value) {
+    return getJobDisplayName(selectedJob.value) || localizeGenericTitle(jobForm.value.handler)
+  }
+
+  return localizeGenericTitle(jobForm.value.handler)
+}
+
+function handleJobNameInput(event: Event) {
+  if (!showCreateModal.value) return
+
+  const value = normalizeTitleText((event.target as HTMLInputElement).value)
+  const suggested = normalizeTitleText(suggestedCreateJobName.value)
+  jobNameCustomized.value = value !== '' && value !== suggested
+}
+
+function getJobDisplayName(job: CronJob | null | undefined): string {
+  if (!job) return ''
+  const explicitName = normalizeTitleText(job.name)
+  if (explicitName) {
+    return looksLikeMachineName(explicitName) ? humanizeMachineName(explicitName) : explicitName
+  }
+  return buildAutoJobTitleFromJob(job, true)
 }
 
 async function loadJobs() {
@@ -106,18 +330,8 @@ async function loadJobs() {
 }
 
 function openCreateModal() {
-  jobForm.value = {
-    name: '',
-    description: '',
-    schedule: '',
-    handler: 'command',
-    payload: '{}',
-    command: '',
-    workdir: '',
-    timeout: getDefaultTimeout('command'),
-    url: '',
-    method: 'GET',
-  }
+  jobForm.value = createEmptyJobForm()
+  jobNameCustomized.value = false
   advancedOptionsOpen.value = false
   showCreateModal.value = true
 }
@@ -141,6 +355,7 @@ function openEditModal(job: CronJob) {
     url: (payload.url as string) || '',
     method: (payload.method as string) || 'GET',
   }
+  jobNameCustomized.value = false
   advancedOptionsOpen.value =
     Boolean(job.description) ||
     (job.handler === 'command' &&
@@ -154,6 +369,7 @@ function closeJobModal() {
   showCreateModal.value = false
   showEditModal.value = false
   advancedOptionsOpen.value = false
+  jobNameCustomized.value = false
 }
 
 function setHandler(handler: string) {
@@ -195,7 +411,8 @@ function buildPayload(): Record<string, unknown> {
 }
 
 async function createJob() {
-  if (!jobForm.value.name || !jobForm.value.schedule || !jobForm.value.handler) return
+  const resolvedName = resolveFormJobName()
+  if (!resolvedName || !jobForm.value.schedule || !jobForm.value.handler) return
 
   // Validate handler-specific fields
   if (jobForm.value.handler === 'command' && !jobForm.value.command) return
@@ -206,7 +423,7 @@ async function createJob() {
     const payload = buildPayload()
 
     await cronApi.create({
-      name: jobForm.value.name,
+      name: resolvedName,
       description: jobForm.value.description,
       schedule: jobForm.value.schedule,
       handler: jobForm.value.handler,
@@ -222,7 +439,8 @@ async function createJob() {
 }
 
 async function updateJob() {
-  if (!selectedJob.value || !jobForm.value.name || !jobForm.value.schedule) return
+  const resolvedName = resolveFormJobName()
+  if (!selectedJob.value || !resolvedName || !jobForm.value.schedule) return
 
   // Validate handler-specific fields
   if (jobForm.value.handler === 'command' && !jobForm.value.command) return
@@ -233,7 +451,7 @@ async function updateJob() {
     const payload = buildPayload()
 
     await cronApi.update(selectedJob.value.id, {
-      name: jobForm.value.name,
+      name: resolvedName,
       description: jobForm.value.description,
       schedule: jobForm.value.schedule,
       payload,
@@ -270,7 +488,7 @@ async function triggerJob(job: CronJob) {
 }
 
 async function deleteJob(job: CronJob) {
-  if (!confirm(t('cron.confirmDelete', { name: job.name }))) return
+  if (!confirm(t('cron.confirmDelete', { name: getJobDisplayName(job) }))) return
 
   try {
     await cronApi.delete(job.id)
@@ -346,7 +564,7 @@ function getJobPreview(job: CronJob): string {
     <section class="automation-stage dashboard-page-stage configuration-page-stage">
       <section class="automation-hero dashboard-page-hero configuration-page-hero">
         <div class="automation-copy dashboard-page-copy configuration-page-copy">
-          <p class="automation-kicker dashboard-page-eyebrow">{{ t('nav.configuration') }}</p>
+          <p class="automation-kicker dashboard-page-eyebrow">{{ t('nav.automation') }}</p>
           <h1 class="automation-title dashboard-page-title configuration-page-title">
             {{ t('cron.title') }}
           </h1>
@@ -357,6 +575,8 @@ function getJobPreview(job: CronJob): string {
           </p>
         </div>
       </section>
+
+      <AutomationTabs class="automation-tab-strip" />
 
       <section class="automation-shell">
         <section class="automation-surface-panel automation-panel-card automation-library-card">
@@ -480,7 +700,7 @@ function getJobPreview(job: CronJob): string {
                 </span>
               </div>
 
-              <h3 class="automation-job-name">{{ job.name }}</h3>
+              <h3 class="automation-job-name">{{ getJobDisplayName(job) }}</h3>
 
               <p v-if="job.description" class="automation-job-description">
                 {{ job.description }}
@@ -682,9 +902,9 @@ function getJobPreview(job: CronJob): string {
               <input
                 v-model="jobForm.name"
                 type="text"
-                required
-                :placeholder="t('cron.namePlaceholder')"
+                :placeholder="suggestedCreateJobName || t('cron.namePlaceholder')"
                 class="automation-input"
+                @input="handleJobNameInput"
               />
             </div>
 
@@ -864,7 +1084,7 @@ function getJobPreview(job: CronJob): string {
                 type="submit"
                 :disabled="
                   loading ||
-                  !jobForm.name ||
+                  !resolveFormJobName() ||
                   !jobForm.schedule ||
                   (showCreateModal && !jobForm.handler) ||
                   (jobForm.handler === 'command' && !jobForm.command) ||
@@ -898,7 +1118,7 @@ function getJobPreview(job: CronJob): string {
       <div class="automation-surface-panel automation-modal-panel automation-modal-panel--wide">
         <div class="automation-modal-header">
           <h3 class="automation-modal-title">
-            {{ t('cron.executionsFor', { name: selectedJob.name }) }}
+            {{ t('cron.executionsFor', { name: getJobDisplayName(selectedJob) }) }}
           </h3>
         </div>
 
@@ -966,6 +1186,11 @@ function getJobPreview(job: CronJob): string {
 .automation-stage {
   position: relative;
   padding: 1.15rem 0 0.35rem;
+}
+
+.automation-tab-strip {
+  position: relative;
+  z-index: 1;
 }
 
 .automation-stage::before,

@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -119,4 +120,30 @@ func TestServerStaleSocketCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	conn.Close()
+}
+
+func TestServerCloseDisconnectsIdleClients(t *testing.T) {
+	sock := shortSock(t)
+	srv := NewServer(sock, zap.NewNop())
+	startServerOrSkip(t, srv)
+
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Close()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close() blocked with an idle client connection")
+	}
 }

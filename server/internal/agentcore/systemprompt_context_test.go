@@ -635,6 +635,9 @@ func TestBuildSkillsSection_UsesWebFetchBrowserRouting(t *testing.T) {
 	if !strings.Contains(section, "blue exec command='...'") {
 		t.Fatalf("expected skills section to mention external CLI execution via blue exec, got: %s", section)
 	}
+	if !strings.Contains(section, `blue deep_research query="latest memory architecture research"`) {
+		t.Fatalf("expected skills section to include explicit deep_research query example, got: %s", section)
+	}
 	if !strings.Contains(section, "blue media generate") {
 		t.Fatalf("expected skills section to mention media subcommand routing, got: %s", section)
 	}

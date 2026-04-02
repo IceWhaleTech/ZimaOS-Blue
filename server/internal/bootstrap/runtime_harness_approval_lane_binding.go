@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -20,11 +21,13 @@ func newApprovalRuntimeBinding(
 	handler *networkapi.ApprovalHandler,
 	execApprovals *tools.ApprovalManager,
 	registry *tools.Registry,
+	auxiliaryLLM llm.Provider,
 	metrics workflowRuntimeMetricsRecorder,
 ) approvalRuntimeBinding {
 	if handler == nil {
 		return approvalRuntimeBinding{}
 	}
+	handler.SetRiskScorer(networkapi.NewLLMToolApprovalRiskScorer(auxiliaryLLM, registry))
 	observer := harnessRuntimeObserver(bundle)
 	binding := approvalRuntimeBinding{
 		handler:  handler,

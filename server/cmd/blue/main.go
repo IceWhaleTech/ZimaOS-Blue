@@ -73,7 +73,7 @@ import (
 )
 
 var (
-	version   = "0.10.36"
+	version   = "0.10.37"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -309,6 +309,8 @@ func main() {
 	}
 }
 
+const runtimeIdleCheckpointThreshold = 5 * time.Minute
+
 func shouldSkipStartupSTTAuthorization(args []string) bool {
 	var positional []string
 	for i := 0; i < len(args); i++ {
@@ -451,19 +453,25 @@ func runServer() {
 		}
 		entry.Msg("Legacy harness store imported into blue.db")
 	}
+	runtimeActivity := server.NewRuntimeActivityTracker()
 	if cfg.Performance.Database.CheckpointInterval > 0 {
-		dbutil.StartPeriodicWALCheckpoint(
+		dbutil.StartIdleAwarePeriodicWALCheckpoint(
 			lm.Context(),
 			db,
 			cfg.Performance.Database.CheckpointInterval,
+			runtimeIdleCheckpointThreshold,
+			func(ctx context.Context) (bool, string, error) {
+				return runtimeActivity.CheckpointIdle(ctx, dbReader, runtimeIdleCheckpointThreshold)
+			},
 			dbutil.CheckpointTruncate,
 			func(err error) {
-				logger.Warn().Err(err).Msg("Periodic WAL checkpoint failed")
+				logger.Warn().Err(err).Msg("Idle-aware WAL checkpoint failed")
 			},
 		)
 		logger.Info().
 			Dur("interval", cfg.Performance.Database.CheckpointInterval).
-			Msg("Periodic WAL checkpoint enabled")
+			Dur("idle_threshold", runtimeIdleCheckpointThreshold).
+			Msg("Idle-aware WAL checkpoint enabled")
 	} else {
 		logger.Info().Msg("Periodic WAL checkpoint disabled")
 	}
@@ -511,6 +519,7 @@ func runServer() {
 	chatDBPath := filepath.Join(dataDir, "blue.db")
 	chatStoreOpts := memory.DefaultChatStoreOptions(chatDBPath)
 	chatStoreOpts.Durability = cfg.Session.ChatDBDurability
+	chatStoreOpts.CheckpointInterval = 0
 	chatStoreOpts.AttachmentExternalStore = cfg.Session.ChatAttachmentExternalStore
 	if chatStoreOpts.AttachmentExternalStore {
 		chatStoreOpts.AttachmentDir = filepath.Join(dataDir, "message_attachments")
@@ -603,7 +612,7 @@ func runServer() {
 			CleanupBatchSize:   cfg.Session.Audit.CleanupBatchSize,
 			Durability:         cfg.Session.ChatDBDurability,
 			WALAutoCheckpoint:  4000,
-			CheckpointInterval: 60 * time.Second,
+			CheckpointInterval: 0,
 		}
 		auditDBPath := sessionaudit.ResolveDBPath(dataDir, cfg.Session.Audit.Path)
 		var (
@@ -796,9 +805,9 @@ func runServer() {
 			RetentionDays:      7,
 			Path:               filepath.Join(dataDir, "backups"),
 			SkillsPath:         filepath.Join(dataDir, "workspace", ".claude", "skills"),
-			AutoBackup:         true,
+			AutoBackup:         false,
 			AutoBackupInterval: 6 * time.Hour,
-			AutoBackupOnChange: true,
+			AutoBackupOnChange: false,
 			ChangePollInterval: time.Minute,
 			ChangeDebounce:     5 * time.Minute,
 		}, dataDir, dataDir)
@@ -806,7 +815,6 @@ func runServer() {
 			logger.Warn().Err(err).Msg("Failed to initialize backup manager")
 			return
 		}
-		backupManager.StartAutoBackup(lm.Context())
 		backupHandler = backup.NewHandler(backupManager)
 		backupHandler.SetRestartFunc(func() error {
 			logger.Info().Msg("Backup restore staged; sending SIGTERM for graceful restart")
@@ -816,7 +824,7 @@ func runServer() {
 			}
 			return proc.Signal(syscall.SIGTERM)
 		})
-		logger.Info().Msg("Backup manager initialized")
+		logger.Info().Msg("Backup manager initialized with runtime auto backup disabled")
 	})
 
 	// Browser automation service — lazy init, only when first API call arrives
@@ -1335,6 +1343,7 @@ func runServer() {
 
 	// Initialize HTTP server
 	srv := server.New(&cfg.Server)
+	srv.Echo().Use(runtimeActivity.MutationMiddleware())
 	server.SetVersion(version)
 	srv.RegisterHealthRoutes()
 

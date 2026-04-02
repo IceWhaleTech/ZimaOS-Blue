@@ -2,9 +2,7 @@
  * Debounce utility for delaying function execution
  */
 
-export type DebouncedFn<T extends (...args: any[]) => any> = ((
-  ...args: Parameters<T>
-) => void) & {
+export type DebouncedFn<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
   cancel: () => void
   flush: () => void
   pending: () => boolean
@@ -33,50 +31,49 @@ export function debounce<T extends (...args: any[]) => any>(
     return result
   }
 
-  const debounced = function (this: ThisParameterType<T>, ...args: Parameters<T>) {
-    lastArgs = args
-    lastThis = this
+  const debounced = Object.assign(
+    function (this: ThisParameterType<T>, ...args: Parameters<T>) {
+      lastArgs = args
+      lastThis = this
 
-    const callNow = immediate && !timeoutId
+      const callNow = immediate && !timeoutId
 
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-    }
-
-    timeoutId = setTimeout(() => {
-      timeoutId = null
-      if (!immediate) {
-        invoke()
+      if (timeoutId) {
+        clearTimeout(timeoutId)
       }
-    }, wait)
 
-    if (callNow) {
-      return invoke()
+      timeoutId = setTimeout(() => {
+        timeoutId = null
+        if (!immediate) {
+          invoke()
+        }
+      }, wait)
+
+      if (callNow) {
+        return invoke()
+      }
+
+      return result
+    },
+    {
+      cancel: () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        lastArgs = null
+        lastThis = null
+      },
+      flush: () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        return invoke()
+      },
+      pending: () => timeoutId !== null,
     }
-
-    return result
-  } as DebouncedFn<T>
-
-  debounced.cancel = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-      timeoutId = null
-    }
-    lastArgs = null
-    lastThis = null
-  }
-
-  debounced.flush = () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-      timeoutId = null
-    }
-    return invoke()
-  }
-
-  debounced.pending = () => {
-    return timeoutId !== null
-  }
+  ) as DebouncedFn<T>
 
   return debounced
 }

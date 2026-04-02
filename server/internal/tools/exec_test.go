@@ -406,6 +406,8 @@ func TestApprovalFlow(t *testing.T) {
 func TestApprovalTimeout(t *testing.T) {
 	broker := sse.NewBroker()
 	defer broker.Close()
+	sub := broker.Subscribe("test-user")
+	defer broker.Unsubscribe("test-user", sub)
 
 	mgr := NewApprovalManager(broker)
 	mgr.timeout = 100 * time.Millisecond // short timeout for test
@@ -459,6 +461,8 @@ func TestApprovalCancellationReturnsStructuredRuntimeError(t *testing.T) {
 func TestApprovalSessionIDPropagationAndLookup(t *testing.T) {
 	broker := sse.NewBroker()
 	defer broker.Close()
+	sub := broker.Subscribe("test-user")
+	defer broker.Unsubscribe("test-user", sub)
 
 	mgr := NewApprovalManager(broker)
 	ctx := WithSessionID(context.Background(), "conv-42")

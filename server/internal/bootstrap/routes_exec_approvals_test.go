@@ -21,7 +21,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-func newExecApprovalRoutesTestHarness(t *testing.T) (*echo.Echo, *tools.ApprovalManager, *tools.DirAllowlistStore, *auth.JWTService) {
+func newExecApprovalRoutesTestHarness(t *testing.T) (*echo.Echo, *tools.ApprovalManager, *tools.DirAllowlistStore, *sse.Broker, *auth.JWTService) {
 	t.Helper()
 
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -53,7 +53,7 @@ func newExecApprovalRoutesTestHarness(t *testing.T) (*echo.Echo, *tools.Approval
 	registerExecApprovalRoutes(execGroup, approvals)
 	registerExecDirectoryApprovalRoutes(execGroup, dirStore)
 
-	return e, approvals, dirStore, jwtSvc
+	return e, approvals, dirStore, broker, jwtSvc
 }
 
 func mustExecApprovalAccessToken(t *testing.T, jwtSvc *auth.JWTService, userID string) string {
@@ -71,7 +71,9 @@ func mustExecApprovalAccessToken(t *testing.T, jwtSvc *auth.JWTService, userID s
 }
 
 func TestExecApprovalRoutesExposePendingAndResolveWithBinding(t *testing.T) {
-	e, approvals, _, jwtSvc := newExecApprovalRoutesTestHarness(t)
+	e, approvals, _, broker, jwtSvc := newExecApprovalRoutesTestHarness(t)
+	sub := broker.Subscribe("user-a")
+	t.Cleanup(func() { broker.Unsubscribe("user-a", sub) })
 
 	decisionCh := make(chan tools.ApprovalDecision, 1)
 	errCh := make(chan error, 1)
@@ -142,7 +144,7 @@ func TestExecApprovalRoutesExposePendingAndResolveWithBinding(t *testing.T) {
 }
 
 func TestExecDirectoryApprovalRoutesListAndDeleteEnforceOwnership(t *testing.T) {
-	e, _, dirStore, jwtSvc := newExecApprovalRoutesTestHarness(t)
+	e, _, dirStore, _, jwtSvc := newExecApprovalRoutesTestHarness(t)
 	base := t.TempDir()
 	userAPath := filepath.Join(base, "user-a")
 	userBPath := filepath.Join(base, "user-b")
@@ -217,5 +219,93 @@ func TestExecDirectoryApprovalRoutesListAndDeleteEnforceOwnership(t *testing.T) 
 	}
 	if got := dirStore.Match(filepath.Join(userBPath, "workspace")); got == nil {
 		t.Fatal("expected user-b directory to remain")
+	}
+}
+
+func TestExecApprovalRoutesPreferSessionScopedPendingWhenMultipleSessionsExist(t *testing.T) {
+	e, approvals, _, broker, jwtSvc := newExecApprovalRoutesTestHarness(t)
+	sub := broker.Subscribe("user-a")
+	t.Cleanup(func() { broker.Unsubscribe("user-a", sub) })
+
+	done1 := make(chan struct{})
+	done2 := make(chan struct{})
+	go func() {
+		defer close(done1)
+		_, _ = approvals.RequestApproval(context.Background(), tools.ApprovalRequest{
+			Type:      "command",
+			Command:   "echo session-1",
+			UserID:    "user-a",
+			SessionID: "session-1",
+		})
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+
+	go func() {
+		defer close(done2)
+		_, _ = approvals.RequestApproval(context.Background(), tools.ApprovalRequest{
+			Type:      "command",
+			Command:   "echo session-2",
+			UserID:    "user-a",
+			SessionID: "session-2",
+		})
+	}()
+
+	var pending1 *tools.ApprovalRequest
+	var pending2 *tools.ApprovalRequest
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		pending1 = approvals.GetPendingBySession("session-1")
+		pending2 = approvals.GetPendingBySession("session-2")
+		if pending1 != nil && pending2 != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pending1 == nil || pending2 == nil {
+		t.Fatalf("expected both session-scoped pending approvals, got session-1=%+v session-2=%+v", pending1, pending2)
+	}
+
+	reqPending := httptest.NewRequest(http.MethodGet, "/api/v1/exec/approvals/pending?session_id=session-1", nil)
+	reqPending.Header.Set(echo.HeaderAuthorization, "Bearer "+mustExecApprovalAccessToken(t, jwtSvc, "user-a"))
+	recPending := httptest.NewRecorder()
+	e.ServeHTTP(recPending, reqPending)
+	if recPending.Code != http.StatusOK {
+		t.Fatalf("pending status=%d, want 200, body=%s", recPending.Code, recPending.Body.String())
+	}
+
+	var pendingBody struct {
+		Pending  bool                   `json:"pending"`
+		Approval *tools.ApprovalRequest `json:"approval"`
+	}
+	if err := json.Unmarshal(recPending.Body.Bytes(), &pendingBody); err != nil {
+		t.Fatalf("decode pending response: %v", err)
+	}
+	if !pendingBody.Pending || pendingBody.Approval == nil {
+		t.Fatalf("unexpected pending payload: %+v", pendingBody)
+	}
+	if pendingBody.Approval.ID != pending1.ID {
+		t.Fatalf("approval id = %q, want session-1 approval %q", pendingBody.Approval.ID, pending1.ID)
+	}
+	if pendingBody.Approval.SessionID != "session-1" {
+		t.Fatalf("session_id = %q, want %q", pendingBody.Approval.SessionID, "session-1")
+	}
+
+	if !approvals.ResolveApprovalWithBinding(pending1.ID, tools.ApprovalDeny, pending1.BindingHash) {
+		t.Fatalf("failed to resolve pending approval %q", pending1.ID)
+	}
+	if !approvals.ResolveApprovalWithBinding(pending2.ID, tools.ApprovalDeny, pending2.BindingHash) {
+		t.Fatalf("failed to resolve pending approval %q", pending2.ID)
+	}
+
+	select {
+	case <-done1:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for session-1 approval request to exit")
+	}
+	select {
+	case <-done2:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for session-2 approval request to exit")
 	}
 }

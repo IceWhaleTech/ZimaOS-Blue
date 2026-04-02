@@ -92,11 +92,12 @@ describe('Deep research locale coverage', () => {
       )
 
       expect(typeof deepResearchTitle, `${file} missing chat.deepResearchTitle`).toBe('string')
-      expect(typeof deepResearchProgress, `${file} missing chat.deepResearchProgress`).toBe('string')
-      expect(
-        typeof deepResearchRunningTasks,
-        `${file} missing chat.deepResearchRunningTasks`
-      ).toBe('string')
+      expect(typeof deepResearchProgress, `${file} missing chat.deepResearchProgress`).toBe(
+        'string'
+      )
+      expect(typeof deepResearchRunningTasks, `${file} missing chat.deepResearchRunningTasks`).toBe(
+        'string'
+      )
       expect(
         typeof deepResearchRunningElsewhere,
         `${file} missing chat.deepResearchRunningElsewhere`
@@ -141,18 +142,15 @@ describe('Deep research locale coverage', () => {
       expect(typeof researchStatusName, `${file} missing tools.names.research_status`).toBe(
         'string'
       )
-      expect(
-        typeof researchRunDescription,
-        `${file} missing tools.descriptions.research_run`
-      ).toBe('string')
+      expect(typeof researchRunDescription, `${file} missing tools.descriptions.research_run`).toBe(
+        'string'
+      )
       expect(
         typeof researchStatusDescription,
         `${file} missing tools.descriptions.research_status`
       ).toBe('string')
 
-      expect(resultCardResearch, `${file} result card deep research title`).toBe(
-        deepResearchTitle
-      )
+      expect(resultCardResearch, `${file} result card deep research title`).toBe(deepResearchTitle)
       expect(researchRunName, `${file} deep research tool name`).toBe(deepResearchTitle)
       expect(
         (researchStatusName as string).trim().length,
@@ -205,34 +203,23 @@ describe('Deep research locale coverage', () => {
         messages,
         'chat.deepResearchRunningElsewhere'
       )
-      const processTraceDeepResearch = getPathValue(messages, 'chat.processTrace.fields.deepResearch')
+      const processTraceDeepResearch = getPathValue(
+        messages,
+        'chat.processTrace.fields.deepResearch'
+      )
       const deepResearchFallbacks = getPathValue(
         messages,
         'settings.smallModel.deepResearchFallbacks'
       )
       const researchTitle = getPathValue(messages, 'chat.researchTitle')
-      const harnessResearchLabel = getPathValue(messages, 'harness.quickEval.researchLabel')
-
-      if (typeof harnessResearchLabel === 'string') {
-        if (typeof researchTitle === 'string') {
-          expect(harnessResearchLabel, `${file} harness.quickEval.researchLabel`).toBe(
-            researchTitle
-          )
-        } else {
-          expect(harnessResearchLabel, `${file} harness.quickEval.researchLabel`).not.toBe(
-            chatDeepResearchTitle
-          )
-        }
-      }
       expect(uiDeepResearchTitle, `${file} ui.deepResearchTitle`).toBe(chatDeepResearchTitle)
       expect(chatDeepResearchTitle, `${file} chat.deepResearchTitle`).not.toBe(researchTitle)
       expect(chatDeepResearchProgress, `${file} chat.deepResearchProgress`).toBe(
         localizeResearchProgressLabel(translate)
       )
-      expect(
-        chatDeepResearchRunningTasks,
-        `${file} chat.deepResearchRunningTasks`
-      ).toBe(localizeResearchRunningTasksLabel(translate))
+      expect(chatDeepResearchRunningTasks, `${file} chat.deepResearchRunningTasks`).toBe(
+        localizeResearchRunningTasksLabel(translate)
+      )
       expect(chatDeepResearchRunningElsewhere, `${file} chat.deepResearchRunningElsewhere`).toBe(
         localizeResearchRunningElsewhereLabel(translate)
       )

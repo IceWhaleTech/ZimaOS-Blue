@@ -35,6 +35,7 @@ func bindDeferredRuntimeApproval(wiring runtimeDeferredApprovalWiring) {
 		wiring.handler,
 		wiring.execApprovals,
 		wiring.registry,
+		wiring.auxiliaryLLM,
 		wiring.metrics,
 		wiring.detailTarget,
 		wiring.handlerTarget,

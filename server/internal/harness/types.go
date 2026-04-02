@@ -356,6 +356,7 @@ type RunGroupReport struct {
 	Artifacts       []ArtifactRef                     `json:"artifacts,omitempty"`
 	Scorecards      []Scorecard                       `json:"scorecards,omitempty"`
 	RuntimeEvidence map[string][]RuntimeEvidenceEntry `json:"runtime_evidence,omitempty"`
+	RuntimeTraces   map[string]RunTrace               `json:"runtime_traces,omitempty"`
 	ItemContracts   map[string]HarnessContract        `json:"item_contracts,omitempty"`
 	Checkpoints     []CheckpointArtifact              `json:"checkpoints,omitempty"`
 }
@@ -367,6 +368,42 @@ func cloneMetadataMap(in map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(in))
 	for k, v := range in {
 		out[k] = v
+	}
+	return out
+}
+
+func cloneRunTraceMap(in map[string]RunTrace) map[string]RunTrace {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]RunTrace, len(in))
+	for key, value := range in {
+		out[key] = cloneRunTrace(value)
+	}
+	return out
+}
+
+func cloneRunTrace(in RunTrace) RunTrace {
+	out := in
+	out.StartedAt = cloneRunTimePtr(in.StartedAt)
+	out.FinishedAt = cloneRunTimePtr(in.FinishedAt)
+	if len(in.Stages) > 0 {
+		out.Stages = make([]RunTraceStage, len(in.Stages))
+		for i, stage := range in.Stages {
+			out.Stages[i] = RunTraceStage{
+				Stage:     stage.Stage,
+				Message:   stage.Message,
+				Status:    stage.Status,
+				Details:   cloneMetadataMap(stage.Details),
+				CreatedAt: stage.CreatedAt,
+			}
+		}
+	}
+	if len(in.Events) > 0 {
+		out.Events = append([]RunTraceEvent(nil), in.Events...)
+	}
+	if len(in.Artifacts) > 0 {
+		out.Artifacts = append([]ArtifactRef(nil), in.Artifacts...)
 	}
 	return out
 }

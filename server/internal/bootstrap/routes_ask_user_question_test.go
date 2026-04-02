@@ -140,3 +140,95 @@ func TestAskUserQuestionRoutesExposePendingAndResolveAnswers(t *testing.T) {
 		t.Fatal("timed out waiting for answer resolution")
 	}
 }
+
+func TestAskUserQuestionRoutesPreferSessionScopedPendingWhenMultipleSessionsExist(t *testing.T) {
+	e, questionMgr, broker, jwtSvc := newAskUserQuestionRoutesTestHarness(t)
+	sub := broker.Subscribe("user-a")
+	t.Cleanup(func() { broker.Unsubscribe("user-a", sub) })
+
+	done1 := make(chan struct{})
+	done2 := make(chan struct{})
+	go func() {
+		defer close(done1)
+		_, _, _ = questionMgr.AskQuestions(context.Background(), "user-a", "session-1", []tools.QuestionItem{
+			{
+				ID:       "q1",
+				Header:   "First",
+				Question: "First session?",
+				Options:  []tools.QuestionOption{{Label: "Continue", Value: "continue"}},
+			},
+		})
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+
+	go func() {
+		defer close(done2)
+		_, _, _ = questionMgr.AskQuestions(context.Background(), "user-a", "session-2", []tools.QuestionItem{
+			{
+				ID:       "q2",
+				Header:   "Second",
+				Question: "Second session?",
+				Options:  []tools.QuestionOption{{Label: "Continue", Value: "continue"}},
+			},
+		})
+	}()
+
+	var pending1 *tools.QuestionRequest
+	var pending2 *tools.QuestionRequest
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		pending1 = questionMgr.GetPendingBySession("session-1")
+		pending2 = questionMgr.GetPendingBySession("session-2")
+		if pending1 != nil && pending2 != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pending1 == nil || pending2 == nil {
+		t.Fatalf("expected both session-scoped pending questions, got session-1=%+v session-2=%+v", pending1, pending2)
+	}
+
+	reqPending := httptest.NewRequest(http.MethodGet, "/api/v1/ask-user-question/pending?session_id=session-1", nil)
+	reqPending.Header.Set(echo.HeaderAuthorization, "Bearer "+mustAskUserQuestionAccessToken(t, jwtSvc, "user-a"))
+	recPending := httptest.NewRecorder()
+	e.ServeHTTP(recPending, reqPending)
+	if recPending.Code != http.StatusOK {
+		t.Fatalf("pending status=%d, want 200, body=%s", recPending.Code, recPending.Body.String())
+	}
+
+	var pendingBody struct {
+		Pending  bool                   `json:"pending"`
+		Question *tools.QuestionRequest `json:"question"`
+	}
+	if err := json.Unmarshal(recPending.Body.Bytes(), &pendingBody); err != nil {
+		t.Fatalf("decode pending response: %v", err)
+	}
+	if !pendingBody.Pending || pendingBody.Question == nil {
+		t.Fatalf("unexpected pending payload: %+v", pendingBody)
+	}
+	if pendingBody.Question.ID != pending1.ID {
+		t.Fatalf("question id = %q, want session-1 question %q", pendingBody.Question.ID, pending1.ID)
+	}
+	if pendingBody.Question.SessionID != "session-1" {
+		t.Fatalf("session_id = %q, want %q", pendingBody.Question.SessionID, "session-1")
+	}
+
+	if !questionMgr.ResolveAnswer(pending1.ID, []tools.QuestionAnswerResult{{QuestionID: "q1", Selected: []string{"continue"}}}) {
+		t.Fatalf("failed to resolve pending question %q", pending1.ID)
+	}
+	if !questionMgr.ResolveAnswer(pending2.ID, []tools.QuestionAnswerResult{{QuestionID: "q2", Selected: []string{"continue"}}}) {
+		t.Fatalf("failed to resolve pending question %q", pending2.ID)
+	}
+
+	select {
+	case <-done1:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for session-1 question request to exit")
+	}
+	select {
+	case <-done2:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for session-2 question request to exit")
+	}
+}

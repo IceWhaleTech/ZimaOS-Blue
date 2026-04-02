@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -2754,25 +2755,52 @@ func TestNewHarnessRuntimeExecApprovals_ReturnsNilWithoutBroker(t *testing.T) {
 func TestNewHarnessRuntimeExecApprovals_WiresRuntimeObserverWhenPresent(t *testing.T) {
 	observer := &stubRuntimeObserver{}
 	bundle := &HarnessRuntimeBundle{RuntimeObserver: observer}
-	approvals := newHarnessRuntimeExecApprovals(bundle, sse.NewBroker())
+	broker := sse.NewBroker()
+	defer broker.Close()
+	sub := broker.Subscribe("user-1")
+	defer broker.Unsubscribe("user-1", sub)
+
+	approvals := newHarnessRuntimeExecApprovals(bundle, broker)
 	if approvals == nil {
 		t.Fatal("expected approval manager when broker is present")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	done := make(chan tools.ApprovalDecision, 1)
+	go func() {
+		decision, _ := approvals.RequestApproval(context.Background(), tools.ApprovalRequest{
+			ID:        "approval-1",
+			Type:      "command",
+			Command:   "echo hello",
+			UserID:    "user-1",
+			SessionID: "observer-session",
+		})
+		done <- decision
+	}()
 
-	decision, err := approvals.RequestApproval(ctx, tools.ApprovalRequest{
-		ID:      "approval-1",
-		Type:    "command",
-		Command: "echo hello",
-		UserID:  "user-1",
-	})
-	if err == nil {
-		t.Fatal("expected cancellation error from approval request")
+	deadline := time.Now().Add(2 * time.Second)
+	var pending *tools.ApprovalRequest
+	for time.Now().Before(deadline) {
+		pending = approvals.GetPendingBySession("observer-session")
+		if pending != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if decision != tools.ApprovalDeny {
-		t.Fatalf("expected deny decision on cancelled context, got %q", decision)
+	if pending == nil {
+		t.Fatal("expected pending approval request")
+	}
+
+	if !approvals.ResolveApprovalWithBinding(pending.ID, tools.ApprovalAllowOnce, pending.BindingHash) {
+		t.Fatal("expected approval resolution to succeed")
+	}
+
+	select {
+	case decision := <-done:
+		if decision != tools.ApprovalAllowOnce {
+			t.Fatalf("expected allow-once decision, got %q", decision)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for approval resolution")
 	}
 	if len(observer.approvalRequested) != 1 || len(observer.approvalResolved) != 1 {
 		t.Fatalf("expected approval lifecycle events to be observed, got %#v", observer)
@@ -3295,7 +3323,7 @@ func TestNewWorkflowHarnessDriverBinding_RegistersWorkflowDriverOnServiceInit(t 
 }
 
 func TestNewApprovalRuntimeBinding_DisabledWithoutHandler(t *testing.T) {
-	binding := newApprovalRuntimeBinding(nil, nil, tools.NewApprovalManager(sse.NewBroker()), tools.NewRegistry(), &stubMetricsRecorder{})
+	binding := newApprovalRuntimeBinding(nil, nil, tools.NewApprovalManager(sse.NewBroker()), tools.NewRegistry(), nil, &stubMetricsRecorder{})
 	if binding.handler != nil || binding.approver != nil || binding.execResolver != nil || binding.observer != nil {
 		t.Fatalf("expected empty approval binding without handler, got %#v", binding)
 	}
@@ -3311,7 +3339,7 @@ func TestNewApprovalRuntimeBinding_WiresTargetsWhenPresent(t *testing.T) {
 	handler := networkapi.NewApprovalHandler(nil)
 	execApprovals := tools.NewApprovalManager(sse.NewBroker())
 	metrics := &stubMetricsRecorder{}
-	binding := newApprovalRuntimeBinding(bundle, handler, execApprovals, tools.NewRegistry(), metrics)
+	binding := newApprovalRuntimeBinding(bundle, handler, execApprovals, tools.NewRegistry(), nil, metrics)
 	if binding.handler != handler || binding.approver != handler {
 		t.Fatalf("expected handler-backed binding, got %#v", binding)
 	}
@@ -3358,7 +3386,7 @@ func TestNewApprovalRuntimeBinding_OmitsExecResolverWhenExecApprovalsAbsent(t *t
 	defer db.Close()
 
 	handler := networkapi.NewApprovalHandler(nil)
-	binding := newApprovalRuntimeBinding(bundle, handler, nil, tools.NewRegistry(), nil)
+	binding := newApprovalRuntimeBinding(bundle, handler, nil, tools.NewRegistry(), nil, nil)
 
 	handlerTarget := &stubApprovalRuntimeHandlerTarget{}
 	binding.applyHandler(handlerTarget)
@@ -3367,6 +3395,103 @@ func TestNewApprovalRuntimeBinding_OmitsExecResolverWhenExecApprovalsAbsent(t *t
 	}
 	if handlerTarget.observer != bundle.RuntimeObserver || handlerTarget.observerCalls != 1 {
 		t.Fatalf("expected observer binding to remain, got %#v", handlerTarget)
+	}
+}
+
+func TestNewApprovalRuntimeBinding_WiresLLMRiskScorerWhenAuxiliaryPresent(t *testing.T) {
+	e := echo.New()
+	broker := sse.NewBroker()
+	defer broker.Close()
+	sub := broker.Subscribe("user-1")
+	defer broker.Unsubscribe("user-1", sub)
+
+	handler := networkapi.NewApprovalHandler(broker)
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{
+		Name:        "file_write",
+		Description: "Writes content to a file.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path":    map[string]interface{}{"type": "string"},
+				"content": map[string]interface{}{"type": "string"},
+			},
+		},
+	})
+	auxiliary := &stubApprovalRiskLLMCaller{
+		content: `{"score":92,"confidence":0.95,"risk_level":"high","recommended_mode":"ask","reason":"writes a file"}`,
+	}
+	newApprovalRuntimeBinding(nil, handler, nil, registry, auxiliary, nil)
+
+	done := make(chan tools.ToolApprovalDecision, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		decision, err := handler.AuthorizeToolCall(context.Background(), tools.ToolApprovalRequest{
+			ToolName: "file_write",
+			Arguments: map[string]interface{}{
+				"path":    "notes.txt",
+				"content": "hello",
+			},
+			RouteKind: tools.ToolRouteKindAgent,
+			SessionID: "conv-binding-risk",
+			UserID:    "user-1",
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		done <- decision
+	}()
+
+	var requestID string
+	for i := 0; i < 100; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/approval/pending?session_id=conv-binding-risk", nil)
+		rec := httptest.NewRecorder()
+		if err := handler.ListPending(e.NewContext(req, rec)); err != nil {
+			t.Fatalf("ListPending() error = %v", err)
+		}
+		var pending []networkapi.PendingRequest
+		if err := json.Unmarshal(rec.Body.Bytes(), &pending); err != nil {
+			t.Fatalf("decode pending approvals: %v", err)
+		}
+		if len(pending) > 0 {
+			requestID = pending[0].ID
+		}
+		if requestID != "" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if requestID == "" {
+		t.Fatal("expected pending approval request")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/approval/resolve", strings.NewReader(`{"request_id":"`+requestID+`","decision":"approve"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	if err := handler.Resolve(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("AuthorizeToolCall() error = %v", err)
+	case decision := <-done:
+		if !decision.Allowed {
+			t.Fatal("expected approved decision")
+		}
+		if decision.Approval.PolicySource != "approval.llm_risk_score" {
+			t.Fatalf("policy source = %q, want approval.llm_risk_score", decision.Approval.PolicySource)
+		}
+		if decision.Approval.Mode != "ask" {
+			t.Fatalf("mode = %q, want ask", decision.Approval.Mode)
+		}
+	}
+	if auxiliary.calls != 1 {
+		t.Fatalf("auxiliary calls = %d, want 1", auxiliary.calls)
 	}
 }
 
@@ -3388,6 +3513,7 @@ func TestBindHarnessRuntimeApproval_WiresTargetsWhenPresent(t *testing.T) {
 		handler,
 		execApprovals,
 		tools.NewRegistry(),
+		nil,
 		metrics,
 		detail,
 		handlerTarget,
@@ -4825,6 +4951,34 @@ type stubHarnessJudgeLLMCaller struct{}
 
 func (s *stubHarnessJudgeLLMCaller) Chat(_ context.Context, _ llm.ChatRequest) (*llm.ChatResponse, error) {
 	return &llm.ChatResponse{}, nil
+}
+
+type stubApprovalRiskLLMCaller struct {
+	content string
+	err     error
+	calls   int
+}
+
+func (s *stubApprovalRiskLLMCaller) Name() string { return "stub-risk" }
+
+func (s *stubApprovalRiskLLMCaller) Models() []string { return []string{"stub-risk"} }
+
+func (s *stubApprovalRiskLLMCaller) Chat(_ context.Context, _ llm.ChatRequest) (*llm.ChatResponse, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &llm.ChatResponse{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: s.content},
+	}, nil
+}
+
+func (s *stubApprovalRiskLLMCaller) ChatStream(_ context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (s *stubApprovalRiskLLMCaller) ChatStreamCallback(_ context.Context, _ llm.ChatRequest, _ llm.StreamCallback) error {
+	return fmt.Errorf("not implemented")
 }
 
 type stubApprovalRuntimeHandlerTarget struct {

@@ -84,27 +84,32 @@ const (
 // CheckAndAutoRecover checks database integrity and automatically recovers from backup if corrupted.
 // This should be called during application startup before opening databases.
 func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*AutoRecoveryResult, error) {
+	startedAt := time.Now()
 	result := &AutoRecoveryResult{
 		DatabasesChecked: make([]string, 0),
 	}
+
+	backupLogf("startup auto-recovery started databases=%d", len(dbPaths))
 
 	// Check each database for corruption
 	var corruptedDBs []string
 	for _, dbPath := range dbPaths {
 		result.DatabasesChecked = append(result.DatabasesChecked, dbPath)
+		backupLogf("startup auto-recovery checking database db_path=%s", dbPath)
 
 		// First, checkpoint WAL back into the main database file.
 		// This preserves committed data and avoids dropping WAL content.
 		if err := database.CheckpointWALForDatabase(dbPath, database.CheckpointTruncate); err != nil {
-			// Log but continue - this is not fatal
-			fmt.Printf("Warning: failed to checkpoint WAL for %s: %v\n", dbPath, err)
+			backupLogf("startup auto-recovery WAL checkpoint failed db_path=%s error=%v", dbPath, err)
 		}
 
 		// Check database integrity
 		if err := database.QuickCheckDatabase(dbPath); err != nil {
 			if database.IsSQLiteCorruptionError(err) {
+				backupLogf("startup auto-recovery detected corruption db_path=%s error=%v", dbPath, err)
 				if rebuilt, ftsErr := database.RepairKnownFTSIndexes(dbPath); ftsErr == nil {
 					if len(rebuilt) > 0 {
+						backupLogf("startup auto-recovery rebuilt FTS indexes db_path=%s tables=%v", dbPath, rebuilt)
 						if retryErr := database.QuickCheckDatabase(dbPath); retryErr == nil {
 							result.RepairedDatabases = append(result.RepairedDatabases, dbPath)
 							if result.RepairDetails == nil {
@@ -115,7 +120,7 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 						}
 					}
 				} else {
-					fmt.Printf("Warning: failed to rebuild known FTS indexes for %s: %v\n", dbPath, ftsErr)
+					backupLogf("startup auto-recovery FTS rebuild failed db_path=%s error=%v", dbPath, ftsErr)
 				}
 				if repairResult, repairErr := database.RepairSQLiteDatabase(dbPath); repairErr == nil {
 					result.RepairedDatabases = append(result.RepairedDatabases, dbPath)
@@ -128,9 +133,10 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 						detail.Warning = repairResult.RecoverWarning
 					}
 					result.RepairDetails[dbPath] = detail
+					backupLogf("startup auto-recovery repaired database db_path=%s method=%s partial_import=%t warning=%q", dbPath, detail.Method, detail.PartialImport, detail.Warning)
 					continue
 				} else {
-					fmt.Printf("Warning: failed to repair sqlite database %s: %v\n", dbPath, repairErr)
+					backupLogf("startup auto-recovery sqlite repair failed db_path=%s error=%v", dbPath, repairErr)
 				}
 			}
 			corruptedDBs = append(corruptedDBs, dbPath)
@@ -140,6 +146,12 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 
 	// If no corruption found, return early
 	if len(corruptedDBs) == 0 {
+		backupLogf(
+			"startup auto-recovery completed without backup restore checked=%d repaired=%d duration=%s",
+			len(result.DatabasesChecked),
+			len(result.RepairedDatabases),
+			time.Since(startedAt),
+		)
 		return result, nil
 	}
 
@@ -147,8 +159,10 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 	backups := m.List()
 	if len(backups) == 0 {
 		result.Error = "database corruption detected but no backups available for recovery"
+		backupLogf("startup auto-recovery failed corrupted_databases=%v error=%s", corruptedDBs, result.Error)
 		return result, fmt.Errorf("%s", result.Error)
 	}
+	backupLogf("startup auto-recovery attempting backup restore corrupted_databases=%v candidates=%d", corruptedDBs, len(backups))
 
 	// Sort backups by creation time (newest first)
 	sort.Slice(backups, func(i, j int) bool {
@@ -158,6 +172,7 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 	// Try to restore from the most recent valid backup
 	var lastErr error
 	for _, backup := range backups {
+		backupLogf("startup auto-recovery trying backup backup_id=%s created_at=%s", backup.ID, backup.CreatedAt.Format(time.RFC3339))
 		// Verify backup integrity first
 		if err := m.Verify(backup.ID); err != nil {
 			// If checksum mismatch, try to repair it first
@@ -166,10 +181,12 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 				// Retry verification after repair
 				if verifyErr := m.Verify(backup.ID); verifyErr != nil {
 					lastErr = verifyErr
+					backupLogf("startup auto-recovery backup verify failed after checksum repair backup_id=%s error=%v", backup.ID, verifyErr)
 					continue
 				}
 			} else {
 				lastErr = err
+				backupLogf("startup auto-recovery backup verify failed backup_id=%s error=%v", backup.ID, err)
 				continue
 			}
 		}
@@ -181,6 +198,7 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 		restoreResult, err := m.Restore(ctx, backup.ID, opts)
 		if err != nil {
 			lastErr = err
+			backupLogf("startup auto-recovery backup restore failed backup_id=%s error=%v", backup.ID, err)
 			continue
 		}
 
@@ -191,13 +209,21 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 			result.BackupID = backup.ID
 			result.BackupTime = backup.CreatedAt
 			result.FilesRecovered = restoreResult.FilesRestored
+			backupLogf(
+				"startup auto-recovery restored from backup backup_id=%s files_recovered=%d duration=%s",
+				backup.ID,
+				restoreResult.FilesRestored,
+				time.Since(startedAt),
+			)
 			return result, nil
 		}
 
 		lastErr = fmt.Errorf("restore completed with errors: %v", restoreResult.Errors)
+		backupLogf("startup auto-recovery backup restore completed with errors backup_id=%s errors=%v", backup.ID, restoreResult.Errors)
 	}
 
 	result.Error = fmt.Sprintf("failed to recover from any backup: %v", lastErr)
+	backupLogf("startup auto-recovery failed duration=%s error=%s", time.Since(startedAt), result.Error)
 	return result, fmt.Errorf("%s", result.Error)
 }
 

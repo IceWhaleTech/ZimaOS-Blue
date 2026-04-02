@@ -22,6 +22,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	listener net.Listener
+	conns    map[net.Conn]struct{}
 	wg       sync.WaitGroup
 	closed   bool
 }
@@ -34,6 +35,7 @@ func NewServer(path string, log *zap.Logger) *Server {
 	return &Server{
 		path:     path,
 		handlers: make(map[string]Handler),
+		conns:    make(map[net.Conn]struct{}),
 		log:      log,
 	}
 }
@@ -71,12 +73,25 @@ func (s *Server) Start() error {
 // Close shuts down the listener and waits for in-flight connections.
 func (s *Server) Close() error {
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		s.wg.Wait()
+		cleanup(s.path)
+		return nil
+	}
 	s.closed = true
 	ln := s.listener
+	conns := make([]net.Conn, 0, len(s.conns))
+	for conn := range s.conns {
+		conns = append(conns, conn)
+	}
 	s.mu.Unlock()
 
 	if ln != nil {
-		ln.Close()
+		_ = ln.Close()
+	}
+	for _, conn := range conns {
+		_ = conn.Close()
 	}
 	s.wg.Wait()
 	cleanup(s.path)
@@ -97,13 +112,35 @@ func (s *Server) acceptLoop() {
 			s.log.Warn("sockipc accept error", zap.Error(err))
 			continue
 		}
+		if !s.trackConn(conn) {
+			_ = conn.Close()
+			return
+		}
 		s.wg.Add(1)
 		go s.handleConn(conn)
 	}
 }
 
+func (s *Server) trackConn(conn net.Conn) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return false
+	}
+	s.conns[conn] = struct{}{}
+	return true
+}
+
+func (s *Server) untrackConn(conn net.Conn) {
+	s.mu.Lock()
+	delete(s.conns, conn)
+	s.mu.Unlock()
+}
+
 func (s *Server) handleConn(conn net.Conn) {
 	defer s.wg.Done()
+	defer s.untrackConn(conn)
 	defer conn.Close()
 
 	for {

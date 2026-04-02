@@ -37,6 +37,8 @@ function createTestI18n() {
           taskStageWorking: 'Working',
           taskStageVerifying: 'Verifying',
           taskStageWaiting: 'Waiting',
+          taskStageCompleted: 'Completed',
+          taskStagePartial: 'Partially passed',
           taskRunningElsewhere: 'Track active work running in other conversations.',
           taskKindResearch: 'Deep Research',
           taskKindAgent: 'Agent',
@@ -45,6 +47,17 @@ function createTestI18n() {
           taskResume: 'Resume',
           taskCancel: 'Cancel',
           taskRuntimeExecute: 'Executing',
+          taskHarnessRunStatus: 'Run',
+          taskHarnessVerificationStatus: 'Verification',
+          taskHarnessRecorded: 'Recorded',
+          taskHarnessViewDetails: 'View run details',
+          taskHarnessAddToRegression: 'Add to regression',
+          taskHarnessRerun: 'Rerun',
+        },
+        harness: {
+          groups: {
+            score: 'Score',
+          },
         },
       },
     },
@@ -98,6 +111,23 @@ function makeTasks() {
       },
       updated_at: '2026-03-20T11:58:00.000Z',
     },
+    {
+      id: 'task-3',
+      kind: 'agent_task',
+      scope: 'background',
+      conversation_id: 'conv-3',
+      title: 'Harness validation',
+      status: 'failed',
+      stage: 'partial',
+      progress: 100,
+      actions: { items: [] },
+      run_status: 'completed',
+      verification_status: 'partial',
+      score: 0.84,
+      evidence_count: 3,
+      detail_href: '/automation/harness/group-1',
+      updated_at: '2026-03-20T11:56:00.000Z',
+    },
   ]
 }
 
@@ -146,9 +176,15 @@ describe('UserTaskProjectionDock', () => {
     expect(wrapper.get('[aria-expanded]').attributes('aria-expanded')).toBe('true')
 
     expect(wrapper.text()).toContain('Executing')
+    expect(wrapper.text()).toContain('Recorded')
+    expect(wrapper.text()).toContain('View run details')
     await wrapper.get('button[class*="border-slate-200"]').trigger('click')
     await wrapper.get('button[class*="border-blue-200"]').trigger('click')
     await wrapper.get('button[class*="border-amber-200"]').trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'View run details')!
+      .trigger('click')
 
     expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ id: 'task-1' })
     expect(wrapper.emitted('action')?.[0]).toEqual([
@@ -159,5 +195,6 @@ describe('UserTaskProjectionDock', () => {
       expect.objectContaining({ id: 'task-1' }),
       'cancel',
     ])
+    expect(wrapper.emitted('navigate')?.[0]).toEqual(['/automation/harness/group-1'])
   })
 })

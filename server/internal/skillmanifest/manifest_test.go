@@ -157,6 +157,49 @@ blue legacy_search query="latest docs"
 	if doc.Manifest == nil || doc.Manifest.Metadata["validation_notes"] == "" {
 		t.Fatalf("expected manifest validation note metadata, got %+v", doc.Manifest)
 	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractStatus]; got != ContractStatusLegacyFallback {
+		t.Fatalf("contract_status = %q, want %q", got, ContractStatusLegacyFallback)
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractSource]; got != ContractSourceLegacyFrontmatter {
+		t.Fatalf("contract_source = %q, want %q", got, ContractSourceLegacyFrontmatter)
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractNotes]; !strings.Contains(got, "legacy manifest compatibility fallback applied") {
+		t.Fatalf("contract_notes = %q, want legacy fallback note", got)
+	}
+}
+
+func TestParseEntry_StrictContractTracksDeclaredFrontmatterContract(t *testing.T) {
+	content := `---
+name: reminder
+version: 1.0.0
+description: Schedule reminders
+invocation: blue reminder add message=ping
+examples:
+  - blue reminder add message=ping
+capability_tags:
+  - reminder
+interaction_mode: stateless
+card_support: batch
+---
+# Reminder
+`
+
+	doc, err := ParseEntry("reminder", "/tmp/SKILL.md", []byte(content), Options{RequireContract: true})
+	if err != nil {
+		t.Fatalf("ParseEntry error: %v", err)
+	}
+	if doc.Manifest == nil {
+		t.Fatal("expected manifest")
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractStatus]; got != ContractStatusStrict {
+		t.Fatalf("contract_status = %q, want %q", got, ContractStatusStrict)
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractSource]; got != ContractSourceDeclaredFrontmatter {
+		t.Fatalf("contract_source = %q, want %q", got, ContractSourceDeclaredFrontmatter)
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractNotes]; got != "" {
+		t.Fatalf("contract_notes = %q, want empty", got)
+	}
 }
 
 func TestParseEntry_StrictContractLegacyFallbackStillRejectsNoFrontmatter(t *testing.T) {
@@ -239,6 +282,36 @@ blue web_search query="latest news"
 	}
 	if doc.Manifest == nil || doc.Manifest.Invocation == "" {
 		t.Fatalf("expected manifest invocation, got %+v", doc.Manifest)
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractStatus]; got != ContractStatusLegacyFallback {
+		t.Fatalf("contract_status = %q, want %q", got, ContractStatusLegacyFallback)
+	}
+}
+
+func TestParseEntry_PermissiveModeMarksPlainMarkdownAsGeneratedContract(t *testing.T) {
+	content := `
+# Plain Third Party Skill
+
+Installs without frontmatter.
+
+blue plain-thirdparty action=list
+`
+
+	doc, err := ParseEntry("plain-thirdparty", "/tmp/SKILL.md", []byte(content), Options{})
+	if err != nil {
+		t.Fatalf("ParseEntry error: %v", err)
+	}
+	if doc.Manifest == nil {
+		t.Fatal("expected manifest")
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractStatus]; got != ContractStatusGenerated {
+		t.Fatalf("contract_status = %q, want %q", got, ContractStatusGenerated)
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractSource]; got != ContractSourceGeneratedSafeDefaults {
+		t.Fatalf("contract_source = %q, want %q", got, ContractSourceGeneratedSafeDefaults)
+	}
+	if got := doc.Manifest.Metadata[ManifestMetadataContractNotes]; !strings.Contains(got, "generated safe structural contract defaults") {
+		t.Fatalf("contract_notes = %q, want generated contract note", got)
 	}
 }
 

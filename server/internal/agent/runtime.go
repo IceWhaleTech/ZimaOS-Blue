@@ -830,6 +830,10 @@ func groundedCanonicalCLICommand(task *Task, expectedCLIAction string, decision 
 		if query != "" {
 			return command + " query=" + strconv.Quote(query)
 		}
+	case "deep_research", "research_run":
+		if query != "" {
+			return command + " query=" + strconv.Quote(query)
+		}
 	case "analyze":
 		topic, url := groundedCanonicalAnalyzeCLIArgs(task, decision)
 		if topic != "" {
@@ -1173,6 +1177,7 @@ func groundedTaskQuery(task *Task) string {
 	groupInput := metadataMapValue(meta, "group_input")
 	return firstNonEmptyString(
 		metadataStringValue(groupInput, "query"),
+		metadataStringValue(groupInput, "input"),
 		metadataStringValue(groupInput, "goal"),
 		task.Goal,
 	)

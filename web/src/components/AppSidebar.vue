@@ -62,6 +62,7 @@ interface NavItem {
   icon: string
   path?: string
   permission?: string
+  permissions?: string[]
   adminOnly?: boolean
   action?: 'workspace'
 }
@@ -704,7 +705,10 @@ defineExpose({
 })
 
 // Check if user has permission for a page
-const hasPermission = (permission?: string) => {
+const hasPermission = (permission?: string, permissions?: string[]) => {
+  if (Array.isArray(permissions) && permissions.length > 0) {
+    return authStore.hasAnyPermission(permissions)
+  }
   if (!permission) return true
   return authStore.hasPermission(permission)
 }
@@ -746,7 +750,7 @@ const configurationNavItemsConfig: NavItem[] = [
   {
     id: 'automation',
     name: 'nav.automation',
-    path: '/cron',
+    path: '/automation',
     icon: 'M12 4l1.4 3.6L17 9l-3.6 1.4L12 14l-1.4-3.6L7 9l3.6-1.4L12 4zm6.5 7.5l.75 1.75L21 14l-1.75.75L18.5 16.5l-.75-1.75L16 14l1.75-.75.75-1.75zM5.5 14.5l1 2.5L9 18l-2.5 1L5.5 21.5l-1-2.5L2 18l2.5-1 1-2.5z',
     permission: PagePermissions.AUTOMATION,
     adminOnly: true,
@@ -791,7 +795,7 @@ function getNavItemTestId(item: NavItem): string {
 function isNavItemVisible(item: NavItem): boolean {
   if (isPreviewMode.value) return true
   if (item.adminOnly && !isAdmin.value) return false
-  return hasPermission(item.permission)
+  return hasPermission(item.permission, item.permissions)
 }
 
 // Check if a nav item is active (handles trailing slashes and sub-paths)

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -126,6 +127,10 @@ var (
 )
 
 const maxBackupFileSizeBytes int64 = 10 * 1024 * 1024 // 10 MiB
+
+func backupLogf(format string, args ...interface{}) {
+	log.Printf("[backup] "+format, args...)
+}
 
 func shouldSkipBackupDir(name string) bool {
 	return excludedBackupDirs[strings.ToLower(name)]
@@ -286,10 +291,16 @@ func (m *Manager) createWithSource(ctx context.Context, backupType BackupType, s
 	timestamp := timeutil.NowTime()
 	filename := fmt.Sprintf("backup_%s_%s_%s.tar.gz", backupType, timestamp.Format("20060102_150405"), id[:8])
 	backupPath := filepath.Join(m.config.Path, filename)
+	startedAt := timeutil.NowTime()
+
+	backupLogf("create started source=%s type=%s backup_id=%s path=%s", source, backupType, id, backupPath)
 
 	checkpointedSQLite, err := m.checkpointSQLiteForBackup(ctx, backupType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to checkpoint sqlite databases before backup: %w", err)
+	}
+	if len(checkpointedSQLite) > 0 {
+		backupLogf("create checkpointed sqlite databases source=%s type=%s backup_id=%s count=%d", source, backupType, id, len(checkpointedSQLite))
 	}
 
 	// Create backup file
@@ -312,31 +323,37 @@ func (m *Manager) createWithSource(ctx context.Context, backupType BackupType, s
 	// Add files based on backup type
 	switch backupType {
 	case BackupTypeFull:
+		backupLogf("create archiving root source=%s type=%s backup_id=%s root=data", source, backupType, id)
 		if err := m.addDirectory(tarWriter, m.dataDir, "data", &files, checkpointedSQLite); err != nil {
 			os.Remove(backupPath)
 			return nil, fmt.Errorf("failed to backup data directory: %w", err)
 		}
+		backupLogf("create archiving root source=%s type=%s backup_id=%s root=config", source, backupType, id)
 		if err := m.addDirectory(tarWriter, m.configDir, "config", &files, checkpointedSQLite); err != nil {
 			os.Remove(backupPath)
 			return nil, fmt.Errorf("failed to backup config directory: %w", err)
 		}
 		if m.shouldBackupSkillsIndependently() {
+			backupLogf("create archiving root source=%s type=%s backup_id=%s root=skills", source, backupType, id)
 			if err := m.addDirectory(tarWriter, m.skillsDir, "skills", &files, checkpointedSQLite); err != nil {
 				os.Remove(backupPath)
 				return nil, fmt.Errorf("failed to backup skills directory: %w", err)
 			}
 		}
 	case BackupTypeConfig:
+		backupLogf("create archiving root source=%s type=%s backup_id=%s root=config", source, backupType, id)
 		if err := m.addDirectory(tarWriter, m.configDir, "config", &files, checkpointedSQLite); err != nil {
 			os.Remove(backupPath)
 			return nil, fmt.Errorf("failed to backup config directory: %w", err)
 		}
 	case BackupTypeData:
+		backupLogf("create archiving root source=%s type=%s backup_id=%s root=data", source, backupType, id)
 		if err := m.addDirectory(tarWriter, m.dataDir, "data", &files, checkpointedSQLite); err != nil {
 			os.Remove(backupPath)
 			return nil, fmt.Errorf("failed to backup data directory: %w", err)
 		}
 		if m.shouldBackupSkillsIndependently() {
+			backupLogf("create archiving root source=%s type=%s backup_id=%s root=skills", source, backupType, id)
 			if err := m.addDirectory(tarWriter, m.skillsDir, "skills", &files, checkpointedSQLite); err != nil {
 				os.Remove(backupPath)
 				return nil, fmt.Errorf("failed to backup skills directory: %w", err)
@@ -385,10 +402,22 @@ func (m *Manager) createWithSource(ctx context.Context, backupType BackupType, s
 	// End progress tracking
 	m.endProgress(nil)
 
+	backupLogf(
+		"create completed source=%s type=%s backup_id=%s files=%d size_bytes=%d duration=%s path=%s",
+		source,
+		backupType,
+		id,
+		len(files),
+		stat.Size(),
+		timeutil.SinceTime(startedAt),
+		backupPath,
+	)
+
 	return info, nil
 }
 
 func (m *Manager) checkpointSQLiteForBackup(ctx context.Context, backupType BackupType) (map[string]struct{}, error) {
+	startedAt := timeutil.NowTime()
 	if ctx != nil {
 		select {
 		case <-ctx.Done():
@@ -445,6 +474,14 @@ func (m *Manager) checkpointSQLiteForBackup(ctx context.Context, backupType Back
 			checkpointed[filepath.Clean(dbPath)] = struct{}{}
 		}
 	}
+
+	backupLogf(
+		"sqlite checkpoint scan completed type=%s directories=%d checkpointed=%d duration=%s",
+		backupType,
+		len(seen),
+		len(checkpointed),
+		timeutil.SinceTime(startedAt),
+	)
 
 	return checkpointed, nil
 }

@@ -28,6 +28,7 @@ type groupReportContext struct {
 	linkedRuns      []Run
 	runByID         map[string]*Run
 	runtimeEvidence map[string][]RuntimeEvidenceEntry
+	runtimeTraces   map[string]RunTrace
 	artifacts       []ArtifactRef
 	checkpoints     []CheckpointArtifact
 	itemContracts   map[string]HarnessContract
@@ -38,6 +39,7 @@ type groupReportRuntimeBundle struct {
 	linkedRuns      []Run
 	runByID         map[string]*Run
 	runtimeEvidence map[string][]RuntimeEvidenceEntry
+	runtimeTraces   map[string]RunTrace
 	artifacts       []ArtifactRef
 	checkpoints     []CheckpointArtifact
 }
@@ -223,6 +225,7 @@ func (c *Controller) loadGroupReportContext(ctx context.Context, group *RunGroup
 		linkedRuns:      runtimeBundle.linkedRuns,
 		runByID:         runtimeBundle.runByID,
 		runtimeEvidence: runtimeBundle.runtimeEvidence,
+		runtimeTraces:   runtimeBundle.runtimeTraces,
 		artifacts:       runtimeBundle.artifacts,
 		checkpoints:     runtimeBundle.checkpoints,
 		itemContracts:   buildGroupItemContracts(group, items),
@@ -335,6 +338,7 @@ func buildGroupReportFromContext(reportCtx *groupReportContext) (*RunGroupReport
 		Scorecards:      reportCtx.scorecards,
 		Breakdown:       cloneMetadataMap(reportCtx.group.Summary),
 		RuntimeEvidence: reportCtx.runtimeEvidence,
+		RuntimeTraces:   cloneRunTraceMap(reportCtx.runtimeTraces),
 		ItemContracts:   reportCtx.itemContracts,
 		Checkpoints:     checkpoints,
 	}
@@ -430,6 +434,7 @@ func (c *Controller) loadGroupReportRuntimeBundle(ctx context.Context, groupID s
 		linkedRuns:      linkedRuns,
 		runByID:         make(map[string]*Run, len(linkedRuns)),
 		runtimeEvidence: make(map[string][]RuntimeEvidenceEntry, len(linkedRuns)),
+		runtimeTraces:   make(map[string]RunTrace, len(linkedRuns)),
 		artifacts:       make([]ArtifactRef, 0),
 		checkpoints:     make([]CheckpointArtifact, 0),
 	}
@@ -446,6 +451,9 @@ func (c *Controller) loadGroupReportRuntimeBundle(ctx context.Context, groupID s
 					bundle.runtimeEvidence[run.ID] = evidence
 				}
 			}
+		}
+		if trace, traceErr := c.RunTraceSnapshot(ctx, run.ID); traceErr == nil && trace != nil {
+			bundle.runtimeTraces[run.ID] = *trace
 		}
 		runArtifacts, checkpoints := c.loadGroupReportRunArtifacts(ctx, run, seenArtifacts)
 		bundle.artifacts = append(bundle.artifacts, runArtifacts...)

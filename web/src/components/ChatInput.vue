@@ -67,6 +67,7 @@ const props = defineProps<{
   disabled?: boolean
   streaming?: boolean
   canCancel?: boolean
+  showInlineCancel?: boolean
   maxFileSize?: number // in bytes, default 10MB
   allowedTypes?: string[] // MIME types
   conversationId?: string
@@ -209,7 +210,10 @@ let latestSkillAdviceRequestId = 0
 let skillAdviceTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const maxSize = computed(() => props.maxFileSize || 10 * 1024 * 1024) // 10MB default
-const canShowCancelButton = computed(() => props.canCancel ?? props.streaming ?? false)
+const canShowCancelButton = computed(() => {
+  if (props.showInlineCancel === false) return false
+  return props.canCancel ?? props.streaming ?? false
+})
 const allowedMimeTypes = computed(
   () =>
     props.allowedTypes || [
@@ -428,7 +432,7 @@ const compactModeInfoCardMeta = computed(() => {
         : t('common.disabled', 'Disabled'),
       description: t(
         'chat.deepResearchHoverDescription',
-        'Launch a structured research workflow with retrieval, verification, and source-backed answers.'
+        'Launch a structured research workflow with retrieval, verification, traceable runs, and linked run details.'
       ),
       tags: deepResearchInfoTags.value,
     }
