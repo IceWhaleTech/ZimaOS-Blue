@@ -1,5 +1,7 @@
 // German (Deutsch)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('de-DE', {
   common: {
     loading: 'Wird geladen...',
     save: 'Speichern',
@@ -2167,6 +2169,8 @@ export default {
     empty: '(leer)',
     noFiles: 'Keine Arbeitsbereich-Dateien gefunden.',
     tokens: '~{count} Token',
+    coreTokens: '~{count} Token der Kerndateien',
+    coreTokensHint: 'Zählt nur die hier angezeigten Kerndateien des Arbeitsbereichs.',
     chars: '{count} Zeichen',
     label: {
       soul: 'Seele',
@@ -7437,4 +7441,4 @@ export default {
     fallbackLinkSpace: 'Raum',
     fallbackLinkSource: 'Quelle {index}',
   },
-}
+})

@@ -1,5 +1,7 @@
 // Croatian (Hrvatski)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('hr-HR', {
   common: {
     loading: 'Učitavanje...',
     save: 'Spremi',
@@ -2006,6 +2008,8 @@ export default {
     empty: '(prazno)',
     noFiles: 'Nisu pronađene datoteke radnog prostora.',
     tokens: '~{count} tokena',
+    coreTokens: '~{count} tokena ključnih datoteka',
+    coreTokensHint: 'Broji samo ključne datoteke radnog prostora prikazane ovdje.',
     chars: '{count} znakova',
     label: {
       soul: 'Duša',
@@ -6997,4 +7001,4 @@ export default {
     fallbackLinkSpace: 'Prostor',
     fallbackLinkSource: 'Izvor {index}',
   },
-}
+})

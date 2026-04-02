@@ -104,7 +104,7 @@ export interface SkillSecurityReport {
   llm_verdict_json?: string
 }
 
-export interface RemoteSkill {
+export interface RemoteSkill extends SkillContractMetadata {
   id: string
   name: string
   version?: string
@@ -364,7 +364,7 @@ export interface UploadSkillResult extends SkillInstallResult {
   skill?: { id: string; name: string; version: string }
 }
 
-export interface MarketplaceSkillDetail {
+export interface MarketplaceSkillDetail extends SkillContractMetadata {
   skill: RemoteSkill
   version?: {
     version: string

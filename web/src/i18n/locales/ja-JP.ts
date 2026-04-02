@@ -1,5 +1,7 @@
 // Japanese (日本語)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('ja-JP', {
   common: {
     loading: '読み込み中...',
     save: '保存',
@@ -2136,6 +2138,8 @@ export default {
     empty: '（空）',
     noFiles: 'ワークスペースファイルが見つかりません。',
     tokens: '約{count}トークン',
+    coreTokens: '主要ファイルで約{count}トークン',
+    coreTokensHint: 'ここに表示されている主要なワークスペースファイルのみを集計します。',
     chars: '{count}文字',
     label: {
       soul: '魂',
@@ -7303,4 +7307,4 @@ export default {
     fallbackLinkSpace: 'スペース',
     fallbackLinkSource: 'ソース {index}',
   },
-}
+})

@@ -1,5 +1,7 @@
 // Portuguese - Portugal (Português de Portugal)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('pt-PT', {
   common: {
     loading: 'A carregar...',
     save: 'Guardar',
@@ -2151,6 +2153,8 @@ export default {
     empty: '(vazio)',
     noFiles: 'Nenhum ficheiro do espaço de trabalho encontrado.',
     tokens: '~{count} tokens',
+    coreTokens: '~{count} tokens de ficheiros principais',
+    coreTokensHint: 'Conta apenas os ficheiros principais do espaço de trabalho mostrados aqui.',
     chars: '{count} caracteres',
     label: {
       soul: 'Alma',
@@ -7303,4 +7307,4 @@ export default {
     fallbackLinkSpace: 'Espaço',
     fallbackLinkSource: 'Fonte {index}',
   },
-}
+})

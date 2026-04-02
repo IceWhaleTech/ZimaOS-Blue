@@ -1,5 +1,7 @@
 // Russian (Русский)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('ru-RU', {
   common: {
     loading: 'Загрузка...',
     save: 'Сохранить',
@@ -2151,6 +2153,8 @@ export default {
     empty: '(пусто)',
     noFiles: 'Файлы рабочего пространства не найдены.',
     tokens: '~{count} токенов',
+    coreTokens: '~{count} токенов основных файлов',
+    coreTokensHint: 'Считает только основные файлы рабочего пространства, показанные здесь.',
     chars: '{count} символов',
     label: {
       soul: 'Душа',
@@ -7292,4 +7296,4 @@ export default {
     fallbackLinkSpace: 'Пространство',
     fallbackLinkSource: 'Источник {index}',
   },
-}
+})

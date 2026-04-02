@@ -1,5 +1,7 @@
 // Dutch (Nederlands)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('nl-NL', {
   common: {
     loading: 'Laden...',
     save: 'Opslaan',
@@ -2019,6 +2021,8 @@ export default {
     empty: '(leeg)',
     noFiles: 'Geen werkruimtebestanden gevonden.',
     tokens: '~{count} tokens',
+    coreTokens: '~{count} tokens van kernbestanden',
+    coreTokensHint: 'Telt alleen de kernbestanden van de werkruimte die hier worden weergegeven.',
     chars: '{count} tekens',
     label: {
       soul: 'Ziel',
@@ -7132,4 +7136,4 @@ export default {
     fallbackLinkSpace: 'Ruimte',
     fallbackLinkSource: 'Bron {index}',
   },
-}
+})

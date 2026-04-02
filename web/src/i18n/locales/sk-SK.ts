@@ -1,5 +1,7 @@
 // Slovak (Slovenčina)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('sk-SK', {
   common: {
     loading: 'Načítava sa...',
     save: 'Uložiť',
@@ -2003,6 +2005,8 @@ export default {
     empty: '(prázdny)',
     noFiles: 'Nenašli sa žiadne súbory pracovného priestoru.',
     tokens: '~{count} tokenov',
+    coreTokens: '~{count} tokenov hlavných súborov',
+    coreTokensHint: 'Počíta len hlavné súbory pracovného priestoru zobrazené tu.',
     chars: '{count} znakov',
     label: {
       soul: 'Duša',
@@ -7000,4 +7004,4 @@ export default {
     fallbackLinkSpace: 'Priestor',
     fallbackLinkSource: 'Zdroj {index}',
   },
-}
+})

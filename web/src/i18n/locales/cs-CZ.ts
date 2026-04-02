@@ -1,5 +1,7 @@
 // Czech (Čeština)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('cs-CZ', {
   common: {
     loading: 'Načítání...',
     save: 'Uložit',
@@ -2003,6 +2005,8 @@ export default {
     empty: '(prázdný)',
     noFiles: 'Nebyly nalezeny žádné soubory pracovního prostoru.',
     tokens: '~{count} tokenů',
+    coreTokens: '~{count} tokenů hlavních souborů',
+    coreTokensHint: 'Počítá pouze hlavní soubory pracovního prostoru zobrazené zde.',
     chars: '{count} znaků',
     label: {
       soul: 'Duše',
@@ -7088,4 +7092,4 @@ export default {
     fallbackLinkSpace: 'Prostor',
     fallbackLinkSource: 'Zdroj {index}',
   },
-}
+})

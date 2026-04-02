@@ -1,5 +1,7 @@
 // Swedish (Svenska)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('sv-SE', {
   common: {
     loading: 'Laddar...',
     save: 'Spara',
@@ -2003,6 +2005,8 @@ export default {
     empty: '(tom)',
     noFiles: 'Inga arbetsytefiler hittades.',
     tokens: '~{count} tokens',
+    coreTokens: '~{count} token för kärnfiler',
+    coreTokensHint: 'Räknar bara kärnarbetsytefilerna som visas här.',
     chars: '{count} tecken',
     label: {
       soul: 'Själ',
@@ -7095,4 +7099,4 @@ export default {
     fallbackLinkSpace: 'Utrymme',
     fallbackLinkSource: 'Källa {index}',
   },
-}
+})

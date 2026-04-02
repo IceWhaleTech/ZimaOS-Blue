@@ -1,5 +1,7 @@
 // Malayalam (മലയാളം)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('ml-IN', {
   common: {
     loading: 'ലോഡ് ചെയ്യുന്നു...',
     save: 'സേവ് ചെയ്യുക',
@@ -2016,6 +2018,8 @@ export default {
     empty: '(ശൂന്യം)',
     noFiles: 'വർക്ക്‌സ്‌പേസ് ഫയലുകൾ കണ്ടെത്തിയില്ല.',
     tokens: '~{count} ടോക്കണുകൾ',
+    coreTokens: '~{count} കോർ-ഫയൽ ടോക്കണുകൾ',
+    coreTokensHint: 'ഇവിടെ കാണിക്കുന്ന കോർ വർക്ക്‌സ്‌പേസ് ഫയലുകൾ മാത്രം എണ്ണുന്നു.',
     chars: '{count} അക്ഷരങ്ങൾ',
     label: {
       soul: 'ആത്മാവ്',
@@ -7059,4 +7063,4 @@ export default {
     fallbackLinkSpace: 'സ്പേസ്',
     fallbackLinkSource: 'ഉറവിടം {index}',
   },
-}
+})

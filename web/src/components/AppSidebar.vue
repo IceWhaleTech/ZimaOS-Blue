@@ -14,6 +14,7 @@ import { useTauri } from '@/composables/useTauri'
 import { getPreferredNetworkAddress, useNetwork } from '@/composables/useNetwork'
 import { getLocaleDirection } from '@/i18n'
 import { isLocalAbsolutePath } from '@/utils/localPath'
+import { getWorkspaceVisibleTokenCount } from '@/utils/workspaceTokenEstimate'
 import { resetPreviewModeStatus } from '@/router'
 import { extractLocalPathCandidatesFromCard } from '@/utils/workspaceGeneratedFiles'
 const PreviewUpgradeForm = defineAsyncComponent(
@@ -851,6 +852,10 @@ const coreWorkspaceFiles = computed(() => {
   return sortedWorkspaceFiles.value.filter((file) => coreWorkspaceFileNames.has(file.name))
 })
 
+const coreWorkspaceTokenTotal = computed(() => {
+  return getWorkspaceVisibleTokenCount(workspaceStats.value, coreWorkspaceFileNames)
+})
+
 const generatedRecordByAbsPathKey = computed(() => {
   const map = new Map<string, GeneratedWorkspaceFile>()
   for (const record of generatedWorkspaceFiles.value) {
@@ -1629,13 +1634,24 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
               <span
                 v-if="workspaceStats"
                 class="text-xs px-2 py-1 rounded-full flex-shrink-0"
+                :title="
+                  tr(
+                    'workspace.coreTokensHint',
+                    'Counts only the core workspace files shown here.'
+                  )
+                "
                 :class="
-                  workspaceStats.total_tokens > 4096
+                  coreWorkspaceTokenTotal > 4096
                     ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
                     : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
                 "
               >
-                {{ t('workspace.tokens', { count: workspaceStats.total_tokens.toLocaleString() }) }}
+                {{
+                  tr(
+                    'workspace.coreTokens',
+                    `~${coreWorkspaceTokenTotal.toLocaleString()} core-file tokens`
+                  )
+                }}
               </span>
             </div>
 

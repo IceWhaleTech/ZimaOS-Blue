@@ -1,5 +1,7 @@
 // Spanish (Español)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('es-ES', {
   common: {
     loading: 'Cargando...',
     save: 'Guardar',
@@ -2153,6 +2155,8 @@ export default {
     empty: '(vacío)',
     noFiles: 'No se encontraron archivos del espacio de trabajo.',
     tokens: '~{count} tokens',
+    coreTokens: '~{count} tokens de archivos principales',
+    coreTokensHint: 'Cuenta solo los archivos principales del espacio de trabajo que se muestran aquí.',
     chars: '{count} caracteres',
     label: {
       soul: 'Alma',
@@ -7373,4 +7377,4 @@ export default {
     fallbackLinkSpace: 'Espacio',
     fallbackLinkSource: 'Fuente {index}',
   },
-}
+})

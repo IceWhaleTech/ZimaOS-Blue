@@ -175,6 +175,17 @@ function getSkillBadge(skill: Skill): string {
   return skill.builtin ? t('skillStore.status.builtin') : t('skillStore.status.local')
 }
 
+function getSkillContractChip(skill: Skill): string {
+  switch (skill.contract_status) {
+    case 'legacy_fallback':
+      return locale.value.toLowerCase().startsWith('zh') ? '兼容回退' : 'Legacy'
+    case 'generated_contract':
+      return locale.value.toLowerCase().startsWith('zh') ? '生成契约' : 'Generated'
+    default:
+      return ''
+  }
+}
+
 function getVisibleTags(skill: Skill): string[] {
   return (skill.tags || []).filter(Boolean).slice(0, 1)
 }
@@ -561,6 +572,12 @@ async function handleUninstall(skill: Skill) {
               <span class="skill-showcase-card__chip skill-showcase-card__chip--primary">{{
                 getCategoryLabel(skill.category)
               }}</span>
+              <span
+                v-if="getSkillContractChip(skill)"
+                class="skill-showcase-card__chip skill-showcase-card__chip--contract"
+              >
+                {{ getSkillContractChip(skill) }}
+              </span>
               <span
                 v-if="skill.author"
                 class="skill-showcase-card__chip skill-showcase-card__chip--soft"
@@ -1449,6 +1466,12 @@ async function handleUninstall(skill: Skill) {
 .skill-showcase-card__chip--soft {
   color: var(--skills-chip-soft-text);
   background: rgba(255, 255, 255, 0.56);
+}
+
+.skill-showcase-card__chip--contract {
+  border-color: color-mix(in srgb, var(--skill-accent-ring) 74%, transparent);
+  background: color-mix(in srgb, var(--skill-accent-soft) 92%, white 6%);
+  color: color-mix(in srgb, var(--skill-accent-a) 72%, var(--skills-chip-text));
 }
 
 .skill-showcase-card__link-hint {

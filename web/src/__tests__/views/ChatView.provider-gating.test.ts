@@ -403,17 +403,19 @@ describe('ChatView provider gating', () => {
     return wrapper
   }
 
-  it('blocks send, opens provider setup dialog, and restores input draft when no provider is configured', async () => {
+  it('allows send to continue when no provider is configured and keeps setup guidance inline', async () => {
     const wrapper = await mountChatView()
     wrapper.findComponent({ name: 'ChatInput' }).vm.$emit('send', 'need provider', [])
     await flushPromises()
 
     expect(mocks.providerPoolStore.fetchProviders).toHaveBeenCalled()
-    expect(mocks.chatStore.sendMessage).not.toHaveBeenCalled()
-    expect(mocks.mediaGenerate.classify).not.toHaveBeenCalled()
-    expect(mocks.chatInputSetInput).toHaveBeenCalledWith('need provider')
-    expect(wrapper.text()).toContain('Set up an AI provider to start chatting')
-    expect(wrapper.text()).toContain(
+    expect(mocks.mediaGenerate.classify).toHaveBeenCalledWith('need provider', false, 0, 'en-US', [])
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith('need provider', [])
+    expect(mocks.chatInputSetInput).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="chat-provider-guidance-card"]').text()).toContain(
+      'Set up an AI provider to start chatting'
+    )
+    expect(wrapper.text()).not.toContain(
       'Your message has been saved locally. You can continue after setup.'
     )
   })

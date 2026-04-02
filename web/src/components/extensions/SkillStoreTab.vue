@@ -10,9 +10,11 @@ import {
   type MarketplaceSkillDetail,
   type RemoteSkill,
   type SecurityBadge,
+  type SkillContractMetadata,
   type SkillFiltersResponse,
   type SkillSecurityEvidence,
 } from '@/api/skill'
+import SkillContractNotice from '@/components/extensions/SkillContractNotice.vue'
 import SemanticSearchField from '@/components/ui/SemanticSearchField.vue'
 import { formatVersionLabel } from '@/utils/version-label'
 import { getErrorMessage } from '@/utils/error'
@@ -113,6 +115,26 @@ const detailUpdatedAt = computed(
 const detailRiskLabel = computed(() => {
   const value = selectedSecurity.value?.risk_level || detailSkill.value?.risk_level || 'unknown'
   return marketplaceText(`riskLevels.${value}`, value)
+})
+const detailContract = computed<SkillContractMetadata | null>(() => {
+  const detail = selectedDetail.value
+  if (!detail) return null
+
+  const mergedNotes = Array.from(
+    new Set([...(detail.skill.contract_notes || []), ...(detail.contract_notes || [])])
+  ).filter((note) => typeof note === 'string' && note.trim().length > 0)
+
+  const contract = {
+    contract_status: detail.contract_status || detail.skill.contract_status,
+    contract_source: detail.contract_source || detail.skill.contract_source,
+    contract_notes: mergedNotes,
+  }
+
+  if (!contract.contract_status && !contract.contract_source && !contract.contract_notes.length) {
+    return null
+  }
+
+  return contract
 })
 const catalogCount = computed(() => totalSkills.value || skills.value.length)
 const isInitialCatalogLoad = computed(
@@ -2608,6 +2630,13 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
+            <SkillContractNotice
+              v-if="detailContract"
+              class="detail-contract-panel"
+              :contract="detailContract"
+              compact
+            />
+
             <section class="detail-section">
               <div class="section-heading">
                 <div>
@@ -3970,6 +3999,10 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+  margin-top: 8px;
+}
+
+.detail-contract-panel {
   margin-top: 8px;
 }
 

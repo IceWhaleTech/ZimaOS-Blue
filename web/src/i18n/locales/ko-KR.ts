@@ -1,5 +1,7 @@
 // Korean (한국어)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('ko-KR', {
   common: {
     loading: '로딩 중...',
     save: '저장',
@@ -2122,6 +2124,8 @@ export default {
     empty: '(비어 있음)',
     noFiles: '워크스페이스 파일을 찾을 수 없습니다.',
     tokens: '약 {count}개 토큰',
+    coreTokens: '핵심 파일 약 {count}개 토큰',
+    coreTokensHint: '여기에 표시된 핵심 워크스페이스 파일만 집계합니다.',
     chars: '{count}자',
     label: {
       soul: '영혼',
@@ -7247,4 +7251,4 @@ export default {
     fallbackLinkSpace: '스페이스',
     fallbackLinkSource: '출처 {index}',
   },
-}
+})

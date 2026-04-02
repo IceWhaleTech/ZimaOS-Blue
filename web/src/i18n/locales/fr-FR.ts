@@ -1,5 +1,7 @@
 // French (Français)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('fr-FR', {
   common: {
     loading: 'Chargement...',
     save: 'Enregistrer',
@@ -2167,6 +2169,8 @@ export default {
     empty: '(vide)',
     noFiles: "Aucun fichier d'espace de travail trouvé.",
     tokens: '~{count} tokens',
+    coreTokens: '~{count} tokens des fichiers principaux',
+    coreTokensHint: "Compte uniquement les fichiers principaux de l'espace de travail affichés ici.",
     chars: '{count} caractères',
     label: {
       soul: 'Âme',
@@ -7404,4 +7408,4 @@ export default {
     fallbackLinkSpace: 'Espace',
     fallbackLinkSource: 'Source {index}',
   },
-}
+})

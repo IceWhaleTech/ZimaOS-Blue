@@ -1,5 +1,7 @@
 // Greek (Ελληνικά)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('el-GR', {
   common: {
     loading: 'Φόρτωση...',
     save: 'Αποθήκευση',
@@ -2022,6 +2024,8 @@ export default {
     empty: '(κενό)',
     noFiles: 'Δεν βρέθηκαν αρχεία χώρου εργασίας.',
     tokens: '~{count} tokens',
+    coreTokens: '~{count} tokens βασικών αρχείων',
+    coreTokensHint: 'Μετρά μόνο τα βασικά αρχεία χώρου εργασίας που εμφανίζονται εδώ.',
     chars: '{count} χαρακτήρες',
     label: {
       soul: 'Ψυχή',
@@ -7065,4 +7069,4 @@ export default {
     fallbackLinkSpace: 'Χώρος',
     fallbackLinkSource: 'Πηγή {index}',
   },
-}
+})

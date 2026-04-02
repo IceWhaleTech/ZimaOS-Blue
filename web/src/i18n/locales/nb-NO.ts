@@ -1,5 +1,7 @@
 // Norwegian Bokmål (Norsk bokmål)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('nb-NO', {
   common: {
     loading: 'Laster...',
     save: 'Lagre',
@@ -2002,6 +2004,8 @@ export default {
     empty: '(tom)',
     noFiles: 'Ingen arbeidsområdefiler funnet.',
     tokens: '~{count} tokens',
+    coreTokens: '~{count} kjernefiltokens',
+    coreTokensHint: 'Teller bare kjernefilene i arbeidsområdet som vises her.',
     chars: '{count} tegn',
     label: {
       soul: 'Sjel',
@@ -6982,4 +6986,4 @@ export default {
     fallbackLinkSpace: 'Rom',
     fallbackLinkSource: 'Kilde {index}',
   },
-}
+})

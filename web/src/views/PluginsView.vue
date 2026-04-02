@@ -7,7 +7,7 @@ import { SkillTab, SkillStoreTab, ToolTab } from '@/components/extensions'
 import SkillContractNotice from '@/components/extensions/SkillContractNotice.vue'
 import { useSkillStore } from '@/stores/skill'
 
-const { t } = useI18n()
+const { t, te, locale } = useI18n()
 const skillStore = useSkillStore()
 const route = useRoute()
 
@@ -66,9 +66,23 @@ const installResultMessage = computed(() => {
   const result = lastInstallResult.value
   if (!result) return ''
   if (result.message?.trim()) return result.message
-  if (result.entry_file?.trim()) return `Entry file: ${result.entry_file}`
-  return 'Review the contract summary below.'
+  if (result.entry_file?.trim()) return `${pluginsText('plugins.installResultEntryFile', 'Entry file', '入口文件')}: ${result.entry_file}`
+  return pluginsText(
+    'plugins.installResultSummaryHint',
+    'Review the contract summary below.',
+    '可在下方查看契约摘要。'
+  )
 })
+
+const isZhLocale = computed(() => locale.value.toLowerCase().startsWith('zh'))
+
+function fallbackText(english: string, chinese: string) {
+  return isZhLocale.value ? chinese : english
+}
+
+function pluginsText(key: string, english: string, chinese: string) {
+  return te(key) ? String(t(key)) : fallbackText(english, chinese)
+}
 
 watch(
   () => [route.query.tab, route.query.q],
@@ -193,7 +207,9 @@ async function installSkill() {
       >
         <div class="install-result-banner__header">
           <div class="install-result-banner__copy">
-            <span class="install-result-banner__eyebrow">Install result</span>
+            <span class="install-result-banner__eyebrow">{{
+              pluginsText('plugins.installResultHeading', 'Install result', '安装结果')
+            }}</span>
             <h2 class="install-result-banner__title">{{ installResultSkillName }}</h2>
             <p class="install-result-banner__message">{{ installResultMessage }}</p>
           </div>
@@ -201,7 +217,7 @@ async function installSkill() {
           <button
             type="button"
             class="install-result-banner__dismiss"
-            aria-label="Dismiss install result"
+            :aria-label="pluginsText('plugins.installResultDismiss', 'Dismiss install result', '关闭安装结果')"
             @click="dismissInstallResult"
           >
             ×

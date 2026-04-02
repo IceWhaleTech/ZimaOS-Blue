@@ -1,5 +1,7 @@
 // Romanian (Română)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('ro-RO', {
   common: {
     loading: 'Se încarcă...',
     save: 'Salvează',
@@ -2018,6 +2020,8 @@ export default {
     empty: '(gol)',
     noFiles: 'Nu s-au găsit fișiere în spațiul de lucru.',
     tokens: '~{count} tokeni',
+    coreTokens: '~{count} tokeni pentru fișierele de bază',
+    coreTokensHint: 'Numără doar fișierele principale ale spațiului de lucru afișate aici.',
     chars: '{count} caractere',
     label: {
       soul: 'Suflet',
@@ -7046,4 +7050,4 @@ export default {
     fallbackLinkSpace: 'Spațiu',
     fallbackLinkSource: 'Sursă {index}',
   },
-}
+})

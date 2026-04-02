@@ -1,5 +1,7 @@
 // Hungarian (Magyar)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('hu-HU', {
   common: {
     loading: 'Betöltés...',
     save: 'Mentés',
@@ -2007,6 +2009,8 @@ export default {
     empty: '(üres)',
     noFiles: 'Nem találhatók munkaterület fájlok.',
     tokens: '~{count} token',
+    coreTokens: '~{count} alapfájl token',
+    coreTokensHint: 'Csak az itt megjelenített alap munkaterületfájlokat számolja.',
     chars: '{count} karakter',
     label: {
       soul: 'Lélek',
@@ -7036,4 +7040,4 @@ export default {
     fallbackLinkSpace: 'Tér',
     fallbackLinkSource: 'Forrás {index}',
   },
-}
+})

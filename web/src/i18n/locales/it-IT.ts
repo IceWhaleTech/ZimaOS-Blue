@@ -1,5 +1,7 @@
 // Italian (Italiano)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('it-IT', {
   common: {
     loading: 'Caricamento...',
     save: 'Salva',
@@ -2150,6 +2152,8 @@ export default {
     empty: '(vuoto)',
     noFiles: "Nessun file dell'area di lavoro trovato.",
     tokens: '~{count} token',
+    coreTokens: '~{count} token dei file principali',
+    coreTokensHint: "Conta solo i file principali dell'area di lavoro mostrati qui.",
     chars: '{count} caratteri',
     label: {
       soul: 'Anima',
@@ -7331,4 +7335,4 @@ export default {
     fallbackLinkSpace: 'Spazio',
     fallbackLinkSource: 'Fonte {index}',
   },
-}
+})

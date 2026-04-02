@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { workspaceApi } from '@/api/workspace'
 import type { WorkspaceFile, WorkspaceStats } from '@/api/workspace'
+import { getWorkspaceVisibleTokenCount } from '@/utils/workspaceTokenEstimate'
 
 const { t, te } = useI18n()
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
@@ -35,6 +36,10 @@ const fileInfo: Record<string, { icon: string; labelKey: string; descKey: string
 }
 
 const editableFileNames = new Set(Object.keys(fileInfo))
+
+const visibleTokenCount = computed(() =>
+  getWorkspaceVisibleTokenCount(stats.value, editableFileNames)
+)
 
 function tr(key?: string, fallback = ''): string {
   if (!key) return fallback
@@ -130,13 +135,14 @@ onUnmounted(() => {
       <span
         v-if="stats"
         class="text-xs px-2 py-1 rounded-full flex-shrink-0"
+        :title="tr('workspace.coreTokensHint', 'Counts only the core workspace files shown here.')"
         :class="
-          stats.total_tokens > 4096
+          visibleTokenCount > 4096
             ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
             : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
         "
       >
-        {{ t('workspace.tokens', { count: stats.total_tokens.toLocaleString() }) }}
+        {{ tr('workspace.coreTokens', `~${visibleTokenCount.toLocaleString()} core-file tokens`) }}
       </span>
     </div>
 

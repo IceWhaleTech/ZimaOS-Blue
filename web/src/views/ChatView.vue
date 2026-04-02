@@ -2028,6 +2028,12 @@ async function ensureLlmProviderConfigured(messageToRestore?: string) {
   const enabledLlmProviders = providerPoolStore.enabledProviders.filter(
     (provider) => provider.type !== 'media'
   )
+  if (enabledLlmProviders.length === 0) {
+    // When no LLM provider is configured yet, let the request continue so the
+    // backend can fall back to web search instead of hard-blocking the chat UI.
+    return true
+  }
+
   const hasActiveLlmProvider = enabledLlmProviders.some((provider) => provider.status === 'active')
   if (hasActiveLlmProvider) {
     return true
@@ -2040,10 +2046,7 @@ async function ensureLlmProviderConfigured(messageToRestore?: string) {
     return true
   }
 
-  openProviderConfigDialog(
-    enabledLlmProviders.length === 0 ? 'unconfigured' : 'unavailable',
-    messageToRestore
-  )
+  openProviderConfigDialog('unavailable', messageToRestore)
   return false
 }
 

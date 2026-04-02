@@ -1,5 +1,7 @@
 // Irish (Gaeilge)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('ga-IE', {
   common: {
     loading: 'Ag lódáil...',
     save: 'Sábháil',
@@ -2014,6 +2016,8 @@ export default {
     empty: '(folamh)',
     noFiles: 'Níor aimsíodh aon chomhaid spáis oibre.',
     tokens: '~{count} comharthaí',
+    coreTokens: '~{count} comharthaí croíchomhad',
+    coreTokensHint: 'Ní áirítear ach na croíchomhaid spáis oibre a thaispeántar anseo.',
     chars: '{count} carachtar',
     label: {
       soul: 'Anam',
@@ -7030,4 +7034,4 @@ export default {
     fallbackLinkSpace: 'Spás',
     fallbackLinkSource: 'Foinse {index}',
   },
-}
+})

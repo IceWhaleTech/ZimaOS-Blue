@@ -1,5 +1,7 @@
 // English (US) - Base locale
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('en-US', {
   common: {
     loading: 'Loading...',
     save: 'Save',
@@ -1988,6 +1990,8 @@ export default {
     empty: '(empty)',
     noFiles: 'No workspace files found.',
     tokens: '~{count} tokens',
+    coreTokens: '~{count} core-file tokens',
+    coreTokensHint: 'Counts only the core workspace files shown here.',
     chars: '{count} chars',
     label: {
       soul: 'Soul',
@@ -6881,4 +6885,4 @@ export default {
     fallbackLinkSpace: 'Space',
     fallbackLinkSource: 'Source {index}',
   },
-}
+})

@@ -1,5 +1,7 @@
 // Traditional Chinese (繁體中文)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('zh-TW', {
   common: {
     loading: '載入中...',
     save: '儲存',
@@ -2085,6 +2087,8 @@ export default {
     empty: '（空）',
     noFiles: '未找到工作區檔案。',
     tokens: '約 {count} 個 token',
+    coreTokens: '核心檔案約 {count} 個 token',
+    coreTokensHint: '僅統計目前顯示的核心工作區檔案。',
     chars: '{count} 字元',
     label: {
       soul: '靈魂',
@@ -7136,4 +7140,4 @@ export default {
     fallbackLinkSpace: '空間',
     fallbackLinkSource: '來源 {index}',
   },
-}
+})

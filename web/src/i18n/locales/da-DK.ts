@@ -1,5 +1,7 @@
 // Danish (Dansk)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('da-DK', {
   common: {
     loading: 'Indlæser...',
     save: 'Gem',
@@ -2005,6 +2007,8 @@ export default {
     empty: '(tom)',
     noFiles: 'Ingen arbejdsområdefiler fundet.',
     tokens: '~{count} tokens',
+    coreTokens: '~{count} tokens i kernfiler',
+    coreTokensHint: 'Tæller kun de kernearbejdsområdefiler, der vises her.',
     chars: '{count} tegn',
     label: {
       soul: 'Sjæl',
@@ -7091,4 +7095,4 @@ export default {
     fallbackLinkSpace: 'Rum',
     fallbackLinkSource: 'Kilde {index}',
   },
-}
+})

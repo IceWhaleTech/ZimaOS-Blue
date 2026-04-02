@@ -1,5 +1,7 @@
 // Polish (Polski)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('pl-PL', {
   common: {
     loading: 'Ładowanie...',
     save: 'Zapisz',
@@ -2012,6 +2014,8 @@ export default {
     empty: '(pusty)',
     noFiles: 'Nie znaleziono plików przestrzeni roboczej.',
     tokens: '~{count} tokenów',
+    coreTokens: '~{count} tokenów plików głównych',
+    coreTokensHint: 'Liczy tylko główne pliki przestrzeni roboczej wyświetlane tutaj.',
     chars: '{count} znaków',
     label: {
       soul: 'Dusza',
@@ -7114,4 +7118,4 @@ export default {
     fallbackLinkSpace: 'Przestrzeń',
     fallbackLinkSource: 'Źródło {index}',
   },
-}
+})

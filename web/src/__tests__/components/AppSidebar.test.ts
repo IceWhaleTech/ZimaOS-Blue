@@ -427,4 +427,29 @@ describe('AppSidebar', () => {
     expect(messageApi.list).toHaveBeenCalledWith('conv-phone-specs', expect.any(Number), 0)
     expect(jumpButtons.length).toBeGreaterThanOrEqual(0)
   })
+
+  it('shows token estimate for visible core workspace files only', async () => {
+    vi.mocked(workspaceApi.getStats).mockResolvedValue({
+      data: {
+        files: [
+          { name: 'SOUL.md', bytes: 100, tokens: 1200 },
+          { name: 'USER.md', bytes: 100, tokens: 600 },
+          { name: '2026-04-02.md', bytes: 100, tokens: 5000 },
+        ],
+        total_tokens: 6800,
+        total_bytes: 300,
+      },
+    } as never)
+
+    const { wrapper } = await mountSidebar('/chat')
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+
+    const tokenBadge = wrapper
+      .findAll('span')
+      .find((node) => node.text().includes('core-file tokens'))
+
+    expect(tokenBadge?.text()).toContain('~1,800 core-file tokens')
+  })
 })

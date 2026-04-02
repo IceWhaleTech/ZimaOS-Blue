@@ -103,7 +103,10 @@ function makeFiltersResponse() {
   }
 }
 
-function makeDetailResponse(skill: Record<string, unknown>) {
+function makeDetailResponse(
+  skill: Record<string, unknown>,
+  overrides: Record<string, unknown> = {}
+) {
   return {
     data: {
       skill,
@@ -134,6 +137,7 @@ function makeDetailResponse(skill: Record<string, unknown>) {
       },
       installed: false,
       enabled: false,
+      ...overrides,
     },
   }
 }
@@ -657,5 +661,38 @@ describe('SkillStoreTab', () => {
     expect(skillApi.adviseMarket).toHaveBeenCalledWith({
       query: 'release automation changelog',
     })
+  })
+
+  it('shows contract metadata in the installed skill detail modal', async () => {
+    const installedSkill = makeSkill({
+      installed: true,
+    })
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(makeSearchResponse([installedSkill]) as never)
+    vi.mocked(skillApi.getMarketplaceSkill).mockResolvedValue(
+      makeDetailResponse(installedSkill, {
+        installed: true,
+        enabled: true,
+        contract_status: 'legacy_fallback',
+        contract_source: 'legacy_frontmatter_fallback',
+        contract_notes: [
+          'legacy manifest compatibility fallback applied: missing metadata fields were backfilled.',
+        ],
+      }) as never
+    )
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('.skill-card').trigger('click')
+    await flushPromises()
+
+    expect(skillApi.getMarketplaceSkill).toHaveBeenCalledWith('skill-alpha')
+    expect(document.body.querySelector('.detail-contract-panel')).not.toBeNull()
+    expect(document.body.textContent).toContain('Legacy fallback')
+    expect(document.body.textContent).toContain('Legacy frontmatter fallback')
+    expect(document.body.textContent).toContain(
+      'legacy manifest compatibility fallback applied: missing metadata fields were backfilled.'
+    )
+
+    wrapper.unmount()
   })
 })

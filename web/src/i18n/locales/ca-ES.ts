@@ -1,5 +1,7 @@
 // Catalan (Català)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('ca-ES', {
   common: {
     loading: 'Carregant...',
     save: 'Desar',
@@ -2020,6 +2022,8 @@ export default {
     empty: '(buit)',
     noFiles: "No s'han trobat fitxers de l'espai de treball.",
     tokens: '~{count} tokens',
+    coreTokens: '~{count} tokens dels fitxers principals',
+    coreTokensHint: "Només compta els fitxers principals de l'espai de treball que es mostren aquí.",
     chars: '{count} caràcters',
     label: {
       soul: 'Ànima',
@@ -7155,4 +7159,4 @@ export default {
     fallbackLinkSpace: 'Espai',
     fallbackLinkSource: 'Font {index}',
   },
-}
+})

@@ -1,5 +1,7 @@
 // Simplified Chinese (简体中文)
-export default {
+import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+
+export default mergeHarnessLocale('zh-CN', {
   common: {
     loading: '加载中...',
     save: '保存',
@@ -1943,6 +1945,8 @@ export default {
     empty: '（空）',
     noFiles: '未找到工作区文件。',
     tokens: '约 {count} 个 token',
+    coreTokens: '核心文件约 {count} 个 token',
+    coreTokensHint: '仅统计当前显示的核心工作区文件。',
     chars: '{count} 字符',
     label: {
       soul: '灵魂',
@@ -6736,4 +6740,4 @@ export default {
     fallbackLinkSpace: '空间',
     fallbackLinkSource: '来源 {index}',
   },
-}
+})
