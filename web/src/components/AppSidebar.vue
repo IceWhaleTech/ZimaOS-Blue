@@ -104,11 +104,6 @@ const coreWorkspaceFileInfo: Record<string, CoreWorkspaceFileInfo> = {
   'MEMORY.md': { icon: '💾', labelKey: 'workspace.label.memory', descKey: 'workspace.desc.memory' },
   'AGENTS.md': { icon: '📋', labelKey: 'workspace.label.agents', descKey: 'workspace.desc.agents' },
   'TOOLS.md': { icon: '🧰', labelKey: 'workspace.label.tools', descKey: 'workspace.desc.tools' },
-  'HEARTBEAT.md': {
-    icon: '💗',
-    labelKey: 'workspace.label.heartbeat',
-    descKey: 'workspace.desc.heartbeat',
-  },
 }
 const coreWorkspaceFileNames = new Set(Object.keys(coreWorkspaceFileInfo))
 const GITHUB_REPO_URL = 'https://github.com/IceWhaleTech/ZimaOS-Blue'

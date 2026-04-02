@@ -47,7 +47,6 @@ func defaultMockOutboundCapabilities(channelType string) OutboundCapabilities {
 			MarkdownMode:              OutboundMarkdownModePreserveWhole,
 			SupportsMarkdownFormat:    true,
 			AutoPromoteMarkdownReport: true,
-			SuppressHeartbeatText:     true,
 		}
 	case "telegram":
 		return OutboundCapabilities{
@@ -534,9 +533,6 @@ func TestChannelOutboundCapabilities_Feishu(t *testing.T) {
 	if !capabilities.AutoPromoteMarkdownReport {
 		t.Fatal("expected feishu to auto-promote markdown reports")
 	}
-	if !capabilities.SuppressHeartbeatText {
-		t.Fatal("expected feishu to suppress heartbeat placeholder text")
-	}
 	if capabilities.MarkdownMode != OutboundMarkdownModePreserveWhole {
 		t.Fatalf("expected feishu markdown mode preserve whole, got %v", capabilities.MarkdownMode)
 	}
@@ -550,9 +546,6 @@ func TestChannelOutboundCapabilities_GenericMarkdownChannels(t *testing.T) {
 		}
 		if capabilities.AutoPromoteMarkdownReport {
 			t.Fatalf("expected %s to keep report promotion disabled", channelType)
-		}
-		if capabilities.SuppressHeartbeatText {
-			t.Fatalf("expected %s to keep heartbeat placeholder enabled", channelType)
 		}
 		if capabilities.MarkdownMode != OutboundMarkdownModeChunked {
 			t.Fatalf("expected %s markdown mode chunked, got %v", channelType, capabilities.MarkdownMode)
@@ -1419,24 +1412,6 @@ func TestTruncateString(t *testing.T) {
 		if result != tt.expected {
 			t.Errorf("truncateString(%q, %d) = %q, want %q", tt.input, tt.maxLen, result, tt.expected)
 		}
-	}
-}
-
-func TestManager_SendHeartbeats_SkipsFeishuPlaceholder(t *testing.T) {
-	logger := zap.NewNop()
-	cfg := DefaultConfig()
-	cfg.Heartbeat.Enabled = true
-	cfg.Heartbeat.InitialDelay = 1 * time.Millisecond
-	cfg.Heartbeat.Emojis = []string{"💬"}
-
-	mgr := NewManager(cfg, logger)
-	ch := newMockChannel("feishu", "feishu", true)
-
-	done := make(chan struct{})
-	mgr.sendHeartbeats(context.Background(), ch, "chat1", "msg1", done)
-
-	if _, ok := ch.lastSent(); ok {
-		t.Fatal("expected no heartbeat placeholder for feishu channel")
 	}
 }
 

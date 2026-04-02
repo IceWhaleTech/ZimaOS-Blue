@@ -4726,6 +4726,11 @@ export default mergeHarnessLocale('ja-JP', {
         yellow: '警告',
         red: 'ブロック済み',
       },
+      warnings: {
+        mediumRiskPermissions: 'このスキルは中リスクの権限を必要とします。自動更新を有効にする前にセキュリティレポートを確認してください。',
+        payloadScanEscalatedHighRisk: 'インストール済みペイロードのスキャンにより、このスキルは中リスクから高リスクに引き上げられました。使用前にセキュリティレポートを確認してください。',
+        legacyManifestFallback: 'レガシー形式のスキルを検出しました。互換性のための既定値を適用しました。',
+      },
       categories: {
         ai_intelligence: 'AI・知能',
         development_tools: '開発ツール',

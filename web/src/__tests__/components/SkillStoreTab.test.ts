@@ -1,8 +1,10 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import SkillStoreTab from '@/components/extensions/SkillStoreTab.vue'
 import { i18n } from '@/i18n'
 import { skillApi } from '@/api/skill'
+import { useNotificationStore } from '@/stores/notification'
 
 const { sseState } = vi.hoisted(() => ({
   sseState: {
@@ -146,11 +148,23 @@ async function mountSkillStore(props: Record<string, unknown> = {}) {
   const wrapper = mount(SkillStoreTab, {
     props,
     global: {
-      plugins: [i18n],
+      plugins: [createPinia(), i18n],
     },
   })
   await flushPromises()
   return wrapper
+}
+
+async function mountSkillStoreWithPinia(props: Record<string, unknown> = {}) {
+  const pinia = createPinia()
+  const wrapper = mount(SkillStoreTab, {
+    props,
+    global: {
+      plugins: [pinia, i18n],
+    },
+  })
+  await flushPromises()
+  return { wrapper, pinia }
 }
 
 describe('SkillStoreTab', () => {
@@ -692,6 +706,59 @@ describe('SkillStoreTab', () => {
     expect(document.body.textContent).toContain(
       'legacy manifest compatibility fallback applied: missing metadata fields were backfilled.'
     )
+
+    wrapper.unmount()
+  })
+
+  it('shows a toast when a skill is blocked by policy', async () => {
+    const blockedSkill = makeSkill({
+      security_badge: 'red',
+      risk_level: 'high',
+    })
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(makeSearchResponse([blockedSkill]) as never)
+
+    const { wrapper, pinia } = await mountSkillStoreWithPinia()
+    const notificationStore = useNotificationStore(pinia)
+
+    await wrapper.get('.skill-card .install-button').trigger('click')
+    await flushPromises()
+
+    expect(skillApi.installMarket).not.toHaveBeenCalled()
+    expect(notificationStore.notifications.length).toBeGreaterThan(0)
+    expect(notificationStore.notifications[0]?.type).toBe('error')
+    expect(notificationStore.notifications[0]?.message).toContain(
+      'This skill is blocked by the security policy.'
+    )
+
+    wrapper.unmount()
+  })
+
+  it('localizes install warnings returned by the backend', async () => {
+    const zhCN = await import('@/i18n/locales/zh-CN')
+    ;(i18n.global as any).setLocaleMessage('zh-CN', zhCN.default)
+    i18n.global.locale.value = 'zh-CN'
+
+    vi.mocked(skillApi.installMarket).mockResolvedValue({
+      data: {
+        warnings: [
+          'Installed payload scan escalated this skill from medium risk to high risk. Review the security report before using this skill.',
+          'legacy manifest compatibility fallback applied: missing metadata fields were backfilled.',
+        ],
+      },
+    } as never)
+
+    const { wrapper, pinia } = await mountSkillStoreWithPinia()
+    const notificationStore = useNotificationStore(pinia)
+
+    await wrapper.get('.skill-card .install-button').trigger('click')
+    await flushPromises()
+
+    const warningNotifications = notificationStore.notifications.filter((n) => n.type === 'warning')
+    expect(warningNotifications.length).toBeGreaterThan(0)
+
+    const warningMessage = warningNotifications[0]?.message || ''
+    expect(warningMessage).toContain('安装包扫描将该技能从中风险升级为高风险')
+    expect(warningMessage).toContain('检测到旧版技能格式；已应用兼容性默认设置。')
 
     wrapper.unmount()
   })

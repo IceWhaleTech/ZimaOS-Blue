@@ -107,7 +107,6 @@ declare module 'vue' {
     HarnessRunTree: typeof import('./components/harness/HarnessRunTree.vue')['default']
     HarnessRunTreeNode: typeof import('./components/harness/HarnessRunTreeNode.vue')['default']
     HeapChartCard: typeof import('./components/dashboard/cards/HeapChartCard.vue')['default']
-    HeartbeatSettings: typeof import('./components/settings/HeartbeatSettings.vue')['default']
     IDEDiscovery: typeof import('./components/IDEDiscovery.vue')['default']
     ImagePreview: typeof import('./components/chat/ImagePreview.vue')['default']
     LatencyChart: typeof import('./components/metrics/LatencyChart.vue')['default']

@@ -4723,6 +4723,11 @@ export default mergeHarnessLocale('pt-PT', {
         yellow: 'Aviso',
         red: 'Bloqueado',
       },
+      warnings: {
+        mediumRiskPermissions: 'Esta habilidade requer permissões de risco médio. Reveja o relatório de segurança antes de ativar a atualização automática.',
+        payloadScanEscalatedHighRisk: 'A análise do payload instalado elevou esta habilidade de risco médio para alto. Reveja o relatório de segurança antes de utilizar esta habilidade.',
+        legacyManifestFallback: 'Formato legado detetado; foram aplicadas predefinições de compatibilidade.',
+      },
       categories: {
         ai_intelligence: 'IA e inteligencia',
         development_tools: 'Ferramentas de desenvolvimento',

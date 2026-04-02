@@ -4580,6 +4580,11 @@ export default mergeHarnessLocale('ca-ES', {
         yellow: 'Avís',
         red: 'Bloquejat',
       },
+      warnings: {
+        mediumRiskPermissions: 'Aquesta habilitat requereix permisos de risc mitjà. Revisa l’informe de seguretat abans d’activar l’actualització automàtica.',
+        payloadScanEscalatedHighRisk: 'L’escaneig del payload instal·lat ha elevat aquesta habilitat de risc mitjà a risc alt. Revisa l’informe de seguretat abans d’utilitzar aquesta habilitat.',
+        legacyManifestFallback: 'S’ha detectat un format heretat; s’han aplicat valors per defecte de compatibilitat.',
+      },
       categories: {
         ai_intelligence: 'IA i intel·ligencia',
         development_tools: 'Eines de desenvolupament',

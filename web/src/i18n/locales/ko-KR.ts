@@ -4685,6 +4685,11 @@ export default mergeHarnessLocale('ko-KR', {
         yellow: '경고',
         red: '차단됨',
       },
+      warnings: {
+        mediumRiskPermissions: '이 스킬은 중간 위험 권한이 필요합니다. 자동 업데이트를 켜기 전에 보안 보고서를 확인하세요.',
+        payloadScanEscalatedHighRisk: '설치된 페이로드 스캔으로 이 스킬이 중간 위험에서 높은 위험으로 상향되었습니다. 사용하기 전에 보안 보고서를 확인하세요.',
+        legacyManifestFallback: '레거시 스킬 형식이 감지되어 호환성 기본값을 적용했습니다.',
+      },
       categories: {
         ai_intelligence: 'AI 및 지능',
         development_tools: '개발 도구',

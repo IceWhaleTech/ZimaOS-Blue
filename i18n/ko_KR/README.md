@@ -202,7 +202,7 @@ sh build.sh
 | 채널 | channel, autoreply, i18n |
 | 보안 | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
 | 음성 | voice, tts, stt, speech |
-| 관측 | metrics, heartbeat, companion, profiling, leakdetect |
+| 관측 | metrics, companion, profiling, leakdetect |
 | 플러그인 | plugin, skill, skillstore |
 | 통합 | browser, cron, workflow, formfiller, tunnel, crawler |
 | 스케줄러 | scheduler, worker, workerpool, pool |
@@ -232,12 +232,6 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-**하트비트 모니터**
-```
-타이머 (30분) → HEARTBEAT.md 읽기 → LLM 평가 → HEARTBEAT_OK 토큰 제거
-  → 중복 제거 (FNV 해시, 24시간 TTL) → 채널 알림 (Telegram/Slack/...)
-  → 이벤트 스트리머 → UI 인디케이터
-```
 
 ## 사용 방법
 

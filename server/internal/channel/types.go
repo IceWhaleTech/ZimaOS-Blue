@@ -128,8 +128,6 @@ type OutboundCapabilities struct {
 	SupportsMarkdownFormat bool `json:"supports_markdown_format,omitempty"`
 	// AutoPromoteMarkdownReport upgrades long structured plain text reports to markdown.
 	AutoPromoteMarkdownReport bool `json:"auto_promote_markdown_report,omitempty"`
-	// SuppressHeartbeatText disables textual heartbeat placeholders during long processing.
-	SuppressHeartbeatText bool `json:"suppress_heartbeat_text,omitempty"`
 }
 
 // DefaultOutboundCapabilities returns the default outbound behavior for channels.
@@ -237,7 +235,7 @@ type TypingReactionCleaner interface {
 }
 
 // OutboundCapabilityProvider is an optional interface for channels to describe
-// how manager-level outbound preparation should treat markdown and heartbeats.
+// how manager-level outbound preparation should treat markdown.
 type OutboundCapabilityProvider interface {
 	OutboundCapabilities() OutboundCapabilities
 }

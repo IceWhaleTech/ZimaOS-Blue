@@ -4533,6 +4533,11 @@ export default mergeHarnessLocale('cs-CZ', {
         yellow: 'Varovani',
         red: 'Blokovano',
       },
+      warnings: {
+        mediumRiskPermissions: 'Tato dovednost vyžaduje oprávnění se středním rizikem. Před povolením automatických aktualizací si prohlédněte bezpečnostní zprávu.',
+        payloadScanEscalatedHighRisk: 'Kontrola nainstalovaného balíčku (payload scan) povýšila tento skill ze středního na vysoké riziko. Před použitím si prosím přečtěte bezpečnostní zprávu.',
+        legacyManifestFallback: 'Byl zjištěn starší formát dovednosti; byla použita výchozí nastavení kompatibility.',
+      },
       categories: {
         ai_intelligence: 'AI a inteligence',
         development_tools: 'Vyvojarske nastroje',

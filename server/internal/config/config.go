@@ -47,7 +47,6 @@ type Config struct {
 	Proxy       *proxy.ProxyConfig   `yaml:"proxy"`     // v0.10.5.1: API Proxy
 	Pruner      *pruner.Config       `yaml:"pruner"`    // v0.10.27: Context Pruner
 	Update      UpdateConfig         `yaml:"update"`    // OTA Update
-	Heartbeat   HeartbeatConfig      `yaml:"heartbeat"` // Heartbeat agent polling
 }
 
 // CompanionConfig holds Echo Companion monitoring configuration (v0.9.1).
@@ -263,35 +262,6 @@ type UpdateConfig struct {
 	ReleaseChannel string        `yaml:"release_channel"`
 	BackupCount    int           `yaml:"backup_count"`
 	StoragePath    string        `yaml:"storage_path"`
-}
-
-// HeartbeatConfig holds heartbeat agent polling configuration.
-type HeartbeatConfig struct {
-	Enabled         bool                  `yaml:"enabled"`
-	Interval        time.Duration         `yaml:"interval"`
-	Prompt          string                `yaml:"prompt"`
-	AckMaxChars     int                   `yaml:"ack_max_chars"`
-	WorkspaceDir    string                `yaml:"workspace_dir"`
-	LLMProvider     string                `yaml:"llm_provider"`
-	LLMModel        string                `yaml:"llm_model"`
-	ActiveHours     *HeartbeatActiveHours `yaml:"active_hours"`
-	Visibility      HeartbeatVisibility   `yaml:"visibility"`
-	DeliveryChannel string                `yaml:"delivery_channel"`
-	DeliveryChatID  string                `yaml:"delivery_chat_id"`
-}
-
-// HeartbeatActiveHours defines the time window when heartbeat is allowed to run.
-type HeartbeatActiveHours struct {
-	Start    string `yaml:"start"`
-	End      string `yaml:"end"`
-	Timezone string `yaml:"timezone"`
-}
-
-// HeartbeatVisibility controls what heartbeat results are delivered.
-type HeartbeatVisibility struct {
-	ShowOk       bool `yaml:"show_ok"`
-	ShowAlerts   bool `yaml:"show_alerts"`
-	UseIndicator bool `yaml:"use_indicator"`
 }
 
 type ServerConfig struct {
@@ -779,11 +749,6 @@ func defaults() Config {
 		},
 		// Keep default trigger threshold moderate so pruning is observable in real chats.
 		Pruner: &pruner.Config{Enabled: true, Backend: "local", Threshold: 0.5, MinLines: 80, TimeoutMs: 5000},
-		Heartbeat: HeartbeatConfig{
-			Interval: 30 * time.Minute, AckMaxChars: 300, WorkspaceDir: "./data", LLMProvider: "claude", LLMModel: "claude-sonnet-4-5-20250929",
-			Prompt:     "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
-			Visibility: HeartbeatVisibility{ShowAlerts: true, UseIndicator: true},
-		},
 		Update: UpdateConfig{
 			Enabled: true, CheckInterval: 24 * time.Hour, ReleaseChannel: "stable", BackupCount: 3, StoragePath: "./data/updates",
 		},

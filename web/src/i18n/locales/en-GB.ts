@@ -4495,6 +4495,11 @@ export default mergeHarnessLocale('en-GB', {
         yellow: 'Warning',
         red: 'Blocked',
       },
+      warnings: {
+        mediumRiskPermissions: 'Skill requires medium-risk permissions. Review the security report before enabling auto-update.',
+        payloadScanEscalatedHighRisk: 'Installed payload scan escalated this skill from medium risk to high risk. Review the security report before using this skill.',
+        legacyManifestFallback: 'Legacy skill format detected; compatibility defaults were applied.',
+      },
       curatedLabels: {
         featured: 'Featured',
         trending: 'Trending',

@@ -203,12 +203,6 @@ Telegram/Discord/... → Gestor de canals → Comprovació d'autoresposta
 WebSocket àudio → STT (Whisper) → Processament LLM → TTS (eSpeak/Edge) → WebSocket àudio
 ```
 
-**Monitoratge Heartbeat**
-```
-Temporitzador (30 min) → Lectura HEARTBEAT.md → Avaluació LLM → Eliminació token HEARTBEAT_OK
-  → Deduplicació (hash FNV, TTL 24h) → Alerta de canal (Telegram/Slack/...)
-  → Flux d'esdeveniments → Indicador UI
-```
 
 ### Mapa de paquets (`server/internal/`)
 
@@ -223,7 +217,7 @@ Temporitzador (30 min) → Lectura HEARTBEAT.md → Avaluació LLM → Eliminaci
 | Canal | channel, autoreply, i18n |
 | Seguretat | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
 | Veu | voice, tts, stt, speech |
-| Observació | metrics, heartbeat, companion, profiling, leakdetect |
+| Observació | metrics, companion, profiling, leakdetect |
 | Connector | plugin, skill, skillstore |
 | Integració | browser, cron, workflow, formfiller, tunnel, crawler |
 | Planificador | scheduler, worker, workerpool, pool |

@@ -4559,6 +4559,11 @@ export default mergeHarnessLocale('ga-IE', {
         yellow: 'Rabhadh',
         red: 'Blocáilte',
       },
+      warnings: {
+        mediumRiskPermissions: 'Éilíonn an scil seo ceadanna riosca mheánach. Athbhreithnigh an tuarascáil slándála sula gcumasóidh tú nuashonrú uathoibríoch.',
+        payloadScanEscalatedHighRisk: 'D’ardaigh scanadh an phéalaigh a suiteáladh an scil seo ó riosca meánach go riosca ard. Déan athbhreithniú ar an tuairisc slándála sula n-úsáideann tú an scil seo.',
+        legacyManifestFallback: 'Braitheadh formáid oidhreachta; cuireadh réamhshocruithe comhoiriúnachta i bhfeidhm.',
+      },
       categories: {
         ai_intelligence: 'AI agus intleacht',
         development_tools: 'Uirlisi forbartha',

@@ -4549,6 +4549,11 @@ export default mergeHarnessLocale('pl-PL', {
         yellow: 'Ostrzezenie',
         red: 'Zablokowane',
       },
+      warnings: {
+        mediumRiskPermissions: 'Ta umiejętność wymaga uprawnień o średnim ryzyku. Przed włączeniem automatycznych aktualizacji zapoznaj się z raportem bezpieczeństwa.',
+        payloadScanEscalatedHighRisk: 'Skanowanie payloadu po instalacji podniosło poziom ryzyka tej umiejętności ze średniego na wysoki. Przed użyciem zapoznaj się z raportem bezpieczeństwa.',
+        legacyManifestFallback: 'Wykryto starszy format umiejętności; zastosowano domyślne ustawienia zgodności.',
+      },
       categories: {
         ai_intelligence: 'AI i inteligencja',
         development_tools: 'Narzedzia deweloperskie',

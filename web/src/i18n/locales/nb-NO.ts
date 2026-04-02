@@ -4528,6 +4528,11 @@ export default mergeHarnessLocale('nb-NO', {
         yellow: 'Advarsel',
         red: 'Blokkert',
       },
+      warnings: {
+        mediumRiskPermissions: 'Denne ferdigheten krever tillatelser med middels risiko. Se gjennom sikkerhetsrapporten før du aktiverer automatisk oppdatering.',
+        payloadScanEscalatedHighRisk: 'Payload-skanningen av den installerte pakken eskalerte denne ferdigheten fra middels risiko til høy risiko. Se gjennom sikkerhetsrapporten før du bruker denne ferdigheten.',
+        legacyManifestFallback: 'Eldre ferdighetsformat oppdaget; standardinnstillinger for kompatibilitet ble brukt.',
+      },
       categories: {
         ai_intelligence: 'AI og intelligens',
         development_tools: 'Utviklerverktoy',

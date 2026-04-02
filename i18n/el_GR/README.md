@@ -203,12 +203,6 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-**Παρακολούθηση Heartbeat**
-```
-Χρονόμετρο (30 λεπτά) → Ανάγνωση HEARTBEAT.md → Αξιολόγηση LLM → Αφαίρεση token HEARTBEAT_OK
-  → Αποδιπλασιασμός (hash FNV, TTL 24ω) → Ειδοποίηση καναλιού (Telegram/Slack/...)
-  → Ροή συμβάντων → Δείκτης UI
-```
 
 ### Χάρτης Πακέτων (`server/internal/`)
 
@@ -223,7 +217,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | Κανάλι | channel, autoreply, i18n |
 | Ασφάλεια | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
 | Φωνή | voice, tts, stt, speech |
-| Παρατήρηση | metrics, heartbeat, companion, profiling, leakdetect |
+| Παρατήρηση | metrics, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
 | Ενσωμάτωση | browser, cron, workflow, formfiller, tunnel, crawler |
 | Χρονοπρογραμματιστής | scheduler, worker, workerpool, pool |

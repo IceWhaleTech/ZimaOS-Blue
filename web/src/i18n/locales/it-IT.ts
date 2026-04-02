@@ -4744,6 +4744,11 @@ export default mergeHarnessLocale('it-IT', {
         yellow: 'Avviso',
         red: 'Bloccato',
       },
+      warnings: {
+        mediumRiskPermissions: 'Questa skill richiede permessi a rischio medio. Controlla il report di sicurezza prima di abilitare l’aggiornamento automatico.',
+        payloadScanEscalatedHighRisk: 'La scansione del payload installato ha innalzato questa skill da rischio medio ad alto. Controlla il report di sicurezza prima di usare questa skill.',
+        legacyManifestFallback: 'Rilevato formato skill legacy; applicate impostazioni predefinite di compatibilità.',
+      },
       categories: {
         ai_intelligence: 'IA e intelligenza',
         development_tools: 'Strumenti di sviluppo',

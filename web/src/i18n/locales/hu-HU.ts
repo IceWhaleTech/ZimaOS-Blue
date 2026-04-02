@@ -4569,6 +4569,11 @@ export default mergeHarnessLocale('hu-HU', {
         yellow: 'Figyelmeztetes',
         red: 'Blokkolva',
       },
+      warnings: {
+        mediumRiskPermissions: 'Ez a készség közepes kockázatú jogosultságokat igényel. Az automatikus frissítés engedélyezése előtt tekintse át a biztonsági jelentést.',
+        payloadScanEscalatedHighRisk: 'A telepített csomag (payload) vizsgálata közepes kockázatról magasra emelte ezt a készséget. Használat előtt tekintse át a biztonsági jelentést.',
+        legacyManifestFallback: 'Örökölt készségformátum észlelve; kompatibilitási alapbeállítások alkalmazva.',
+      },
       categories: {
         ai_intelligence: 'MI es intelligencia',
         development_tools: 'Fejlesztoi eszkozok',

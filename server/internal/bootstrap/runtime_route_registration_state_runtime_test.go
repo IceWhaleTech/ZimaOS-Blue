@@ -108,7 +108,6 @@ func TestRouteRegistrationStateRuntimeSetters_PersistFieldAndSnapshot(t *testing
 	mgmtTool := new(tools.MgmtTool)
 	managementRuntime := routeRuntimeContractManagementRuntimeResult{
 		mgmtTool:         mgmtTool,
-		heartbeatBound:   true,
 		support:          management,
 		userSurfaceBound: true,
 		upgradeBound:     true,

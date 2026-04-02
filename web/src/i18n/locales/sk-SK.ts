@@ -4534,6 +4534,11 @@ export default mergeHarnessLocale('sk-SK', {
         yellow: 'Upozornenie',
         red: 'Blokovane',
       },
+      warnings: {
+        mediumRiskPermissions: 'Táto zručnosť vyžaduje oprávnenia so stredným rizikom. Pred zapnutím automatických aktualizácií si pozrite bezpečnostnú správu.',
+        payloadScanEscalatedHighRisk: 'Skenovanie nainštalovaného balíka (payload) zvýšilo túto zručnosť zo stredného na vysoké riziko. Pred použitím si pozrite bezpečnostnú správu.',
+        legacyManifestFallback: 'Zistený starší formát zručnosti; použili sa predvolené nastavenia kompatibility.',
+      },
       categories: {
         ai_intelligence: 'AI a inteligencia',
         development_tools: 'Vyvojarske nastroje',

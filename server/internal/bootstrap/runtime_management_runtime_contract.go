@@ -11,8 +11,6 @@ func bindRouteRuntimeManagement(binding routeRuntimeManagementBinding, options r
 	result := routeRuntimeContractManagementRuntimeResult{
 		mgmtTool: binding.RegisterMgmtTool(options.mgmt),
 	}
-	binding.BindHeartbeatRuntime(options.heartbeat)
-	result.heartbeatBound = options.heartbeat.apiProtected != nil && options.heartbeat.config != nil && options.heartbeat.runtimeLLM != nil
 	result.support = binding.BindManagementSupport(options.support)
 	binding.BindUserSurfaceRuntime(options.user)
 	result.userSurfaceBound = options.user.v1 != nil && options.user.protected != nil

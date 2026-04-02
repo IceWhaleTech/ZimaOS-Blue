@@ -4581,6 +4581,11 @@ export default mergeHarnessLocale('el-GR', {
         yellow: 'Proeidopoiisi',
         red: 'Apokleistike',
       },
+      warnings: {
+        mediumRiskPermissions: 'Αυτό το skill απαιτεί δικαιώματα μεσαίου κινδύνου. Ελέγξτε την αναφορά ασφάλειας πριν ενεργοποιήσετε την αυτόματη ενημέρωση.',
+        payloadScanEscalatedHighRisk: 'Η σάρωση payload μετά την εγκατάσταση ανέβασε αυτό το skill από μεσαίο σε υψηλό κίνδυνο. Ελέγξτε την αναφορά ασφάλειας πριν χρησιμοποιήσετε αυτό το skill.',
+        legacyManifestFallback: 'Εντοπίστηκε παλαιό format skill· εφαρμόστηκαν προεπιλογές συμβατότητας.',
+      },
       categories: {
         ai_intelligence: 'ΤΝ και νοημοσύνη',
         development_tools: 'Εργαλεία ανάπτυξης',

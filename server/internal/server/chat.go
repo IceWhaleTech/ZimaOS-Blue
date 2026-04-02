@@ -10277,7 +10277,7 @@ func (h *ChatHandler) SetProxyBridge(bridge *proxybridge.Bridge) {
 	h.proxyBridge = bridge
 }
 
-// SetRuntimeProvider sets the unified runtime provider used by chat/im/voice/heartbeat flows.
+// SetRuntimeProvider sets the unified runtime provider used by chat, IM, and voice flows.
 func (h *ChatHandler) SetRuntimeProvider(provider llm.Provider) {
 	h.runtimeProvider = provider
 }

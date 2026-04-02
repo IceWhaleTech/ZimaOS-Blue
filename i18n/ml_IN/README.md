@@ -206,12 +206,6 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-**ഹാർട്ട്ബീറ്റ് മോണിറ്റർ**
-```
-ടൈമർ (30 മിനിറ്റ്) → HEARTBEAT.md വായിക്കുക → LLM മൂല്യനിർണ്ണയം → HEARTBEAT_OK ടോക്കൺ നീക്കം
-  → ഡീഡ്യൂപ്ലിക്കേഷൻ (FNV ഹാഷ്, 24 മണിക്കൂർ TTL) → ചാനൽ അലേർട്ട് (Telegram/Slack/...)
-  → ഇവന്റ് സ്ട്രീമർ → UI ഇൻഡിക്കേറ്റർ
-```
 
 ### പാക്കേജ് മാപ്പ് (`server/internal/`)
 
@@ -226,7 +220,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | ചാനൽ | channel, autoreply, i18n |
 | സുരക്ഷ | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
 | വോയ്‌സ് | voice, tts, stt, speech |
-| നിരീക്ഷണം | metrics, heartbeat, companion, profiling, leakdetect |
+| നിരീക്ഷണം | metrics, companion, profiling, leakdetect |
 | പ്ലഗിൻ | plugin, skill, skillstore |
 | ഇന്റഗ്രേഷൻ | browser, cron, workflow, formfiller, tunnel, crawler |
 | ഷെഡ്യൂളർ | scheduler, worker, workerpool, pool |

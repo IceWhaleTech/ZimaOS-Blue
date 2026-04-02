@@ -19,7 +19,6 @@ type templateSet struct {
 	agents    string
 	tools     string
 	memory    string
-	heartbeat string
 	bootstrap string
 }
 
@@ -80,8 +79,6 @@ func loadTemplateSet(locale string) *templateSet {
 			ts.tools = content
 		case "MEMORY.md":
 			ts.memory = content
-		case "HEARTBEAT.md":
-			ts.heartbeat = content
 		case "BOOTSTRAP.md":
 			ts.bootstrap = content
 		}
@@ -170,13 +167,12 @@ func resolveTemplates(locale string) *templateSet {
 // templateMap returns the standard file→content map (excluding bootstrap).
 func (ts *templateSet) templateMap() map[string]string {
 	return map[string]string{
-		FileSOUL:      ts.soul,
-		FileUSER:      ts.user,
-		FileIDENTITY:  ts.identity,
-		FileAGENTS:    ts.agents,
-		FileTOOLS:     ts.tools,
-		FileMEMORY:    ts.memory,
-		FileHEARTBEAT: ts.heartbeat,
+		FileSOUL:     ts.soul,
+		FileUSER:     ts.user,
+		FileIDENTITY: ts.identity,
+		FileAGENTS:   ts.agents,
+		FileTOOLS:    ts.tools,
+		FileMEMORY:   ts.memory,
 	}
 }
 
@@ -198,8 +194,6 @@ func templateContentByFile(ts *templateSet, name string) string {
 		return ts.tools
 	case FileMEMORY:
 		return ts.memory
-	case FileHEARTBEAT:
-		return ts.heartbeat
 	case FileBOOTSTRAP:
 		return ts.bootstrap
 	default:
@@ -236,9 +230,6 @@ func mergeTemplateSetWithFallback(primary, fallback *templateSet) *templateSet {
 	}
 	if strings.TrimSpace(out.memory) == "" {
 		out.memory = fallback.memory
-	}
-	if strings.TrimSpace(out.heartbeat) == "" {
-		out.heartbeat = fallback.heartbeat
 	}
 	if strings.TrimSpace(out.bootstrap) == "" {
 		out.bootstrap = fallback.bootstrap

@@ -29,7 +29,6 @@ const (
 	FileAGENTS    = "AGENTS.md"
 	FileTOOLS     = "TOOLS.md"
 	FileMEMORY    = "MEMORY.md"
-	FileHEARTBEAT = "HEARTBEAT.md"
 	FileBOOTSTRAP = "BOOTSTRAP.md"
 )
 
@@ -287,7 +286,7 @@ func (m *Manager) LoadBootstrapFiles() []BootstrapFile {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	names := []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileHEARTBEAT}
+	names := []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY}
 	files := make([]BootstrapFile, 0, len(names)+3) // +3 for bootstrap + daily logs
 
 	for _, name := range names {
@@ -324,7 +323,7 @@ func (m *Manager) LoadContextFiles() map[string]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	names := []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileHEARTBEAT}
+	names := []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY}
 	ctx := make(map[string]string, len(names)+3)
 
 	for _, name := range names {
@@ -413,7 +412,7 @@ func isAllowedFile(name string) bool {
 		return false
 	}
 	switch name {
-	case FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileHEARTBEAT, FileBOOTSTRAP:
+	case FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileBOOTSTRAP:
 		return true
 	}
 	return false

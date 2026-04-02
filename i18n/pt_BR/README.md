@@ -197,7 +197,7 @@ sh build.sh
 | Channel | channel, autoreply, i18n |
 | Security | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
 | Voice | voice, tts, stt, speech |
-| Observe | metrics, heartbeat, companion, profiling, leakdetect |
+| Observe | metrics, companion, profiling, leakdetect |
 | Plugin | plugin, skill, skillstore |
 | Integrate | browser, cron, workflow, formfiller, tunnel, crawler |
 | Scheduler | scheduler, worker, workerpool, pool |
@@ -227,12 +227,6 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-**Monitor de Heartbeat**
-```
-Temporizador (30 min) → Ler HEARTBEAT.md → Avaliação LLM → Remover token HEARTBEAT_OK
-  → Deduplicação (hash FNV, TTL 24h) → Alerta de canal (Telegram/Slack/...)
-  → Fluxo de eventos → Indicador UI
-```
 
 ## Como Usar
 

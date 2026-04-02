@@ -26,12 +26,6 @@ func TestRuntimeRouteRegistrationManagementPhaseGo_PersistsManagementSupportSnap
 	}
 	mgmtSource := string(mgmtContent)
 
-	heartbeatContent, err := os.ReadFile(filepath.Join("runtime_route_registration_management_phase_heartbeat_options.go"))
-	if err != nil {
-		t.Fatalf("read runtime_route_registration_management_phase_heartbeat_options.go: %v", err)
-	}
-	heartbeatSource := string(heartbeatContent)
-
 	supportContent, err := os.ReadFile(filepath.Join("runtime_route_registration_management_phase_support_options.go"))
 	if err != nil {
 		t.Fatalf("read runtime_route_registration_management_phase_support_options.go: %v", err)
@@ -59,9 +53,6 @@ func TestRuntimeRouteRegistrationManagementPhaseGo_PersistsManagementSupportSnap
 	if lines := strings.Count(mgmtSource, "\n") + 1; lines > 14 {
 		t.Fatalf("expected runtime_route_registration_management_phase_mgmt_options.go to stay below 14 lines after extraction, got %d", lines)
 	}
-	if lines := strings.Count(heartbeatSource, "\n") + 1; lines > 28 {
-		t.Fatalf("expected runtime_route_registration_management_phase_heartbeat_options.go to stay below 28 lines after extraction, got %d", lines)
-	}
 	if lines := strings.Count(supportSource, "\n") + 1; lines > 22 {
 		t.Fatalf("expected runtime_route_registration_management_phase_support_options.go to stay below 22 lines after extraction, got %d", lines)
 	}
@@ -86,7 +77,6 @@ func TestRuntimeRouteRegistrationManagementPhaseGo_PersistsManagementSupportSnap
 		"func newRouteRuntimeManagementOptions(",
 		"routeRuntimeContractManagementRuntimeOptions{",
 		"newRouteRuntimeManagementMgmtOptions(state)",
-		"newRouteRuntimeManagementHeartbeatOptions(state)",
 		"newRouteRuntimeManagementSupportOptions(state)",
 		"newRouteRuntimeManagementUserOptions(state)",
 		"newRouteRuntimeManagementChannelOptions(state)",
@@ -103,16 +93,6 @@ func TestRuntimeRouteRegistrationManagementPhaseGo_PersistsManagementSupportSnap
 	} {
 		if !strings.Contains(mgmtSource, token) {
 			t.Fatalf("expected runtime_route_registration_management_phase_mgmt_options.go to contain token %q", token)
-		}
-	}
-	for _, token := range []string{
-		"func newRouteRuntimeManagementHeartbeatOptions(",
-		"routeRuntimeContractHeartbeatOptions{",
-		"Visibility: heartbeat.VisibilityConfig{",
-		"runtimeLLM:",
-	} {
-		if !strings.Contains(heartbeatSource, token) {
-			t.Fatalf("expected runtime_route_registration_management_phase_heartbeat_options.go to contain token %q", token)
 		}
 	}
 	for _, token := range []string{
@@ -147,11 +127,9 @@ func TestRuntimeRouteRegistrationManagementPhaseGo_PersistsManagementSupportSnap
 	}
 	for _, token := range []string{
 		"routeRuntimeContractMgmtOptions{",
-		"routeRuntimeContractHeartbeatOptions{",
 		"routeRuntimeContractManagementSupportOptions{",
 		"routeRuntimeContractUserSurfaceOptions{",
 		"routeRuntimeContractChannelOptions{",
-		"Visibility: heartbeat.VisibilityConfig{",
 		"providerRegistry:",
 		"channelTaskWatcher:",
 	} {
@@ -162,7 +140,6 @@ func TestRuntimeRouteRegistrationManagementPhaseGo_PersistsManagementSupportSnap
 
 	forbidden := []string{
 		".RegisterMgmtTool(",
-		".BindHeartbeatRuntime(",
 		".BindManagementSupport(",
 		".BindUserSurfaceRuntime(",
 		".BindMgmtUpgrade(",

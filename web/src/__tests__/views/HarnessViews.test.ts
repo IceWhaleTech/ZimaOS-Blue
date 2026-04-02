@@ -3,10 +3,17 @@ import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 
 const listGroupsMock = vi.fn()
+const listDatasetsMock = vi.fn()
+const listDatasetVersionsMock = vi.fn()
+const listEvalSpecsMock = vi.fn()
+const listEvalRunsMock = vi.fn()
+const listBaselinesMock = vi.fn()
 const getGroupReportMock = vi.fn()
 const getRunDetailMock = vi.fn()
 const cancelGroupMock = vi.fn()
 const retryFailedGroupMock = vi.fn()
+const listConversationsMock = vi.fn()
+const listMessagesMock = vi.fn()
 const routerPushMock = vi.fn()
 const notificationSuccessMock = vi.fn()
 const notificationInfoMock = vi.fn()
@@ -21,10 +28,24 @@ const routeMock = {
 vi.mock('@/api/harness', () => ({
   harnessApi: {
     listGroups: listGroupsMock,
+    listDatasets: listDatasetsMock,
+    listDatasetVersions: listDatasetVersionsMock,
+    listEvalSpecs: listEvalSpecsMock,
+    listEvalRuns: listEvalRunsMock,
+    listBaselines: listBaselinesMock,
     getGroupReport: getGroupReportMock,
     getRunDetail: getRunDetailMock,
     cancelGroup: cancelGroupMock,
     retryFailedGroup: retryFailedGroupMock,
+  },
+}))
+
+vi.mock('@/api/chat', () => ({
+  conversationApi: {
+    list: listConversationsMock,
+  },
+  messageApi: {
+    list: listMessagesMock,
   },
 }))
 
@@ -591,6 +612,13 @@ describe('Harness views', () => {
       value: vi.fn(),
     })
     listGroupsMock.mockResolvedValue({ data: [] })
+    listDatasetsMock.mockResolvedValue({ data: [] })
+    listDatasetVersionsMock.mockResolvedValue({ data: [] })
+    listEvalSpecsMock.mockResolvedValue({ data: [] })
+    listEvalRunsMock.mockResolvedValue({ data: [] })
+    listBaselinesMock.mockResolvedValue({ data: [] })
+    listConversationsMock.mockResolvedValue({ data: [] })
+    listMessagesMock.mockResolvedValue({ data: [] })
     getGroupReportMock.mockResolvedValue({ data: createGroupReport() })
     getRunDetailMock.mockImplementation((id: string) =>
       Promise.resolve({ data: createRunDetail(id) })
@@ -606,7 +634,7 @@ describe('Harness views', () => {
     vi.useRealTimers()
   })
 
-  it('renders the simplified harness groups list and filters it', async () => {
+  it('renders the restored harness console and filters group records', async () => {
     routeMock.path = '/automation/harness'
     routeMock.params = { id: '' }
     listGroupsMock.mockResolvedValue({
@@ -669,7 +697,12 @@ describe('Harness views', () => {
     await flushPromises()
 
     expect(listGroupsMock).toHaveBeenCalled()
+    expect(listDatasetsMock).toHaveBeenCalled()
+    expect(listEvalRunsMock).toHaveBeenCalled()
     expect(wrapper.text()).toContain('Harness')
+    expect(wrapper.text()).toContain('Quick Eval')
+    expect(wrapper.text()).toContain('Datasets & versions')
+    expect(wrapper.text()).toContain('Eval runs')
     expect(wrapper.text()).toContain('Regression batch')
     expect(wrapper.text()).toContain('Nightly snapshot')
     expect(wrapper.findAll('.group-card-link')).toHaveLength(2)

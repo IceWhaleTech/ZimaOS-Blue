@@ -4828,6 +4828,11 @@ export default mergeHarnessLocale('de-DE', {
         yellow: 'Warnung',
         red: 'Blockiert',
       },
+      warnings: {
+        mediumRiskPermissions: 'Dieses Skill benötigt Berechtigungen mit mittlerem Risiko. Prüfe den Sicherheitsbericht, bevor du Auto-Updates aktivierst.',
+        payloadScanEscalatedHighRisk: 'Die installierte Payload-Prüfung hat dieses Skill von mittlerem auf hohes Risiko hochgestuft. Prüfe den Sicherheitsbericht, bevor du dieses Skill verwendest.',
+        legacyManifestFallback: 'Legacy-Skill-Format erkannt; Kompatibilitäts-Standardeinstellungen wurden angewendet.',
+      },
       categories: {
         ai_intelligence: 'KI und Intelligenz',
         development_tools: 'Entwicklungstools',

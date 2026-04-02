@@ -4808,6 +4808,11 @@ export default mergeHarnessLocale('fr-FR', {
         yellow: 'Avertissement',
         red: 'Bloque',
       },
+      warnings: {
+        mediumRiskPermissions: 'Cette compétence nécessite des permissions à risque moyen. Consultez le rapport de sécurité avant d’activer la mise à jour automatique.',
+        payloadScanEscalatedHighRisk: 'L’analyse du package installé a fait passer ce skill de risque moyen à risque élevé. Consultez le rapport de sécurité avant d’utiliser ce skill.',
+        legacyManifestFallback: 'Format de compétence hérité détecté ; des valeurs par défaut de compatibilité ont été appliquées.',
+      },
       categories: {
         ai_intelligence: 'IA et intelligence',
         development_tools: 'Outils de developpement',

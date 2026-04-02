@@ -69,7 +69,6 @@ func TestRuntimeOperationalContractGo_DelegatesSupportSnapshotHelper(t *testing.
 	requiredTypes := []string{
 		"type routeRuntimeOperationalBinding interface {",
 		"var _ routeRuntimeOperationalBinding = (*runtimeContractBinding)(nil)",
-		"type routeRuntimeContractHeartbeatOptions struct {",
 		"type routeRuntimeContractOperationalOptions struct {",
 		"type routeRuntimeContractOperationalSupportResult struct {",
 		"type routeRuntimeContractOperationalResult struct {",

@@ -1,14 +1,5 @@
 package bootstrap
 
-import (
-	"context"
-
-	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
-
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
-)
-
 type routeRuntimeOperationalBinding interface {
 	RegisterTaskSurface(options runtimeTaskSurfaceOptions) runtimeTaskSurfaceRegistration
 	ActivateRouteRuntime(options routeRuntimeContractActivationOptions) runtimeActivationResult
@@ -23,15 +14,6 @@ type routeRuntimeOperationalBinding interface {
 }
 
 var _ routeRuntimeOperationalBinding = (*runtimeContractBinding)(nil)
-
-type routeRuntimeContractHeartbeatOptions struct {
-	apiProtected *echo.Group
-	config       *heartbeat.Config
-	dataDir      string
-	runtimeLLM   *runtimeLLMProviderRef
-	ctx          context.Context
-	logger       *zap.Logger
-}
 
 type routeRuntimeContractOperationalOptions struct {
 	taskSurface runtimeTaskSurfaceOptions

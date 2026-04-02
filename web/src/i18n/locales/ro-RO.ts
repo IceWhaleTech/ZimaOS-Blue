@@ -4570,6 +4570,11 @@ export default mergeHarnessLocale('ro-RO', {
         yellow: 'Avertisment',
         red: 'Blocat',
       },
+      warnings: {
+        mediumRiskPermissions: 'Această abilitate necesită permisiuni cu risc mediu. Verificați raportul de securitate înainte de a activa actualizarea automată.',
+        payloadScanEscalatedHighRisk: 'Scanarea payload-ului instalat a escaladat această abilitate de la risc mediu la risc ridicat. Consultați raportul de securitate înainte de a folosi această abilitate.',
+        legacyManifestFallback: 'A fost detectat un format vechi; au fost aplicate setări implicite de compatibilitate.',
+      },
       categories: {
         ai_intelligence: 'AI si inteligenta',
         development_tools: 'Instrumente de dezvoltare',

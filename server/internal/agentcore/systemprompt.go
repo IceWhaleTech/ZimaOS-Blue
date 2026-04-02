@@ -249,8 +249,6 @@ const (
 
 	silentReplyGuidance = "<silent_reply>When you have nothing to say, respond with ONLY: [SILENT_REPLY] (entire message, no wrapping, never appended to real content).</silent_reply>"
 
-	heartbeatGuidance = "<heartbeat>On heartbeat poll with nothing to report, reply exactly: HEARTBEAT_OK. If something needs attention, reply with alert text instead (no HEARTBEAT_OK).</heartbeat>"
-
 	agentModeIntroGuidance = "<agent_mode>You are in agent mode with unlimited autonomy for complex, multi-step tasks. No tool round limit — keep working until fully done."
 
 	agentModePlanningGuidance = "<planning>For multi-step tasks, FIRST output a TODO checklist using markdown checkboxes (`- [ ] step`). The system auto-marks completed items and injects `<tp>` with current task — use it to decide what to do next. Do NOT re-output the checklist.</planning>"
@@ -607,7 +605,6 @@ func (b *SystemPromptBuilder) staticCoreSections() []promptSection {
 		{Name: "web_tools", Stability: promptSectionStable, Reason: "web routing defaults should remain cache-stable", Content: webToolRoutingGuidance},
 		{Name: "blue_core_rules", Stability: promptSectionStable, Reason: "core runtime rules are shared across turns", Content: blueCoreRulesGuidance},
 		{Name: "silent_reply", Stability: promptSectionStable, Reason: "special silent marker contract must stay stable", Content: silentReplyGuidance},
-		{Name: "heartbeat", Stability: promptSectionStable, Reason: "heartbeat contract must stay stable", Content: heartbeatGuidance},
 	}
 }
 
@@ -768,8 +765,7 @@ var contextFilePriority = map[string]int{
 	"AGENTS.md":    2,
 	"TOOLS.md":     3,
 	"IDENTITY.md":  4,
-	"HEARTBEAT.md": 5,
-	"MEMORY.md":    6,
+	"MEMORY.md":    5,
 	"BOOTSTRAP.md": 1, // Same priority as USER during first-run
 }
 
@@ -782,7 +778,6 @@ var contextFileTokenCap = map[string]int{
 	"AGENTS.md":    700,
 	"TOOLS.md":     600,
 	"IDENTITY.md":  600,
-	"HEARTBEAT.md": 400,
 	"MEMORY.md":    700,
 }
 
@@ -792,7 +787,7 @@ const (
 )
 
 // buildProjectContext builds project context from multiple files with token budgeting.
-// Files are prioritized: SOUL > USER/BOOTSTRAP > AGENTS > TOOLS > IDENTITY > HEARTBEAT > MEMORY > daily logs.
+// Files are prioritized: SOUL > USER/BOOTSTRAP > AGENTS > TOOLS > IDENTITY > MEMORY > daily logs.
 // If total tokens exceed the budget, low-priority files are dropped first.
 func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string) string {
 	budget := b.maxContextTokens

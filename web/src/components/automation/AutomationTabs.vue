@@ -24,6 +24,7 @@ const tabs = computed(() => [
     id: 'harness',
     to: '/automation/harness',
     label: tr('automation.tabs.harness', 'Harness'),
+    badge: 'Beta',
     description: tr(
       'automation.tabs.harnessDesc',
       'Review run records, eval groups, and scoring results.'
@@ -52,7 +53,10 @@ const tabs = computed(() => [
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" v-html="tab.icon" />
       </span>
       <span class="automation-tab-button__body">
-        <span class="automation-tab-button__label">{{ tab.label }}</span>
+        <span class="automation-tab-button__label-row">
+          <span class="automation-tab-button__label">{{ tab.label }}</span>
+          <span v-if="tab.badge" class="automation-tab-beta">{{ tab.badge }}</span>
+        </span>
       </span>
       <span class="automation-tab-button__state" aria-hidden="true"></span>
     </RouterLink>
@@ -64,6 +68,7 @@ const tabs = computed(() => [
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  margin-bottom: 0.6rem;
   padding: 0;
   border: 0;
   background: transparent;
@@ -135,6 +140,28 @@ const tabs = computed(() => [
   line-height: 1.25;
 }
 
+.automation-tab-button__label-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.automation-tab-beta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.125rem 0.375rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: rgb(29, 78, 216);
+  background: rgb(219, 234, 254);
+  border: 1px solid rgb(147, 197, 253);
+  line-height: 1;
+}
+
 .automation-tab-button__state {
   width: 9px;
   height: 9px;
@@ -195,6 +222,14 @@ html.dark .automation-tab-button__state {
 [data-theme='dark'] .automation-tab-button--active .automation-tab-button__state,
 html.dark .automation-tab-button--active .automation-tab-button__state {
   background: #e2e8f0;
+}
+
+:root.dark .automation-tab-beta,
+[data-theme='dark'] .automation-tab-beta,
+html.dark .automation-tab-beta {
+  color: rgb(191, 219, 254);
+  background: rgba(30, 64, 175, 0.25);
+  border-color: rgba(147, 197, 253, 0.45);
 }
 
 @media (max-width: 640px) {

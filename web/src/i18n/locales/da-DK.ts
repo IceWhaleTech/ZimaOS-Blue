@@ -4534,6 +4534,11 @@ export default mergeHarnessLocale('da-DK', {
         yellow: 'Advarsel',
         red: 'Blokeret',
       },
+      warnings: {
+        mediumRiskPermissions: 'Denne færdighed kræver tilladelser med mellemrisiko. Gennemgå sikkerhedsrapporten, før du aktiverer automatisk opdatering.',
+        payloadScanEscalatedHighRisk: 'Payload-scanningen af den installerede pakke eskalerede denne færdighed fra mellem risiko til høj risiko. Gennemgå sikkerhedsrapporten, før du bruger denne færdighed.',
+        legacyManifestFallback: 'Ældre færdighedsformat registreret; standardindstillinger for kompatibilitet blev anvendt.',
+      },
       categories: {
         ai_intelligence: 'AI og intelligens',
         development_tools: 'Udviklingsvaerktojer',

@@ -103,7 +103,6 @@ func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
 		MarkdownMode:              channel.OutboundMarkdownModePreserveWhole,
 		SupportsMarkdownFormat:    true,
 		AutoPromoteMarkdownReport: true,
-		SuppressHeartbeatText:     true,
 	}
 }
 

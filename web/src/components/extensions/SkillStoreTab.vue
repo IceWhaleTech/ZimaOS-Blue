@@ -16,6 +16,7 @@ import {
 } from '@/api/skill'
 import SkillContractNotice from '@/components/extensions/SkillContractNotice.vue'
 import SemanticSearchField from '@/components/ui/SemanticSearchField.vue'
+import { useNotificationStore } from '@/stores/notification'
 import { formatVersionLabel } from '@/utils/version-label'
 import { getErrorMessage } from '@/utils/error'
 import {
@@ -29,6 +30,7 @@ const props = defineProps<{
 }>()
 
 const { t, te, locale } = useI18n()
+const notification = useNotificationStore()
 
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -602,6 +604,32 @@ function sortModeLabel(mode: SkillStoreSortMode): string {
 
 function normalizeSearchQuery(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+function localizeInstallWarning(warning: string): string {
+  const normalized = warning.trim().toLowerCase()
+  if (normalized.includes('payload scan escalated')) {
+    return marketplaceText(
+      'warnings.payloadScanEscalatedHighRisk',
+      'Installed payload scan escalated this skill from medium risk to high risk. Review the security report before using this skill.'
+    )
+  }
+  if (
+    normalized.includes('medium-risk permissions') ||
+    normalized.includes('medium risk permissions')
+  ) {
+    return marketplaceText(
+      'warnings.mediumRiskPermissions',
+      'Skill requires medium-risk permissions. Review the security report before enabling auto-update.'
+    )
+  }
+  if (normalized.startsWith('legacy manifest compatibility fallback applied')) {
+    return marketplaceText(
+      'warnings.legacyManifestFallback',
+      'Legacy skill format detected; compatibility defaults were applied.'
+    )
+  }
+  return warning
 }
 
 function cloneDiscoverStatus(
@@ -1555,10 +1583,12 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
   }
   const badge = skill.security_badge ?? 'yellow'
   if (badge === 'red') {
-    error.value = marketplaceText(
+    const blockedMessage = marketplaceText(
       'messages.blockedByPolicy',
       'This skill is blocked by the security policy.'
     )
+    error.value = blockedMessage
+    notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, { duration: 6000 })
     return
   }
   if (badge === 'yellow' && !ackRisk) {
@@ -1570,7 +1600,7 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
   error.value = null
 
   try {
-    await skillApi.installMarket({
+    const response = await skillApi.installMarket({
       id: skill.id,
       ack_risk: ackRisk || badge === 'yellow',
     })
@@ -1587,6 +1617,19 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
       }
     }
     pendingRiskSkill.value = null
+
+    notification.success(
+      skillStoreText('title', 'Skill Store'),
+      `${skillStoreText('status.installed', 'Installed')}: ${skill.name}`
+    )
+    const warnings = (response.data?.warnings ?? []).map(localizeInstallWarning)
+    if (warnings.length > 0) {
+      notification.warning(
+        skillStoreText('title', 'Skill Store'),
+        warnings.slice(0, 2).join(' • '),
+        { duration: 8000 }
+      )
+    }
   } catch (err) {
     const message =
       getErrorMessage(err) || skillStoreText('installError', 'Failed to install skill')
@@ -1603,15 +1646,19 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
     ) {
       // Check if it's specifically a medium risk block
       if (normalized.includes('medium risk')) {
-        error.value = marketplaceText(
+        const blockedMessage = marketplaceText(
           'messages.blockedByPolicyMediumRisk',
           'This skill is blocked by security policy (medium risk).'
         )
+        error.value = blockedMessage
+        notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, { duration: 6000 })
       } else {
-        error.value = marketplaceText(
+        const blockedMessage = marketplaceText(
           'messages.blockedByPolicy',
           'This skill is blocked by the security policy.'
         )
+        error.value = blockedMessage
+        notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, { duration: 6000 })
       }
     } else {
       error.value = message
@@ -1622,13 +1669,6 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
 
 function closeRiskModal() {
   pendingRiskSkill.value = null
-}
-
-function reviewRiskSkill() {
-  const skill = pendingRiskSkill.value
-  if (!skill) return
-  pendingRiskSkill.value = null
-  selectSkill(skill)
 }
 
 function confirmRiskInstall() {
@@ -2087,14 +2127,18 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="advisor-skill-card__actions">
-                <button
+                  <button
                   v-if="skill.installable"
                   :class="[
                     'install-button',
                     `install-${skill.security_badge || 'yellow'}`,
-                    { busy: installingSkillId === skill.id },
+                    {
+                      busy: installingSkillId === skill.id,
+                      'is-disabled': skill.security_badge === 'red',
+                    },
                   ]"
-                  :disabled="installingSkillId === skill.id || skill.security_badge === 'red'"
+                  :disabled="installingSkillId === skill.id"
+                  :aria-disabled="skill.security_badge === 'red'"
                   @click.stop="installSkill(skill)"
                 >
                   <span v-if="installingSkillId === skill.id">{{
@@ -2417,9 +2461,13 @@ onBeforeUnmount(() => {
                 :class="[
                   'install-button',
                   `install-${skill.security_badge || 'yellow'}`,
-                  { busy: installingSkillId === skill.id },
+                  {
+                    busy: installingSkillId === skill.id,
+                    'is-disabled': skill.security_badge === 'red',
+                  },
                 ]"
-                :disabled="installingSkillId === skill.id || skill.security_badge === 'red'"
+                :disabled="installingSkillId === skill.id"
+                :aria-disabled="skill.security_badge === 'red'"
                 @click.stop="installSkill(skill)"
               >
                 <span v-if="installingSkillId === skill.id">{{
@@ -2474,31 +2522,33 @@ onBeforeUnmount(() => {
             class="detail-card dashboard-card-surface store-detail-modal-card"
             :style="skillAccentStyle(detailSkill)"
           >
-            <header class="detail-header">
-              <div class="detail-hero-layout">
-                <div class="detail-hero-main">
-                  <div class="detail-icon" aria-hidden="true">
-                    <span>{{ skillMonogram(detailSkill) }}</span>
-                  </div>
-                  <div class="detail-main">
-                    <h3>{{ detailSkill.name }}</h3>
-                    <code class="detail-slug">{{ detailSkill.id }}</code>
-                    <div class="detail-pill-row">
-                      <span class="detail-version-pill">{{ skillVersionLabel(detailSkill) }}</span>
-                      <span v-if="detailInstalled" class="meta-chip meta-chip-installed">{{
-                        skillStoreText('installed', 'Installed')
-                      }}</span>
-                    </div>
-                    <p v-if="detailSkill.curated_reason" class="detail-callout">
-                      {{ detailSkill.curated_reason }}
-                    </p>
-                  </div>
-                </div>
+	            <header class="detail-header">
+	              <div class="detail-hero-layout">
+	                <div class="detail-hero-main">
+	                  <div class="detail-icon" aria-hidden="true">
+	                    <span>{{ skillMonogram(detailSkill) }}</span>
+	                  </div>
+	                  <div class="detail-main">
+	                    <div class="detail-title-row">
+	                      <h3>{{ detailSkill.name }}</h3>
+	                      <code class="detail-slug">{{ detailSkill.id }}</code>
+	                    </div>
+	                    <div class="detail-pill-row">
+	                      <span class="detail-version-pill">{{ skillVersionLabel(detailSkill) }}</span>
+	                      <span v-if="detailInstalled" class="meta-chip meta-chip-installed">{{
+	                        skillStoreText('installed', 'Installed')
+	                      }}</span>
+	                    </div>
+	                    <p v-if="detailSkill.curated_reason" class="detail-callout">
+	                      {{ detailSkill.curated_reason }}
+	                    </p>
+	                  </div>
+	                </div>
 
-                <aside class="detail-header-side">
-                  <div class="detail-utility-actions">
-                    <button
-                      type="button"
+	                <aside class="detail-header-side">
+	                  <div class="detail-utility-actions">
+	                    <button
+	                      type="button"
                       class="detail-utility-button"
                       :aria-label="marketplaceText('actions.viewSource', 'View source')"
                       @click="openSkillSource(detailSkill)"
@@ -2559,57 +2609,58 @@ onBeforeUnmount(() => {
                         </svg>
                       </span>
                       <strong>{{ formatNumber(detailSkill.stars) }}</strong>
-                      <small>{{ skillStoreText('detail.meta.stars', 'Stars') }}</small>
-                    </article>
-                  </div>
+	                      <small>{{ skillStoreText('detail.meta.stars', 'Stars') }}</small>
+	                    </article>
+	                  </div>
+	                </aside>
 
-                  <section class="detail-install-panel">
-                    <div class="detail-install-copy">
-                      <span class="section-label">{{
-                        marketplaceText('detail.installTitle', 'Install')
-                      }}</span>
-                      <p class="detail-install-headline">
-                        {{
-                          marketplaceText(
-                            'detail.installHeading',
-                            'Add this skill to your workspace'
-                          )
-                        }}
-                      </p>
-                      <p>{{ installHint(detailSkill) }}</p>
-                    </div>
-                    <div class="detail-actions detail-actions--inline">
-                      <button
-                        v-if="detailSkill.installable"
-                        :class="[
-                          'install-button',
-                          `install-${detailSkill.security_badge || 'yellow'}`,
-                        ]"
-                        :disabled="
-                          installingSkillId === detailSkill.id ||
-                          detailSkill.security_badge === 'red'
-                        "
-                        @click="installSkill(detailSkill)"
-                      >
-                        <span v-if="detailSkill.security_badge === 'red'">{{
-                          marketplaceText('actions.blocked', 'Blocked')
-                        }}</span>
-                        <span v-else-if="detailInstalled">{{
-                          skillStoreText('installed', 'Installed')
-                        }}</span>
-                        <span v-else>{{ skillStoreText('install', 'Install') }}</span>
-                      </button>
-                      <button v-else class="source-button" @click="openSkillSource(detailSkill)">
-                        {{ marketplaceText('actions.viewSource', 'View source') }}
-                      </button>
-                      <button class="btn-ghost" @click="openSkillSource(detailSkill)">
-                        {{ skillStoreText('detail.openLink', 'Open Link') }}
-                      </button>
-                    </div>
-                  </section>
-                </aside>
-              </div>
-            </header>
+	                <section class="detail-install-panel detail-install-panel--hero">
+	                  <div class="detail-install-copy">
+	                    <span class="section-label">{{
+	                      marketplaceText('detail.installTitle', 'Install')
+	                    }}</span>
+	                    <p class="detail-install-headline">
+	                      {{
+	                        marketplaceText(
+	                          'detail.installHeading',
+	                          'Add this skill to your workspace'
+	                        )
+	                      }}
+	                    </p>
+	                    <p>{{ installHint(detailSkill) }}</p>
+	                  </div>
+	                  <div class="detail-actions detail-actions--inline">
+                    <button
+                      v-if="detailSkill.installable"
+                      :class="[
+                        'install-button',
+                        `install-${detailSkill.security_badge || 'yellow'}`,
+                        { 'is-disabled': detailSkill.security_badge === 'red' },
+                      ]"
+                      :disabled="
+                        installingSkillId === detailSkill.id
+                      "
+                      :aria-disabled="detailSkill.security_badge === 'red'"
+                      @click="installSkill(detailSkill)"
+                    >
+	                      <span v-if="detailSkill.security_badge === 'red'">{{
+	                        marketplaceText('actions.blocked', 'Blocked')
+	                      }}</span>
+	                      <span v-else-if="detailInstalled">{{
+	                        skillStoreText('installed', 'Installed')
+	                      }}</span>
+	                      <span v-else>{{ skillStoreText('install', 'Install') }}</span>
+	                    </button>
+	                    <button v-else class="source-button" @click="openSkillSource(detailSkill)">
+	                      {{ marketplaceText('actions.viewSource', 'View source') }}
+	                    </button>
+	                    <button class="btn-ghost" @click="openSkillSource(detailSkill)">
+	                      {{ skillStoreText('detail.openLink', 'Open Link') }}
+	                    </button>
+	                  </div>
+	                </section>
+	              </div>
+	            </header>
 
             <div class="detail-meta">
               <div class="meta-item">
@@ -2889,26 +2940,19 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="modal-actions risk-modal__actions">
-            <button
-              class="btn-ghost risk-modal__cancel-button"
-              type="button"
-              @click="closeRiskModal"
-            >
-              {{ commonText('cancel', 'Cancel') }}
-            </button>
-            <button
-              class="btn-ghost risk-modal__review-button"
-              type="button"
-              @click="reviewRiskSkill"
-            >
-              {{ marketplaceText('modal.reviewSummary', 'Review security summary') }}
-            </button>
-            <button
-              class="btn-primary risk-modal__confirm-button"
-              type="button"
-              @click="confirmRiskInstall"
-            >
+	          <div class="modal-actions risk-modal__actions">
+	            <button
+	              class="btn-ghost risk-modal__cancel-button"
+	              type="button"
+	              @click="closeRiskModal"
+	            >
+	              {{ commonText('cancel', 'Cancel') }}
+	            </button>
+	            <button
+	              class="btn-primary risk-modal__confirm-button"
+	              type="button"
+	              @click="confirmRiskInstall"
+	            >
               {{ marketplaceText('modal.confirmInstall', 'Confirm install') }}
             </button>
           </div>
@@ -3010,7 +3054,7 @@ onBeforeUnmount(() => {
 }
 
 .btn-ghost:hover:not(:disabled),
-.install-button:hover:not(:disabled),
+.install-button:hover:not(:disabled):not(.is-disabled),
 .source-button:hover:not(:disabled) {
   background: var(--bg-hover);
   box-shadow: var(--card-shadow);
@@ -3025,6 +3069,11 @@ onBeforeUnmount(() => {
 .btn-ghost:disabled,
 .install-button:disabled,
 .source-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.install-button.is-disabled {
   opacity: 0.58;
   cursor: not-allowed;
 }
@@ -3880,10 +3929,10 @@ onBeforeUnmount(() => {
 }
 
 .detail-icon {
-  width: 74px;
-  height: 74px;
-  border-radius: 22px;
-  font-size: 36px;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  font-size: 30px;
 }
 
 .card-hero h4 {
@@ -4055,13 +4104,14 @@ onBeforeUnmount(() => {
 .detail-hero-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(250px, 290px);
+  grid-template-rows: auto auto;
   gap: 12px;
   width: 100%;
 }
 
 .detail-hero-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   min-width: 0;
 }
@@ -4069,8 +4119,33 @@ onBeforeUnmount(() => {
 .detail-main {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
+}
+
+.detail-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detail-title-row h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-title-row .detail-slug {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detail-header-side {
@@ -4201,6 +4276,8 @@ onBeforeUnmount(() => {
   gap: 2px 8px;
   align-items: center;
   text-align: start;
+  min-height: 62px;
+  padding: 8px 10px;
 }
 
 .detail-hero-stat__icon {
@@ -4250,12 +4327,52 @@ onBeforeUnmount(() => {
   justify-content: flex-start;
   gap: 8px;
   margin-top: 0;
-  padding: 10px;
+  padding: 9px 10px;
   border-radius: 14px;
   border: 1px solid var(--border);
   background:
     radial-gradient(circle at top right, var(--market-accent-soft) 0%, transparent 56%),
     color-mix(in srgb, var(--panel-bg) 92%, white 5%);
+}
+
+.detail-install-panel--hero {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.detail-install-panel--hero .detail-install-copy {
+  flex: 1 1 320px;
+}
+
+.detail-install-panel--hero .detail-install-headline {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.detail-install-panel--hero .detail-install-copy p:last-child {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.detail-install-panel--hero .detail-actions--inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.detail-install-panel--hero .install-button,
+.detail-install-panel--hero .source-button,
+.detail-install-panel--hero .btn-ghost {
+  white-space: nowrap;
 }
 
 .detail-install-copy {
@@ -4654,10 +4771,6 @@ onBeforeUnmount(() => {
   border-color: var(--border);
   background: var(--panel-bg);
 }
-.risk-modal__review-button {
-  border-color: color-mix(in srgb, var(--security-yellow-border) 72%, var(--border));
-  background: color-mix(in srgb, var(--security-yellow-bg) 62%, var(--panel-bg));
-}
 
 .risk-modal__confirm-button {
   background: #0f172a;
@@ -4805,6 +4918,11 @@ onBeforeUnmount(() => {
 
   .detail-header-side {
     justify-content: flex-start;
+  }
+
+  .detail-install-panel--hero {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .detail-actions--inline {

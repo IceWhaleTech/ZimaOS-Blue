@@ -5,7 +5,6 @@ import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channelconfig"
 // Pure channel configuration types live in channelconfig so config loading
 // does not need to import the runtime channel package.
 type (
-	HeartbeatConfig     = channelconfig.HeartbeatConfig
 	GroupPolicy         = channelconfig.GroupPolicy
 	GroupMentionPolicy  = channelconfig.GroupMentionPolicy
 	GroupAccessConfig   = channelconfig.GroupAccessConfig
@@ -33,10 +32,6 @@ const (
 	GroupMentionPolicyMentioned = channelconfig.GroupMentionPolicyMentioned
 	GroupMentionPolicyAlways    = channelconfig.GroupMentionPolicyAlways
 )
-
-func DefaultHeartbeatConfig() HeartbeatConfig {
-	return channelconfig.DefaultHeartbeatConfig()
-}
 
 func DefaultGroupAccessConfig() GroupAccessConfig {
 	return channelconfig.DefaultGroupAccessConfig()

@@ -149,7 +149,7 @@ func TestLoadBootstrapFiles(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileHEARTBEAT} {
+	for _, name := range []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY} {
 		if !found[name] {
 			t.Errorf("missing %s in bootstrap files", name)
 		}

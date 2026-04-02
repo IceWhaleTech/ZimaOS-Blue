@@ -203,12 +203,6 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-**Heartbeat nadzor**
-```
-Mjerač (30 min) → Čitanje HEARTBEAT.md → LLM procjena → Uklanjanje HEARTBEAT_OK tokena
-  → Deduplikacija (FNV hash, 24h TTL) → Upozorenje kanala (Telegram/Slack/...)
-  → Tok događaja → UI indikator
-```
 
 ### Mapa paketa (`server/internal/`)
 
@@ -223,7 +217,7 @@ Mjerač (30 min) → Čitanje HEARTBEAT.md → LLM procjena → Uklanjanje HEART
 | Kanal | channel, autoreply, i18n |
 | Sigurnost | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
 | Glas | voice, tts, stt, speech |
-| Nadzor | metrics, heartbeat, companion, profiling, leakdetect |
+| Nadzor | metrics, companion, profiling, leakdetect |
 | Dodatak | plugin, skill, skillstore |
 | Integracija | browser, cron, workflow, formfiller, tunnel, crawler |
 | Raspoređivač | scheduler, worker, workerpool, pool |

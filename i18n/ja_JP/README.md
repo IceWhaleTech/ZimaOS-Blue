@@ -204,7 +204,7 @@ sh build.sh
 | チャネル | channel, autoreply, i18n |
 | セキュリティ | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
 | 音声 | voice, tts, stt, speech |
-| 監視 | metrics, heartbeat, companion, profiling, leakdetect |
+| 監視 | metrics, companion, profiling, leakdetect |
 | プラグイン | plugin, skill, skillstore |
 | 統合 | browser, cron, workflow, formfiller, tunnel, crawler |
 | スケジューラー | scheduler, worker, workerpool, pool |
@@ -234,12 +234,6 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-**ハートビート監視**
-```
-タイマー (30分) → HEARTBEAT.md 読込 → LLM 評価 → HEARTBEAT_OK トークン除去
-  → 重複排除 (FNV ハッシュ, 24時間 TTL) → チャネル通知 (Telegram/Slack/...)
-  → イベントストリーマー → UI インジケーター
-```
 
 ## 使い方
 

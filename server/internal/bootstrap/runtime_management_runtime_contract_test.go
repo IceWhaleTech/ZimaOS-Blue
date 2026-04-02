@@ -14,12 +14,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-func TestRuntimeManagementRuntimeContractGo_DelegatesMgmtHeartbeatSupportUserAndChannelLanes(t *testing.T) {
+func TestRuntimeManagementRuntimeContractGo_DelegatesMgmtSupportUserAndChannelLanes(t *testing.T) {
 	contractContent, err := os.ReadFile(filepath.Join("runtime_management_runtime_contract.go"))
 	if err != nil {
 		t.Fatalf("read runtime_management_runtime_contract.go: %v", err)
@@ -44,7 +43,6 @@ func TestRuntimeManagementRuntimeContractGo_DelegatesMgmtHeartbeatSupportUserAnd
 		"func bindRouteRuntimeManagement(",
 		"binding routeRuntimeManagementBinding,",
 		"binding.RegisterMgmtTool(",
-		"binding.BindHeartbeatRuntime(",
 		"binding.BindManagementSupport(",
 		"binding.BindUserSurfaceRuntime(",
 		"binding.BindMgmtUpgrade(",
@@ -62,7 +60,6 @@ func TestRuntimeManagementRuntimeContractGo_DelegatesMgmtHeartbeatSupportUserAnd
 		"type routeRuntimeContractManagementRuntimeOptions struct {",
 		"type routeRuntimeContractManagementRuntimeResult struct {",
 		"mgmtTool",
-		"heartbeatBound",
 		"support          routeRuntimeContractManagementSupportResult",
 		"userSurfaceBound",
 		"upgradeBound",
@@ -100,7 +97,6 @@ func TestBindManagementRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 	v1 := e.Group("/api/v1")
 	protected := e.Group("/api")
 	api := e.Group("/api")
-	apiProtected := e.Group("/api")
 	workspaceHandler := &stubRouteRegistrar{
 		register: func(g *echo.Group) {
 			g.GET("/live", func(c echo.Context) error { return c.NoContent(204) })
@@ -119,14 +115,6 @@ func TestBindManagementRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 			registry:     registry,
 			workspaceDir: tmp,
 			version:      "1.2.3",
-		},
-		heartbeat: routeRuntimeContractHeartbeatOptions{
-			apiProtected: apiProtected,
-			config:       &heartbeat.Config{Enabled: false},
-			dataDir:      tmp,
-			runtimeLLM:   contract.NewRuntimeLLMRef(),
-			ctx:          ctx,
-			logger:       zap.NewNop(),
 		},
 		support: routeRuntimeContractManagementSupportOptions{
 			authPageV1Group: func(string) *echo.Group { return v1 },
@@ -159,9 +147,6 @@ func TestBindManagementRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 	if result.mgmtTool == nil || registry.Get("mgmt") != result.mgmtTool {
 		t.Fatalf("expected management runtime to register mgmt tool, got tool=%#v registered=%#v", result.mgmtTool, registry.Get("mgmt"))
 	}
-	if !result.heartbeatBound {
-		t.Fatalf("expected management runtime to bind heartbeat lane, got %#v", result)
-	}
 	if result.support.updateHandler == nil || result.support.otaChecker == nil || result.support.providerSettings == nil {
 		t.Fatalf("expected management runtime to aggregate management support, got %#v", result.support)
 	}
@@ -173,7 +158,6 @@ func TestBindManagementRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 		method string
 		path   string
 	}{
-		{method: "GET", path: "/api/heartbeat/status"},
 		{method: "GET", path: "/api/v1/system/update/info"},
 		{method: "GET", path: "/api/providers/settings"},
 		{method: "GET", path: "/api/workspace/live"},

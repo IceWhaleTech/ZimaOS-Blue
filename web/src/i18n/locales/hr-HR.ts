@@ -4541,6 +4541,11 @@ export default mergeHarnessLocale('hr-HR', {
         yellow: 'Upozorenje',
         red: 'Blokirano',
       },
+      warnings: {
+        mediumRiskPermissions: 'Ova vještina zahtijeva dozvole srednjeg rizika. Pregledajte sigurnosno izvješće prije uključivanja automatskog ažuriranja.',
+        payloadScanEscalatedHighRisk: 'Skeniranje instaliranog sadržaja (payload) povisilo je ovu vještinu sa srednjeg na visok rizik. Prije korištenja pregledajte sigurnosno izvješće.',
+        legacyManifestFallback: 'Otkriven je naslijeđeni format vještine; primijenjene su zadane postavke kompatibilnosti.',
+      },
       categories: {
         ai_intelligence: 'AI i inteligencija',
         development_tools: 'Alati za razvoj',

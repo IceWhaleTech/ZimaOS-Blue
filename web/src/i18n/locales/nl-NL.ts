@@ -4563,6 +4563,11 @@ export default mergeHarnessLocale('nl-NL', {
         yellow: 'Waarschuwing',
         red: 'Geblokkeerd',
       },
+      warnings: {
+        mediumRiskPermissions: 'Deze skill vereist machtigingen met gemiddeld risico. Bekijk het beveiligingsrapport voordat je automatisch updaten inschakelt.',
+        payloadScanEscalatedHighRisk: 'De payloadscan van het geïnstalleerde pakket heeft deze skill van gemiddeld naar hoog risico verhoogd. Bekijk het beveiligingsrapport voordat je deze skill gebruikt.',
+        legacyManifestFallback: 'Legacy-skillformaat gedetecteerd; compatibiliteitsstandaardinstellingen zijn toegepast.',
+      },
       categories: {
         ai_intelligence: 'AI en intelligentie',
         development_tools: 'Ontwikkelhulpmiddelen',

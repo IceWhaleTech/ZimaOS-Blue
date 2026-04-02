@@ -4570,6 +4570,11 @@ export default mergeHarnessLocale('zh-TW', {
         yellow: '風險提示',
         red: '已阻止',
       },
+      warnings: {
+        mediumRiskPermissions: '此技能需要中等風險權限。啟用自動更新前請先查看安全報告。',
+        payloadScanEscalatedHighRisk: '安裝負載掃描將此技能從中風險升級為高風險。使用前請查看安全報告。',
+        legacyManifestFallback: '偵測到舊版技能格式；已套用相容性預設值。',
+      },
       curatedLabels: {
         featured: '精選',
         trending: '熱門',

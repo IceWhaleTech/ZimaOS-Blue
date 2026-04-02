@@ -48,6 +48,8 @@ const requiredPaths = [
   'harness.groups.totalGroups',
   'harness.groups.avgPassRate',
   'harness.groups.loading',
+  'harness.groups.eyebrow',
+  'harness.groups.title',
   'harness.groups.terminalOnly',
   'harness.groups.searchPlaceholder',
   'harness.groups.noSubject',
@@ -81,11 +83,21 @@ const requiredPaths = [
   'harness.group.failedItems',
   'harness.group.noFailedItems',
   'harness.group.attempts',
+  'harness.group.outcomeTitle',
+  'harness.group.outcomeDescription',
   'harness.group.noFailureReason',
   'harness.group.linkedRuns',
   'harness.group.noLinkedRuns',
   'harness.group.artifacts',
   'harness.group.noArtifacts',
+  'harness.builder.title',
+  'harness.datasets.title',
+  'harness.evalSpecs.title',
+  'harness.evalRuns.title',
+  'harness.baseline.title',
+  'harness.compare.title',
+  'harness.evalRun.selectReportHint',
+  'harness.quickEval.title',
   'chat.deepResearchHoverDescription',
   'chat.taskStagePartial',
   'chat.taskHarnessRunStatus',
@@ -178,14 +190,26 @@ describe('Harness locale coverage', () => {
     expect(getPathValue(zhCN, 'automation.tabs.harnessDesc')).toBe(
       '查看运行记录、评测分组和评分结果。'
     )
+    expect(getPathValue(zhCN, 'harness.groups.eyebrow')).toBe('执行基底')
+    expect(getPathValue(zhCN, 'harness.groups.title')).toBe('分组')
     expect(getPathValue(zhCN, 'harness.groups.totalGroups')).toBe('分组数')
+    expect(getPathValue(zhCN, 'harness.group.outcomeTitle')).toBe('分组结果')
+    expect(getPathValue(zhCN, 'harness.evalRun.selectReportHint')).toBe(
+      '选择一个评测运行，即可打开关联报告、基线控制和对比视图。'
+    )
     expect(getPathValue(zhCN, 'harness.group.retryFailed')).toBe('重试失败项')
     expect(getPathValue(zhCN, 'harness.group.failedItems')).toBe('失败样本')
     expect(getPathValue(zhTW, 'automation.tabs.harness')).toBe('Harness')
     expect(getPathValue(zhTW, 'automation.tabs.harnessDesc')).toBe(
       '查看執行記錄、評測群組和評分結果。'
     )
+    expect(getPathValue(zhTW, 'harness.groups.eyebrow')).toBe('執行基底')
+    expect(getPathValue(zhTW, 'harness.groups.title')).toBe('群組')
     expect(getPathValue(zhTW, 'harness.groups.totalGroups')).toBe('群組數')
+    expect(getPathValue(zhTW, 'harness.group.outcomeTitle')).toBe('群組結果')
+    expect(getPathValue(zhTW, 'harness.evalRun.selectReportHint')).toBe(
+      '選擇一個評測執行，即可開啟關聯報告、基線控制與比較檢視。'
+    )
     expect(getPathValue(zhTW, 'harness.group.retryFailed')).toBe('重試失敗項')
     expect(getPathValue(zhTW, 'harness.group.failedItems')).toBe('失敗樣本')
   })

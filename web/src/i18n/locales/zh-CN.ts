@@ -4374,6 +4374,11 @@ export default mergeHarnessLocale('zh-CN', {
         yellow: '风险提示',
         red: '已阻止',
       },
+      warnings: {
+        mediumRiskPermissions: '该技能需要中等风险权限。启用自动更新前请先查看安全报告。',
+        payloadScanEscalatedHighRisk: '安装包扫描将该技能从中风险升级为高风险。使用前请查看安全报告。',
+        legacyManifestFallback: '检测到旧版技能格式；已应用兼容性默认设置。',
+      },
       curatedLabels: {
         featured: '精选',
         trending: '热门',

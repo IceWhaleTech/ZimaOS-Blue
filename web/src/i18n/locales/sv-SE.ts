@@ -4531,6 +4531,11 @@ export default mergeHarnessLocale('sv-SE', {
         yellow: 'Varning',
         red: 'Blockerad',
       },
+      warnings: {
+        mediumRiskPermissions: 'Den här färdigheten kräver behörigheter med medelhög risk. Granska säkerhetsrapporten innan du aktiverar automatisk uppdatering.',
+        payloadScanEscalatedHighRisk: 'Payload-skanningen av det installerade paketet eskalerade den här färdigheten från medelrisk till hög risk. Granska säkerhetsrapporten innan du använder den här färdigheten.',
+        legacyManifestFallback: 'Äldre färdighetsformat upptäckt; kompatibilitetsstandarder har tillämpats.',
+      },
       categories: {
         ai_intelligence: 'AI och intelligens',
         development_tools: 'Utvecklingsverktyg',

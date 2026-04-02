@@ -205,7 +205,7 @@ sh build.sh
 | 頻道層 | channel, autoreply, i18n |
 | 安全層 | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
 | 語音層 | voice, tts, stt, speech |
-| 觀測層 | metrics, heartbeat, companion, profiling, leakdetect |
+| 觀測層 | metrics, companion, profiling, leakdetect |
 | 外掛層 | plugin, skill, skillstore |
 | 整合層 | browser, cron, workflow, formfiller, tunnel, crawler |
 | 排程層 | scheduler, worker, workerpool, pool |
@@ -235,12 +235,6 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-**心跳監控**
-```
-定時器 (30分鐘) → 讀取 HEARTBEAT.md → LLM 評估 → 剝離 HEARTBEAT_OK 令牌
-  → 去重 (FNV 雜湊, 24小時 TTL) → 頻道告警 (Telegram/Slack/...)
-  → 事件流 → UI 指示器
-```
 
 ## 使用方式
 
