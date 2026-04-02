@@ -693,6 +693,12 @@ export default mergeHarnessLocale('pl-PL', {
     taskCancelled: 'Zadanie anulowane',
     waitingThinking: 'Myślę...',
     awaitingConfirmation: 'Oczekiwanie na potwierdzenie, aby kontynuować',
+    streamConnecting: 'Łączenie',
+    streamStreaming: 'Generowanie',
+    streamExecuting: 'Praca',
+    streamAwaitingConfirmation: 'Oczekiwanie',
+    streamRecovering: 'Przywracanie',
+    streamInterrupted: 'Przerwane',
     backgroundTasks: 'Zadania w tle',
     taskNotificationTitle: 'Zadanie w tle',
     taskStagePlanning: 'Planowanie',
@@ -1815,9 +1821,9 @@ export default mergeHarnessLocale('pl-PL', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Nowy External Agent',
+      eyebrow: 'Agent zewnętrzny',
+      title: 'Agent zewnętrzny',
+      newExternalAgent: 'Nowy agent zewnętrzny',
       status: { label: 'Stan', verified: 'Zweryfikowano' },
       newAcp: 'Nowość ACP',
       newA2a: 'Nowość A2A',
@@ -2602,7 +2608,8 @@ export default mergeHarnessLocale('pl-PL', {
       descriptionPlaceholder: 'Opisz to źródło...',
       cancel: 'Anuluj',
       add: 'Dodaj',
-      close: 'Zamknij',
+    close: 'Zamknij',
+    backToTop: 'Powrót do góry',
       refresh: 'Odśwież',
       allLevels: 'Wszystkie poziomy',
       error: 'Błąd',
@@ -2618,6 +2625,16 @@ export default mergeHarnessLocale('pl-PL', {
         'Przeglądaj umiejętności jako karty. Otwórz dowolną umiejętność, aby sprawdzić dokumentację i zarządzać jej stanem.',
       toolGalleryHint:
         'Przeglądaj narzędzia jako karty, zobacz do czego służą i szybko je włączaj lub wyłączaj.',
+      skillManagementHint:
+        'Wbudowane umiejętności można tutaj włączać lub wyłączać, ale odinstalować można tylko umiejętności lokalne.',
+      toolManagementHint:
+        'Wbudowane narzędzia można tutaj włączać lub wyłączać, ale ich dostępność nadal może być ograniczona przez zasady narzędzi środowiska uruchomieniowego.',
+      builtinSkillDetailHint:
+        'Tę wbudowaną umiejętność można tutaj włączać lub wyłączać, ale nie można jej odinstalować.',
+      builtinSkillUninstallBlocked:
+        'Wbudowane umiejętności można wyłączać, ale nie można ich odinstalować.',
+      builtinToolUninstallBlocked:
+        'Wbudowane narzędzia można wyłączać, ale nie można ich odinstalować.',
       closeSkillDetails: 'Zamknij szczegóły umiejętności',
       sourceLabel: 'Źródło',
       skillCollectionFilters: 'Filtry kolekcji umiejętności',

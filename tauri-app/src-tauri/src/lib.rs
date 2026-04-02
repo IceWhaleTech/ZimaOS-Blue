@@ -88,13 +88,18 @@ impl DesktopStartupTrace {
         *last = now;
         let total = now.duration_since(self.started);
 
-        info!(
+        let message = format!(
             "startup-trace component={} label={} step_ms={} total_ms={}",
             self.component,
             label,
             step.as_millis(),
             total.as_millis()
         );
+
+        // Mirror startup marks to stderr so profiling runs still capture them
+        // even if the structured logger output is filtered or delayed.
+        eprintln!("{message}");
+        info!("{message}");
     }
 }
 
@@ -114,16 +119,415 @@ const PANEL_WINDOW_HEIGHT: f64 = 640.0;
 const PANEL_WINDOW_MIN_WIDTH: f64 = 640.0;
 const PANEL_WINDOW_MIN_HEIGHT: f64 = 420.0;
 const PANEL_WINDOW_PATH: &str = "/chat?panel=1";
-const ABOUT_BLANK_SPLASH_SCRIPT: &str = r#"
+const ABOUT_BLANK_SPLASH_SCRIPT: &str = r##"
 (() => {
   if (window.location.href !== 'about:blank') {
     return;
   }
+  const body = document.body;
+  if (!body) {
+    return;
+  }
+
+  const sidebarRows = Array.from(
+    { length: 5 },
+    (_, index) =>
+      `<span class="startup-shell__sidebar-row startup-shell__skeleton" style="--row-width:${88 - index * 10}%"></span>`
+  ).join('');
+  const assistantLines = Array.from(
+    { length: 3 },
+    (_, index) =>
+      `<span class="startup-shell__line startup-shell__skeleton" style="--line-width:${96 - index * 14}%"></span>`
+  ).join('');
+
   document.documentElement.style.background = 'transparent';
-  document.body.style.cssText = 'margin:0;background:transparent;display:flex;align-items:center;justify-content:center;height:100vh';
-  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:96px;height:96px;border-radius:28px;background:rgba(15,23,42,0.34);box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),0 24px 60px rgba(2,6,23,0.22);backdrop-filter:blur(26px) saturate(1.12);-webkit-backdrop-filter:blur(26px) saturate(1.12)"><div style="width:36px;height:36px;border:3px solid rgba(148,163,184,0.72);border-top-color:#3B82F6;border-radius:50%;animation:s .8s linear infinite"></div></div><style>@keyframes s{to{transform:rotate(360deg)}}@media(prefers-color-scheme:light){body>div{background:rgba(255,255,255,0.52)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.68),0 24px 60px rgba(148,163,184,0.22)!important}body>div>div{border-color:rgba(100,116,139,0.56)!important;border-top-color:#3B82F6!important}}</style>';
+  body.style.cssText = 'margin:0;min-height:100vh;background:transparent;';
+  body.innerHTML = `
+    <div class="startup-shell" aria-hidden="true">
+      <div class="startup-shell__backdrop"></div>
+      <div class="startup-shell__layout">
+        <aside class="startup-shell__sidebar">
+          <div class="startup-shell__brand">
+            <span class="startup-shell__brand-mark" aria-hidden="true"></span>
+            <span class="startup-shell__brand-bar startup-shell__skeleton"></span>
+          </div>
+          <div class="startup-shell__sidebar-card">
+            <span class="startup-shell__sidebar-title startup-shell__skeleton"></span>
+            ${sidebarRows}
+          </div>
+        </aside>
+        <main class="startup-shell__main">
+          <header class="startup-shell__topbar">
+            <span class="startup-shell__chip startup-shell__skeleton"></span>
+            <span class="startup-shell__status-wrap startup-shell__status-wrap--icon-only">
+              <span class="startup-shell__spinner" aria-hidden="true"></span>
+            </span>
+          </header>
+          <section class="startup-shell__hero">
+            <span class="startup-shell__hero-kicker startup-shell__skeleton"></span>
+            <span class="startup-shell__hero-title startup-shell__skeleton"></span>
+            <span class="startup-shell__hero-copy startup-shell__skeleton"></span>
+            <span class="startup-shell__hero-copy startup-shell__skeleton startup-shell__hero-copy--short"></span>
+          </section>
+          <section class="startup-shell__surface">
+            <article class="startup-shell__message startup-shell__message--assistant">
+              <span class="startup-shell__avatar startup-shell__avatar--assistant" aria-hidden="true"></span>
+              <div class="startup-shell__message-body">
+                ${assistantLines}
+              </div>
+            </article>
+            <article class="startup-shell__message startup-shell__message--user">
+              <div class="startup-shell__message-body startup-shell__message-body--user">
+                <span class="startup-shell__line startup-shell__skeleton" style="--line-width:58%"></span>
+              </div>
+            </article>
+            <div class="startup-shell__composer">
+              <span class="startup-shell__composer-bar startup-shell__skeleton"></span>
+              <div class="startup-shell__composer-actions">
+                <span class="startup-shell__composer-pill startup-shell__skeleton"></span>
+                <span class="startup-shell__composer-pill startup-shell__skeleton"></span>
+                <span class="startup-shell__composer-send" aria-hidden="true"></span>
+              </div>
+              <span class="startup-shell__composer-copy startup-shell__skeleton"></span>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <style>
+      .startup-shell,
+      .startup-shell * {
+        box-sizing: border-box;
+      }
+      .startup-shell {
+        position: relative;
+        min-height: 100vh;
+        overflow: hidden;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: rgba(241, 245, 249, 0.96);
+        background:
+          radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 34%),
+          radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 30%),
+          linear-gradient(180deg, rgba(8, 15, 30, 0.94), rgba(6, 12, 24, 0.98));
+      }
+      .startup-shell__backdrop {
+        position: absolute;
+        inset: -12%;
+        background:
+          radial-gradient(circle, rgba(59, 130, 246, 0.18), transparent 40%),
+          radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.16), transparent 32%);
+        filter: blur(56px);
+        opacity: 0.8;
+        pointer-events: none;
+      }
+      .startup-shell__layout {
+        position: relative;
+        z-index: 1;
+        min-height: 100vh;
+        padding: 28px;
+        display: grid;
+        grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+        gap: 24px;
+      }
+      .startup-shell__sidebar,
+      .startup-shell__surface {
+        backdrop-filter: blur(28px) saturate(1.08);
+        -webkit-backdrop-filter: blur(28px) saturate(1.08);
+        background: rgba(15, 23, 42, 0.34);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.08),
+          0 24px 60px rgba(2, 6, 23, 0.28);
+      }
+      .startup-shell__sidebar {
+        border-radius: 28px;
+        padding: 22px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .startup-shell__brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .startup-shell__brand-bar {
+        display: block;
+        width: 124px;
+        height: 14px;
+        border-radius: 999px;
+      }
+      .startup-shell__brand-mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        background:
+          linear-gradient(135deg, rgba(96, 165, 250, 0.96), rgba(14, 165, 233, 0.58)),
+          rgba(15, 23, 42, 0.72);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.24),
+          0 12px 32px rgba(14, 165, 233, 0.3);
+      }
+      .startup-shell__sidebar-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 18px;
+        border-radius: 22px;
+        background: rgba(15, 23, 42, 0.26);
+      }
+      .startup-shell__sidebar-title {
+        display: block;
+        width: 52%;
+        height: 12px;
+        border-radius: 999px;
+      }
+      .startup-shell__sidebar-row {
+        display: block;
+        width: var(--row-width, 100%);
+        height: 12px;
+        border-radius: 999px;
+      }
+      .startup-shell__main {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .startup-shell__topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .startup-shell__chip,
+      .startup-shell__status-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.28);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+      .startup-shell__chip {
+        width: 90px;
+        height: 14px;
+        padding: 0;
+        border-radius: 999px;
+      }
+      .startup-shell__status-wrap--icon-only {
+        padding-inline: 12px;
+      }
+      .startup-shell__spinner {
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        border: 2px solid rgba(148, 163, 184, 0.42);
+        border-top-color: rgba(96, 165, 250, 0.98);
+        animation: startup-shell-spin .9s linear infinite;
+      }
+      .startup-shell__hero {
+        padding: 8px 6px 0;
+        max-width: 720px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .startup-shell__hero-kicker,
+      .startup-shell__hero-title,
+      .startup-shell__hero-copy {
+        display: block;
+        border-radius: 999px;
+      }
+      .startup-shell__hero-kicker {
+        width: 116px;
+        height: 12px;
+      }
+      .startup-shell__hero-title {
+        width: min(100%, 460px);
+        height: clamp(28px, 4vw, 40px);
+      }
+      .startup-shell__hero-copy {
+        width: min(100%, 520px);
+        height: 12px;
+      }
+      .startup-shell__hero-copy--short {
+        width: min(100%, 360px);
+      }
+      .startup-shell__surface {
+        border-radius: 30px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-height: 420px;
+      }
+      .startup-shell__message {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .startup-shell__message--user {
+        justify-content: flex-end;
+      }
+      .startup-shell__avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 11px;
+        background: linear-gradient(135deg, rgba(96, 165, 250, 0.95), rgba(14, 165, 233, 0.48));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        flex: 0 0 auto;
+      }
+      .startup-shell__message-body {
+        min-width: min(100%, 560px);
+        max-width: min(100%, 620px);
+        padding: 18px 18px 16px;
+        border-radius: 24px 24px 24px 10px;
+        background: rgba(15, 23, 42, 0.28);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .startup-shell__message-body--user {
+        max-width: min(100%, 300px);
+        border-radius: 24px 24px 10px 24px;
+        background: rgba(59, 130, 246, 0.18);
+      }
+      .startup-shell__line {
+        display: block;
+        width: var(--line-width, 100%);
+        height: 12px;
+        border-radius: 999px;
+      }
+      .startup-shell__composer {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding-top: 12px;
+      }
+      .startup-shell__composer-bar {
+        display: block;
+        width: 100%;
+        height: 54px;
+        border-radius: 18px;
+      }
+      .startup-shell__composer-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .startup-shell__composer-pill {
+        display: block;
+        width: 92px;
+        height: 12px;
+        border-radius: 999px;
+      }
+      .startup-shell__composer-send {
+        margin-left: auto;
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.88), rgba(14, 165, 233, 0.62));
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.18),
+          0 12px 24px rgba(14, 165, 233, 0.24);
+      }
+      .startup-shell__composer-copy {
+        display: block;
+        width: 240px;
+        height: 12px;
+        border-radius: 999px;
+      }
+      .startup-shell__skeleton {
+        position: relative;
+        overflow: hidden;
+        background: rgba(148, 163, 184, 0.18);
+      }
+      .startup-shell__skeleton::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.18),
+          transparent
+        );
+        animation: startup-shell-shimmer 1.45s ease-in-out infinite;
+      }
+      @keyframes startup-shell-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes startup-shell-shimmer {
+        100% {
+          transform: translateX(100%);
+        }
+      }
+      @media (max-width: 900px) {
+        .startup-shell__layout {
+          grid-template-columns: minmax(0, 1fr);
+          padding: 22px 18px;
+        }
+        .startup-shell__sidebar {
+          display: none;
+        }
+        .startup-shell__surface {
+          padding: 20px;
+          min-height: 360px;
+        }
+      }
+      @media (max-width: 640px) {
+        .startup-shell__topbar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .startup-shell__hero h1 {
+          font-size: 30px;
+        }
+        .startup-shell__message-body {
+          min-width: 0;
+        }
+      }
+      @media (prefers-color-scheme: light) {
+        .startup-shell {
+          color: rgba(15, 23, 42, 0.94);
+          background:
+            radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 34%),
+            radial-gradient(circle at top right, rgba(34, 197, 94, 0.08), transparent 30%),
+            linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.98));
+        }
+        .startup-shell__sidebar,
+        .startup-shell__surface,
+        .startup-shell__chip,
+        .startup-shell__status-wrap {
+          background: rgba(255, 255, 255, 0.58);
+          border-color: rgba(148, 163, 184, 0.18);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.78),
+            0 24px 60px rgba(148, 163, 184, 0.2);
+        }
+        .startup-shell__message-body {
+          background: rgba(255, 255, 255, 0.62);
+          border-color: rgba(148, 163, 184, 0.18);
+        }
+        .startup-shell__message-body--user {
+          background: rgba(191, 219, 254, 0.52);
+        }
+        .startup-shell__skeleton {
+          background: rgba(148, 163, 184, 0.22);
+        }
+      }
+    </style>
+  `;
 })();
-"#;
+"##;
 
 #[cfg(target_os = "macos")]
 const MACOS_GLASS_INIT_SCRIPT: &str = r#"
@@ -379,18 +783,38 @@ fn update_window_on_main_thread(
     let callback_handle = app_handle.clone();
     let label = label.to_string();
     let _ = app_handle.run_on_main_thread(move || {
+        let trace_main_window = label == MAIN_WINDOW_LABEL;
         let Some(window) = callback_handle.get_webview_window(&label) else {
             return;
         };
 
+        if trace_main_window {
+            DESKTOP_STARTUP_TRACE.mark("main_window_main_thread_enter");
+        }
+
         if focus {
+            if trace_main_window {
+                DESKTOP_STARTUP_TRACE.mark("main_window_main_thread_activate_begin");
+            }
             activate_macos_app();
+            if trace_main_window {
+                DESKTOP_STARTUP_TRACE.mark("main_window_main_thread_activate_complete");
+            }
         }
 
         if apply_style {
+            if trace_main_window {
+                DESKTOP_STARTUP_TRACE.mark("main_window_main_thread_style_begin");
+            }
             apply_main_window_macos_style(&window);
+            if trace_main_window {
+                DESKTOP_STARTUP_TRACE.mark("main_window_main_thread_style_complete");
+            }
         }
 
+        if trace_main_window {
+            DESKTOP_STARTUP_TRACE.mark("main_window_main_thread_show_begin");
+        }
         let _ = window.show();
         let _ = window.unminimize();
         if focus {
@@ -399,6 +823,9 @@ fn update_window_on_main_thread(
                 ns_window.orderFrontRegardless();
             }
             let _ = window.set_focus();
+        }
+        if trace_main_window {
+            DESKTOP_STARTUP_TRACE.mark("main_window_main_thread_show_complete");
         }
     });
 }
@@ -1028,9 +1455,9 @@ fn embedded_server_data_dir(cli: &CliArgs) -> String {
 mod tests {
     use super::{
         build_args_string, cli_compatible_data_dir_for_home, embedded_server_port_bind_timeout,
-        normalize_server_restart_path, parent_directory_for_reveal_fallback,
-        parse_bool_env_flag, reveal_path_with_fallback, server_origin_from_parts,
-        stt_auth_startup_enabled, CliArgs,
+        normalize_server_restart_path, parent_directory_for_reveal_fallback, parse_bool_env_flag,
+        reveal_path_with_fallback, server_origin_from_parts, stt_auth_startup_enabled,
+        ABOUT_BLANK_SPLASH_SCRIPT, CliArgs,
     };
     #[cfg(target_os = "macos")]
     use super::{macos_app_bundle_path, should_relaunch_bundle_via_open};
@@ -1075,6 +1502,14 @@ mod tests {
             std::time::Duration::from_secs(90)
         );
         assert!(embedded_server_port_bind_timeout(true) > embedded_server_port_bind_timeout(false));
+    }
+
+    #[test]
+    fn about_blank_splash_script_renders_startup_shell_skeleton() {
+        assert!(ABOUT_BLANK_SPLASH_SCRIPT.contains("startup-shell"));
+        assert!(ABOUT_BLANK_SPLASH_SCRIPT.contains("startup-shell__surface"));
+        assert!(ABOUT_BLANK_SPLASH_SCRIPT.contains("startup-shell__hero-title"));
+        assert!(ABOUT_BLANK_SPLASH_SCRIPT.contains("startup-shell__composer-bar"));
     }
 
     #[test]
@@ -2029,6 +2464,7 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                 }
 
                 // Replace the startup splash with the real localhost UI as soon as the server is ready.
+                DESKTOP_STARTUP_TRACE.mark("main_window_bind_begin");
                 match bind_window_to_server_path(&app_handle_for_window, MAIN_WINDOW_LABEL, "") {
                     Ok(window) => {
                         DESKTOP_STARTUP_TRACE.mark("main_window_navigated");
@@ -2075,8 +2511,11 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
 
                         // on_page_load shows the window as soon as the HTML loads (splash visible).
                         // Fallback: if frontend somehow fails, force-show after 5s.
+                        DESKTOP_STARTUP_TRACE.mark("main_window_fallback_wait_begin");
                         tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
+                        DESKTOP_STARTUP_TRACE.mark("main_window_fallback_wait_complete");
                         if !window.is_visible().unwrap_or(true) {
+                            DESKTOP_STARTUP_TRACE.mark("main_window_fallback_show");
                             info!("Fallback: showing window after timeout");
                             #[cfg(target_os = "macos")]
                             update_window_on_main_thread(
@@ -2094,10 +2533,12 @@ Set ZIMAOS_STT_AUTH_ON_STARTUP=1 to force it in debug/dev runs."
                         // On macOS, activate the app to bring it to front
                         #[cfg(target_os = "macos")]
                         {
+                            DESKTOP_STARTUP_TRACE.mark("main_window_activate_begin");
                             use std::process::Command;
                             let _ = Command::new("osascript")
                                 .args(["-e", "tell application \"ZimaOS Blue\" to activate"])
                                 .output();
+                            DESKTOP_STARTUP_TRACE.mark("main_window_activate_complete");
                         }
                     }
                     Err(e) => {

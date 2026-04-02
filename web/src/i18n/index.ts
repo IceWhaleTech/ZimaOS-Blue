@@ -10,6 +10,21 @@ export type { LocaleKey }
 type LocaleMessages = Record<string, unknown>
 type LocaleModule = { default: LocaleMessages }
 type LocaleOverrideCatalog = Partial<Record<LocaleKey, LocaleMessages>>
+type I18nBridge = {
+  install: (app: unknown, ...options: unknown[]) => unknown
+  global: {
+    t: (key: string, ...args: unknown[]) => string
+    te: (key: string) => boolean
+    setLocaleMessage: (locale: string, message: LocaleMessages) => void
+    locale: { value: string }
+  }
+}
+type IdleWindow = Window & {
+  requestIdleCallback?: (
+    callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
+    options?: { timeout?: number }
+  ) => number
+}
 
 // Minimal fallback messages for initial render before the selected locale finishes loading.
 const minimalMessages = {
@@ -21,6 +36,8 @@ const minimalMessages = {
 export type LocaleDirection = 'ltr' | 'rtl'
 
 const LOCALE_KEY = 'zimaos-blue-locale'
+const LOCALE_CACHE_VERSION = 'v1'
+const LOCALE_CACHE_KEY_PREFIX = `zimaos-blue-locale-cache:${LOCALE_CACHE_VERSION}:`
 const RTL_LANGUAGE_CODES = new Set(['ar', 'ckb', 'fa', 'he', 'ps', 'ur'])
 const localeKeySet = new Set<LocaleKey>(localeKeys)
 
@@ -91,16 +108,62 @@ function getDefaultLocale(): LocaleKey {
   return 'en-US'
 }
 
-export const i18n = createI18n({
+function localeCacheKey(locale: LocaleKey): string {
+  return `${LOCALE_CACHE_KEY_PREFIX}${locale}`
+}
+
+function readCachedLocaleMessages(locale: LocaleKey): LocaleMessages | null {
+  if (typeof localStorage === 'undefined') {
+    return null
+  }
+
+  const key = localeCacheKey(locale)
+  const raw = localStorage.getItem(key)
+  if (!raw) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    return isPlainObject(parsed) ? parsed : null
+  } catch {
+    localStorage.removeItem(key)
+    return null
+  }
+}
+
+function writeCachedLocaleMessages(locale: LocaleKey, messages: LocaleMessages): void {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+
+  try {
+    localStorage.setItem(localeCacheKey(locale), JSON.stringify(messages))
+  } catch {
+    // Ignore cache write failures such as private mode / quota pressure.
+  }
+}
+
+const initialLocale = getDefaultLocale()
+const initialCachedMessages = readCachedLocaleMessages(initialLocale)
+const initialMessages: any = {
+  'en-US': initialLocale === 'en-US' ? initialCachedMessages ?? minimalMessages : minimalMessages,
+}
+
+if (initialLocale !== 'en-US') {
+  initialMessages[initialLocale] = initialCachedMessages ?? minimalMessages
+}
+
+const rawI18n = createI18n({
   legacy: false,
-  locale: 'en-US',
+  locale: initialLocale,
   fallbackLocale: 'en-US',
   missingWarn: false,
   fallbackWarn: false,
-  messages: {
-    'en-US': minimalMessages,
-  },
+  messages: initialMessages,
 })
+
+export const i18n = rawI18n as unknown as I18nBridge
 
 type LocaleComposerBridge = {
   setLocaleMessage: (locale: string, message: LocaleMessages) => void
@@ -139,6 +202,7 @@ const localeLoaders: Record<LocaleKey, () => Promise<LocaleModule>> = {
 
 const loadedLocales = new Set<LocaleKey>()
 const loadingLocales = new Map<LocaleKey, Promise<LocaleKey>>()
+const scheduledLocaleRefreshes = new Set<LocaleKey>()
 let localeOverridesPromise: Promise<LocaleOverrideCatalog> | null = null
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -244,6 +308,7 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<LocaleKey> {
       ])
       const mergedMessages = deepMergeMessages(module.default, localeOverrides[locale] || {})
       ;(i18n.global as unknown as LocaleComposerBridge).setLocaleMessage(locale, mergedMessages)
+      writeCachedLocaleMessages(locale, mergedMessages)
       loadedLocales.add(locale)
       return locale
     } catch (error) {
@@ -263,6 +328,28 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<LocaleKey> {
   return pending
 }
 
+function scheduleLocaleRefresh(locale: LocaleKey): void {
+  if (loadedLocales.has(locale) || scheduledLocaleRefreshes.has(locale)) {
+    return
+  }
+
+  scheduledLocaleRefreshes.add(locale)
+  const runRefresh = () => {
+    scheduledLocaleRefreshes.delete(locale)
+    void loadLocaleMessages(locale).catch(() => {})
+  }
+
+  if (typeof window !== 'undefined') {
+    const idleWindow = window as IdleWindow
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleWindow.requestIdleCallback(() => runRefresh(), { timeout: 2000 })
+      return
+    }
+  }
+
+  window.setTimeout(runRefresh, 0)
+}
+
 export async function setLocale(locale: LocaleKey): Promise<void> {
   const resolvedLocale = await loadLocaleMessages(locale)
   applyLocaleState(resolvedLocale)
@@ -274,6 +361,12 @@ export function getLocale(): LocaleKey {
 
 export async function initLocale(): Promise<void> {
   const defaultLocale = getDefaultLocale()
+  if (readCachedLocaleMessages(defaultLocale)) {
+    applyLocaleState(defaultLocale)
+    scheduleLocaleRefresh(defaultLocale)
+    return
+  }
+
   const resolvedLocale = await loadLocaleMessages(defaultLocale)
   applyLocaleState(resolvedLocale)
 }

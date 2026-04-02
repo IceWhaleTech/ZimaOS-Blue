@@ -695,6 +695,12 @@ export default mergeHarnessLocale('ro-RO', {
     taskCancelled: 'Sarcină anulată',
     waitingThinking: 'Se gândește...',
     awaitingConfirmation: 'Se așteaptă confirmarea dvs. pentru a continua',
+    streamConnecting: 'Conectare',
+    streamStreaming: 'Generare',
+    streamExecuting: 'În lucru',
+    streamAwaitingConfirmation: 'În așteptare',
+    streamRecovering: 'Recuperare',
+    streamInterrupted: 'Întrerupt',
     backgroundTasks: 'Sarcini în fundal',
     taskNotificationTitle: 'Sarcină în fundal',
     taskStagePlanning: 'Planificare',
@@ -1819,9 +1825,9 @@ export default mergeHarnessLocale('ro-RO', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'External Agent nou',
+      eyebrow: 'Agent extern',
+      title: 'Agent extern',
+      newExternalAgent: 'Agent extern nou',
       protocol: 'Protocol',
       newAcp: 'ACP nou',
       newA2a: 'A2A nou',
@@ -2612,7 +2618,8 @@ export default mergeHarnessLocale('ro-RO', {
       descriptionPlaceholder: 'Descrie această sursă...',
       cancel: 'Anulează',
       add: 'Adaugă',
-      close: 'Închide',
+    close: 'Închide',
+    backToTop: 'Înapoi sus',
       refresh: 'Actualizează',
       allLevels: 'Toate nivelurile',
       error: 'Eroare',
@@ -2628,6 +2635,16 @@ export default mergeHarnessLocale('ro-RO', {
         'Răsfoiți abilitățile ca pe niște carduri. Deschideți orice abilitate pentru a consulta documentația și a-i gestiona starea.',
       toolGalleryHint:
         'Răsfoiți uneltele ca pe niște carduri, vedeți ce fac și activați-le sau dezactivați-le rapid.',
+      skillManagementHint:
+        'Abilitățile integrate pot fi activate sau dezactivate aici, dar doar abilitățile locale pot fi dezinstalate.',
+      toolManagementHint:
+        'Instrumentele integrate pot fi activate sau dezactivate aici, dar disponibilitatea lor poate fi în continuare limitată de politica instrumentelor la rulare.',
+      builtinSkillDetailHint:
+        'Această abilitate integrată poate fi activată sau dezactivată aici, dar nu poate fi dezinstalată.',
+      builtinSkillUninstallBlocked:
+        'Abilitățile integrate pot fi dezactivate, dar nu pot fi dezinstalate.',
+      builtinToolUninstallBlocked:
+        'Instrumentele integrate pot fi dezactivate, dar nu pot fi dezinstalate.',
       closeSkillDetails: 'Închide detaliile abilității',
       sourceLabel: 'Sursă',
       skillCollectionFilters: 'Filtrele colecției de abilități',

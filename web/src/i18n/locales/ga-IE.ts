@@ -16,6 +16,7 @@ export default mergeHarnessLocale('ga-IE', {
     next: 'Ar aghaidh',
     previous: 'Roimhe seo',
     close: 'Close',
+    backToTop: 'Ar ais go barr',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -693,6 +694,12 @@ export default mergeHarnessLocale('ga-IE', {
     taskCancelled: 'Cuireadh an tasc ar ceal',
     waitingThinking: 'Ag smaoineamh...',
     awaitingConfirmation: 'Ag fanacht le do dheimhniú chun leanúint ar aghaidh',
+    streamConnecting: 'Ag nascadh',
+    streamStreaming: 'Ag sruthú',
+    streamExecuting: 'Ag obair',
+    streamAwaitingConfirmation: 'Ag fanacht',
+    streamRecovering: 'Ag aisghabháil',
+    streamInterrupted: 'Idirbhriste',
     backgroundTasks: 'Tascanna cúlra',
     taskNotificationTitle: 'Tasc cúlra',
     taskStagePlanning: 'Pleanáil',
@@ -1817,9 +1824,9 @@ export default mergeHarnessLocale('ga-IE', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Nua External Agent',
+      eyebrow: 'Gníomhaire seachtrach',
+      title: 'Gníomhaire seachtrach',
+      newExternalAgent: 'Gníomhaire seachtrach nua',
       newAcp: 'Nua _ZIMA_TOKEN_0__',
       newA2a: 'Nua _ZIMA_TOKEN_0__',
       newProfile: 'Próifíl nua',
@@ -2623,6 +2630,16 @@ export default mergeHarnessLocale('ga-IE', {
         'Brabhsáil scileanna mar chártaí. Oscail aon scil chun an cháipéisíocht a léamh agus a stádas a bhainistiú.',
       toolGalleryHint:
         'Brabhsáil uirlisí mar chártaí, féach cad a dhéanann siad, agus cuir ar siúl nó as iad go tapa.',
+      skillManagementHint:
+        'Is féidir scileanna ionsuite a chumasú nó a dhíchumasú anseo, ach ní féidir ach scileanna áitiúla a dhíshuiteáil.',
+      toolManagementHint:
+        'Is féidir uirlisí ionsuite a chumasú nó a dhíchumasú anseo, ach d\'fhéadfadh a n-infhaighteacht a bheith teoranta fós ag beartas uirlisí ag am rite.',
+      builtinSkillDetailHint:
+        'Is féidir an scil ionsuite seo a chumasú nó a dhíchumasú anseo, ach ní féidir í a dhíshuiteáil.',
+      builtinSkillUninstallBlocked:
+        'Is féidir scileanna ionsuite a dhíchumasú, ach ní féidir iad a dhíshuiteáil.',
+      builtinToolUninstallBlocked:
+        'Is féidir uirlisí ionsuite a dhíchumasú, ach ní féidir iad a dhíshuiteáil.',
       closeSkillDetails: 'Dún sonraí na scile',
       sourceLabel: 'Foinse',
       skillCollectionFilters: 'Scagairí bailiúcháin scileanna',

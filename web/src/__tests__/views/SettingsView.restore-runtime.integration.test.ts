@@ -154,6 +154,12 @@ const localStorageMock = (() => {
 
 vi.stubGlobal('localStorage', localStorageMock)
 
+async function settleSettingsAsyncTabComponents() {
+  await flushPromises()
+  await Promise.resolve()
+  await flushPromises()
+}
+
 function primeApiMocks() {
   vi.mocked(providerPoolApi.listProviders).mockResolvedValue({
     data: { providers: [] },
@@ -250,10 +256,10 @@ describe('SettingsView restore runtime integration', () => {
     } as never)
 
     const wrapper = mountRestoreView()
-    await flushPromises()
+    await settleSettingsAsyncTabComponents()
 
     await wrapper.get('[data-testid="mock-backup-restore"]').trigger('click')
-    await flushPromises()
+    await settleSettingsAsyncTabComponents()
 
     expect(backupApi.restore).toHaveBeenCalledWith(
       'backup-1',
@@ -279,10 +285,10 @@ describe('SettingsView restore runtime integration', () => {
     } as never)
 
     const wrapper = mountRestoreView()
-    await flushPromises()
+    await settleSettingsAsyncTabComponents()
 
     await wrapper.get('[data-testid="mock-backup-restore"]').trigger('click')
-    await flushPromises()
+    await settleSettingsAsyncTabComponents()
 
     expect(backupApi.restore).toHaveBeenCalledWith(
       'backup-1',

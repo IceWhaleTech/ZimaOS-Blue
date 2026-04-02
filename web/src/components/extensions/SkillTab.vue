@@ -35,10 +35,22 @@ const galleryHint = computed(() =>
     'Browse skills as cards. Open any skill to review docs and manage its status.'
   )
 )
+const skillManagementHint = computed(() =>
+  browseText(
+    'extensions.browse.skillManagementHint',
+    'Built-in skills can be enabled or disabled here. Uninstall is available only for local skills.'
+  )
+)
 const closeDetailLabel = computed(() =>
   browseText('extensions.browse.closeSkillDetails', 'Close skill details')
 )
 const sourceMetaLabel = computed(() => browseText('extensions.browse.sourceLabel', 'Source'))
+const builtinSkillDetailHint = computed(() =>
+  browseText(
+    'extensions.browse.builtinSkillDetailHint',
+    'This built-in skill can be enabled or disabled here, but it cannot be uninstalled.'
+  )
+)
 
 type SkillCardPalette = {
   tint: string
@@ -403,6 +415,7 @@ async function handleUninstall(skill: Skill) {
         <span class="extension-market-hero__kicker">{{ t('extensions.skills') }}</span>
         <h2 class="extension-market-hero__title">{{ t('plugins.subtitle') }}</h2>
         <p class="extension-market-hero__hint">{{ galleryHint }}</p>
+        <p class="extension-market-hero__hint">{{ skillManagementHint }}</p>
       </div>
 
       <div class="extension-market-hero__stats">
@@ -743,6 +756,9 @@ async function handleUninstall(skill: Skill) {
                   }}
                 </button>
               </div>
+              <p v-if="selectedSkill.builtin" class="detail-management-note">
+                {{ builtinSkillDetailHint }}
+              </p>
             </div>
 
             <div class="detail-layout">
@@ -1665,6 +1681,16 @@ async function handleUninstall(skill: Skill) {
   flex-wrap: wrap;
   justify-content: flex-end;
   align-self: flex-start;
+}
+
+.detail-management-note {
+  margin: 8px 0 0;
+  max-width: 28rem;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+  align-self: flex-end;
 }
 
 .detail-uninstall-button {

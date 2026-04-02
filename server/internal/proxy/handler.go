@@ -435,6 +435,9 @@ func isRateLimitLikeUpstreamError(statusCode int, body []byte) bool {
 		return false
 	}
 	lower := toLowerBytes(body)
+	if isTemporaryNoAvailableProviderBody(lower) {
+		return true
+	}
 	if bytes.Contains(lower, []byte("overloaded_error")) ||
 		bytes.Contains(lower, []byte("\"type\":\"overloaded\"")) ||
 		bytes.Contains(lower, []byte("overloaded")) {
@@ -450,6 +453,27 @@ func isRateLimitLikeUpstreamError(statusCode int, body []byte) bool {
 		bytes.Contains(lower, []byte("too many requests")) ||
 		bytes.Contains(lower, []byte("throttled")) ||
 		bytes.Contains(lower, []byte("capacity"))
+}
+
+func isTemporaryNoAvailableProviderBody(lower []byte) bool {
+	if len(lower) == 0 {
+		return false
+	}
+	if !bytes.Contains(lower, []byte("no available provider")) &&
+		!bytes.Contains(lower, []byte("no available ai provider")) {
+		return false
+	}
+	// Permanent model-availability/configuration errors often include an explicit
+	// model cue ("for model", "model_not_found", etc.) and should keep the
+	// existing non-retryable path.
+	if bytes.Contains(lower, []byte("for model")) ||
+		bytes.Contains(lower, []byte("model_not_found")) ||
+		bytes.Contains(lower, []byte("model not found")) ||
+		bytes.Contains(lower, []byte("invalid model")) ||
+		bytes.Contains(lower, []byte("unknown model")) {
+		return false
+	}
+	return true
 }
 
 func classifyRateLimitLikeErrorText(msg string) int {

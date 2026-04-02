@@ -163,6 +163,12 @@ const localStorageMock = (() => {
 
 vi.stubGlobal('localStorage', localStorageMock)
 
+async function settleSettingsAsyncTabComponents() {
+  await flushPromises()
+  await Promise.resolve()
+  await flushPromises()
+}
+
 function primeApiMocks() {
   vi.mocked(providerPoolApi.listProviders).mockResolvedValue({
     data: { providers: [] },
@@ -309,7 +315,7 @@ describe('SettingsView small-model controls', () => {
         plugins: [pinia, i18n],
       },
     })
-    await flushPromises()
+    await settleSettingsAsyncTabComponents()
 
     expect(wrapper.find('[data-testid="small-model-context-prune-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="proxy-pruner-switch"]').exists()).toBe(true)
@@ -508,6 +514,40 @@ describe('SettingsView small-model controls', () => {
     wrapper.unmount()
   })
 
+  it('defers llm and proxy bootstrap calls while the general tab is active', async () => {
+    routeTab = 'general'
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    expect(providerPoolApi.listProviders).not.toHaveBeenCalled()
+    expect(settingsApi.getSmallModelStatus).not.toHaveBeenCalled()
+    expect(settingsApi.getSmallModelStats).not.toHaveBeenCalled()
+    expect(proxyCacheApi.getPrunerConfig).not.toHaveBeenCalled()
+    expect(serviceApi.getInfo).toHaveBeenCalledTimes(1)
+    expect(settingsApi.get).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-tab="proxy"]').trigger('click')
+    await flushPromises()
+
+    expect(settingsApi.getSmallModelStatus).toHaveBeenCalledTimes(1)
+    expect(settingsApi.getSmallModelStats).toHaveBeenCalledTimes(1)
+    expect(proxyCacheApi.getPrunerConfig).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-tab="llm"]').trigger('click')
+    await flushPromises()
+
+    expect(providerPoolApi.listProviders).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
   it('opens the llm tab directly even when no providers are configured', async () => {
     routeTab = 'proxy'
     const pinia = createPinia()
@@ -525,7 +565,7 @@ describe('SettingsView small-model controls', () => {
       .find((button) => button.text().includes(i18n.global.t('settings.tab.llm')))
     expect(llmTabButton).toBeTruthy()
     await llmTabButton!.trigger('click')
-    await flushPromises()
+    await settleSettingsAsyncTabComponents()
 
     expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'ExternalAgentsSection' }).exists()).toBe(true)
@@ -542,7 +582,7 @@ describe('SettingsView small-model controls', () => {
         plugins: [pinia, i18n],
       },
     })
-    await flushPromises()
+    await settleSettingsAsyncTabComponents()
 
     expect(wrapper.findComponent({ name: 'ProviderPoolSection' }).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'ExternalAgentsSection' }).exists()).toBe(true)

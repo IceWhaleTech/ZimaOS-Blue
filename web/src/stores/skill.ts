@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { skillApi } from '@/api/skill'
+import { i18n } from '@/i18n'
 import type {
   Skill,
   SkillSource,
@@ -10,6 +11,9 @@ import type {
 } from '@/api/skill'
 
 export const useSkillStore = defineStore('skill', () => {
+  const t = i18n.global.t.bind(i18n.global)
+  const te = i18n.global.te.bind(i18n.global)
+
   // State
   const skills = ref<Skill[]>([])
   const sources = ref<SkillSource[]>([])
@@ -250,14 +254,22 @@ export const useSkillStore = defineStore('skill', () => {
     try {
       loading.value = true
       error.value = null
+      const skill = skills.value.find((s) => s.id === id)
+      if (skill?.builtin) {
+        const message = te('extensions.browse.builtinSkillUninstallBlocked')
+          ? String(t('extensions.browse.builtinSkillUninstallBlocked'))
+          : 'Built-in skills can be disabled, but they cannot be uninstalled'
+        error.value = message
+        return { success: false, message }
+      }
       const response = await skillApi.uninstall(id)
       if (response.data.success) {
         // Remove from local skills
         skills.value = skills.value.filter((s) => s.id !== id)
         // Mark as not installed in remote skills
-        const skill = remoteSkills.value.find((s) => s.id === id)
-        if (skill) {
-          skill.installed = false
+        const remoteSkill = remoteSkills.value.find((s) => s.id === id)
+        if (remoteSkill) {
+          remoteSkill.installed = false
         }
       }
       return response.data

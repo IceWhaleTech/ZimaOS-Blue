@@ -22,6 +22,12 @@ const galleryHint = computed(() =>
     'Browse tools as cards, review what they do, and toggle them on or off quickly.'
   )
 )
+const toolManagementHint = computed(() =>
+  browseText(
+    'extensions.browse.toolManagementHint',
+    'Built-in tools can be enabled or disabled here. Their availability can still be limited by runtime tool policy.'
+  )
+)
 
 type ToolCardPalette = {
   tint: string
@@ -292,6 +298,7 @@ async function handleToggle(tool: Tool) {
         <span class="extension-market-hero__kicker">{{ t('extensions.tools') }}</span>
         <h2 class="extension-market-hero__title">{{ t('plugins.subtitle') }}</h2>
         <p class="extension-market-hero__hint">{{ galleryHint }}</p>
+        <p class="extension-market-hero__hint">{{ toolManagementHint }}</p>
       </div>
 
       <div class="extension-market-hero__stats">

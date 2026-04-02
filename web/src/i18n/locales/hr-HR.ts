@@ -694,6 +694,12 @@ export default mergeHarnessLocale('hr-HR', {
     taskCancelled: 'Zadatak otkazan',
     waitingThinking: 'Razmišljam...',
     awaitingConfirmation: 'Čeka se vaša potvrda za nastavak',
+    streamConnecting: 'Povezivanje',
+    streamStreaming: 'Generiranje',
+    streamExecuting: 'Rad',
+    streamAwaitingConfirmation: 'Čeka',
+    streamRecovering: 'Oporavak',
+    streamInterrupted: 'Prekinuto',
     backgroundTasks: 'Pozadinski zadaci',
     taskNotificationTitle: 'Pozadinski zadatak',
     taskStagePlanning: 'Planiranje',
@@ -1808,9 +1814,9 @@ export default mergeHarnessLocale('hr-HR', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Novi External Agent',
+      eyebrow: 'Vanjski agent',
+      title: 'Vanjski agent',
+      newExternalAgent: 'Novi vanjski agent',
       status: { label: 'Status', verified: 'Provjereno' },
       newAcp: 'Novo ACP',
       newA2a: 'Novo A2A',
@@ -2598,7 +2604,8 @@ export default mergeHarnessLocale('hr-HR', {
       descriptionPlaceholder: 'Opišite ovaj izvor...',
       cancel: 'Odustani',
       add: 'Dodaj',
-      close: 'Zatvori',
+    close: 'Zatvori',
+    backToTop: 'Natrag na vrh',
       refresh: 'Osvježi',
       allLevels: 'Sve razine',
       error: 'Greška',
@@ -2614,6 +2621,16 @@ export default mergeHarnessLocale('hr-HR', {
         'Pregledavajte vještine kao kartice. Otvorite bilo koju vještinu da pregledate dokumentaciju i upravljate njezinim statusom.',
       toolGalleryHint:
         'Pregledavajte alate kao kartice, provjerite što rade i brzo ih uključite ili isključite.',
+      skillManagementHint:
+        'Ugrađene vještine ovdje se mogu omogućiti ili onemogućiti, ali samo se lokalne vještine mogu deinstalirati.',
+      toolManagementHint:
+        'Ugrađeni alati ovdje se mogu omogućiti ili onemogućiti, ali njihova dostupnost i dalje može biti ograničena pravilima alata tijekom izvođenja.',
+      builtinSkillDetailHint:
+        'Ova ugrađena vještina ovdje se može omogućiti ili onemogućiti, ali se ne može deinstalirati.',
+      builtinSkillUninstallBlocked:
+        'Ugrađene vještine mogu se onemogućiti, ali se ne mogu deinstalirati.',
+      builtinToolUninstallBlocked:
+        'Ugrađeni alati mogu se onemogućiti, ali se ne mogu deinstalirati.',
       closeSkillDetails: 'Zatvori detalje vještine',
       sourceLabel: 'Izvor',
       skillCollectionFilters: 'Filtri zbirke vještina',

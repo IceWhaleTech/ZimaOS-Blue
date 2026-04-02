@@ -16,6 +16,7 @@ export default mergeHarnessLocale('fr-FR', {
     next: 'Suivant',
     previous: 'Précédent',
     close: 'Fermer',
+    backToTop: 'Retour en haut',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -725,6 +726,12 @@ export default mergeHarnessLocale('fr-FR', {
     taskCancelled: 'Tâche annulée',
     waitingThinking: 'Réflexion...',
     awaitingConfirmation: 'En attente de votre confirmation pour continuer',
+    streamConnecting: 'Connexion',
+    streamStreaming: 'Génération',
+    streamExecuting: 'En cours',
+    streamAwaitingConfirmation: 'En attente',
+    streamRecovering: 'Récupération',
+    streamInterrupted: 'Interrompue',
     backgroundTasks: 'Tâches en arrière-plan',
     taskNotificationTitle: 'Tâche en arrière-plan',
     taskStagePlanning: 'Planification',
@@ -1930,9 +1937,9 @@ export default mergeHarnessLocale('fr-FR', {
     availableTools: 'Outils disponibles',
     noToolsAvailable: 'Aucun outil disponible',
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Nouveau External Agent',
+      eyebrow: 'Agent externe',
+      title: 'Agent externe',
+      newExternalAgent: 'Nouvel agent externe',
       newAcp: 'Nouveau ACP',
       newA2a: 'Nouveau A2A',
       newProfile: 'Nouveau profil',
@@ -2816,6 +2823,16 @@ export default mergeHarnessLocale('fr-FR', {
         'Parcourez les compétences sous forme de cartes. Ouvrez n’importe quelle compétence pour consulter la documentation et gérer son statut.',
       toolGalleryHint:
         'Parcourez les outils sous forme de cartes, voyez à quoi ils servent et activez-les ou désactivez-les rapidement.',
+      skillManagementHint:
+        'Les compétences intégrées peuvent être activées ou désactivées ici, mais seules les compétences locales peuvent être désinstallées.',
+      toolManagementHint:
+        'Les outils intégrés peuvent être activés ou désactivés ici, mais leur disponibilité peut encore être limitée par la politique des outils à l\'exécution.',
+      builtinSkillDetailHint:
+        'Cette compétence intégrée peut être activée ou désactivée ici, mais elle ne peut pas être désinstallée.',
+      builtinSkillUninstallBlocked:
+        'Les compétences intégrées peuvent être désactivées, mais elles ne peuvent pas être désinstallées.',
+      builtinToolUninstallBlocked:
+        'Les outils intégrés peuvent être désactivés, mais ils ne peuvent pas être désinstallés.',
       closeSkillDetails: 'Fermer les détails de la compétence',
       sourceLabel: 'Source',
       skillCollectionFilters: 'Filtres de la collection de compétences',

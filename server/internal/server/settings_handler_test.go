@@ -80,7 +80,9 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 	h.settings.SmartSkillSelection = &smartSkill
 
 	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask the user clarifying questions."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "mgmt", Description: "Manage providers, settings, and diagnostics."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web for latest sources."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
@@ -96,9 +98,11 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 	t.Setenv("HOME", homeDir)
 
 	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSettingsSelectorSkill(t, workspaceDir, "ask", "ask the user clarifying questions and wait for their answer", `blue ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'`, "clarify", "interactive", "question")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
+	writeSettingsSelectorSkill(t, workspaceDir, "mgmt", "manage providers settings channels skills tools health and proxy diagnostics", "blue mgmt.providers.list", "admin", "settings", "providers", "diagnostics")
 	writeSettingsSelectorSkill(t, workspaceDir, "ui_reviewer", "review screenshots and UI layouts for accessibility and visual issues", `blue ui_reviewer target="screenshot.png"`, "ui", "review", "screenshot")
 
 	chatHandler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
@@ -195,6 +199,15 @@ func TestGetMemoryRecallMode_InvalidStoredValueFallback(t *testing.T) {
 	}
 }
 
+func TestGetTimezone_UsesStoredValue(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+	h.settings.Timezone = "Asia/Shanghai"
+
+	if got := h.GetTimezone(); got != "Asia/Shanghai" {
+		t.Fatalf("GetTimezone() = %q, want %q", got, "Asia/Shanghai")
+	}
+}
+
 func TestGetIMHistoryLimit_DefaultThree(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
 	if got := h.GetIMHistoryLimit(); got != 3 {
@@ -216,10 +229,10 @@ func TestGetIMHistoryLimit_StoredNegativeClampedToZero(t *testing.T) {
 	}
 }
 
-func TestGetSmartSkillSelection_DefaultFalse(t *testing.T) {
+func TestGetSmartSkillSelection_DefaultTrue(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
-	if h.GetSmartSkillSelection() {
-		t.Fatalf("GetSmartSkillSelection() = true, want false")
+	if !h.GetSmartSkillSelection() {
+		t.Fatalf("GetSmartSkillSelection() = false, want true")
 	}
 }
 
@@ -227,6 +240,13 @@ func TestGetSkillSelectorMode_DefaultHybrid(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
 	if got := h.GetSkillSelectorMode(); got != "hybrid" {
 		t.Fatalf("GetSkillSelectorMode() = %q, want %q", got, "hybrid")
+	}
+}
+
+func TestGetSkillDynamicExposure_DefaultTrue(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+	if !h.GetSkillDynamicExposure() {
+		t.Fatalf("GetSkillDynamicExposure() = false, want true")
 	}
 }
 
@@ -621,6 +641,8 @@ func TestSelectorDryRunIncludesDiscoverFirstMetadata(t *testing.T) {
 
 func TestSelectorDryRunIncludesLegacyCompatDiscoverReasonWhenDynamicExposureDisabled(t *testing.T) {
 	h := newSelectorDryRunTestHandler(t)
+	dynamicExposure := false
+	h.settings.SkillDynamicExposure = &dynamicExposure
 
 	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
 
@@ -697,6 +719,16 @@ func TestSelectorDryRun_CriticalPlanRoutes(t *testing.T) {
 			skill: "exec",
 		},
 		{
+			name:  "ask_routes_to_ask",
+			query: "ask me two clarifying questions before continuing",
+			skill: "ask",
+		},
+		{
+			name:  "mgmt_routes_to_mgmt",
+			query: "mgmt providers.list",
+			skill: "mgmt",
+		},
+		{
 			name:  "reminder_request_goes_to_reminder",
 			query: "帮我明早 9 点提醒",
 			skill: "reminder",
@@ -706,6 +738,44 @@ func TestSelectorDryRun_CriticalPlanRoutes(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			assertSelectorDryRunSelected(t, runSelectorDryRun(t, h, tc.query), tc.skill)
+		})
+	}
+}
+
+func TestSelectorDryRun_DynamicExposureCollapsesAskMgmtAndWorkspaceToExec(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+	dynamicExposure := true
+	h.settings.SkillDynamicExposure = &dynamicExposure
+
+	tests := []struct {
+		name          string
+		query         string
+		wantCanonical string
+	}{
+		{name: "workspace", query: "看下 workspace 里的 README", wantCanonical: "exec"},
+		{name: "ask", query: "ask me two clarifying questions before continuing", wantCanonical: "ask"},
+		{name: "mgmt", query: "mgmt providers.list", wantCanonical: "mgmt"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := runSelectorDryRun(t, h, tc.query)
+			if body["canonical_skill_id"] != tc.wantCanonical {
+				t.Fatalf("canonical_skill_id = %#v, want %s", body["canonical_skill_id"], tc.wantCanonical)
+			}
+			selectedNativeTools, ok := body["selected_native_tools"].([]any)
+			if !ok {
+				t.Fatalf("expected selected_native_tools payload, got=%T", body["selected_native_tools"])
+			}
+			if len(selectedNativeTools) != 1 || selectedNativeTools[0] != "exec" {
+				t.Fatalf("selected_native_tools = %#v, want [exec]", selectedNativeTools)
+			}
+			if body["selected_native_surface_mode"] != "skill_exec" {
+				t.Fatalf("selected_native_surface_mode = %#v, want skill_exec", body["selected_native_surface_mode"])
+			}
+			if body["skill_exec_cutover"] != true {
+				t.Fatalf("skill_exec_cutover = %#v, want true", body["skill_exec_cutover"])
+			}
 		})
 	}
 }
@@ -758,6 +828,8 @@ func TestSelectorDryRun_ClarifyMetadataForMixedIntent(t *testing.T) {
 func TestSelectorDryRun_ForcesPreviewSkillSelectionWhenSettingDisabled(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
+	smartSkill := false
+	h.settings.SmartSkillSelection = &smartSkill
 
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
@@ -783,7 +855,7 @@ func TestSelectorDryRun_ForcesPreviewSkillSelectionWhenSettingDisabled(t *testin
 	assertSelectorDryRunSelected(t, body, "web_query")
 
 	if body["smart_skill_selection"] != false {
-		t.Fatalf("expected stored smart_skill_selection=false, got=%v", body["smart_skill_selection"])
+		t.Fatalf("expected explicit smart_skill_selection=false, got=%v", body["smart_skill_selection"])
 	}
 	selectedNativeTools, ok := body["selected_native_tools"].([]any)
 	if !ok {

@@ -139,6 +139,76 @@ describe('locale loading', () => {
     expect(document.documentElement.lang).toBe('zh-CN')
   })
 
+  it('initLocale hydrates a cached locale immediately and refreshes it in idle time', async () => {
+    storageState.set('zimaos-blue-locale', 'zh-CN')
+    storageState.set(
+      'zimaos-blue-locale-cache:v1:zh-CN',
+      JSON.stringify({
+        common: {
+          loading: '缓存中文',
+        },
+      })
+    )
+
+    const idleRefresh = {
+      callback: null as null | ((
+        deadline: { didTimeout: boolean; timeRemaining: () => number }
+      ) => void),
+    }
+    const requestIdleCallbackSpy = vi.fn(
+      (
+        callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void
+      ) => {
+        idleRefresh.callback = callback
+        return 1
+      }
+    )
+
+    if (typeof window !== 'undefined') {
+      Object.defineProperty(window, 'requestIdleCallback', {
+        value: requestIdleCallbackSpy,
+        configurable: true,
+      })
+    }
+
+    const zhCNImportSpy = vi.fn()
+    vi.doMock('./locales/zh-CN', () => {
+      zhCNImportSpy()
+      return {
+        default: {
+          common: {
+            loading: '中文完整包',
+          },
+        },
+      }
+    })
+
+    const { getLocale, i18n, initLocale } = await loadI18nModule()
+
+    expect(i18n.global.t('common.loading')).toBe('缓存中文')
+
+    await initLocale()
+
+    expect(getLocale()).toBe('zh-CN')
+    expect(document.documentElement.lang).toBe('zh-CN')
+    expect(requestIdleCallbackSpy).toHaveBeenCalledTimes(1)
+    expect(zhCNImportSpy).not.toHaveBeenCalled()
+    expect(i18n.global.t('common.loading')).toBe('缓存中文')
+
+    if (!idleRefresh.callback) {
+      throw new Error('expected requestIdleCallback to schedule a refresh')
+    }
+
+    idleRefresh.callback({
+      didTimeout: false,
+      timeRemaining: () => 50,
+    })
+    await vi.waitFor(() => {
+      expect(zhCNImportSpy).toHaveBeenCalledTimes(1)
+      expect(i18n.global.t('common.loading')).toBe('中文完整包')
+    })
+  })
+
   it('falls back to en-US when the requested locale chunk fails to load', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const enUSImportSpy = vi.fn()

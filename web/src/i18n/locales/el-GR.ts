@@ -16,6 +16,7 @@ export default mergeHarnessLocale('el-GR', {
     next: 'Επόμενο',
     previous: 'Προηγούμενο',
     close: 'Close',
+    backToTop: 'Επιστροφή στην κορυφή',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -697,6 +698,12 @@ export default mergeHarnessLocale('el-GR', {
     taskCancelled: 'Η εργασία ακυρώθηκε',
     waitingThinking: 'Σκέψη...',
     awaitingConfirmation: 'Αναμονή της επιβεβαίωσής σας για συνέχεια',
+    streamConnecting: 'Σύνδεση',
+    streamStreaming: 'Δημιουργία',
+    streamExecuting: 'Σε εξέλιξη',
+    streamAwaitingConfirmation: 'Σε αναμονή',
+    streamRecovering: 'Ανάκτηση',
+    streamInterrupted: 'Διακόπηκε',
     backgroundTasks: 'Εργασίες παρασκηνίου',
     taskNotificationTitle: 'Εργασία παρασκηνίου',
     taskStagePlanning: 'Σχεδιασμός',
@@ -1825,9 +1832,9 @@ export default mergeHarnessLocale('el-GR', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Νέος External Agent',
+      eyebrow: 'Εξωτερικός πράκτορας',
+      title: 'Εξωτερικός πράκτορας',
+      newExternalAgent: 'Νέος εξωτερικός πράκτορας',
       newAcp: 'Νέο ACP',
       newA2a: 'Νέο A2A',
       newProfile: 'Νέο προφίλ',
@@ -2633,6 +2640,16 @@ export default mergeHarnessLocale('el-GR', {
         'Περιηγηθείτε στις δεξιότητες ως κάρτες. Ανοίξτε οποιαδήποτε δεξιότητα για να δείτε την τεκμηρίωση και να διαχειριστείτε την κατάστασή της.',
       toolGalleryHint:
         'Περιηγηθείτε στα εργαλεία ως κάρτες, δείτε τι κάνουν και ενεργοποιήστε ή απενεργοποιήστε τα γρήγορα.',
+      skillManagementHint:
+        'Οι ενσωματωμένες δεξιότητες μπορούν να ενεργοποιηθούν ή να απενεργοποιηθούν εδώ, αλλά μόνο οι τοπικές δεξιότητες μπορούν να απεγκατασταθούν.',
+      toolManagementHint:
+        'Τα ενσωματωμένα εργαλεία μπορούν να ενεργοποιηθούν ή να απενεργοποιηθούν εδώ, αλλά η διαθεσιμότητά τους μπορεί να εξακολουθεί να περιορίζεται από την πολιτική εργαλείων χρόνου εκτέλεσης.',
+      builtinSkillDetailHint:
+        'Αυτή η ενσωματωμένη δεξιότητα μπορεί να ενεργοποιηθεί ή να απενεργοποιηθεί εδώ, αλλά δεν μπορεί να απεγκατασταθεί.',
+      builtinSkillUninstallBlocked:
+        'Οι ενσωματωμένες δεξιότητες μπορούν να απενεργοποιηθούν, αλλά δεν μπορούν να απεγκατασταθούν.',
+      builtinToolUninstallBlocked:
+        'Τα ενσωματωμένα εργαλεία μπορούν να απενεργοποιηθούν, αλλά δεν μπορούν να απεγκατασταθούν.',
       closeSkillDetails: 'Κλείσιμο λεπτομερειών δεξιότητας',
       sourceLabel: 'Πηγή',
       skillCollectionFilters: 'Φίλτρα συλλογής δεξιοτήτων',

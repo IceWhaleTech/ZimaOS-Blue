@@ -5,6 +5,10 @@ import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { reportStartupMark } from '@/utils/startupTrace'
 import {
+  getOptimisticStartupPreviewCheckTimeout,
+  shouldPrefetchPreviewModeOnRouterInit,
+} from '@/utils/desktopStartup'
+import {
   clearStoredAccessToken,
   clearStoredAuthSession,
   clearStoredPreviewToken,
@@ -21,8 +25,6 @@ import {
 // In desktop mode, the page is loaded from http://localhost:{port} (same-origin as the
 // Go server), so all API calls use relative URLs — no special URL construction needed.
 const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
-const CHAT_STARTUP_PREVIEW_CHECK_TIMEOUT_MS = 250
-
 type PreviewModeCheckResult = {
   preview: boolean
   connectionError: boolean
@@ -202,6 +204,14 @@ async function waitForPreviewCheckResult(
   }
 }
 
+function getStartupPreviewCheckTimeout(path: string, name: unknown): number {
+  if (!shouldUseOptimisticStartupPreviewCheck(path, name)) {
+    return 0
+  }
+
+  return getOptimisticStartupPreviewCheckTimeout(hasStoredSessionHint())
+}
+
 function normalizeConnectionErrorFromPath(path: string): string {
   return path === '/login' ? '/' : path
 }
@@ -261,9 +271,14 @@ export function getCachedPreviewMode(): { checked: boolean; preview: boolean } {
   return { checked: previewModeChecked, preview: isPreviewMode }
 }
 
-// Eagerly start the preview mode check when this module loads.
-// By the time the router guard fires, the result is likely cached.
-checkPreviewMode().catch(() => {})
+// Eagerly start the preview mode check when this module loads, unless desktop startup
+// already has a stored session hint and the result is no longer on the critical path.
+if (shouldPrefetchPreviewModeOnRouterInit(isDesktop, hasStoredSessionHint())) {
+  reportStartupMark('router_mode_check_prefetch_start')
+  checkPreviewMode().catch(() => {})
+} else {
+  reportStartupMark('router_mode_check_prefetch_skipped')
+}
 
 const importChatView = () => import('@/views/ChatView.vue')
 const importLoginView = () => import('@/views/LoginView.vue')
@@ -555,7 +570,7 @@ router.afterEach(() => {
   reportStartupMark('router_after_each')
 })
 
-function hydrateAuthenticatedChatRouteInBackground(
+function hydrateAuthenticatedRouteInBackground(
   requiredPermissions: string[],
   requiresAdmin: unknown
 ) {
@@ -624,7 +639,7 @@ router.beforeEach(async (to, from, next) => {
       const previewCheckPromise = checkPreviewMode()
       previewModeResult = await waitForPreviewCheckResult(
         previewCheckPromise,
-        CHAT_STARTUP_PREVIEW_CHECK_TIMEOUT_MS
+        getStartupPreviewCheckTimeout(to.path, to.name)
       )
 
       if (!previewModeResult) {
@@ -725,8 +740,8 @@ router.beforeEach(async (to, from, next) => {
       }
       const authStore = useAuthStore()
       if (!authStore.user) {
-        if (isChatRouteLocation(to.path, to.name)) {
-          hydrateAuthenticatedChatRouteInBackground(requiredPermissions, requiresAdmin)
+        if (!requiresAdmin) {
+          hydrateAuthenticatedRouteInBackground(requiredPermissions, requiresAdmin)
           reportStartupMark('router_guard_ready')
           next()
           return

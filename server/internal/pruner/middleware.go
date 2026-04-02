@@ -168,6 +168,14 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 		if pruned == "" {
 			pruned = result.PrunedCode
 		}
+		if result.OriginalTokens > 0 && result.PrunedTokens >= result.OriginalTokens {
+			slog.Debug("[pruner] skipping non-saving prune result",
+				"message_index", i,
+				"role", role,
+				"tokens_before", result.OriginalTokens,
+				"tokens_after", result.PrunedTokens)
+			continue
+		}
 		if err := setRawMessageString(messages[i], "content", pruned); err != nil {
 			slog.Warn("[pruner] failed to write pruned content", "message_index", i, "error", err)
 			continue

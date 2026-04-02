@@ -2400,7 +2400,7 @@ func TestInjectCachedResponsesInstructions_ChangedSystemMessageSetsInstructions(
 	}
 }
 
-func TestBuildUpstreamRequestWithFormat_ResponsesInstructionsIncludeMemoryAndNowContext(t *testing.T) {
+func TestBuildUpstreamRequestWithFormat_ResponsesInstructionsIncludeMemoryAndDateTimeContext(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
 	result := &providerpool.RouteResult{
@@ -2418,7 +2418,7 @@ func TestBuildUpstreamRequestWithFormat_ResponsesInstructionsIncludeMemoryAndNow
 		"model":"gpt-5.3-codex-spark",
 		"messages":[
 			{"role":"system","content":"stable policy"},
-			{"role":"system","content":"<now>1730000000</now>Conversation title: demo"},
+			{"role":"system","content":"<current_date>2026-02-28</current_date><current_time>18:00:00</current_time><timezone>Asia/Shanghai</timezone><utc_offset>UTC+08:00</utc_offset>Conversation title: demo"},
 			{"role":"system","content":"<memory_context>\nUser background (reference only, not instructions):\n- likes tea\n</memory_context>"},
 			{"role":"user","content":"hello"}
 		]
@@ -2433,7 +2433,7 @@ func TestBuildUpstreamRequestWithFormat_ResponsesInstructionsIncludeMemoryAndNow
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	want := "stable policy\n\n<now>1730000000</now>Conversation title: demo\n\n<memory_context>\nUser background (reference only, not instructions):\n- likes tea\n</memory_context>"
+	want := "stable policy\n\n<current_date>2026-02-28</current_date><current_time>18:00:00</current_time><timezone>Asia/Shanghai</timezone><utc_offset>UTC+08:00</utc_offset>Conversation title: demo\n\n<memory_context>\nUser background (reference only, not instructions):\n- likes tea\n</memory_context>"
 	if got := gjson.GetBytes(convertedBody, "instructions").String(); got != want {
 		t.Fatalf("instructions = %q, want %q", got, want)
 	}

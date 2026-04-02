@@ -693,6 +693,12 @@ export default mergeHarnessLocale('nb-NO', {
     taskCancelled: 'Oppgave avbrutt',
     waitingThinking: 'Tenker...',
     awaitingConfirmation: 'Venter på bekreftelsen din for å fortsette',
+    streamConnecting: 'Kobler til',
+    streamStreaming: 'Genererer',
+    streamExecuting: 'Arbeider',
+    streamAwaitingConfirmation: 'Venter',
+    streamRecovering: 'Gjenoppretter',
+    streamInterrupted: 'Avbrutt',
     backgroundTasks: 'Bakgrunnsoppgaver',
     taskNotificationTitle: 'Bakgrunnsoppgave',
     taskStagePlanning: 'Planlegging',
@@ -1805,9 +1811,9 @@ export default mergeHarnessLocale('nb-NO', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Ny External Agent',
+      eyebrow: 'Ekstern agent',
+      title: 'Ekstern agent',
+      newExternalAgent: 'Ny ekstern agent',
       metadata: 'Metadata',
       status: { label: 'Status', verified: 'Verifisert' },
       newAcp: 'Ny ACP',
@@ -2590,7 +2596,8 @@ export default mergeHarnessLocale('nb-NO', {
       descriptionPlaceholder: 'Beskriv denne kilden...',
       cancel: 'Avbryt',
       add: 'Legg til',
-      close: 'Lukk',
+    close: 'Lukk',
+    backToTop: 'Tilbake til toppen',
       refresh: 'Oppdater',
       allLevels: 'Alle nivåer',
       error: 'Feil',
@@ -2606,6 +2613,16 @@ export default mergeHarnessLocale('nb-NO', {
         'Bla gjennom ferdigheter som kort. Åpne en ferdighet for å lese dokumentasjonen og administrere statusen.',
       toolGalleryHint:
         'Bla gjennom verktøy som kort, se hva de gjør, og slå dem raskt av eller på.',
+      skillManagementHint:
+        'Innebygde ferdigheter kan aktiveres eller deaktiveres her, men bare lokale ferdigheter kan avinstalleres.',
+      toolManagementHint:
+        'Innebygde verktøy kan aktiveres eller deaktiveres her, men tilgjengeligheten deres kan fortsatt være begrenset av verktøypolicyen under kjøring.',
+      builtinSkillDetailHint:
+        'Denne innebygde ferdigheten kan aktiveres eller deaktiveres her, men den kan ikke avinstalleres.',
+      builtinSkillUninstallBlocked:
+        'Innebygde ferdigheter kan deaktiveres, men de kan ikke avinstalleres.',
+      builtinToolUninstallBlocked:
+        'Innebygde verktøy kan deaktiveres, men de kan ikke avinstalleres.',
       closeSkillDetails: 'Lukk ferdighetsdetaljer',
       sourceLabel: 'Kilde',
       skillCollectionFilters: 'Filtre for ferdighetssamling',

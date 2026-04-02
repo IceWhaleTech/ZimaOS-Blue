@@ -1041,7 +1041,12 @@ func TestBuildSmartContextPressureThresholdControlsCompression(t *testing.T) {
 	}
 
 	if len(belowThreshold) == 0 || len(aboveThreshold) == 0 {
-		t.Fatalf("failed to find threshold fixtures below/above 75%%: below=%v above=%v", belowBudget.ContextUsageRatio(), aboveBudget.ContextUsageRatio())
+		t.Fatalf(
+			"failed to find threshold fixtures below/above %.0f%%: below=%v above=%v",
+			smartContextSoftCompressionThreshold*100,
+			belowBudget.ContextUsageRatio(),
+			aboveBudget.ContextUsageRatio(),
+		)
 	}
 
 	below := h.buildSmartContext(context.Background(), smartContextParams{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -100,6 +101,7 @@ func TestConfigPromptSections_ExposeStabilityAnnotations(t *testing.T) {
 
 func TestDynamicPromptSections_KeepLateBoundContentOutOfStableBlocks(t *testing.T) {
 	b := NewSystemPromptBuilder(&Config{})
+	b.SetTimezoneFunc(func() string { return "Asia/Shanghai" })
 
 	sections, selection := b.dynamicSections(context.Background(), "<late_bound_hint>retry browser</late_bound_hint>")
 	if selection != nil {
@@ -118,12 +120,22 @@ func TestDynamicPromptSections_KeepLateBoundContentOutOfStableBlocks(t *testing.
 	}
 
 	res := b.BuildStructured(context.Background(), "<late_bound_hint>retry browser</late_bound_hint>")
-	if !strings.Contains(res.Dynamic, "<now>") || !strings.Contains(res.Dynamic, "<late_bound_hint>retry browser</late_bound_hint>") {
+	currentDatePattern := regexp.MustCompile(`<current_date>\d{4}-\d{2}-\d{2}</current_date>`)
+	currentTimePattern := regexp.MustCompile(`<current_time>\d{2}:\d{2}:\d{2}</current_time>`)
+	utcOffsetPattern := regexp.MustCompile(`<utc_offset>UTC[+-]\d{2}:\d{2}</utc_offset>`)
+	if !currentDatePattern.MatchString(res.Dynamic) ||
+		!currentTimePattern.MatchString(res.Dynamic) ||
+		!strings.Contains(res.Dynamic, "<timezone>Asia/Shanghai</timezone>") ||
+		!utcOffsetPattern.MatchString(res.Dynamic) ||
+		!strings.Contains(res.Dynamic, "<late_bound_hint>retry browser</late_bound_hint>") {
 		t.Fatalf("expected runtime info and late-bound prompt in dynamic block, got: %s", res.Dynamic)
 	}
 	for _, block := range []string{res.Static, res.Config} {
-		if strings.Contains(block, "<now>") {
-			t.Fatalf("unexpected timestamp in cacheable block: %s", block)
+		if currentDatePattern.MatchString(block) ||
+			currentTimePattern.MatchString(block) ||
+			strings.Contains(block, "<timezone>") ||
+			utcOffsetPattern.MatchString(block) {
+			t.Fatalf("unexpected current date/timezone info in cacheable block: %s", block)
 		}
 		if strings.Contains(block, "<late_bound_hint>retry browser</late_bound_hint>") {
 			t.Fatalf("unexpected late-bound prompt in cacheable block: %s", block)

@@ -5,15 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
 const startupIntegrityStateFileName = ".startup-integrity-state"
 
 var startupQuickCheckEnabled atomic.Bool
+var startupQuickCheckStateMu sync.Mutex
+var startupQuickCheckedPaths map[string]struct{}
 
 func init() {
 	startupQuickCheckEnabled.Store(true)
+	startupQuickCheckedPaths = make(map[string]struct{})
 }
 
 func startupIntegrityStatePath(dataDir string) string {
@@ -54,11 +58,33 @@ func MarkStartupIntegrityClean(dataDir string) error {
 // SetStartupQuickCheckEnabled toggles proactive PRAGMA quick_check on database open.
 func SetStartupQuickCheckEnabled(enabled bool) {
 	startupQuickCheckEnabled.Store(enabled)
+	startupQuickCheckStateMu.Lock()
+	startupQuickCheckedPaths = make(map[string]struct{})
+	startupQuickCheckStateMu.Unlock()
 }
 
 // StartupQuickCheckEnabled reports whether proactive PRAGMA quick_check is enabled.
 func StartupQuickCheckEnabled() bool {
 	return startupQuickCheckEnabled.Load()
+}
+
+func consumeStartupQuickCheckPath(dbPath string) bool {
+	dbPath = strings.TrimSpace(dbPath)
+	if dbPath == "" || dbPath == ":memory:" || !StartupQuickCheckEnabled() {
+		return false
+	}
+
+	normalizedPath := filepath.Clean(dbPath)
+
+	startupQuickCheckStateMu.Lock()
+	defer startupQuickCheckStateMu.Unlock()
+
+	if _, exists := startupQuickCheckedPaths[normalizedPath]; exists {
+		return false
+	}
+
+	startupQuickCheckedPaths[normalizedPath] = struct{}{}
+	return true
 }
 
 func readStartupIntegrityState(dataDir string) (bool, error) {

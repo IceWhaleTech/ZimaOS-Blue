@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
@@ -149,11 +149,20 @@ async function mountLayout(path: string) {
 describe('DefaultLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
     settingsStoreState.closeBehavior = 'minimize'
     tauriState.isTauri = false
     tauriState.platform = 'unknown'
     setViewportWidth(1440)
     document.documentElement.removeAttribute('data-blue-window-resizing')
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('does not render the nav button when the sidebar stays visible on wide desktop screens', async () => {
@@ -235,6 +244,101 @@ describe('DefaultLayout', () => {
     wrapper.unmount()
   })
 
+  it('keeps the floating back-to-top button hidden before a phone-sized layout has scrolled one viewport', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
+      5
+    )
+    setViewportWidth(390)
+
+    const wrapper = await mountLayout('/profile')
+    const layoutMain = wrapper.get('.layout-main').element as HTMLElement
+
+    Object.defineProperty(layoutMain, 'clientHeight', {
+      configurable: true,
+      value: 640,
+    })
+
+    Object.defineProperty(layoutMain, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 639,
+    })
+
+    layoutMain.dispatchEvent(new Event('scroll'))
+    await flushPromises()
+
+    expect(wrapper.find('.layout-back-to-top-button').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('scrolls the shared layout container back to the top when the mobile button is pressed', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
+      5
+    )
+    setViewportWidth(390)
+
+    const wrapper = await mountLayout('/profile')
+    const layoutMain = wrapper.get('.layout-main').element as HTMLElement
+    const scrollToMock = vi.fn()
+
+    Object.defineProperty(layoutMain, 'clientHeight', {
+      configurable: true,
+      value: 640,
+    })
+    Object.defineProperty(layoutMain, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 640,
+    })
+    Object.defineProperty(layoutMain, 'scrollTo', {
+      configurable: true,
+      value: scrollToMock,
+    })
+
+    layoutMain.dispatchEvent(new Event('scroll'))
+    await flushPromises()
+
+    expect(wrapper.find('.layout-back-to-top-button').exists()).toBe(true)
+    await wrapper.get('.layout-back-to-top-button').trigger('click')
+
+    expect(scrollToMock).toHaveBeenCalledWith({
+      top: 0,
+      behavior: 'smooth',
+    })
+
+    wrapper.unmount()
+  })
+
+  it('does not render the floating back-to-top button on wider non-phone layouts', async () => {
+    setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+    )
+    setViewportWidth(900)
+
+    const wrapper = await mountLayout('/profile')
+    const layoutMain = wrapper.get('.layout-main').element as HTMLElement
+
+    Object.defineProperty(layoutMain, 'clientHeight', {
+      configurable: true,
+      value: 640,
+    })
+    Object.defineProperty(layoutMain, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 900,
+    })
+
+    layoutMain.dispatchEvent(new Event('scroll'))
+    await flushPromises()
+
+    expect(wrapper.find('.layout-back-to-top-button').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
   it('does not render the global nav button on the chat route because chat owns its own entry points', async () => {
     setUserAgent(
       'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1',
@@ -245,6 +349,7 @@ describe('DefaultLayout', () => {
     const wrapper = await mountLayout('/chat')
 
     expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(false)
+    expect(wrapper.find('.layout-back-to-top-button').exists()).toBe(false)
 
     wrapper.unmount()
   })

@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { extauthApi, getProviderDisplayName } from '@/api/extauth'
 import type { CreateApiKeyRequest } from '@/api/auth'
 import type { ProviderInfo, LinkedAccount, ProviderType } from '@/api/extauth'
-import MFASettings from '@/components/MFASettings.vue'
-import WebAuthnSettings from '@/components/WebAuthnSettings.vue'
+
+const MFASettings = defineAsyncComponent(() =>
+  import('@/components/MFASettings.vue').then((module) => module.default)
+)
+const WebAuthnSettings = defineAsyncComponent(() =>
+  import('@/components/WebAuthnSettings.vue').then((module) => module.default)
+)
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -77,10 +82,16 @@ const passwordsMatch = computed(() => {
 })
 
 onMounted(async () => {
-  await authStore.fetchUser()
-  await authStore.fetchApiKeys()
-  await loadLinkedAccounts()
-  await loadAvailableProviders()
+  if (!authStore.user) {
+    await authStore.fetchUser()
+  }
+
+  await Promise.allSettled([
+    authStore.fetchApiKeys(),
+    loadLinkedAccounts(),
+    loadAvailableProviders(),
+  ])
+
   if (authStore.user) {
     editEmail.value = authStore.user.email || ''
   }
@@ -512,10 +523,32 @@ function getScopeLabel(scope: string): string {
     </section>
 
     <!-- MFA Settings Section -->
-    <MFASettings @status-change="handleMFAStatusChange" />
+    <Suspense>
+      <MFASettings @status-change="handleMFAStatusChange" />
+      <template #fallback>
+        <section class="mb-6 sm:mb-8 glass-card p-4 sm:p-6" aria-hidden="true">
+          <div class="animate-pulse space-y-3">
+            <div class="h-5 w-40 rounded bg-gray-200/80 dark:bg-slate-700/70" />
+            <div class="h-4 w-full rounded bg-gray-200/60 dark:bg-slate-700/50" />
+            <div class="h-10 w-full rounded-xl bg-gray-200/60 dark:bg-slate-700/50" />
+          </div>
+        </section>
+      </template>
+    </Suspense>
 
     <!-- WebAuthn Settings Section -->
-    <WebAuthnSettings @status-change="handleMFAStatusChange" />
+    <Suspense>
+      <WebAuthnSettings @status-change="handleMFAStatusChange" />
+      <template #fallback>
+        <section class="mb-6 sm:mb-8 glass-card p-4 sm:p-6" aria-hidden="true">
+          <div class="animate-pulse space-y-3">
+            <div class="h-5 w-40 rounded bg-gray-200/80 dark:bg-slate-700/70" />
+            <div class="h-4 w-full rounded bg-gray-200/60 dark:bg-slate-700/50" />
+            <div class="h-10 w-full rounded-xl bg-gray-200/60 dark:bg-slate-700/50" />
+          </div>
+        </section>
+      </template>
+    </Suspense>
 
     <!-- Linked Accounts Section -->
     <section v-if="availableProviders.length > 0" class="mb-6 sm:mb-8">

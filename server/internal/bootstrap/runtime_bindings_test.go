@@ -635,7 +635,7 @@ func TestBindRuntimeSettingsTargets_WiresSettingsDrivenTargets(t *testing.T) {
 	if exec.calls != 1 || exec.autoConfirmFunc == nil || exec.autoConfirmFunc() != settings.GetAgentAutoConfirm() {
 		t.Fatalf("expected exec auto-confirm wiring, got %#v", exec)
 	}
-	if prompt.localeFunc == nil || prompt.agentModeFunc == nil || prompt.agentAutoConfirmFunc == nil {
+	if prompt.localeFunc == nil || prompt.timezoneFunc == nil || prompt.agentModeFunc == nil || prompt.agentAutoConfirmFunc == nil {
 		t.Fatalf("expected prompt settings wiring, got %#v", prompt)
 	}
 	if push.calls != 1 || push.localeFunc == nil {
@@ -744,7 +744,7 @@ func TestBindDeferredRuntimeWiring_ComposesDeferredRuntimeTargets(t *testing.T) 
 	if exec.calls != 1 || exec.autoConfirmFunc == nil {
 		t.Fatalf("expected exec auto-confirm wiring, got %#v", exec)
 	}
-	if prompt.calls() != 3 || push.calls != 1 || masker.calls != 1 || mgmt.calls != 1 {
+	if prompt.calls() != 4 || push.calls != 1 || masker.calls != 1 || mgmt.calls != 1 {
 		t.Fatalf("expected prompt/push/masker/mgmt wiring, prompt=%#v push=%#v masker=%#v mgmt=%#v", prompt, push, masker, mgmt)
 	}
 	if questionTarget.timeoutFunc == nil || questionTarget.timeoutCalls != 1 || agentTarget.askTimeoutFunc == nil || agentTarget.askTimeoutCalls != 1 {
@@ -3906,9 +3906,11 @@ func (s *stubRuntimeLocaleTarget) SetLocaleFunc(fn func() string) {
 
 type stubRuntimePromptSettingsTarget struct {
 	localeFunc            func() string
+	timezoneFunc          func() string
 	agentModeFunc         func() bool
 	agentAutoConfirmFunc  func() bool
 	localeCalls           int
+	timezoneCalls         int
 	agentModeCalls        int
 	agentAutoConfirmCalls int
 }
@@ -3916,6 +3918,11 @@ type stubRuntimePromptSettingsTarget struct {
 func (s *stubRuntimePromptSettingsTarget) SetLocaleFunc(fn func() string) {
 	s.localeFunc = fn
 	s.localeCalls++
+}
+
+func (s *stubRuntimePromptSettingsTarget) SetTimezoneFunc(fn func() string) {
+	s.timezoneFunc = fn
+	s.timezoneCalls++
 }
 
 func (s *stubRuntimePromptSettingsTarget) SetAgentModeFunc(fn func() bool) {
@@ -3929,7 +3936,7 @@ func (s *stubRuntimePromptSettingsTarget) SetAgentAutoConfirmFunc(fn func() bool
 }
 
 func (s *stubRuntimePromptSettingsTarget) calls() int {
-	return s.localeCalls + s.agentModeCalls + s.agentAutoConfirmCalls
+	return s.localeCalls + s.timezoneCalls + s.agentModeCalls + s.agentAutoConfirmCalls
 }
 
 type stubRuntimeAdminSettingsTarget struct {

@@ -29,9 +29,11 @@ func newDiscoverFirstSelectionHandler(t *testing.T, dynamicExposure bool) *ChatH
 	t.Helper()
 
 	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask the user clarifying questions"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "mgmt", Description: "Manage runtime settings and providers"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
@@ -46,9 +48,11 @@ func newDiscoverFirstSelectionHandler(t *testing.T, dynamicExposure bool) *ChatH
 	t.Setenv("HOME", homeDir)
 
 	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs", "latest")
+	writeSettingsSelectorSkill(t, workspaceDir, "ask", "ask the user clarifying questions and wait for an answer", `blue ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'`, "clarify", "interactive", "question")
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages after login or click flows", "blue browser.navigate url=https://example.com", "browser", "login", "click", "page")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze multiple links and synthesize a report", `blue analyze topic="multi-link report" --json`, "analysis", "report", "summary", "link", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "deep_research", "perform cited timeline comparisons and deep research", `blue deep_research query="OpenAI vs Anthropic agent runtime"`, "research", "citation", "timeline", "compare")
+	writeSettingsSelectorSkill(t, workspaceDir, "mgmt", "manage providers settings channels skills tools health and proxy diagnostics", "blue mgmt.providers.list", "admin", "settings", "providers", "diagnostics")
 
 	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
 	return handler
@@ -324,6 +328,30 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			query:             "Investigate https://example.com/pricing and compare the claims with citations, evidence, and a timeline.",
 			wantCanonical:     agentcore.CanonicalDeepResearch,
 			wantProfile:       agentcore.ExecutionProfileRequireFork,
+			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+		},
+		{
+			name:              "workspace_readme_routes_to_exec",
+			query:             "看下 workspace 里的 README，并总结一下项目在做什么。",
+			wantCanonical:     agentcore.CanonicalExec,
+			wantProfile:       agentcore.ExecutionProfileInline,
+			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+		},
+		{
+			name:              "ask_routes_to_ask_skill",
+			query:             "ask me two clarifying questions before you continue",
+			wantCanonical:     agentcore.CanonicalAsk,
+			wantProfile:       agentcore.ExecutionProfileInline,
+			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+		},
+		{
+			name:              "mgmt_routes_to_mgmt_skill",
+			query:             "mgmt providers.list",
+			wantCanonical:     agentcore.CanonicalMgmt,
+			wantProfile:       agentcore.ExecutionProfileInline,
 			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
 			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
 		},

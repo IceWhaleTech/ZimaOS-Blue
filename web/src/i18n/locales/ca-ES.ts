@@ -17,6 +17,7 @@ export default mergeHarnessLocale('ca-ES', {
     next: 'Següent',
     previous: 'Anterior',
     close: 'Close',
+    backToTop: 'Torna a dalt',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -696,6 +697,12 @@ export default mergeHarnessLocale('ca-ES', {
     taskCancelled: 'Tasca cancel·lada',
     waitingThinking: 'Pensant...',
     awaitingConfirmation: "S'està esperant la teva confirmació per continuar",
+    streamConnecting: 'Connectant',
+    streamStreaming: 'Generant',
+    streamExecuting: 'Treballant',
+    streamAwaitingConfirmation: 'Recuperant',
+    streamRecovering: 'En espera',
+    streamInterrupted: 'Interromput',
     backgroundTasks: 'Tasques en segon pla',
     taskNotificationTitle: 'Tasca en segon pla',
     taskStagePlanning: 'Planificant',
@@ -1827,9 +1834,9 @@ export default mergeHarnessLocale('ca-ES', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Nou External Agent',
+      eyebrow: 'Agent extern',
+      title: 'Agent extern',
+      newExternalAgent: 'Nou agent extern',
       protocol: 'Protocol',
       newAcp: 'Nou ACP',
       newA2a: 'Nou A2A',
@@ -2695,6 +2702,16 @@ export default mergeHarnessLocale('ca-ES', {
         "Explora les habilitats en targetes. Obre qualsevol habilitat per revisar la documentació i gestionar-ne l'estat.",
       toolGalleryHint:
         'Explora les eines en targetes, revisa què fan i activa-les o desactiva-les ràpidament.',
+      skillManagementHint:
+        "Les habilitats integrades es poden activar o desactivar aquí, però només les habilitats locals es poden desinstal·lar.",
+      toolManagementHint:
+        "Les eines integrades es poden activar o desactivar aquí, però la seva disponibilitat encara pot estar limitada per la política d'eines en temps d'execució.",
+      builtinSkillDetailHint:
+        'Aquesta habilitat integrada es pot activar o desactivar aquí, però no es pot desinstal·lar.',
+      builtinSkillUninstallBlocked:
+        'Les habilitats integrades es poden desactivar, però no es poden desinstal·lar.',
+      builtinToolUninstallBlocked:
+        'Les eines integrades es poden desactivar, però no es poden desinstal·lar.',
       closeSkillDetails: "Tanca els detalls de l'habilitat",
       sourceLabel: 'Origen',
       skillCollectionFilters: "Filtres de la col·lecció d'habilitats",

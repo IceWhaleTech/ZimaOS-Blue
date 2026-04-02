@@ -16,6 +16,7 @@ export default mergeHarnessLocale('ko-KR', {
     next: '다음',
     previous: '이전',
     close: '닫기',
+    backToTop: '맨 위로 돌아가기',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -717,6 +718,12 @@ export default mergeHarnessLocale('ko-KR', {
     taskCancelled: '작업이 취소되었습니다',
     waitingThinking: '생각 중...',
     awaitingConfirmation: '계속하려면 확인을 기다리는 중입니다',
+    streamConnecting: '연결 중',
+    streamStreaming: '생성 중',
+    streamExecuting: '작업 중',
+    streamAwaitingConfirmation: '대기 중',
+    streamRecovering: '복구 중',
+    streamInterrupted: '중단됨',
     backgroundTasks: '백그라운드 작업',
     taskNotificationTitle: '백그라운드 작업',
     taskStagePlanning: '계획 중',
@@ -1888,9 +1895,9 @@ export default mergeHarnessLocale('ko-KR', {
     availableTools: '사용 가능한 도구',
     noToolsAvailable: '사용 가능한 도구가 없습니다',
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: '새로운 External Agent',
+      eyebrow: '외부 에이전트',
+      title: '외부 에이전트',
+      newExternalAgent: '새 외부 에이전트',
       newAcp: '새로운 ACP',
       newA2a: '새로운 A2A',
       newProfile: '새 프로필',
@@ -2747,6 +2754,16 @@ export default mergeHarnessLocale('ko-KR', {
         '스킬을 카드 형태로 둘러볼 수 있습니다. 원하는 스킬을 열어 문서를 확인하고 상태를 관리하세요.',
       toolGalleryHint:
         '도구를 카드 형태로 둘러보고, 어떤 역할을 하는지 확인한 뒤 빠르게 켜거나 끌 수 있습니다.',
+      skillManagementHint:
+        '내장 스킬은 여기에서 활성화하거나 비활성화할 수 있지만, 제거는 로컬 스킬만 가능합니다.',
+      toolManagementHint:
+        '내장 도구는 여기에서 활성화하거나 비활성화할 수 있지만, 실제 사용 가능 여부는 런타임 도구 정책에 의해 제한될 수 있습니다.',
+      builtinSkillDetailHint:
+        '이 내장 스킬은 여기에서 활성화하거나 비활성화할 수 있지만 제거할 수는 없습니다.',
+      builtinSkillUninstallBlocked:
+        '내장 스킬은 비활성화할 수 있지만 제거할 수는 없습니다.',
+      builtinToolUninstallBlocked:
+        '내장 도구는 비활성화할 수 있지만 제거할 수는 없습니다.',
       closeSkillDetails: '스킬 세부 정보 닫기',
       sourceLabel: '출처',
       skillCollectionFilters: '스킬 모음 필터',

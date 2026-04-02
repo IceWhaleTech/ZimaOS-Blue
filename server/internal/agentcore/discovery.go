@@ -9,9 +9,11 @@ type CanonicalSkillID string
 
 const (
 	CanonicalWebQuery     CanonicalSkillID = "web_query"
+	CanonicalAsk          CanonicalSkillID = "ask"
 	CanonicalBrowser      CanonicalSkillID = "browser"
 	CanonicalAnalyze      CanonicalSkillID = "analyze"
 	CanonicalDeepResearch CanonicalSkillID = "deep_research"
+	CanonicalMgmt         CanonicalSkillID = "mgmt"
 	CanonicalExec         CanonicalSkillID = "exec"
 	CanonicalUnknown      CanonicalSkillID = "unknown"
 )
@@ -87,6 +89,17 @@ func init() {
 			CutoverEligible:   true,
 			Description:       "Unified public web discovery and reading",
 		},
+		CanonicalAsk: {
+			CanonicalID:       CanonicalAsk,
+			Kind:              "skill",
+			Aliases:           []string{"clarify", "ask_user_question"},
+			SearchHints:       []string{"ask", "clarify", "confirm", "question", "interactive"},
+			CapabilityTags:    []string{"clarify", "interactive", "questionnaire"},
+			ExecutionProfile:  ExecutionProfileInline,
+			NativeSurfaceMode: NativeSurfaceModeSkillExec,
+			CutoverEligible:   true,
+			Description:       "Ask the user clarifying or confirmation questions",
+		},
 		CanonicalBrowser: {
 			CanonicalID:       CanonicalBrowser,
 			Kind:              "tool",
@@ -120,12 +133,26 @@ func init() {
 			CutoverEligible:   true,
 			Description:       "Multi-step cited research",
 		},
+		CanonicalMgmt: {
+			CanonicalID:       CanonicalMgmt,
+			Kind:              "skill",
+			Aliases:           []string{"management", "admin"},
+			SearchHints:       []string{"settings", "providers", "config", "runtime", "health", "proxy", "channels", "skills", "tools"},
+			CapabilityTags:    []string{"admin", "settings", "diagnostics"},
+			ExecutionProfile:  ExecutionProfileInline,
+			NativeSurfaceMode: NativeSurfaceModeSkillExec,
+			CutoverEligible:   true,
+			Description:       "Runtime management, diagnostics, and configuration",
+		},
 		CanonicalExec: {
 			CanonicalID:       CanonicalExec,
 			Kind:              "tool",
+			Aliases:           []string{"workspace", "shell", "terminal"},
+			SearchHints:       []string{"workspace", "repo", "readme", "file", "shell", "terminal", "local"},
+			CapabilityTags:    []string{"workspace", "shell", "local"},
 			ExecutionProfile:  ExecutionProfileInline,
 			NativeSurfaceMode: NativeSurfaceModeSkillExec,
-			CutoverEligible:   false,
+			CutoverEligible:   true,
 			Description:       "Execute skill and shell commands",
 		},
 	}

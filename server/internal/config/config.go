@@ -747,8 +747,9 @@ func defaults() Config {
 			ModelRouter:  &proxy.ModelRouterConfig{Enabled: false, DefaultFamily: "claude-3"},
 			QuotaMonitor: &proxy.QuotaMonitorConfig{Enabled: true, SyncInterval: 5 * time.Minute, WarningThreshold: 20.0, CriticalThreshold: 5.0, TrackTokens: true, TrackRequests: true},
 		},
-		// Keep default trigger threshold moderate so pruning is observable in real chats.
-		Pruner: &pruner.Config{Enabled: true, Backend: "local", Threshold: 0.5, MinLines: 80, TimeoutMs: 5000},
+		// Keep default pruning conservative so long-context protection stays available
+		// without over-trimming moderate requests.
+		Pruner: &pruner.Config{Enabled: true, Backend: "local", Threshold: 0.4, MinLines: 80, TimeoutMs: 5000},
 		Update: UpdateConfig{
 			Enabled: true, CheckInterval: 24 * time.Hour, ReleaseChannel: "stable", BackupCount: 3, StoragePath: "./data/updates",
 		},

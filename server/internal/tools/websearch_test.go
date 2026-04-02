@@ -381,6 +381,58 @@ func TestWebSearchTool_Bing(t *testing.T) {
 	}
 }
 
+func TestParseBingHTMLDecodesRedirectURLToStockAnalysis(t *testing.T) {
+	results := parseBingHTML(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="https://www.bing.com/ck/a?!&&p=demo&u=a1aHR0cHM6Ly9zdG9ja2FuYWx5c2lzLmNvbS9zdG9ja3MvYWFwbC8&ntb=1">Apple Stock Price</a></h2>
+    <div class="b_caption"><p>Live quote and financials.</p></div>
+  </li>
+</ol></body></html>`, 1)
+
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].URL != "https://stockanalysis.com/stocks/aapl/" {
+		t.Fatalf("url = %q, want %q", results[0].URL, "https://stockanalysis.com/stocks/aapl/")
+	}
+}
+
+func TestParseBingHTMLDecodesRedirectURLToGoogleFinance(t *testing.T) {
+	results := parseBingHTML(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="https://www.bing.com/ck/a?!&&p=demo&u=a1aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9maW5hbmNlL3F1b3RlL0FBUEw6TkFTREFR&ntb=1">Google Finance Apple</a></h2>
+    <div class="b_caption"><p>NASDAQ quote.</p></div>
+  </li>
+</ol></body></html>`, 1)
+
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].URL != "https://www.google.com/finance/quote/AAPL:NASDAQ" {
+		t.Fatalf("url = %q, want %q", results[0].URL, "https://www.google.com/finance/quote/AAPL:NASDAQ")
+	}
+}
+
+func TestParseBingHTMLLeavesRedirectURLWhenDecodeFails(t *testing.T) {
+	rawURL := "https://www.bing.com/ck/a?!&&p=demo&u=a1not-valid-base64&ntb=1"
+	results := parseBingHTML(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="`+rawURL+`">Broken Redirect</a></h2>
+    <div class="b_caption"><p>Fallback to raw URL.</p></div>
+  </li>
+</ol></body></html>`, 1)
+
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].URL != rawURL {
+		t.Fatalf("url = %q, want %q", results[0].URL, rawURL)
+	}
+}
+
 func TestWebSearchTool_ProviderFallback(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{

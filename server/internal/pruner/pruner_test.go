@@ -12,8 +12,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Backend != "local" {
 		t.Errorf("expected Backend=local, got %s", cfg.Backend)
 	}
-	if cfg.Threshold != 0.5 {
-		t.Errorf("expected Threshold=0.5, got %f", cfg.Threshold)
+	if cfg.Threshold != 0.4 {
+		t.Errorf("expected Threshold=0.4, got %f", cfg.Threshold)
 	}
 	if cfg.MinLines != 50 {
 		t.Errorf("expected MinLines=50, got %d", cfg.MinLines)

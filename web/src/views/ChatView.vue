@@ -33,6 +33,7 @@ import type { Provider } from '@/api/providerPool'
 import { rafThrottle } from '@/utils/rafThrottle'
 import { useTaskProjectionActions } from '@/composables/useTaskProjectionActions'
 import { measureChatPerf, recordChatPerfCount } from '@/utils/chatPerf'
+import { scheduleStartupBackgroundTask } from '@/utils/startupBackgroundTask'
 
 reportStartupMark('chat_view_setup_enter')
 
@@ -70,13 +71,6 @@ type VoiceApiModule = typeof import('@/api/voice')
 type MarkdownModule = typeof import('@/utils/markdown')
 type ApiClientModule = typeof import('@/api/client')
 type EventStreamModule = typeof import('@/composables/useEventStream')
-type IdleWindow = Window & {
-  requestIdleCallback?: (
-    callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
-    options?: { timeout?: number }
-  ) => number
-  cancelIdleCallback?: (handle: number) => void
-}
 
 let voiceApiModulePromise: Promise<VoiceApiModule> | null = null
 let markdownModulePromise: Promise<MarkdownModule> | null = null
@@ -141,18 +135,7 @@ function syncStreamingTtsLocale(nextLocale: string) {
 }
 
 function scheduleBackgroundTask(task: () => void, timeout = 1500): () => void {
-  const idleWindow = window as IdleWindow
-  if (typeof idleWindow.requestIdleCallback === 'function') {
-    const handle = idleWindow.requestIdleCallback(() => task(), { timeout })
-    return () => {
-      idleWindow.cancelIdleCallback?.(handle)
-    }
-  }
-
-  const handle = window.setTimeout(task, 0)
-  return () => {
-    window.clearTimeout(handle)
-  }
+  return scheduleStartupBackgroundTask(task, timeout)
 }
 
 function queueBackgroundTask(task: () => void, timeout = 1500) {

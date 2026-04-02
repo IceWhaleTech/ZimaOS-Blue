@@ -16,6 +16,7 @@ export default mergeHarnessLocale('ml-IN', {
     next: 'അടുത്തത്',
     previous: 'മുമ്പത്തേത്',
     close: 'Close',
+    backToTop: 'മുകളിലേക്ക് മടങ്ങുക',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -693,6 +694,12 @@ export default mergeHarnessLocale('ml-IN', {
     taskCancelled: 'പ്രവർത്തനം റദ്ദാക്കി',
     waitingThinking: 'ചിന്തിക്കുന്നു...',
     awaitingConfirmation: 'തുടരാൻ നിങ്ങളുടെ സ്ഥിരീകരണം കാത്തിരിക്കുന്നു',
+    streamConnecting: 'ബന്ധിപ്പിക്കുന്നു',
+    streamStreaming: 'സൃഷ്ടിക്കുന്നു',
+    streamExecuting: 'പ്രവർത്തിക്കുന്നു',
+    streamAwaitingConfirmation: 'കാത്തിരിക്കുന്നു',
+    streamRecovering: 'പുനഃസ്ഥാപിക്കുന്നു',
+    streamInterrupted: 'തടസ്സപ്പെട്ടു',
     backgroundTasks: 'പശ്ചാത്തല ടാസ്‌കുകൾ',
     taskNotificationTitle: 'പശ്ചാത്തല ടാസ്‌ക്',
     taskStagePlanning: 'ആസൂത്രണം',
@@ -1818,9 +1825,9 @@ export default mergeHarnessLocale('ml-IN', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'പുതിയ External Agent',
+      eyebrow: 'ബാഹ്യ ഏജന്റ്',
+      title: 'ബാഹ്യ ഏജന്റ്',
+      newExternalAgent: 'പുതിയ ബാഹ്യ ഏജന്റ്',
       newAcp: 'പുതിയ ACP',
       newA2a: 'പുതിയ A2A',
       newProfile: 'പുതിയ പ്രൊഫൈൽ',
@@ -2625,6 +2632,16 @@ export default mergeHarnessLocale('ml-IN', {
         'കൗശലങ്ങൾ കാർഡുകളായി കാണുക. ഏതെങ്കിലും കൗശലം തുറന്ന് ഡോക്യുമെന്റേഷൻ പരിശോധിക്കാനും അതിന്റെ സ്ഥിതി നിയന്ത്രിക്കാനും കഴിയും.',
       toolGalleryHint:
         'ഉപകരണങ്ങളെ കാർഡുകളായി കാണുക, അവ എന്ത് ചെയ്യുന്നുവെന്ന് പരിശോധിക്കുക, പിന്നെ വേഗത്തിൽ ഓണാക്കുകയോ ഓഫ് ചെയ്യുകയോ ചെയ്യുക.',
+      skillManagementHint:
+        'ഇൻബിൽറ്റ് സ്കില്ലുകൾ ഇവിടെ പ്രവർത്തനക്ഷമമാക്കാനോ പ്രവർത്തനരഹിതമാക്കാനോ കഴിയും, പക്ഷേ ലോക്കൽ സ്കില്ലുകൾ മാത്രം അൺഇൻസ്റ്റാൾ ചെയ്യാം.',
+      toolManagementHint:
+        'ഇൻബിൽറ്റ് ടൂളുകൾ ഇവിടെ പ്രവർത്തനക്ഷമമാക്കാനോ പ്രവർത്തനരഹിതമാക്കാനോ കഴിയും, പക്ഷേ അവയുടെ ലഭ്യത റൺടൈം ടൂൾ പോളിസി മൂലം ഇപ്പോഴും നിയന്ത്രിക്കപ്പെട്ടിരിക്കാം.',
+      builtinSkillDetailHint:
+        'ഈ ഇൻബിൽറ്റ് സ്കിൽ ഇവിടെ പ്രവർത്തനക്ഷമമാക്കാനോ പ്രവർത്തനരഹിതമാക്കാനോ കഴിയും, പക്ഷേ ഇത് അൺഇൻസ്റ്റാൾ ചെയ്യാൻ കഴിയില്ല.',
+      builtinSkillUninstallBlocked:
+        'ഇൻബിൽറ്റ് സ്കില്ലുകൾ പ്രവർത്തനരഹിതമാക്കാം, പക്ഷേ അൺഇൻസ്റ്റാൾ ചെയ്യാൻ കഴിയില്ല.',
+      builtinToolUninstallBlocked:
+        'ഇൻബിൽറ്റ് ടൂളുകൾ പ്രവർത്തനരഹിതമാക്കാം, പക്ഷേ അൺഇൻസ്റ്റാൾ ചെയ്യാൻ കഴിയില്ല.',
       closeSkillDetails: 'കൗശലത്തിന്റെ വിശദാംശങ്ങൾ അടയ്ക്കുക',
       sourceLabel: 'ഉറവിടം',
       skillCollectionFilters: 'കൗശൽ ശേഖര ഫിൽട്ടറുകൾ',

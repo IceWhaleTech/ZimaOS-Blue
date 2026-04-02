@@ -7,6 +7,9 @@
 package timeutil
 
 import (
+	"os"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -77,6 +80,65 @@ func NowMicro() int64 {
 // when you only need the numeric timestamp.
 func NowTime() time.Time {
 	return time.Unix(0, atomic.LoadInt64(&clock))
+}
+
+// DetectTimezone returns the best available timezone label for the current process.
+// It prefers an explicit TZ env override, then the current local location name,
+// and finally falls back to a UTC offset string.
+func DetectTimezone() string {
+	if tz := strings.TrimSpace(os.Getenv("TZ")); tz != "" {
+		if _, err := time.LoadLocation(tz); err == nil || isUTCOffsetTimezone(tz) {
+			return tz
+		}
+	}
+	for _, loc := range []*time.Location{time.Local, NowTime().Location()} {
+		if loc == nil {
+			continue
+		}
+		name := strings.TrimSpace(loc.String())
+		if name != "" && name != "Local" {
+			return name
+		}
+	}
+	return FormatUTCOffset(NowTime())
+}
+
+// FormatUTCOffset renders the time zone offset as UTC±HH:MM.
+func FormatUTCOffset(t time.Time) string {
+	_, offsetSeconds := t.Zone()
+	sign := '+'
+	if offsetSeconds < 0 {
+		sign = '-'
+		offsetSeconds = -offsetSeconds
+	}
+	hours := offsetSeconds / 3600
+	minutes := (offsetSeconds % 3600) / 60
+	return "UTC" + string(sign) + twoDigit(hours) + ":" + twoDigit(minutes)
+}
+
+func isUTCOffsetTimezone(value string) bool {
+	if len(value) != len("UTC+00:00") || !strings.HasPrefix(value, "UTC") {
+		return false
+	}
+	if value[3] != '+' && value[3] != '-' {
+		return false
+	}
+	if value[6] != ':' {
+		return false
+	}
+	for _, idx := range []int{4, 5, 7, 8} {
+		if value[idx] < '0' || value[idx] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func twoDigit(v int) string {
+	if v < 10 {
+		return "0" + strconv.Itoa(v)
+	}
+	return strconv.Itoa(v)
 }
 
 // Monotonic returns a monotonically increasing nanosecond timestamp.

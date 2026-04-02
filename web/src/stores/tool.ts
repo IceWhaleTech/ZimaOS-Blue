@@ -1,9 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { toolApi } from '@/api/tool'
+import { i18n } from '@/i18n'
 import type { Tool, ToolSource, RemoteTool, BrowseParams } from '@/api/tool'
 
 export const useToolStore = defineStore('tool', () => {
+  const t = i18n.global.t.bind(i18n.global)
+  const te = i18n.global.te.bind(i18n.global)
+
   // State
   const tools = ref<Tool[]>([])
   const sources = ref<ToolSource[]>([])
@@ -181,14 +185,22 @@ export const useToolStore = defineStore('tool', () => {
     try {
       loading.value = true
       error.value = null
+      const tool = tools.value.find((t) => t.id === id)
+      if (tool?.builtin) {
+        const message = te('extensions.browse.builtinToolUninstallBlocked')
+          ? String(t('extensions.browse.builtinToolUninstallBlocked'))
+          : 'Built-in tools can be disabled, but they cannot be uninstalled'
+        error.value = message
+        return { success: false, message }
+      }
       const response = await toolApi.uninstall(id)
       if (response.data.success) {
         // Remove from local tools
         tools.value = tools.value.filter((t) => t.id !== id)
         // Mark as not installed in remote tools
-        const tool = remoteTools.value.find((t) => t.id === id)
-        if (tool) {
-          tool.installed = false
+        const remoteTool = remoteTools.value.find((t) => t.id === id)
+        if (remoteTool) {
+          remoteTool.installed = false
         }
       }
       return response.data

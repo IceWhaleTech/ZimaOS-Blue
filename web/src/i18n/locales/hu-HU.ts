@@ -693,6 +693,12 @@ export default mergeHarnessLocale('hu-HU', {
     taskCancelled: 'Feladat megszakítva',
     waitingThinking: 'Gondolkodom...',
     awaitingConfirmation: 'Megerősítésére várunk a folytatáshoz',
+    streamConnecting: 'Kapcsolódás',
+    streamStreaming: 'Generálás',
+    streamExecuting: 'Folyamatban',
+    streamAwaitingConfirmation: 'Várakozás',
+    streamRecovering: 'Helyreállítás',
+    streamInterrupted: 'Megszakítva',
     backgroundTasks: 'Háttérfeladatok',
     taskNotificationTitle: 'Háttérfeladat',
     taskStagePlanning: 'Tervezés',
@@ -1811,9 +1817,9 @@ export default mergeHarnessLocale('hu-HU', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Új External Agent',
+      eyebrow: 'Külső ügynök',
+      title: 'Külső ügynök',
+      newExternalAgent: 'Új külső ügynök',
       newAcp: 'Új ACP',
       newA2a: 'Új A2A',
       newProfile: 'Új profil',
@@ -2600,7 +2606,8 @@ export default mergeHarnessLocale('hu-HU', {
       descriptionPlaceholder: 'Írja le ezt a forrást...',
       cancel: 'Mégse',
       add: 'Hozzáadás',
-      close: 'Bezárás',
+    close: 'Bezárás',
+    backToTop: 'Vissza a tetejére',
       refresh: 'Frissítés',
       allLevels: 'Minden szint',
       error: 'Hiba',
@@ -2616,6 +2623,16 @@ export default mergeHarnessLocale('hu-HU', {
         'Böngéssze a készségeket kártyákként. Nyisson meg bármely készséget a dokumentáció megtekintéséhez és az állapot kezeléséhez.',
       toolGalleryHint:
         'Böngéssze az eszközöket kártyákként, nézze meg, mire valók, és gyorsan kapcsolja be vagy ki őket.',
+      skillManagementHint:
+        'A beépített készségek itt engedélyezhetők vagy letilthatók, de eltávolítani csak a helyi készségeket lehet.',
+      toolManagementHint:
+        'A beépített eszközök itt engedélyezhetők vagy letilthatók, de elérhetőségüket továbbra is korlátozhatja a futásidejű eszközszabályzat.',
+      builtinSkillDetailHint:
+        'Ez a beépített készség itt engedélyezhető vagy letiltható, de nem távolítható el.',
+      builtinSkillUninstallBlocked:
+        'A beépített készségek letilthatók, de nem távolíthatók el.',
+      builtinToolUninstallBlocked:
+        'A beépített eszközök letilthatók, de nem távolíthatók el.',
       closeSkillDetails: 'Készség részleteinek bezárása',
       sourceLabel: 'Forrás',
       skillCollectionFilters: 'Készséggyűjtemény szűrői',

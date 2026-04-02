@@ -61,6 +61,7 @@ func bindRuntimeSettingsTargets(
 	}
 	if prompt != nil {
 		prompt.SetLocaleFunc(settings.GetLocale)
+		prompt.SetTimezoneFunc(settings.GetTimezone)
 		prompt.SetAgentModeFunc(settings.GetAgentMode)
 		prompt.SetAgentAutoConfirmFunc(settings.GetAgentAutoConfirm)
 	}

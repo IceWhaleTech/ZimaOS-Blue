@@ -55,7 +55,7 @@ type ConversationSummary struct {
 }
 
 const compressedTierRecentRounds = 3
-const smartContextSoftCompressionThreshold = 0.75
+const smartContextSoftCompressionThreshold = 0.85
 
 const (
 	trimPolicyCharsPerTokenEstimate = 4

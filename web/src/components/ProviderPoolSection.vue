@@ -174,6 +174,12 @@ function getEffectiveProviderLocation(provider?: Provider | null): 'cloud' | 'lo
   return 'cloud'
 }
 
+function getProviderLocationLabel(provider?: Provider | null): string {
+  return getEffectiveProviderLocation(provider) === 'local'
+    ? t('providerPool.locationLocal')
+    : t('providerPool.locationCloud')
+}
+
 // New API key form
 const newKey = ref({
   providerId: '',
@@ -519,6 +525,12 @@ const filteredProviders = computed(() => {
 
   // Sort: enabled first, then by priority (descending)
   return providers.sort((a, b) => {
+    if (a.id === 'ollama' && b.id !== 'ollama') {
+      return -1
+    }
+    if (a.id !== 'ollama' && b.id === 'ollama') {
+      return 1
+    }
     if (a.enabled !== b.enabled) {
       return a.enabled ? -1 : 1
     }
@@ -2049,8 +2061,13 @@ onMounted(() => {
                     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                     : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
                 ]"
+                :title="getProviderLocationLabel(provider)"
               >
-                {{ getEffectiveProviderLocation(provider) === 'cloud' ? '☁️' : '💻' }}
+                {{
+                  getEffectiveProviderLocation(provider) === 'cloud'
+                    ? `☁️ ${getProviderLocationLabel(provider)}`
+                    : `💻 ${getProviderLocationLabel(provider)}`
+                }}
               </span>
               <span
                 :class="getStatusColor(provider.status, provider.enabled)"

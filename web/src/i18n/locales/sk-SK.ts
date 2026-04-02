@@ -692,6 +692,12 @@ export default mergeHarnessLocale('sk-SK', {
     taskCancelled: 'Úloha zrušená',
     waitingThinking: 'Premýšľam...',
     awaitingConfirmation: 'Čaká sa na vaše potvrdenie pre pokračovanie',
+    streamConnecting: 'Pripájanie',
+    streamStreaming: 'Generovanie',
+    streamExecuting: 'Práca',
+    streamAwaitingConfirmation: 'Čakanie',
+    streamRecovering: 'Obnova',
+    streamInterrupted: 'Prerušené',
     backgroundTasks: 'Úlohy na pozadí',
     taskNotificationTitle: 'Úloha na pozadí',
     taskStagePlanning: 'Plánovanie',
@@ -1807,9 +1813,9 @@ export default mergeHarnessLocale('sk-SK', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Nový External Agent',
+      eyebrow: 'Externý agent',
+      title: 'Externý agent',
+      newExternalAgent: 'Nový externý agent',
       newAcp: 'Nové ACP',
       newA2a: 'Nové A2A',
       newProfile: 'Nový profil',
@@ -2594,7 +2600,8 @@ export default mergeHarnessLocale('sk-SK', {
       descriptionPlaceholder: 'Popíšte tento zdroj...',
       cancel: 'Zrušiť',
       add: 'Pridať',
-      close: 'Zavrieť',
+    close: 'Zavrieť',
+    backToTop: 'Späť hore',
       refresh: 'Obnoviť',
       allLevels: 'Všetky úrovne',
       error: 'Chyba',
@@ -2610,6 +2617,16 @@ export default mergeHarnessLocale('sk-SK', {
         'Prehliadajte zručnosti ako karty. Otvorte ľubovoľnú zručnosť, zobrazte si dokumentáciu a spravujte jej stav.',
       toolGalleryHint:
         'Prehliadajte nástroje ako karty, pozrite si, čo robia, a rýchlo ich zapínajte alebo vypínajte.',
+      skillManagementHint:
+        'Vstavané zručnosti tu môžete povoliť alebo zakázať, ale odinštalovať možno iba lokálne zručnosti.',
+      toolManagementHint:
+        'Vstavané nástroje tu môžete povoliť alebo zakázať, ale ich dostupnosť môže byť stále obmedzená politikou nástrojov počas behu.',
+      builtinSkillDetailHint:
+        'Túto vstavanú zručnosť tu môžete povoliť alebo zakázať, ale nemožno ju odinštalovať.',
+      builtinSkillUninstallBlocked:
+        'Vstavané zručnosti možno zakázať, ale nemožno ich odinštalovať.',
+      builtinToolUninstallBlocked:
+        'Vstavané nástroje možno zakázať, ale nemožno ich odinštalovať.',
       closeSkillDetails: 'Zavrieť podrobnosti zručnosti',
       sourceLabel: 'Zdroj',
       skillCollectionFilters: 'Filtre zbierky zručností',

@@ -61,7 +61,7 @@ func DefaultConfig() Config {
 	return Config{
 		Enabled:       true,
 		Backend:       "local",
-		Threshold:     0.5,
+		Threshold:     0.4,
 		MinLines:      50,
 		TimeoutMs:     5000,
 		CacheCapacity: 256,

@@ -1,4 +1,7 @@
 import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
+import extensionsBrowseBackfills from './extensions-browse-backfills'
+import harnessGroupBackfills from './harness-group-backfills'
+import localeFollowupBackfills from './locale-followup-backfills'
 import localeStructuralBackfills from './locale-structural-backfills'
 import { buildSkillStoreDerivedBackfill } from './skill-store-derived-backfills'
 import systemDashboardCardOverrides from './system-dashboard-card-overrides'
@@ -6852,17 +6855,26 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
 ): T {
   const harnessPatch = mergeLocaleNodes(
     mergeLocaleNodes(
-      baseHarnessPatch as LocaleNode,
-      (localeHarnessOverrides[localeKey] ?? {}) as LocaleNode
+      mergeLocaleNodes(
+        baseHarnessPatch as LocaleNode,
+        (localeHarnessOverrides[localeKey] ?? {}) as LocaleNode
+      ),
+      (legacyHarnessPatches[localeKey] ?? {}) as LocaleNode
     ),
-    (legacyHarnessPatches[localeKey] ?? {}) as LocaleNode
+    (harnessGroupBackfills[localeKey] ?? {}) as LocaleNode
   )
   const structuralPatch = mergeLocaleNodes(
     mergeLocaleNodes(
-      (systemDashboardCardOverrides[localeKey] ?? {}) as LocaleNode,
-      (dashboardCardCopyOverrides[localeKey] ?? {}) as LocaleNode
+      mergeLocaleNodes(
+        mergeLocaleNodes(
+          (systemDashboardCardOverrides[localeKey] ?? {}) as LocaleNode,
+          (dashboardCardCopyOverrides[localeKey] ?? {}) as LocaleNode
+        ),
+        (localeStructuralBackfills[localeKey] ?? {}) as LocaleNode
+      ),
+      (extensionsBrowseBackfills[localeKey] ?? {}) as LocaleNode
     ),
-    (localeStructuralBackfills[localeKey] ?? {}) as LocaleNode
+    (localeFollowupBackfills[localeKey] ?? {}) as LocaleNode
   )
   const mergedMessages = mergeLocaleNodes(structuralPatch, messages as unknown as LocaleNode)
   const skillStorePatch = buildSkillStoreDerivedBackfill(

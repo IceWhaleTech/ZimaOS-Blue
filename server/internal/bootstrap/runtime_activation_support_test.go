@@ -116,7 +116,7 @@ func TestBindRuntimeActivationSupport_BindsDeferredTargetsAndApprovals(t *testin
 	if skillReranker.switchCalls != 1 {
 		t.Fatalf("expected skill reranker wiring, got %#v", skillReranker)
 	}
-	if promptSettings.calls() != 3 || pushLocale.calls != 1 || mgmtSettings.calls != 1 {
+	if promptSettings.calls() != 4 || pushLocale.calls != 1 || mgmtSettings.calls != 1 {
 		t.Fatalf("expected prompt/push/mgmt wiring, got prompt=%#v push=%#v mgmt=%#v", promptSettings, pushLocale, mgmtSettings)
 	}
 	if questionMgr.timeoutCalls != 1 || questionMgr.timeoutFunc == nil {

@@ -16,6 +16,7 @@ export default mergeHarnessLocale('en-GB', {
     next: 'Next',
     previous: 'Previous',
     close: 'Close',
+    backToTop: 'Back to top',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -689,6 +690,12 @@ export default mergeHarnessLocale('en-GB', {
     taskCancelled: 'Task cancelled',
     waitingThinking: 'Thinking...',
     awaitingConfirmation: 'Waiting for your confirmation to continue',
+    streamConnecting: 'Connecting',
+    streamStreaming: 'Streaming',
+    streamExecuting: 'Working',
+    streamAwaitingConfirmation: 'Waiting',
+    streamRecovering: 'Recovering',
+    streamInterrupted: 'Interrupted',
     backgroundTasks: 'Background tasks',
     taskNotificationTitle: 'Background task',
     taskStagePlanning: 'Planning',
@@ -2594,6 +2601,16 @@ export default mergeHarnessLocale('en-GB', {
         'Browse skills as cards. Open any skill to review docs and manage its status.',
       toolGalleryHint:
         'Browse tools as cards, review what they do, and toggle them on or off quickly.',
+      skillManagementHint:
+        'Built-in skills can be enabled or disabled here. Uninstall is available only for local skills.',
+      toolManagementHint:
+        'Built-in tools can be enabled or disabled here. Their availability can still be limited by runtime tool policy.',
+      builtinSkillDetailHint:
+        'This built-in skill can be enabled or disabled here, but it cannot be uninstalled.',
+      builtinSkillUninstallBlocked:
+        'Built-in skills can be disabled, but they cannot be uninstalled.',
+      builtinToolUninstallBlocked:
+        'Built-in tools can be disabled, but they cannot be uninstalled.',
       closeSkillDetails: 'Close skill details',
       sourceLabel: 'Source',
       skillCollectionFilters: 'Skill collection filters',

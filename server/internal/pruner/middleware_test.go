@@ -152,6 +152,104 @@ func TestMiddleware_ProcessRequest_PrunesToolMessage(t *testing.T) {
 	}
 }
 
+func TestMiddleware_ProcessRequest_SkipsNonSavingPruneResult(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.MinLines = 5
+
+	longCode := strings.Repeat("package main\nimport \"fmt\"\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n", 5)
+
+	backend := &mockBackend{
+		pruneFunc: func(ctx context.Context, req PruneRequest) (*PruneResponse, error) {
+			return &PruneResponse{
+				PrunedContent:  "(expanded-pruned-output)",
+				PrunedCode:     "(expanded-pruned-output)",
+				OriginalTokens: 120,
+				PrunedTokens:   124,
+			}, nil
+		},
+	}
+	stats := NewStats()
+	mw := NewMiddleware(backend, cfg, stats)
+
+	msg := map[string]interface{}{
+		"messages": []map[string]interface{}{
+			{"role": "user", "content": "find the bug"},
+			{"role": "tool", "content": longCode, "tool_call_id": "call_1"},
+		},
+	}
+	body, _ := json.Marshal(msg)
+
+	pruneStats := &RequestPruneStats{}
+	result, err := mw.ProcessRequest(WithPruneStats(context.Background(), pruneStats), body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	messages := decodeMessages(t, result)
+
+	if got := messageContent(t, messages[1]); got != longCode {
+		t.Errorf("expected original content preserved when prune result does not save tokens, got %q", got)
+	}
+
+	if pruneStats.Pruned {
+		t.Fatal("expected request prune stats to stay empty when non-saving prune result is skipped")
+	}
+
+	snap := stats.Snapshot()
+	if snap.TotalRequests != 1 {
+		t.Fatalf("expected total_requests=1, got %d", snap.TotalRequests)
+	}
+	if snap.PassthroughRequests != 1 {
+		t.Fatalf("expected passthrough_requests=1, got %d", snap.PassthroughRequests)
+	}
+	if snap.PrunedRequests != 0 {
+		t.Fatalf("expected pruned_requests=0, got %d", snap.PrunedRequests)
+	}
+}
+
+func TestMiddleware_ProcessRequest_AllowsLegacyPruneResultWithoutTokenCounts(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.MinLines = 5
+
+	longCode := strings.Repeat("package main\nimport \"fmt\"\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n", 5)
+
+	backend := &mockBackend{
+		pruneFunc: func(ctx context.Context, req PruneRequest) (*PruneResponse, error) {
+			return &PruneResponse{
+				PrunedContent: "(legacy-pruned-output)",
+				PrunedCode:    "(legacy-pruned-output)",
+			}, nil
+		},
+	}
+	stats := NewStats()
+	mw := NewMiddleware(backend, cfg, stats)
+
+	msg := map[string]interface{}{
+		"messages": []map[string]interface{}{
+			{"role": "user", "content": "find the bug"},
+			{"role": "tool", "content": longCode, "tool_call_id": "call_1"},
+		},
+	}
+	body, _ := json.Marshal(msg)
+
+	result, err := mw.ProcessRequest(context.Background(), body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	messages := decodeMessages(t, result)
+	if got := messageContent(t, messages[1]); got != "(legacy-pruned-output)" {
+		t.Errorf("expected legacy prune result to still apply without token counts, got %q", got)
+	}
+
+	snap := stats.Snapshot()
+	if snap.PrunedRequests != 1 {
+		t.Fatalf("expected pruned_requests=1, got %d", snap.PrunedRequests)
+	}
+}
+
 func TestMiddleware_ProcessRequest_UsesContentField(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true

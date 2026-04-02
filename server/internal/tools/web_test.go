@@ -1470,6 +1470,405 @@ func TestWebQueryToolReadsCandidatesInParallel(t *testing.T) {
 	}
 }
 
+func TestWebQueryToolSearchQueryReadsNormalizedBingFinanceURL(t *testing.T) {
+	searchServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="https://www.bing.com/ck/a?!&&p=demo&u=a1aHR0cHM6Ly9zdG9ja2FuYWx5c2lzLmNvbS9zdG9ja3MvYWFwbC8&ntb=1">Apple Stock Price</a></h2>
+    <div class="b_caption"><p>Apple Inc. price, chart, and summary.</p></div>
+  </li>
+</ol></body></html>`))
+	}))
+	defer searchServer.Close()
+
+	searchTool := NewWebSearchTool(WebSearchConfig{Provider: "bing", Region: "us-en"})
+	searchTool.httpClient = &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: rewriteHostTransport{
+			host:   strings.TrimPrefix(searchServer.URL, "http://"),
+			scheme: "http",
+		},
+	}
+
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			readURL := args["url"].(string)
+			resp := webReadResponse{
+				URL:      readURL,
+				FinalURL: readURL,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+			}
+			if strings.Contains(readURL, "bing.com/ck/a") {
+				resp.Title = "Bing Redirect"
+				resp.Content = "Please click here if the page does not redirect automatically ..."
+			} else {
+				resp.Title = "Apple (AAPL) Stock Price"
+				resp.Content = "Apple stock trades with live price updates, intraday movement, valuation multiples, and recent headline context. This body is intentionally long enough to count as a strong readable finance result so the search pipeline should stop after the normalized candidate instead of rescuing the query through browser search."
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "Research the current stock price of Apple (AAPL) and return the price, date, and a brief market summary.",
+		"depth": "standard",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.TargetURL != "https://stockanalysis.com/stocks/aapl/" {
+		t.Fatalf("target_url = %q, want normalized stockanalysis URL", envelope.TargetURL)
+	}
+	for _, call := range readTool.lastArgs {
+		if strings.Contains(asString(call["url"]), "bing.com/ck/a") {
+			t.Fatalf("read calls = %+v, want normalized finance URLs only", readTool.lastArgs)
+		}
+	}
+}
+
+func TestWebQueryToolStrongNormalizedBingResultSkipsBrowserSearchFallback(t *testing.T) {
+	searchServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="https://www.bing.com/ck/a?!&&p=demo&u=a1aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9maW5hbmNlL3F1b3RlL0FBUEw6TkFTREFR&ntb=1">Google Finance Apple</a></h2>
+    <div class="b_caption"><p>Live NASDAQ quote.</p></div>
+  </li>
+</ol></body></html>`))
+	}))
+	defer searchServer.Close()
+
+	searchTool := NewWebSearchTool(WebSearchConfig{Provider: "bing", Region: "us-en"})
+	searchTool.httpClient = &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: rewriteHostTransport{
+			host:   strings.TrimPrefix(searchServer.URL, "http://"),
+			scheme: "http",
+		},
+	}
+
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			readURL := args["url"].(string)
+			resp := webReadResponse{
+				URL:      readURL,
+				FinalURL: readURL,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "AAPL:NASDAQ",
+				Content:  "Google Finance shows Apple share price, intraday range, market cap, and recent performance with enough readable detail that the normalized result should be accepted immediately without any browser search rescue path.",
+			}
+			if strings.Contains(readURL, "bing.com/ck/a") {
+				resp.Title = "Redirect placeholder"
+				resp.Content = "Please click here if the page does not redirect automatically ..."
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	browser := &scriptedWebQueryBrowserBackend{}
+
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+	tool.SetBrowser(browser)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "AAPL stock price",
+		"depth": "standard",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Diagnostics.Route != "search_http" {
+		t.Fatalf("route = %q, want search_http", envelope.Diagnostics.Route)
+	}
+	for _, attempt := range envelope.Diagnostics.Attempts {
+		if attempt.Stage == "search_browser" {
+			t.Fatalf("attempts = %+v, want no search_browser fallback", envelope.Diagnostics.Attempts)
+		}
+	}
+	if browser.recipeCalls != 0 {
+		t.Fatalf("browser recipe calls = %d, want 0", browser.recipeCalls)
+	}
+}
+
+func TestWebQueryToolReusesBrowserTargetWithinSameHostCandidates(t *testing.T) {
+	const (
+		firstURL  = "https://stockanalysis.com/stocks/aapl/"
+		secondURL = "https://stockanalysis.com/stocks/aapl/financials/"
+		sharedTab = "tab-stockanalysis"
+	)
+
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{
+				Query: "AAPL stock price",
+				Results: []WebSearchResult{
+					{Title: "Apple Stock Price", URL: firstURL, Description: "Quote page"},
+					{Title: "Apple Financials", URL: secondURL, Description: "Financial statements"},
+				},
+				TotalCount: 2,
+				Provider:   "bing",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			readURL := args["url"].(string)
+			lane := args["lane"].(string)
+			targetID := asString(args["browser_target_id"])
+			switch {
+			case readURL == firstURL && lane == webAccessLaneHTTP:
+				resp := webReadResponse{
+					URL:                 readURL,
+					FinalURL:            readURL,
+					Format:              "text",
+					Source:              webAccessSourceHTTP,
+					Title:               "Apple Stock Price",
+					Content:             "Please open in a browser.",
+					Warnings:            []string{"page requires browser interaction"},
+					WarningCodes:        []string{webFetchWarningCodeBrowserRequired},
+					InteractiveRequired: true,
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			case readURL == firstURL && lane == webAccessLaneProxyFetcher:
+				resp := webReadResponse{
+					URL:                 readURL,
+					FinalURL:            readURL,
+					Format:              "text",
+					Source:              webAccessSourceProxyFetcher,
+					Title:               "Apple Stock Price",
+					Content:             "Proxy preview still needs the real browser.",
+					Warnings:            []string{"page requires browser interaction"},
+					WarningCodes:        []string{webFetchWarningCodeBrowserRequired},
+					InteractiveRequired: true,
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			case readURL == firstURL && lane == webAccessLaneBrowser:
+				payload := map[string]interface{}{
+					"url":               readURL,
+					"final_url":         readURL,
+					"format":            "text",
+					"source":            webAccessSourceBrowser,
+					"title":             "Apple Stock Price",
+					"content":           "Browser-rendered Apple quote page with enough detail to count as a strong result and seed a reusable browser target for this host.",
+					"browser_target_id": sharedTab,
+				}
+				b, _ := json.Marshal(payload)
+				return string(b), nil
+			case readURL == secondURL && lane == webAccessLaneHTTP:
+				resp := webReadResponse{
+					URL:      readURL,
+					FinalURL: readURL,
+					Format:   "text",
+					Source:   webAccessSourceHTTP,
+					Title:    "Apple Financials",
+				}
+				if targetID == sharedTab {
+					resp.Content = "Session-reused financial content with enough detail to prove the same-host browser target was forwarded into the follow-up read."
+				} else {
+					resp.Content = "Please open in a browser."
+					resp.Warnings = []string{"page requires browser interaction"}
+					resp.WarningCodes = []string{webFetchWarningCodeBrowserRequired}
+					resp.InteractiveRequired = true
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			case readURL == secondURL && lane == webAccessLaneProxyFetcher:
+				resp := webReadResponse{
+					URL:                 readURL,
+					FinalURL:            readURL,
+					Format:              "text",
+					Source:              webAccessSourceProxyFetcher,
+					Title:               "Apple Financials",
+					Content:             "Proxy preview still needs the real browser.",
+					Warnings:            []string{"page requires browser interaction"},
+					WarningCodes:        []string{webFetchWarningCodeBrowserRequired},
+					InteractiveRequired: true,
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			case readURL == secondURL && lane == webAccessLaneBrowser:
+				resp := webReadResponse{
+					URL:      readURL,
+					FinalURL: readURL,
+					Format:   "text",
+					Source:   webAccessSourceBrowser,
+					Title:    "Apple Financials",
+					Content:  "Browser fallback still worked.",
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			default:
+				t.Fatalf("unexpected read call url=%q lane=%q target=%q", readURL, lane, targetID)
+				return nil, nil
+			}
+		},
+	}
+
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "AAPL stock price",
+		"depth": "standard",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	foundReuse := false
+	for _, call := range readTool.lastArgs {
+		if asString(call["url"]) == secondURL && asString(call["browser_target_id"]) == sharedTab {
+			foundReuse = true
+			break
+		}
+	}
+	if !foundReuse {
+		t.Fatalf("read calls = %+v, want second same-host candidate to reuse %q", readTool.lastArgs, sharedTab)
+	}
+	if envelope.Status != webQueryStatusOK {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
+	}
+}
+
+func TestWebQueryToolDoesNotReuseBrowserTargetAcrossHosts(t *testing.T) {
+	const (
+		firstURL  = "https://stockanalysis.com/stocks/aapl/"
+		secondURL = "https://finance.yahoo.com/quote/AAPL/"
+		sharedTab = "tab-stockanalysis"
+	)
+
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{
+				Query: "AAPL stock price",
+				Results: []WebSearchResult{
+					{Title: "Apple Stock Price", URL: firstURL, Description: "Quote page"},
+					{Title: "Yahoo Finance Apple", URL: secondURL, Description: "Yahoo quote"},
+				},
+				TotalCount: 2,
+				Provider:   "bing",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			readURL := args["url"].(string)
+			lane := args["lane"].(string)
+			switch {
+			case readURL == firstURL && lane == webAccessLaneHTTP:
+				resp := webReadResponse{
+					URL:                 readURL,
+					FinalURL:            readURL,
+					Format:              "text",
+					Source:              webAccessSourceHTTP,
+					Title:               "Apple Stock Price",
+					Content:             "Please open in a browser.",
+					Warnings:            []string{"page requires browser interaction"},
+					WarningCodes:        []string{webFetchWarningCodeBrowserRequired},
+					InteractiveRequired: true,
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			case readURL == firstURL && lane == webAccessLaneProxyFetcher:
+				resp := webReadResponse{
+					URL:                 readURL,
+					FinalURL:            readURL,
+					Format:              "text",
+					Source:              webAccessSourceProxyFetcher,
+					Title:               "Apple Stock Price",
+					Content:             "Proxy preview still needs the real browser.",
+					Warnings:            []string{"page requires browser interaction"},
+					WarningCodes:        []string{webFetchWarningCodeBrowserRequired},
+					InteractiveRequired: true,
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			case readURL == firstURL && lane == webAccessLaneBrowser:
+				payload := map[string]interface{}{
+					"url":               readURL,
+					"final_url":         readURL,
+					"format":            "text",
+					"source":            webAccessSourceBrowser,
+					"title":             "Apple Stock Price",
+					"content":           "Browser-rendered Apple quote page with enough detail to count as a strong result and seed a reusable browser target for this host.",
+					"browser_target_id": sharedTab,
+				}
+				b, _ := json.Marshal(payload)
+				return string(b), nil
+			default:
+				resp := webReadResponse{
+					URL:      readURL,
+					FinalURL: readURL,
+					Format:   "text",
+					Source:   webAccessSourceHTTP,
+					Title:    "Yahoo Finance Apple",
+					Content:  "Independent cross-host result content that should never receive the stockanalysis browser target.",
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			}
+		},
+	}
+
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "AAPL stock price",
+		"depth": "standard",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	for _, call := range readTool.lastArgs {
+		if asString(call["url"]) == secondURL && strings.TrimSpace(asString(call["browser_target_id"])) != "" {
+			t.Fatalf("read calls = %+v, want no cross-host browser target reuse", readTool.lastArgs)
+		}
+	}
+	if envelope.Status != webQueryStatusOK {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
+	}
+}
+
 func TestWebQueryToolFallsBackToBrowserSearchWhenHTTPSearchFails(t *testing.T) {
 	searchTool := &scriptedWebTool{
 		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},

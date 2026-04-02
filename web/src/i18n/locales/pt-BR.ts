@@ -16,6 +16,7 @@ export default mergeHarnessLocale('pt-BR', {
     next: 'Próximo',
     previous: 'Anterior',
     close: 'Fechar',
+    backToTop: 'Voltar ao topo',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -723,6 +724,12 @@ export default mergeHarnessLocale('pt-BR', {
     taskCancelled: 'Tarefa cancelada',
     waitingThinking: 'Pensando...',
     awaitingConfirmation: 'Aguardando sua confirmação para continuar',
+    streamConnecting: 'Conectando',
+    streamStreaming: 'Gerando',
+    streamExecuting: 'Trabalhando',
+    streamAwaitingConfirmation: 'Aguardando',
+    streamRecovering: 'Recuperando',
+    streamInterrupted: 'Interrompida',
     backgroundTasks: 'Tarefas em segundo plano',
     taskNotificationTitle: 'Tarefa em segundo plano',
     taskStagePlanning: 'Planejando',
@@ -1908,9 +1915,9 @@ export default mergeHarnessLocale('pt-BR', {
     availableTools: 'Ferramentas disponíveis',
     noToolsAvailable: 'Nenhuma ferramenta disponível',
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Novo External Agent',
+      eyebrow: 'Agente externo',
+      title: 'Agente externo',
+      newExternalAgent: 'Novo agente externo',
       status: { label: 'Estado', verified: 'Verificado' },
       newAcp: 'Novo ACP',
       newA2a: 'Novo A2A',
@@ -2776,6 +2783,16 @@ export default mergeHarnessLocale('pt-BR', {
         'Navegue pelas habilidades como cartões. Abra qualquer habilidade para revisar a documentação e gerenciar seu status.',
       toolGalleryHint:
         'Navegue pelas ferramentas como cartões, veja o que fazem e ative ou desative rapidamente.',
+      skillManagementHint:
+        'As habilidades integradas podem ser ativadas ou desativadas aqui, mas apenas as habilidades locais podem ser desinstaladas.',
+      toolManagementHint:
+        'As ferramentas integradas podem ser ativadas ou desativadas aqui, mas a disponibilidade delas ainda pode ser limitada pela política de ferramentas em tempo de execução.',
+      builtinSkillDetailHint:
+        'Esta habilidade integrada pode ser ativada ou desativada aqui, mas não pode ser desinstalada.',
+      builtinSkillUninstallBlocked:
+        'As habilidades integradas podem ser desativadas, mas não podem ser desinstaladas.',
+      builtinToolUninstallBlocked:
+        'As ferramentas integradas podem ser desativadas, mas não podem ser desinstaladas.',
       closeSkillDetails: 'Fechar detalhes da habilidade',
       sourceLabel: 'Fonte',
       skillCollectionFilters: 'Filtros da coleção de habilidades',

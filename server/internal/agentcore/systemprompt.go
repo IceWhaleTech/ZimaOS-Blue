@@ -100,6 +100,8 @@ type SystemPromptBuilder struct {
 	agentAutoConfirmFunc func() bool   // dynamic auto-confirm getter
 	locale               string        // user locale (e.g. "en-US", "zh-CN") — static fallback
 	localeFunc           func() string // dynamic locale getter (takes precedence over static)
+	timezone             string        // user timezone (e.g. "Asia/Shanghai") — static fallback
+	timezoneFunc         func() string // dynamic timezone getter (takes precedence over static)
 
 	// staticCoreOnce caches the immutable portion of the STATIC block.
 	staticCoreOnce sync.Once
@@ -197,6 +199,17 @@ func (b *SystemPromptBuilder) SetLocaleFunc(fn func() string) {
 	b.localeFunc = fn
 }
 
+// SetTimezone sets the user's timezone for system prompt injection (e.g. "Asia/Shanghai").
+func (b *SystemPromptBuilder) SetTimezone(timezone string) {
+	b.timezone = strings.TrimSpace(timezone)
+}
+
+// SetTimezoneFunc sets a dynamic timezone getter that is called on each Build().
+// Takes precedence over the static timezone set via SetTimezone.
+func (b *SystemPromptBuilder) SetTimezoneFunc(fn func() string) {
+	b.timezoneFunc = fn
+}
+
 // getLocale returns the current locale, preferring the dynamic getter.
 func (b *SystemPromptBuilder) getLocale() string {
 	if b.localeFunc != nil {
@@ -205,6 +218,20 @@ func (b *SystemPromptBuilder) getLocale() string {
 		}
 	}
 	return b.locale
+}
+
+// getTimezone returns the current timezone, preferring the dynamic getter and
+// falling back to best-effort process detection.
+func (b *SystemPromptBuilder) getTimezone() string {
+	if b.timezoneFunc != nil {
+		if v := strings.TrimSpace(b.timezoneFunc()); v != "" {
+			return v
+		}
+	}
+	if v := strings.TrimSpace(b.timezone); v != "" {
+		return v
+	}
+	return timeutil.DetectTimezone()
 }
 
 // LastContextStats returns the stats from the most recent buildProjectContext call.
@@ -342,8 +369,7 @@ type systemPromptConfigCacheEntry struct {
 }
 
 func (b *SystemPromptBuilder) buildStaticSystem() string {
-	zone, _ := timeutil.NowTime().Zone()
-	key := buildStaticSystemCacheKey(b.getLocale(), zone)
+	key := buildStaticSystemCacheKey(b.getLocale(), b.getTimezone())
 	if b.staticCache != nil {
 		if v, ok := b.staticCache.Get(key); ok {
 			if cached, ok := v.(string); ok {
@@ -511,9 +537,55 @@ func (b *SystemPromptBuilder) writeExecGuidanceTo(sb *strings.Builder, hasSandbo
 
 // writeRuntimeInfoTo writes the dynamic runtime tag directly into sb.
 func (b *SystemPromptBuilder) writeRuntimeInfoTo(sb *strings.Builder) {
-	sb.WriteString("<now>")
-	sb.WriteString(strconv.FormatInt(timeutil.Now(), 10))
-	sb.WriteString("</now>")
+	now, timezone := resolveRuntimeClock(timeutil.NowTime(), b.getTimezone())
+
+	sb.WriteString("<current_date>")
+	sb.WriteString(now.Format("2006-01-02"))
+	sb.WriteString("</current_date>")
+	sb.WriteString("<current_time>")
+	sb.WriteString(now.Format("15:04:05"))
+	sb.WriteString("</current_time>")
+	sb.WriteString("<timezone>")
+	sb.WriteString(timezone)
+	sb.WriteString("</timezone>")
+	sb.WriteString("<utc_offset>")
+	sb.WriteString(timeutil.FormatUTCOffset(now))
+	sb.WriteString("</utc_offset>")
+}
+
+func resolveRuntimeClock(now time.Time, timezone string) (time.Time, string) {
+	label := strings.TrimSpace(timezone)
+	if label == "" {
+		label = timeutil.DetectTimezone()
+	}
+	if loc, ok := loadRuntimeLocation(label); ok {
+		return now.In(loc), label
+	}
+	return now, label
+}
+
+func loadRuntimeLocation(timezone string) (*time.Location, bool) {
+	if timezone == "" {
+		return nil, false
+	}
+	if loc, err := time.LoadLocation(timezone); err == nil {
+		return loc, true
+	}
+	if strings.HasPrefix(timezone, "UTC") && len(timezone) == len("UTC+00:00") {
+		sign := timezone[3]
+		if (sign == '+' || sign == '-') && timezone[6] == ':' {
+			hours, errHours := strconv.Atoi(timezone[4:6])
+			minutes, errMinutes := strconv.Atoi(timezone[7:9])
+			if errHours == nil && errMinutes == nil {
+				offset := hours*3600 + minutes*60
+				if sign == '-' {
+					offset = -offset
+				}
+				return time.FixedZone(timezone, offset), true
+			}
+		}
+	}
+	return nil, false
 }
 
 // writePlatformInfoTo writes the static environment tag directly into sb.
@@ -527,8 +599,7 @@ func (b *SystemPromptBuilder) writePlatformInfoTo(sb *strings.Builder) {
 		sb.WriteString(locale)
 	}
 	sb.WriteByte(';')
-	zone, _ := timeutil.NowTime().Zone()
-	sb.WriteString(zone)
+	sb.WriteString(b.getTimezone())
 	sb.WriteString("</env>")
 }
 

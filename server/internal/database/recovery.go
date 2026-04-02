@@ -233,8 +233,7 @@ func OpenSQLiteWithRecoveryAndRecreate(dsn, dbPath string, configure func(*sql.D
 }
 
 func shouldQuickCheckSQLitePath(dbPath string) bool {
-	dbPath = strings.TrimSpace(dbPath)
-	return dbPath != "" && dbPath != ":memory:" && StartupQuickCheckEnabled()
+	return consumeStartupQuickCheckPath(dbPath)
 }
 
 func quickCheckOpenDatabase(db *sql.DB) error {

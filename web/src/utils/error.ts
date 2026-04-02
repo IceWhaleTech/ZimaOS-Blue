@@ -1,6 +1,9 @@
 import type { AxiosError } from 'axios'
 import { i18n } from '@/i18n'
 
+type Translate = (key: string, params?: Record<string, unknown>) => string
+type TranslationExists = (key: string) => boolean
+
 const HTTP_STATUS_KEY_MAP: Record<number, string> = {
   400: 'errors.http400',
   401: 'errors.http401',
@@ -21,11 +24,12 @@ const HTTP_STATUS_KEY_MAP: Record<number, string> = {
  * Get translated error message from HTTP status code
  */
 export function getHttpErrorMessage(status: number): string {
-  const t = i18n.global.t
+  const t = i18n.global.t as unknown as Translate
+  const te = i18n.global.te as unknown as TranslationExists
   const key = HTTP_STATUS_KEY_MAP[status]
 
   // Check if we have a specific translation for this status code
-  if (key && i18n.global.te(key)) {
+  if (key && te(key)) {
     return t(key)
   }
 
@@ -37,7 +41,7 @@ export function getHttpErrorMessage(status: number): string {
  * Get translated error message from Axios error
  */
 export function getErrorMessage(error: unknown): string {
-  const t = i18n.global.t
+  const t = i18n.global.t as unknown as Translate
 
   if (!error) {
     return t('errors.unknownError')
@@ -102,7 +106,7 @@ function isAxiosError(error: unknown): error is AxiosError {
  * Format error for display (with optional retry suggestion)
  */
 export function formatErrorForDisplay(error: unknown, showRetry = true): string {
-  const t = i18n.global.t
+  const t = i18n.global.t as unknown as Translate
   const message = getErrorMessage(error)
 
   if (showRetry) {

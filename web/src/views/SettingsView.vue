@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
@@ -13,9 +13,7 @@ import type { BackupInfo } from '@/api/index'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
-import SpeechSettings from '@/components/settings/SpeechSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
-import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
 import ExternalAgentsSection from '@/components/settings/ExternalAgentsSection.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
@@ -24,6 +22,13 @@ import { useTauri } from '@/composables/useTauri'
 import { serviceApi } from '@/api/service'
 import type { ServiceInfo } from '@/api/service'
 import { formatSmallModelFallbackReason } from '@/utils/smallModelFallbackReason'
+
+const SpeechSettings = defineAsyncComponent(() =>
+  import('@/components/settings/SpeechSettings.vue').then((module) => module.default)
+)
+const ApiProxySettings = defineAsyncComponent(() =>
+  import('@/components/settings/ApiProxySettings.vue').then((module) => module.default)
+)
 
 const { t, te } = useI18n()
 const route = useRoute()
@@ -154,6 +159,8 @@ const backupsLoading = ref(false)
 const backupCreating = ref(false)
 const backupRestoring = ref<string | null>(null)
 const backupDeleting = ref<string | null>(null)
+const generalTabInitialized = ref(false)
+const proxyTabInitialized = ref(false)
 
 function clearSaveStatus() {
   if (saveStatusTimer) {
@@ -509,6 +516,32 @@ async function fetchServiceInfo() {
   }
 }
 
+async function ensureGeneralTabDataLoaded() {
+  if (generalTabInitialized.value) return
+  generalTabInitialized.value = true
+  await fetchServiceInfo()
+}
+
+async function ensureProxyTabDataLoaded() {
+  if (proxyTabInitialized.value) return
+  proxyTabInitialized.value = true
+
+  const tasks: Promise<unknown>[] = []
+  if (settingsStore.smallModelStatus == null) {
+    tasks.push(fetchSmallModelStatus())
+  }
+  if (settingsStore.smallModelStats == null) {
+    tasks.push(fetchSmallModelStats())
+  }
+  if (globalPrunerConfig.value == null) {
+    tasks.push(fetchGlobalPrunerState())
+  }
+
+  if (tasks.length > 0) {
+    await Promise.allSettled(tasks)
+  }
+}
+
 async function toggleAutoStart() {
   autoStartLoading.value = true
   try {
@@ -534,16 +567,14 @@ async function switchTab(tab: TabType) {
   router.replace({ query: { ...route.query, tab } })
 
   // Load data for specific tabs
+  if (tab === 'general') {
+    void ensureGeneralTabDataLoaded()
+  }
   if (tab === 'userdata' && backups.value.length === 0) {
     fetchBackups()
   }
   if (tab === 'proxy') {
-    if (settingsStore.smallModelStats == null) {
-      void fetchSmallModelStats()
-    }
-    if (globalPrunerConfig.value == null) {
-      void fetchGlobalPrunerState()
-    }
+    await ensureProxyTabDataLoaded()
   }
 }
 
@@ -634,14 +665,13 @@ async function deleteBackup(id: string) {
 }
 
 onMounted(async () => {
-  await settingsStore.fetchProviders()
   await settingsStore.fetchBackendSettings()
-  await fetchSmallModelStatus()
-  await fetchSmallModelStats()
-  if (requestedInitialTab === 'proxy') {
-    await fetchGlobalPrunerState()
+  if (requestedInitialTab === 'general') {
+    void ensureGeneralTabDataLoaded()
   }
-  fetchServiceInfo()
+  if (requestedInitialTab === 'proxy') {
+    await ensureProxyTabDataLoaded()
+  }
 
   // Load data based on initial tab
   if (hasInitialTabQuery) {

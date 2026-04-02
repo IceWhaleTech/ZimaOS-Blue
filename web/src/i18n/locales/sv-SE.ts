@@ -693,6 +693,12 @@ export default mergeHarnessLocale('sv-SE', {
     taskCancelled: 'Uppgift avbruten',
     waitingThinking: 'Tänker...',
     awaitingConfirmation: 'Väntar på din bekräftelse för att fortsätta',
+    streamConnecting: 'Ansluter',
+    streamStreaming: 'Genererar',
+    streamExecuting: 'Arbetar',
+    streamAwaitingConfirmation: 'Väntar',
+    streamRecovering: 'Återställer',
+    streamInterrupted: 'Avbruten',
     backgroundTasks: 'Bakgrundsuppgifter',
     taskNotificationTitle: 'Bakgrundsuppgift',
     taskStagePlanning: 'Planering',
@@ -1806,9 +1812,9 @@ export default mergeHarnessLocale('sv-SE', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Ny External Agent',
+      eyebrow: 'Extern agent',
+      title: 'Extern agent',
+      newExternalAgent: 'Ny extern agent',
       metadata: 'Metadata',
       status: { label: 'Status', verified: 'Verifierad' },
       newAcp: 'Ny ACP',
@@ -2593,7 +2599,8 @@ export default mergeHarnessLocale('sv-SE', {
       descriptionPlaceholder: 'Beskriv denna källa...',
       cancel: 'Avbryt',
       add: 'Lägg till',
-      close: 'Stäng',
+    close: 'Stäng',
+    backToTop: 'Tillbaka till toppen',
       refresh: 'Uppdatera',
       allLevels: 'Alla nivåer',
       error: 'Fel',
@@ -2609,6 +2616,16 @@ export default mergeHarnessLocale('sv-SE', {
         'Bläddra bland färdigheter som kort. Öppna valfri färdighet för att läsa dokumentationen och hantera dess status.',
       toolGalleryHint:
         'Bläddra bland verktyg som kort, se vad de gör och slå snabbt på eller av dem.',
+      skillManagementHint:
+        'Inbyggda färdigheter kan aktiveras eller inaktiveras här, men bara lokala färdigheter kan avinstalleras.',
+      toolManagementHint:
+        'Inbyggda verktyg kan aktiveras eller inaktiveras här, men deras tillgänglighet kan fortfarande begränsas av verktygspolicyn vid körning.',
+      builtinSkillDetailHint:
+        'Den här inbyggda färdigheten kan aktiveras eller inaktiveras här, men den kan inte avinstalleras.',
+      builtinSkillUninstallBlocked:
+        'Inbyggda färdigheter kan inaktiveras, men de kan inte avinstalleras.',
+      builtinToolUninstallBlocked:
+        'Inbyggda verktyg kan inaktiveras, men de kan inte avinstalleras.',
       closeSkillDetails: 'Stäng färdighetsdetaljer',
       sourceLabel: 'Källa',
       skillCollectionFilters: 'Filter för färdighetssamling',

@@ -45,6 +45,7 @@ type runtimeLocaleTarget interface {
 
 type runtimePromptSettingsTarget interface {
 	SetLocaleFunc(fn func() string)
+	SetTimezoneFunc(fn func() string)
 	SetAgentModeFunc(fn func() bool)
 	SetAgentAutoConfirmFunc(fn func() bool)
 }

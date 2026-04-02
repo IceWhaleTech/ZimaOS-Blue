@@ -3785,6 +3785,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0.7rem;
   align-items: flex-start;
+  margin-bottom: 0.85rem;
 }
 
 .stats-toolbar .stats-grid {
@@ -4575,7 +4576,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 0.88rem;
   line-height: 1.18;
-  color: #111827;
+  color: #0f172a;
 }
 
 .group-subject {
@@ -4736,7 +4737,10 @@ onUnmounted(() => {
 }
 
 @media (max-width: 960px) {
-  .stats-grid,
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .eval-runs-console,
   .quick-eval-layout,
   .quickstart-grid,

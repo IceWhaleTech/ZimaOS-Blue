@@ -125,6 +125,13 @@ describe('locale integrity', () => {
 
     const referenceMessages = enUSEntry[1].default
     const protectedPaths = [
+      'common.backToTop',
+      'chat.streamConnecting',
+      'chat.streamStreaming',
+      'chat.streamExecuting',
+      'chat.streamRecovering',
+      'chat.streamAwaitingConfirmation',
+      'chat.streamInterrupted',
       'dashboard.healthy',
       'metrics.label',
       'settings.externalAgents.status.verified',

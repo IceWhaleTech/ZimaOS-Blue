@@ -5,6 +5,7 @@ import { PagePermissions } from '@/constants/pagePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { reportStartupMark } from '@/utils/startupTrace'
+import { prefetchCriticalRoutes } from '@/utils/prefetch'
 import { hasStoredSessionHint } from '@/utils/authStorage'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
@@ -89,6 +90,7 @@ const canPrefetchProviders = computed(() => {
 const canPrefetchBackendSettings = computed(() => {
   return previewStore.isPreviewMode || authStore.hasPermission(PagePermissions.SETTINGS)
 })
+let criticalRoutesPrefetched = false
 
 async function loadProtectedBootstrapDeps(): Promise<ProtectedBootstrapDeps> {
   protectedBootstrapPromise ??= createProtectedBootstrapDeps()
@@ -113,6 +115,12 @@ function resetProtectedBootstrap() {
   bootstrapState.webPush = false
   bootstrapState.providers = false
   bootstrapState.backendSettings = false
+}
+
+function scheduleCriticalRoutePrefetch() {
+  if (criticalRoutesPrefetched || hideLayout.value) return
+  criticalRoutesPrefetched = true
+  prefetchCriticalRoutes()
 }
 
 async function initializeProtectedFeatures() {
@@ -166,6 +174,15 @@ watch(
   }
 )
 
+watch(
+  [() => initialRouteReady.value, () => hideLayout.value],
+  ([ready, nextHideLayout]) => {
+    if (!ready || nextHideLayout) return
+    scheduleCriticalRoutePrefetch()
+  },
+  { immediate: true }
+)
+
 // Show window after content loads (prevents startup flash on desktop)
 onMounted(() => {
   if (initialRouteReady.value) {
@@ -175,6 +192,7 @@ onMounted(() => {
   void initializeProtectedFeatures()
   void router.isReady().then(() => {
     initialRouteReady.value = true
+    scheduleCriticalRoutePrefetch()
     reportStartupMark('app_initial_route_ready')
   })
 })

@@ -693,6 +693,12 @@ export default mergeHarnessLocale('nl-NL', {
     taskCancelled: 'Taak geannuleerd',
     waitingThinking: 'Aan het nadenken...',
     awaitingConfirmation: 'Wachten op je bevestiging om door te gaan',
+    streamConnecting: 'Verbinden',
+    streamStreaming: 'Genereren',
+    streamExecuting: 'Bezig',
+    streamAwaitingConfirmation: 'Wachten',
+    streamRecovering: 'Herstellen',
+    streamInterrupted: 'Onderbroken',
     backgroundTasks: 'Achtergrondtaken',
     taskNotificationTitle: 'Achtergrondtaak',
     taskStagePlanning: 'Plannen',
@@ -1819,9 +1825,9 @@ export default mergeHarnessLocale('nl-NL', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Nieuwe External Agent',
+      eyebrow: 'Externe agent',
+      title: 'Externe agent',
+      newExternalAgent: 'Nieuwe externe agent',
       metadata: 'Metagegevens',
       protocol: 'Protocol',
       status: { label: 'Status', verified: 'Geverifieerd' },
@@ -2610,7 +2616,8 @@ export default mergeHarnessLocale('nl-NL', {
       descriptionPlaceholder: 'Beschrijf deze bron...',
       cancel: 'Annuleren',
       add: 'Toevoegen',
-      close: 'Sluiten',
+    close: 'Sluiten',
+    backToTop: 'Terug naar boven',
       refresh: 'Vernieuwen',
       allLevels: 'Alle niveaus',
       error: 'Fout',
@@ -2626,6 +2633,16 @@ export default mergeHarnessLocale('nl-NL', {
         'Blader door vaardigheden als kaarten. Open een vaardigheid om de documentatie te bekijken en de status te beheren.',
       toolGalleryHint:
         'Blader door tools als kaarten, bekijk wat ze doen en schakel ze snel in of uit.',
+      skillManagementHint:
+        'Ingebouwde vaardigheden kunnen hier worden in- of uitgeschakeld, maar alleen lokale vaardigheden kunnen worden gedeïnstalleerd.',
+      toolManagementHint:
+        'Ingebouwde tools kunnen hier worden in- of uitgeschakeld, maar hun beschikbaarheid kan nog steeds worden beperkt door het runtime-toolbeleid.',
+      builtinSkillDetailHint:
+        'Deze ingebouwde vaardigheid kan hier worden in- of uitgeschakeld, maar kan niet worden gedeïnstalleerd.',
+      builtinSkillUninstallBlocked:
+        'Ingebouwde vaardigheden kunnen worden uitgeschakeld, maar niet worden gedeïnstalleerd.',
+      builtinToolUninstallBlocked:
+        'Ingebouwde tools kunnen worden uitgeschakeld, maar niet worden gedeïnstalleerd.',
       closeSkillDetails: 'Vaardigheidsdetails sluiten',
       sourceLabel: 'Bron',
       skillCollectionFilters: 'Filters voor vaardighedencollectie',

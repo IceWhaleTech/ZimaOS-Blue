@@ -16,6 +16,7 @@ export default mergeHarnessLocale('de-DE', {
     next: 'Weiter',
     previous: 'Zurück',
     close: 'Schließen',
+    backToTop: 'Nach oben',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -723,6 +724,12 @@ export default mergeHarnessLocale('de-DE', {
     taskCancelled: 'Aufgabe abgebrochen',
     waitingThinking: 'Denke nach...',
     awaitingConfirmation: 'Warte auf Ihre Bestätigung, um fortzufahren',
+    streamConnecting: 'Verbinden',
+    streamStreaming: 'Generierung',
+    streamExecuting: 'In Arbeit',
+    streamAwaitingConfirmation: 'Wartet',
+    streamRecovering: 'Wiederherstellung',
+    streamInterrupted: 'Unterbrochen',
     backgroundTasks: 'Hintergrundaufgaben',
     taskNotificationTitle: 'Hintergrundaufgabe',
     taskStagePlanning: 'Planung',
@@ -1929,9 +1936,9 @@ export default mergeHarnessLocale('de-DE', {
     availableTools: 'Verfügbare Tools',
     noToolsAvailable: 'Keine Tools verfügbar',
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Neuer External Agent',
+      eyebrow: 'Externer Agent',
+      title: 'Externer Agent',
+      newExternalAgent: 'Neuer externer Agent',
       status: { label: 'Status', verified: 'Verifiziert' },
       newAcp: 'Neu ACP',
       newA2a: 'Neu A2A',
@@ -2828,6 +2835,16 @@ export default mergeHarnessLocale('de-DE', {
         'Fähigkeiten als Karten durchsuchen. Öffnen Sie eine Fähigkeit, um die Dokumentation zu prüfen und ihren Status zu verwalten.',
       toolGalleryHint:
         'Werkzeuge als Karten durchsuchen, ihre Funktion prüfen und sie schnell aktivieren oder deaktivieren.',
+      skillManagementHint:
+        'Integrierte Skills können hier aktiviert oder deaktiviert werden, deinstalliert werden können jedoch nur lokale Skills.',
+      toolManagementHint:
+        'Integrierte Werkzeuge können hier aktiviert oder deaktiviert werden, ihre Verfügbarkeit kann jedoch weiterhin durch die Laufzeit-Werkzeugrichtlinie eingeschränkt sein.',
+      builtinSkillDetailHint:
+        'Dieser integrierte Skill kann hier aktiviert oder deaktiviert werden, er kann jedoch nicht deinstalliert werden.',
+      builtinSkillUninstallBlocked:
+        'Integrierte Skills können deaktiviert, aber nicht deinstalliert werden.',
+      builtinToolUninstallBlocked:
+        'Integrierte Werkzeuge können deaktiviert, aber nicht deinstalliert werden.',
       closeSkillDetails: 'Skill-Details schließen',
       sourceLabel: 'Quelle',
       skillCollectionFilters: 'Filter der Skill-Sammlung',

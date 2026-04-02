@@ -111,6 +111,9 @@ func TestProxyPrunerHTTPE2E_ContextTrimAndPerRequestDisable(t *testing.T) {
 	})
 	// Explicitly enable pruner middleware (local backend).
 	prunerCfg := pruner.DefaultConfig()
+	// Keep this e2e on a stable positive-savings path so it continues to exercise
+	// the global enable/disable wiring even after the shipped default became more conservative.
+	prunerCfg.Threshold = 0.5
 	prunerMw := pruner.NewMiddleware(pruner.NewLocalBackend(prunerCfg), prunerCfg, pruner.NewStats())
 	proxyHandler.SetPruner(prunerMw)
 

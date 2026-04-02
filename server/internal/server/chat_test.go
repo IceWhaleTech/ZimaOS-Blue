@@ -6202,8 +6202,18 @@ func TestChatHandlerShouldDisableProxyPrunerForAttempt(t *testing.T) {
 			EstimatedInputTokens: 26000,
 		},
 	}
-	if handler.shouldDisableProxyPrunerForAttempt(abovePressure) {
-		t.Fatal("expected proxy pruner enabled near pressure threshold when no explicit setting is present")
+	if !handler.shouldDisableProxyPrunerForAttempt(abovePressure) {
+		t.Fatal("expected proxy pruner to stay disabled until the higher soft threshold is reached")
+	}
+
+	highPressure := &preparedBudgetAttempt{
+		Budget: chatInputBudgetEstimate{
+			ContextWindow:        32000,
+			EstimatedInputTokens: 28000,
+		},
+	}
+	if handler.shouldDisableProxyPrunerForAttempt(highPressure) {
+		t.Fatal("expected proxy pruner enabled once the higher soft threshold is reached")
 	}
 
 	contextPruneEnabled := true

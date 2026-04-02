@@ -16,6 +16,7 @@ export default mergeHarnessLocale('ru-RU', {
     next: 'Далее',
     previous: 'Назад',
     close: 'Закрыть',
+    backToTop: 'Наверх',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -724,6 +725,12 @@ export default mergeHarnessLocale('ru-RU', {
     taskCancelled: 'Задача отменена',
     waitingThinking: 'Думаю...',
     awaitingConfirmation: 'Ожидаем ваше подтверждение, чтобы продолжить',
+    streamConnecting: 'Подключение',
+    streamStreaming: 'Генерация',
+    streamExecuting: 'В работе',
+    streamAwaitingConfirmation: 'Ожидание',
+    streamRecovering: 'Восстановление',
+    streamInterrupted: 'Прервано',
     backgroundTasks: 'Фоновые задачи',
     taskNotificationTitle: 'Фоновая задача',
     taskStagePlanning: 'Планирование',
@@ -1915,9 +1922,9 @@ export default mergeHarnessLocale('ru-RU', {
     availableTools: 'Доступные инструменты',
     noToolsAvailable: 'Нет доступных инструментов',
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Новый External Agent',
+      eyebrow: 'Внешний агент',
+      title: 'Внешний агент',
+      newExternalAgent: 'Новый внешний агент',
       newAcp: 'Новый ACP',
       newA2a: 'Новый A2A',
       newProfile: 'Новый профиль',
@@ -2785,6 +2792,16 @@ export default mergeHarnessLocale('ru-RU', {
         'Просматривайте навыки в виде карточек. Откройте любой навык, чтобы изучить документацию и управлять его статусом.',
       toolGalleryHint:
         'Просматривайте инструменты в виде карточек, смотрите, что они делают, и быстро включайте или отключайте их.',
+      skillManagementHint:
+        'Встроенные навыки можно включать и отключать здесь, но удалить можно только локальные навыки.',
+      toolManagementHint:
+        'Встроенные инструменты можно включать и отключать здесь, но их доступность всё равно может ограничиваться политикой инструментов во время выполнения.',
+      builtinSkillDetailHint:
+        'Этот встроенный навык можно включать и отключать здесь, но его нельзя удалить.',
+      builtinSkillUninstallBlocked:
+        'Встроенные навыки можно отключать, но их нельзя удалить.',
+      builtinToolUninstallBlocked:
+        'Встроенные инструменты можно отключать, но их нельзя удалить.',
       closeSkillDetails: 'Закрыть сведения о навыке',
       sourceLabel: 'Источник',
       skillCollectionFilters: 'Фильтры коллекции навыков',

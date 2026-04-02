@@ -16,6 +16,7 @@ export default mergeHarnessLocale('it-IT', {
     next: 'Avanti',
     previous: 'Precedente',
     close: 'Chiudi',
+    backToTop: 'Torna su',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -723,6 +724,12 @@ export default mergeHarnessLocale('it-IT', {
     taskCancelled: 'Attività annullata',
     waitingThinking: 'Sto pensando...',
     awaitingConfirmation: 'In attesa della tua conferma per continuare',
+    streamConnecting: 'Connessione',
+    streamStreaming: 'Generazione',
+    streamExecuting: 'In corso',
+    streamAwaitingConfirmation: 'In attesa',
+    streamRecovering: 'Ripristino',
+    streamInterrupted: 'Interrotta',
     backgroundTasks: 'Attività in background',
     taskNotificationTitle: 'Attività in background',
     taskStagePlanning: 'Pianificazione',
@@ -1914,9 +1921,9 @@ export default mergeHarnessLocale('it-IT', {
     availableTools: 'Strumenti disponibili',
     noToolsAvailable: 'Nessuno strumento disponibile',
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Nuovo External Agent',
+      eyebrow: 'Agente esterno',
+      title: 'Agente esterno',
+      newExternalAgent: 'Nuovo agente esterno',
       newAcp: 'Nuovo ACP',
       newA2a: 'Nuovo A2A',
       newProfile: 'Nuovo profilo',
@@ -2794,6 +2801,16 @@ export default mergeHarnessLocale('it-IT', {
         'Sfoglia le abilità come schede. Apri qualsiasi abilità per consultare la documentazione e gestirne lo stato.',
       toolGalleryHint:
         'Sfoglia gli strumenti come schede, scopri cosa fanno e attivali o disattivali rapidamente.',
+      skillManagementHint:
+        'Le abilità integrate possono essere abilitate o disabilitate qui, ma solo le abilità locali possono essere disinstallate.',
+      toolManagementHint:
+        'Gli strumenti integrati possono essere abilitati o disabilitati qui, ma la loro disponibilità può ancora essere limitata dalla policy degli strumenti in fase di esecuzione.',
+      builtinSkillDetailHint:
+        'Questa abilità integrata può essere abilitata o disabilitata qui, ma non può essere disinstallata.',
+      builtinSkillUninstallBlocked:
+        'Le abilità integrate possono essere disabilitate, ma non possono essere disinstallate.',
+      builtinToolUninstallBlocked:
+        'Gli strumenti integrati possono essere disabilitati, ma non possono essere disinstallati.',
       closeSkillDetails: 'Chiudi dettagli abilità',
       sourceLabel: 'Fonte',
       skillCollectionFilters: 'Filtri della raccolta abilità',

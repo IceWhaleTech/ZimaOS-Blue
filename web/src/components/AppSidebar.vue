@@ -14,6 +14,7 @@ import { useTauri } from '@/composables/useTauri'
 import { getPreferredNetworkAddress, useNetwork } from '@/composables/useNetwork'
 import { getLocaleDirection } from '@/i18n'
 import { isLocalAbsolutePath } from '@/utils/localPath'
+import { prefetchRoute } from '@/utils/prefetch'
 import { getWorkspaceVisibleTokenCount } from '@/utils/workspaceTokenEstimate'
 import { resetPreviewModeStatus } from '@/router'
 import { extractLocalPathCandidatesFromCard } from '@/utils/workspaceGeneratedFiles'
@@ -810,6 +811,17 @@ function isNavItemActive(item: NavItem): boolean {
   return typeof item.path === 'string' ? isActive(item.path) : false
 }
 
+function prefetchNavItem(item: NavItem) {
+  if (!item.path) return
+  const resolvedName = router.resolve(item.path).name
+  if (typeof resolvedName !== 'string' || !resolvedName.trim()) return
+  prefetchRoute(resolvedName)
+}
+
+function prefetchProfileRoute() {
+  prefetchRoute('Profile')
+}
+
 async function handleNavItemClick(item: NavItem) {
   isOpen.value = false
 
@@ -1199,6 +1211,8 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             ]"
             :data-testid="getNavItemTestId(item)"
             :title="isCollapsed ? item.name : undefined"
+            @mouseenter="prefetchNavItem(item)"
+            @focus="prefetchNavItem(item)"
             @click="handleNavItemClick(item)"
           >
             <svg
@@ -1273,6 +1287,8 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                 ]"
                 :data-testid="getNavItemTestId(item)"
                 :title="isCollapsed ? item.name : undefined"
+                @mouseenter="prefetchNavItem(item)"
+                @focus="prefetchNavItem(item)"
                 @click="handleNavItemClick(item)"
               >
                 <svg
@@ -1368,6 +1384,8 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             ]"
             data-testid="sidebar-nav-profile"
             :title="isCollapsed ? profileName : undefined"
+            @mouseenter="prefetchProfileRoute"
+            @focus="prefetchProfileRoute"
           >
             <span class="sidebar-profile-avatar flex-shrink-0">{{ profileInitial }}</span>
             <div v-if="!isCollapsed" class="min-w-0">

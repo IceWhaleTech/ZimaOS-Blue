@@ -10,6 +10,7 @@ import { refreshTauriDetection } from '@/composables/useTauri'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 import { useSystemStore } from '@/stores/system'
+import { prefetchRoute } from '@/utils/prefetch'
 
 vi.mock('@/api/workspace', () => ({
   workspaceApi: {
@@ -44,6 +45,10 @@ vi.mock('@/utils/typeless', () => ({
         : [],
     }
   }),
+}))
+
+vi.mock('@/utils/prefetch', () => ({
+  prefetchRoute: vi.fn(),
 }))
 
 const localStorageMock = (() => {
@@ -237,6 +242,14 @@ describe('AppSidebar', () => {
     expect(wrapper.get('[data-testid="sidebar-nav-chat"]').classes()).toContain(
       'sidebar-nav-item-inactive'
     )
+  })
+
+  it('prefetches a route when a navigation item is hovered', async () => {
+    const { wrapper } = await mountSidebar('/home')
+
+    await wrapper.get('[data-testid="sidebar-nav-settings"]').trigger('mouseenter')
+
+    expect(prefetchRoute).toHaveBeenCalledWith('Settings')
   })
 
   it('updates highlight after navigation', async () => {

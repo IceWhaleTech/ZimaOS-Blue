@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   computed,
   ref,
   provide,
   onMounted,
   onUnmounted,
+  watch,
   defineAsyncComponent,
   type ComponentPublicInstance,
 } from 'vue'
@@ -29,8 +31,10 @@ const GlobalVoiceWakeBanner = defineAsyncComponent(
 )
 
 const { isTauri, platform, setCloseBehavior, startWindowDragging } = useTauri()
+const { t } = useI18n()
 const settingsStore = useSettingsStore()
 const DESKTOP_SIDEBAR_BREAKPOINT = 1024
+const MOBILE_BACK_TO_TOP_BREAKPOINT = 768
 const WINDOW_RESIZE_PERF_ATTRIBUTE = 'data-blue-window-resizing'
 const WINDOW_RESIZE_PERF_SETTLE_MS = 180
 
@@ -45,8 +49,21 @@ function detectHiddenSidebarViewport() {
   return window.innerWidth < DESKTOP_SIDEBAR_BREAKPOINT
 }
 
+function detectPhoneViewport() {
+  if (typeof window === 'undefined') return false
+  return window.innerWidth < MOBILE_BACK_TO_TOP_BREAKPOINT
+}
+
 const hasHiddenSidebarViewport = ref(detectHiddenSidebarViewport())
+const isPhoneViewport = ref(detectPhoneViewport())
 const showSidebarToggle = computed(() => hasHiddenSidebarViewport.value && !isChatRoute.value)
+const layoutMainRef = ref<HTMLElement | null>(null)
+const backToTopVisible = ref(false)
+const canShowBackToTop = computed(
+  () => isPhoneViewport.value && !hideLayout.value && !isChatRoute.value
+)
+const showBackToTopButton = computed(() => canShowBackToTop.value && backToTopVisible.value)
+const backToTopLabel = computed(() => t('common.backToTop', 'Back to top'))
 
 // Sidebar ref for mobile toggle
 type AppSidebarExposed = ComponentPublicInstance & {
@@ -64,6 +81,11 @@ function toggleSidebar() {
   sidebarRef.value?.toggle?.()
 }
 
+function prefersReducedMotion() {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+}
+
 function handleWindowChromeMouseDown(event: MouseEvent) {
   if (!showMacosWindowChrome.value || event.button !== 0) return
   void startWindowDragging()
@@ -75,9 +97,32 @@ provide('hasGlobalMobileSidebarToggle', showSidebarToggle)
 
 function syncViewportState() {
   hasHiddenSidebarViewport.value = detectHiddenSidebarViewport()
+  isPhoneViewport.value = detectPhoneViewport()
+  syncBackToTopVisibility()
 }
 
 const syncViewportStateOnResize = rafThrottle(syncViewportState)
+
+function syncBackToTopVisibility() {
+  const layoutMain = layoutMainRef.value
+  if (!layoutMain || !canShowBackToTop.value) {
+    backToTopVisible.value = false
+    return
+  }
+
+  const scrollThreshold = layoutMain.clientHeight > 0 ? layoutMain.clientHeight : window.innerHeight
+  backToTopVisible.value = layoutMain.scrollTop >= scrollThreshold
+}
+
+const syncBackToTopVisibilityOnScroll = rafThrottle(syncBackToTopVisibility)
+
+function scrollLayoutMainToTop() {
+  layoutMainRef.value?.scrollTo({
+    top: 0,
+    behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+  })
+  backToTopVisible.value = false
+}
 
 function markWindowResizing() {
   const root = document.documentElement
@@ -120,9 +165,25 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
+  layoutMainRef.value?.removeEventListener('scroll', syncBackToTopVisibilityOnScroll)
   syncViewportStateOnResize.cancel()
+  syncBackToTopVisibilityOnScroll.cancel()
   clearWindowResizing()
   cleanup()
+})
+
+watch(
+  layoutMainRef,
+  (nextLayoutMain, previousLayoutMain) => {
+    previousLayoutMain?.removeEventListener('scroll', syncBackToTopVisibilityOnScroll)
+    nextLayoutMain?.addEventListener('scroll', syncBackToTopVisibilityOnScroll, { passive: true })
+    syncBackToTopVisibility()
+  },
+  { flush: 'post' }
+)
+
+watch(canShowBackToTop, () => {
+  syncBackToTopVisibility()
 })
 </script>
 
@@ -179,6 +240,7 @@ onUnmounted(() => {
         :class="{ 'layout-right-with-workspace': workspacePanelOpen }"
       >
         <main
+          ref="layoutMainRef"
           class="layout-main flex-1 w-full relative z-0"
           :class="[
             isChatRoute ? 'overflow-hidden' : 'overflow-auto',
@@ -235,6 +297,30 @@ onUnmounted(() => {
               <div class="layout-route-loading__line is-short" />
             </div>
           </RouterView>
+          <button
+            v-if="showBackToTopButton"
+            type="button"
+            class="layout-back-to-top-button"
+            :aria-label="backToTopLabel"
+            :title="backToTopLabel"
+            @click="scrollLayoutMainToTop"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 19V5m0 0-5 5m5-5 5 5"
+              />
+            </svg>
+          </button>
         </main>
       </div>
     </div>
@@ -382,6 +468,43 @@ html[data-blue-macos-glass='true'] .layout-public-view {
   background: rgba(255, 255, 255, 0.9);
 }
 
+.layout-back-to-top-button {
+  position: fixed;
+  inset-inline-end: 1rem;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 1.15rem;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 30px -24px rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 30;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.layout-back-to-top-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 20px 32px -22px rgba(15, 23, 42, 0.44);
+}
+
+.layout-back-to-top-button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(59, 130, 246, 0.24),
+    0 20px 32px -22px rgba(15, 23, 42, 0.44);
+}
+
 :root.dark .layout-mobile-nav-button,
 [data-theme='dark'] .layout-mobile-nav-button,
 html.dark .layout-mobile-nav-button {
@@ -395,6 +518,27 @@ html.dark .layout-mobile-nav-button {
 [data-theme='dark'] .layout-mobile-nav-button:hover,
 html.dark .layout-mobile-nav-button:hover {
   background: rgba(15, 23, 42, 0.82);
+}
+
+:root.dark .layout-back-to-top-button,
+[data-theme='dark'] .layout-back-to-top-button,
+html.dark .layout-back-to-top-button {
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.76);
+  border-color: rgba(100, 116, 139, 0.34);
+  box-shadow: 0 18px 30px -20px rgba(2, 6, 23, 0.62);
+}
+
+:root.dark .layout-back-to-top-button:hover,
+[data-theme='dark'] .layout-back-to-top-button:hover,
+html.dark .layout-back-to-top-button:hover {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layout-back-to-top-button {
+    transition: none;
+  }
 }
 
 .layout-sidebar-loading {

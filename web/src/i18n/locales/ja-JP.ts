@@ -16,6 +16,7 @@ export default mergeHarnessLocale('ja-JP', {
     next: '次へ',
     previous: '前へ',
     close: '閉じる',
+    backToTop: 'ページ上部へ戻る',
     comingSoon: '近日公開',
     clear: 'クリア',
     copy: 'コピー',
@@ -720,6 +721,12 @@ export default mergeHarnessLocale('ja-JP', {
     taskCancelled: 'タスクをキャンセルしました',
     waitingThinking: '考え中...',
     awaitingConfirmation: '続行するには確認をお待ちしています',
+    streamConnecting: '接続中',
+    streamStreaming: '生成中',
+    streamExecuting: '作業中',
+    streamAwaitingConfirmation: '待機中',
+    streamRecovering: '復旧中',
+    streamInterrupted: '中断',
     backgroundTasks: 'バックグラウンドタスク',
     taskNotificationTitle: 'バックグラウンドタスク',
     taskStagePlanning: '計画中',
@@ -1901,9 +1908,9 @@ export default mergeHarnessLocale('ja-JP', {
     availableTools: '利用可能なツール',
     noToolsAvailable: '利用可能なツールがありません',
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: '新しい External Agent',
+      eyebrow: '外部エージェント',
+      title: '外部エージェント',
+      newExternalAgent: '新しい外部エージェント',
       newAcp: '新しい ACP',
       newA2a: '新しい A2A',
       newProfile: '新しいプロフィール',
@@ -2767,6 +2774,16 @@ export default mergeHarnessLocale('ja-JP', {
         'スキルをカード形式で閲覧できます。任意のスキルを開いてドキュメントを確認し、状態を管理できます。',
       toolGalleryHint:
         'ツールをカード形式で閲覧し、役割を確認して、すばやくオン・オフを切り替えられます。',
+      skillManagementHint:
+        '組み込みスキルはここで有効化または無効化できますが、アンインストールできるのはローカルスキルだけです。',
+      toolManagementHint:
+        '組み込みツールはここで有効化または無効化できますが、実際に利用できるかどうかは実行時のツールポリシーによって制限される場合があります。',
+      builtinSkillDetailHint:
+        'この組み込みスキルはここで有効化または無効化できますが、アンインストールはできません。',
+      builtinSkillUninstallBlocked:
+        '組み込みスキルは無効化できますが、アンインストールはできません。',
+      builtinToolUninstallBlocked:
+        '組み込みツールは無効化できますが、アンインストールはできません。',
       closeSkillDetails: 'スキル詳細を閉じる',
       sourceLabel: 'ソース',
       skillCollectionFilters: 'スキルコレクションのフィルター',

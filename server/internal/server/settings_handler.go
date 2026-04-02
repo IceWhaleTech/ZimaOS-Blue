@@ -19,6 +19,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voicewake"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
@@ -59,14 +60,14 @@ type DirectoryWhitelistEntry struct {
 type Settings struct {
 	Locale                              string                    `json:"locale,omitempty"`                                    // User's preferred locale (e.g., "zh-CN", "en-US")
 	Timezone                            string                    `json:"timezone,omitempty"`                                  // User's timezone
-	SmartSkillSelection                 *bool                     `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default false)
+	SmartSkillSelection                 *bool                     `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default true)
 	SkillSelectorMode                   string                    `json:"skill_selector_mode,omitempty"`                       // hybrid|ir_only|llm_only
 	SkillRerankEnabled                  *bool                     `json:"skill_rerank_enabled,omitempty"`                      // Enable stage-2 rerank (nil = default false)
 	SkillRerankModel                    string                    `json:"skill_rerank_model,omitempty"`                        // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
 	SkillRerankONNXEnabled              *bool                     `json:"skill_rerank_onnx_enabled,omitempty"`                 // Enable ONNX reranker path (nil = default false)
 	SkillRerankONNXAutoDownload         *bool                     `json:"skill_rerank_onnx_auto_download,omitempty"`           // Allow ONNX model auto-download (nil = default false)
 	SkillSelectorConfidenceThreshold    *float64                  `json:"skill_selector_confidence_threshold,omitempty"`       // default 0.78
-	SkillDynamicExposure                *bool                     `json:"skill_dynamic_exposure,omitempty"`                    // Enable runtime nested discovery + path activation (nil = default false)
+	SkillDynamicExposure                *bool                     `json:"skill_dynamic_exposure,omitempty"`                    // Enable runtime nested discovery + path activation (nil = default true)
 	PromptPolicyVersion                 string                    `json:"prompt_policy_version,omitempty"`                     // prompt policy version marker
 	PromptPolicyProfile                 string                    `json:"prompt_policy_profile,omitempty"`                     // prompt policy profile
 	MemoryRecallMode                    string                    `json:"memory_recall_mode,omitempty"`                        // Memory recall strategy: aggressive|balanced|quality
@@ -1054,6 +1055,17 @@ func (h *SettingsHandler) GetLocale() string {
 	return workspace.DetectLocale()
 }
 
+// GetTimezone returns the current timezone setting, falling back to best-effort
+// system timezone detection.
+func (h *SettingsHandler) GetTimezone() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if timezone := strings.TrimSpace(h.settings.Timezone); timezone != "" {
+		return timezone
+	}
+	return timeutil.DetectTimezone()
+}
+
 // GetVoiceWakeEnabled returns whether VoiceWake should be enabled.
 func (h *SettingsHandler) GetVoiceWakeEnabled() bool {
 	h.mu.RLock()
@@ -1097,22 +1109,22 @@ func (h *SettingsHandler) GetVoiceWakeTargetConversationID() string {
 	return strings.TrimSpace(h.settings.VoiceWakeTargetConversationID)
 }
 
-// GetSmartSkillSelection returns whether smart skill selection is enabled (default false).
+// GetSmartSkillSelection returns whether smart skill selection is enabled (default true).
 func (h *SettingsHandler) GetSmartSkillSelection() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmartSkillSelection == nil {
-		return false
+		return true
 	}
 	return *h.settings.SmartSkillSelection
 }
 
-// GetSkillDynamicExposure returns whether runtime skill dynamic exposure is enabled (default false).
+// GetSkillDynamicExposure returns whether runtime skill dynamic exposure is enabled (default true).
 func (h *SettingsHandler) GetSkillDynamicExposure() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SkillDynamicExposure == nil {
-		return false
+		return true
 	}
 	return *h.settings.SkillDynamicExposure
 }

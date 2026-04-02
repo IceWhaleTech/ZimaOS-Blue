@@ -110,8 +110,8 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if cfg.SmartSelection {
 		t.Error("expected SmartSelection to be false by default")
 	}
-	if cfg.SmartSkillSelection {
-		t.Error("expected SmartSkillSelection to be false by default")
+	if !cfg.SmartSkillSelection {
+		t.Error("expected SmartSkillSelection to be true by default")
 	}
 	if cfg.SkillRerankEnabled {
 		t.Error("expected SkillRerankEnabled to be false by default")
@@ -124,6 +124,9 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	}
 	if cfg.SkillRerankONNXAutoDownload {
 		t.Error("expected SkillRerankONNXAutoDownload to be false by default")
+	}
+	if !cfg.SkillDynamicExposure {
+		t.Error("expected SkillDynamicExposure to be true by default")
 	}
 	if cfg.ToolRouterDynamicExposure {
 		t.Error("expected ToolRouterDynamicExposure to be false by default")

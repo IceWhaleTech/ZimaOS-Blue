@@ -16,6 +16,7 @@ export default mergeHarnessLocale('da-DK', {
     next: 'Næste',
     previous: 'Forrige',
     close: 'Close',
+    backToTop: 'Tilbage til toppen',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -693,6 +694,12 @@ export default mergeHarnessLocale('da-DK', {
     taskCancelled: 'Opgave annulleret',
     waitingThinking: 'Tænker...',
     awaitingConfirmation: 'Venter på din bekræftelse for at fortsætte',
+    streamConnecting: 'Forbinder',
+    streamStreaming: 'Genererer',
+    streamExecuting: 'Arbejder',
+    streamAwaitingConfirmation: 'Gendanner',
+    streamRecovering: 'Venter',
+    streamInterrupted: 'Afbrudt',
     backgroundTasks: 'Baggrundsopgaver',
     taskNotificationTitle: 'Baggrundsopgave',
     taskStagePlanning: 'Planlægger',
@@ -1808,9 +1815,9 @@ export default mergeHarnessLocale('da-DK', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Ny External Agent',
+      eyebrow: 'Ekstern agent',
+      title: 'Ekstern agent',
+      newExternalAgent: 'Ny ekstern agent',
       metadata: 'Metadata',
       status: { label: 'Status', verified: 'Bekræftet' },
       newAcp: 'Ny ACP',
@@ -2610,6 +2617,16 @@ export default mergeHarnessLocale('da-DK', {
         'Gennemse færdigheder som kort. Åbn en vilkårlig færdighed for at læse dokumentationen og administrere dens status.',
       toolGalleryHint:
         'Gennemse værktøjer som kort, se hvad de gør, og slå dem hurtigt til eller fra.',
+      skillManagementHint:
+        'Indbyggede færdigheder kan aktiveres eller deaktiveres her, men kun lokale færdigheder kan afinstalleres.',
+      toolManagementHint:
+        'Indbyggede værktøjer kan aktiveres eller deaktiveres her, men deres tilgængelighed kan stadig være begrænset af værktøjspolitikken under kørsel.',
+      builtinSkillDetailHint:
+        'Denne indbyggede færdighed kan aktiveres eller deaktiveres her, men den kan ikke afinstalleres.',
+      builtinSkillUninstallBlocked:
+        'Indbyggede færdigheder kan deaktiveres, men de kan ikke afinstalleres.',
+      builtinToolUninstallBlocked:
+        'Indbyggede værktøjer kan deaktiveres, men de kan ikke afinstalleres.',
       closeSkillDetails: 'Luk færdighedsdetaljer',
       sourceLabel: 'Kilde',
       skillCollectionFilters: 'Filtre for færdighedssamling',

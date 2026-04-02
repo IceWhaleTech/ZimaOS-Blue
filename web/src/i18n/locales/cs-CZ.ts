@@ -16,6 +16,7 @@ export default mergeHarnessLocale('cs-CZ', {
     next: 'Další',
     previous: 'Předchozí',
     close: 'Close',
+    backToTop: 'Zpět nahoru',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -692,6 +693,12 @@ export default mergeHarnessLocale('cs-CZ', {
     taskCancelled: 'Úloha zrušena',
     waitingThinking: 'Přemýšlím...',
     awaitingConfirmation: 'Čeká se na vaše potvrzení pro pokračování',
+    streamConnecting: 'Připojování',
+    streamStreaming: 'Generování',
+    streamExecuting: 'Práce',
+    streamAwaitingConfirmation: 'Obnova',
+    streamRecovering: 'Čekání',
+    streamInterrupted: 'Přerušeno',
     backgroundTasks: 'Úlohy na pozadí',
     taskNotificationTitle: 'Úloha na pozadí',
     taskStagePlanning: 'Plánování',
@@ -1806,9 +1813,9 @@ export default mergeHarnessLocale('cs-CZ', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'External Agent',
-      title: 'External Agent',
-      newExternalAgent: 'Nový External Agent',
+      eyebrow: 'Externí agent',
+      title: 'Externí agent',
+      newExternalAgent: 'Nový externí agent',
       metadata: 'Metadata',
       newAcp: 'Nové ACP',
       newA2a: 'Nové A2A',
@@ -2611,6 +2618,16 @@ export default mergeHarnessLocale('cs-CZ', {
         'Procházejte dovednosti jako karty. Otevřete libovolnou dovednost a zobrazte dokumentaci nebo spravujte její stav.',
       toolGalleryHint:
         'Procházejte nástroje jako karty, podívejte se, co dělají, a rychle je zapínejte nebo vypínejte.',
+      skillManagementHint:
+        'Vestavěné dovednosti lze zde povolit nebo zakázat, ale odinstalovat lze pouze místní dovednosti.',
+      toolManagementHint:
+        'Vestavěné nástroje lze zde povolit nebo zakázat, ale jejich dostupnost může být stále omezena zásadami nástrojů za běhu.',
+      builtinSkillDetailHint:
+        'Tuto vestavěnou dovednost lze zde povolit nebo zakázat, ale nelze ji odinstalovat.',
+      builtinSkillUninstallBlocked:
+        'Vestavěné dovednosti lze zakázat, ale nelze je odinstalovat.',
+      builtinToolUninstallBlocked:
+        'Vestavěné nástroje lze zakázat, ale nelze je odinstalovat.',
       closeSkillDetails: 'Zavřít podrobnosti dovednosti',
       sourceLabel: 'Zdroj',
       skillCollectionFilters: 'Filtry kolekce dovedností',

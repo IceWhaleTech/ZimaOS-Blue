@@ -633,6 +633,57 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(wrapper.text()).toContain('Anthropic')
   })
 
+  it('pins ollama to the top of the provider list', async () => {
+    const openai = createRankedProvider('openai', 100)
+    const anthropic = createRankedProvider('anthropic', 90)
+    const ollama = {
+      ...createRankedProvider('ollama', 10),
+      name: 'Ollama',
+      type: 'builtin',
+      location: 'local',
+      metadata_mode: 'catalog',
+    }
+    mocks.providerPoolStore.providers = [openai, anthropic, ollama]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+
+    expect(setupState.filteredProviders.map((provider: { id: string }) => provider.id)).toEqual([
+      'ollama',
+      'openai',
+      'anthropic',
+    ])
+  })
+
+  it('renders localized location labels on provider cards', async () => {
+    const cloudProvider = {
+      ...createProvider('custom'),
+      id: 'remote-provider',
+      name: 'Remote Provider',
+      location: 'cloud',
+    }
+    const localProvider = {
+      ...createProvider('custom'),
+      id: 'local-provider',
+      name: 'Local Provider',
+      location: 'local',
+      priority: 5,
+    }
+    mocks.providerPoolStore.providers = [cloudProvider, localProvider]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const providerCards = wrapper.findAll('[draggable="true"]')
+    const remoteCard = providerCards.find((card) => card.text().includes('Remote Provider'))
+    const localCard = providerCards.find((card) => card.text().includes('Local Provider'))
+
+    expect(remoteCard?.text()).toContain('云端')
+    expect(localCard?.text()).toContain('本地')
+  })
+
   it('reorders provider cards during dragover before drop', async () => {
     const providerA = createRankedProvider('alpha', 90)
     const providerB = createRankedProvider('beta', 60)
