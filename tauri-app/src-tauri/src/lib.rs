@@ -12,7 +12,7 @@ mod windows_service;
 mod blue_ffi;
 
 use clap::Parser;
-use log::{error, info};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -246,6 +246,27 @@ fn webview_url_for_path(app_handle: &tauri::AppHandle, path: &str) -> tauri::Web
     } else {
         about_blank_webview_url()
     }
+}
+
+fn normalize_server_restart_path(path: Option<&str>) -> String {
+    let Some(raw_path) = path else {
+        return "/".to_string();
+    };
+
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+
+    if trimmed.starts_with('/') {
+        return trimmed.to_string();
+    }
+
+    if trimmed.starts_with('?') || trimmed.starts_with('#') {
+        return format!("/{}", trimmed);
+    }
+
+    format!("/{}", trimmed)
 }
 
 fn show_and_focus_window<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
@@ -1007,8 +1028,9 @@ fn embedded_server_data_dir(cli: &CliArgs) -> String {
 mod tests {
     use super::{
         build_args_string, cli_compatible_data_dir_for_home, embedded_server_port_bind_timeout,
-        parent_directory_for_reveal_fallback, parse_bool_env_flag, reveal_path_with_fallback,
-        server_origin_from_parts, stt_auth_startup_enabled, CliArgs,
+        normalize_server_restart_path, parent_directory_for_reveal_fallback,
+        parse_bool_env_flag, reveal_path_with_fallback, server_origin_from_parts,
+        stt_auth_startup_enabled, CliArgs,
     };
     #[cfg(target_os = "macos")]
     use super::{macos_app_bundle_path, should_relaunch_bundle_via_open};
@@ -1070,6 +1092,24 @@ mod tests {
             server_origin_from_parts(true, 43127, true),
             Some("https://localhost:43127".to_string())
         );
+    }
+
+    #[test]
+    fn normalize_server_restart_path_preserves_internal_routes() {
+        assert_eq!(
+            normalize_server_restart_path(Some("/settings?tab=userdata#backup")),
+            "/settings?tab=userdata#backup".to_string()
+        );
+        assert_eq!(
+            normalize_server_restart_path(Some("?tab=userdata")),
+            "/?tab=userdata".to_string()
+        );
+        assert_eq!(
+            normalize_server_restart_path(Some("settings")),
+            "/settings".to_string()
+        );
+        assert_eq!(normalize_server_restart_path(Some("   ")), "/".to_string());
+        assert_eq!(normalize_server_restart_path(None), "/".to_string());
     }
 
     #[test]
@@ -1529,6 +1569,31 @@ async fn stop_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+async fn restart_server_runtime(
+    app: tauri::AppHandle,
+    path: Option<String>,
+) -> Result<String, String> {
+    let target_path = normalize_server_restart_path(path.as_deref());
+    info!(
+        "Restarting desktop-managed server runtime and rebinding windows to {}",
+        target_path
+    );
+
+    stop_server_platform(&app).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    start_server_platform(&app).await?;
+
+    let _ = bind_window_to_server_path(&app, MAIN_WINDOW_LABEL, &target_path)?;
+    if app.get_webview_window(PANEL_WINDOW_LABEL).is_some() {
+        if let Err(err) = bind_window_to_server_path(&app, PANEL_WINDOW_LABEL, PANEL_WINDOW_PATH) {
+            warn!("Failed to rebind quick panel after server restart: {}", err);
+        }
+    }
+
+    server_origin(&app).ok_or_else(|| "Server URL not ready after runtime restart".to_string())
+}
+
 /// Listen to the Go server's SSE event stream and fire native OS notifications
 /// when a `push` event arrives. Reconnects automatically on disconnect.
 /// The SSE endpoint requires auth — if unauthenticated, the server-side
@@ -1747,6 +1812,7 @@ pub fn run() {
             server::start_server,
             server::stop_server,
             server::restart_server,
+            restart_server_runtime,
             server::get_server_status,
         ])
         .on_page_load(|webview, payload| {

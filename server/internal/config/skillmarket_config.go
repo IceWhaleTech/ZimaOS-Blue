@@ -1,20 +1,21 @@
 package config
 
-import "time"
+import (
+	"encoding/json"
+	"time"
 
-var defaultSkillMarketSeedURLs = []string{
+	"gopkg.in/yaml.v3"
+)
+
+var defaultSkillMarketDiscoveryPageURLs = []string{
 	"https://github.com/topics/claude-code",
 	"https://github.com/MiniMax-AI/skills/tree/main/skills",
 	"https://github.com/topics/ai-agent",
-	"https://github.com/ComposioHQ/awesome-claude-skills",
-	"https://github.com/VoltAgent/awesome-openclaw-skills",
-	"https://github.com/sickn33/antigravity-awesome-skills/tree/main/skills",
-	"https://github.com/VoltAgent/awesome-agent-skills",
 }
 
 type SkillMarketConfig struct {
 	Enabled                   bool          `yaml:"enabled"`
-	SeedURLs                  []string      `yaml:"seed_urls"`
+	DiscoveryPageURLs         []string      `yaml:"discovery_page_urls"`
 	ClawHubMirrorBaseURLs     []string      `yaml:"clawhub_mirror_base_urls"`
 	TencentSkillHubAPIBaseURL string        `yaml:"tencent_skillhub_api_base_url"`
 	SkillHubBaseURL           string        `yaml:"skillhub_base_url"`
@@ -36,7 +37,7 @@ type SkillMarketConfig struct {
 func DefaultSkillMarketConfig() *SkillMarketConfig {
 	return &SkillMarketConfig{
 		Enabled:                   true,
-		SeedURLs:                  append([]string(nil), defaultSkillMarketSeedURLs...),
+		DiscoveryPageURLs:         append([]string(nil), defaultSkillMarketDiscoveryPageURLs...),
 		ClawHubMirrorBaseURLs:     nil,
 		TencentSkillHubAPIBaseURL: "https://lightmake.site",
 		SkillHubBaseURL:           "https://www.skillhub.club",
@@ -57,4 +58,94 @@ func DefaultSkillMarketConfig() *SkillMarketConfig {
 		SemanticRatio:            0.35,
 		SearchCandidateLimit:     100,
 	}
+}
+
+type skillMarketConfigAlias SkillMarketConfig
+
+func hasYAMLMappingKey(node *yaml.Node, key string) bool {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return true
+		}
+	}
+	return false
+}
+
+func hasJSONKey(data []byte, key string) (bool, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false, err
+	}
+	_, ok := raw[key]
+	return ok, nil
+}
+
+func (c *SkillMarketConfig) applyDiscoveryPageURLs(urls []string) {
+	c.DiscoveryPageURLs = append([]string(nil), urls...)
+}
+
+func (c *SkillMarketConfig) applyLegacyDiscoveryPageURLs(legacySets ...[]string) {
+	for _, legacy := range legacySets {
+		if len(legacy) > 0 {
+			c.applyDiscoveryPageURLs(legacy)
+			return
+		}
+	}
+}
+
+func (c *SkillMarketConfig) UnmarshalYAML(value *yaml.Node) error {
+	type yamlSkillMarketConfig struct {
+		skillMarketConfigAlias `yaml:",inline"`
+		LegacySeedURLs         []string `yaml:"seed_urls"`
+	}
+
+	aux := yamlSkillMarketConfig{
+		skillMarketConfigAlias: skillMarketConfigAlias(*c),
+	}
+	if err := value.Decode(&aux); err != nil {
+		return err
+	}
+	*c = SkillMarketConfig(aux.skillMarketConfigAlias)
+	if !hasYAMLMappingKey(value, "discovery_page_urls") {
+		c.applyLegacyDiscoveryPageURLs(aux.LegacySeedURLs)
+	}
+	return nil
+}
+
+func (c *SkillMarketConfig) UnmarshalJSON(data []byte) error {
+	type jsonSkillMarketConfig struct {
+		skillMarketConfigAlias
+		DiscoveryPageURLsSnake []string `json:"discovery_page_urls"`
+		LegacySeedURLsSnake    []string `json:"seed_urls"`
+		LegacySeedURLs         []string `json:"SeedURLs"`
+	}
+
+	hasDiscoveryPageURLsSnake, err := hasJSONKey(data, "discovery_page_urls")
+	if err != nil {
+		return err
+	}
+	hasDiscoveryPageURLs, err := hasJSONKey(data, "DiscoveryPageURLs")
+	if err != nil {
+		return err
+	}
+
+	aux := jsonSkillMarketConfig{
+		skillMarketConfigAlias: skillMarketConfigAlias(*c),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*c = SkillMarketConfig(aux.skillMarketConfigAlias)
+	if hasDiscoveryPageURLsSnake {
+		c.applyDiscoveryPageURLs(aux.DiscoveryPageURLsSnake)
+		return nil
+	}
+	if hasDiscoveryPageURLs {
+		return nil
+	}
+	c.applyLegacyDiscoveryPageURLs(aux.LegacySeedURLsSnake, aux.LegacySeedURLs)
+	return nil
 }

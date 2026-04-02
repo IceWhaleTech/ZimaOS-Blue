@@ -10,13 +10,14 @@ import { backupApi } from '@/api/index'
 import { proxyCacheApi } from '@/api/proxyCache'
 import { serviceApi } from '@/api/service'
 
-let routeTab: 'general' | 'proxy' | 'memory' | 'llm' = 'proxy'
+let routeTab: 'general' | 'proxy' | 'memory' | 'llm' | 'userdata' = 'proxy'
 const routerReplace = vi.fn()
 const { tauriState } = vi.hoisted(() => ({
   tauriState: {
     isTauri: false,
     platform: 'unknown',
     setCloseBehavior: vi.fn(),
+    restartServerRuntime: vi.fn(),
   },
 }))
 
@@ -24,7 +25,11 @@ vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-router')>()
   return {
     ...actual,
-    useRoute: () => ({ query: { tab: routeTab } }),
+    useRoute: () => ({
+      path: '/settings',
+      fullPath: `/settings?tab=${routeTab}`,
+      query: { tab: routeTab },
+    }),
     useRouter: () => ({ replace: routerReplace }),
   }
 })
@@ -66,7 +71,10 @@ vi.mock('@/components/MemoryManager.vue', () => ({
 }))
 
 vi.mock('@/components/BackupManager.vue', () => ({
-  default: { name: 'BackupManager', template: '<div />' },
+  default: {
+    name: 'BackupManager',
+    template: '<button data-testid="mock-backup-restore" @click="$emit(\'restore\', \'backup-1\')" />',
+  },
 }))
 
 vi.mock('@/api/chat', () => ({
@@ -132,6 +140,7 @@ vi.mock('@/composables/useTauri', async () => {
       isTauri: ref(tauriState.isTauri),
       platform: ref(tauriState.platform),
       setCloseBehavior: tauriState.setCloseBehavior,
+      restartServerRuntime: tauriState.restartServerRuntime,
     }),
   }
 })
@@ -266,8 +275,11 @@ describe('SettingsView small-model controls', () => {
     vi.clearAllMocks()
     tauriState.isTauri = false
     tauriState.platform = 'unknown'
+    tauriState.restartServerRuntime.mockReset()
+    tauriState.restartServerRuntime.mockResolvedValue(true)
     await setLocale('en-US')
     primeApiMocks()
+    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   it('triggers IR/capability toggles, download, and stats reset on proxy tab', async () => {
@@ -293,7 +305,6 @@ describe('SettingsView small-model controls', () => {
     const resetSpy = vi.spyOn(store, 'resetSmallModelStats').mockResolvedValue({} as never)
 
     const wrapper = mount(SettingsView, {
-      shallow: true,
       global: {
         plugins: [pinia, i18n],
       },
@@ -413,7 +424,6 @@ describe('SettingsView small-model controls', () => {
     setActivePinia(pinia)
 
     const wrapper = mount(SettingsView, {
-      shallow: true,
       global: {
         plugins: [pinia, i18n],
       },
@@ -458,7 +468,6 @@ describe('SettingsView small-model controls', () => {
     setActivePinia(pinia)
 
     const wrapper = mount(SettingsView, {
-      shallow: true,
       global: {
         plugins: [pinia, i18n],
       },
@@ -487,7 +496,6 @@ describe('SettingsView small-model controls', () => {
     const store = useSettingsStore()
 
     const wrapper = mount(SettingsView, {
-      shallow: true,
       global: {
         plugins: [pinia, i18n],
       },
@@ -506,7 +514,6 @@ describe('SettingsView small-model controls', () => {
     setActivePinia(pinia)
 
     const wrapper = mount(SettingsView, {
-      shallow: true,
       global: {
         plugins: [pinia, i18n],
       },
@@ -531,7 +538,6 @@ describe('SettingsView small-model controls', () => {
     setActivePinia(pinia)
 
     const wrapper = mount(SettingsView, {
-      shallow: true,
       global: {
         plugins: [pinia, i18n],
       },
@@ -553,7 +559,6 @@ describe('SettingsView small-model controls', () => {
     setActivePinia(pinia)
 
     const wrapper = mount(SettingsView, {
-      shallow: true,
       global: {
         plugins: [pinia, i18n],
       },

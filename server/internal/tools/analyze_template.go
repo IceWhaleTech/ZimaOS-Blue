@@ -467,6 +467,280 @@ html { scroll-behavior: smooth; }
 }
 .footer strong { color: white; }
 .footer a { color: #5dade2; }
+
+/* SHARED RESEARCH QUESTION */
+.research-question {
+  font-size: 0.96em;
+  color: var(--text-light);
+  margin: 22px auto 0;
+  padding: 14px 18px;
+  background: #f5f9fc;
+  border-left: 4px solid var(--primary);
+  border-radius: 10px;
+}
+.research-question strong {
+  color: var(--dark);
+}
+
+/* BRIEFING REPORT */
+.briefing-root {
+  background-color: #faf8f3;
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.02) 2px, rgba(0,0,0,0.02) 4px),
+    repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.02) 2px, rgba(0,0,0,0.02) 4px);
+  padding-bottom: 24px;
+}
+.briefing-header {
+  position: relative;
+  background: #fff9f0;
+  border-bottom: 4px dashed #d4a574;
+  padding: 48px 24px 40px;
+  margin-bottom: 28px;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.08);
+}
+.briefing-header-content {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.briefing-header h1 {
+  font-size: 2.2em;
+  font-weight: 800;
+  color: #1a1a1a;
+  line-height: 1.2;
+}
+.briefing-header .subtitle {
+  margin-top: 14px;
+  color: #555;
+  max-width: 760px;
+}
+.briefing-header .research-question {
+  margin-top: 18px;
+  background: #f5f0e8;
+  border-left-color: #d4a574;
+  border-radius: 0;
+}
+.briefing-meta {
+  display: flex;
+  gap: 18px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+  font-size: 0.9em;
+  color: #555;
+}
+.briefing-meta .meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.briefing-badge {
+  display: inline-block;
+  background: #e8dcc8;
+  color: #5a4a3a;
+  padding: 4px 10px;
+  font-size: 0.75em;
+  font-weight: 700;
+  border: 2px solid #5a4a3a;
+  letter-spacing: 0.5px;
+}
+.briefing-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 24px 24px;
+}
+.briefing-section {
+  margin-bottom: 40px;
+}
+.briefing-section-header {
+  position: relative;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 3px dotted #d4a574;
+}
+.briefing-section-header h2 {
+  font-size: 1.6em;
+  font-weight: 800;
+  color: #1a1a1a;
+  display: inline-block;
+  background: #faf8f3;
+  padding-right: 8px;
+}
+.section-number {
+  display: inline-block;
+  background: #d4a574;
+  color: #fff;
+  width: 2rem;
+  height: 2rem;
+  line-height: 2rem;
+  text-align: center;
+  font-weight: 700;
+  margin-right: 8px;
+  border: 2px solid #1a1a1a;
+}
+.subsection {
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  background: #fffbf7;
+  border: 2px solid #d4a574;
+}
+.subsection h3 {
+  font-size: 1.15em;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e8dcc8;
+}
+.subsection h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #333;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+.callout {
+  padding: 16px 20px;
+  margin: 18px 0;
+  background: #f0ebe3;
+  border-left: 4px solid #d4a574;
+  border-right: 2px solid #d4a574;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.05);
+}
+.callout.primary {
+  background: #e8f4f8;
+  border-left-color: #5a9fb5;
+  border-right-color: #5a9fb5;
+}
+.callout.success {
+  background: #e8f5e9;
+  border-left-color: #66bb6a;
+  border-right-color: #66bb6a;
+}
+.callout.warning {
+  background: #fff3e0;
+  border-left-color: #ffa726;
+  border-right-color: #ffa726;
+}
+.callout.danger {
+  background: #fdecea;
+  border-left-color: #e57373;
+  border-right-color: #e57373;
+}
+.callout strong {
+  color: #1a1a1a;
+}
+.briefing-root ul, .briefing-root ol {
+  margin: 14px 0 14px 24px;
+}
+.briefing-root li {
+  margin-bottom: 8px;
+}
+.briefing-root table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0;
+  background: #fffbf7;
+  border: 2px solid #d4a574;
+}
+.briefing-root thead {
+  background: #e8dcc8;
+  border-bottom: 3px solid #d4a574;
+}
+.briefing-root th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 700;
+  color: #1a1a1a;
+  border-right: 1px solid #d4a574;
+}
+.briefing-root th:last-child {
+  border-right: none;
+}
+.briefing-root td {
+  padding: 12px;
+  border-right: 1px solid #e8dcc8;
+  border-bottom: 1px solid #e8dcc8;
+  vertical-align: top;
+}
+.briefing-root td:last-child {
+  border-right: none;
+}
+.briefing-root tbody tr:nth-child(even) {
+  background: #faf8f3;
+}
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+.comparison-card {
+  padding: 18px;
+  background: #fffbf7;
+  border: 2px solid #d4a574;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.05);
+}
+.comparison-card h4 {
+  font-size: 0.98em;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #e8dcc8;
+}
+.comparison-card p {
+  font-size: 0.92em;
+  margin-bottom: 6px;
+}
+.comparison-card .metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+  font-size: 0.85em;
+}
+.comparison-card .metric-label {
+  font-weight: 600;
+  color: #333;
+}
+.comparison-card .metric-value {
+  color: #5a7fa3;
+  font-weight: 600;
+  text-align: right;
+}
+.references {
+  scroll-margin-top: 80px;
+}
+.references-list {
+  margin-top: 12px;
+}
+.references-list li {
+  margin-bottom: 12px;
+}
+.references-list .ref-label {
+  font-weight: 700;
+  color: #1a1a1a;
+}
+.references-list .ref-meta {
+  color: #666;
+  font-size: 0.9em;
+}
+@media (max-width: 768px) {
+  .briefing-header {
+    padding: 36px 20px 30px;
+  }
+  .briefing-header h1 {
+    font-size: 1.6em;
+  }
+  .briefing-section-header h2 {
+    font-size: 1.3em;
+  }
+  .briefing-container {
+    padding: 0 16px 20px;
+  }
+  .comparison-grid {
+    grid-template-columns: 1fr;
+  }
+}
 `
 
 // buildAnalyzeHTML assembles a complete self-contained HTML report.

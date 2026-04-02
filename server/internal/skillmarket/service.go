@@ -1088,12 +1088,12 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 			Priority:           11 + i,
 		})
 	}
-	for i, seed := range s.cfg.SeedURLs {
+	for i, discoveryPageURL := range s.cfg.DiscoveryPageURLs {
 		defaults = append(defaults, Source{
 			ID:                 fmt.Sprintf("seed-%d", i+1),
 			Type:               "seed_page",
-			BaseURL:            seed,
-			DisplayName:        fmt.Sprintf("Seed %d", i+1),
+			BaseURL:            discoveryPageURL,
+			DisplayName:        fmt.Sprintf("Discovery Page %d", i+1),
 			SourceGroup:        "seed",
 			AuthMode:           "none",
 			Enabled:            true,
@@ -1103,6 +1103,37 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 	}
 	for _, source := range defaults {
 		if err := s.store.UpsertSource(ctx, source); err != nil {
+			return err
+		}
+	}
+	return s.disableDeprecatedDefaultAwesomeSeeds(ctx)
+}
+
+func (s *Service) disableDeprecatedDefaultAwesomeSeeds(ctx context.Context) error {
+	currentDiscoveryPages := make(map[string]struct{}, len(s.cfg.DiscoveryPageURLs))
+	for _, discoveryPageURL := range s.cfg.DiscoveryPageURLs {
+		normalized := strings.TrimRight(strings.TrimSpace(discoveryPageURL), "/")
+		if normalized == "" {
+			continue
+		}
+		currentDiscoveryPages[normalized] = struct{}{}
+	}
+
+	for i, discoveryPageURL := range deprecatedAwesomeDiscoveryPageURLs {
+		normalized := strings.TrimRight(strings.TrimSpace(discoveryPageURL), "/")
+		if normalized == "" {
+			continue
+		}
+		if _, keep := currentDiscoveryPages[normalized]; keep {
+			continue
+		}
+		if err := s.store.SetSourceEnabledByIdentity(
+			ctx,
+			fmt.Sprintf("seed-%d", len(defaultDiscoveryPageURLs)+i+1),
+			"seed_page",
+			discoveryPageURL,
+			false,
+		); err != nil {
 			return err
 		}
 	}

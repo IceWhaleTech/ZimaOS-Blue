@@ -38,17 +38,12 @@ const profiles = ref<AgentProfile[]>([])
 const selectedProfileID = ref('')
 const noticeMessage = ref('')
 const noticeTone = ref<NoticeTone>('info')
-const protocolOrder: ProtocolKind[] = ['acp', 'a2a']
-const activeProtocol = ref<ProtocolKind>('acp')
 const draft = ref<ProfileDraft>(createDraft('acp'))
 
 const selectedProfile = computed(
   () => profiles.value.find((profile) => profile.id === selectedProfileID.value) ?? null
 )
 const isBuiltinSelection = computed(() => selectedProfile.value?.builtin === true)
-const activeProfiles = computed(() =>
-  profiles.value.filter((profile) => profile.protocol === activeProtocol.value)
-)
 const currentSelectionLabel = computed(
   () => draft.value.title || draft.value.name || t('settings.externalAgents.newProfile')
 )
@@ -110,39 +105,22 @@ function protocolTitle(protocol: ProtocolKind): string {
     : t('settings.externalAgents.a2aPlainTitle')
 }
 
-function protocolCount(protocol: ProtocolKind): number {
-  return profiles.value.filter((profile) => profile.protocol === protocol).length
-}
-
 function selectProfile(profileID: string) {
   const profile = profiles.value.find((item) => item.id === profileID)
   if (!profile) {
     return
   }
   selectedProfileID.value = profile.id
-  activeProtocol.value = profile.protocol
   draft.value = profileToDraft(profile)
   clearNotice()
 }
 
-function startNewProfile(protocol: ProtocolKind) {
-  activeProtocol.value = protocol
+function startNewProfile(
+  protocol: ProtocolKind = selectedProfile.value?.protocol ?? draft.value.protocol ?? 'acp'
+) {
   selectedProfileID.value = ''
   draft.value = createDraft(protocol)
   clearNotice()
-}
-
-function setActiveProtocol(protocol: ProtocolKind) {
-  activeProtocol.value = protocol
-  if (selectedProfile.value?.protocol === protocol) {
-    return
-  }
-  const firstProfile = profiles.value.find((profile) => profile.protocol === protocol)
-  if (firstProfile) {
-    selectProfile(firstProfile.id)
-    return
-  }
-  startNewProfile(protocol)
 }
 
 function setDraftProtocol(protocol: ProtocolKind) {
@@ -150,7 +128,6 @@ function setDraftProtocol(protocol: ProtocolKind) {
     return
   }
   draft.value.protocol = protocol
-  activeProtocol.value = protocol
 }
 
 function duplicateSelection() {
@@ -159,7 +136,6 @@ function duplicateSelection() {
   }
   const next = profileToDraft(selectedProfile.value)
   selectedProfileID.value = ''
-  activeProtocol.value = next.protocol
   draft.value = {
     ...next,
     id: '',
@@ -302,12 +278,12 @@ async function loadProfiles(preferredID = '') {
       (selectedProfileID.value &&
       profiles.value.some((profile) => profile.id === selectedProfileID.value)
         ? selectedProfileID.value
-        : profiles.value.find((profile) => profile.protocol === activeProtocol.value)?.id || '')
+        : profiles.value[0]?.id || '')
 
     if (nextSelection) {
       selectProfile(nextSelection)
     } else {
-      startNewProfile(activeProtocol.value)
+      startNewProfile()
     }
   } catch (error) {
     showNotice(extractErrorMessage(error, t('settings.externalAgents.loadFailed')), 'error')
@@ -329,12 +305,43 @@ function profileModeLabel(profile: AgentProfile): string {
     : t('settings.externalAgents.customProfile')
 }
 
+function translateProfileStatus(status: string): string | null {
+  const normalized = status.trim().toLowerCase()
+
+  switch (normalized) {
+    case 'healthy':
+    case 'ok':
+      return t('dashboard.healthy')
+    case 'verified':
+      return t('settings.externalAgents.status.verified')
+    case 'ready':
+      return t('skillStore.status.ready')
+    case 'error':
+    case 'unhealthy':
+      return t('common.error')
+    default:
+      return null
+  }
+}
+
 function statusLabel(profile: AgentProfile): string {
-  return profile.health_status || profileModeLabel(profile)
+  const status = profile.health_status?.trim()
+  if (!status) {
+    return profileModeLabel(profile)
+  }
+  return translateProfileStatus(status) || status
 }
 
 function profileStatusTone(profile: AgentProfile): 'neutral' | 'healthy' | 'warning' | 'error' {
   const value = profile.health_status?.toLowerCase() || ''
+  if (
+    value.includes('fail') ||
+    value.includes('error') ||
+    value.includes('down') ||
+    value.includes('unhealthy')
+  ) {
+    return 'error'
+  }
   if (
     value.includes('healthy') ||
     value.includes('ready') ||
@@ -351,14 +358,6 @@ function profileStatusTone(profile: AgentProfile): 'neutral' | 'healthy' | 'warn
     value.includes('checking')
   ) {
     return 'warning'
-  }
-  if (
-    value.includes('fail') ||
-    value.includes('error') ||
-    value.includes('down') ||
-    value.includes('unhealthy')
-  ) {
-    return 'error'
   }
   return 'neutral'
 }
@@ -448,43 +447,14 @@ onMounted(() => {
 <template>
   <div class="external-agents" data-testid="external-agents-section">
     <div class="external-agents__toolbar">
-      <div class="external-agents__protocol-tabs">
-        <button
-          v-for="protocol in protocolOrder"
-          :key="protocol"
-          type="button"
-          class="external-agents__protocol-tab"
-          :class="{ 'external-agents__protocol-tab--active': activeProtocol === protocol }"
-          :data-testid="`external-agents-protocol-card-${protocol}`"
-          @click="setActiveProtocol(protocol)"
-        >
-          <span
-            class="external-agents__badge external-agents__badge--protocol"
-            :class="`external-agents__badge--${protocol}`"
-          >
-            {{ protocol.toUpperCase() }}
-          </span>
-          <span class="external-agents__protocol-title">{{ protocolTitle(protocol) }}</span>
-          <span class="external-agents__count">{{ protocolCount(protocol) }}</span>
-        </button>
-      </div>
-
       <div class="external-agents__actions">
         <button
           type="button"
           class="external-agents__button external-agents__button--quiet"
-          data-testid="external-agents-new-acp"
-          @click="startNewProfile('acp')"
+          data-testid="external-agents-new-profile"
+          @click="startNewProfile()"
         >
-          {{ t('settings.externalAgents.newAcp') }}
-        </button>
-        <button
-          type="button"
-          class="external-agents__button external-agents__button--quiet"
-          data-testid="external-agents-new-a2a"
-          @click="startNewProfile('a2a')"
-        >
-          {{ t('settings.externalAgents.newA2a') }}
+          {{ t('settings.externalAgents.newExternalAgent', t('settings.externalAgents.newProfile')) }}
         </button>
         <button
           type="button"
@@ -511,23 +481,21 @@ onMounted(() => {
         <div v-if="loading" class="external-agents__empty">
           {{ t('common.loading', 'Loading') }}
         </div>
-        <div v-else-if="activeProfiles.length === 0" class="external-agents__empty">
-          <p>{{ protocolTitle(activeProtocol) }}</p>
+        <div v-else-if="profiles.length === 0" class="external-agents__empty">
+          <p>{{ t('settings.externalAgents.title') }}</p>
           <button
             type="button"
             class="external-agents__button external-agents__button--quiet"
-            @click="startNewProfile(activeProtocol)"
+            @click="startNewProfile()"
           >
             {{
-              activeProtocol === 'acp'
-                ? t('settings.externalAgents.newAcp')
-                : t('settings.externalAgents.newA2a')
+              t('settings.externalAgents.newExternalAgent', t('settings.externalAgents.newProfile'))
             }}
           </button>
         </div>
         <div v-else class="external-agents__profile-list">
           <button
-            v-for="profile in activeProfiles"
+            v-for="profile in profiles"
             :key="profile.id"
             type="button"
             class="external-agents__profile-card"
@@ -537,12 +505,24 @@ onMounted(() => {
           >
             <div class="external-agents__profile-top">
               <div class="external-agents__profile-main">
-                <strong class="external-agents__profile-name">
-                  {{ profile.title || profile.name }}
-                </strong>
+                <div class="external-agents__profile-heading">
+                  <strong class="external-agents__profile-name">
+                    {{ profile.title || profile.name }}
+                  </strong>
+                  <span
+                    class="external-agents__badge external-agents__badge--protocol"
+                    :class="`external-agents__badge--${profile.protocol}`"
+                  >
+                    {{ profile.protocol.toUpperCase() }}
+                  </span>
+                </div>
                 <p class="external-agents__profile-summary">{{ summarizeProfile(profile) }}</p>
               </div>
+              <p v-if="profile.builtin" class="external-agents__profile-placeholder">
+                {{ t('settings.externalAgents.builtinTemplate') }}
+              </p>
               <span
+                v-else
                 class="external-agents__badge external-agents__badge--status"
                 :class="`external-agents__badge--${profileStatusTone(profile)}`"
               >
@@ -619,6 +599,7 @@ onMounted(() => {
             class="external-agents__protocol-switch-button"
             :class="{ 'external-agents__protocol-switch-button--active': draft.protocol === 'acp' }"
             :disabled="isBuiltinSelection"
+            data-testid="external-agents-draft-protocol-acp"
             @click="setDraftProtocol('acp')"
           >
             ACP
@@ -628,6 +609,7 @@ onMounted(() => {
             class="external-agents__protocol-switch-button"
             :class="{ 'external-agents__protocol-switch-button--active': draft.protocol === 'a2a' }"
             :disabled="isBuiltinSelection"
+            data-testid="external-agents-draft-protocol-a2a"
             @click="setDraftProtocol('a2a')"
           >
             A2A
@@ -804,20 +786,18 @@ onMounted(() => {
 }
 
 .external-agents__toolbar {
-  padding-bottom: 0.12rem;
+  justify-content: flex-end;
+  padding-bottom: 0.16rem;
   border-bottom: 1px solid rgba(226, 232, 240, 0.88);
 }
 
-.external-agents__protocol-tabs,
 .external-agents__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.22rem;
 }
 
-.external-agents__protocol-tab,
 .external-agents__protocol-switch-button,
-.external-agents__profile-card,
 .external-agents__button {
   border: 1px solid rgba(203, 213, 225, 0.96);
   border-radius: 0.62rem;
@@ -830,30 +810,18 @@ onMounted(() => {
     color 160ms ease;
 }
 
-.external-agents__protocol-tab,
 .external-agents__button {
   cursor: pointer;
 }
 
-.external-agents__protocol-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.24rem;
-  padding: 0.22rem 0.3rem;
-}
-
-.external-agents__protocol-tab:hover,
-.external-agents__protocol-tab--active,
 .external-agents__protocol-switch-button:hover,
 .external-agents__protocol-switch-button--active,
-.external-agents__profile-card:hover,
-.external-agents__profile-card--active {
+.external-agents__button:hover {
   border-color: rgba(148, 163, 184, 0.62);
   background: rgba(248, 250, 252, 0.96);
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
 }
 
-.external-agents__protocol-title,
 .external-agents__editor-title,
 .external-agents__profile-name,
 .external-agents__advanced-summary {
@@ -890,11 +858,6 @@ onMounted(() => {
   font-weight: 600;
   line-height: 1.35;
   padding: 0.22rem 0.38rem;
-}
-
-.external-agents__button:hover {
-  border-color: rgba(148, 163, 184, 0.6);
-  background: rgba(248, 250, 252, 0.96);
 }
 
 .external-agents__button:disabled,
@@ -1011,15 +974,40 @@ onMounted(() => {
 
 .external-agents__profile-list {
   display: grid;
-  gap: 0.24rem;
+  gap: 0.42rem;
+  max-height: 30rem;
+  overflow-y: auto;
+  padding-right: 0.08rem;
 }
 
 .external-agents__profile-card {
   display: grid;
-  gap: 0.14rem;
-  padding: 0.34rem 0.38rem;
+  gap: 0.18rem;
+  padding: 0.62rem 0.68rem;
   text-align: left;
   cursor: pointer;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 0.82rem;
+  background: rgba(248, 250, 252, 0.72);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.external-agents__profile-card:hover,
+.external-agents__profile-card--active {
+  border-color: rgba(148, 163, 184, 0.62);
+  background: rgba(241, 245, 249, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1);
+}
+
+.external-agents__profile-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.28rem;
 }
 
 .external-agents__profile-top {
@@ -1027,6 +1015,15 @@ onMounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.24rem;
+}
+
+.external-agents__profile-placeholder {
+  margin: 0;
+  flex-shrink: 0;
+  color: rgba(100, 116, 139, 0.9);
+  font-size: 0.74rem;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 
 .external-agents__protocol-switch {
@@ -1147,16 +1144,25 @@ onMounted(() => {
     align-items: stretch;
   }
 
-  .external-agents__protocol-tabs,
   .external-agents__actions,
   .external-agents__form-grid,
   .external-agents__protocol-switch {
     grid-template-columns: 1fr;
   }
 
-  .external-agents__protocol-tabs,
   .external-agents__actions {
     display: grid;
+  }
+
+  .external-agents__profile-top,
+  .external-agents__profile-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .external-agents__profile-placeholder,
+  .external-agents__badge--status {
+    white-space: normal;
   }
 
   .external-agents__field--full {
@@ -1165,7 +1171,6 @@ onMounted(() => {
 }
 
 :global(.dark) .external-agents__panel,
-:global(.dark) .external-agents__protocol-tab,
 :global(.dark) .external-agents__protocol-switch,
 :global(.dark) .external-agents__protocol-switch-button,
 :global(.dark) .external-agents__profile-card,
@@ -1184,7 +1189,6 @@ onMounted(() => {
   border-bottom-color: rgba(51, 65, 85, 0.86);
 }
 
-:global(.dark) .external-agents__protocol-title,
 :global(.dark) .external-agents__editor-title,
 :global(.dark) .external-agents__profile-name,
 :global(.dark) .external-agents__advanced-summary,
@@ -1194,13 +1198,13 @@ onMounted(() => {
 
 :global(.dark) .external-agents__editor-meta,
 :global(.dark) .external-agents__profile-summary,
+:global(.dark) .external-agents__profile-placeholder,
 :global(.dark) .external-agents__locked p,
 :global(.dark) .external-agents__empty {
   color: rgba(203, 213, 225, 0.88);
 }
 
 :global(.dark) .external-agents__button,
-:global(.dark) .external-agents__count,
 :global(.dark) .external-agents__badge {
   background: rgba(30, 41, 59, 0.94);
   border-color: rgba(71, 85, 105, 0.92);
@@ -1208,8 +1212,6 @@ onMounted(() => {
 }
 
 :global(.dark) .external-agents__button:hover,
-:global(.dark) .external-agents__protocol-tab:hover,
-:global(.dark) .external-agents__protocol-tab--active,
 :global(.dark) .external-agents__protocol-switch-button:hover,
 :global(.dark) .external-agents__protocol-switch-button--active,
 :global(.dark) .external-agents__profile-card:hover,

@@ -347,6 +347,7 @@ func TestBuildEmptyResearchResultRecoveryTools_PrefersSearchAndWriteWithoutBrows
 	tools := []llm.Tool{
 		{Name: "browser"},
 		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "web_fetch"},
 		{Name: "write"},
 		{Name: "file_delete"},
@@ -357,8 +358,8 @@ func TestBuildEmptyResearchResultRecoveryTools_PrefersSearchAndWriteWithoutBrows
 	if len(reduced) == 0 {
 		t.Fatal("expected reduced toolset")
 	}
-	if got := reduced[0].Name; got != "web_search" {
-		t.Fatalf("expected web_search to lead reduced toolset, got=%q", got)
+	if got := reduced[0].Name; got != "web_query" {
+		t.Fatalf("expected web_query to lead reduced toolset, got=%q", got)
 	}
 	for _, tool := range reduced {
 		if tool.Name == "browser" {

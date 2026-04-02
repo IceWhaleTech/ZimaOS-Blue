@@ -62,6 +62,10 @@ export default mergeHarnessLocale('nl-NL', {
     select: 'Select',
     test: 'Test',
     provider: 'Provider',
+    name: 'Naam',
+    title: 'Titel',
+    description: 'Beschrijving',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1178,7 +1182,7 @@ export default mergeHarnessLocale('nl-NL', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Gezond',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1815,11 +1819,12 @@ export default mergeHarnessLocale('nl-NL', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Externe agenten',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Nieuwe External Agent',
       metadata: 'Metagegevens',
       protocol: 'Protocol',
-      status: 'Status',
+      status: { label: 'Status', verified: 'Geverifieerd' },
       newAcp: 'Nieuw ACP',
       newA2a: 'Nieuw A2A',
       newProfile: 'Nieuw profiel',
@@ -4404,8 +4409,8 @@ export default mergeHarnessLocale('nl-NL', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Geverifieerd - zichtbaar in Claude CLI',
+      verificationFailed: 'Verificatie mislukt - mogelijk niet zichtbaar in Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4417,7 +4422,7 @@ export default mergeHarnessLocale('nl-NL', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Link openen',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4552,6 +4557,76 @@ export default mergeHarnessLocale('nl-NL', {
         caption: 'Embeddings verbeteren na verloop van tijd de kwaliteit van semantisch zoeken',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Geaggregeerde SkillHub-catalogi van Tencent SkillHub en SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Officiële catalogusfeed van Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Community-SkillHub-catalogus en mirrorsite.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'GitHub-repositoryzoekbronnen voor SKILL.md-, CLAUDE.md- en AGENT.md-bestanden.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'GitHub-codezoekopdracht voor repositories die SKILL.md publiceren.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'GitHub-codezoekopdracht voor repositories die CLAUDE.md publiceren.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'GitHub-codezoekopdracht voor repositories die AGENT.md publiceren.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Catalogus van de ClawHub-marktplaats.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub-spiegel',
+          description: 'Mirror-endpoint voor de ClawHub-catalogus.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Communitycatalogus gericht op herbruikbare skillcollecties.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Catalogus van de SkillsMP-marktplaats.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Catalogus van de LLMSkills-communitymarktplaats.',
+        },
+        external: {
+          label: 'Externe Bronnen',
+          description: 'Gecureerde skillrecords geïmporteerd vanuit externe URL’s.',
+        },
+        curatedSkillUrl: {
+          label: 'Externe Skill',
+          description: 'Gecureerde marktplaatsvermelding geïmporteerd vanuit een directe skill-URL.',
+        },
+        curatedGithubSeed: {
+          label: 'Geselecteerde GitHub-bronnen',
+          description: 'Lijst met geselecteerde GitHub-bronnen geïmporteerd uit GitHub-verwijzingen.',
+        },
+        seed: {
+          label: 'Ontdekkingspagina\'s',
+          description: 'Ontdekkingspagina\'s die linken naar meer vaardigheden die op het web zijn gevonden.',
+        },
+        seedInstance: {
+          label: 'Ontdekkingspagina {index}',
+          description: 'Ontdekkingspagina {index} die linkt naar meer vaardigheden die op het web zijn gevonden.',
+        },
+      },
       hero: {
         kicker: 'Skillmarktplaats',
         title: 'Ontdek, beoordeel en installeer agent-skills',
@@ -4564,9 +4639,12 @@ export default mergeHarnessLocale('nl-NL', {
         red: 'Geblokkeerd',
       },
       warnings: {
-        mediumRiskPermissions: 'Deze skill vereist machtigingen met gemiddeld risico. Bekijk het beveiligingsrapport voordat je automatisch updaten inschakelt.',
-        payloadScanEscalatedHighRisk: 'De payloadscan van het geïnstalleerde pakket heeft deze skill van gemiddeld naar hoog risico verhoogd. Bekijk het beveiligingsrapport voordat je deze skill gebruikt.',
-        legacyManifestFallback: 'Legacy-skillformaat gedetecteerd; compatibiliteitsstandaardinstellingen zijn toegepast.',
+        mediumRiskPermissions:
+          'Deze skill vereist machtigingen met gemiddeld risico. Bekijk het beveiligingsrapport voordat je automatisch updaten inschakelt.',
+        payloadScanEscalatedHighRisk:
+          'De payloadscan van het geïnstalleerde pakket heeft deze skill van gemiddeld naar hoog risico verhoogd. Bekijk het beveiligingsrapport voordat je deze skill gebruikt.',
+        legacyManifestFallback:
+          'Legacy-skillformaat gedetecteerd; compatibiliteitsstandaardinstellingen zijn toegepast.',
       },
       categories: {
         ai_intelligence: 'AI en intelligentie',
@@ -4647,7 +4725,8 @@ export default mergeHarnessLocale('nl-NL', {
         dependency_manifest: 'Afhankelijkheden',
         binary_artifact: 'Binair artefact',
         data_exfiltration: 'Gegevensexfiltratie',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Command-injectie',
+        command_injection: 'Command-injectie',
       },
       filters: {
         category: 'Categorie',
@@ -4716,7 +4795,7 @@ export default mergeHarnessLocale('nl-NL', {
         loading: 'Beveiligingsrapport laden...',
         score: 'Score',
         badge: 'Badge',
-        signals: 'Risk signals',
+        signals: 'Risicosignalen',
         binary: 'Binair',
         installSurface: 'Installatie-oppervlak',
         artifactKind: 'Artefactsoort',
@@ -4728,6 +4807,44 @@ export default mergeHarnessLocale('nl-NL', {
         moreEvidence: '+{count} extra bewijselementen',
         noMajorWarnings: 'Geen grote waarschuwingen gedetecteerd.',
         noReport: 'Nog geen beveiligingsrapport beschikbaar.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Bestandssysteem',
+          network: 'Netwerk',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Systeem',
+        },
+        valuePrefixes: {
+          matched: 'Overeenkomst',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Pogingen om prompts op systeemniveau te injecteren',
+          binaryArtifactDetected: 'Binair artefact gedetecteerd',
+          commandInjectionAttemptDetected: 'Poging tot command-injectie gedetecteerd',
+          dependencyManifestsDetected: 'Dependency-manifests gedetecteerd',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Ingesloten inloggegevens of privésleutelmateriaal',
+          knownJailbreakAttempts: 'Bekende jailbreak-pogingen',
+          potentialDataExfiltrationAttempts: 'Potentiele pogingen tot data-exfiltratie',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potentieel destructieve shellreeks of reeks voor uitvoering op afstand',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Bevoorrechte mogelijkheid afgeleid uit skill-inhoud maar niet gedeclareerd',
+          promptInjectionAttemptInstructionOverride: 'Prompt-injectionpoging - instructie-override',
+          promptInjectionAttemptJailbreak: 'Prompt-injectionpoging - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Prompt-injectionpoging - rol-override',
+          promptInjectionAttemptSystemPromptInjection:
+            'Prompt-injectionpoging - injectie van systeemprompt',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Prompttekst die de agent probeert te overschrijven of te ondermijnen',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Patroon voor shell- of command-injectie gedetecteerd door gedeelde detector',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Het skill-pakket bevat een uitvoerbare of ondoorzichtige binaire payload',
+          suspiciousExternalContentPattern: 'Verdacht patroon in externe inhoud',
+        },
       },
       detail: {
         title: 'Details',
@@ -5010,6 +5127,7 @@ export default mergeHarnessLocale('nl-NL', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Statistieken',
     lastUpdated: 'Laatst bijgewerkt',
     reset: 'Resetten',
     confirmReset:

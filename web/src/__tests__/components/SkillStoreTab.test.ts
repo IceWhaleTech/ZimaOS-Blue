@@ -681,7 +681,9 @@ describe('SkillStoreTab', () => {
     const installedSkill = makeSkill({
       installed: true,
     })
-    vi.mocked(skillApi.searchMarket).mockResolvedValue(makeSearchResponse([installedSkill]) as never)
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(
+      makeSearchResponse([installedSkill]) as never
+    )
     vi.mocked(skillApi.getMarketplaceSkill).mockResolvedValue(
       makeDetailResponse(installedSkill, {
         installed: true,
@@ -761,5 +763,105 @@ describe('SkillStoreTab', () => {
     expect(warningMessage).toContain('检测到旧版技能格式；已应用兼容性默认设置。')
 
     wrapper.unmount()
+  })
+
+  it('localizes raw security evidence fields in the detail modal', async () => {
+    const zhCN = await import('@/i18n/locales/zh-CN')
+    ;(i18n.global as any).setLocaleMessage('zh-CN', zhCN.default)
+    i18n.global.locale.value = 'zh-CN'
+
+    const skill = makeSkill()
+    const detail = makeDetailResponse(skill)
+    detail.data.security = {
+      ...detail.data.security,
+      risk_level: 'critical',
+      permissions: ['network'],
+      evidence: [
+        {
+          type: 'command_injection',
+          severity: 'critical',
+          title: 'Command injection attempt detected',
+          description: 'Shell or command injection pattern from shared threat detector',
+          value: 'Matched: `',
+        },
+        {
+          type: 'permission',
+          severity: 'medium',
+          title: 'network',
+          description: 'Privileged capability inferred from skill content but not declared',
+          value: 'network',
+        },
+      ],
+    }
+
+    vi.mocked(skillApi.getMarketplaceSkill).mockResolvedValue(detail as never)
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('.skill-card').trigger('click')
+    await flushPromises()
+
+    const bodyText = document.body.textContent || ''
+    expect(bodyText).toContain('命令注入')
+    expect(bodyText).toContain('严重')
+    expect(bodyText).toContain('共享威胁检测器检测到 shell 或命令注入模式')
+    expect(bodyText).toContain('网络')
+    expect(bodyText).toContain('匹配项')
+    expect(bodyText).not.toContain('Command injection attempt detected')
+    expect(bodyText).not.toContain('Shell or command injection pattern from shared threat detector')
+    expect(bodyText).not.toContain(
+      'Privileged capability inferred from skill content but not declared'
+    )
+
+    wrapper.unmount()
+    i18n.global.locale.value = 'en-US'
+  })
+
+  it('localizes marketplace source labels and descriptions', async () => {
+    const zhCN = await import('@/i18n/locales/zh-CN')
+    ;(i18n.global as any).setLocaleMessage('zh-CN', zhCN.default)
+    i18n.global.locale.value = 'zh-CN'
+
+    vi.mocked(skillApi.discoverStatus).mockResolvedValue({
+      data: {
+        running: true,
+        total_sources: 2,
+        processed_sources: 0,
+        current_source_name: 'Tencent SkillHub',
+      },
+    } as never)
+    vi.mocked(skillApi.filtersMarket).mockResolvedValue({
+      data: {
+        categories: [{ value: 'development_tools', label: 'Development Tools', count: 1 }],
+        sources: [{ value: 'skillhub', label: 'Tencent SkillHub', count: 2 }],
+        risk_badges: [{ value: 'green', label: 'Security', count: 1 }],
+        install_types: [],
+        artifact_kinds: [],
+        installable: { true: 1 },
+        security_signals: {},
+      },
+    } as never)
+
+    const wrapper = await mountSkillStore()
+
+    expect(wrapper.text()).toContain('腾讯 SkillHub')
+    expect(wrapper.text()).toContain('腾讯 SkillHub 官方技能目录源。')
+
+    const sourceChip = wrapper.get('.source-chip')
+    expect(sourceChip.text()).toBe('腾讯 SkillHub')
+    expect(sourceChip.attributes('title')).toBe('腾讯 SkillHub 官方技能目录源。')
+
+    const sourceOptions = wrapper.findAll('select.filter-select')[1]?.findAll('option') || []
+    expect(sourceOptions[1]?.text()).toContain('SkillHub')
+    expect(sourceOptions[1]?.attributes('title')).toBe(
+      '聚合自腾讯 SkillHub 与 SkillHub Club 的 SkillHub 目录。'
+    )
+
+    await wrapper.findAll('select.filter-select')[1]!.setValue('skillhub')
+    await flushPromises()
+    expect(wrapper.text()).toContain('聚合自腾讯 SkillHub 与 SkillHub Club 的 SkillHub 目录。')
+
+    wrapper.unmount()
+    i18n.global.locale.value = 'en-US'
   })
 })

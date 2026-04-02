@@ -28,6 +28,8 @@ const mocks = vi.hoisted(() => ({
     probeModels: vi.fn(),
     testProvider: vi.fn(),
     updateProvider: vi.fn(),
+    updateProviderPriorityLocal: vi.fn(),
+    syncPrioritiesToBackend: vi.fn(),
     addAPIKey: vi.fn(),
     clearProviderError: vi.fn(),
   },
@@ -148,6 +150,22 @@ function createProvider(type: 'media' | 'custom') {
   }
 }
 
+function createRankedProvider(id: string, priority: number) {
+  return {
+    id,
+    name: id.toUpperCase(),
+    type: 'custom',
+    location: 'cloud',
+    enabled: true,
+    status: 'active',
+    base_url: 'https://example.com/v1',
+    api_format: 'openai',
+    api_format_mode: 'auto',
+    priority,
+    api_keys: [],
+  }
+}
+
 function mountSection() {
   return shallowMount(ProviderPoolSection, {
     global: {
@@ -194,6 +212,13 @@ describe('ProviderPoolSection media verification gating', () => {
       ...(mocks.providerPoolStore.selectedProvider || {}),
       ...updates,
     }))
+    mocks.providerPoolStore.updateProviderPriorityLocal.mockImplementation((id, priority) => {
+      const provider = mocks.providerPoolStore.providers.find((item) => item.id === id)
+      if (provider) {
+        provider.priority = priority
+      }
+    })
+    mocks.providerPoolStore.syncPrioritiesToBackend.mockResolvedValue(undefined)
     mocks.providerPoolStore.addAPIKey.mockResolvedValue({})
     mocks.providerPoolStore.clearProviderError.mockResolvedValue(undefined)
   })
@@ -606,5 +631,96 @@ describe('ProviderPoolSection media verification gating', () => {
 
     expect(wrapper.text()).toContain('Google Cloud Code Assist (Antigravity)')
     expect(wrapper.text()).toContain('Anthropic')
+  })
+
+  it('reorders provider cards during dragover before drop', async () => {
+    const providerA = createRankedProvider('alpha', 90)
+    const providerB = createRankedProvider('beta', 60)
+    const providerC = createRankedProvider('gamma', 30)
+    mocks.providerPoolStore.providers = [providerA, providerB, providerC]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const providerCards = () => wrapper.findAll('[draggable="true"]')
+    const findProviderCard = (id: string) =>
+      providerCards().find((card) => card.text().includes(id))
+    const topCardIds = () =>
+      providerCards()
+        .slice(0, 3)
+        .map((card) => {
+          const text = card.text()
+          if (text.includes('gamma')) return 'gamma'
+          if (text.includes('beta')) return 'beta'
+          return 'alpha'
+        })
+    const dataTransfer = {
+      effectAllowed: '',
+      dropEffect: '',
+      setData: vi.fn(),
+    }
+
+    expect(topCardIds()).toEqual(['alpha', 'beta', 'gamma'])
+
+    await findProviderCard('gamma')?.trigger('dragstart', { dataTransfer })
+    await findProviderCard('alpha')?.trigger('dragover', { dataTransfer })
+    await flushPromises()
+
+    expect(topCardIds()).toEqual(['gamma', 'alpha', 'beta'])
+    expect(mocks.providerPoolStore.syncPrioritiesToBackend).not.toHaveBeenCalled()
+  })
+
+  it('persists the previewed provider order on drop', async () => {
+    const providerA = createRankedProvider('alpha', 90)
+    const providerB = createRankedProvider('beta', 60)
+    const providerC = createRankedProvider('gamma', 30)
+    mocks.providerPoolStore.providers = [providerA, providerB, providerC]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const providerCards = () => wrapper.findAll('[draggable="true"]')
+    const findProviderCard = (id: string) =>
+      providerCards().find((card) => card.text().includes(id))
+    const topCardIds = () =>
+      providerCards()
+        .slice(0, 3)
+        .map((card) => {
+          const text = card.text()
+          if (text.includes('gamma')) return 'gamma'
+          if (text.includes('beta')) return 'beta'
+          return 'alpha'
+        })
+    const dataTransfer = {
+      effectAllowed: '',
+      dropEffect: '',
+      setData: vi.fn(),
+    }
+
+    await findProviderCard('gamma')?.trigger('dragstart', { dataTransfer })
+    await findProviderCard('alpha')?.trigger('dragover', { dataTransfer })
+    await findProviderCard('alpha')?.trigger('drop', { dataTransfer })
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.updateProviderPriorityLocal).toHaveBeenNthCalledWith(
+      1,
+      'gamma',
+      100
+    )
+    expect(mocks.providerPoolStore.updateProviderPriorityLocal).toHaveBeenNthCalledWith(
+      2,
+      'alpha',
+      75
+    )
+    expect(mocks.providerPoolStore.updateProviderPriorityLocal).toHaveBeenNthCalledWith(
+      3,
+      'beta',
+      50
+    )
+    expect(mocks.providerPoolStore.syncPrioritiesToBackend).toHaveBeenCalledWith([
+      { id: 'gamma', priority: 100 },
+      { id: 'alpha', priority: 75 },
+      { id: 'beta', priority: 50 },
+    ])
   })
 })

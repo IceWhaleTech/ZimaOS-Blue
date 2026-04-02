@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -311,6 +312,53 @@ func main() {
 
 const runtimeIdleCheckpointThreshold = 5 * time.Minute
 
+type serverRunOutcome struct {
+	RestartRequested bool
+}
+
+type serverRestartController struct {
+	mu         sync.Mutex
+	requested  bool
+	suppressed bool
+	ch         chan struct{}
+}
+
+func newServerRestartController() *serverRestartController {
+	return &serverRestartController{
+		ch: make(chan struct{}),
+	}
+}
+
+func (c *serverRestartController) Request() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.suppressed || c.requested {
+		return false
+	}
+	c.requested = true
+	close(c.ch)
+	return true
+}
+
+func (c *serverRestartController) Suppress() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.suppressed = true
+	c.requested = false
+}
+
+func (c *serverRestartController) Requested() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.requested && !c.suppressed
+}
+
+func (c *serverRestartController) C() <-chan struct{} {
+	return c.ch
+}
+
+var runServerIteration = runServerOnce
+
 func shouldSkipStartupSTTAuthorization(args []string) bool {
 	var positional []string
 	for i := 0; i < len(args); i++ {
@@ -338,10 +386,23 @@ func shouldSkipStartupSTTAuthorization(args []string) bool {
 	return positional[1] != "run"
 }
 
-// runServer is the main server entry point, called by cobra rootCmd
+// runServer is the CLI server entry point. It can restart the full runtime
+// in-process when a backup restore has been staged and needs a clean reload.
 func runServer() {
+	for {
+		outcome := runServerIteration()
+		if !outcome.RestartRequested {
+			return
+		}
+		fmt.Fprintln(os.Stderr, "Restarting ZimaOS-Blue runtime to apply staged backup restore...")
+	}
+}
+
+// runServerOnce runs a single server lifetime.
+func runServerOnce() serverRunOutcome {
 	// Tune GC for lower memory usage (shared with bluelib)
 	bootstrap.TuneGC()
+	restartController := newServerRestartController()
 
 	// Load configuration (cfgFile is set by cobra's --config flag)
 	cfg, err := config.Load(cfgFile)
@@ -817,12 +878,10 @@ func runServer() {
 		}
 		backupHandler = backup.NewHandler(backupManager)
 		backupHandler.SetRestartFunc(func() error {
-			logger.Info().Msg("Backup restore staged; sending SIGTERM for graceful restart")
-			proc, err := os.FindProcess(os.Getpid())
-			if err != nil {
-				return err
+			if restartController.Request() {
+				logger.Info().Msg("Backup restore staged; restarting CLI runtime in-process")
 			}
-			return proc.Signal(syscall.SIGTERM)
+			return nil
 		})
 		logger.Info().Msg("Backup manager initialized with runtime auto backup disabled")
 	})
@@ -1388,11 +1447,16 @@ func runServer() {
 	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
 
 	select {
 	case sig := <-quit:
+		restartController.Suppress()
 		logger.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
+	case <-restartController.C():
+		logger.Info().Msg("Received in-process restart request")
 	case <-lm.Done():
+		restartController.Suppress()
 		logger.Info().Msg("Lifecycle manager done")
 	}
 
@@ -1402,9 +1466,12 @@ func runServer() {
 
 	// Force-cancel on second signal — don't let the process hang
 	go func() {
-		sig := <-quit
-		logger.Warn().Str("signal", sig.String()).Msg("Received second signal, cancelling graceful shutdown")
-		cancel()
+		select {
+		case sig := <-quit:
+			logger.Warn().Str("signal", sig.String()).Msg("Received second signal, cancelling graceful shutdown")
+			cancel()
+		case <-shutdownCtx.Done():
+		}
 	}()
 
 	server.SetReady(false)
@@ -1464,6 +1531,7 @@ func runServer() {
 	}
 
 	logger.Info().Msg("ZimaOS-Blue stopped")
+	return serverRunOutcome{RestartRequested: restartController.Requested()}
 }
 
 func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, dbConn *dbutil.SQLiteConn, db, dbReader *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), lightpandaShimSvc *browser.LightpandaService, configKV kvstore.Store, configStore *config.ConfigStore) {

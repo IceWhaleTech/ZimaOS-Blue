@@ -62,6 +62,10 @@ export default mergeHarnessLocale('hu-HU', {
     select: 'Select',
     test: 'Teszt',
     provider: 'Provider',
+    name: 'Név',
+    title: 'Cím',
+    description: 'Leírás',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1174,7 +1178,7 @@ export default mergeHarnessLocale('hu-HU', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Egészséges',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1807,8 +1811,9 @@ export default mergeHarnessLocale('hu-HU', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Külső ügynökök',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Új External Agent',
       newAcp: 'Új ACP',
       newA2a: 'Új A2A',
       newProfile: 'Új profil',
@@ -1821,6 +1826,7 @@ export default mergeHarnessLocale('hu-HU', {
       customProfile: 'Egyéni profil',
       health: 'Egészség',
       verify: 'Ellenőrizze',
+      status: { verified: 'Ellenőrizve' },
       cwd: 'Munkakönyvtár',
       environment: 'Környezeti felülírások',
       endpoint: 'Végpont URL',
@@ -1841,7 +1847,7 @@ export default mergeHarnessLocale('hu-HU', {
         'A beépített profilok csak olvashatóak maradnak, így a Claude, Codex, Gemini és általános A2A bejegyzések stabilak maradnak.',
       command: 'Command és Args',
       credentialSource: 'Hitelesítési adatok forrása',
-      authMethod: 'Auth Method',
+      authMethod: 'Hitelesítési mód',
       advancedOptions: 'Speciális beállítások',
       metadata: 'Metaadatok',
       errors: {
@@ -4410,8 +4416,8 @@ export default mergeHarnessLocale('hu-HU', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Ellenőrizve - látható a Claude CLI-ben',
+      verificationFailed: 'Az ellenőrzés sikertelen - lehet, hogy nem látható a Claude CLI-ben',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4423,7 +4429,7 @@ export default mergeHarnessLocale('hu-HU', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Hivatkozas megnyitasa',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4558,6 +4564,76 @@ export default mergeHarnessLocale('hu-HU', {
         caption: 'Az embeddingek idővel javítják a szemantikus keresés minőségét',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Összesített SkillHub-katalógusok a Tencent SkillHub és a SkillHub Club forrásaiból.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'A Tencent SkillHub hivatalos katalógusfolyama.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Közösségi SkillHub-katalógus és tüköroldal.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'GitHub repositorykereső források a SKILL.md, CLAUDE.md és AGENT.md fájlokhoz.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'GitHub kódkereés olyan repositorykhoz, amelyek SKILL.md-t publikálnak.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'GitHub kódkereés olyan repositorykhoz, amelyek CLAUDE.md-t publikálnak.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'GitHub kódkereés olyan repositorykhoz, amelyek AGENT.md-t publikálnak.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'A ClawHub piactér katalógusa.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub tükör',
+          description: 'Tükörvégpont a ClawHub-katalógushoz.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Közösségi katalógus, amely az újrafelhasználható skillgyűjteményekre összpontosít.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'A SkillsMP piactér katalógusa.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Az LLMSkills közösségi piactér katalógusa.',
+        },
+        external: {
+          label: 'Külső Források',
+          description: 'Külső URL-ekből importált, kurált skillbejegyzések.',
+        },
+        curatedSkillUrl: {
+          label: 'Külső Skill',
+          description: 'Közvetlen skill URL-ről importált, kurált piactérbejegyzés.',
+        },
+        curatedGithubSeed: {
+          label: 'Válogatott GitHub-források',
+          description: 'GitHub-hivatkozásokból importált válogatott GitHub-forráslista.',
+        },
+        seed: {
+          label: 'Felfedező oldalak',
+          description: 'Felfedező oldalak, amelyek további, a weben talált készségekhez vezetnek.',
+        },
+        seedInstance: {
+          label: 'Felfedező oldal {index}',
+          description: 'Felfedező oldal {index}, amely további, a weben talált készségekhez vezet.',
+        },
+      },
       hero: {
         kicker: 'Skill piacter',
         title: 'Fedezz fel, ellenorizz es telepits agent skilleket',
@@ -4570,9 +4646,12 @@ export default mergeHarnessLocale('hu-HU', {
         red: 'Blokkolva',
       },
       warnings: {
-        mediumRiskPermissions: 'Ez a készség közepes kockázatú jogosultságokat igényel. Az automatikus frissítés engedélyezése előtt tekintse át a biztonsági jelentést.',
-        payloadScanEscalatedHighRisk: 'A telepített csomag (payload) vizsgálata közepes kockázatról magasra emelte ezt a készséget. Használat előtt tekintse át a biztonsági jelentést.',
-        legacyManifestFallback: 'Örökölt készségformátum észlelve; kompatibilitási alapbeállítások alkalmazva.',
+        mediumRiskPermissions:
+          'Ez a készség közepes kockázatú jogosultságokat igényel. Az automatikus frissítés engedélyezése előtt tekintse át a biztonsági jelentést.',
+        payloadScanEscalatedHighRisk:
+          'A telepített csomag (payload) vizsgálata közepes kockázatról magasra emelte ezt a készséget. Használat előtt tekintse át a biztonsági jelentést.',
+        legacyManifestFallback:
+          'Örökölt készségformátum észlelve; kompatibilitási alapbeállítások alkalmazva.',
       },
       categories: {
         ai_intelligence: 'MI es intelligencia',
@@ -4653,7 +4732,8 @@ export default mergeHarnessLocale('hu-HU', {
         dependency_manifest: 'Fuggosegek',
         binary_artifact: 'Binaris artefaktum',
         data_exfiltration: 'Adatkivitel',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Parancsinjektalas',
+        command_injection: 'Parancsinjektalas',
       },
       filters: {
         category: 'Kategoria',
@@ -4722,7 +4802,7 @@ export default mergeHarnessLocale('hu-HU', {
         loading: 'Biztonsagi jelentes betoltese...',
         score: 'Pontszam',
         badge: 'Jelveny',
-        signals: 'Risk signals',
+        signals: 'Kockazati jelzesek',
         binary: 'Binaris',
         installSurface: 'Telepitesi felulet',
         artifactKind: 'Artefaktum tipus',
@@ -4734,6 +4814,46 @@ export default mergeHarnessLocale('hu-HU', {
         moreEvidence: '+{count} tovabbi bizonyitek',
         noMajorWarnings: 'Nem talaltunk komoly figyelmeztetest.',
         noReport: 'Meg nem erheto el biztonsagi jelentes.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Fajlrendszer',
+          network: 'Halozat',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Rendszer',
+        },
+        valuePrefixes: {
+          matched: 'Egyezes',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts:
+            'Rendszerszintu promptok befecskendezesere tett kiserletek',
+          binaryArtifactDetected: 'Binaris osszetevo eszlelve',
+          commandInjectionAttemptDetected: 'Parancsinjektalasi kiserlet eszlelve',
+          dependencyManifestsDetected: 'Fuggosegi manifestek eszlelve',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Beagyazott hitelesito adat vagy privat kulcsanyag',
+          knownJailbreakAttempts: 'Ismert jailbreak-kiserletek',
+          potentialDataExfiltrationAttempts: 'Lehetseges adat-kiszivaro_gtatasi kiserletek',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potencialisan rombolo vagy tavoli vegrehajtast lehetove tevo shell-sorozat',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'A skill tartalmabol jogosultsagot igenylo kepesseg kovetkeztetheto, de nincs deklaralva',
+          promptInjectionAttemptInstructionOverride:
+            'Prompt injection kiserlet - utasitasfeluliras',
+          promptInjectionAttemptJailbreak: 'Prompt injection kiserlet - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Prompt injection kiserlet - szerepfeluliras',
+          promptInjectionAttemptSystemPromptInjection:
+            'Prompt injection kiserlet - system prompt befecskendezes',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Olyan promptszoveg, amely megprobalja felulirni vagy alaasni az ugynokot',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Shell- vagy parancsinjektalasi mintat eszlelt a megosztott fenyegeteserzekelo',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'A skill csomag vegrehajthato vagy atlathatatlan binaris payloadot tartalmaz',
+          suspiciousExternalContentPattern: 'Gyanus kulso tartalomminta',
+        },
       },
       detail: {
         title: 'Reszletek',
@@ -5017,6 +5137,7 @@ export default mergeHarnessLocale('hu-HU', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Metrikák',
     lastUpdated: 'Utoljára frissítve',
     reset: 'Visszaállítás',
     confirmReset: 'Biztosan visszaállítja az összes mérőszámot? Ez a művelet nem vonható vissza.',

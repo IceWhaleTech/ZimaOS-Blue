@@ -97,7 +97,7 @@ companion:
 
 skill_market:
   enabled: true
-  seed_urls: []
+  discovery_page_urls: []
   curated_config_path: "%s"
   curated_config_urls: []
   tencent_skillhub_api_base_url: "%s"
@@ -343,7 +343,7 @@ companion:
 
 skill_market:
   enabled: true
-  seed_urls: []
+  discovery_page_urls: []
   curated_config_path: "%s"
   curated_config_urls: []
 `, port, filepath.Join(homeDir, "missing-curations.yaml"))

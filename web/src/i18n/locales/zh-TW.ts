@@ -62,6 +62,10 @@ export default mergeHarnessLocale('zh-TW', {
     select: '選擇',
     test: '測試',
     provider: '提供商',
+    name: '名稱',
+    title: '標題',
+    description: '描述',
+    id: 'ID',
     downloading: '下載中',
     download: '下載',
     downloaded: '已下載',
@@ -1441,8 +1445,9 @@ export default mergeHarnessLocale('zh-TW', {
     saved: '已儲存',
     saveFailed: '儲存設定失敗',
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: '外部智慧代理',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: '新增 External Agent',
       newAcp: '新增 ACP',
       newA2a: '新增 A2A',
       newProfile: '新增設定檔',
@@ -1455,6 +1460,7 @@ export default mergeHarnessLocale('zh-TW', {
       customProfile: '自訂設定檔',
       health: '健康',
       verify: '驗證',
+      status: { verified: '已驗證' },
       cwd: '工作目錄',
       environment: '環境變數覆寫',
       endpoint: '端點 URL',
@@ -4560,6 +4566,76 @@ export default mergeHarnessLocale('zh-TW', {
         caption: '嵌入會逐步提升語意搜尋品質',
       },
       defaultSource: '商店',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: '整合自騰訊 SkillHub 與 SkillHub Club 的 SkillHub 目錄。',
+        },
+        tencentSkillHub: {
+          label: '騰訊 SkillHub',
+          description: '騰訊 SkillHub 官方技能目錄來源。',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: '社群維護的 SkillHub 目錄與鏡像站。',
+        },
+        github: {
+          label: 'GitHub',
+          description: '用於搜尋 GitHub 上 SKILL.md、CLAUDE.md 與 AGENT.md 檔案的儲存庫來源。',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: '搜尋發佈 SKILL.md 的 GitHub 儲存庫。',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: '搜尋發佈 CLAUDE.md 的 GitHub 儲存庫。',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: '搜尋發佈 AGENT.md 的 GitHub 儲存庫。',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'ClawHub 技能市集目錄。',
+        },
+        clawhubMirror: {
+          label: 'ClawHub 鏡像',
+          description: 'ClawHub 目錄的鏡像入口。',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: '聚焦可重用技能集合的社群目錄。',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'SkillsMP 技能市集目錄。',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'LLMSkills 社群技能市集目錄。',
+        },
+        external: {
+          label: '外部來源',
+          description: '從外部 URL 匯入的精選技能記錄。',
+        },
+        curatedSkillUrl: {
+          label: '外部技能',
+          description: '從直接技能 URL 匯入的精選市集項目。',
+        },
+        curatedGithubSeed: {
+          label: '精選 GitHub 來源',
+          description: '從 GitHub 參考匯入的精選 GitHub 來源清單。',
+        },
+        seed: {
+          label: '探索頁面',
+          description: '連向更多網頁技能的探索頁面。',
+        },
+        seedInstance: {
+          label: '探索頁面 {index}',
+          description: '用於探索網頁關聯技能的探索頁面 {index}。',
+        },
+      },
       hero: {
         kicker: '技能商店',
         title: '探索、審查並安裝 Agent 技能',
@@ -4572,7 +4648,8 @@ export default mergeHarnessLocale('zh-TW', {
       },
       warnings: {
         mediumRiskPermissions: '此技能需要中等風險權限。啟用自動更新前請先查看安全報告。',
-        payloadScanEscalatedHighRisk: '安裝負載掃描將此技能從中風險升級為高風險。使用前請查看安全報告。',
+        payloadScanEscalatedHighRisk:
+          '安裝負載掃描將此技能從中風險升級為高風險。使用前請查看安全報告。',
         legacyManifestFallback: '偵測到舊版技能格式；已套用相容性預設值。',
       },
       curatedLabels: {
@@ -4663,6 +4740,7 @@ export default mergeHarnessLocale('zh-TW', {
         binary_artifact: '二進位制品',
         data_exfiltration: '資料外洩',
         cmd_injection: '命令注入',
+        command_injection: '命令注入',
       },
       filters: {
         category: '分類',
@@ -4740,6 +4818,41 @@ export default mergeHarnessLocale('zh-TW', {
         moreEvidence: '還有 {count} 條證據未展開',
         noMajorWarnings: '未發現主要風險訊號。',
         noReport: '目前尚無安全報告。',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: '檔案系統',
+          network: '網路',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: '系統',
+        },
+        valuePrefixes: {
+          matched: '匹配項',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: '試圖注入系統層級提示詞',
+          binaryArtifactDetected: '偵測到二進位成品',
+          commandInjectionAttemptDetected: '偵測到命令注入嘗試',
+          dependencyManifestsDetected: '偵測到依賴清單',
+          embeddedCredentialOrPrivateKeyMaterial: '內嵌的憑證或私鑰材料',
+          knownJailbreakAttempts: '已知的 jailbreak 嘗試',
+          potentialDataExfiltrationAttempts: '潛在的資料外洩嘗試',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            '可能具破壞性或導致遠端執行的 shell 序列',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            '從技能內容推斷出特權能力，但未在清單中宣告',
+          promptInjectionAttemptInstructionOverride: '提示詞注入嘗試 - 覆寫指令',
+          promptInjectionAttemptJailbreak: '提示詞注入嘗試 - jailbreak',
+          promptInjectionAttemptRoleOverride: '提示詞注入嘗試 - 覆寫角色',
+          promptInjectionAttemptSystemPromptInjection: '提示詞注入嘗試 - 注入系統提示詞',
+          promptTextThatTriesToOverrideOrSubvertTheAgent: '試圖覆寫或干擾 Agent 的提示文字',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            '共用威脅偵測器偵測到 shell 或命令注入模式',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            '技能套件包含可執行或不透明的二進位載荷',
+          suspiciousExternalContentPattern: '可疑的外部內容模式',
+        },
       },
       detail: {
         title: '詳情',
@@ -5050,6 +5163,7 @@ export default mergeHarnessLocale('zh-TW', {
     customDesc: '自訂 OpenAI 相容 API 端點',
   },
   metrics: {
+    label: '指標',
     lastUpdated: '最後更新',
     reset: '重設',
     confirmReset: '確定要重設所有指標嗎？此操作無法復原。',

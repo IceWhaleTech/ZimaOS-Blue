@@ -473,7 +473,7 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 		}
 		response["skill_decision"] = decision
 		response["skill_prompt_hint"] = decision.PromptHint(3)
-		response["canonical_skill_id"] = decision.SelectedSkill
+		response["canonical_skill_id"] = selectorDryRunCanonicalSkillID(decision, selection.DiscoveryDecision)
 		response["skill_need_clarify"] = decision.NeedClarify
 		response["skill_route_outcome"] = selectorDryRunOutcome(decision)
 		response["decision_reason"] = decision.Reason
@@ -503,7 +503,7 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 			}
 			response["skill_decision"] = decision
 			response["skill_prompt_hint"] = decision.PromptHint(3)
-			response["canonical_skill_id"] = decision.SelectedSkill
+			response["canonical_skill_id"] = selectorDryRunCanonicalSkillID(decision, selection.DiscoveryDecision)
 			response["skill_need_clarify"] = decision.NeedClarify
 			response["skill_route_outcome"] = selectorDryRunOutcome(decision)
 			response["decision_reason"] = decision.Reason
@@ -576,6 +576,16 @@ func selectorDryRunOutcome(decision agentcore.Decision) string {
 	default:
 		return "none"
 	}
+}
+
+func selectorDryRunCanonicalSkillID(decision agentcore.Decision, discovery *agentcore.CapabilityDiscoveryDecision) string {
+	if discovery != nil && discovery.CanonicalTarget != "" && discovery.CanonicalTarget != agentcore.CanonicalUnknown {
+		return string(discovery.CanonicalTarget)
+	}
+	if canonical, ok := agentcore.ResolveCanonicalSkill(decision.SelectedSkill); ok {
+		return string(canonical)
+	}
+	return strings.TrimSpace(decision.SelectedSkill)
 }
 
 func selectorDryRunDiscoverySurfaceReason(selection chatToolSurfaceSelection, skillDynamicExposure bool) string {

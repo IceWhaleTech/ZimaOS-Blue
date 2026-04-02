@@ -62,6 +62,10 @@ export default mergeHarnessLocale('ko-KR', {
     select: 'Select',
     test: '테스트',
     provider: 'Provider',
+    name: '이름',
+    title: '제목',
+    description: '설명',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1884,8 +1888,9 @@ export default mergeHarnessLocale('ko-KR', {
     availableTools: '사용 가능한 도구',
     noToolsAvailable: '사용 가능한 도구가 없습니다',
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: '외부 에이전트',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: '새로운 External Agent',
       newAcp: '새로운 ACP',
       newA2a: '새로운 A2A',
       newProfile: '새 프로필',
@@ -1898,6 +1903,7 @@ export default mergeHarnessLocale('ko-KR', {
       customProfile: '맞춤 프로필',
       health: '건강',
       verify: '확인',
+      status: { verified: '확인됨' },
       cwd: '작업 디렉토리',
       environment: '환경 재정의',
       endpoint: '엔드포인트 URL',
@@ -4530,7 +4536,7 @@ export default mergeHarnessLocale('ko-KR', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: '링크 열기',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4674,6 +4680,76 @@ export default mergeHarnessLocale('ko-KR', {
         caption: '임베딩은 시간이 지날수록 의미 검색 품질을 향상시킵니다',
       },
       defaultSource: '마켓플레이스',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Tencent SkillHub와 SkillHub Club을 묶어 제공하는 SkillHub 카탈로그입니다.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Tencent SkillHub 공식 카탈로그 피드입니다.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: '커뮤니티에서 운영하는 SkillHub 카탈로그 및 미러 사이트입니다.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'GitHub의 SKILL.md, CLAUDE.md, AGENT.md 파일을 찾기 위한 저장소 검색 소스입니다.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'SKILL.md를 게시한 저장소를 찾는 GitHub 코드 검색입니다.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'CLAUDE.md를 게시한 저장소를 찾는 GitHub 코드 검색입니다.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'AGENT.md를 게시한 저장소를 찾는 GitHub 코드 검색입니다.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'ClawHub 마켓플레이스 카탈로그입니다.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub 미러',
+          description: 'ClawHub 카탈로그용 미러 엔드포인트입니다.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: '재사용 가능한 스킬 모음에 초점을 맞춘 커뮤니티 카탈로그입니다.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'SkillsMP 마켓플레이스 카탈로그입니다.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'LLMSkills 커뮤니티 마켓플레이스 카탈로그입니다.',
+        },
+        external: {
+          label: '외부 소스',
+          description: '외부 URL에서 가져온 선별된 스킬 기록입니다.',
+        },
+        curatedSkillUrl: {
+          label: '외부 스킬',
+          description: '직접 스킬 URL에서 가져온 선별된 마켓플레이스 항목입니다.',
+        },
+        curatedGithubSeed: {
+          label: '엄선된 GitHub 소스',
+          description: 'GitHub 참조에서 가져온 엄선된 GitHub 소스 목록입니다.',
+        },
+        seed: {
+          label: '탐색 페이지',
+          description: '웹에서 찾은 더 많은 스킬로 이어지는 탐색 페이지입니다.',
+        },
+        seedInstance: {
+          label: '탐색 페이지 {index}',
+          description: '웹에서 찾은 더 많은 스킬로 이어지는 탐색 페이지 {index}입니다.',
+        },
+      },
       hero: {
         kicker: '스킬 마켓플레이스',
         title: '에이전트 스킬을 찾고 검토하고 설치하세요',
@@ -4686,8 +4762,10 @@ export default mergeHarnessLocale('ko-KR', {
         red: '차단됨',
       },
       warnings: {
-        mediumRiskPermissions: '이 스킬은 중간 위험 권한이 필요합니다. 자동 업데이트를 켜기 전에 보안 보고서를 확인하세요.',
-        payloadScanEscalatedHighRisk: '설치된 페이로드 스캔으로 이 스킬이 중간 위험에서 높은 위험으로 상향되었습니다. 사용하기 전에 보안 보고서를 확인하세요.',
+        mediumRiskPermissions:
+          '이 스킬은 중간 위험 권한이 필요합니다. 자동 업데이트를 켜기 전에 보안 보고서를 확인하세요.',
+        payloadScanEscalatedHighRisk:
+          '설치된 페이로드 스캔으로 이 스킬이 중간 위험에서 높은 위험으로 상향되었습니다. 사용하기 전에 보안 보고서를 확인하세요.',
         legacyManifestFallback: '레거시 스킬 형식이 감지되어 호환성 기본값을 적용했습니다.',
       },
       categories: {
@@ -4768,7 +4846,8 @@ export default mergeHarnessLocale('ko-KR', {
         dependency_manifest: '의존성',
         binary_artifact: '바이너리 산출물',
         data_exfiltration: '데이터 유출',
-        cmd_injection: '셸 인젝션',
+        cmd_injection: '명령 주입',
+        command_injection: '명령 주입',
       },
       filters: {
         category: '카테고리',
@@ -4837,7 +4916,7 @@ export default mergeHarnessLocale('ko-KR', {
         loading: '보안 보고서를 불러오는 중...',
         score: '점수',
         badge: '배지',
-        signals: 'Risk signals',
+        signals: '위험 신호',
         binary: '바이너리',
         installSurface: '설치 표면',
         artifactKind: '아티팩트 유형',
@@ -4849,6 +4928,42 @@ export default mergeHarnessLocale('ko-KR', {
         moreEvidence: '증거 항목 {count}개 더',
         noMajorWarnings: '중대한 경고가 발견되지 않았습니다.',
         noReport: '아직 보안 보고서가 없습니다.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: '파일 시스템',
+          network: '네트워크',
+          shell: '셸',
+          docker: 'Docker',
+          system: '시스템',
+        },
+        valuePrefixes: {
+          matched: '일치',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: '시스템 수준 프롬프트를 주입하려는 시도',
+          binaryArtifactDetected: '바이너리 아티팩트가 감지되었습니다',
+          commandInjectionAttemptDetected: '명령 주입 시도가 감지되었습니다',
+          dependencyManifestsDetected: '의존성 매니페스트가 감지되었습니다',
+          embeddedCredentialOrPrivateKeyMaterial: '내장된 자격 증명 또는 개인 키 자료',
+          knownJailbreakAttempts: '알려진 jailbreak 시도',
+          potentialDataExfiltrationAttempts: '잠재적인 데이터 유출 시도',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            '잠재적으로 파괴적이거나 원격 실행을 유발할 수 있는 셸 시퀀스',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            '스킬 콘텐츠에서 권한이 필요한 기능이 추론되었지만 선언되지 않았습니다',
+          promptInjectionAttemptInstructionOverride: '프롬프트 주입 시도 - 지침 재정의',
+          promptInjectionAttemptJailbreak: '프롬프트 주입 시도 - jailbreak',
+          promptInjectionAttemptRoleOverride: '프롬프트 주입 시도 - 역할 재정의',
+          promptInjectionAttemptSystemPromptInjection: '프롬프트 주입 시도 - 시스템 프롬프트 주입',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            '에이전트를 무시하거나 교란하려는 프롬프트 텍스트',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            '공유 위협 탐지기가 셸 또는 명령 주입 패턴을 감지했습니다',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            '스킬 패키지에 실행 가능하거나 불투명한 바이너리 페이로드가 포함되어 있습니다',
+          suspiciousExternalContentPattern: '의심스러운 외부 콘텐츠 패턴',
+        },
       },
       detail: {
         title: '상세 정보',
@@ -5140,6 +5255,7 @@ export default mergeHarnessLocale('ko-KR', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: '메트릭',
     lastUpdated: '마지막 업데이트',
     reset: 'Reset',
     confirmReset: '모든 메트릭을 재설정하시겠습니까? 이 작업은 취소할 수 없습니다.',

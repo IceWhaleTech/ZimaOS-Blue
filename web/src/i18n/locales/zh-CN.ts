@@ -10,6 +10,7 @@ export default mergeHarnessLocale('zh-CN', {
     delete: '删除',
     deleting: '删除中...',
     edit: '编辑',
+    update: '更新',
     create: '创建',
     creating: '创建中...',
     add: '添加',
@@ -62,6 +63,10 @@ export default mergeHarnessLocale('zh-CN', {
     select: '选择',
     test: '测试',
     provider: '提供商',
+    name: '名称',
+    title: '标题',
+    description: '描述',
+    id: 'ID',
     downloading: '下载中',
     download: '下载',
     downloaded: '已下载',
@@ -1372,8 +1377,9 @@ export default mergeHarnessLocale('zh-CN', {
     saved: '已保存',
     saveFailed: '保存配置失败',
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: '外部智能体',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: '新建 External Agent',
       newAcp: '新建 ACP',
       newA2a: '新建 A2A',
       newProfile: '新建配置',
@@ -1386,6 +1392,7 @@ export default mergeHarnessLocale('zh-CN', {
       customProfile: '自定义配置',
       health: '健康',
       verify: '验证',
+      status: { verified: '已验证' },
       cwd: '工作目录',
       environment: '环境变量覆盖',
       endpoint: '端点 URL',
@@ -1805,6 +1812,7 @@ export default mergeHarnessLocale('zh-CN', {
     noDescription: '暂无描述',
     noMatchingTools: '未找到匹配项',
     noTools: '暂无可用项',
+    noToolsTitle: '未找到工具',
     uploadSkill: '安装技能',
     uploadSkillTitle: '上传技能',
     uploadPluginTitle: '上传插件',
@@ -4364,6 +4372,76 @@ export default mergeHarnessLocale('zh-CN', {
         caption: '嵌入会逐步提升语义搜索质量',
       },
       defaultSource: '商店',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: '聚合自腾讯 SkillHub 与 SkillHub Club 的 SkillHub 目录。',
+        },
+        tencentSkillHub: {
+          label: '腾讯 SkillHub',
+          description: '腾讯 SkillHub 官方技能目录源。',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: '社区维护的 SkillHub 目录与镜像站。',
+        },
+        github: {
+          label: 'GitHub',
+          description: '用于搜索 GitHub 上 SKILL.md、CLAUDE.md 与 AGENT.md 文件的仓库源。',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: '搜索发布 SKILL.md 的 GitHub 仓库。',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: '搜索发布 CLAUDE.md 的 GitHub 仓库。',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: '搜索发布 AGENT.md 的 GitHub 仓库。',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'ClawHub 技能市场目录。',
+        },
+        clawhubMirror: {
+          label: 'ClawHub 镜像',
+          description: 'ClawHub 目录的镜像入口。',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: '聚焦可复用技能集合的社区目录。',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'SkillsMP 技能市场目录。',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'LLMSkills 社区技能市场目录。',
+        },
+        external: {
+          label: '外部来源',
+          description: '从外部 URL 导入的精选技能记录。',
+        },
+        curatedSkillUrl: {
+          label: '外部技能',
+          description: '从直接技能 URL 导入的精选商店条目。',
+        },
+        curatedGithubSeed: {
+          label: '精选 GitHub 来源',
+          description: '从 GitHub 引用导入的精选 GitHub 来源列表。',
+        },
+        seed: {
+          label: '发现页',
+          description: '链接到更多网页技能的发现页。',
+        },
+        seedInstance: {
+          label: '发现页 {index}',
+          description: '用于发现网页关联技能的发现页 {index}。',
+        },
+      },
       hero: {
         kicker: '技能商店',
         title: '发现、审查并安装 Agent 技能',
@@ -4376,7 +4454,8 @@ export default mergeHarnessLocale('zh-CN', {
       },
       warnings: {
         mediumRiskPermissions: '该技能需要中等风险权限。启用自动更新前请先查看安全报告。',
-        payloadScanEscalatedHighRisk: '安装包扫描将该技能从中风险升级为高风险。使用前请查看安全报告。',
+        payloadScanEscalatedHighRisk:
+          '安装包扫描将该技能从中风险升级为高风险。使用前请查看安全报告。',
         legacyManifestFallback: '检测到旧版技能格式；已应用兼容性默认设置。',
       },
       curatedLabels: {
@@ -4467,6 +4546,7 @@ export default mergeHarnessLocale('zh-CN', {
         binary_artifact: '二进制制品',
         data_exfiltration: '数据外发',
         cmd_injection: '命令注入',
+        command_injection: '命令注入',
       },
       filters: {
         category: '分类',
@@ -4544,6 +4624,41 @@ export default mergeHarnessLocale('zh-CN', {
         moreEvidence: '还有 {count} 条证据未展开',
         noMajorWarnings: '未发现主要风险信号。',
         noReport: '暂未生成安全报告。',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: '文件系统',
+          network: '网络',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: '系统',
+        },
+        valuePrefixes: {
+          matched: '匹配项',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: '试图注入系统级提示词',
+          binaryArtifactDetected: '检测到二进制制品',
+          commandInjectionAttemptDetected: '检测到命令注入尝试',
+          dependencyManifestsDetected: '检测到依赖清单',
+          embeddedCredentialOrPrivateKeyMaterial: '嵌入的凭证或私钥材料',
+          knownJailbreakAttempts: '已知的 jailbreak 尝试',
+          potentialDataExfiltrationAttempts: '潜在的数据外发尝试',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            '可能具有破坏性或可导致远程执行的 shell 序列',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            '从技能内容中推断出特权能力，但未在清单中声明',
+          promptInjectionAttemptInstructionOverride: '提示词注入尝试 - 覆盖指令',
+          promptInjectionAttemptJailbreak: '提示词注入尝试 - jailbreak',
+          promptInjectionAttemptRoleOverride: '提示词注入尝试 - 覆盖角色',
+          promptInjectionAttemptSystemPromptInjection: '提示词注入尝试 - 注入系统提示词',
+          promptTextThatTriesToOverrideOrSubvertTheAgent: '试图覆盖或干扰 Agent 的提示文本',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            '共享威胁检测器检测到 shell 或命令注入模式',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            '技能包包含可执行或不透明的二进制载荷',
+          suspiciousExternalContentPattern: '可疑的外部内容模式',
+        },
       },
       detail: {
         title: '详情',
@@ -4822,6 +4937,7 @@ export default mergeHarnessLocale('zh-CN', {
     siliconflowDesc: '硅基流动 - 国产AI云平台，支持 OpenAI 兼容 API',
   },
   metrics: {
+    label: '指标',
     lastUpdated: '最后更新',
     reset: '重置',
     confirmReset: '确定要重置所有指标吗？此操作无法撤销。',
@@ -5674,6 +5790,7 @@ export default mergeHarnessLocale('zh-CN', {
   speech: {
     convertTask: {
       task: '任务',
+      sources: '来源',
       cancelling: '取消中...',
       downloadAudio: '下载音频',
       downloadVideo: '下载视频',
@@ -6720,6 +6837,19 @@ export default mergeHarnessLocale('zh-CN', {
       processing: '处理中',
       succeeded: '已完成',
       failed: '失败',
+    },
+    modelDownload: {
+      auto: {
+        fileName: '处理中',
+      },
+      completed: '已下载',
+      pending: '等待中',
+      status: {
+        downloading: '正在下载元数据',
+        error: '下载失败',
+        pending: '准备下载',
+        ready: '模型已就绪',
+      },
     },
     error: {
       failed: '生成失败',

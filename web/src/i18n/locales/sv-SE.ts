@@ -62,6 +62,10 @@ export default mergeHarnessLocale('sv-SE', {
     select: 'Select',
     test: 'Testa',
     provider: 'Provider',
+    name: 'Namn',
+    title: 'Titel',
+    description: 'Beskrivning',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1173,7 +1177,7 @@ export default mergeHarnessLocale('sv-SE', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Frisk',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1802,10 +1806,11 @@ export default mergeHarnessLocale('sv-SE', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Externa agenter',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Ny External Agent',
       metadata: 'Metadata',
-      status: 'Status',
+      status: { label: 'Status', verified: 'Verifierad' },
       newAcp: 'Ny ACP',
       newA2a: 'Ny A2A',
       newProfile: 'Ny profil',
@@ -4372,8 +4377,8 @@ export default mergeHarnessLocale('sv-SE', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Verifierad - synlig i Claude CLI',
+      verificationFailed: 'Verifieringen misslyckades - kanske inte synlig i Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4385,7 +4390,7 @@ export default mergeHarnessLocale('sv-SE', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Oppna lank',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4520,6 +4525,76 @@ export default mergeHarnessLocale('sv-SE', {
         caption: 'Embeddings förbättrar kvaliteten på semantisk sökning över tid',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Sammanslagna SkillHub-kataloger från Tencent SkillHub och SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Officiellt katalogflöde från Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Communitydriven SkillHub-katalog och spegelsajt.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'GitHub-källor för repositoriesökning efter filer som SKILL.md, CLAUDE.md och AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'GitHub-kodsökning för repositories som publicerar SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'GitHub-kodsökning för repositories som publicerar CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'GitHub-kodsökning för repositories som publicerar AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Katalog för ClawHub-marknadsplatsen.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub-spegel',
+          description: 'Spegelendpoint för ClawHub-katalogen.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Communitykatalog med fokus på återanvändbara skillsamlingar.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Katalog för SkillsMP-marknadsplatsen.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Katalog för LLMSkills community-marknadsplats.',
+        },
+        external: {
+          label: 'Externa Källor',
+          description: 'Kuraterade skillposter importerade från externa URL:er.',
+        },
+        curatedSkillUrl: {
+          label: 'Extern Skill',
+          description: 'Kuraterad marknadsplatspost importerad från en direkt skill-URL.',
+        },
+        curatedGithubSeed: {
+          label: 'Utvalda GitHub-källor',
+          description: 'Lista över utvalda GitHub-källor importerad från GitHub-referenser.',
+        },
+        seed: {
+          label: 'Upptäcktssidor',
+          description: 'Upptäcktssidor som länkar till fler färdigheter som hittats på webben.',
+        },
+        seedInstance: {
+          label: 'Upptäcktssida {index}',
+          description: 'Upptäcktssida {index} som länkar till fler färdigheter som hittats på webben.',
+        },
+      },
       hero: {
         kicker: 'Skillmarknadsplats',
         title: 'Upptack, granska och installera agent-skills',
@@ -4532,9 +4607,12 @@ export default mergeHarnessLocale('sv-SE', {
         red: 'Blockerad',
       },
       warnings: {
-        mediumRiskPermissions: 'Den här färdigheten kräver behörigheter med medelhög risk. Granska säkerhetsrapporten innan du aktiverar automatisk uppdatering.',
-        payloadScanEscalatedHighRisk: 'Payload-skanningen av det installerade paketet eskalerade den här färdigheten från medelrisk till hög risk. Granska säkerhetsrapporten innan du använder den här färdigheten.',
-        legacyManifestFallback: 'Äldre färdighetsformat upptäckt; kompatibilitetsstandarder har tillämpats.',
+        mediumRiskPermissions:
+          'Den här färdigheten kräver behörigheter med medelhög risk. Granska säkerhetsrapporten innan du aktiverar automatisk uppdatering.',
+        payloadScanEscalatedHighRisk:
+          'Payload-skanningen av det installerade paketet eskalerade den här färdigheten från medelrisk till hög risk. Granska säkerhetsrapporten innan du använder den här färdigheten.',
+        legacyManifestFallback:
+          'Äldre färdighetsformat upptäckt; kompatibilitetsstandarder har tillämpats.',
       },
       categories: {
         ai_intelligence: 'AI och intelligens',
@@ -4614,7 +4692,8 @@ export default mergeHarnessLocale('sv-SE', {
         dependency_manifest: 'Beroenden',
         binary_artifact: 'Binart artefakt',
         data_exfiltration: 'Dataexfiltration',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Kommandoinjektion',
+        command_injection: 'Kommandoinjektion',
       },
       filters: {
         category: 'Kategori',
@@ -4683,7 +4762,7 @@ export default mergeHarnessLocale('sv-SE', {
         loading: 'Laeser in sakerhetsrapport...',
         score: 'Poang',
         badge: 'Badge',
-        signals: 'Risk signals',
+        signals: 'Risksignaler',
         binary: 'Binaer',
         installSurface: 'Installationsyta',
         artifactKind: 'Artefakttyp',
@@ -4695,6 +4774,45 @@ export default mergeHarnessLocale('sv-SE', {
         moreEvidence: '+{count} fler bevisposter',
         noMajorWarnings: 'Inga storre varningar upptacktes.',
         noReport: 'Ingen säkerhetsrapport tillgänglig ännu.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Filsystem',
+          network: 'Natverk',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'System',
+        },
+        valuePrefixes: {
+          matched: 'Traff',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Forsok att injicera prompts pa systemniva',
+          binaryArtifactDetected: 'Binar artefakt upptackt',
+          commandInjectionAttemptDetected: 'Forsok till kommandoinjektion upptackt',
+          dependencyManifestsDetected: 'Beroendemanifest upptackta',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Inbaddade autentiseringsuppgifter eller privat nyckelmaterial',
+          knownJailbreakAttempts: 'Kanda jailbreak-forsok',
+          potentialDataExfiltrationAttempts: 'Potentiella forsok till dataexfiltration',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potentiellt destruktiv shellsekvens eller fjarrkorningssekvens',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Privilegierad funktion harledd fran skill-innehallet men inte deklarerad',
+          promptInjectionAttemptInstructionOverride:
+            'Forsok till prompt injection - instruktionoverstyrning',
+          promptInjectionAttemptJailbreak: 'Forsok till prompt injection - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Forsok till prompt injection - rolloverstyrning',
+          promptInjectionAttemptSystemPromptInjection:
+            'Forsok till prompt injection - systempromptinjektion',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Prompttext som forsoker asidosatta eller undergrava agenten',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Monster for shell- eller kommandoinjektion upptackt av den delade hotdetektorn',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Skill-paketet innehaller en korbar eller ogenomskinlig binar nyttolast',
+          suspiciousExternalContentPattern: 'Misstankt monster i externt innehall',
+        },
       },
       detail: {
         title: 'Detaljer',
@@ -4979,6 +5097,7 @@ export default mergeHarnessLocale('sv-SE', {
     addProvider: 'Lägg till leverantör',
   },
   metrics: {
+    label: 'Mått',
     lastUpdated: 'Senast uppdaterad',
     reset: 'Återställ',
     confirmReset:

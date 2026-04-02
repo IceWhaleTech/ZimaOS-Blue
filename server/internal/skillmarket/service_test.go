@@ -56,7 +56,7 @@ func newTestServiceWithEmbeddingProviderAndBroadcaster(
 	cfg.CacheRoot = cacheDir
 	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 
 	svc, err := NewService(db, Options{
 		Config:                   cfg,
@@ -86,7 +86,7 @@ func newTestServiceWithOptions(t *testing.T, client *http.Client, provider embed
 	cfg.CacheRoot = cacheDir
 	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 
 	svc, err := NewService(db, Options{
 		Config:            cfg,
@@ -113,7 +113,7 @@ func TestNewServiceWithDBPathPersistsAcrossReopen(t *testing.T) {
 	newService := func() *Service {
 		cfg := DefaultConfig(tempDir, activeDir)
 		cfg.CacheRoot = cacheDir
-		cfg.SeedURLs = nil
+		cfg.DiscoveryPageURLs = nil
 		cfg.DBPath = dbPath
 
 		svc, err := NewServiceWithDBPath(dbPath, Options{
@@ -175,7 +175,7 @@ func TestNewServiceWithDBPathUsesReaderPoolForReadQueries(t *testing.T) {
 	cfg.CacheRoot = cacheDir
 	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 
 	svc, err := NewServiceWithDBPath(dbPath, Options{
 		Config:       cfg,
@@ -341,7 +341,7 @@ func TestNewServiceWithDBPathMigratesLegacySchemaWithoutFTSModule(t *testing.T) 
 	cfg.CacheRoot = cacheDir
 	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 
 	svc, err := NewServiceWithDBPath(dbPath, Options{
 		Config:       cfg,
@@ -1879,7 +1879,7 @@ func TestEnsureDefaultSourcesDisablesTencentClawHubMirror(t *testing.T) {
 	activeDir := filepath.Join(t.TempDir(), "active")
 	cfg := DefaultConfig(t.TempDir(), activeDir)
 	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	cfg.ClawHubMirrorBaseURLs = []string{
 		"https://skillhub.tencent.com",
 		"https://mirror.example.com/clawhub",
@@ -2202,10 +2202,10 @@ func TestEnsureDefaultSourcesAppliesOptionalAPIKeysToCorrectSources(t *testing.T
 	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
 	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	if len(cfg.SeedURLs) != len(defaultSeedURLs) {
-		t.Fatalf("DefaultConfig SeedURLs = %v, want %v", cfg.SeedURLs, defaultSeedURLs)
+	if len(cfg.DiscoveryPageURLs) != len(defaultDiscoveryPageURLs) {
+		t.Fatalf("DefaultConfig DiscoveryPageURLs = %v, want %v", cfg.DiscoveryPageURLs, defaultDiscoveryPageURLs)
 	}
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	cfg.SkillHubAPIKey = "skillhub-token"
 	cfg.SkillsMPAPIKey = "skillsmp-token"
 
@@ -2281,7 +2281,7 @@ func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 		"skillsmp",
 		"llmskills",
 	}
-	for i := range defaultSeedURLs {
+	for i := range defaultDiscoveryPageURLs {
 		expectedIDs = append(expectedIDs, fmt.Sprintf("seed-%d", i+1))
 	}
 	if len(sources) != len(expectedIDs) {
@@ -2293,6 +2293,63 @@ func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 		}
 		if i > 0 && sources[i-1].Priority > sources[i].Priority {
 			t.Fatalf("priority order is not ascending: %+v", sources)
+		}
+	}
+}
+
+func TestEnsureDefaultSourcesDisablesDeprecatedAwesomeSeeds(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	for i, seedURL := range deprecatedAwesomeDiscoveryPageURLs {
+		if err := store.UpsertSource(context.Background(), Source{
+			ID:          fmt.Sprintf("seed-%d", len(defaultDiscoveryPageURLs)+i+1),
+			Type:        "seed_page",
+			BaseURL:     seedURL,
+			DisplayName: fmt.Sprintf("Discovery Page %d", len(defaultDiscoveryPageURLs)+i+1),
+			SourceGroup: "seed",
+			AuthMode:    "none",
+			Enabled:     true,
+			Priority:    100 + len(defaultDiscoveryPageURLs) + i,
+		}); err != nil {
+			t.Fatalf("UpsertSource(%q) error = %v", seedURL, err)
+		}
+	}
+
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := DefaultConfig(t.TempDir(), activeDir)
+	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
+	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+
+	if _, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      NewScanner(nil),
+	}); err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	for i, seedURL := range deprecatedAwesomeDiscoveryPageURLs {
+		var enabled int
+		if err := db.QueryRow(`
+			SELECT enabled
+			FROM skill_sources
+			WHERE id = ? AND type = ? AND base_url = ?
+		`, fmt.Sprintf("seed-%d", len(defaultDiscoveryPageURLs)+i+1), "seed_page", seedURL).Scan(&enabled); err != nil {
+			t.Fatalf("QueryRow(%q) error = %v", seedURL, err)
+		}
+		if enabled != 0 {
+			t.Fatalf("seed %q enabled = %d, want 0", seedURL, enabled)
 		}
 	}
 }
@@ -2363,7 +2420,7 @@ func TestSeedPageDiscoverHandlesGitHubRepoAndTreeLinks(t *testing.T) {
 		ID:          "seed-github-awesome",
 		Type:        "seed_page",
 		BaseURL:     server.URL,
-		DisplayName: "Seed Page",
+		DisplayName: "Discovery Page",
 		SourceGroup: "seed",
 		Enabled:     true,
 		Priority:    1,

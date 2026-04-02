@@ -89,6 +89,8 @@ const uploadingIcon = ref(false)
 // Drag and drop state
 const draggedProvider = ref<Provider | null>(null)
 const dragOverProvider = ref<string | null>(null)
+const providerDragBaseOrder = ref<Provider[] | null>(null)
+const providerPreviewOrder = ref<Provider[] | null>(null)
 
 type EditableCustomProviderFormat = 'auto' | 'openai' | 'responses' | 'anthropic' | 'google'
 
@@ -523,6 +525,8 @@ const filteredProviders = computed(() => {
     return b.priority - a.priority
   })
 })
+
+const displayedProviders = computed(() => providerPreviewOrder.value ?? filteredProviders.value)
 
 // Check if selected provider belongs to current tab
 const currentTabSelectedProvider = computed(() => {
@@ -1258,9 +1262,57 @@ function selectProvider(providerId: string) {
 }
 
 // Drag and drop handlers
+function resetProviderDragState() {
+  draggedProvider.value = null
+  dragOverProvider.value = null
+  providerDragBaseOrder.value = null
+  providerPreviewOrder.value = null
+}
+
+function reorderProviderList(providers: Provider[], draggedId: string, targetId: string) {
+  const reorderedProviders = [...providers]
+  const draggedIndex = reorderedProviders.findIndex((provider) => provider.id === draggedId)
+  const targetIndex = reorderedProviders.findIndex((provider) => provider.id === targetId)
+
+  if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) {
+    return null
+  }
+
+  const [removed] = reorderedProviders.splice(draggedIndex, 1)
+  if (!removed) {
+    return null
+  }
+  reorderedProviders.splice(targetIndex, 0, removed)
+  return reorderedProviders
+}
+
+function syncProviderOrder(providers: Provider[]) {
+  // Keep the current priority spacing so persisted order still matches the existing sort rules.
+  const maxPriority = 100
+  const step = Math.floor(maxPriority / (providers.length + 1))
+  const updates: Array<{ id: string; priority: number }> = []
+
+  for (let i = 0; i < providers.length; i++) {
+    const provider = providers[i]
+    if (!provider) continue
+    const newPriority = maxPriority - i * step
+    if (provider.priority !== newPriority) {
+      store.updateProviderPriorityLocal(provider.id, newPriority)
+      updates.push({ id: provider.id, priority: newPriority })
+    }
+  }
+
+  if (updates.length > 0) {
+    store.syncPrioritiesToBackend(updates)
+  }
+}
+
 function handleDragStart(e: DragEvent, provider: Provider) {
   if (!canReorderProviders.value) return
   draggedProvider.value = provider
+  providerDragBaseOrder.value = [...filteredProviders.value]
+  providerPreviewOrder.value = null
+  dragOverProvider.value = null
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', provider.id)
@@ -1273,74 +1325,52 @@ function handleDragOver(e: DragEvent, provider: Provider) {
   if (e.dataTransfer) {
     e.dataTransfer.dropEffect = 'move'
   }
-  if (draggedProvider.value && draggedProvider.value.id !== provider.id) {
-    dragOverProvider.value = provider.id
+  if (
+    draggedProvider.value &&
+    draggedProvider.value.id !== provider.id &&
+    dragOverProvider.value !== provider.id
+  ) {
+    const baseOrder = providerDragBaseOrder.value ?? filteredProviders.value
+    const previewOrder = reorderProviderList(baseOrder, draggedProvider.value.id, provider.id)
+    if (previewOrder) {
+      providerPreviewOrder.value = previewOrder
+      dragOverProvider.value = provider.id
+    }
   }
 }
 
 function handleDragLeave() {
   if (!canReorderProviders.value) return
+  if (draggedProvider.value) return
   dragOverProvider.value = null
 }
 
 function handleDragEnd() {
   if (!canReorderProviders.value) return
-  draggedProvider.value = null
-  dragOverProvider.value = null
+  resetProviderDragState()
 }
 
 async function handleDrop(e: DragEvent, targetProvider: Provider) {
   if (!canReorderProviders.value) return
   e.preventDefault()
-  dragOverProvider.value = null
 
   if (!draggedProvider.value || draggedProvider.value.id === targetProvider.id) {
-    draggedProvider.value = null
+    resetProviderDragState()
     return
   }
 
-  // Get current list and find indices
-  const providers = [...filteredProviders.value]
-  const draggedIndex = providers.findIndex((p) => p.id === draggedProvider.value!.id)
-  const targetIndex = providers.findIndex((p) => p.id === targetProvider.id)
+  const baseOrder = providerDragBaseOrder.value ?? filteredProviders.value
+  const providers =
+    providerPreviewOrder.value ??
+    reorderProviderList(baseOrder, draggedProvider.value.id, targetProvider.id)
 
-  if (draggedIndex === -1 || targetIndex === -1) {
-    draggedProvider.value = null
+  if (!providers) {
+    resetProviderDragState()
     return
   }
 
-  // Reorder the list
-  const [removed] = providers.splice(draggedIndex, 1)
-  if (!removed) {
-    draggedProvider.value = null
-    return
-  }
-  providers.splice(targetIndex, 0, removed)
-
-  // Calculate new priorities (higher index = lower priority, so we reverse)
-  const maxPriority = 100
-  const step = Math.floor(maxPriority / (providers.length + 1))
-
-  // Collect updates for batch sync
-  const updates: Array<{ id: string; priority: number }> = []
-
-  // Update priorities locally first (instant UI update)
-  for (let i = 0; i < providers.length; i++) {
-    const provider = providers[i]
-    if (!provider) continue
-    const newPriority = maxPriority - i * step
-    if (provider.priority !== newPriority) {
-      store.updateProviderPriorityLocal(provider.id, newPriority)
-      updates.push({ id: provider.id, priority: newPriority })
-    }
-  }
-
-  // Sync to backend in background (fire and forget)
-  if (updates.length > 0) {
-    store.syncPrioritiesToBackend(updates)
-  }
-
-  draggedProvider.value = null
+  syncProviderOrder(providers)
+  resetProviderDragState()
 }
 
 function getStatusColor(status: string, enabled: boolean) {
@@ -1914,7 +1944,7 @@ onMounted(() => {
           {{ t('providerPool.dragToReorder') }}
         </p>
         <div
-          v-for="provider in filteredProviders"
+          v-for="provider in displayedProviders"
           :key="provider.id"
           :draggable="canReorderProviders"
           :class="[

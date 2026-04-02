@@ -1,4 +1,4 @@
-//go:build espeak
+//go:build espeak || kokoro
 
 package tts
 

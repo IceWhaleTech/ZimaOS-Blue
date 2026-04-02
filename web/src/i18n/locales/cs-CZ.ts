@@ -62,6 +62,10 @@ export default mergeHarnessLocale('cs-CZ', {
     select: 'Select',
     test: 'Otestovat',
     provider: 'Provider',
+    name: 'Název',
+    title: 'Titulek',
+    description: 'Popis',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1173,7 +1177,7 @@ export default mergeHarnessLocale('cs-CZ', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'V pořádku',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1802,8 +1806,9 @@ export default mergeHarnessLocale('cs-CZ', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Externí agenti',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Nový External Agent',
       metadata: 'Metadata',
       newAcp: 'Nové ACP',
       newA2a: 'Nové A2A',
@@ -1817,6 +1822,7 @@ export default mergeHarnessLocale('cs-CZ', {
       customProfile: 'Vlastní profil',
       health: 'Zdraví',
       verify: 'Ověřte',
+      status: { verified: 'Ověřeno' },
       cwd: 'Pracovní adresář',
       environment: 'Přepisy prostředí',
       endpoint: 'Koncový bod URL',
@@ -4374,8 +4380,8 @@ export default mergeHarnessLocale('cs-CZ', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Ověřeno - viditelné v Claude CLI',
+      verificationFailed: 'Ověření se nezdařilo - nemusí být viditelné v Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4387,7 +4393,7 @@ export default mergeHarnessLocale('cs-CZ', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Otevrit odkaz',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4522,6 +4528,76 @@ export default mergeHarnessLocale('cs-CZ', {
         caption: 'Embeddingy postupně zlepšují kvalitu sémantického vyhledávání',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Agregované katalogy SkillHub z Tencent SkillHub a SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Oficiální zdroj katalogu Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Komunitní katalog SkillHub a zrcadlový web.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'Zdroje vyhledávání repozitářů na GitHubu pro soubory SKILL.md, CLAUDE.md a AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'Vyhledávání kódu na GitHubu pro repozitáře, které publikují SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'Vyhledávání kódu na GitHubu pro repozitáře, které publikují CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'Vyhledávání kódu na GitHubu pro repozitáře, které publikují AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Katalog tržiště ClawHub.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub zrcadlo',
+          description: 'Zrcadlový endpoint pro katalog ClawHub.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Komunitní katalog zaměřený na znovupoužitelné kolekce skillů.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Katalog tržiště SkillsMP.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Katalog komunitního tržiště LLMSkills.',
+        },
+        external: {
+          label: 'Externí Zdroje',
+          description: 'Kurátorované záznamy skillů importované z externích URL.',
+        },
+        curatedSkillUrl: {
+          label: 'Externí Skill',
+          description: 'Kurátorovaná položka tržiště importovaná z přímé URL skillu.',
+        },
+        curatedGithubSeed: {
+          label: 'Vybrané zdroje GitHub',
+          description: 'Seznam vybraných zdrojů GitHub importovaný z odkazů GitHub.',
+        },
+        seed: {
+          label: 'Objevovací stránky',
+          description: 'Objevovací stránky odkazující na další dovednosti nalezené na webu.',
+        },
+        seedInstance: {
+          label: 'Objevovací stránka {index}',
+          description: 'Objevovací stránka {index}, která odkazuje na další dovednosti nalezené na webu.',
+        },
+      },
       hero: {
         kicker: 'Marketplace skillu',
         title: 'Objevujte, kontrolujte a instalujte agentni skilly',
@@ -4534,9 +4610,12 @@ export default mergeHarnessLocale('cs-CZ', {
         red: 'Blokovano',
       },
       warnings: {
-        mediumRiskPermissions: 'Tato dovednost vyžaduje oprávnění se středním rizikem. Před povolením automatických aktualizací si prohlédněte bezpečnostní zprávu.',
-        payloadScanEscalatedHighRisk: 'Kontrola nainstalovaného balíčku (payload scan) povýšila tento skill ze středního na vysoké riziko. Před použitím si prosím přečtěte bezpečnostní zprávu.',
-        legacyManifestFallback: 'Byl zjištěn starší formát dovednosti; byla použita výchozí nastavení kompatibility.',
+        mediumRiskPermissions:
+          'Tato dovednost vyžaduje oprávnění se středním rizikem. Před povolením automatických aktualizací si prohlédněte bezpečnostní zprávu.',
+        payloadScanEscalatedHighRisk:
+          'Kontrola nainstalovaného balíčku (payload scan) povýšila tento skill ze středního na vysoké riziko. Před použitím si prosím přečtěte bezpečnostní zprávu.',
+        legacyManifestFallback:
+          'Byl zjištěn starší formát dovednosti; byla použita výchozí nastavení kompatibility.',
       },
       categories: {
         ai_intelligence: 'AI a inteligence',
@@ -4617,7 +4696,8 @@ export default mergeHarnessLocale('cs-CZ', {
         dependency_manifest: 'Zavislosti',
         binary_artifact: 'Binarni artefakt',
         data_exfiltration: 'Exfiltrace dat',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Vstrikovani prikazu',
+        command_injection: 'Vstrikovani prikazu',
       },
       filters: {
         category: 'Kategorie',
@@ -4686,7 +4766,7 @@ export default mergeHarnessLocale('cs-CZ', {
         loading: 'Nacita se bezpecnostni zprava...',
         score: 'Skore',
         badge: 'Odznak',
-        signals: 'Risk signals',
+        signals: 'Rizikove signaly',
         binary: 'Binarni',
         installSurface: 'Plocha instalace',
         artifactKind: 'Typ artefaktu',
@@ -4698,6 +4778,45 @@ export default mergeHarnessLocale('cs-CZ', {
         moreEvidence: '+{count} dalsich dukazu',
         noMajorWarnings: 'Nebyla zjistena zadna zavazna varovani.',
         noReport: 'Bezpecnostni zprava zatim neni k dispozici.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Souborovy system',
+          network: 'Sit',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'System',
+        },
+        valuePrefixes: {
+          matched: 'Shoda',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Pokusy vlozit prompty na urovni systemu',
+          binaryArtifactDetected: 'Byl zjisten binarni artefakt',
+          commandInjectionAttemptDetected: 'Byl zjisten pokus o vstrikovani prikazu',
+          dependencyManifestsDetected: 'Byly zjisteny manifesty zavislosti',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Vlozene prihlasovaci udaje nebo material soukromeho klice',
+          knownJailbreakAttempts: 'Zname pokusy o jailbreak',
+          potentialDataExfiltrationAttempts: 'Potencialni pokusy o exfiltraci dat',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potencialne destruktivni nebo vzdalene spoustena shellova sekvence',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Z obsahu skillu byla odvozena privilegovana schopnost, ale neni deklarovana',
+          promptInjectionAttemptInstructionOverride:
+            'Pokus o prompt injection - prepsani instrukci',
+          promptInjectionAttemptJailbreak: 'Pokus o prompt injection - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Pokus o prompt injection - prepsani role',
+          promptInjectionAttemptSystemPromptInjection:
+            'Pokus o prompt injection - injekce systemoveho promptu',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Text promptu, ktery se snazi prepsat nebo narusit agenta',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Vzor shelloveho nebo prikazoveho vstrikovani zjisteny sdilenym detektorem',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Balicek skillu obsahuje spustitelny nebo nepruhledny binarni payload',
+          suspiciousExternalContentPattern: 'Podezrely vzor externiho obsahu',
+        },
       },
       detail: {
         title: 'Detaily',
@@ -4981,6 +5100,7 @@ export default mergeHarnessLocale('cs-CZ', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Metriky',
     lastUpdated: 'Naposledy aktualizováno',
     reset: 'Resetovat',
     confirmReset: 'Opravdu chcete resetovat všechny metriky? Tuto akci nelze vrátit zpět.',

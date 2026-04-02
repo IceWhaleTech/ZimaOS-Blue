@@ -10,6 +10,7 @@ export default mergeHarnessLocale('ca-ES', {
     delete: 'Eliminar',
     deleting: 'Eliminant...',
     edit: 'Editar',
+    update: 'Actualitzar',
     create: 'Crear',
     creating: 'Creant...',
     add: 'Add',
@@ -62,6 +63,10 @@ export default mergeHarnessLocale('ca-ES', {
     select: 'Select',
     test: 'Prova',
     provider: 'Provider',
+    name: 'Nom',
+    title: 'Títol',
+    description: 'Descripció',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1177,7 +1182,7 @@ export default mergeHarnessLocale('ca-ES', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Correcte',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1767,6 +1772,11 @@ export default mergeHarnessLocale('ca-ES', {
         model_not_found: 'Model no trobat',
         timeout: 'Temps esgotat',
       },
+      chips: {
+        healthy: 'Correcte',
+        halfOpen: 'Semiobert',
+        open: 'Obert',
+      },
     },
     tts: {
       title: 'Text-to-Speech',
@@ -1817,8 +1827,9 @@ export default mergeHarnessLocale('ca-ES', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Agents externs',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Nou External Agent',
       protocol: 'Protocol',
       newAcp: 'Nou ACP',
       newA2a: 'Nou A2A',
@@ -1832,6 +1843,7 @@ export default mergeHarnessLocale('ca-ES', {
       customProfile: 'Perfil personalitzat',
       health: 'Salut',
       verify: 'Verificar',
+      status: { verified: 'Verificat' },
       cwd: 'Directori de treball',
       environment: "Anul·lació de l'entorn",
       endpoint: 'Punt final URL',
@@ -1879,6 +1891,7 @@ export default mergeHarnessLocale('ca-ES', {
     noDescription: 'No hi ha cap descripció disponible',
     noMatchingTools: "No s'ha trobat cap element coincident",
     noTools: 'No hi ha cap element disponible',
+    noToolsTitle: "No s'han trobat eines",
     uploadSkill: 'Instal·la una habilitat',
     uploadSkillTitle: 'Upload Skill',
     uploadPluginTitle: 'Upload Plugin',
@@ -2023,7 +2036,8 @@ export default mergeHarnessLocale('ca-ES', {
     noFiles: "No s'han trobat fitxers de l'espai de treball.",
     tokens: '~{count} tokens',
     coreTokens: '~{count} tokens dels fitxers principals',
-    coreTokensHint: "Només compta els fitxers principals de l'espai de treball que es mostren aquí.",
+    coreTokensHint:
+      "Només compta els fitxers principals de l'espai de treball que es mostren aquí.",
     chars: '{count} caràcters',
     label: {
       soul: 'Ànima',
@@ -2264,6 +2278,57 @@ export default mergeHarnessLocale('ca-ES', {
   },
   system: {
     title: 'System',
+    cards: {
+      status: {
+        compactSubtitle: 'Salut del servei principal',
+        fullSubtitle: 'Execució del servei',
+        summaryOk: 'El servei principal respon amb normalitat',
+        summaryDegraded: 'El servei està disponible, però les comprovacions requereixen atenció',
+        summaryError: 'Les comprovacions de salut necessiten atenció immediata',
+        summaryUnknown: "Esperant mostres de salut del temps d'execució",
+      },
+      uptime: {
+        subtitle: 'Disponibilitat del procés',
+        footnote: "Des de l'últim inici del procés",
+      },
+      cpu: {
+        awaitingPeak: 'Esperant mostra de pic',
+        peakWindow: 'Pic del {value}% en 5 minuts',
+        caption: 'Pressió de càlcul acumulada durant els darrers 5 minuts',
+      },
+      heap: {
+        subtitle: 'Assignació actual del heap',
+        chip: 'Ara',
+        footnote: "Petjada en viu de l'assignador del heap",
+      },
+      goroutines: {
+        subtitle: 'Càrrega del planificador',
+        chip: 'En viu',
+        footnote: 'Rutines actives a la finestra actual del planificador',
+      },
+      memoryChart: {
+        compactSubtitle: 'Marca més alta en 5 minuts',
+        awaitingSample: 'Esperant una mostra recent',
+        currentValue: 'Actual {value}',
+        chartSubtitle: "Petjada de l'assignador durant els darrers 5 minuts",
+        chartCaption: "Assignació amb heap mostrejada durant la finestra d'execució més recent",
+      },
+      heapChart: {
+        chartSubtitle: 'Assignació del heap gestionat durant els darrers 5 minuts',
+        chartCaption: "Creixement i retenció del heap dins de la finestra d'execució més recent",
+      },
+      goroutinesChart: {
+        chartSubtitle: 'Concurrència del planificador durant els darrers 5 minuts',
+        chartCaption: "Treball concurrent del runtime i pressió del planificador a la finestra més recent",
+      },
+      info: {
+        subtitle: "Versió del runtime i context del pool de treballadors",
+        versionFootnote: 'Versió actual del servei desplegat',
+        workerPool: 'Pool de treballadors',
+        runningWorkers: '{active} / {total} en execució',
+        capacityFootnote: "Treballadors en execució respecte a la capacitat configurada del runtime",
+      },
+    },
     autoRefresh: 'Auto refresh (5s)',
     status: 'Status',
     statusOk: 'OK',
@@ -4214,6 +4279,9 @@ export default mergeHarnessLocale('ca-ES', {
     mediaGenReqs: 'generations',
   },
   mediaStats: {
+    cards: {
+      subtitle: 'Activitat de generació',
+    },
     noData: 'Encara no hi ha dades de generació de mitjans',
     totalCost: 'Cost total',
     succeeded: 'Reeixit',
@@ -4421,8 +4489,8 @@ export default mergeHarnessLocale('ca-ES', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Verificat - visible al Claude CLI',
+      verificationFailed: 'La verificació ha fallat - pot no ser visible al Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4434,7 +4502,7 @@ export default mergeHarnessLocale('ca-ES', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: "Obre l'enllac",
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4569,6 +4637,76 @@ export default mergeHarnessLocale('ca-ES', {
         caption: 'Els embeddings milloren la qualitat de la cerca semàntica amb el temps',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Catàlegs SkillHub agregats de Tencent SkillHub i SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Flux oficial del catàleg Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Catàleg comunitari SkillHub i lloc mirall.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'Fonts de cerca de repositoris de GitHub per a fitxers SKILL.md, CLAUDE.md i AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'Cerca de codi de GitHub per a repositoris que publiquen SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'Cerca de codi de GitHub per a repositoris que publiquen CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'Cerca de codi de GitHub per a repositoris que publiquen AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Catàleg del mercat ClawHub.',
+        },
+        clawhubMirror: {
+          label: 'Mirall de ClawHub',
+          description: 'Endpoint mirall del catàleg ClawHub.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Catàleg comunitari centrat en col·leccions de skills reutilitzables.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Catàleg del mercat SkillsMP.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Catàleg del mercat comunitari LLMSkills.',
+        },
+        external: {
+          label: 'Fonts Externes',
+          description: 'Registres de skills seleccionats importats des d’URL externes.',
+        },
+        curatedSkillUrl: {
+          label: 'Skill Externa',
+          description: 'Entrada seleccionada del mercat importada des d’un URL directe de skill.',
+        },
+        curatedGithubSeed: {
+          label: 'Fonts GitHub seleccionades',
+          description: 'Llista de fonts GitHub seleccionades importada de referències de GitHub.',
+        },
+        seed: {
+          label: 'Pàgines de descoberta',
+          description: 'Pàgines de descoberta que enllacen a més habilitats trobades al web.',
+        },
+        seedInstance: {
+          label: 'Pàgina de descoberta {index}',
+          description: 'Pàgina de descoberta {index} que enllaça a més habilitats trobades al web.',
+        },
+      },
       hero: {
         kicker: 'Marketplace de skills',
         title: 'Descobreix, revisa i instal·la skills d agent',
@@ -4581,9 +4719,12 @@ export default mergeHarnessLocale('ca-ES', {
         red: 'Bloquejat',
       },
       warnings: {
-        mediumRiskPermissions: 'Aquesta habilitat requereix permisos de risc mitjà. Revisa l’informe de seguretat abans d’activar l’actualització automàtica.',
-        payloadScanEscalatedHighRisk: 'L’escaneig del payload instal·lat ha elevat aquesta habilitat de risc mitjà a risc alt. Revisa l’informe de seguretat abans d’utilitzar aquesta habilitat.',
-        legacyManifestFallback: 'S’ha detectat un format heretat; s’han aplicat valors per defecte de compatibilitat.',
+        mediumRiskPermissions:
+          'Aquesta habilitat requereix permisos de risc mitjà. Revisa l’informe de seguretat abans d’activar l’actualització automàtica.',
+        payloadScanEscalatedHighRisk:
+          'L’escaneig del payload instal·lat ha elevat aquesta habilitat de risc mitjà a risc alt. Revisa l’informe de seguretat abans d’utilitzar aquesta habilitat.',
+        legacyManifestFallback:
+          'S’ha detectat un format heretat; s’han aplicat valors per defecte de compatibilitat.',
       },
       categories: {
         ai_intelligence: 'IA i intel·ligencia',
@@ -4664,7 +4805,8 @@ export default mergeHarnessLocale('ca-ES', {
         dependency_manifest: 'Dependències',
         binary_artifact: 'Artefacte binari',
         data_exfiltration: 'Exfiltració de dades',
-        cmd_injection: 'Shell injection',
+        cmd_injection: "Injeccio d'ordres",
+        command_injection: "Injeccio d'ordres",
       },
       filters: {
         category: 'Categoria',
@@ -4733,7 +4875,7 @@ export default mergeHarnessLocale('ca-ES', {
         loading: "S'està carregant l'informe de seguretat...",
         score: 'Puntuació',
         badge: 'Insígnia',
-        signals: 'Risk signals',
+        signals: 'Senyals de risc',
         binary: 'Binari',
         installSurface: "Superfície d'instal·lació",
         artifactKind: "Tipus d'artefacte",
@@ -4745,6 +4887,45 @@ export default mergeHarnessLocale('ca-ES', {
         moreEvidence: '+{count} proves addicionals',
         noMajorWarnings: "No s'han detectat avisos importants.",
         noReport: 'Encara no hi ha cap informe de seguretat disponible.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Sistema de fitxers',
+          network: 'Xarxa',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Sistema',
+        },
+        valuePrefixes: {
+          matched: 'Coincidencia',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: "Intents d'injectar prompts a nivell de sistema",
+          binaryArtifactDetected: "S'ha detectat un artefacte binari",
+          commandInjectionAttemptDetected: "S'ha detectat un intent d'injeccio d'ordres",
+          dependencyManifestsDetected: "S'han detectat manifests de dependencies",
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Material de credencial incrustada o clau privada',
+          knownJailbreakAttempts: 'Intents de jailbreak coneguts',
+          potentialDataExfiltrationAttempts: "Possibles intents d'exfiltracio de dades",
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            "Sequencia de shell potencialment destructiva o d'execucio remota",
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            "S'ha inferit una capacitat privilegiada del contingut de l'skill pero no s'ha declarat",
+          promptInjectionAttemptInstructionOverride:
+            "Intent d'injeccio de prompt - anul·lacio d'instruccions",
+          promptInjectionAttemptJailbreak: "Intent d'injeccio de prompt - jailbreak",
+          promptInjectionAttemptRoleOverride: "Intent d'injeccio de prompt - anul·lacio de rol",
+          promptInjectionAttemptSystemPromptInjection:
+            "Intent d'injeccio de prompt - injeccio del prompt del sistema",
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            "Text del prompt que intenta anul·lar o subvertir l'agent",
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            "Patro d'injeccio de shell o ordres detectat pel detector compartit",
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            "El paquet de l'skill conte una carrega binaria executable o opaca",
+          suspiciousExternalContentPattern: 'Patro sospitos de contingut extern',
+        },
       },
       detail: {
         title: 'Detalls',
@@ -5033,6 +5214,15 @@ export default mergeHarnessLocale('ca-ES', {
     connectionFailed: 'Connexió fallida',
   },
   metrics: {
+    label: 'Mètriques',
+    cards: {
+      overview: {
+        subtitle: "Resum d'ús",
+      },
+      modelStats: {
+        subtitle: '{count} models seguits',
+      },
+    },
     lastUpdated: 'Última actualització',
     reset: 'Reiniciar',
     confirmReset: 'Segur que vols reiniciar totes les mètriques? Aquesta acció no es pot desfer.',
@@ -6056,6 +6246,7 @@ export default mergeHarnessLocale('ca-ES', {
   speech: {
     convertTask: {
       task: 'Tasca',
+      sources: 'Fonts',
       cancelling: 'Cancel·lant...',
       downloadAudio: "Descarrega l'àudio",
       downloadVideo: 'Descarrega el vídeo',
@@ -7132,6 +7323,19 @@ export default mergeHarnessLocale('ca-ES', {
     completedToast: 'Media generation completed',
     download: 'Download',
     openInNewTab: 'Open in new tab',
+    modelDownload: {
+      auto: {
+        fileName: 'Processant fitxers',
+      },
+      completed: 'Descarregat',
+      pending: 'Pendent',
+      status: {
+        downloading: 'Descarregant metadades',
+        error: 'La descàrrega ha fallat',
+        pending: 'Preparant la descàrrega',
+        ready: 'Model llest',
+      },
+    },
     generatingWithType: "S'està generant {type}...",
     status: {
       pending: 'En cua',

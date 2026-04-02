@@ -49,7 +49,7 @@ func testSkillMarketConfig(dataDir, activeDir string) skillmarket.Config {
 	cfg := skillmarket.DefaultConfig(dataDir, activeDir)
 	cfg.CuratedConfigPath = filepath.Join(dataDir, "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	return cfg
 }
 
@@ -657,7 +657,7 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 	cfg.SkillStackBaseURL = server.URL
 	cfg.SkillsMPBaseURL = server.URL
 	cfg.LLMSkillsBaseURL = server.URL
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	market, err := skillmarket.NewService(db, skillmarket.Options{
 		Config:       cfg,
 		Registry:     skill.NewRegistry(),
@@ -837,7 +837,7 @@ func TestMarketDiscoverSkillsUsesSingleFlightWhileRunning(t *testing.T) {
 	cfg.SkillStackBaseURL = server.URL
 	cfg.SkillsMPBaseURL = server.URL
 	cfg.LLMSkillsBaseURL = server.URL
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	market, err := skillmarket.NewService(db, skillmarket.Options{
 		Config:       cfg,
 		Registry:     skill.NewRegistry(),

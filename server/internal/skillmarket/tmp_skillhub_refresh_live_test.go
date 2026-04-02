@@ -44,7 +44,7 @@ func TestRefreshLiveSkillHubClubSource(t *testing.T) {
 	cfg.CacheRoot = filepath.Join(os.TempDir(), "skillmarket-live-refresh-cache")
 	cfg.CuratedConfigPath = filepath.Join(moduleRoot(t), "skillmarket_curated.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	cfg.CrawlIncrementalInterval = 0
 	cfg.CrawlFullInterval = 0
 	cfg.UpdateCheckInterval = 0

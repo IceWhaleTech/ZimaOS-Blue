@@ -33,7 +33,7 @@ func TestLiveSkillMarketAvailabilityReport(t *testing.T) {
 	cfg.CacheRoot = filepath.Join(tempDir, "cache")
 	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	cfg.LightmakePageSize = 25
 	cfg.GitHubSearchPageSize = 10
 	cfg.IngestBatchSize = 25

@@ -20,6 +20,13 @@ import { useNotificationStore } from '@/stores/notification'
 import { formatVersionLabel } from '@/utils/version-label'
 import { getErrorMessage } from '@/utils/error'
 import {
+  firstMarketplaceSourceCandidate,
+  localizeMarketplaceSourceFromCandidates,
+  localizeMarketplaceSourceOptionDescription,
+  localizeMarketplaceSourceOptionLabel,
+  trimMarketplaceSourceToken,
+} from '@/utils/skillMarketplaceSources'
+import {
   skillStoreSortTranslationPath,
   type SkillStoreSortMode,
 } from '@/components/extensions/skillStoreSort'
@@ -222,6 +229,8 @@ const discoverProgressMeta = computed(() => {
 })
 const discoverProgressDescription = computed(() => {
   const sourceName = discoverStatus.value?.current_source_name
+    ? sourceLabelFromName(discoverStatus.value.current_source_name)
+    : ''
   if (isInitialCatalogLoad.value) {
     if (sourceName) {
       return skillStoreText(
@@ -278,7 +287,7 @@ const discoverPhaseLabel = computed(() => {
 })
 const discoverCurrentSourceLabel = computed(() => {
   const sourceName = discoverStatus.value?.current_source_name?.trim()
-  if (sourceName) return sourceName
+  if (sourceName) return sourceLabelFromName(sourceName)
   if (discoverPhaseTone.value === 'completed') {
     return marketplaceText('progress.allSourcesProcessed', 'All sources processed')
   }
@@ -287,6 +296,9 @@ const discoverCurrentSourceLabel = computed(() => {
   }
   return marketplaceText('progress.waitingToStart', 'Waiting to start')
 })
+const discoverCurrentSourceDescription = computed(() =>
+  sourceDescriptionFromName(discoverStatus.value?.current_source_name)
+)
 const discoverProgressFootnote = computed(() => {
   const status = discoverStatus.value
   return (
@@ -592,6 +604,34 @@ function marketplaceText(path: string, fallback: string, params?: Record<string,
   return translate(`skillStore.marketplace.${path}`, fallback, params)
 }
 
+function marketplaceDynamicText(path: string, fallback: string, params?: Record<string, unknown>) {
+  return marketplaceText(`dynamic.${path}`, fallback, params)
+}
+
+function sourceLabelFromName(value?: string | null): string {
+  return (
+    localizeMarketplaceSourceFromCandidates([value], 'label', marketplaceText) ||
+    trimMarketplaceSourceToken(value) ||
+    marketplaceText('defaultSource', 'Marketplace')
+  )
+}
+
+function sourceDescriptionFromName(value?: string | null): string {
+  return localizeMarketplaceSourceFromCandidates([value], 'description', marketplaceText)
+}
+
+function sourceOptionLabel(option?: { value?: string; label?: string } | null): string {
+  return localizeMarketplaceSourceOptionLabel(
+    option,
+    marketplaceText,
+    marketplaceText('defaultSource', 'Marketplace')
+  )
+}
+
+function sourceOptionDescription(option?: { value?: string; label?: string } | null): string {
+  return localizeMarketplaceSourceOptionDescription(option, marketplaceText)
+}
+
 function sortModeLabel(mode: SkillStoreSortMode): string {
   const fallback: Record<SkillStoreSortMode, string> = {
     featured: 'Featured',
@@ -690,11 +730,23 @@ function normalizeTags(skill?: RemoteSkill | null): string[] {
 }
 
 function sourceLabel(skill?: RemoteSkill | null): string {
+  const localized = localizeMarketplaceSourceFromCandidates(
+    [skill?.source_id, skill?.source_name, skill?.source_group],
+    'label',
+    marketplaceText
+  )
+  if (localized) return localized
   return (
-    skill?.source_name ||
-    skill?.source_group ||
-    skill?.source_id ||
+    firstMarketplaceSourceCandidate([skill?.source_name, skill?.source_group, skill?.source_id]) ||
     marketplaceText('defaultSource', 'Marketplace')
+  )
+}
+
+function sourceDescription(skill?: RemoteSkill | null): string {
+  return localizeMarketplaceSourceFromCandidates(
+    [skill?.source_id, skill?.source_name, skill?.source_group],
+    'description',
+    marketplaceText
   )
 }
 
@@ -1120,7 +1172,9 @@ function recordDiscoverActivity(
     phaseOverride ||
     ((status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') ??
       (status.running ? 'status' : 'completed'))
-  const sourceName = status.current_source_name || marketplaceText('progress.catalog', 'catalog')
+  const sourceName = status.current_source_name
+    ? sourceLabelFromName(status.current_source_name)
+    : marketplaceText('progress.catalog', 'catalog')
   const progressLabel = discoverSourceProgress(status)
   const batchSummary = discoverBatchSummary(status)
   const totalSummary = discoverTotalsSummary(status)
@@ -1651,14 +1705,18 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
           'This skill is blocked by security policy (medium risk).'
         )
         error.value = blockedMessage
-        notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, { duration: 6000 })
+        notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, {
+          duration: 6000,
+        })
       } else {
         const blockedMessage = marketplaceText(
           'messages.blockedByPolicy',
           'This skill is blocked by the security policy.'
         )
         error.value = blockedMessage
-        notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, { duration: 6000 })
+        notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, {
+          duration: 6000,
+        })
       }
     } else {
       error.value = message
@@ -1686,8 +1744,128 @@ function evidenceGroupLabel(type: string) {
     binary_artifact: 'Binary artifact',
     data_exfiltration: 'Data exfiltration',
     cmd_injection: 'Command injection',
+    command_injection: 'Command injection',
   }
   return marketplaceText(`evidenceTypes.${type}`, fallback[type] || type)
+}
+
+function permissionLabel(permission: string): string {
+  const normalized = permission.trim().toLowerCase()
+  const fallback: Record<string, string> = {
+    filesystem: 'Filesystem',
+    network: 'Network',
+    shell: 'Shell',
+    docker: 'Docker',
+    system: 'System',
+  }
+
+  return marketplaceDynamicText(`permissions.${normalized}`, fallback[normalized] || permission)
+}
+
+function evidenceSeverityLabel(severity?: string): string {
+  const normalized = severity?.trim().toLowerCase() || 'unknown'
+  const fallback: Record<string, string> = {
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    critical: 'Critical',
+    unknown: 'Unknown',
+  }
+
+  return marketplaceText(`riskLevels.${normalized}`, fallback[normalized] || severity || 'Unknown')
+}
+
+function localizedSecurityText(value?: string | null): string {
+  const trimmed = value?.trim()
+  if (!trimmed) return ''
+
+  const normalized = trimmed.toLowerCase()
+  const knownMessages: Record<string, { key: string; fallback: string }> = {
+    'attempts to inject system-level prompts': {
+      key: 'attemptsToInjectSystemLevelPrompts',
+      fallback: 'Attempts to inject system-level prompts',
+    },
+    'binary artifact detected': {
+      key: 'binaryArtifactDetected',
+      fallback: 'Binary artifact detected',
+    },
+    'command injection attempt detected': {
+      key: 'commandInjectionAttemptDetected',
+      fallback: 'Command injection attempt detected',
+    },
+    'dependency manifests detected': {
+      key: 'dependencyManifestsDetected',
+      fallback: 'Dependency manifests detected',
+    },
+    'embedded credential or private key material': {
+      key: 'embeddedCredentialOrPrivateKeyMaterial',
+      fallback: 'Embedded credential or private key material',
+    },
+    'known jailbreak attempts': {
+      key: 'knownJailbreakAttempts',
+      fallback: 'Known jailbreak attempts',
+    },
+    'potential data exfiltration attempts': {
+      key: 'potentialDataExfiltrationAttempts',
+      fallback: 'Potential data exfiltration attempts',
+    },
+    'potentially destructive or remote-execution shell sequence': {
+      key: 'potentiallyDestructiveOrRemoteExecutionShellSequence',
+      fallback: 'Potentially destructive or remote-execution shell sequence',
+    },
+    'privileged capability inferred from skill content but not declared': {
+      key: 'privilegedCapabilityInferredFromSkillContentButNotDeclared',
+      fallback: 'Privileged capability inferred from skill content but not declared',
+    },
+    'prompt injection attempt - instruction override': {
+      key: 'promptInjectionAttemptInstructionOverride',
+      fallback: 'Prompt injection attempt - instruction override',
+    },
+    'prompt injection attempt - jailbreak': {
+      key: 'promptInjectionAttemptJailbreak',
+      fallback: 'Prompt injection attempt - jailbreak',
+    },
+    'prompt injection attempt - role override': {
+      key: 'promptInjectionAttemptRoleOverride',
+      fallback: 'Prompt injection attempt - role override',
+    },
+    'prompt injection attempt - system prompt injection': {
+      key: 'promptInjectionAttemptSystemPromptInjection',
+      fallback: 'Prompt injection attempt - system prompt injection',
+    },
+    'prompt text that tries to override or subvert the agent': {
+      key: 'promptTextThatTriesToOverrideOrSubvertTheAgent',
+      fallback: 'Prompt text that tries to override or subvert the agent',
+    },
+    'shell or command injection pattern from shared threat detector': {
+      key: 'shellOrCommandInjectionPatternFromSharedThreatDetector',
+      fallback: 'Shell or command injection pattern from shared threat detector',
+    },
+    'skill package contains an executable or opaque binary payload': {
+      key: 'skillPackageContainsAnExecutableOrOpaqueBinaryPayload',
+      fallback: 'Skill package contains an executable or opaque binary payload',
+    },
+    'suspicious external content pattern': {
+      key: 'suspiciousExternalContentPattern',
+      fallback: 'Suspicious external content pattern',
+    },
+  }
+
+  const message = knownMessages[normalized]
+  if (message) {
+    return marketplaceDynamicText(`messages.${message.key}`, message.fallback)
+  }
+
+  if (normalized in { filesystem: true, network: true, shell: true, docker: true, system: true }) {
+    return permissionLabel(trimmed)
+  }
+
+  if (normalized.startsWith('matched:')) {
+    const matchedValue = trimmed.replace(/^matched:\s*/i, '')
+    return `${marketplaceDynamicText('valuePrefixes.matched', 'Matched')}: ${matchedValue}`
+  }
+
+  return trimmed
 }
 
 function detailStat(value: boolean | undefined, positive = 'Yes', negative = 'No') {
@@ -1764,7 +1942,20 @@ function cardSignalSummary(skill?: RemoteSkill | null): string {
 }
 
 const categoryOptions = computed(() => filters.value?.categories || [])
-const sourceOptions = computed(() => filters.value?.sources || [])
+const sourceOptions = computed(() =>
+  (filters.value?.sources || []).map((option) => ({
+    ...option,
+    label: sourceOptionLabel(option),
+    description: sourceOptionDescription(option),
+  }))
+)
+const selectedSourceOption = computed(() =>
+  sourceOptions.value.find((option) => option.value === selectedSource.value) || null
+)
+const selectedSourceDescription = computed(() => {
+  if (selectedSource.value === 'all') return ''
+  return selectedSourceOption.value?.description || ''
+})
 const riskOptions = computed(() => filters.value?.risk_badges || [])
 const activeFilterLabels = computed(() => {
   const labels: string[] = []
@@ -2013,10 +2204,18 @@ onBeforeUnmount(() => {
           <span>{{ marketplaceText('filters.source', 'Source') }}</span>
           <select v-model="selectedSource" class="filter-select" @change="handleSearch">
             <option value="all">{{ skillStoreText('filters.allSources', 'All Sources') }}</option>
-            <option v-for="option in sourceOptions" :key="option.value" :value="option.value">
+            <option
+              v-for="option in sourceOptions"
+              :key="option.value"
+              :value="option.value"
+              :title="option.description || undefined"
+            >
               {{ option.label }} ({{ option.count }})
             </option>
           </select>
+          <small v-if="selectedSourceDescription" class="filter-field__hint">
+            {{ selectedSourceDescription }}
+          </small>
         </label>
 
         <label class="filter-field">
@@ -2122,12 +2321,14 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="advisor-skill-card__meta">
-                <span class="meta-chip meta-chip-soft">{{ sourceLabel(skill) }}</span>
+                <span class="meta-chip meta-chip-soft" :title="sourceDescription(skill) || undefined">
+                  {{ sourceLabel(skill) }}
+                </span>
                 <span class="meta-chip meta-chip-soft">{{ categoryLabel(skill.category) }}</span>
               </div>
 
               <div class="advisor-skill-card__actions">
-                  <button
+                <button
                   v-if="skill.installable"
                   :class="[
                     'install-button',
@@ -2182,7 +2383,12 @@ onBeforeUnmount(() => {
           <div class="discover-progress__header">
             <div class="discover-progress__copy">
               <span class="section-label">{{ discoverProgressLabel }}</span>
-              <strong>{{ discoverCurrentSourceLabel }}</strong>
+              <strong :title="discoverCurrentSourceDescription || undefined">
+                {{ discoverCurrentSourceLabel }}
+              </strong>
+              <p v-if="discoverCurrentSourceDescription" class="discover-progress__source-note">
+                {{ discoverCurrentSourceDescription }}
+              </p>
               <p>{{ discoverProgressMeta }}</p>
             </div>
             <div class="discover-progress__percent">
@@ -2388,7 +2594,9 @@ onBeforeUnmount(() => {
           >
             <div class="card-topline">
               <div class="card-topline-left">
-                <span class="source-chip">{{ sourceLabel(skill) }}</span>
+                <span class="source-chip" :title="sourceDescription(skill) || undefined">
+                  {{ sourceLabel(skill) }}
+                </span>
                 <span class="meta-chip meta-chip-soft">{{ categoryLabel(skill.category) }}</span>
                 <span v-if="skill.curated_label" class="meta-chip meta-chip-hot">
                   {{ curatedLabelText(skill.curated_label) }}
@@ -2522,33 +2730,33 @@ onBeforeUnmount(() => {
             class="detail-card dashboard-card-surface store-detail-modal-card"
             :style="skillAccentStyle(detailSkill)"
           >
-	            <header class="detail-header">
-	              <div class="detail-hero-layout">
-	                <div class="detail-hero-main">
-	                  <div class="detail-icon" aria-hidden="true">
-	                    <span>{{ skillMonogram(detailSkill) }}</span>
-	                  </div>
-	                  <div class="detail-main">
-	                    <div class="detail-title-row">
-	                      <h3>{{ detailSkill.name }}</h3>
-	                      <code class="detail-slug">{{ detailSkill.id }}</code>
-	                    </div>
-	                    <div class="detail-pill-row">
-	                      <span class="detail-version-pill">{{ skillVersionLabel(detailSkill) }}</span>
-	                      <span v-if="detailInstalled" class="meta-chip meta-chip-installed">{{
-	                        skillStoreText('installed', 'Installed')
-	                      }}</span>
-	                    </div>
-	                    <p v-if="detailSkill.curated_reason" class="detail-callout">
-	                      {{ detailSkill.curated_reason }}
-	                    </p>
-	                  </div>
-	                </div>
+            <header class="detail-header">
+              <div class="detail-hero-layout">
+                <div class="detail-hero-main">
+                  <div class="detail-icon" aria-hidden="true">
+                    <span>{{ skillMonogram(detailSkill) }}</span>
+                  </div>
+                  <div class="detail-main">
+                    <div class="detail-title-row">
+                      <h3>{{ detailSkill.name }}</h3>
+                      <code class="detail-slug">{{ detailSkill.id }}</code>
+                    </div>
+                    <div class="detail-pill-row">
+                      <span class="detail-version-pill">{{ skillVersionLabel(detailSkill) }}</span>
+                      <span v-if="detailInstalled" class="meta-chip meta-chip-installed">{{
+                        skillStoreText('installed', 'Installed')
+                      }}</span>
+                    </div>
+                    <p v-if="detailSkill.curated_reason" class="detail-callout">
+                      {{ detailSkill.curated_reason }}
+                    </p>
+                  </div>
+                </div>
 
-	                <aside class="detail-header-side">
-	                  <div class="detail-utility-actions">
-	                    <button
-	                      type="button"
+                <aside class="detail-header-side">
+                  <div class="detail-utility-actions">
+                    <button
+                      type="button"
                       class="detail-utility-button"
                       :aria-label="marketplaceText('actions.viewSource', 'View source')"
                       @click="openSkillSource(detailSkill)"
@@ -2609,27 +2817,24 @@ onBeforeUnmount(() => {
                         </svg>
                       </span>
                       <strong>{{ formatNumber(detailSkill.stars) }}</strong>
-	                      <small>{{ skillStoreText('detail.meta.stars', 'Stars') }}</small>
-	                    </article>
-	                  </div>
-	                </aside>
+                      <small>{{ skillStoreText('detail.meta.stars', 'Stars') }}</small>
+                    </article>
+                  </div>
+                </aside>
 
-	                <section class="detail-install-panel detail-install-panel--hero">
-	                  <div class="detail-install-copy">
-	                    <span class="section-label">{{
-	                      marketplaceText('detail.installTitle', 'Install')
-	                    }}</span>
-	                    <p class="detail-install-headline">
-	                      {{
-	                        marketplaceText(
-	                          'detail.installHeading',
-	                          'Add this skill to your workspace'
-	                        )
-	                      }}
-	                    </p>
-	                    <p>{{ installHint(detailSkill) }}</p>
-	                  </div>
-	                  <div class="detail-actions detail-actions--inline">
+                <section class="detail-install-panel detail-install-panel--hero">
+                  <div class="detail-install-copy">
+                    <span class="section-label">{{
+                      marketplaceText('detail.installTitle', 'Install')
+                    }}</span>
+                    <p class="detail-install-headline">
+                      {{
+                        marketplaceText('detail.installHeading', 'Add this skill to your workspace')
+                      }}
+                    </p>
+                    <p>{{ installHint(detailSkill) }}</p>
+                  </div>
+                  <div class="detail-actions detail-actions--inline">
                     <button
                       v-if="detailSkill.installable"
                       :class="[
@@ -2637,30 +2842,28 @@ onBeforeUnmount(() => {
                         `install-${detailSkill.security_badge || 'yellow'}`,
                         { 'is-disabled': detailSkill.security_badge === 'red' },
                       ]"
-                      :disabled="
-                        installingSkillId === detailSkill.id
-                      "
+                      :disabled="installingSkillId === detailSkill.id"
                       :aria-disabled="detailSkill.security_badge === 'red'"
                       @click="installSkill(detailSkill)"
                     >
-	                      <span v-if="detailSkill.security_badge === 'red'">{{
-	                        marketplaceText('actions.blocked', 'Blocked')
-	                      }}</span>
-	                      <span v-else-if="detailInstalled">{{
-	                        skillStoreText('installed', 'Installed')
-	                      }}</span>
-	                      <span v-else>{{ skillStoreText('install', 'Install') }}</span>
-	                    </button>
-	                    <button v-else class="source-button" @click="openSkillSource(detailSkill)">
-	                      {{ marketplaceText('actions.viewSource', 'View source') }}
-	                    </button>
-	                    <button class="btn-ghost" @click="openSkillSource(detailSkill)">
-	                      {{ skillStoreText('detail.openLink', 'Open Link') }}
-	                    </button>
-	                  </div>
-	                </section>
-	              </div>
-	            </header>
+                      <span v-if="detailSkill.security_badge === 'red'">{{
+                        marketplaceText('actions.blocked', 'Blocked')
+                      }}</span>
+                      <span v-else-if="detailInstalled">{{
+                        skillStoreText('installed', 'Installed')
+                      }}</span>
+                      <span v-else>{{ skillStoreText('install', 'Install') }}</span>
+                    </button>
+                    <button v-else class="source-button" @click="openSkillSource(detailSkill)">
+                      {{ marketplaceText('actions.viewSource', 'View source') }}
+                    </button>
+                    <button class="btn-ghost" @click="openSkillSource(detailSkill)">
+                      {{ skillStoreText('detail.openLink', 'Open Link') }}
+                    </button>
+                  </div>
+                </section>
+              </div>
+            </header>
 
             <div class="detail-meta">
               <div class="meta-item">
@@ -2677,7 +2880,9 @@ onBeforeUnmount(() => {
               </div>
               <div class="meta-item">
                 <span>{{ skillStoreText('detail.openLink', 'Open Link') }}</span>
-                <strong>{{ sourceLabel(detailSkill) }}</strong>
+                <strong :title="sourceDescription(detailSkill) || undefined">
+                  {{ sourceLabel(detailSkill) }}
+                </strong>
               </div>
             </div>
 
@@ -2758,7 +2963,7 @@ onBeforeUnmount(() => {
                       :key="permission"
                       class="meta-chip meta-chip-soft"
                     >
-                      {{ permission }}
+                      {{ permissionLabel(permission) }}
                     </span>
                   </div>
                 </div>
@@ -2793,11 +2998,13 @@ onBeforeUnmount(() => {
                     >
                       <header>
                         <strong>{{ evidenceGroupLabel(item.type) }}</strong>
-                        <span>{{ item.severity }}</span>
+                        <span>{{ evidenceSeverityLabel(item.severity) }}</span>
                       </header>
-                      <p>{{ item.title }}</p>
-                      <small v-if="item.description">{{ item.description }}</small>
-                      <code v-if="item.value">{{ item.value }}</code>
+                      <p>{{ localizedSecurityText(item.title) }}</p>
+                      <small v-if="item.description">{{
+                        localizedSecurityText(item.description)
+                      }}</small>
+                      <code v-if="item.value">{{ localizedSecurityText(item.value) }}</code>
                     </article>
                   </div>
                   <p
@@ -2890,7 +3097,12 @@ onBeforeUnmount(() => {
             <div class="risk-modal__subject-copy">
               <strong>{{ pendingRiskSkill.name }}</strong>
               <div class="chip-row">
-                <span class="meta-chip meta-chip-soft">{{ sourceLabel(pendingRiskSkill) }}</span>
+                <span
+                  class="meta-chip meta-chip-soft"
+                  :title="sourceDescription(pendingRiskSkill) || undefined"
+                >
+                  {{ sourceLabel(pendingRiskSkill) }}
+                </span>
                 <span class="meta-chip meta-chip-soft">{{
                   skillVersionLabel(pendingRiskSkill)
                 }}</span>
@@ -2940,19 +3152,19 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-	          <div class="modal-actions risk-modal__actions">
-	            <button
-	              class="btn-ghost risk-modal__cancel-button"
-	              type="button"
-	              @click="closeRiskModal"
-	            >
-	              {{ commonText('cancel', 'Cancel') }}
-	            </button>
-	            <button
-	              class="btn-primary risk-modal__confirm-button"
-	              type="button"
-	              @click="confirmRiskInstall"
-	            >
+          <div class="modal-actions risk-modal__actions">
+            <button
+              class="btn-ghost risk-modal__cancel-button"
+              type="button"
+              @click="closeRiskModal"
+            >
+              {{ commonText('cancel', 'Cancel') }}
+            </button>
+            <button
+              class="btn-primary risk-modal__confirm-button"
+              type="button"
+              @click="confirmRiskInstall"
+            >
               {{ marketplaceText('modal.confirmInstall', 'Confirm install') }}
             </button>
           </div>
@@ -3379,6 +3591,12 @@ onBeforeUnmount(() => {
   font-size: 8px;
 }
 
+.filter-field__hint {
+  color: var(--text-secondary);
+  font-size: 8.5px;
+  line-height: 1.4;
+}
+
 .filter-select {
   min-width: 0;
   height: 26px;
@@ -3444,6 +3662,10 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   font-size: 9.5px;
   line-height: 1.4;
+}
+
+.discover-progress__source-note {
+  color: color-mix(in srgb, var(--text-secondary) 88%, var(--text-primary));
 }
 
 .discover-progress__percent {

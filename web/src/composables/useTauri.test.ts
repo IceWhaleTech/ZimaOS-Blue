@@ -304,4 +304,31 @@ describe('useTauri', () => {
       expect(revealPathMock).not.toHaveBeenCalled()
     })
   })
+
+  describe('restartServerRuntime', () => {
+    it('should invoke the desktop restart command with the requested route', async () => {
+      const invoke = vi.fn().mockResolvedValue('http://localhost:80')
+      window.__TAURI_INTERNALS__ = { invoke }
+      window.__BLUE_DESKTOP__ = true
+
+      refreshTauriDetection()
+      const { restartServerRuntime } = useTauri()
+      const ok = await restartServerRuntime('/settings?tab=userdata#backup')
+
+      expect(ok).toBe(true)
+      expect(invoke).toHaveBeenCalledWith('restart_server_runtime', {
+        path: '/settings?tab=userdata#backup',
+      })
+    })
+
+    it('should return false when desktop IPC is unavailable', async () => {
+      window.__BLUE_DESKTOP__ = true
+
+      refreshTauriDetection()
+      const { restartServerRuntime } = useTauri()
+      const ok = await restartServerRuntime('/settings')
+
+      expect(ok).toBe(false)
+    })
+  })
 })

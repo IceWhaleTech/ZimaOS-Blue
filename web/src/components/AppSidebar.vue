@@ -199,8 +199,12 @@ function setStorageItem(key: string, value: string): void {
   }
 }
 
-function tr(key: string, fallback: string): string {
-  if (te(key)) return t(key)
+function tr(
+  key: string,
+  fallback: string,
+  values?: Record<string, string | number>
+): string {
+  if (te(key)) return values ? t(key, values) : t(key)
   return fallback
 }
 
@@ -1644,7 +1648,8 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                 {{
                   tr(
                     'workspace.coreTokens',
-                    `~${coreWorkspaceTokenTotal.toLocaleString()} core-file tokens`
+                    `~${coreWorkspaceTokenTotal.toLocaleString()} core-file tokens`,
+                    { count: coreWorkspaceTokenTotal.toLocaleString() }
                   )
                 }}
               </span>

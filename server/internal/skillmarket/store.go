@@ -2,7 +2,6 @@ package skillmarket
 
 import (
 	"context"
-	"sync"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,10 +26,10 @@ type searchCacheEntry struct {
 }
 
 type Store struct {
-	db     *sql.DB
-	readDB *sql.DB
+	db         *sql.DB
+	readDB     *sql.DB
 	ftsEnabled bool
-	
+
 	// Search result caching
 	searchCacheMu  sync.RWMutex
 	searchCache    map[string]searchCacheEntry
@@ -2000,6 +2000,22 @@ func (s *Store) UpsertSource(ctx context.Context, source Source) error {
 	return err
 }
 
+func (s *Store) SetSourceEnabledByIdentity(ctx context.Context, sourceID, sourceType, baseURL string, enabled bool) error {
+	_, err := s.table(ctx, "skill_sources").Update(
+		z.V{
+			"enabled":    boolToInt(enabled),
+			"updated_at": timeutil.NowTime(),
+		},
+		z.Fields("enabled", "updated_at"),
+		z.Where(
+			z.Eq("id", sourceID),
+			z.Eq("type", sourceType),
+			z.Eq("base_url", baseURL),
+		),
+	)
+	return err
+}
+
 func (s *Store) ListSources(ctx context.Context) ([]Source, error) {
 	var rows []sourceRow
 	if _, err := s.readTable(ctx, "skill_sources").Select(&rows,
@@ -2092,7 +2108,7 @@ func (s *Store) Search(ctx context.Context, query SearchQuery) (*SearchResponse,
 	if query.PageSize <= 0 || query.PageSize > DefaultSearchLimit {
 		query.PageSize = DefaultPageSize
 	}
-	
+
 	// Check cache first
 	cacheKey := fmt.Sprintf("%s:%s:%s:%s:%d:%d", query.Query, query.Category, query.Sort, strings.Join(query.Sources, ","), query.Page, query.PageSize)
 	s.searchCacheMu.RLock()
@@ -2978,7 +2994,8 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 		}
 		return result.Categories[i].Value < result.Categories[j].Value
 	})
-	if err := buildBuckets("COALESCE(source_name, source_group, source_id, '')", "COALESCE(source_name, source_group, source_id, '')", nil, []string{"COUNT(*) DESC", "value ASC"}, &result.Sources); err != nil {
+	sourceBucketExpr := "COALESCE(NULLIF(source_group, ''), NULLIF(source_id, ''), NULLIF(source_name, ''), '')"
+	if err := buildBuckets(sourceBucketExpr, sourceBucketExpr, nil, []string{"COUNT(*) DESC", "value ASC"}, &result.Sources); err != nil {
 		return nil, err
 	}
 	if err := buildBuckets("security_badge", "security_badge", nil, []string{"security_badge"}, &result.RiskBadges); err != nil {

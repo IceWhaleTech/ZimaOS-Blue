@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { i18n } from '@/i18n'
 import ExternalAgentsSection from '@/components/settings/ExternalAgentsSection.vue'
 import { agentSessionsApi, type AgentProfile } from '@/api/agentSessions'
+import zhCN from '@/i18n/locales/zh-CN'
 
 vi.mock('@/api/agentSessions', () => ({
   agentSessionsApi: {
@@ -37,6 +38,12 @@ const seededProfiles: AgentProfile[] = [
 describe('ExternalAgentsSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ;(i18n.global as { setLocaleMessage: (locale: string, message: unknown) => void }).setLocaleMessage(
+      'zh-CN',
+      zhCN
+    )
+    i18n.global.locale.value = 'zh-CN'
+
     vi.mocked(agentSessionsApi.listProfiles).mockResolvedValue({
       data: { profiles: seededProfiles },
     } as never)
@@ -48,7 +55,21 @@ describe('ExternalAgentsSection', () => {
     } as never)
   })
 
-  it('loads profiles and runs verify and health actions for the selected profile', async () => {
+  it('loads mixed profiles, simplifies builtin cards, and runs verify and health actions', async () => {
+    const healthyProfiles: AgentProfile[] = seededProfiles.map((profile) =>
+      profile.id === 'generic-a2a' ? { ...profile, health_status: 'healthy' } : profile
+    )
+    vi.mocked(agentSessionsApi.listProfiles)
+      .mockResolvedValueOnce({
+        data: { profiles: seededProfiles },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { profiles: seededProfiles },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { profiles: healthyProfiles },
+      } as never)
+
     const wrapper = mount(ExternalAgentsSection, {
       global: {
         plugins: [i18n],
@@ -59,13 +80,15 @@ describe('ExternalAgentsSection', () => {
 
     expect(agentSessionsApi.listProfiles).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Codex ACP')
-    expect(wrapper.text()).not.toContain('Generic Remote A2A Agent')
-
-    await wrapper.get('[data-testid="external-agents-protocol-card-a2a"]').trigger('click')
-    await flushPromises()
     expect(wrapper.text()).toContain('Generic Remote A2A Agent')
 
-    await wrapper.findAll('[data-testid="external-agents-profile-card"]')[0]!.trigger('click')
+    const profileCards = wrapper.findAll('[data-testid="external-agents-profile-card"]')
+    expect(profileCards[0]!.text()).toContain('内置模板')
+    expect(profileCards[0]!.text()).not.toContain('就绪')
+    expect(profileCards[1]!.text()).toContain('内置模板')
+    expect(profileCards[1]!.text()).not.toContain('已验证')
+
+    await profileCards[1]!.trigger('click')
     await flushPromises()
 
     await wrapper.get('[data-testid="external-agents-verify-current"]').trigger('click')
@@ -77,6 +100,9 @@ describe('ExternalAgentsSection', () => {
     expect(agentSessionsApi.healthProfile).toHaveBeenCalledWith('generic-a2a')
     expect(wrapper.get('[data-testid="external-agents-notice"]').text()).toContain(
       'profile healthy'
+    )
+    expect(wrapper.findAll('[data-testid="external-agents-profile-card"]')[1]!.text()).toContain(
+      '内置模板'
     )
 
     wrapper.unmount()
@@ -109,7 +135,8 @@ describe('ExternalAgentsSection', () => {
 
     await flushPromises()
 
-    await wrapper.get('[data-testid="external-agents-new-a2a"]').trigger('click')
+    await wrapper.get('[data-testid="external-agents-new-profile"]').trigger('click')
+    await wrapper.get('[data-testid="external-agents-draft-protocol-a2a"]').trigger('click')
     await wrapper.get('[data-testid="external-agents-name"]').setValue('remote-agent')
     await wrapper
       .get('[data-testid="external-agents-endpoint"]')
@@ -147,7 +174,8 @@ describe('ExternalAgentsSection', () => {
 
     await flushPromises()
 
-    await wrapper.get('[data-testid="external-agents-new-a2a"]').trigger('click')
+    await wrapper.get('[data-testid="external-agents-new-profile"]').trigger('click')
+    await wrapper.get('[data-testid="external-agents-draft-protocol-a2a"]').trigger('click')
     await wrapper.get('[data-testid="external-agents-name"]').setValue('remote-agent')
     await wrapper
       .get('[data-testid="external-agents-endpoint"]')

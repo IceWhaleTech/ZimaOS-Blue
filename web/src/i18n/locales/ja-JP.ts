@@ -62,6 +62,10 @@ export default mergeHarnessLocale('ja-JP', {
     select: '選択',
     test: 'テスト',
     provider: 'プロバイダー',
+    name: '名前',
+    title: 'タイトル',
+    description: '説明',
+    id: 'ID',
     downloading: 'ダウンロード中',
     download: 'ダウンロード',
     downloaded: 'ダウンロード済み',
@@ -1897,8 +1901,9 @@ export default mergeHarnessLocale('ja-JP', {
     availableTools: '利用可能なツール',
     noToolsAvailable: '利用可能なツールがありません',
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: '外部エージェント',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: '新しい External Agent',
       newAcp: '新しい ACP',
       newA2a: '新しい A2A',
       newProfile: '新しいプロフィール',
@@ -1911,6 +1916,7 @@ export default mergeHarnessLocale('ja-JP', {
       customProfile: 'カスタムプロファイル',
       health: '健康',
       verify: '検証する',
+      status: { verified: '検証済み' },
       cwd: '作業ディレクトリ',
       environment: '環境オーバーライド',
       endpoint: 'エンドポイント URL',
@@ -4571,7 +4577,7 @@ export default mergeHarnessLocale('ja-JP', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'リンクを開く',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4715,6 +4721,76 @@ export default mergeHarnessLocale('ja-JP', {
         caption: '埋め込みによりセマンティック検索の品質が時間とともに向上します',
       },
       defaultSource: 'マーケットプレイス',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Tencent SkillHub と SkillHub Club を集約した SkillHub カタログです。',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Tencent SkillHub 公式カタログのフィードです。',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'コミュニティ運営の SkillHub カタログとミラーサイトです。',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'GitHub 上の SKILL.md、CLAUDE.md、AGENT.md を検索するリポジトリソースです。',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'SKILL.md を公開しているリポジトリ向けの GitHub コード検索です。',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'CLAUDE.md を公開しているリポジトリ向けの GitHub コード検索です。',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'AGENT.md を公開しているリポジトリ向けの GitHub コード検索です。',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'ClawHub マーケットプレイスのカタログです。',
+        },
+        clawhubMirror: {
+          label: 'ClawHub ミラー',
+          description: 'ClawHub カタログのミラーエンドポイントです。',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: '再利用しやすいスキル集に注目したコミュニティカタログです。',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'SkillsMP マーケットプレイスのカタログです。',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'LLMSkills コミュニティマーケットプレイスのカタログです。',
+        },
+        external: {
+          label: '外部ソース',
+          description: '外部 URL から取り込んだ厳選スキル記録です。',
+        },
+        curatedSkillUrl: {
+          label: '外部スキル',
+          description: '直接のスキル URL から取り込んだ厳選マーケットプレイス項目です。',
+        },
+        curatedGithubSeed: {
+          label: '厳選 GitHub ソース',
+          description: 'GitHub の参照から取り込んだ厳選 GitHub ソース一覧。',
+        },
+        seed: {
+          label: '探索ページ',
+          description: 'Web 上で見つかった追加スキルへつながる探索ページ。',
+        },
+        seedInstance: {
+          label: '探索ページ {index}',
+          description: 'Web 上で見つかった追加スキルへつながる探索ページ {index}。',
+        },
+      },
       hero: {
         kicker: 'スキルマーケットプレイス',
         title: 'Agent スキルを見つけて確認し、インストール',
@@ -4727,9 +4803,12 @@ export default mergeHarnessLocale('ja-JP', {
         red: 'ブロック済み',
       },
       warnings: {
-        mediumRiskPermissions: 'このスキルは中リスクの権限を必要とします。自動更新を有効にする前にセキュリティレポートを確認してください。',
-        payloadScanEscalatedHighRisk: 'インストール済みペイロードのスキャンにより、このスキルは中リスクから高リスクに引き上げられました。使用前にセキュリティレポートを確認してください。',
-        legacyManifestFallback: 'レガシー形式のスキルを検出しました。互換性のための既定値を適用しました。',
+        mediumRiskPermissions:
+          'このスキルは中リスクの権限を必要とします。自動更新を有効にする前にセキュリティレポートを確認してください。',
+        payloadScanEscalatedHighRisk:
+          'インストール済みペイロードのスキャンにより、このスキルは中リスクから高リスクに引き上げられました。使用前にセキュリティレポートを確認してください。',
+        legacyManifestFallback:
+          'レガシー形式のスキルを検出しました。互換性のための既定値を適用しました。',
       },
       categories: {
         ai_intelligence: 'AI・知能',
@@ -4810,7 +4889,8 @@ export default mergeHarnessLocale('ja-JP', {
         dependency_manifest: '依存関係',
         binary_artifact: 'バイナリアーティファクト',
         data_exfiltration: 'データ流出',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'コマンドインジェクション',
+        command_injection: 'コマンドインジェクション',
       },
       filters: {
         category: 'カテゴリ',
@@ -4879,7 +4959,7 @@ export default mergeHarnessLocale('ja-JP', {
         loading: 'セキュリティレポートを読み込み中...',
         score: 'スコア',
         badge: 'バッジ',
-        signals: 'Risk signals',
+        signals: 'リスクシグナル',
         binary: 'バイナリ',
         installSurface: 'インストール面',
         artifactKind: '成果物種別',
@@ -4891,6 +4971,44 @@ export default mergeHarnessLocale('ja-JP', {
         moreEvidence: 'さらに証拠 {count} 件',
         noMajorWarnings: '重大な警告は検出されませんでした。',
         noReport: 'セキュリティレポートはまだありません。',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'ファイルシステム',
+          network: 'ネットワーク',
+          shell: 'シェル',
+          docker: 'Docker',
+          system: 'システム',
+        },
+        valuePrefixes: {
+          matched: '一致',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'システムレベルのプロンプトを注入しようとする試み',
+          binaryArtifactDetected: 'バイナリアーティファクトを検出',
+          commandInjectionAttemptDetected: 'コマンドインジェクションの試行を検出',
+          dependencyManifestsDetected: '依存関係マニフェストを検出',
+          embeddedCredentialOrPrivateKeyMaterial: '埋め込み資格情報または秘密鍵マテリアル',
+          knownJailbreakAttempts: '既知の jailbreak の試み',
+          potentialDataExfiltrationAttempts: 'データ流出の可能性がある試み',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            '破壊的またはリモート実行につながる可能性のあるシェルシーケンス',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'skill の内容から特権機能が推定されましたが、宣言されていません',
+          promptInjectionAttemptInstructionOverride:
+            'プロンプトインジェクションの試行 - 指示の上書き',
+          promptInjectionAttemptJailbreak: 'プロンプトインジェクションの試行 - jailbreak',
+          promptInjectionAttemptRoleOverride: 'プロンプトインジェクションの試行 - ロールの上書き',
+          promptInjectionAttemptSystemPromptInjection:
+            'プロンプトインジェクションの試行 - システムプロンプトの注入',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'エージェントを上書きまたは逸脱させようとするプロンプト文',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            '共通脅威検出器がシェル/コマンドインジェクションのパターンを検出',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'skill パッケージに実行可能または不透明なバイナリペイロードが含まれています',
+          suspiciousExternalContentPattern: '外部コンテンツに不審なパターンを検出',
+        },
       },
       detail: {
         title: '詳細',
@@ -5180,6 +5298,7 @@ export default mergeHarnessLocale('ja-JP', {
     siliconflowDesc: 'SiliconFlow - OpenAI 互換 API を提供する中国 AI クラウドプラットフォーム',
   },
   metrics: {
+    label: 'メトリクス',
     lastUpdated: '最終更新',
     reset: 'リセット',
     confirmReset: 'すべてのメトリクスをリセットしますか？この操作は元に戻せません。',

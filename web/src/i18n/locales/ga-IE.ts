@@ -62,6 +62,10 @@ export default mergeHarnessLocale('ga-IE', {
     select: 'Select',
     test: 'Tástáil',
     provider: 'Provider',
+    name: 'Ainm',
+    title: 'Teideal',
+    description: 'Cur síos',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1177,7 +1181,7 @@ export default mergeHarnessLocale('ga-IE', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Sláintiúil',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1813,8 +1817,9 @@ export default mergeHarnessLocale('ga-IE', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Gníomhairí seachtracha',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Nua External Agent',
       newAcp: 'Nua _ZIMA_TOKEN_0__',
       newA2a: 'Nua _ZIMA_TOKEN_0__',
       newProfile: 'Próifíl nua',
@@ -1827,6 +1832,7 @@ export default mergeHarnessLocale('ga-IE', {
       customProfile: 'Próifíl saincheaptha',
       health: 'Sláinte',
       verify: 'Fíoraigh',
+      status: { verified: 'Fíoraithe' },
       cwd: 'Eolaire Oibre',
       environment: 'Sáraíonn an Comhshaol',
       endpoint: 'Críochphointe _ZIMA_TOKEN_0__',
@@ -4400,8 +4406,8 @@ export default mergeHarnessLocale('ga-IE', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Fíoraithe - le feiceáil i Claude CLI',
+      verificationFailed: 'Theip ar an bhfíorú - seans nach mbeidh sé le feiceáil i Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4413,7 +4419,7 @@ export default mergeHarnessLocale('ga-IE', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Oscail an nasc',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4548,6 +4554,76 @@ export default mergeHarnessLocale('ga-IE', {
         caption: 'Feabhsaíonn leabuithe cáilíocht an chuardaigh shéimeantaigh le himeacht ama',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Catalóga SkillHub comhiomlánaithe ó Tencent SkillHub agus SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Fotha oifigiúil chatalóg Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Catalóg SkillHub pobail agus suíomh scátháin.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'Foinsí cuardaigh stórtha GitHub do chomhaid SKILL.md, CLAUDE.md agus AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'Cuardach cóid GitHub do stórtha a fhoilsíonn SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'Cuardach cóid GitHub do stórtha a fhoilsíonn CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'Cuardach cóid GitHub do stórtha a fhoilsíonn AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Catalóg mhargadh ClawHub.',
+        },
+        clawhubMirror: {
+          label: 'Scáthán ClawHub',
+          description: 'Críochphointe scátháin do chatalóg ClawHub.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Catalóg pobail dírithe ar bhailiúcháin scileanna in-athúsáidte.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Catalóg mhargadh SkillsMP.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Catalóg mhargadh pobail LLMSkills.',
+        },
+        external: {
+          label: 'Foinsí Seachtracha',
+          description: 'Taifid scileanna coimeádta a allmhairíodh ó URLanna seachtracha.',
+        },
+        curatedSkillUrl: {
+          label: 'Skill Sheachtrach',
+          description: 'Iontráil mhargadh coimeádta a allmhairíodh ó URL díreach scile.',
+        },
+        curatedGithubSeed: {
+          label: 'Foinsí GitHub roghnaithe',
+          description: 'Liosta foinsí GitHub roghnaithe a allmhairíodh ó thagairtí GitHub.',
+        },
+        seed: {
+          label: 'Leathanaigh fionnachtana',
+          description: 'Leathanaigh fionnachtana a nascann le níos mó scileanna a aimsíodh ar an ngréasán.',
+        },
+        seedInstance: {
+          label: 'Leathanach fionnachtana {index}',
+          description: 'Leathanach fionnachtana {index} a nascann le níos mó scileanna a aimsíodh ar an ngréasán.',
+        },
+      },
       hero: {
         kicker: 'Margadh skills',
         title: 'Aimsigh, athbhreithnigh agus suiteail skills gniomhaire',
@@ -4560,9 +4636,12 @@ export default mergeHarnessLocale('ga-IE', {
         red: 'Blocáilte',
       },
       warnings: {
-        mediumRiskPermissions: 'Éilíonn an scil seo ceadanna riosca mheánach. Athbhreithnigh an tuarascáil slándála sula gcumasóidh tú nuashonrú uathoibríoch.',
-        payloadScanEscalatedHighRisk: 'D’ardaigh scanadh an phéalaigh a suiteáladh an scil seo ó riosca meánach go riosca ard. Déan athbhreithniú ar an tuairisc slándála sula n-úsáideann tú an scil seo.',
-        legacyManifestFallback: 'Braitheadh formáid oidhreachta; cuireadh réamhshocruithe comhoiriúnachta i bhfeidhm.',
+        mediumRiskPermissions:
+          'Éilíonn an scil seo ceadanna riosca mheánach. Athbhreithnigh an tuarascáil slándála sula gcumasóidh tú nuashonrú uathoibríoch.',
+        payloadScanEscalatedHighRisk:
+          'D’ardaigh scanadh an phéalaigh a suiteáladh an scil seo ó riosca meánach go riosca ard. Déan athbhreithniú ar an tuairisc slándála sula n-úsáideann tú an scil seo.',
+        legacyManifestFallback:
+          'Braitheadh formáid oidhreachta; cuireadh réamhshocruithe comhoiriúnachta i bhfeidhm.',
       },
       categories: {
         ai_intelligence: 'AI agus intleacht',
@@ -4642,7 +4721,8 @@ export default mergeHarnessLocale('ga-IE', {
         dependency_manifest: 'Spleáchais',
         binary_artifact: 'Déantán dénártha',
         data_exfiltration: 'Eas-sreabhadh sonraí',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Instealladh ordaithe',
+        command_injection: 'Instealladh ordaithe',
       },
       filters: {
         category: 'Catagóir',
@@ -4711,7 +4791,7 @@ export default mergeHarnessLocale('ga-IE', {
         loading: 'Tá an tuairisc slándála á luchtú...',
         score: 'Scór',
         badge: 'Suaitheantas',
-        signals: 'Risk signals',
+        signals: 'Comharthai riosca',
         binary: 'Dénártha',
         installSurface: 'Dromchla suiteála',
         artifactKind: 'Cineál déantáin',
@@ -4723,6 +4803,44 @@ export default mergeHarnessLocale('ga-IE', {
         moreEvidence: '+{count} mir fhianaise eile',
         noMajorWarnings: 'Nior aimsiodh aon mhor-rabhadh.',
         noReport: 'Níl tuairisc slándála ar fáil fós.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Coras comhad',
+          network: 'Lionra',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Coras',
+        },
+        valuePrefixes: {
+          matched: 'Meaitseail',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Iarrachti leideanna leibheal corais a instealladh',
+          binaryArtifactDetected: 'Aimsiodh arteafacht dhenaireach',
+          commandInjectionAttemptDetected: 'Aimsiodh iarracht insteallta ordaithe',
+          dependencyManifestsDetected: 'Aimsiodh manifests spleachais',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Dintiur leabaithe no abhar eochrach phriobhaidigh',
+          knownJailbreakAttempts: 'Iarrachti jailbreak aitheanta',
+          potentialDataExfiltrationAttempts: 'Iarrachti feideartha easporrtala sonrai',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Seicheamh shell a dfeadfadh a bheith millteach no ciandhighniomhaithe',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Tatalaioh cumas pribhleideach o abhar na scile ach nior dearbhaioh e',
+          promptInjectionAttemptInstructionOverride: 'Iarracht prompt injection - saru treoracha',
+          promptInjectionAttemptJailbreak: 'Iarracht prompt injection - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Iarracht prompt injection - saru roil',
+          promptInjectionAttemptSystemPromptInjection:
+            'Iarracht prompt injection - instealladh leide corais',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Teacs leide a dheanann iarracht an gniomhaire a sharu no a chur as a riocht',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Patrun insteallta shell no ordaithe a aimsiodh leis an mbrathadoir comhroinnte',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Ta payload dhenaireach inrite no teimhneach i bpacaiste na scile',
+          suspiciousExternalContentPattern: 'Patrun amhrasach i gcoinne abhain sheachtraigh',
+        },
       },
       detail: {
         title: 'Sonraí',
@@ -5006,6 +5124,7 @@ export default mergeHarnessLocale('ga-IE', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Méadrachtaí',
     lastUpdated: 'Nuashonraithe go deireanach',
     reset: 'Athshocraigh',
     confirmReset:

@@ -14188,15 +14188,20 @@ func buildReducedContinuationRecoveryTools(tools []llm.Tool, messages []llm.Mess
 	}
 
 	if len(needed) == 0 {
-		priority := []string{"bash", "web", "web_search", "read", "browser", "mcp"}
+		priority := []string{"bash", "web_query", "web", "read", "browser", "mcp"}
 		indexByName := make(map[string]int, len(tools))
 		for i, t := range tools {
-			name := normalizeFileToolCompatName(t.Name)
-			if name == "" {
+			rawName := strings.ToLower(strings.TrimSpace(t.Name))
+			if rawName == "" {
 				continue
 			}
-			if _, exists := indexByName[name]; !exists {
-				indexByName[name] = i
+			if _, exists := indexByName[rawName]; !exists {
+				indexByName[rawName] = i
+			}
+			if compatName := normalizeFileToolCompatName(rawName); compatName != "" {
+				if _, exists := indexByName[compatName]; !exists {
+					indexByName[compatName] = i
+				}
 			}
 		}
 		for _, name := range priority {
@@ -15593,8 +15598,8 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 		return tools
 	}
 	priority := []string{
+		"web_query",
 		"web",
-		"web_search",
 		"web_fetch",
 		"web_read",
 		"web_extract",
@@ -15610,14 +15615,19 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 	)
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
-		name := normalizeFileToolCompatName(tool.Name)
-		if name == "" {
+		rawName := strings.ToLower(strings.TrimSpace(tool.Name))
+		if rawName == "" {
 			continue
 		}
-		if _, ok := indexByName[name]; ok {
-			continue
+		if _, ok := indexByName[rawName]; !ok {
+			indexByName[rawName] = tool
 		}
-		indexByName[name] = tool
+		if compatName := normalizeFileToolCompatName(rawName); compatName != "" {
+			if _, ok := indexByName[compatName]; ok {
+				continue
+			}
+			indexByName[compatName] = tool
+		}
 	}
 
 	reduced := make([]llm.Tool, 0, len(priority))

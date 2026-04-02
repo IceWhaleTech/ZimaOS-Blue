@@ -62,6 +62,10 @@ export default mergeHarnessLocale('hr-HR', {
     select: 'Select',
     test: 'Testiraj',
     provider: 'Provider',
+    name: 'Naziv',
+    title: 'Naslov',
+    description: 'Opis',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1174,7 +1178,7 @@ export default mergeHarnessLocale('hr-HR', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'U redu',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1804,9 +1808,10 @@ export default mergeHarnessLocale('hr-HR', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Vanjski agenti',
-      status: 'Status',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Novi External Agent',
+      status: { label: 'Status', verified: 'Provjereno' },
       newAcp: 'Novo ACP',
       newA2a: 'Novo A2A',
       newProfile: 'Novi profil',
@@ -1840,7 +1845,7 @@ export default mergeHarnessLocale('hr-HR', {
         'Ugrađeni profili ostaju samo za čitanje tako da unosi Claude, Codex, Gemini i generički A2A ostaju stabilni.',
       command: 'Naredba i argumenti',
       credentialSource: 'Izvor vjerodajnice',
-      authMethod: 'Auth Method',
+      authMethod: 'Način autentikacije',
       advancedOptions: 'Napredne opcije',
       metadata: 'Metapodaci',
       errors: {
@@ -4382,8 +4387,8 @@ export default mergeHarnessLocale('hr-HR', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Provjereno - vidljivo u Claude CLI-ju',
+      verificationFailed: 'Provjera nije uspjela - možda nije vidljivo u Claude CLI-ju',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4395,7 +4400,7 @@ export default mergeHarnessLocale('hr-HR', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Otvori poveznicu',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4530,6 +4535,76 @@ export default mergeHarnessLocale('hr-HR', {
         caption: 'Embeddingi s vremenom poboljšavaju kvalitetu semantičkog pretraživanja',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Agregirani SkillHub katalozi iz Tencent SkillHub-a i SkillHub Club-a.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Službeni feed kataloga Tencent SkillHub-a.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'SkillHub katalog zajednice i zrcalna stranica.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'Izvori pretraživanja GitHub repozitorija za datoteke SKILL.md, CLAUDE.md i AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'GitHub pretraživanje koda za repozitorije koji objavljuju SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'GitHub pretraživanje koda za repozitorije koji objavljuju CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'GitHub pretraživanje koda za repozitorije koji objavljuju AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Katalog marketplacea ClawHub.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub ogledalo',
+          description: 'Zrcalni endpoint za katalog ClawHub-a.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Katalog zajednice usmjeren na ponovno upotrebljive kolekcije skillova.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Katalog marketplacea SkillsMP.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Katalog LLMSkills community marketplacea.',
+        },
+        external: {
+          label: 'Vanjski Izvori',
+          description: 'Kurirani zapisi skillova uvezeni s vanjskih URL-ova.',
+        },
+        curatedSkillUrl: {
+          label: 'Vanjski Skill',
+          description: 'Kurirani unos marketplacea uvezen s izravnog URL-a skilla.',
+        },
+        curatedGithubSeed: {
+          label: 'Odabrani GitHub izvori',
+          description: 'Popis odabranih GitHub izvora uvezen iz GitHub referenci.',
+        },
+        seed: {
+          label: 'Stranice za otkrivanje',
+          description: 'Stranice za otkrivanje koje vode na više vještina pronađenih na webu.',
+        },
+        seedInstance: {
+          label: 'Stranica za otkrivanje {index}',
+          description: 'Stranica za otkrivanje {index} koja vodi na više vještina pronađenih na webu.',
+        },
+      },
       hero: {
         kicker: 'Marketplace skillova',
         title: 'Otkrijte, pregledajte i instalirajte agent skillove',
@@ -4542,9 +4617,12 @@ export default mergeHarnessLocale('hr-HR', {
         red: 'Blokirano',
       },
       warnings: {
-        mediumRiskPermissions: 'Ova vještina zahtijeva dozvole srednjeg rizika. Pregledajte sigurnosno izvješće prije uključivanja automatskog ažuriranja.',
-        payloadScanEscalatedHighRisk: 'Skeniranje instaliranog sadržaja (payload) povisilo je ovu vještinu sa srednjeg na visok rizik. Prije korištenja pregledajte sigurnosno izvješće.',
-        legacyManifestFallback: 'Otkriven je naslijeđeni format vještine; primijenjene su zadane postavke kompatibilnosti.',
+        mediumRiskPermissions:
+          'Ova vještina zahtijeva dozvole srednjeg rizika. Pregledajte sigurnosno izvješće prije uključivanja automatskog ažuriranja.',
+        payloadScanEscalatedHighRisk:
+          'Skeniranje instaliranog sadržaja (payload) povisilo je ovu vještinu sa srednjeg na visok rizik. Prije korištenja pregledajte sigurnosno izvješće.',
+        legacyManifestFallback:
+          'Otkriven je naslijeđeni format vještine; primijenjene su zadane postavke kompatibilnosti.',
       },
       categories: {
         ai_intelligence: 'AI i inteligencija',
@@ -4624,7 +4702,8 @@ export default mergeHarnessLocale('hr-HR', {
         dependency_manifest: 'Ovisnosti',
         binary_artifact: 'Binarni artefakt',
         data_exfiltration: 'Izvlacenje podataka',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Ubrizgavanje naredbi',
+        command_injection: 'Ubrizgavanje naredbi',
       },
       filters: {
         category: 'Kategorija',
@@ -4693,7 +4772,7 @@ export default mergeHarnessLocale('hr-HR', {
         loading: 'UcItava se sigurnosni izvjestaj...',
         score: 'Rezultat',
         badge: 'Oznaka',
-        signals: 'Risk signals',
+        signals: 'Signali rizika',
         binary: 'Binarno',
         installSurface: 'Povrsina instalacije',
         artifactKind: 'Vrsta artefakta',
@@ -4705,6 +4784,45 @@ export default mergeHarnessLocale('hr-HR', {
         moreEvidence: '+{count} dodatnih dokaza',
         noMajorWarnings: 'Nisu otkrivena veca upozorenja.',
         noReport: 'Sigurnosni izvjestaj jos nije dostupan.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Datotecni sustav',
+          network: 'Mreza',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Sustav',
+        },
+        valuePrefixes: {
+          matched: 'Podudaranje',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Pokusaji ubrizgavanja promptova na razini sustava',
+          binaryArtifactDetected: 'Otkriven je binarni artefakt',
+          commandInjectionAttemptDetected: 'Otkriven je pokusaj ubrizgavanja naredbi',
+          dependencyManifestsDetected: 'Otkriveni su manifesti ovisnosti',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Ugradeni vjerodajnici ili materijal privatnog kljuca',
+          knownJailbreakAttempts: 'Poznati pokusaji jailbreaka',
+          potentialDataExfiltrationAttempts: 'Potencijalni pokusaji izvlacenja podataka',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potencijalno destruktivna shell sekvenca ili sekvenca za udaljeno izvrsavanje',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Iz sadrzaja skilla izvedena je privilegirana mogucnost, ali nije deklarirana',
+          promptInjectionAttemptInstructionOverride:
+            'Pokusaj prompt injectiona - premostivanje uputa',
+          promptInjectionAttemptJailbreak: 'Pokusaj prompt injectiona - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Pokusaj prompt injectiona - premostivanje uloge',
+          promptInjectionAttemptSystemPromptInjection:
+            'Pokusaj prompt injectiona - ubrizgavanje system prompta',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Tekst prompta koji pokusava nadjacati ili potkopati agenta',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Uzorak ubrizgavanja shella ili naredbi otkrio je zajednicki detektor prijetnji',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Paket skilla sadrzi izvrsiv ili neproziran binarni payload',
+          suspiciousExternalContentPattern: 'Sumnjiv obrazac vanjskog sadrzaja',
+        },
       },
       detail: {
         title: 'Detalji',
@@ -4988,6 +5106,7 @@ export default mergeHarnessLocale('hr-HR', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Metrike',
     lastUpdated: 'Zadnje ažurirano',
     reset: 'Resetiraj',
     confirmReset:

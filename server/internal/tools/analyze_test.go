@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -231,6 +233,22 @@ func (m *mockAnalyzeExecTool) Execute(ctx context.Context, args map[string]inter
 	return m.execute(ctx, args)
 }
 
+func readSingleAnalyzeReport(t *testing.T, dir string) string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(dir, "analyze", "*.html"))
+	if err != nil {
+		t.Fatalf("glob report path: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 saved report, got %d (%v)", len(matches), matches)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	return string(data)
+}
+
 func TestAnalyzeTool_Definition(t *testing.T) {
 	tool := NewAnalyzeTool()
 	def := tool.Definition()
@@ -246,7 +264,7 @@ func TestAnalyzeTool_Definition(t *testing.T) {
 	if !ok {
 		t.Fatal("expected properties in parameters")
 	}
-	for _, required := range []string{"topic", "urls", "text", "search_queries", "lang"} {
+	for _, required := range []string{"topic", "urls", "text", "search_queries", "lang", "report_style"} {
 		if _, ok := props[required]; !ok {
 			t.Errorf("missing parameter: %s", required)
 		}
@@ -357,15 +375,15 @@ func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 
 func TestAnalyzeTool_Execute_ReportModeGeneratesHTMLReport(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Test</h1></div>`
 
 	bridge := &mockLLMBridge{
-		responses: []string{analysisJSON, htmlBody},
+		responses: []string{analysisJSON},
 	}
 
 	tool := NewAnalyzeTool()
 	tool.SetLLMBridge(bridge)
-	tool.SetMediaDir(t.TempDir())
+	dir := t.TempDir()
+	tool.SetMediaDir(dir)
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"topic":       "Test Topic",
@@ -376,11 +394,8 @@ func TestAnalyzeTool_Execute_ReportModeGeneratesHTMLReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(bridge.calls) != 2 {
-		t.Fatalf("expected 2 LLM calls in report mode, got %d", len(bridge.calls))
-	}
-	if !strings.Contains(bridge.calls[1], "Test summary") {
-		t.Fatal("expected second LLM call to contain analysis data in report mode")
+	if len(bridge.calls) != 1 {
+		t.Fatalf("expected 1 LLM call in report mode, got %d", len(bridge.calls))
 	}
 
 	resultStr, ok := result.(string)
@@ -393,6 +408,16 @@ func TestAnalyzeTool_Execute_ReportModeGeneratesHTMLReport(t *testing.T) {
 	}
 	if resultMap["report_url"] == nil {
 		t.Fatal("expected report_url in report mode")
+	}
+	if resultMap["report_style"] != analyzeReportStyleDashboard {
+		t.Fatalf("expected report_style=%s, got %v", analyzeReportStyleDashboard, resultMap["report_style"])
+	}
+	if resultMap["report_template_version"] != analyzeReportTemplateVersion {
+		t.Fatalf("expected report template version %q, got %v", analyzeReportTemplateVersion, resultMap["report_template_version"])
+	}
+	html := readSingleAnalyzeReport(t, dir)
+	if !strings.Contains(html, "research-question") {
+		t.Fatal("expected saved report to include research-question block")
 	}
 }
 
@@ -650,10 +675,9 @@ func TestAnalyzeTool_Execute_NoData(t *testing.T) {
 
 func TestAnalyzeTool_Execute_FullAnalysis_WithText(t *testing.T) {
 	analysisJSON := `{"summary":"Analysis","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Report</h1></div>`
 
 	bridge := &mockLLMBridge{
-		responses: []string{analysisJSON, htmlBody},
+		responses: []string{analysisJSON},
 	}
 
 	tool := NewAnalyzeTool()
@@ -683,10 +707,9 @@ func TestAnalyzeTool_Execute_FullAnalysis_WithText(t *testing.T) {
 
 func TestAnalyzeTool_Execute_FullAnalysis_WithBrowser(t *testing.T) {
 	analysisJSON := `{"summary":"Browser analysis","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Browser Report</h1></div>`
 
 	bridge := &mockLLMBridge{
-		responses: []string{analysisJSON, htmlBody},
+		responses: []string{analysisJSON},
 	}
 	browser := &mockBrowserBackend{
 		navResult: BrowserNavResult{
@@ -737,10 +760,9 @@ func TestAnalyzeTool_Execute_FullAnalysis_WithBrowser(t *testing.T) {
 
 func TestAnalyzeTool_Execute_PromotesURLFromTopic(t *testing.T) {
 	analysisJSON := `{"summary":"Browser analysis","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
-	htmlBody := `<div class="hero"><h1>Browser Report</h1></div>`
 
 	bridge := &mockLLMBridge{
-		responses: []string{analysisJSON, htmlBody},
+		responses: []string{analysisJSON},
 	}
 	browser := &mockBrowserBackend{
 		navResult: BrowserNavResult{
@@ -1005,7 +1027,7 @@ func TestAnalyzeTool_GatherData_URLLimit(t *testing.T) {
 		urls[i] = "https://example.com"
 	}
 
-	content, _ := tool.gatherData(context.Background(), map[string]interface{}{
+	content, _, _ := tool.gatherData(context.Background(), map[string]interface{}{
 		"urls": urls,
 	}, "en-US", browser, nil)
 
@@ -1043,6 +1065,143 @@ func TestBuildAnalyzeHTML_DefaultLang(t *testing.T) {
 	html := buildAnalyzeHTML("Test", "", "<div>body</div>")
 	if !strings.Contains(html, `lang="zh-CN"`) {
 		t.Error("expected default lang zh-CN")
+	}
+}
+
+func TestResolveAnalyzeReportStyle_AutoRules(t *testing.T) {
+	if got := resolveAnalyzeReportStyle(map[string]interface{}{"text": "请帮我做模型选型 benchmark 对比"}, "模型分析"); got != analyzeReportStyleBriefing {
+		t.Fatalf("expected briefing for comparison topic, got %q", got)
+	}
+	if got := resolveAnalyzeReportStyle(map[string]interface{}{"text": "用户反馈整理"}, "产品反馈汇总"); got != analyzeReportStyleDashboard {
+		t.Fatalf("expected dashboard for aggregation topic, got %q", got)
+	}
+	if got := resolveAnalyzeReportStyle(map[string]interface{}{"report_style": "dashboard", "text": "best model comparison"}, "compare"); got != analyzeReportStyleDashboard {
+		t.Fatalf("expected explicit dashboard override, got %q", got)
+	}
+}
+
+func TestAnalyzeTool_Execute_ReportModeBriefingContainsStableBlocks(t *testing.T) {
+	analysisJSON := `{
+		"refined_title":"模型对比报告",
+		"research_question":"哪一个模型更适合作为主力？",
+		"summary":"这是一个用于选型的简要结论。",
+		"stats":[{"label":"候选模型","value":"4","color":"blue"}],
+		"comparison_items":[{"name":"Model A","summary":"更均衡","metrics":[{"label":"吞吐","value":"35 tok/s"}],"strengths":["稳定"],"tradeoffs":["成本略高"]}],
+		"scenario_recommendations":[{"scenario":"24GB 显存","recommended":"Model A","reason":"综合性价比更高"}],
+		"references":[{"label":"Model Card","url":"https://example.com/model-card","description":"官方模型卡"}]
+	}`
+	bridge := &mockLLMBridge{responses: []string{analysisJSON}}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	dir := t.TempDir()
+	tool.SetMediaDir(dir)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic":        "模型 benchmark 对比与选型建议",
+		"text":         "需要做模型对比和推荐",
+		"lang":         "zh-CN",
+		"output_mode":  "report",
+		"report_style": "briefing",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resultStr := result.(string)
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &resultMap); err != nil {
+		t.Fatalf("invalid result json: %v", err)
+	}
+	if resultMap["report_style"] != analyzeReportStyleBriefing {
+		t.Fatalf("expected briefing style, got %v", resultMap["report_style"])
+	}
+
+	html := readSingleAnalyzeReport(t, dir)
+	for _, needle := range []string{"research-question", "section-number", "callout", "references", "comparison-card"} {
+		if !strings.Contains(html, needle) {
+			t.Fatalf("expected briefing report html to contain %q", needle)
+		}
+	}
+}
+
+func TestAnalyzeTool_Execute_ReportModeAutoSelectsBriefing(t *testing.T) {
+	analysisJSON := `{
+		"refined_title":"Benchmark 报告",
+		"research_question":"哪个方案更适合？",
+		"summary":"用于验证自动样式选择。",
+		"comparison_items":[{"name":"方案 A","summary":"更稳"}],
+		"references":[{"label":"Example","url":"https://example.com"}]
+	}`
+	bridge := &mockLLMBridge{responses: []string{analysisJSON}}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	dir := t.TempDir()
+	tool.SetMediaDir(dir)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic":       "模型 benchmark 对比",
+		"text":        "请比较这几个模型并给推荐",
+		"lang":        "zh-CN",
+		"output_mode": "report",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var resultMap map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &resultMap); err != nil {
+		t.Fatalf("invalid result json: %v", err)
+	}
+	if resultMap["report_style"] != analyzeReportStyleBriefing {
+		t.Fatalf("expected auto style to resolve to briefing, got %v", resultMap["report_style"])
+	}
+
+	html := readSingleAnalyzeReport(t, dir)
+	if !strings.Contains(html, "briefing-root") {
+		t.Fatal("expected auto-selected briefing report html")
+	}
+}
+
+func TestBuildAnalyzeReportBody_RendersReferencesForSourceMixes(t *testing.T) {
+	analysis := map[string]interface{}{
+		"summary":           "summary",
+		"research_question": "question",
+	}
+	cases := []struct {
+		name string
+		refs []analyzeSourceReference
+		want string
+	}{
+		{
+			name: "url_only",
+			refs: []analyzeSourceReference{{Kind: "url", Label: "Example", URL: "https://example.com/a"}},
+			want: "https://example.com/a",
+		},
+		{
+			name: "search_only",
+			refs: []analyzeSourceReference{{Kind: "search_result", Label: "Result", URL: "https://example.com/search"}},
+			want: "https://example.com/search",
+		},
+		{
+			name: "mixed",
+			refs: []analyzeSourceReference{
+				{Kind: "url", Label: "Example", URL: "https://example.com/a"},
+				{Kind: "search_result", Label: "Result", URL: "https://example.com/search"},
+			},
+			want: "https://example.com/search",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			html := buildAnalyzeReportBody("Report", analysis, tc.refs, "en-US", analyzeReportStyleBriefing)
+			if !strings.Contains(html, "references") {
+				t.Fatal("expected references block")
+			}
+			if !strings.Contains(html, tc.want) {
+				t.Fatalf("expected references html to include %q", tc.want)
+			}
+		})
 	}
 }
 

@@ -66,6 +66,11 @@ func writeSettingsSelectorSkill(t *testing.T, workspaceDir, id, desc, invocation
 	writeSettingsSelectorSkillAtRoot(t, workspaceDir, ".claude", id, id, desc, invocation, capabilityTags...)
 }
 
+func writeSettingsSelectorCanonicalWebQuerySkill(t *testing.T, workspaceDir, desc, invocation string, capabilityTags ...string) {
+	t.Helper()
+	writeSettingsSelectorSkillAtRoot(t, workspaceDir, ".claude", "web_search", "web_query", desc, invocation, capabilityTags...)
+}
+
 func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 	t.Helper()
 
@@ -90,7 +95,7 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_search query="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
@@ -139,8 +144,12 @@ func assertSelectorDryRunSelected(t *testing.T, body map[string]any, skill strin
 	if skillDecision["selected_skill"] != skill {
 		t.Fatalf("expected skill_decision.selected_skill=%s, got=%v", skill, skillDecision["selected_skill"])
 	}
-	if body["canonical_skill_id"] != skill {
-		t.Fatalf("expected canonical_skill_id=%s, got=%v", skill, body["canonical_skill_id"])
+	wantCanonical := skill
+	if canonical, ok := agentcore.ResolveCanonicalSkill(skill); ok {
+		wantCanonical = string(canonical)
+	}
+	if body["canonical_skill_id"] != wantCanonical {
+		t.Fatalf("expected canonical_skill_id=%s, got=%v", wantCanonical, body["canonical_skill_id"])
 	}
 	if body["skill_route_outcome"] != "selected" {
 		t.Fatalf("expected skill_route_outcome=selected, got=%v", body["skill_route_outcome"])
@@ -370,22 +379,8 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
-	for _, tc := range []struct {
-		id   string
-		desc string
-	}{
-		{id: "web_search", desc: "search the web"},
-		{id: "browser", desc: "browse urls"},
-	} {
-		dir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir skill: %v", err)
-		}
-		content := "---\nname: " + tc.id + "\ndescription: " + tc.desc + "\nos: [\"" + runtime.GOOS + "\"]\n---\n# " + tc.id + "\n"
-		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
-			t.Fatalf("write skill: %v", err)
-		}
-	}
+	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web", `blue web_query input="OpenAI Responses API docs"`, "search", "web")
+	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls", "blue browser.navigate url=https://example.com", "browser", "web")
 	chatHandler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
 	h.SetChatHandler(chatHandler)
 
@@ -471,11 +466,11 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected skill_decision payload, got=%T", body["skill_decision"])
 	}
-	if skillDecision["selected_skill"] != "web_search" {
-		t.Fatalf("expected skill_decision.selected_skill=web_search, got=%v", skillDecision["selected_skill"])
+	if skillDecision["selected_skill"] != "web_query" {
+		t.Fatalf("expected skill_decision.selected_skill=web_query, got=%v", skillDecision["selected_skill"])
 	}
-	if body["canonical_skill_id"] != "web_search" {
-		t.Fatalf("expected canonical_skill_id=web_search, got=%v", body["canonical_skill_id"])
+	if body["canonical_skill_id"] != "web_query" {
+		t.Fatalf("expected canonical_skill_id=web_query, got=%v", body["canonical_skill_id"])
 	}
 	if body["skill_need_clarify"] != false {
 		t.Fatalf("expected skill_need_clarify=false, got=%v", body["skill_need_clarify"])
@@ -570,8 +565,8 @@ func TestSelectorDryRunIncludesDiscoverFirstMetadata(t *testing.T) {
 
 	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
 
-	if body["selected_alias"] != "web_search" {
-		t.Fatalf("selected_alias = %#v, want web_search", body["selected_alias"])
+	if body["selected_alias"] != "web_query" {
+		t.Fatalf("selected_alias = %#v, want web_query", body["selected_alias"])
 	}
 	if body["selected_canonical_skill"] != "web_query" {
 		t.Fatalf("selected_canonical_skill = %#v, want web_query", body["selected_canonical_skill"])
@@ -653,7 +648,7 @@ func TestSelectorDryRun_MultilingualCuratedRoutes(t *testing.T) {
 	cases := []struct {
 		skill string
 	}{
-		{skill: "web_search"},
+		{skill: "web_query"},
 		{skill: "analyze"},
 		{skill: "reminder"},
 		{skill: "browser"},
@@ -663,8 +658,12 @@ func TestSelectorDryRun_MultilingualCuratedRoutes(t *testing.T) {
 	for _, tc := range cases {
 		for _, example := range routingcue.LocalizedExamples(tc.skill) {
 			body := runSelectorDryRun(t, h, example.Query)
-			if body["canonical_skill_id"] != tc.skill {
-				t.Fatalf("%s locale=%s expected canonical_skill_id=%s got=%v", tc.skill, example.Locale, tc.skill, body["canonical_skill_id"])
+			wantCanonical := tc.skill
+			if canonical, ok := agentcore.ResolveCanonicalSkill(tc.skill); ok {
+				wantCanonical = string(canonical)
+			}
+			if body["canonical_skill_id"] != wantCanonical {
+				t.Fatalf("%s locale=%s expected canonical_skill_id=%s got=%v", tc.skill, example.Locale, wantCanonical, body["canonical_skill_id"])
 			}
 			if body["skill_route_outcome"] != "selected" {
 				t.Fatalf("%s locale=%s expected skill_route_outcome=selected got=%v body=%v", tc.skill, example.Locale, body["skill_route_outcome"], body)
@@ -688,9 +687,9 @@ func TestSelectorDryRun_CriticalPlanRoutes(t *testing.T) {
 		skill string
 	}{
 		{
-			name:  "latest_openai_docs_go_to_web_search",
+			name:  "latest_openai_docs_go_to_web_query",
 			query: "最新 OpenAI Responses API 文档",
-			skill: "web_search",
+			skill: "web_query",
 		},
 		{
 			name:  "workspace_readme_stays_local",
@@ -774,14 +773,14 @@ func TestSelectorDryRun_ForcesPreviewSkillSelectionWhenSettingDisabled(t *testin
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
-	writeSettingsSelectorSkill(t, workspaceDir, "web_search", "search the web for latest docs and official references", `blue web_search query="OpenAI Responses API docs"`, "search", "web", "docs")
+	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
 
 	chatHandler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
 	h.SetChatHandler(chatHandler)
 
 	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
-	assertSelectorDryRunSelected(t, body, "web_search")
+	assertSelectorDryRunSelected(t, body, "web_query")
 
 	if body["smart_skill_selection"] != false {
 		t.Fatalf("expected stored smart_skill_selection=false, got=%v", body["smart_skill_selection"])

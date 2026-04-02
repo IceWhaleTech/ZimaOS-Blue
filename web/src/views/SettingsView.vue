@@ -31,7 +31,7 @@ const router = useRouter()
 const settingsStore = useSettingsStore()
 const localeStore = useLocaleStore()
 const themeStore = useThemeStore()
-const { isTauri, platform, setCloseBehavior } = useTauri()
+const { isTauri, platform, setCloseBehavior, restartServerRuntime } = useTauri()
 
 interface SaveStatusAction {
   label: string
@@ -587,11 +587,21 @@ async function restoreBackup(id: string) {
   if (!confirm(t('system.confirmRestore'))) return
   backupRestoring.value = id
   try {
+    const desktopManagedRestart = isTauri.value
     const response = await backupApi.restore(id, {
       require_restart: true,
-      auto_restart: true,
+      auto_restart: !desktopManagedRestart,
       create_checkpoint: true,
     })
+
+    if (desktopManagedRestart && response.data?.requires_restart) {
+      const restarted = await restartServerRuntime(route.fullPath)
+      if (!restarted) {
+        throw new Error('desktop-managed restore restart failed')
+      }
+      return
+    }
+
     const checkpointAt = response.data?.result?.checkpoint_at
     if (checkpointAt) {
       showSaveStatus(

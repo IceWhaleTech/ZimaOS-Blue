@@ -2,6 +2,41 @@ package main
 
 import "testing"
 
+func TestRunServerRestartsInProcessUntilStable(t *testing.T) {
+	original := runServerIteration
+	t.Cleanup(func() {
+		runServerIteration = original
+	})
+
+	calls := 0
+	runServerIteration = func() serverRunOutcome {
+		calls++
+		return serverRunOutcome{RestartRequested: calls == 1}
+	}
+
+	runServer()
+
+	if calls != 2 {
+		t.Fatalf("runServer() calls = %d, want 2", calls)
+	}
+}
+
+func TestServerRestartControllerSuppressesPendingRestartOnExternalStop(t *testing.T) {
+	controller := newServerRestartController()
+	if !controller.Request() {
+		t.Fatalf("expected first restart request to succeed")
+	}
+
+	controller.Suppress()
+
+	if controller.Requested() {
+		t.Fatalf("expected suppressed controller to report no pending restart")
+	}
+	if controller.Request() {
+		t.Fatalf("expected suppressed controller to reject new restart request")
+	}
+}
+
 func TestShouldSkipStartupSTTAuthorization(t *testing.T) {
 	tests := []struct {
 		name string

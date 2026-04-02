@@ -62,6 +62,10 @@ export default mergeHarnessLocale('fr-FR', {
     select: 'Select',
     test: 'Tester',
     provider: 'Provider',
+    name: 'Nom',
+    title: 'Titre',
+    description: 'Description',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1926,8 +1930,9 @@ export default mergeHarnessLocale('fr-FR', {
     availableTools: 'Outils disponibles',
     noToolsAvailable: 'Aucun outil disponible',
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Agents externes',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Nouveau External Agent',
       newAcp: 'Nouveau ACP',
       newA2a: 'Nouveau A2A',
       newProfile: 'Nouveau profil',
@@ -1940,6 +1945,7 @@ export default mergeHarnessLocale('fr-FR', {
       customProfile: 'Profil personnalisé',
       health: 'Santé',
       verify: 'Vérifier',
+      status: { verified: 'Vérifié' },
       cwd: 'Répertoire de travail',
       environment: "Remplacements d'environnement",
       endpoint: 'Point de terminaison URL',
@@ -2170,7 +2176,8 @@ export default mergeHarnessLocale('fr-FR', {
     noFiles: "Aucun fichier d'espace de travail trouvé.",
     tokens: '~{count} tokens',
     coreTokens: '~{count} tokens des fichiers principaux',
-    coreTokensHint: "Compte uniquement les fichiers principaux de l'espace de travail affichés ici.",
+    coreTokensHint:
+      "Compte uniquement les fichiers principaux de l'espace de travail affichés ici.",
     chars: '{count} caractères',
     label: {
       soul: 'Âme',
@@ -4649,8 +4656,8 @@ export default mergeHarnessLocale('fr-FR', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Vérifié - visible dans Claude CLI',
+      verificationFailed: 'Échec de la vérification - peut ne pas être visible dans Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4662,7 +4669,7 @@ export default mergeHarnessLocale('fr-FR', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Ouvrir le lien',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4797,6 +4804,76 @@ export default mergeHarnessLocale('fr-FR', {
         caption: 'Les embeddings améliorent progressivement la qualité de la recherche sémantique',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Catalogues SkillHub agrégés depuis Tencent SkillHub et SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Flux officiel du catalogue Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Catalogue SkillHub communautaire et site miroir.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'Sources de recherche GitHub pour les fichiers SKILL.md, CLAUDE.md et AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'Recherche de code GitHub pour les dépôts qui publient SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'Recherche de code GitHub pour les dépôts qui publient CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'Recherche de code GitHub pour les dépôts qui publient AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Catalogue de la marketplace ClawHub.',
+        },
+        clawhubMirror: {
+          label: 'Miroir ClawHub',
+          description: 'Point d’accès miroir pour le catalogue ClawHub.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Catalogue communautaire centré sur des collections de skills réutilisables.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Catalogue de la marketplace SkillsMP.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Catalogue de la marketplace communautaire LLMSkills.',
+        },
+        external: {
+          label: 'Sources Externes',
+          description: 'Fiches de skills sélectionnées importées depuis des URL externes.',
+        },
+        curatedSkillUrl: {
+          label: 'Skill Externe',
+          description: 'Entrée de marketplace sélectionnée importée depuis une URL directe de skill.',
+        },
+        curatedGithubSeed: {
+          label: 'Sources GitHub sélectionnées',
+          description: 'Liste de sources GitHub sélectionnées importées depuis des références GitHub.',
+        },
+        seed: {
+          label: 'Pages de découverte',
+          description: 'Pages de découverte menant à d\'autres compétences trouvées sur le web.',
+        },
+        seedInstance: {
+          label: 'Page de découverte {index}',
+          description: 'Page de découverte {index} menant à d\'autres compétences trouvées sur le web.',
+        },
+      },
       hero: {
         kicker: 'Marketplace des skills',
         title: 'Decouvrir, verifier et installer des skills agent',
@@ -4809,9 +4886,12 @@ export default mergeHarnessLocale('fr-FR', {
         red: 'Bloque',
       },
       warnings: {
-        mediumRiskPermissions: 'Cette compétence nécessite des permissions à risque moyen. Consultez le rapport de sécurité avant d’activer la mise à jour automatique.',
-        payloadScanEscalatedHighRisk: 'L’analyse du package installé a fait passer ce skill de risque moyen à risque élevé. Consultez le rapport de sécurité avant d’utiliser ce skill.',
-        legacyManifestFallback: 'Format de compétence hérité détecté ; des valeurs par défaut de compatibilité ont été appliquées.',
+        mediumRiskPermissions:
+          'Cette compétence nécessite des permissions à risque moyen. Consultez le rapport de sécurité avant d’activer la mise à jour automatique.',
+        payloadScanEscalatedHighRisk:
+          'L’analyse du package installé a fait passer ce skill de risque moyen à risque élevé. Consultez le rapport de sécurité avant d’utiliser ce skill.',
+        legacyManifestFallback:
+          'Format de compétence hérité détecté ; des valeurs par défaut de compatibilité ont été appliquées.',
       },
       categories: {
         ai_intelligence: 'IA et intelligence',
@@ -4892,7 +4972,8 @@ export default mergeHarnessLocale('fr-FR', {
         dependency_manifest: 'Dependances',
         binary_artifact: 'Artefact binaire',
         data_exfiltration: 'Exfiltration de donnees',
-        cmd_injection: 'Injection shell',
+        cmd_injection: 'Injection de commandes',
+        command_injection: 'Injection de commandes',
       },
       filters: {
         category: 'Categorie',
@@ -4961,7 +5042,7 @@ export default mergeHarnessLocale('fr-FR', {
         loading: 'Chargement du rapport de securite...',
         score: 'Score',
         badge: 'Badge',
-        signals: 'Risk signals',
+        signals: 'Signaux de risque',
         binary: 'Binaire',
         installSurface: "Surface d'installation",
         artifactKind: "Type d'artefact",
@@ -4973,6 +5054,45 @@ export default mergeHarnessLocale('fr-FR', {
         moreEvidence: '+{count} preuves supplementaires',
         noMajorWarnings: 'Aucun avertissement majeur detecte.',
         noReport: "Aucun rapport de securite n'est encore disponible.",
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Systeme de fichiers',
+          network: 'Reseau',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Systeme',
+        },
+        valuePrefixes: {
+          matched: 'Correspondance',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: "Tentatives d'injecter des invites au niveau systeme",
+          binaryArtifactDetected: 'Artefact binaire detecte',
+          commandInjectionAttemptDetected: "Tentative d'injection de commandes detectee",
+          dependencyManifestsDetected: 'Manifestes de dependances detectes',
+          embeddedCredentialOrPrivateKeyMaterial: 'Identifiant integre ou materiel de cle privee',
+          knownJailbreakAttempts: 'Tentatives de jailbreak connues',
+          potentialDataExfiltrationAttempts: "Tentatives potentielles d'exfiltration de donnees",
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Sequence shell potentiellement destructrice ou dexecution a distance',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Capacite privilegiee deduite du contenu de la skill mais non declaree',
+          promptInjectionAttemptInstructionOverride:
+            "Tentative d'injection de prompt - remplacement des instructions",
+          promptInjectionAttemptJailbreak: "Tentative d'injection de prompt - jailbreak",
+          promptInjectionAttemptRoleOverride:
+            "Tentative d'injection de prompt - remplacement du role",
+          promptInjectionAttemptSystemPromptInjection:
+            "Tentative d'injection de prompt - injection d'invite systeme",
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            "Texte d'invite qui tente de contourner ou de subvertir l'agent",
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Motif dinjection shell ou de commandes detecte par le detecteur partage',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Le paquet de la skill contient une charge binaire executable ou opaque',
+          suspiciousExternalContentPattern: 'Motif suspect dans un contenu externe',
+        },
       },
       detail: {
         title: 'Details',
@@ -5273,6 +5393,7 @@ export default mergeHarnessLocale('fr-FR', {
     connectionFailed: 'Connexion échouée',
   },
   metrics: {
+    label: 'Métriques',
     lastUpdated: 'Dernière mise à jour',
     reset: 'Reset',
     confirmReset:

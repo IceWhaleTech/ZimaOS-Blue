@@ -295,6 +295,11 @@ func (p *KokoroProvider) Synthesize(ctx context.Context, req *SynthesizeRequest)
 // prepareChunks runs G2P and tokenization outside the mutex.
 // Returns a list of token sequences, each ready for ONNX inference.
 func (p *KokoroProvider) prepareChunks(text, lang string) [][]int64 {
+	text = normalizeKokoroStructuredText(text, lang)
+	if text == "" {
+		return nil
+	}
+
 	sentences := splitSentences(text)
 	var allChunks [][]int64
 

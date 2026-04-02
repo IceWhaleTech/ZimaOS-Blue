@@ -32,7 +32,7 @@ func bindRouteRuntimeSkillMarketplace(
 	marketCfg := skillmarket.DefaultConfig(dataDir, filepath.Join(dataDir, "workspace", ".claude", "skills"))
 	marketCfg.GitHubToken = strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
 	if options.appConfig != nil {
-		marketCfg.SeedURLs = append([]string{}, options.appConfig.SkillMarket.SeedURLs...)
+		marketCfg.DiscoveryPageURLs = append([]string{}, options.appConfig.SkillMarket.DiscoveryPageURLs...)
 		marketCfg.ClawHubMirrorBaseURLs = append([]string{}, options.appConfig.SkillMarket.ClawHubMirrorBaseURLs...)
 		marketCfg.TencentSkillHubAPIBaseURL = options.appConfig.SkillMarket.TencentSkillHubAPIBaseURL
 		marketCfg.SkillHubBaseURL = options.appConfig.SkillMarket.SkillHubBaseURL

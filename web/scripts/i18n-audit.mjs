@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 
 const args = new Set(process.argv.slice(2))
 const details = args.has('--details')
@@ -21,7 +22,13 @@ const PRIORITY_TRANSLATION_OVERRIDES_PATH = path.join(
   'i18n',
   'priority-translation-overrides.ts',
 )
-const PRIORITY_SMALL_MODEL_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-small-model-overrides.ts')
+const PRIORITY_SMALL_MODEL_OVERRIDES_PATH = path.join(
+  SRC_DIR,
+  'i18n',
+  'small-model-fallback-reason-overrides.ts',
+)
+const TS_MODULE_CACHE = new Map()
+const TS_MODULE_LOADING = new Set()
 
 function collectFiles(dir, extensions) {
   const out = []
@@ -297,56 +304,91 @@ function sanitizeLocaleCode(fileName) {
   return fileName.replace(/\.ts$/, '')
 }
 
-function parseImports(rawSource) {
-  const importMatcher = /^\s*import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]\.\/([A-Za-z0-9-]+)['"]\s*;?\s*$/gm
-  const imports = []
-  let match
-  while ((match = importMatcher.exec(rawSource)) !== null) {
-    imports.push({ localName: match[1], importedLocale: match[2] })
+function resolveTsModulePath(parentFilePath, specifier) {
+  if (!specifier.startsWith('.')) {
+    throw new Error(`Unsupported module specifier in i18n audit: ${specifier}`)
   }
-  return imports
+
+  const resolved = path.resolve(path.dirname(parentFilePath), specifier)
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    return resolved
+  }
+
+  const withTs = `${resolved}.ts`
+  if (fs.existsSync(withTs)) {
+    return withTs
+  }
+
+  const indexTs = path.join(resolved, 'index.ts')
+  if (fs.existsSync(indexTs)) {
+    return indexTs
+  }
+
+  throw new Error(`Cannot resolve TS module from ${parentFilePath}: ${specifier}`)
+}
+
+function executeTsModule(
+  filePath,
+  cache = TS_MODULE_CACHE,
+  loading = TS_MODULE_LOADING,
+) {
+  if (cache.has(filePath)) {
+    return cache.get(filePath)
+  }
+  if (loading.has(filePath)) {
+    throw new Error(`Circular TS module import detected: ${filePath}`)
+  }
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`TS module file not found: ${filePath}`)
+  }
+
+  loading.add(filePath)
+
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8')
+    const transpiled = ts.transpileModule(raw, {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2020,
+      },
+      fileName: filePath,
+    }).outputText
+
+    const module = { exports: {} }
+    const localRequire = (specifier) =>
+      executeTsModule(resolveTsModulePath(filePath, specifier), cache, loading)
+
+    new Function('require', 'module', 'exports', transpiled)(
+      localRequire,
+      module,
+      module.exports,
+    )
+
+    cache.set(filePath, module.exports)
+    return module.exports
+  } finally {
+    loading.delete(filePath)
+  }
 }
 
 function loadExportedObject(filePath) {
   if (!fs.existsSync(filePath)) return {}
-  const raw = fs.readFileSync(filePath, 'utf8')
-  const executable = raw.replace(/^\s*export\s+default\s*/m, 'return ')
-  return new Function(executable)()
+  const exports = executeTsModule(filePath)
+  return exports?.default ?? exports
 }
 
-function loadLocaleObjectByCode(localeCode, cache = new Map(), loading = new Set()) {
+function loadLocaleObjectByCode(localeCode, cache = new Map()) {
   if (cache.has(localeCode)) {
     return cache.get(localeCode)
   }
-  if (loading.has(localeCode)) {
-    throw new Error(`Circular locale import detected: ${localeCode}`)
-  }
-
-  loading.add(localeCode)
   const filePath = path.join(LOCALES_DIR, `${localeCode}.ts`)
   if (!fs.existsSync(filePath)) {
     throw new Error(`Locale file not found: ${filePath}`)
   }
 
-  const raw = fs.readFileSync(filePath, 'utf8')
-  const imports = parseImports(raw)
-  const importValues = []
-  const importNames = []
-
-  for (const item of imports) {
-    importNames.push(item.localName)
-    importValues.push(loadLocaleObjectByCode(item.importedLocale, cache, loading))
-  }
-
-  const withoutImports = raw.replace(/^\s*import\s+[A-Za-z_$][\w$]*\s+from\s+['"]\.\/[A-Za-z0-9-]+['"]\s*;?\s*$/gm, '')
-  const executable = withoutImports.replace(/^\s*export\s+default\s*/m, 'return ')
-  if (!executable.includes('return ')) {
-    throw new Error(`Cannot parse locale file: ${filePath}`)
-  }
-
-  const localeValue = new Function(...importNames, executable)(...importValues)
+  const localeModule = executeTsModule(filePath)
+  const localeValue = localeModule?.default ?? localeModule
   cache.set(localeCode, localeValue)
-  loading.delete(localeCode)
   return localeValue
 }
 
@@ -499,6 +541,8 @@ const EXPECTED_SAME_AS_ENGLISH_KEYS = new Set([
   'resultCard.titles.grep',
   'resultCard.titles.rg',
   'settings.externalAgents.eyebrow',
+  'settings.externalAgents.newExternalAgent',
+  'settings.externalAgents.title',
   'settings.tts.eta',
   'skillStore.modal.typeClawdhub',
   'skillStore.modal.url',
@@ -535,10 +579,12 @@ const EXPECTED_SAME_AS_ENGLISH_PATTERNS = [
   /^security\.scan\.items\.[^.]+\.(description|risk|impact|remediation)$/,
   /^security\.firewall\.builtin\.[^.]+\.description$/,
   /^authProviders\.types\.(auth0|authentik|github|google|keycloak|microsoft)$/,
+  /^skillStore\.marketplace\.sources\.[^.]+\.label$/,
   /^channels\.(blueBubbles|discord|googleChat|imessage|line|matrix|mattermost|messenger|nextcloudTalk|signal|slack|teams|telegram|twitchBot|viber|whatsapp|zaloOA)$/,
   /^channels\.placeholder(?:AgentId|AppId|BlueBubblesServerUrl|BotToken|DingtalkAppKey|FeishuAppId|MatrixHomeserver|MatrixUserId|PhoneNumber|QQAppId|RobotCode|SlackAppToken|SlackBotToken|WechatCorpId)$/,
   /^companion\.platforms\.(api|discord|feishu|matrix|slack|telegram|whatsapp)$/,
   /^skills\.builtin\.(discord-skill|docker|github|notion|slack-skill)\.name$/,
+  /^automation\.tabs\.harness$/,
   /^tenants\.settings\.timezones\.(london|shanghai)$/,
   /^tools\.names\.(discord|docker|github|notion|slack)$/,
 ]
@@ -682,7 +728,8 @@ function main() {
   const priorityTranslationOverrides = loadExportedObject(PRIORITY_TRANSLATION_OVERRIDES_PATH)
   const prioritySmallModelOverrides = loadExportedObject(PRIORITY_SMALL_MODEL_OVERRIDES_PATH)
   const requiredPriorityOverrides = auditRequiredPriorityOverrides(localeFiles, priorityLocaleOverrides)
-  const enUSMap = flattenStringLeaves(enUSObject)
+  const runtimeEnUSObject = deepMergeMessages(enUSObject, prioritySmallModelOverrides['en-US'] || {})
+  const enUSMap = flattenStringLeaves(runtimeEnUSObject)
   const enUSKeys = [...enUSMap.keys()].sort()
   const enUSKeySet = new Set(enUSKeys)
 

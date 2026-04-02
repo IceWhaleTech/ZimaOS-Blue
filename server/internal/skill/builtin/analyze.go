@@ -44,11 +44,13 @@ func NewAnalyze() *Analyze {
 				{Name: "search_queries", Type: "array", Description: "Web search queries to gather additional data (max 3)"},
 				{Name: "lang", Type: "string", Description: "Output language (default: zh-CN)"},
 				{Name: "output_mode", Type: "string", Description: "inline (default) or report"},
+				{Name: "report_style", Type: "string", Description: "Report template style for report mode: auto (default), dashboard, or briefing"},
 			},
 			Outputs: []skill.Parameter{
 				{Name: "answer", Type: "string", Description: "Inline analysis answer"},
 				{Name: "analysis", Type: "object", Description: "Structured analysis payload"},
 				{Name: "report_url", Type: "string", Description: "Optional URL to the generated HTML report when output_mode=report"},
+				{Name: "report_style", Type: "string", Description: "Resolved report template style when output_mode=report"},
 			},
 		},
 	}
@@ -100,6 +102,7 @@ func normalizeAnalyzeSkillInput(input map[string]any) {
 	normalizeStringAlias(input, "topic", "subject")
 	normalizeStringAlias(input, "lang", "language")
 	normalizeStringAlias(input, "output_mode", "outputMode")
+	normalizeStringAlias(input, "report_style", "reportStyle")
 	normalizeStringAlias(input, "text", "content")
 	normalizeStringAlias(input, "url", "href", "link", "source")
 	if _, ok := input["search_queries"]; !ok {

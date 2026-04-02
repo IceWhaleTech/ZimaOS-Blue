@@ -204,6 +204,17 @@ func TestScanSkillsDir_PrioritySort(t *testing.T) {
 	}
 }
 
+func TestSkillSortPriority_LegacyWebAliasesAreDeprioritized(t *testing.T) {
+	if got := skillSortPriority("web_query"); got != 1 {
+		t.Fatalf("web_query priority = %d, want 1", got)
+	}
+	for _, alias := range []string{"web_search", "web-search", "websearch"} {
+		if got := skillSortPriority(alias); got != 100 {
+			t.Fatalf("%s priority = %d, want 100", alias, got)
+		}
+	}
+}
+
 func TestFormatSkillsPrompt_Empty(t *testing.T) {
 	result := FormatSkillsPrompt(nil)
 	if result != "" {

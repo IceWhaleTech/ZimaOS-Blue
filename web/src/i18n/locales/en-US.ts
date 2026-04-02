@@ -10,6 +10,7 @@ export default mergeHarnessLocale('en-US', {
     delete: 'Delete',
     deleting: 'Deleting...',
     edit: 'Edit',
+    update: 'Update',
     create: 'Create',
     creating: 'Creating...',
     add: 'Add',
@@ -62,6 +63,10 @@ export default mergeHarnessLocale('en-US', {
     select: 'Select',
     test: 'Test',
     provider: 'Provider',
+    name: 'Name',
+    title: 'Title',
+    description: 'Description',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1407,8 +1412,9 @@ export default mergeHarnessLocale('en-US', {
     saved: 'Saved',
     saveFailed: 'Failed to save configuration',
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'External Agents',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'New External Agent',
       newAcp: 'New ACP',
       newA2a: 'New A2A',
       newProfile: 'New profile',
@@ -1421,6 +1427,7 @@ export default mergeHarnessLocale('en-US', {
       customProfile: 'Custom profile',
       health: 'Health',
       verify: 'Verify',
+      status: { verified: 'Verified' },
       cwd: 'Working Directory',
       environment: 'Environment Overrides',
       endpoint: 'Endpoint URL',
@@ -1784,6 +1791,11 @@ export default mergeHarnessLocale('en-US', {
         auth_failed: 'Auth Failed',
         model_not_found: 'Model Not Found',
       },
+      chips: {
+        healthy: 'OK',
+        halfOpen: 'Half-open',
+        open: 'Open',
+      },
     },
     tts: {
       title: 'Text-to-Speech',
@@ -1848,6 +1860,7 @@ export default mergeHarnessLocale('en-US', {
     noDescription: 'No description available',
     noMatchingTools: 'No matching items found',
     noTools: 'No items available',
+    noToolsTitle: 'No tools found',
     uploadSkill: 'Install Skill',
     uploadSkillTitle: 'Upload Skill',
     uploadPluginTitle: 'Upload Plugin',
@@ -2223,6 +2236,58 @@ export default mergeHarnessLocale('en-US', {
   },
   system: {
     title: 'System',
+    cards: {
+      status: {
+        compactSubtitle: 'Core service health',
+        fullSubtitle: 'Service runtime',
+        summaryOk: 'Core service responding normally',
+        summaryDegraded: 'Service is up, but checks need attention',
+        summaryError: 'Health checks need immediate attention',
+        summaryUnknown: 'Waiting for runtime health samples',
+      },
+      uptime: {
+        subtitle: 'Process availability',
+        footnote: 'Since latest process start',
+      },
+      cpu: {
+        awaitingPeak: 'Awaiting peak sample',
+        peakWindow: 'Peak {value}% over 5 minutes',
+        caption: 'Rolling compute pressure across the most recent 5 minute window',
+      },
+      heap: {
+        subtitle: 'Current heap alloc',
+        chip: 'Now',
+        footnote: 'Live heap allocator footprint',
+      },
+      goroutines: {
+        subtitle: 'Scheduler load',
+        chip: 'Live',
+        footnote: 'Active routines in the current scheduler window',
+      },
+      memoryChart: {
+        compactSubtitle: 'Highest mark over 5 minutes',
+        awaitingSample: 'Awaiting recent sample',
+        currentValue: 'Current {value}',
+        chartSubtitle: 'Allocator footprint over the last 5 minutes',
+        chartCaption: 'Heap-backed allocation sampled across the most recent runtime window',
+      },
+      heapChart: {
+        chartSubtitle: 'Managed heap allocation over the last 5 minutes',
+        chartCaption: 'Tracked heap growth and retention inside the most recent runtime window',
+      },
+      goroutinesChart: {
+        chartSubtitle: 'Scheduler concurrency over the last 5 minutes',
+        chartCaption:
+          'Concurrent runtime work and scheduler pressure across the most recent sample window',
+      },
+      info: {
+        subtitle: 'Runtime version and worker pool context',
+        versionFootnote: 'Current deployed service version',
+        workerPool: 'Worker pool',
+        runningWorkers: '{active} / {total} running',
+        capacityFootnote: 'Running workers versus configured runtime capacity',
+      },
+    },
     autoRefresh: 'Auto refresh (5s)',
     status: 'Status',
     statusOk: 'OK',
@@ -4114,6 +4179,9 @@ export default mergeHarnessLocale('en-US', {
     mediaGenReqs: 'generations',
   },
   mediaStats: {
+    cards: {
+      subtitle: 'Generation activity',
+    },
     noData: 'No media generation data yet',
     totalCost: 'Total Cost',
     succeeded: 'Succeeded',
@@ -4466,6 +4534,76 @@ export default mergeHarnessLocale('en-US', {
         caption: 'Embeddings improve semantic search quality over time',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Aggregated SkillHub catalogs from Tencent SkillHub and SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Official Tencent SkillHub catalog feed.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Community SkillHub catalog and mirror site.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'GitHub code search for repositories that publish SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'GitHub code search for repositories that publish CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'GitHub code search for repositories that publish AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'ClawHub marketplace catalog.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub Mirror',
+          description: 'Mirror endpoint for the ClawHub catalog.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Community catalog focused on reusable skill collections.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'SkillsMP marketplace catalog.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'LLMSkills community marketplace catalog.',
+        },
+        external: {
+          label: 'External Sources',
+          description: 'Curated skill records imported from external URLs.',
+        },
+        curatedSkillUrl: {
+          label: 'External Skill',
+          description: 'Curated marketplace entry imported from a direct skill URL.',
+        },
+        curatedGithubSeed: {
+          label: 'Curated GitHub Sources',
+          description: 'Curated GitHub source list imported from GitHub references.',
+        },
+        seed: {
+          label: 'Discovery Pages',
+          description: 'Discovery pages that link to additional skills found on the web.',
+        },
+        seedInstance: {
+          label: 'Discovery Page {index}',
+          description: 'Discovery page {index} that links to additional skills found on the web.',
+        },
+      },
       hero: {
         kicker: 'Skills marketplace',
         title: 'Discover, review, and install agent skills',
@@ -4478,9 +4616,12 @@ export default mergeHarnessLocale('en-US', {
         red: 'Blocked',
       },
       warnings: {
-        mediumRiskPermissions: 'Skill requires medium-risk permissions. Review the security report before enabling auto-update.',
-        payloadScanEscalatedHighRisk: 'Installed payload scan escalated this skill from medium risk to high risk. Review the security report before using this skill.',
-        legacyManifestFallback: 'Legacy skill format detected; compatibility defaults were applied.',
+        mediumRiskPermissions:
+          'Skill requires medium-risk permissions. Review the security report before enabling auto-update.',
+        payloadScanEscalatedHighRisk:
+          'Installed payload scan escalated this skill from medium risk to high risk. Review the security report before using this skill.',
+        legacyManifestFallback:
+          'Legacy skill format detected; compatibility defaults were applied.',
       },
       categories: {
         ai_intelligence: 'AI Intelligence',
@@ -4561,6 +4702,7 @@ export default mergeHarnessLocale('en-US', {
         binary_artifact: 'Binary artifact',
         data_exfiltration: 'Data exfiltration',
         cmd_injection: 'Command injection',
+        command_injection: 'Command injection',
       },
       filters: {
         category: 'Category',
@@ -4641,6 +4783,44 @@ export default mergeHarnessLocale('en-US', {
         moreEvidence: '+{count} more evidence items',
         noMajorWarnings: 'No major warnings detected.',
         noReport: 'No security report available yet.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Filesystem',
+          network: 'Network',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'System',
+        },
+        valuePrefixes: {
+          matched: 'Matched',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Attempts to inject system-level prompts',
+          binaryArtifactDetected: 'Binary artifact detected',
+          commandInjectionAttemptDetected: 'Command injection attempt detected',
+          dependencyManifestsDetected: 'Dependency manifests detected',
+          embeddedCredentialOrPrivateKeyMaterial: 'Embedded credential or private key material',
+          knownJailbreakAttempts: 'Known jailbreak attempts',
+          potentialDataExfiltrationAttempts: 'Potential data exfiltration attempts',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potentially destructive or remote-execution shell sequence',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Privileged capability inferred from skill content but not declared',
+          promptInjectionAttemptInstructionOverride:
+            'Prompt injection attempt - instruction override',
+          promptInjectionAttemptJailbreak: 'Prompt injection attempt - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Prompt injection attempt - role override',
+          promptInjectionAttemptSystemPromptInjection:
+            'Prompt injection attempt - system prompt injection',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Prompt text that tries to override or subvert the agent',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Shell or command injection pattern from shared threat detector',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Skill package contains an executable or opaque binary payload',
+          suspiciousExternalContentPattern: 'Suspicious external content pattern',
+        },
       },
       detail: {
         title: 'Details',
@@ -4924,6 +5104,15 @@ export default mergeHarnessLocale('en-US', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Metrics',
+    cards: {
+      overview: {
+        subtitle: 'Usage overview',
+      },
+      modelStats: {
+        subtitle: '{count} tracked models',
+      },
+    },
     lastUpdated: 'Last updated',
     reset: 'Reset',
     confirmReset: 'Are you sure you want to reset all metrics? This action cannot be undone.',
@@ -5804,6 +5993,7 @@ export default mergeHarnessLocale('en-US', {
   speech: {
     convertTask: {
       task: 'Task',
+      sources: 'Sources',
       cancelling: 'Cancelling...',
       downloadAudio: 'Download audio',
       downloadVideo: 'Download video',
@@ -6571,7 +6761,7 @@ export default mergeHarnessLocale('en-US', {
       web_fetch: 'Fetch and parse a web page by URL',
       web_read: 'Read a web page and return normalized main content',
       web_extract: 'Extract structured fields from webpage HTML or a URL',
-      web_crawl: 'Crawl seed URLs with limits and checkpoints',
+      web_crawl: 'Crawl starting URLs with limits and checkpoints',
       web_search: 'Search the web and return result listings without opening pages',
       read: 'Read a local file and extract supported document content',
       write: 'Write text content to a local file',
@@ -6864,6 +7054,19 @@ export default mergeHarnessLocale('en-US', {
       processing: 'Processing',
       succeeded: 'Completed',
       failed: 'Failed',
+    },
+    modelDownload: {
+      auto: {
+        fileName: 'Processing files',
+      },
+      completed: 'Downloaded',
+      pending: 'Pending',
+      status: {
+        downloading: 'Downloading metadata',
+        error: 'Download failed',
+        pending: 'Preparing download',
+        ready: 'Model ready',
+      },
     },
     error: {
       failed: 'Generation failed',

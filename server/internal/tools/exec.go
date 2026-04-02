@@ -1333,7 +1333,7 @@ func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill s
 		}
 	}
 	if len(options) == 0 {
-		options = []string{"web_search", "browser"}
+		options = []string{"web_query", "browser"}
 	}
 	// In auto-confirm mode, treat clarification as a deterministic router:
 	// directly execute the highest-priority candidate instead of blocking on ask.
@@ -1421,6 +1421,16 @@ func adaptClarifiedSkillInput(originalSkill, selectedSkill string, input map[str
 		action := strings.TrimSpace(asCompatString(adapted["action"]))
 		if action == "" {
 			adapted["action"] = "navigate"
+		}
+	}
+
+	// If `web_fetch` is routed to web_query, lift url/input into canonical input.
+	if orig == "web_fetch" && sel == "web_query" {
+		value := strings.TrimSpace(asCompatString(adapted["input"]))
+		if value == "" {
+			if url := strings.TrimSpace(asCompatString(adapted["url"])); url != "" {
+				adapted["input"] = url
+			}
 		}
 	}
 
@@ -1720,6 +1730,8 @@ func buildPinnedSkillFreeTextInput(skillName, restArgs string) (map[string]any, 
 	}
 
 	switch strings.ToLower(strings.TrimSpace(skillName)) {
+	case "web_query":
+		return map[string]any{"input": arg}, nil
 	case "web_search", "deep_research":
 		return map[string]any{"query": arg}, nil
 	case "analyze":

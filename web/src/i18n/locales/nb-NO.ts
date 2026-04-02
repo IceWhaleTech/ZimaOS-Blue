@@ -62,6 +62,10 @@ export default mergeHarnessLocale('nb-NO', {
     select: 'Select',
     test: 'Test',
     provider: 'Provider',
+    name: 'Navn',
+    title: 'Tittel',
+    description: 'Beskrivelse',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1172,7 +1176,7 @@ export default mergeHarnessLocale('nb-NO', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Sunn',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1801,10 +1805,11 @@ export default mergeHarnessLocale('nb-NO', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Eksterne agenter',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Ny External Agent',
       metadata: 'Metadata',
-      status: 'Status',
+      status: { label: 'Status', verified: 'Verifisert' },
       newAcp: 'Ny ACP',
       newA2a: 'Ny A2A',
       newProfile: 'Ny profil',
@@ -4369,8 +4374,8 @@ export default mergeHarnessLocale('nb-NO', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Verifisert - synlig i Claude CLI',
+      verificationFailed: 'Verifisering mislyktes - er kanskje ikke synlig i Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4382,7 +4387,7 @@ export default mergeHarnessLocale('nb-NO', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Apne lenke',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4517,6 +4522,76 @@ export default mergeHarnessLocale('nb-NO', {
         caption: 'Embeddinger forbedrer kvaliteten på semantisk søk over tid',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Sammenslåtte SkillHub-kataloger fra Tencent SkillHub og SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Offisiell katalogfeed fra Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Fellesskapsdrevet SkillHub-katalog og speilside.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'GitHub-kilder for repositoriesøk etter SKILL.md-, CLAUDE.md- og AGENT.md-filer.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'GitHub-kodesøk for repositories som publiserer SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'GitHub-kodesøk for repositories som publiserer CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'GitHub-kodesøk for repositories som publiserer AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Katalog for ClawHub-markedsplassen.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub-speil',
+          description: 'Speilendepunkt for ClawHub-katalogen.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Fellesskapskatalog med fokus på gjenbrukbare skill-samlinger.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Katalog for SkillsMP-markedsplassen.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Katalog for LLMSkills-fellesskapsmarkedsplassen.',
+        },
+        external: {
+          label: 'Eksterne Kilder',
+          description: 'Kuraterte skill-poster importert fra eksterne URL-er.',
+        },
+        curatedSkillUrl: {
+          label: 'Ekstern Skill',
+          description: 'Kuratert markedsplassoppføring importert fra en direkte skill-URL.',
+        },
+        curatedGithubSeed: {
+          label: 'Utvalgte GitHub-kilder',
+          description: 'Liste over utvalgte GitHub-kilder importert fra GitHub-referanser.',
+        },
+        seed: {
+          label: 'Oppdagelsessider',
+          description: 'Oppdagelsessider som lenker til flere ferdigheter funnet på nettet.',
+        },
+        seedInstance: {
+          label: 'Oppdagelsesside {index}',
+          description: 'Oppdagelsesside {index} som lenker til flere ferdigheter funnet på nettet.',
+        },
+      },
       hero: {
         kicker: 'Skill-markedsplass',
         title: 'Oppdag, vurder og installer agent-skills',
@@ -4529,9 +4604,12 @@ export default mergeHarnessLocale('nb-NO', {
         red: 'Blokkert',
       },
       warnings: {
-        mediumRiskPermissions: 'Denne ferdigheten krever tillatelser med middels risiko. Se gjennom sikkerhetsrapporten før du aktiverer automatisk oppdatering.',
-        payloadScanEscalatedHighRisk: 'Payload-skanningen av den installerte pakken eskalerte denne ferdigheten fra middels risiko til høy risiko. Se gjennom sikkerhetsrapporten før du bruker denne ferdigheten.',
-        legacyManifestFallback: 'Eldre ferdighetsformat oppdaget; standardinnstillinger for kompatibilitet ble brukt.',
+        mediumRiskPermissions:
+          'Denne ferdigheten krever tillatelser med middels risiko. Se gjennom sikkerhetsrapporten før du aktiverer automatisk oppdatering.',
+        payloadScanEscalatedHighRisk:
+          'Payload-skanningen av den installerte pakken eskalerte denne ferdigheten fra middels risiko til høy risiko. Se gjennom sikkerhetsrapporten før du bruker denne ferdigheten.',
+        legacyManifestFallback:
+          'Eldre ferdighetsformat oppdaget; standardinnstillinger for kompatibilitet ble brukt.',
       },
       categories: {
         ai_intelligence: 'AI og intelligens',
@@ -4612,7 +4690,8 @@ export default mergeHarnessLocale('nb-NO', {
         dependency_manifest: 'Avhengigheter',
         binary_artifact: 'Binært artefakt',
         data_exfiltration: 'Dataeksfiltrasjon',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Kommandoinjeksjon',
+        command_injection: 'Kommandoinjeksjon',
       },
       filters: {
         category: 'Kategori',
@@ -4681,7 +4760,7 @@ export default mergeHarnessLocale('nb-NO', {
         loading: 'Laster sikkerhetsrapport...',
         score: 'Poeng',
         badge: 'Badge',
-        signals: 'Risk signals',
+        signals: 'Risikosignaler',
         binary: 'Binar',
         installSurface: 'Installasjonsflate',
         artifactKind: 'Artefakttype',
@@ -4693,6 +4772,45 @@ export default mergeHarnessLocale('nb-NO', {
         moreEvidence: '+{count} flere bevispunkter',
         noMajorWarnings: 'Ingen store advarsler oppdaget.',
         noReport: 'Ingen sikkerhetsrapport er tilgjengelig ennå.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Filsystem',
+          network: 'Nettverk',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'System',
+        },
+        valuePrefixes: {
+          matched: 'Treff',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Forsok pa a injisere systemprompter',
+          binaryArtifactDetected: 'Binarartefakt oppdaget',
+          commandInjectionAttemptDetected: 'Forsok pa kommandoinjeksjon oppdaget',
+          dependencyManifestsDetected: 'Avhengighetsmanifester oppdaget',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Innebygde legitimasjoner eller privat nokkelmateriale',
+          knownJailbreakAttempts: 'Kjente jailbreak-forsok',
+          potentialDataExfiltrationAttempts: 'Potensielle forsok pa dataeksfiltrering',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potensielt destruktiv eller fjernutforende shell-sekvens',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Privilegert funksjon utledet fra skill-innholdet, men ikke deklarert',
+          promptInjectionAttemptInstructionOverride:
+            'Prompt injection-forsok - instruksjonsoverstyring',
+          promptInjectionAttemptJailbreak: 'Prompt injection-forsok - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Prompt injection-forsok - rolleoverstyring',
+          promptInjectionAttemptSystemPromptInjection:
+            'Prompt injection-forsok - systemprompt-injeksjon',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Prompttekst som prover a overstyre eller undergrave agenten',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Monster for shell- eller kommandoinjeksjon oppdaget av delt trusseldetektor',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Skill-pakken inneholder en kjorbar eller ugjennomsiktig binaer nyttelast',
+          suspiciousExternalContentPattern: 'Mistenkelig monster i eksternt innhold',
+        },
       },
       detail: {
         title: 'Detaljer',
@@ -4975,6 +5093,7 @@ export default mergeHarnessLocale('nb-NO', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Målinger',
     lastUpdated: 'Sist oppdatert',
     reset: 'Tilbakestill',
     confirmReset:

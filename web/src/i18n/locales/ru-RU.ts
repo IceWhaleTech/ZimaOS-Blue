@@ -62,6 +62,10 @@ export default mergeHarnessLocale('ru-RU', {
     select: 'Select',
     test: 'Тест',
     provider: 'Provider',
+    name: 'Имя',
+    title: 'Заголовок',
+    description: 'Описание',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1911,8 +1915,9 @@ export default mergeHarnessLocale('ru-RU', {
     availableTools: 'Доступные инструменты',
     noToolsAvailable: 'Нет доступных инструментов',
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Внешние агенты',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Новый External Agent',
       newAcp: 'Новый ACP',
       newA2a: 'Новый A2A',
       newProfile: 'Новый профиль',
@@ -1925,6 +1930,7 @@ export default mergeHarnessLocale('ru-RU', {
       customProfile: 'Пользовательский профиль',
       health: 'Здоровье',
       verify: 'Проверить',
+      status: { verified: 'Проверено' },
       cwd: 'Рабочий каталог',
       environment: 'Переопределения среды',
       endpoint: 'Конечная точка URL',
@@ -4561,8 +4567,8 @@ export default mergeHarnessLocale('ru-RU', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Проверено - видно в Claude CLI',
+      verificationFailed: 'Проверка не удалась - может не отображаться в Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4574,7 +4580,7 @@ export default mergeHarnessLocale('ru-RU', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Otkryt ssylku',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4709,6 +4715,76 @@ export default mergeHarnessLocale('ru-RU', {
         caption: 'Эмбеддинги со временем повышают качество семантического поиска',
       },
       defaultSource: 'Маркетплейс',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Агрегированные каталоги SkillHub из Tencent SkillHub и SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Официальный поток каталога Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Сообщественный каталог SkillHub и зеркальный сайт.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'Источники поиска репозиториев GitHub для файлов SKILL.md, CLAUDE.md и AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'Поиск кода GitHub по репозиториям, публикующим SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'Поиск кода GitHub по репозиториям, публикующим CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'Поиск кода GitHub по репозиториям, публикующим AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Каталог маркетплейса ClawHub.',
+        },
+        clawhubMirror: {
+          label: 'Зеркало ClawHub',
+          description: 'Зеркальная точка доступа для каталога ClawHub.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Каталог сообщества, ориентированный на переиспользуемые коллекции навыков.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Каталог маркетплейса SkillsMP.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Каталог сообщества маркетплейса LLMSkills.',
+        },
+        external: {
+          label: 'Внешние Источники',
+          description: 'Курируемые записи навыков, импортированные из внешних URL.',
+        },
+        curatedSkillUrl: {
+          label: 'Внешний Скилл',
+          description: 'Курируемая запись маркетплейса, импортированная из прямого URL навыка.',
+        },
+        curatedGithubSeed: {
+          label: 'Отобранные GitHub-источники',
+          description: 'Список отобранных GitHub-источников, импортированный из ссылок GitHub.',
+        },
+        seed: {
+          label: 'Страницы обнаружения',
+          description: 'Страницы обнаружения, ведущие к другим навыкам, найденным в сети.',
+        },
+        seedInstance: {
+          label: 'Страница обнаружения {index}',
+          description: 'Страница обнаружения {index}, ведущая к другим навыкам, найденным в сети.',
+        },
+      },
       hero: {
         kicker: 'Маркетплейс навыков',
         title: 'Находите, проверяйте и устанавливайте навыки для агента',
@@ -4721,9 +4797,12 @@ export default mergeHarnessLocale('ru-RU', {
         red: 'Заблокировано',
       },
       warnings: {
-        mediumRiskPermissions: 'Этот навык требует разрешений со средним уровнем риска. Перед включением автообновления проверьте отчёт безопасности.',
-        payloadScanEscalatedHighRisk: 'Сканирование установленного пакета повысило риск этого навыка со среднего до высокого. Перед использованием ознакомьтесь с отчётом по безопасности.',
-        legacyManifestFallback: 'Обнаружен устаревший формат навыка; применены настройки совместимости по умолчанию.',
+        mediumRiskPermissions:
+          'Этот навык требует разрешений со средним уровнем риска. Перед включением автообновления проверьте отчёт безопасности.',
+        payloadScanEscalatedHighRisk:
+          'Сканирование установленного пакета повысило риск этого навыка со среднего до высокого. Перед использованием ознакомьтесь с отчётом по безопасности.',
+        legacyManifestFallback:
+          'Обнаружен устаревший формат навыка; применены настройки совместимости по умолчанию.',
       },
       categories: {
         ai_intelligence: 'ИИ и интеллект',
@@ -4803,7 +4882,8 @@ export default mergeHarnessLocale('ru-RU', {
         dependency_manifest: 'Зависимости',
         binary_artifact: 'Бинарный артефакт',
         data_exfiltration: 'Вывод данных',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Inyektsiya komand',
+        command_injection: 'Inyektsiya komand',
       },
       filters: {
         category: 'Категория',
@@ -4872,7 +4952,7 @@ export default mergeHarnessLocale('ru-RU', {
         loading: 'Загрузка отчета безопасности...',
         score: 'Оценка',
         badge: 'Значок',
-        signals: 'Risk signals',
+        signals: 'Signaly riska',
         binary: 'Бинарник',
         installSurface: 'Поверхность установки',
         artifactKind: 'Тип артефакта',
@@ -4884,6 +4964,45 @@ export default mergeHarnessLocale('ru-RU', {
         moreEvidence: '+ еще {count} доказательств',
         noMajorWarnings: 'Серьезных предупреждений не обнаружено.',
         noReport: 'Отчет безопасности пока недоступен.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Failovaya sistema',
+          network: 'Set',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Sistema',
+        },
+        valuePrefixes: {
+          matched: 'Sovpadenie',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Popytki vnedrit prompty sistemnogo urovnya',
+          binaryArtifactDetected: 'Obnaruzhen binarnyy artefakt',
+          commandInjectionAttemptDetected: 'Obnaruzhena popytka inyektsii komand',
+          dependencyManifestsDetected: 'Obnaruzheny manifesty zavisimostey',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Vstroennye uchetnye dannye ili material privatnogo klyucha',
+          knownJailbreakAttempts: 'Izvestnye popytki jailbreak',
+          potentialDataExfiltrationAttempts: 'Vozmozhnye popytki eksfiltratsii dannykh',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potentsialno razrushitelnaya shell-posledovatelnost ili udalennoe vypolnenie',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Privilegirovannaya vozmozhnost vyvedena iz soderzhimogo skill, no ne obyavlena',
+          promptInjectionAttemptInstructionOverride:
+            'Popytka prompt injection - pereopredelenie instruktsiy',
+          promptInjectionAttemptJailbreak: 'Popytka prompt injection - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Popytka prompt injection - pereopredelenie roli',
+          promptInjectionAttemptSystemPromptInjection:
+            'Popytka prompt injection - vnedrenie sistemnogo prompt',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Tekst prompt, pytayushchiysya pereopredelit ili podorvat rabotu agenta',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Obshchiy detektor ugroz obnaruzhil shablon inyektsii shell ili komand',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Paket skill soderzhit ispolnyaemuyu ili neprozrachnuyu binarnuyu nagruzku',
+          suspiciousExternalContentPattern: 'Podozritelnyy shablon vneshnego soderzhimogo',
+        },
       },
       detail: {
         title: 'Детали',
@@ -5175,6 +5294,7 @@ export default mergeHarnessLocale('ru-RU', {
     connectionFailed: 'Соединение не удалось',
   },
   metrics: {
+    label: 'Метрики',
     lastUpdated: 'Обновлено',
     reset: 'Сбросить',
     confirmReset: 'Сбросить все метрики? Это действие нельзя отменить.',

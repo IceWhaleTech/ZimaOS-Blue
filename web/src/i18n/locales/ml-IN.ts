@@ -62,6 +62,10 @@ export default mergeHarnessLocale('ml-IN', {
     select: 'Select',
     test: 'പരീക്ഷിക്കുക',
     provider: 'Provider',
+    name: 'പേര്',
+    title: 'ശീർഷകം',
+    description: 'വിവരണം',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1177,7 +1181,7 @@ export default mergeHarnessLocale('ml-IN', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'ആരോഗ്യമുള്ള',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1814,8 +1818,9 @@ export default mergeHarnessLocale('ml-IN', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'ബാഹ്യ ഏജന്റുകൾ',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'പുതിയ External Agent',
       newAcp: 'പുതിയ ACP',
       newA2a: 'പുതിയ A2A',
       newProfile: 'പുതിയ പ്രൊഫൈൽ',
@@ -1828,6 +1833,7 @@ export default mergeHarnessLocale('ml-IN', {
       customProfile: 'ഇഷ്ടാനുസൃത പ്രൊഫൈൽ',
       health: 'ആരോഗ്യം',
       verify: 'സ്ഥിരീകരിക്കുക',
+      status: { verified: 'സ്ഥിരീകരിച്ചു' },
       cwd: 'പ്രവർത്തന ഡയറക്ടറി',
       environment: 'പരിസ്ഥിതി അസാധുവാക്കുന്നു',
       endpoint: 'അവസാന പോയിൻ്റ് URL',
@@ -4421,8 +4427,8 @@ export default mergeHarnessLocale('ml-IN', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'സ്ഥിരീകരിച്ചു - Claude CLI-ൽ കാണാം',
+      verificationFailed: 'സ്ഥിരീകരണം പരാജയപ്പെട്ടു - Claude CLI-ൽ കാണാനാകാതിരിക്കാം',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4434,7 +4440,7 @@ export default mergeHarnessLocale('ml-IN', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'ലിങ്ക് തുറക്കുക',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4569,6 +4575,76 @@ export default mergeHarnessLocale('ml-IN', {
         caption: 'എംബെഡിംഗുകൾ സമയം പോകുന്തോറും സെമാന്റിക് തിരച്ചിലിന്റെ ഗുണമേന്മ ഉയർത്തുന്നു',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Tencent SkillHub, SkillHub Club എന്നിവയിൽ നിന്ന് സംയോജിപ്പിച്ച SkillHub കാറ്റലോഗുകൾ.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Tencent SkillHubയുടെ ഔദ്യോഗിക കാറ്റലോഗ് ഫീഡ്.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'സമൂഹം നയിക്കുന്ന SkillHub കാറ്റലോഗും മിറർ സൈറ്റും.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'SKILL.md, CLAUDE.md, AGENT.md ഫയലുകൾക്കായുള്ള GitHub റീപോസിറ്ററി തിരയൽ ഉറവിടങ്ങൾ.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'SKILL.md പ്രസിദ്ധീകരിക്കുന്ന റീപോസിറ്ററികൾക്കായുള്ള GitHub കോഡ് തിരയൽ.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'CLAUDE.md പ്രസിദ്ധീകരിക്കുന്ന റീപോസിറ്ററികൾക്കായുള്ള GitHub കോഡ് തിരയൽ.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'AGENT.md പ്രസിദ്ധീകരിക്കുന്ന റീപോസിറ്ററികൾക്കായുള്ള GitHub കോഡ് തിരയൽ.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'ClawHub മാർക്കറ്റ്പ്ലേസ് കാറ്റലോഗ്.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub മിറർ',
+          description: 'ClawHub കാറ്റലോഗിന്റെ മിറർ എൻഡ്പോയിന്റ്.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'വീണ്ടും ഉപയോഗിക്കാവുന്ന skill ശേഖരങ്ങളിൽ ശ്രദ്ധ കേന്ദ്രീകരിക്കുന്ന കമ്മ്യൂണിറ്റി കാറ്റലോഗ്.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'SkillsMP മാർക്കറ്റ്പ്ലേസ് കാറ്റലോഗ്.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'LLMSkills കമ്മ്യൂണിറ്റി മാർക്കറ്റ്പ്ലേസ് കാറ്റലോഗ്.',
+        },
+        external: {
+          label: 'ബാഹ്യ ഉറവിടങ്ങൾ',
+          description: 'ബാഹ്യ URL-ുകളിൽ നിന്ന് ഇറക്കുമതി ചെയ്ത തെരഞ്ഞെടുത്ത skill രേഖകൾ.',
+        },
+        curatedSkillUrl: {
+          label: 'ബാഹ്യ സ്കിൽ',
+          description: 'നേരിട്ടുള്ള skill URL-ൽ നിന്ന് ഇറക്കുമതി ചെയ്ത തെരഞ്ഞെടുത്ത മാർക്കറ്റ്പ്ലേസ് എൻട്രി.',
+        },
+        curatedGithubSeed: {
+          label: 'തിരഞ്ഞെടുത്ത GitHub ഉറവിടങ്ങൾ',
+          description: 'GitHub റഫറൻസുകളിൽ നിന്ന് ഇറക്കുമതി ചെയ്ത തിരഞ്ഞെടുത്ത GitHub ഉറവിടങ്ങളുടെ പട്ടിക.',
+        },
+        seed: {
+          label: 'കണ്ടെത്തൽ പേജുകൾ',
+          description: 'വെബിൽ കണ്ടെത്തിയ കൂടുതൽ കഴിവുകളിലേക്ക് ബന്ധിപ്പിക്കുന്ന കണ്ടെത്തൽ പേജുകൾ.',
+        },
+        seedInstance: {
+          label: 'കണ്ടെത്തൽ പേജ് {index}',
+          description: 'വെബിൽ കണ്ടെത്തിയ കൂടുതൽ കഴിവുകളിലേക്ക് ബന്ധിപ്പിക്കുന്ന കണ്ടെത്തൽ പേജ് {index}.',
+        },
+      },
       hero: {
         kicker: 'സ്കിൽ മാർക്കറ്റ്പ്ലേസ്',
         title: 'എജന്റ് സ്കിലുകൾ കണ്ടെത്തി പരിശോധിച്ച് ഇൻസ്റ്റാൾ ചെയ്യുക',
@@ -4581,9 +4657,12 @@ export default mergeHarnessLocale('ml-IN', {
         red: 'തടഞ്ഞു',
       },
       warnings: {
-        mediumRiskPermissions: 'ഈ സ്കിൽ മധ്യ-റിസ്ക് അനുമതികൾ ആവശ്യപ്പെടുന്നു. ഓട്ടോ അപ്‌ഡേറ്റ് പ്രവർത്തനക്ഷമമാക്കുന്നതിന് മുമ്പ് സുരക്ഷാ റിപ്പോർട്ട് പരിശോധിക്കുക.',
-        payloadScanEscalatedHighRisk: 'ഇൻസ്റ്റാൾ ചെയ്ത പേലോഡ് സ്കാൻ ഈ സ്കില്ലിനെ മധ്യമ റിസ്കിൽ നിന്ന് ഉയർന്ന റിസ്കിലേക്കു ഉയർത്തി. ഉപയോഗിക്കുന്നതിന് മുൻപ് സുരക്ഷാ റിപ്പോർട്ട് പരിശോധിക്കുക.',
-        legacyManifestFallback: 'പഴയ സ്കിൽ ഫോർമാറ്റ് കണ്ടെത്തി; പൊരുത്തത്തിനായുള്ള ഡീഫോൾട്ട് ക്രമീകരണങ്ങൾ പ്രയോഗിച്ചു.',
+        mediumRiskPermissions:
+          'ഈ സ്കിൽ മധ്യ-റിസ്ക് അനുമതികൾ ആവശ്യപ്പെടുന്നു. ഓട്ടോ അപ്‌ഡേറ്റ് പ്രവർത്തനക്ഷമമാക്കുന്നതിന് മുമ്പ് സുരക്ഷാ റിപ്പോർട്ട് പരിശോധിക്കുക.',
+        payloadScanEscalatedHighRisk:
+          'ഇൻസ്റ്റാൾ ചെയ്ത പേലോഡ് സ്കാൻ ഈ സ്കില്ലിനെ മധ്യമ റിസ്കിൽ നിന്ന് ഉയർന്ന റിസ്കിലേക്കു ഉയർത്തി. ഉപയോഗിക്കുന്നതിന് മുൻപ് സുരക്ഷാ റിപ്പോർട്ട് പരിശോധിക്കുക.',
+        legacyManifestFallback:
+          'പഴയ സ്കിൽ ഫോർമാറ്റ് കണ്ടെത്തി; പൊരുത്തത്തിനായുള്ള ഡീഫോൾട്ട് ക്രമീകരണങ്ങൾ പ്രയോഗിച്ചു.',
       },
       categories: {
         ai_intelligence: 'എഐയും ബുദ്ധിയും',
@@ -4663,7 +4742,8 @@ export default mergeHarnessLocale('ml-IN', {
         dependency_manifest: 'അവലംബങ്ങൾ',
         binary_artifact: 'ബൈനറി ആർട്ടിഫാക്റ്റ്',
         data_exfiltration: 'ഡാറ്റ പുറത്താക്കൽ',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'കമാൻഡ് ഇൻജക്ഷൻ',
+        command_injection: 'കമാൻഡ് ഇൻജക്ഷൻ',
       },
       filters: {
         category: 'വിഭാഗം',
@@ -4732,7 +4812,7 @@ export default mergeHarnessLocale('ml-IN', {
         loading: 'സുരക്ഷാ റിപ്പോർട്ട് ലോഡ് ചെയ്യുന്നു...',
         score: 'സ്കോർ',
         badge: 'ബാഡ്ജ്',
-        signals: 'Risk signals',
+        signals: 'അപകട സൂചനകള്‍',
         binary: 'ബൈനറി',
         installSurface: 'ഇൻസ്റ്റാൾ ഉപരിതലം',
         artifactKind: 'ആർട്ടിഫാക്റ്റ് തരം',
@@ -4744,6 +4824,46 @@ export default mergeHarnessLocale('ml-IN', {
         moreEvidence: '+{count} കൂടുതൽ തെളിവുകൾ',
         noMajorWarnings: 'പ്രധാന മുന്നറിയിപ്പുകളൊന്നും കണ്ടെത്തിയില്ല.',
         noReport: 'സുരക്ഷാ റിപ്പോർട്ട് ഇതുവരെ ലഭ്യമല്ല.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'ഫയൽ സിസ്റ്റം',
+          network: 'നെറ്റ്‌വർക്ക്',
+          shell: 'ഷെൽ',
+          docker: 'Docker',
+          system: 'സിസ്റ്റം',
+        },
+        valuePrefixes: {
+          matched: 'പൊരുത്തം',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts:
+            'സിസ്റ്റം നിലയിലെ പ്രോംപ്റ്റുകൾ ഇൻജക്റ്റ് ചെയ്യാനുള്ള ശ്രമങ്ങൾ',
+          binaryArtifactDetected: 'ബൈനറി ആർട്ടിഫാക്ട് കണ്ടെത്തി',
+          commandInjectionAttemptDetected: 'കമാൻഡ് ഇൻജക്ഷൻ ശ്രമം കണ്ടെത്തി',
+          dependencyManifestsDetected: 'ആശ്രിത മാനിഫെസ്റ്റുകൾ കണ്ടെത്തി',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'ഉൾക്കൊള്ളിച്ച ക്രെഡൻഷ്യൽ അല്ലെങ്കിൽ സ്വകാര്യ കീ മെറ്റീരിയൽ',
+          knownJailbreakAttempts: 'അറിയപ്പെട്ട jailbreak ശ്രമങ്ങൾ',
+          potentialDataExfiltrationAttempts: 'ഡാറ്റ പുറത്തേക്ക് കൈമാറാനുള്ള സാധ്യതയുള്ള ശ്രമങ്ങൾ',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'ദൂരസ്ഥ നിർവഹണമോ നാശകാരിയോ ആയിരിക്കാവുന്ന ഷെൽ നിര',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'സ്കിൽ ഉള്ളടക്കത്തിൽ നിന്ന് പ്രത്യേകാവകാശ ശേഷി നിർണ്ണയിച്ചെങ്കിലും പ്രഖ്യാപിച്ചിട്ടില്ല',
+          promptInjectionAttemptInstructionOverride:
+            'പ്രോംപ്റ്റ് ഇൻജക്ഷൻ ശ്രമം - നിർദ്ദേശം മറികടക്കൽ',
+          promptInjectionAttemptJailbreak: 'പ്രോംപ്റ്റ് ഇൻജക്ഷൻ ശ്രമം - jailbreak',
+          promptInjectionAttemptRoleOverride: 'പ്രോംപ്റ്റ് ഇൻജക്ഷൻ ശ്രമം - റോളിന്റെ മറികടക്കൽ',
+          promptInjectionAttemptSystemPromptInjection:
+            'പ്രോംപ്റ്റ് ഇൻജക്ഷൻ ശ്രമം - സിസ്റ്റം പ്രോംപ്റ്റ് ഇൻജക്ഷൻ',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'ഏജന്റിനെ മറികടക്കുകയോ തകർക്കുകയോ ചെയ്യാൻ ശ്രമിക്കുന്ന പ്രോംപ്റ്റ് വാചകം',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'പങ്കിട്ട ഭീഷണി കണ്ടെത്തൽ സംവിധാനത്തിൽ ഷെൽ അല്ലെങ്കിൽ കമാൻഡ് ഇൻജക്ഷൻ പാറ്റേൺ കണ്ടെത്തി',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'സ്കിൽ പാക്കേജിൽ നിർവഹിക്കാവുന്നതോ അസ്പഷ്ടമായതോ ആയ ബൈനറി പേലോഡ് അടങ്ങിയിരിക്കുന്നു',
+          suspiciousExternalContentPattern: 'സംശയാസ്പദമായ ബാഹ്യ ഉള്ളടക്ക പാറ്റേൺ',
+        },
       },
       detail: {
         title: 'വിശദാംശങ്ങൾ',
@@ -5026,6 +5146,7 @@ export default mergeHarnessLocale('ml-IN', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'മെട്രിക്‌സ്',
     lastUpdated: 'അവസാനം അപ്ഡേറ്റ് ചെയ്തത്',
     reset: 'റീസെറ്റ്',
     confirmReset: 'എല്ലാ മെട്രിക്സും റീസെറ്റ് ചെയ്യണമെന്ന് ഉറപ്പാണോ? ഈ പ്രവൃത്തി മാറ്റാനാവില്ല.',
@@ -6743,8 +6864,8 @@ export default mergeHarnessLocale('ml-IN', {
       web: 'വെബ് ഉള്ളടക്കം തിരയാനും വായിക്കാനും എടുത്തെടുക്കാനും ക്രോൾ ചെയ്യാനും ഉള്ള ഏകീകൃത വെബ് ഉപകരണം',
       web_fetch: 'ഒരു വെബ് പേജ് വായിച്ച് സാധാരണപ്പെടുത്തിയ പ്രധാന ഉള്ളടക്കം മടക്കുന്നു',
       web_read: 'പേജ് HTML അല്ലെങ്കില്‍ URLയില്‍ നിന്ന് ഘടിത ഫീല്‍ഡുകള്‍ എടുക്കുന്നു',
-      web_extract: 'പരിധികളും ചെക്ക്‌പോയിന്റുകളും ഉപയോഗിച്ച് seed URLകള്‍ ക്രോള്‍ ചെയ്യുന്നു',
-      web_crawl: 'പരിധികളും ചെക്ക്പോയിന്റുകളും ഉപയോഗിച്ച് സീഡ് URL കൾ ക്രോൾ ചെയ്യുന്നു',
+      web_extract: 'പരിധികളും ചെക്ക്‌പോയിന്റുകളും ഉപയോഗിച്ച് ആരംഭ URLകള്‍ ക്രോള്‍ ചെയ്യുന്നു',
+      web_crawl: 'പരിധികളും ചെക്ക്പോയിന്റുകളും ഉപയോഗിച്ച് ആരംഭ URL കൾ ക്രോൾ ചെയ്യുന്നു',
       web_search: 'പേജുകൾ തുറക്കാതെ വെബിൽ തിരഞ്ഞ് ഫലങ്ങളുടെ പട്ടിക തിരികെ നൽകുന്നു',
       read: 'Read a local file and extract supported document content',
       write: 'Write text content to a local file',

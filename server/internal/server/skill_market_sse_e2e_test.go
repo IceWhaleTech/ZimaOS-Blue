@@ -74,7 +74,7 @@ func TestSkillMarketDiscoverSSEEndToEnd(t *testing.T) {
 	cfg.CacheRoot = filepath.Join(tempDir, "cache")
 	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	cfg.TencentSkillHubAPIBaseURL = upstream.URL
 	cfg.GitHubAPIBaseURL = upstream.URL
 	cfg.ClawHubBaseURL = upstream.URL

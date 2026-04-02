@@ -64,6 +64,107 @@ func TestStoreNormalizeLegacyVersionLikeCategories(t *testing.T) {
 	}
 }
 
+func TestStoreGetFiltersMergesSourcesByGroup(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	ctx := context.Background()
+
+	fixtures := []SkillDocument{
+		{
+			ID:            "skillhub-alpha",
+			Slug:          "skillhub-alpha",
+			Name:          "SkillHub Alpha",
+			Description:   "Grouped under skillhub",
+			LatestVersion: "1.0.0",
+			Installable:   true,
+			InstallType:   InstallTypeRawSkill,
+			ArtifactKind:  ArtifactKindOpenSource,
+			Published:     true,
+			SourceID:      "tencent-skillhub",
+			SourceName:    "Tencent SkillHub",
+			SourceGroup:   "skillhub",
+			SourceType:    "lightmake_api",
+		},
+		{
+			ID:            "skillhub-beta",
+			Slug:          "skillhub-beta",
+			Name:          "SkillHub Beta",
+			Description:   "Also grouped under skillhub",
+			LatestVersion: "1.0.0",
+			Installable:   true,
+			InstallType:   InstallTypeRawSkill,
+			ArtifactKind:  ArtifactKindOpenSource,
+			Published:     true,
+			SourceID:      "skillhub-club",
+			SourceName:    "SkillHub Club",
+			SourceGroup:   "skillhub",
+			SourceType:    "html_catalog",
+		},
+		{
+			ID:            "custom-source-skill",
+			Slug:          "custom-source-skill",
+			Name:          "Custom Source Skill",
+			Description:   "Falls back to source id when source_group is empty",
+			LatestVersion: "1.0.0",
+			Installable:   true,
+			InstallType:   InstallTypeRawSkill,
+			ArtifactKind:  ArtifactKindOpenSource,
+			Published:     true,
+			SourceID:      "custom-source",
+			SourceName:    "Custom Source",
+			SourceType:    "html_catalog",
+		},
+		{
+			ID:            "skillstack-alpha",
+			Slug:          "skillstack-alpha",
+			Name:          "SkillStack Alpha",
+			Description:   "Independent source group",
+			LatestVersion: "1.0.0",
+			Installable:   true,
+			InstallType:   InstallTypeRawSkill,
+			ArtifactKind:  ArtifactKindOpenSource,
+			Published:     true,
+			SourceID:      "skillstack",
+			SourceName:    "SkillStack",
+			SourceGroup:   "skillstack",
+			SourceType:    "html_catalog",
+		},
+	}
+
+	for i := range fixtures {
+		doc := fixtures[i]
+		if err := store.UpsertSkill(ctx, &doc, nil, nil); err != nil {
+			t.Fatalf("UpsertSkill(%s) error = %v", doc.ID, err)
+		}
+	}
+
+	filters, err := store.GetFilters(ctx)
+	if err != nil {
+		t.Fatalf("GetFilters() error = %v", err)
+	}
+
+	if len(filters.Sources) != 3 {
+		t.Fatalf("filters.Sources len = %d, want 3 (%+v)", len(filters.Sources), filters.Sources)
+	}
+	if got := filters.Sources[0]; got.Value != "skillhub" || got.Count != 2 {
+		t.Fatalf("filters.Sources[0] = %+v, want skillhub bucket with count 2", got)
+	}
+	if got := filters.Sources[1]; got.Value != "custom-source" || got.Count != 1 {
+		t.Fatalf("filters.Sources[1] = %+v, want custom-source fallback bucket", got)
+	}
+	if got := filters.Sources[2]; got.Value != "skillstack" || got.Count != 1 {
+		t.Fatalf("filters.Sources[2] = %+v, want skillstack bucket", got)
+	}
+}
+
 func TestStoreKeepsHigherPrioritySourceWhenLowerPriorityDuplicateArrives(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
 	if err != nil {

@@ -92,7 +92,7 @@ Help with rebase, review, and branch cleanup.
 	cfg.CacheRoot = filepath.Join(tempDir, "cache")
 	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	cfg.GitHubAPIBaseURL = server.URL + "/github"
 
 	svc, err := NewService(db, Options{
@@ -217,7 +217,7 @@ Use bash to inspect files quickly.
 	cfg.CacheRoot = filepath.Join(tempDir, "cache")
 	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 
 	svc, err := NewService(db, Options{
 		Config:       cfg,
@@ -325,7 +325,7 @@ func TestDiscoverFromHTMLCatalogTraversesBeyondLegacyPageCap(t *testing.T) {
 	cfg.CacheRoot = filepath.Join(tempDir, "cache")
 	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 	cfg.HTMLCatalogCrawlBatchPages = 3
 	cfg.HTMLCatalogCrawlMaxPages = 40
 

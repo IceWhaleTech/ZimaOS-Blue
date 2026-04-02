@@ -60,6 +60,18 @@ function collectTypeMismatches(reference: unknown, candidate: unknown, prefix = 
   return typeof candidate === typeof reference ? [] : [prefix]
 }
 
+function getPathValue(root: unknown, path: string): unknown {
+  return path
+    .split('.')
+    .reduce<unknown>(
+      (value, segment) =>
+        isPlainObject(value) || Array.isArray(value)
+          ? (value as Record<string, unknown>)[segment]
+          : undefined,
+      root
+    )
+}
+
 describe('locale integrity', () => {
   it('keeps the full 27-locale set', () => {
     expect(Object.keys(localeModules)).toHaveLength(27)
@@ -99,6 +111,48 @@ describe('locale integrity', () => {
 
       expect(missingPaths, `${locale} is missing locale keys`).toEqual([])
       expect(typeMismatches, `${locale} has locale type mismatches`).toEqual([])
+    }
+  })
+
+  it('keeps key UI status terms translated outside English locales', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    const enUSEntry = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))
+
+    expect(enUSEntry).toBeTruthy()
+    if (!enUSEntry) {
+      throw new Error('Missing en-US locale module')
+    }
+
+    const referenceMessages = enUSEntry[1].default
+    const protectedPaths = [
+      'dashboard.healthy',
+      'metrics.label',
+      'settings.externalAgents.status.verified',
+      'skillStore.status.verified',
+      'skillStore.status.verificationFailed',
+      'skillStore.detail.openLink',
+      'skillStore.marketplace.security.signals',
+      'skillStore.marketplace.sources.skillhub.description',
+      'skillStore.marketplace.sources.github.description',
+      'skillStore.marketplace.sources.external.description',
+      'skillStore.marketplace.sources.seed.description',
+      'skillStore.marketplace.evidenceTypes.command_injection',
+      'skillStore.marketplace.dynamic.permissions.network',
+      'skillStore.marketplace.dynamic.valuePrefixes.matched',
+      'skillStore.marketplace.dynamic.messages.commandInjectionAttemptDetected',
+    ]
+
+    for (const [modulePath, mod] of entries) {
+      const locale = localeFromModulePath(modulePath)
+      if (locale === 'en-US' || locale === 'en-GB') {
+        continue
+      }
+
+      for (const path of protectedPaths) {
+        expect(getPathValue(mod.default, path), `${locale} should translate ${path}`).not.toEqual(
+          getPathValue(referenceMessages, path)
+        )
+      }
     }
   })
 })

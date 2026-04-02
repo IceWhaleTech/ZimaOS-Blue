@@ -62,6 +62,10 @@ export default mergeHarnessLocale('el-GR', {
     select: 'Select',
     test: 'Δοκιμή',
     provider: 'Provider',
+    name: 'Όνομα',
+    title: 'Τίτλος',
+    description: 'Περιγραφή',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1180,7 +1184,7 @@ export default mergeHarnessLocale('el-GR', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Υγιές',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1821,8 +1825,9 @@ export default mergeHarnessLocale('el-GR', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Εξωτερικοί πράκτορες',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Νέος External Agent',
       newAcp: 'Νέο ACP',
       newA2a: 'Νέο A2A',
       newProfile: 'Νέο προφίλ',
@@ -1835,6 +1840,7 @@ export default mergeHarnessLocale('el-GR', {
       customProfile: 'Προσαρμοσμένο προφίλ',
       health: 'Υγεία',
       verify: 'Επαλήθευση',
+      status: { verified: 'Επαληθευμένο' },
       cwd: 'Κατάλογος Εργασίας',
       environment: 'Παρακάμπτει το περιβάλλον',
       endpoint: 'Τελικό σημείο URL',
@@ -1854,7 +1860,7 @@ export default mergeHarnessLocale('el-GR', {
       duplicate: 'Διπλότυπο',
       builtinHelp:
         'Τα ενσωματωμένα προφίλ παραμένουν μόνο για ανάγνωση, ώστε οι καταχωρήσεις Claude, Codex, Gemini και οι γενικές A2A να παραμένουν σταθερές.',
-      command: 'Command and Args',
+      command: 'Εντολή και ορίσματα',
       credentialSource: 'Πηγή διαπιστευτηρίων',
       authMethod: 'Μέθοδος Auth',
       advancedOptions: 'Προηγμένες επιλογές',
@@ -4422,8 +4428,8 @@ export default mergeHarnessLocale('el-GR', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Επαληθευμένο - ορατό στο Claude CLI',
+      verificationFailed: 'Η επαλήθευση απέτυχε - ενδέχεται να μην είναι ορατό στο Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4435,7 +4441,7 @@ export default mergeHarnessLocale('el-GR', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Anoigma syndesmou',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4570,6 +4576,76 @@ export default mergeHarnessLocale('el-GR', {
         caption: 'Τα embeddings βελτιώνουν με τον χρόνο την ποιότητα της σημασιολογικής αναζήτησης',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Συγκεντρωμένοι κατάλογοι SkillHub από τα Tencent SkillHub και SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Επίσημη ροή καταλόγου του Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Κατάλογος SkillHub της κοινότητας και mirror site.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'Πηγές αναζήτησης αποθετηρίων GitHub για αρχεία SKILL.md, CLAUDE.md και AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'Αναζήτηση κώδικα GitHub για αποθετήρια που δημοσιεύουν SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'Αναζήτηση κώδικα GitHub για αποθετήρια που δημοσιεύουν CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'Αναζήτηση κώδικα GitHub για αποθετήρια που δημοσιεύουν AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Κατάλογος της αγοράς ClawHub.',
+        },
+        clawhubMirror: {
+          label: 'Καθρέφτης ClawHub',
+          description: 'Mirror endpoint για τον κατάλογο ClawHub.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Κατάλογος κοινότητας με έμφαση σε επαναχρησιμοποιήσιμες συλλογές skill.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Κατάλογος της αγοράς SkillsMP.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Κατάλογος της κοινοτικής αγοράς LLMSkills.',
+        },
+        external: {
+          label: 'Εξωτερικές Πηγές',
+          description: 'Επιμελημένες εγγραφές skill που εισάγονται από εξωτερικά URL.',
+        },
+        curatedSkillUrl: {
+          label: 'Εξωτερικό Skill',
+          description: 'Επιμελημένη εγγραφή αγοράς που εισήχθη από άμεσο URL skill.',
+        },
+        curatedGithubSeed: {
+          label: 'Επιλεγμένες πηγές GitHub',
+          description: 'Λίστα επιλεγμένων πηγών GitHub που εισάγεται από αναφορές GitHub.',
+        },
+        seed: {
+          label: 'Σελίδες ανακάλυψης',
+          description: 'Σελίδες ανακάλυψης που συνδέουν με περισσότερες δεξιότητες που βρέθηκαν στον ιστό.',
+        },
+        seedInstance: {
+          label: 'Σελίδα ανακάλυψης {index}',
+          description: 'Σελίδα ανακάλυψης {index} που συνδέει με περισσότερες δεξιότητες που βρέθηκαν στον ιστό.',
+        },
+      },
       hero: {
         kicker: 'Marketplace skill',
         title: 'Anakalypste, elegxte kai egkatastiste skills gia agent',
@@ -4582,9 +4658,12 @@ export default mergeHarnessLocale('el-GR', {
         red: 'Apokleistike',
       },
       warnings: {
-        mediumRiskPermissions: 'Αυτό το skill απαιτεί δικαιώματα μεσαίου κινδύνου. Ελέγξτε την αναφορά ασφάλειας πριν ενεργοποιήσετε την αυτόματη ενημέρωση.',
-        payloadScanEscalatedHighRisk: 'Η σάρωση payload μετά την εγκατάσταση ανέβασε αυτό το skill από μεσαίο σε υψηλό κίνδυνο. Ελέγξτε την αναφορά ασφάλειας πριν χρησιμοποιήσετε αυτό το skill.',
-        legacyManifestFallback: 'Εντοπίστηκε παλαιό format skill· εφαρμόστηκαν προεπιλογές συμβατότητας.',
+        mediumRiskPermissions:
+          'Αυτό το skill απαιτεί δικαιώματα μεσαίου κινδύνου. Ελέγξτε την αναφορά ασφάλειας πριν ενεργοποιήσετε την αυτόματη ενημέρωση.',
+        payloadScanEscalatedHighRisk:
+          'Η σάρωση payload μετά την εγκατάσταση ανέβασε αυτό το skill από μεσαίο σε υψηλό κίνδυνο. Ελέγξτε την αναφορά ασφάλειας πριν χρησιμοποιήσετε αυτό το skill.',
+        legacyManifestFallback:
+          'Εντοπίστηκε παλαιό format skill· εφαρμόστηκαν προεπιλογές συμβατότητας.',
       },
       categories: {
         ai_intelligence: 'ΤΝ και νοημοσύνη',
@@ -4665,7 +4744,8 @@ export default mergeHarnessLocale('el-GR', {
         dependency_manifest: 'Exartiseis',
         binary_artifact: 'Dyaiko artifact',
         data_exfiltration: 'Exagogi dedomenon',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Enesi entolon',
+        command_injection: 'Enesi entolon',
       },
       filters: {
         category: 'Katigoria',
@@ -4734,7 +4814,7 @@ export default mergeHarnessLocale('el-GR', {
         loading: 'Fortonetai i anafora asfaleias...',
         score: 'Score',
         badge: 'Badge',
-        signals: 'Risk signals',
+        signals: 'Simata kindynou',
         binary: 'Dyaiko',
         installSurface: 'Epifaneia egkatastasis',
         artifactKind: 'Typos artifact',
@@ -4746,6 +4826,45 @@ export default mergeHarnessLocale('el-GR', {
         moreEvidence: '+{count} perissoteres apodeixeis',
         noMajorWarnings: 'Den entopistikan simantikes proeidopoiiseis.',
         noReport: 'Den yparxei akoma diathesimi anafora asfaleias.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Systima archeion',
+          network: 'Diktyo',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Systima',
+        },
+        valuePrefixes: {
+          matched: 'Antistoixisi',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Prospatheies eisagogis prompts epipedou systimatos',
+          binaryArtifactDetected: 'Entopistike dyadiko artifact',
+          commandInjectionAttemptDetected: 'Entopistike apopeira enesis entolon',
+          dependencyManifestsDetected: 'Entopistikan manifests exartiseon',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Ensomatomena diadistiria i yliko idiotikou kleidiou',
+          knownJailbreakAttempts: 'Gnoses apopeires jailbreak',
+          potentialDataExfiltrationAttempts: 'Pithanes apopeires exagogis dedomenon',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Dynitika katastrofiki akolouthia shell i apomakrismenis ektelesis',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Exichthi pronomioucha dynatotita apo to periechomeno tou skill alla den dilothike',
+          promptInjectionAttemptInstructionOverride:
+            'Apopeira prompt injection - parakampsi odigion',
+          promptInjectionAttemptJailbreak: 'Apopeira prompt injection - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Apopeira prompt injection - parakampsi rolou',
+          promptInjectionAttemptSystemPromptInjection:
+            'Apopeira prompt injection - enesi system prompt',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Keimeno prompt pou prospathei na paraplani i na ypovathmisei ton agent',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Motivo enesis shell i entolon pou entopistike apo ton koino anichnefti apeilon',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'To paketo tou skill periechei ektelesimo i adiafano dyadiko payload',
+          suspiciousExternalContentPattern: 'Ypopto motivo exoterikou periechomenou',
+        },
       },
       detail: {
         title: 'Leptomereies',
@@ -5030,6 +5149,7 @@ export default mergeHarnessLocale('el-GR', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Μετρήσεις',
     lastUpdated: 'Τελευταία ενημέρωση',
     reset: 'Επαναφορά',
     confirmReset:

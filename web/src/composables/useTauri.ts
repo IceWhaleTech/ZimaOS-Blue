@@ -191,6 +191,26 @@ export function useTauri() {
     }
   }
 
+  async function restartServerRuntime(path?: string): Promise<boolean> {
+    if (!isTauriApp.value) return false
+
+    const targetPath =
+      path?.trim() || `${window.location.pathname}${window.location.search}${window.location.hash}` || '/'
+
+    try {
+      const internals = window.__TAURI_INTERNALS__
+      if (!internals?.invoke) {
+        return false
+      }
+
+      await internals.invoke('restart_server_runtime', { path: targetPath })
+      return true
+    } catch (e) {
+      console.error('Failed to restart desktop-managed server runtime:', e)
+      return false
+    }
+  }
+
   async function startWindowDragging(): Promise<boolean> {
     if (!isTauriApp.value) return false
 
@@ -268,6 +288,8 @@ export function useTauri() {
     setCloseBehavior,
     /** Sync tray menu language with app locale */
     setTrayLocale,
+    /** Restart the desktop-managed backend runtime and rebind the webview */
+    restartServerRuntime,
     /** Start dragging the current desktop window */
     startWindowDragging,
     /** Reveal path in system file manager */

@@ -302,8 +302,18 @@ else
 
     SIDECAR_NAME="blue-server-$TARGET"
 
-    # Build with optimizations (NO UPX compression!)
-    CGO_ENABLED=0 go build -tags 'fts5 kokoro' -ldflags="$GO_LDFLAGS" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
+    # Linux Kokoro TTS requires CGO + espeak-ng static libs.
+    ESPEAK_DIR="$PROJECT_ROOT/third_party/espeak-ng"
+    if [ ! -f "$ESPEAK_DIR/build/src/libespeak-ng/libespeak-ng.a" ]; then
+        print_step "Building espeak-ng from source for Linux..."
+        cd "$ESPEAK_DIR"
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+        cmake --build build --config Release -j"$(nproc 2>/dev/null || echo 4)"
+        cd "$PROJECT_ROOT/server"
+    fi
+
+    # Build with the same TTS feature set as the Linux CLI release path.
+    CGO_ENABLED=1 go build -tags 'fts5 espeak kokoro' -ldflags="$GO_LDFLAGS" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
 
     # Also copy to bin directory for resources bundling
     mkdir -p "$TAURI_DIR/bin"

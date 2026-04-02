@@ -527,13 +527,13 @@ func (t *WebExtractTool) Execute(ctx context.Context, args map[string]interface{
 func (t *WebCrawlTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_crawl",
-		Description: "Crawl a set of seed URLs with host-aware limits, deduplication, checkpoint/resume, normalized page results, and discovered edges.",
+		Description: "Crawl a set of starting URLs with host-aware limits, deduplication, checkpoint/resume, normalized page results, and discovered edges.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"seeds":             map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Seed URLs to start crawling from."},
-				"allowed_hosts":     map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional host allowlist. Defaults to seed hosts."},
+				"seeds":             map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Starting URLs to begin crawling from."},
+				"allowed_hosts":     map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional host allowlist. Defaults to the starting URL hosts."},
 				"max_depth":         map[string]interface{}{"type": "integer", "minimum": 0, "description": "Maximum crawl depth."},
 				"max_pages":         map[string]interface{}{"type": "integer", "minimum": 1, "description": "Maximum number of completed pages."},
 				"max_concurrency":   map[string]interface{}{"type": "integer", "minimum": 1, "description": "Maximum concurrent fetches."},

@@ -62,6 +62,10 @@ export default mergeHarnessLocale('ro-RO', {
     select: 'Select',
     test: 'Testează',
     provider: 'Provider',
+    name: 'Nume',
+    title: 'Titlu',
+    description: 'Descriere',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1178,7 +1182,7 @@ export default mergeHarnessLocale('ro-RO', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Sănătos',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1815,8 +1819,9 @@ export default mergeHarnessLocale('ro-RO', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Agenți externi',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'External Agent nou',
       protocol: 'Protocol',
       newAcp: 'ACP nou',
       newA2a: 'A2A nou',
@@ -1830,6 +1835,7 @@ export default mergeHarnessLocale('ro-RO', {
       customProfile: 'Profil personalizat',
       health: 'Sănătate',
       verify: 'Verificați',
+      status: { verified: 'Verificat' },
       cwd: 'Director de lucru',
       environment: 'Anulări de mediu',
       endpoint: 'Punct final URL',
@@ -4411,8 +4417,8 @@ export default mergeHarnessLocale('ro-RO', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Verificat - vizibil în Claude CLI',
+      verificationFailed: 'Verificarea a eșuat - este posibil să nu fie vizibil în Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4424,7 +4430,7 @@ export default mergeHarnessLocale('ro-RO', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Deschide linkul',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4559,6 +4565,76 @@ export default mergeHarnessLocale('ro-RO', {
         caption: 'Embeddingurile îmbunătățesc în timp calitatea căutării semantice',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Cataloage SkillHub agregate din Tencent SkillHub și SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Fluxul oficial al catalogului Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Catalog SkillHub al comunității și site oglindă.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'Surse de căutare în depozite GitHub pentru fișiere SKILL.md, CLAUDE.md și AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'Căutare de cod GitHub pentru depozite care publică SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'Căutare de cod GitHub pentru depozite care publică CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'Căutare de cod GitHub pentru depozite care publică AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Catalogul marketplace-ului ClawHub.',
+        },
+        clawhubMirror: {
+          label: 'Oglindă ClawHub',
+          description: 'Endpoint oglindă pentru catalogul ClawHub.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Catalog comunitar axat pe colecții reutilizabile de skill-uri.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Catalogul marketplace-ului SkillsMP.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Catalogul marketplace-ului comunitar LLMSkills.',
+        },
+        external: {
+          label: 'Surse Externe',
+          description: 'Înregistrări de skill-uri curatoriate importate din URL-uri externe.',
+        },
+        curatedSkillUrl: {
+          label: 'Skill Extern',
+          description: 'Intrare de marketplace curatoriată importată dintr-un URL direct de skill.',
+        },
+        curatedGithubSeed: {
+          label: 'Surse GitHub selectate',
+          description: 'Listă de surse GitHub selectate importată din referințe GitHub.',
+        },
+        seed: {
+          label: 'Pagini de descoperire',
+          description: 'Pagini de descoperire care trimit către mai multe skilluri găsite pe web.',
+        },
+        seedInstance: {
+          label: 'Pagina de descoperire {index}',
+          description: 'Pagina de descoperire {index} care trimite către mai multe skilluri găsite pe web.',
+        },
+      },
       hero: {
         kicker: 'Marketplace de skilluri',
         title: 'Descopera, verifica si instaleaza skilluri pentru agent',
@@ -4571,9 +4647,12 @@ export default mergeHarnessLocale('ro-RO', {
         red: 'Blocat',
       },
       warnings: {
-        mediumRiskPermissions: 'Această abilitate necesită permisiuni cu risc mediu. Verificați raportul de securitate înainte de a activa actualizarea automată.',
-        payloadScanEscalatedHighRisk: 'Scanarea payload-ului instalat a escaladat această abilitate de la risc mediu la risc ridicat. Consultați raportul de securitate înainte de a folosi această abilitate.',
-        legacyManifestFallback: 'A fost detectat un format vechi; au fost aplicate setări implicite de compatibilitate.',
+        mediumRiskPermissions:
+          'Această abilitate necesită permisiuni cu risc mediu. Verificați raportul de securitate înainte de a activa actualizarea automată.',
+        payloadScanEscalatedHighRisk:
+          'Scanarea payload-ului instalat a escaladat această abilitate de la risc mediu la risc ridicat. Consultați raportul de securitate înainte de a folosi această abilitate.',
+        legacyManifestFallback:
+          'A fost detectat un format vechi; au fost aplicate setări implicite de compatibilitate.',
       },
       categories: {
         ai_intelligence: 'AI si inteligenta',
@@ -4654,7 +4733,8 @@ export default mergeHarnessLocale('ro-RO', {
         dependency_manifest: 'Dependente',
         binary_artifact: 'Artefact binar',
         data_exfiltration: 'Exfiltrare date',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Injectie de comenzi',
+        command_injection: 'Injectie de comenzi',
       },
       filters: {
         category: 'Categorie',
@@ -4723,7 +4803,7 @@ export default mergeHarnessLocale('ro-RO', {
         loading: 'Se incarca raportul de securitate...',
         score: 'Scor',
         badge: 'Insigna',
-        signals: 'Risk signals',
+        signals: 'Semnale de risc',
         binary: 'Binar',
         installSurface: 'Suprafata de instalare',
         artifactKind: 'Tip artefact',
@@ -4735,6 +4815,46 @@ export default mergeHarnessLocale('ro-RO', {
         moreEvidence: '+{count} dovezi suplimentare',
         noMajorWarnings: 'Nu au fost detectate avertismente majore.',
         noReport: 'Raportul de securitate nu este disponibil inca.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Sistem de fisiere',
+          network: 'Retea',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'Sistem',
+        },
+        valuePrefixes: {
+          matched: 'Potrivire',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Incercari de a injecta prompturi la nivel de sistem',
+          binaryArtifactDetected: 'Artefact binar detectat',
+          commandInjectionAttemptDetected: 'Tentativa de injectie de comenzi detectata',
+          dependencyManifestsDetected: 'Manifeste de dependente detectate',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Credentiale incorporate sau material de cheie privata',
+          knownJailbreakAttempts: 'Incercari cunoscute de jailbreak',
+          potentialDataExfiltrationAttempts: 'Posibile incercari de exfiltrare a datelor',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Secventa shell potential distructiva sau de executie la distanta',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Capacitate privilegiata dedusa din continutul skill-ului, dar nedeclarata',
+          promptInjectionAttemptInstructionOverride:
+            'Tentativa de prompt injection - suprascrierea instructiunilor',
+          promptInjectionAttemptJailbreak: 'Tentativa de prompt injection - jailbreak',
+          promptInjectionAttemptRoleOverride:
+            'Tentativa de prompt injection - suprascrierea rolului',
+          promptInjectionAttemptSystemPromptInjection:
+            'Tentativa de prompt injection - injectarea promptului de sistem',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Text de prompt care incearca sa suprascrie sau sa submineze agentul',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Model de injectie shell sau de comenzi detectat de detectorul partajat',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Pachetul skill-ului contine un payload binar executabil sau opac',
+          suspiciousExternalContentPattern: 'Model suspect de continut extern',
+        },
       },
       detail: {
         title: 'Detalii',
@@ -5018,6 +5138,7 @@ export default mergeHarnessLocale('ro-RO', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Metrici',
     lastUpdated: 'Ultima actualizare',
     reset: 'Resetează',
     confirmReset: 'Sigur doriți să resetați toate metricile? Această acțiune nu poate fi anulată.',
@@ -6732,8 +6853,8 @@ export default mergeHarnessLocale('ro-RO', {
       web: 'Instrument web unificat pentru cautare, citire, extragere sau parcurgere a continutului web',
       web_fetch: 'Citeste o pagina web si returneaza continutul principal normalizat',
       web_read: 'Extrage campuri structurate din HTML-ul unei pagini sau dintr-un URL',
-      web_extract: 'Parcurge URL-uri seed cu limite si puncte de control',
-      web_crawl: 'Parcurge URL-uri seed cu limite și puncte de control',
+      web_extract: 'Parcurge URL-uri initiale cu limite si puncte de control',
+      web_crawl: 'Parcurge URL-uri initiale cu limite și puncte de control',
       web_search: 'Cauta pe web si returneaza o lista de rezultate fara a deschide pagini',
       read: 'Read a local file and extract supported document content',
       write: 'Write text content to a local file',

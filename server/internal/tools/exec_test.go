@@ -1482,17 +1482,17 @@ func TestExecSkillShortCircuit_DoesNotLeakShortCircuitWarning(t *testing.T) {
 	}, sessions, nil, nil, nil)
 
 	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
-		if skillID != "web_search" {
+		if skillID != "web_query" {
 			return nil, fmt.Errorf("unexpected skill: %s", skillID)
 		}
-		if input["query"] != "latest blue release" {
-			t.Fatalf("query = %v, want %q", input["query"], "latest blue release")
+		if input["input"] != "latest blue release" {
+			t.Fatalf("input = %v, want %q", input["input"], "latest blue release")
 		}
 		return map[string]string{"success": "true", "status": "ok"}, nil
 	})
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"command": `blue web_search query="latest blue release"`,
+		"command": `blue web_query input="latest blue release"`,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1507,7 +1507,7 @@ func TestExecSkillShortCircuit_DoesNotLeakShortCircuitWarning(t *testing.T) {
 	}
 }
 
-func TestExecSkillShortCircuit_BluePrefixFreeTextMapsToWebSearchQuery(t *testing.T) {
+func TestExecSkillShortCircuit_BluePrefixFreeTextMapsToWebQueryInput(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()
 
@@ -1518,17 +1518,17 @@ func TestExecSkillShortCircuit_BluePrefixFreeTextMapsToWebSearchQuery(t *testing
 	}, sessions, nil, nil, nil)
 
 	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
-		if skillID != "web_search" {
+		if skillID != "web_query" {
 			return nil, fmt.Errorf("unexpected skill: %s", skillID)
 		}
-		if input["query"] != "latest blue release" {
-			t.Fatalf("query = %v, want %q", input["query"], "latest blue release")
+		if input["input"] != "latest blue release" {
+			t.Fatalf("input = %v, want %q", input["input"], "latest blue release")
 		}
 		return map[string]string{"success": "true", "status": "ok"}, nil
 	})
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"command": `blue web_search latest blue release`,
+		"command": `blue web_query latest blue release`,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1556,17 +1556,17 @@ func TestExecSkillShortCircuit_BluePrefixStrictShellMapsToSkill(t *testing.T) {
 	var calls int
 	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
 		calls++
-		if skillID != "web_search" {
+		if skillID != "web_query" {
 			return nil, fmt.Errorf("unexpected skill: %s", skillID)
 		}
-		if input["query"] != "latest blue release" {
-			t.Fatalf("query = %v, want %q", input["query"], "latest blue release")
+		if input["input"] != "latest blue release" {
+			t.Fatalf("input = %v, want %q", input["input"], "latest blue release")
 		}
 		return map[string]string{"success": "true", "status": "ok"}, nil
 	})
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"command":          `blue web_search latest blue release`,
+		"command":          `blue web_query latest blue release`,
 		execStrictShellArg: true,
 	})
 	if err != nil {
@@ -1597,17 +1597,17 @@ func TestExecSkillShortCircuit_BluePrefixStrictShellBypassesShellWorkdirValidati
 	}, sessions, nil, nil, nil)
 
 	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
-		if skillID != "web_search" {
+		if skillID != "web_query" {
 			return nil, fmt.Errorf("unexpected skill: %s", skillID)
 		}
-		if input["query"] != "latest blue release" {
-			t.Fatalf("query = %v, want %q", input["query"], "latest blue release")
+		if input["input"] != "latest blue release" {
+			t.Fatalf("input = %v, want %q", input["input"], "latest blue release")
 		}
 		return map[string]string{"success": "true", "status": "ok"}, nil
 	})
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"command":          `blue web_search latest blue release`,
+		"command":          `blue web_query latest blue release`,
 		execStrictShellArg: true,
 	})
 	if err != nil {
@@ -1631,27 +1631,27 @@ func TestCanStrictShellBlueSkillShortCircuit(t *testing.T) {
 	}{
 		{
 			name:    "simple blue skill command",
-			command: `blue web_search query="latest docs"`,
+			command: `blue web_query input="latest docs"`,
 			want:    true,
 		},
 		{
 			name:    "cd chained command is not eligible",
-			command: `cd /tmp && blue web_search query="latest docs"`,
+			command: `cd /tmp && blue web_query input="latest docs"`,
 			want:    false,
 		},
 		{
 			name:    "shell operators are rejected",
-			command: `blue web_search query="latest docs" && echo nope`,
+			command: `blue web_query input="latest docs" && echo nope`,
 			want:    false,
 		},
 		{
 			name:    "pipes are rejected",
-			command: `blue web_search query="latest docs" | cat`,
+			command: `blue web_query input="latest docs" | cat`,
 			want:    false,
 		},
 		{
 			name:    "redirects are rejected",
-			command: `blue web_search query="latest docs" > /tmp/out`,
+			command: `blue web_query input="latest docs" > /tmp/out`,
 			want:    false,
 		},
 	}
@@ -1965,9 +1965,9 @@ func TestExecSkillShortCircuit_SilentAskUsesAutoAnsweredWarning(t *testing.T) {
 	}, sessions, nil, nil, nil)
 	tool.SetSkillSelector(func(_ context.Context, _ string) SkillSelectionDecision {
 		return SkillSelectionDecision{
-			SelectedSkill: "web_search",
+			SelectedSkill: "web_query",
 			NeedClarify:   true,
-			Candidates:    []string{"web_search", "browser"},
+			Candidates:    []string{"web_query", "browser"},
 		}
 	})
 
@@ -1979,8 +1979,8 @@ func TestExecSkillShortCircuit_SilentAskUsesAutoAnsweredWarning(t *testing.T) {
 			return map[string]string{
 				"success":  "true",
 				"silent":   "true",
-				"selected": `["web_search"]`,
-				"answers":  `[{"question_id":"q0","selected":["web_search"]}]`,
+				"selected": `["web_query"]`,
+				"answers":  `[{"question_id":"q0","selected":["web_query"]}]`,
 			}, nil
 		default:
 			return nil, fmt.Errorf("unexpected skill: %s", skillID)
@@ -2079,17 +2079,67 @@ func TestPublicBashTool_StrictShellBypassesPinnedSkillShortCircuit(t *testing.T)
 		called++
 		return map[string]string{"success": "true"}, nil
 	})
-	execTool.SetPinnedSkills([]string{"web_search"})
+	execTool.SetPinnedSkills([]string{"web_query"})
 	execTool.SetRegistry(registry)
 	execTool.SetToolNames(registry.List())
 
 	if _, err := registry.Get("bash").Execute(context.Background(), map[string]interface{}{
-		"command": "web_search hello || true",
+		"command": "web_query hello || true",
 	}); err != nil {
 		t.Fatalf("bash execute failed: %v", err)
 	}
 	if called != 0 {
 		t.Fatalf("strict bash should not short-circuit pinned skills, called=%d", called)
+	}
+}
+
+func TestBuildPinnedSkillFreeTextInput_WebQueryUsesInput(t *testing.T) {
+	input, err := buildPinnedSkillFreeTextInput("web_query", "latest blue release")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := input["input"]; got != "latest blue release" {
+		t.Fatalf("input = %v, want %q", got, "latest blue release")
+	}
+	if _, hasQuery := input["query"]; hasQuery {
+		t.Fatalf("unexpected query key in %+v", input)
+	}
+}
+
+func TestAdaptClarifiedSkillInput_WebFetchToWebQueryPromotesURLToInput(t *testing.T) {
+	got := adaptClarifiedSkillInput("web_fetch", "web_query", map[string]any{
+		"url": "https://example.com",
+	})
+	if value := got["input"]; value != "https://example.com" {
+		t.Fatalf("input = %v, want https://example.com", value)
+	}
+}
+
+func TestAskForSkillClarification_DefaultCandidatesPreferWebQuery(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var askInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		if skillID != "ask" {
+			return nil, fmt.Errorf("unexpected skill: %s", skillID)
+		}
+		askInput = input
+		return map[string]string{"success": "true"}, nil
+	})
+
+	if _, ok := tool.askForSkillClarification(context.Background(), "mystery", SkillSelectionDecision{}, map[string]any{}, nil); !ok {
+		t.Fatal("askForSkillClarification returned ok=false")
+	}
+
+	if got := askInput["a"]; got != `["web_query","browser"]` {
+		t.Fatalf("options = %v, want %q", got, `["web_query","browser"]`)
 	}
 }
 

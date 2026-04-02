@@ -62,6 +62,10 @@ export default mergeHarnessLocale('da-DK', {
     select: 'Select',
     test: 'Test',
     provider: 'Provider',
+    name: 'Navn',
+    title: 'Titel',
+    description: 'Beskrivelse',
+    id: 'ID',
     downloading: 'Downloading',
     download: 'Download',
     downloaded: 'Downloaded',
@@ -1172,7 +1176,7 @@ export default mergeHarnessLocale('da-DK', {
     title: 'Dashboard',
     autoRefresh: 'Auto refresh (5s)',
     systemHealth: 'System Health',
-    healthy: 'Healthy',
+    healthy: 'Sund',
     uptime: 'Uptime',
     memory: 'Memory',
     goroutines: 'Goroutines',
@@ -1804,10 +1808,11 @@ export default mergeHarnessLocale('da-DK', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ACP / A2A',
-      title: 'Eksterne agenter',
+      eyebrow: 'External Agent',
+      title: 'External Agent',
+      newExternalAgent: 'Ny External Agent',
       metadata: 'Metadata',
-      status: 'Status',
+      status: { label: 'Status', verified: 'Bekræftet' },
       newAcp: 'Ny ACP',
       newA2a: 'Ny A2A',
       newProfile: 'Ny profil',
@@ -4375,8 +4380,8 @@ export default mergeHarnessLocale('da-DK', {
       local: 'Local',
       localFile: 'Local File',
       ready: 'Ready',
-      verified: 'Verified - visible to Claude CLI',
-      verificationFailed: 'Verification failed - may not be visible to Claude CLI',
+      verified: 'Bekræftet - synlig i Claude CLI',
+      verificationFailed: 'Verificering mislykkedes - er muligvis ikke synlig i Claude CLI',
       initializing: 'Loading Skill Store',
       initializingDesc: 'Fetching skill data, this may take a moment...',
       initializingProgress: 'Synced {processed}/{total} sources',
@@ -4388,7 +4393,7 @@ export default mergeHarnessLocale('da-DK', {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
       noDetails: 'No additional detail content is available for this skill.',
-      openLink: 'Open Link',
+      openLink: 'Aben link',
       sections: {
         details: 'Details',
         description: 'Description',
@@ -4523,6 +4528,76 @@ export default mergeHarnessLocale('da-DK', {
         caption: 'Embeddings forbedrer kvaliteten af semantisk søgning over tid',
       },
       defaultSource: 'Marketplace',
+      sources: {
+        skillhub: {
+          label: 'SkillHub',
+          description: 'Samlede SkillHub-kataloger fra Tencent SkillHub og SkillHub Club.',
+        },
+        tencentSkillHub: {
+          label: 'Tencent SkillHub',
+          description: 'Officielt katalogfeed fra Tencent SkillHub.',
+        },
+        skillhubClub: {
+          label: 'SkillHub Club',
+          description: 'Community-drevet SkillHub-katalog og spejlsite.',
+        },
+        github: {
+          label: 'GitHub',
+          description: 'GitHub-kilder til repositoriesøgning efter filer som SKILL.md, CLAUDE.md og AGENT.md.',
+        },
+        githubSkillMd: {
+          label: 'GitHub SKILL.md',
+          description: 'GitHub-kodesøgning efter repositories, der udgiver SKILL.md.',
+        },
+        githubClaudeMd: {
+          label: 'GitHub CLAUDE.md',
+          description: 'GitHub-kodesøgning efter repositories, der udgiver CLAUDE.md.',
+        },
+        githubAgentMd: {
+          label: 'GitHub AGENT.md',
+          description: 'GitHub-kodesøgning efter repositories, der udgiver AGENT.md.',
+        },
+        clawhub: {
+          label: 'ClawHub',
+          description: 'Katalog for ClawHub-markedspladsen.',
+        },
+        clawhubMirror: {
+          label: 'ClawHub-spejl',
+          description: 'Spejl-endpoint for ClawHub-kataloget.',
+        },
+        skillstack: {
+          label: 'SkillStack',
+          description: 'Community-katalog med fokus på genanvendelige skillsamlinger.',
+        },
+        skillsmp: {
+          label: 'SkillsMP',
+          description: 'Katalog for SkillsMP-markedspladsen.',
+        },
+        llmskills: {
+          label: 'LLMSkills',
+          description: 'Katalog for LLMSkills community-markedspladsen.',
+        },
+        external: {
+          label: 'Eksterne Kilder',
+          description: 'Kuraterede skill-poster importeret fra eksterne URL’er.',
+        },
+        curatedSkillUrl: {
+          label: 'Ekstern Skill',
+          description: 'Kurateret markedspladspost importeret fra en direkte skill-URL.',
+        },
+        curatedGithubSeed: {
+          label: 'Udvalgte GitHub-kilder',
+          description: 'Liste over udvalgte GitHub-kilder importeret fra GitHub-henvisninger.',
+        },
+        seed: {
+          label: 'Opdagelsessider',
+          description: 'Opdagelsessider, der linker til flere færdigheder fundet på nettet.',
+        },
+        seedInstance: {
+          label: 'Opdagelsesside {index}',
+          description: 'Opdagelsesside {index}, der linker til flere færdigheder fundet på nettet.',
+        },
+      },
       hero: {
         kicker: 'Skill-markedsplads',
         title: 'Opdag, gennemga og installer agent-skills',
@@ -4535,9 +4610,12 @@ export default mergeHarnessLocale('da-DK', {
         red: 'Blokeret',
       },
       warnings: {
-        mediumRiskPermissions: 'Denne færdighed kræver tilladelser med mellemrisiko. Gennemgå sikkerhedsrapporten, før du aktiverer automatisk opdatering.',
-        payloadScanEscalatedHighRisk: 'Payload-scanningen af den installerede pakke eskalerede denne færdighed fra mellem risiko til høj risiko. Gennemgå sikkerhedsrapporten, før du bruger denne færdighed.',
-        legacyManifestFallback: 'Ældre færdighedsformat registreret; standardindstillinger for kompatibilitet blev anvendt.',
+        mediumRiskPermissions:
+          'Denne færdighed kræver tilladelser med mellemrisiko. Gennemgå sikkerhedsrapporten, før du aktiverer automatisk opdatering.',
+        payloadScanEscalatedHighRisk:
+          'Payload-scanningen af den installerede pakke eskalerede denne færdighed fra mellem risiko til høj risiko. Gennemgå sikkerhedsrapporten, før du bruger denne færdighed.',
+        legacyManifestFallback:
+          'Ældre færdighedsformat registreret; standardindstillinger for kompatibilitet blev anvendt.',
       },
       categories: {
         ai_intelligence: 'AI og intelligens',
@@ -4618,7 +4696,8 @@ export default mergeHarnessLocale('da-DK', {
         dependency_manifest: 'Afhaengigheder',
         binary_artifact: 'Binaer artefakt',
         data_exfiltration: 'Dataeksfiltration',
-        cmd_injection: 'Shell injection',
+        cmd_injection: 'Kommandoinjektion',
+        command_injection: 'Kommandoinjektion',
       },
       filters: {
         category: 'Kategori',
@@ -4687,7 +4766,7 @@ export default mergeHarnessLocale('da-DK', {
         loading: 'Indlaeser sikkerhedsrapport...',
         score: 'Score',
         badge: 'Badge',
-        signals: 'Risk signals',
+        signals: 'Risikosignaler',
         binary: 'Binaer',
         installSurface: 'Installationsflade',
         artifactKind: 'Artefakttype',
@@ -4699,6 +4778,45 @@ export default mergeHarnessLocale('da-DK', {
         moreEvidence: '+{count} flere beviser',
         noMajorWarnings: 'Ingen storre advarsler fundet.',
         noReport: 'Ingen sikkerhedsrapport tilgaengelig endnu.',
+      },
+      dynamic: {
+        permissions: {
+          filesystem: 'Filsystem',
+          network: 'Netvaerk',
+          shell: 'Shell',
+          docker: 'Docker',
+          system: 'System',
+        },
+        valuePrefixes: {
+          matched: 'Match',
+        },
+        messages: {
+          attemptsToInjectSystemLevelPrompts: 'Forsog pa at injicere systemprompts',
+          binaryArtifactDetected: 'Binaer artefakt registreret',
+          commandInjectionAttemptDetected: 'Forsog pa kommandoinjektion registreret',
+          dependencyManifestsDetected: 'Afhaengighedsmanifester registreret',
+          embeddedCredentialOrPrivateKeyMaterial:
+            'Indlejrede legitimationsoplysninger eller privat noeglemateriale',
+          knownJailbreakAttempts: 'Kendte jailbreak-forsog',
+          potentialDataExfiltrationAttempts: 'Potentielle forsog pa dataeksfiltration',
+          potentiallyDestructiveOrRemoteExecutionShellSequence:
+            'Potentielt destruktiv eller fjernudforende shell-sekvens',
+          privilegedCapabilityInferredFromSkillContentButNotDeclared:
+            'Privilegeret funktion udledt af skill-indhold, men ikke deklareret',
+          promptInjectionAttemptInstructionOverride:
+            'Promptinjektionsforsog - instruktionsoverstyring',
+          promptInjectionAttemptJailbreak: 'Promptinjektionsforsog - jailbreak',
+          promptInjectionAttemptRoleOverride: 'Promptinjektionsforsog - rolleoverstyring',
+          promptInjectionAttemptSystemPromptInjection:
+            'Promptinjektionsforsog - systempromptinjektion',
+          promptTextThatTriesToOverrideOrSubvertTheAgent:
+            'Prompttekst, der forsoger at tilsidesaette eller underminere agenten',
+          shellOrCommandInjectionPatternFromSharedThreatDetector:
+            'Monster for shell- eller kommandoinjektion registreret af delt trusselsdetektor',
+          skillPackageContainsAnExecutableOrOpaqueBinaryPayload:
+            'Skill-pakken indeholder en eksekverbar eller uigennemsigtig binaer payload',
+          suspiciousExternalContentPattern: 'Mistaenkeligt monster i eksternt indhold',
+        },
       },
       detail: {
         title: 'Detaljer',
@@ -4981,6 +5099,7 @@ export default mergeHarnessLocale('da-DK', {
     siliconflowDesc: 'SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API',
   },
   metrics: {
+    label: 'Målinger',
     lastUpdated: 'Sidst opdateret',
     reset: 'Nulstil',
     confirmReset:
@@ -6779,7 +6898,7 @@ export default mergeHarnessLocale('da-DK', {
       web_fetch: 'Laeser en webside og returnerer normaliseret hovedindhold',
       web_read: 'Udtraekker strukturerede felter fra HTML eller en URL',
       web_extract: 'Crawler start-URLer med graenser og kontrolpunkter',
-      web_crawl: "Gennemsøger seed-URL'er med grænser og kontrolpunkter",
+      web_crawl: "Gennemsøger start-URL'er med grænser og kontrolpunkter",
       web_search: 'Soger pa nettet og returnerer resultater uden at abne sider',
       read: 'Read a local file and extract supported document content',
       write: 'Write text content to a local file',

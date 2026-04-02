@@ -215,8 +215,6 @@ func TestPinchBenchFirstTierRescueGate(t *testing.T) {
 	}
 
 	analysisJSON := `{"summary":"Blue inline summary","stats":[{"label":"coverage","value":"5 first-tier classes"}],"insights":[{"title":"routing","summary":"Inline mode avoids HTML detours"}],"recommendations":["Prefer inline answers for normal analysis prompts"]}`
-	reportHTML := `<div class="report"><h1>Blue analysis report</h1></div>`
-
 	inlineAnalyze := tools.NewAnalyzeTool()
 	inlineAnalyze.SetLLMBridge(&pinchBenchLLMBridge{responses: []string{analysisJSON}})
 	inlineResultAny, err := inlineAnalyze.Execute(ctx, map[string]interface{}{
@@ -238,7 +236,7 @@ func TestPinchBenchFirstTierRescueGate(t *testing.T) {
 	categories[0].check(strings.Contains(answer, "Blue inline summary"), "analysis inline answer should include synthesized summary")
 
 	reportAnalyze := tools.NewAnalyzeTool()
-	reportAnalyze.SetLLMBridge(&pinchBenchLLMBridge{responses: []string{analysisJSON, reportHTML}})
+	reportAnalyze.SetLLMBridge(&pinchBenchLLMBridge{responses: []string{analysisJSON}})
 	reportAnalyze.SetMediaDir(t.TempDir())
 	reportResultAny, err := reportAnalyze.Execute(ctx, map[string]interface{}{
 		"topic":       "PinchBench report analysis",
@@ -255,6 +253,7 @@ func TestPinchBenchFirstTierRescueGate(t *testing.T) {
 		t.Fatalf("decode report analyze result: %v", err)
 	}
 	categories[0].check(reportResult["report_url"] != nil, "analysis report mode should emit report_url")
+	categories[0].check(reportResult["report_style"] == "dashboard", "analysis report mode should expose resolved report_style")
 
 	baseDefs := []tools.ToolDefinition{
 		{Name: "web_search"},

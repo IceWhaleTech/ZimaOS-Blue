@@ -43,7 +43,7 @@ additional_seeds: []
 	cfg.CacheRoot = filepath.Join(tempDir, "cache")
 	cfg.CuratedConfigPath = configPath
 	cfg.CuratedConfigURLs = nil
-	cfg.SeedURLs = nil
+	cfg.DiscoveryPageURLs = nil
 
 	svc, err := NewService(db, Options{
 		Config:       cfg,

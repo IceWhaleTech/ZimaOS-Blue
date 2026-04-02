@@ -47,10 +47,13 @@ const (
 	ScannerVersion = "skillmarket-detector-v2"
 )
 
-var defaultSeedURLs = []string{
+var defaultDiscoveryPageURLs = []string{
 	"https://github.com/topics/claude-code",
 	"https://github.com/MiniMax-AI/skills/tree/main/skills",
 	"https://github.com/topics/ai-agent",
+}
+
+var deprecatedAwesomeDiscoveryPageURLs = []string{
 	"https://github.com/ComposioHQ/awesome-claude-skills",
 	"https://github.com/VoltAgent/awesome-openclaw-skills",
 	"https://github.com/sickn33/antigravity-awesome-skills/tree/main/skills",
@@ -71,7 +74,7 @@ type Config struct {
 	SkillsMPBaseURL            string
 	SkillsMPAPIKey             string
 	LLMSkillsBaseURL           string
-	SeedURLs                   []string
+	DiscoveryPageURLs          []string
 	CrawlIncrementalInterval   time.Duration
 	CrawlFullInterval          time.Duration
 	UpdateCheckInterval        time.Duration
@@ -109,7 +112,7 @@ func DefaultConfig(dataDir, activeSkillsDir string) Config {
 		SkillStackBaseURL:          "https://www.skillstack.me",
 		SkillsMPBaseURL:            "https://skillsmp.com",
 		LLMSkillsBaseURL:           "https://llmskills.org",
-		SeedURLs:                   append([]string(nil), defaultSeedURLs...),
+		DiscoveryPageURLs:          append([]string(nil), defaultDiscoveryPageURLs...),
 		CrawlIncrementalInterval:   24 * time.Hour,
 		CrawlFullInterval:          24 * time.Hour,
 		UpdateCheckInterval:        24 * time.Hour,

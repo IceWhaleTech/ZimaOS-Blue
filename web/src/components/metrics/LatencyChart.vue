@@ -95,7 +95,7 @@ const percentileBars = computed(() => {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy min-w-0">
-          <p class="dashboard-card-label">Metrics</p>
+          <p class="dashboard-card-label">{{ t('metrics.label') }}</p>
           <p class="dashboard-card-subtitle mt-2">{{ t('metrics.latencyPerformance') }}</p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2">

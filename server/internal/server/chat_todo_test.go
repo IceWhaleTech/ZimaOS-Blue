@@ -1867,11 +1867,37 @@ func TestChoosePseudoToolCallPrimaryToolIndex(t *testing.T) {
 	}
 
 	tools = []llm.Tool{
+		{Name: "ask"},
+		{Name: "web_search"},
+		{Name: "web_query"},
+	}
+	if got := choosePseudoToolCallPrimaryToolIndex(tools, false); got != 2 {
+		t.Fatalf("expected canonical web_query to be preferred over legacy web_search, got index=%d", got)
+	}
+
+	tools = []llm.Tool{
 		{Name: "exec"},
 		{Name: "reminder"},
 	}
 	if got := choosePseudoToolCallPrimaryToolIndex(tools, true); got != 1 {
 		t.Fatalf("expected reminder to be preferred when reminder intent is detected, got index=%d", got)
+	}
+}
+
+func TestBuildReducedContinuationRecoveryTools_DefaultPriorityPrefersWebQuery(t *testing.T) {
+	tools := []llm.Tool{
+		{Name: "web_search", Description: "Legacy search"},
+		{Name: "web_query", Description: "Canonical web"},
+		{Name: "read", Description: "Read files"},
+		{Name: "browser", Description: "Browser"},
+	}
+
+	reduced := buildReducedContinuationRecoveryTools(tools, nil)
+	if len(reduced) == 0 {
+		t.Fatal("expected reduced toolset")
+	}
+	if got := reduced[0].Name; got != "web_query" {
+		t.Fatalf("expected web_query to lead reduced continuation toolset, got=%q", got)
 	}
 }
 

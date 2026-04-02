@@ -34,9 +34,20 @@ const (
 	analyzeDocExtractAutoRollbackMinAttempts = 40
 	analyzeDocExtractAutoRollbackMaxFailRate = 0.15
 	analyzeFallbackReasonAutoRollbackDoc     = "auto_rollback_doc_extract_fallback_rate"
+
+	analyzeReportStyleAuto      = "auto"
+	analyzeReportStyleDashboard = "dashboard"
+	analyzeReportStyleBriefing  = "briefing"
+
+	analyzeReportTemplateVersion = "analyze-report-v2"
 )
 
 var analyzeTopicURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
+
+var analyzeBriefingKeywords = []string{
+	"对比", "比较", "评测", "评估", "benchmark", "benchmarks", "选型", "推荐", "方案",
+	"tradeoff", "trade-offs", "which", "best", "compare", "comparison", "versus", "vs",
+}
 
 // AnalyzeTool performs deep-dive content analysis and can return either an
 // inline structured answer or an explicit HTML report.
@@ -67,6 +78,14 @@ type analyzeGatherStats struct {
 	URLCollected     int
 	SearchSources    int
 	SearchCollected  int
+}
+
+type analyzeSourceReference struct {
+	Kind        string
+	Label       string
+	URL         string
+	Description string
+	Source      string
 }
 
 type analyzeDocExtractResult struct {
@@ -187,6 +206,11 @@ func (t *AnalyzeTool) Definition() ToolDefinition {
 					"type":        "boolean",
 					"description": "Compatibility alias for output_mode=report.",
 				},
+				"report_style": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{analyzeReportStyleAuto, analyzeReportStyleDashboard, analyzeReportStyleBriefing},
+					"description": "Report template style. Defaults to auto. Only used when output_mode=report.",
+				},
 			},
 			"required": []string{"topic"},
 		},
@@ -251,6 +275,10 @@ func normalizeAnalyzeToolArgs(args map[string]interface{}) {
 			args["text"] = text
 		}
 	}
+
+	if style := strings.TrimSpace(firstCompatString(args, "report_style", "reportStyle")); style != "" {
+		args["report_style"] = style
+	}
 }
 
 func promoteAnalyzeTopicSources(args map[string]interface{}, topic string) {
@@ -311,17 +339,22 @@ func stripAnalyzeTopicURLs(topic string) string {
 
 // runFullAnalysis gathers data from URLs/search, then generates a report.
 func (t *AnalyzeTool) runFullAnalysis(ctx context.Context, topic string, args map[string]interface{}, lang, outputMode string, bridge LLMBridge, browser BrowserBackend, executor *Executor, mediaDir string) (interface{}, error) {
-	rawContent, stats := t.gatherData(ctx, args, lang, browser, executor)
+	rawContent, stats, sourceRefs := t.gatherData(ctx, args, lang, browser, executor)
 	if rawContent == "" {
 		return nil, errors.New("no data collected — provide URLs, search queries, or text")
 	}
 	emitAnalyzeCollectionCard(ctx, lang, stats)
 
-	return t.analyzeAndGenerate(ctx, topic, rawContent, lang, outputMode, bridge, mediaDir)
+	reportStyle := analyzeReportStyleDashboard
+	if outputMode == "report" {
+		reportStyle = resolveAnalyzeReportStyle(args, topic)
+	}
+
+	return t.analyzeAndGenerate(ctx, topic, rawContent, sourceRefs, lang, outputMode, reportStyle, bridge, mediaDir)
 }
 
 // analyzeAndGenerate runs the LLM analysis pipeline and optionally generates HTML.
-func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent, lang, outputMode string, bridge LLMBridge, mediaDir string) (interface{}, error) {
+func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent string, sourceRefs []analyzeSourceReference, lang, outputMode, reportStyle string, bridge LLMBridge, mediaDir string) (interface{}, error) {
 	emitAnalyzeProgress(ctx, "doc_extract", analyzeProgressLabel(lang, "doc_extract", 0, 0), "running")
 	docExtract := t.smallModelDocExtract(ctx, topic, rawContent, lang)
 	if docExtract.content != "" {
@@ -331,7 +364,7 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 
 	// 2. LLM analysis — extract structured data
 	emitAnalyzeProgress(ctx, "analysis", analyzeProgressLabel(lang, "analysis", 0, 0), "running")
-	analysisJSON, err := t.llmExtractAndAnalyze(ctx, bridge, topic, rawContent, lang)
+	analysisJSON, err := t.llmExtractAndAnalyze(ctx, bridge, topic, rawContent, lang, reportStyle, sourceRefs)
 	if err != nil {
 		emitAnalyzeProgress(ctx, "analysis", analyzeProgressLabel(lang, "analysis", 0, 0), "failed")
 		return nil, fmt.Errorf("analysis failed: %w", err)
@@ -359,12 +392,7 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 
 	// 3. Generate HTML report
 	emitAnalyzeProgress(ctx, "report", analyzeProgressLabel(lang, "report", 0, 0), "running")
-	htmlBody, err := t.llmGenerateHTML(ctx, bridge, reportTitle, analysisJSON, lang)
-	if err != nil {
-		emitAnalyzeProgress(ctx, "report", analyzeProgressLabel(lang, "report", 0, 0), "failed")
-		return nil, fmt.Errorf("report generation failed: %w", err)
-	}
-
+	htmlBody := buildAnalyzeReportBody(reportTitle, analysisData, sourceRefs, lang, reportStyle)
 	fullHTML := buildAnalyzeHTML(reportTitle, lang, htmlBody)
 	emitAnalyzeProgress(ctx, "report", analyzeProgressLabel(lang, "report", 0, 0), "success")
 
@@ -381,9 +409,11 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 	}
 
 	result := map[string]interface{}{
-		"success": true,
-		"topic":   reportTitle,
-		"message": fmt.Sprintf("Analysis report generated: %s", reportTitle),
+		"success":                 true,
+		"topic":                   reportTitle,
+		"message":                 fmt.Sprintf("Analysis report generated: %s", reportTitle),
+		"report_style":            reportStyle,
+		"report_template_version": analyzeReportTemplateVersion,
 	}
 	if reportURL != "" {
 		result["report_url"] = reportURL
@@ -410,6 +440,48 @@ func resolveAnalyzeOutputMode(args map[string]interface{}) string {
 		return "report"
 	}
 	return "inline"
+}
+
+func resolveAnalyzeReportStyle(args map[string]interface{}, topic string) string {
+	style := normalizeAnalyzeReportStyle(firstCompatString(args, "report_style", "reportStyle"))
+	if style == analyzeReportStyleDashboard || style == analyzeReportStyleBriefing {
+		return style
+	}
+
+	hint := strings.ToLower(strings.TrimSpace(analyzeReportStyleHint(args, topic)))
+	for _, keyword := range analyzeBriefingKeywords {
+		if keyword != "" && strings.Contains(hint, strings.ToLower(keyword)) {
+			return analyzeReportStyleBriefing
+		}
+	}
+	return analyzeReportStyleDashboard
+}
+
+func normalizeAnalyzeReportStyle(style string) string {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case "", analyzeReportStyleAuto:
+		return analyzeReportStyleAuto
+	case analyzeReportStyleDashboard:
+		return analyzeReportStyleDashboard
+	case "brief", analyzeReportStyleBriefing:
+		return analyzeReportStyleBriefing
+	default:
+		return analyzeReportStyleAuto
+	}
+}
+
+func analyzeReportStyleHint(args map[string]interface{}, topic string) string {
+	parts := []string{topic}
+	if text := strings.TrimSpace(firstCompatString(args, "text", "content")); text != "" {
+		if len(text) > 2000 {
+			text = text[:2000]
+		}
+		parts = append(parts, text)
+	}
+	if queriesRaw, ok := compatArgValue(args, "search_queries", "searchQueries", "queries"); ok {
+		parts = append(parts, analyzeCollectStringInputs(queriesRaw, analyzeMaxSearches)...)
+	}
+	return strings.Join(parts, "\n")
 }
 
 func buildAnalyzeInlineResult(topic, analysisJSON string, analysisData map[string]interface{}, lang string) string {
@@ -505,9 +577,10 @@ func firstAnalyzeStringValue(values ...interface{}) string {
 }
 
 // gatherData collects content from URLs, search queries, and direct text.
-func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{}, lang string, browser BrowserBackend, executor *Executor) (string, analyzeGatherStats) {
+func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{}, lang string, browser BrowserBackend, executor *Executor) (string, analyzeGatherStats, []analyzeSourceReference) {
 	var parts []string
 	stats := analyzeGatherStats{}
+	sourceRefs := make([]analyzeSourceReference, 0, 8)
 	urlsValue, _ := compatArgValue(args, "urls")
 	queriesValue, _ := compatArgValue(args, "search_queries", "searchQueries", "queries")
 	text := strings.TrimSpace(firstCompatString(args, "text", "content"))
@@ -539,6 +612,11 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 		stats.TextChars = utf8.RuneCountInString(text)
 		stats.CollectedSources++
 		parts = append(parts, "=== Direct Input ===\n"+text)
+		sourceRefs = append(sourceRefs, analyzeSourceReference{
+			Kind:        "text",
+			Label:       analyzeLocalized(lang, "Direct input", "直接输入文本"),
+			Description: analyzeLocalized(lang, fmt.Sprintf("%d chars", stats.TextChars), fmt.Sprintf("%d 个字符", stats.TextChars)),
+		})
 		emitAnalyzeProgress(ctx, "text_input", analyzeProgressLabel(lang, "text_input", 0, 0), "success", map[string]interface{}{
 			"detail":     analyzeLocalized(lang, fmt.Sprintf("%d chars", stats.TextChars), fmt.Sprintf("%d 个字符", stats.TextChars)),
 			"char_count": stats.TextChars,
@@ -572,6 +650,12 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 					stats.CollectedSources++
 					stats.URLCollected++
 					parts = append(parts, fmt.Sprintf("=== URL: %s ===\n%s", url, content))
+					sourceRefs = append(sourceRefs, analyzeSourceReference{
+						Kind:        "url",
+						Label:       url,
+						URL:         url,
+						Description: analyzeLocalized(lang, "Collected webpage content", "已抓取网页内容"),
+					})
 					emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "url_fetch", i+1, len(urls)), "success", map[string]interface{}{
 						"current":      i + 1,
 						"total":        len(urls),
@@ -609,11 +693,12 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 					"source_kind":  "search",
 					"source_label": query,
 				})
-				content, resultCount := t.webSearch(ctx, executor, query)
+				content, resultCount, refs := t.webSearch(ctx, executor, query)
 				if content != "" {
 					stats.CollectedSources++
 					stats.SearchCollected++
 					parts = append(parts, fmt.Sprintf("=== Search: %s ===\n%s", query, content))
+					sourceRefs = append(sourceRefs, refs...)
 					emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "search", i+1, len(queries)), "success", map[string]interface{}{
 						"current":      i + 1,
 						"total":        len(queries),
@@ -642,14 +727,14 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 			"current": stats.CollectedSources,
 			"total":   stats.RequestedSources,
 		})
-		return "", stats
+		return "", stats, sourceRefs
 	}
 	emitAnalyzeProgress(ctx, "data_collection", analyzeProgressLabel(lang, "data_collection", 0, 0), "success", map[string]interface{}{
 		"detail":  analyzeCollectionResultDetail(lang, stats),
 		"current": stats.CollectedSources,
 		"total":   stats.RequestedSources,
 	})
-	return rawContent, stats
+	return rawContent, stats, sourceRefs
 }
 
 func (t *AnalyzeTool) shouldUseSmallModelDocExtract() bool {
@@ -930,40 +1015,63 @@ func analyzeWebReadRequiresBrowser(resp webReadResponse) bool {
 }
 
 // webSearch calls the web_search tool via executor.
-func (t *AnalyzeTool) webSearch(ctx context.Context, executor *Executor, query string) (string, int) {
+func (t *AnalyzeTool) webSearch(ctx context.Context, executor *Executor, query string) (string, int, []analyzeSourceReference) {
 	result, err := executor.Execute(ctx, "web_search", map[string]interface{}{
 		"query":       query,
 		"max_results": 5,
 	})
 	if err != nil {
-		return "", 0
+		return "", 0, nil
 	}
 
 	// Result is JSON string from WebSearchTool
 	resultStr, ok := result.(string)
 	if !ok {
-		return "", 0
+		return "", 0, nil
 	}
 
 	var searchResp WebSearchResponse
 	if json.Unmarshal([]byte(resultStr), &searchResp) != nil {
-		return resultStr, 0
+		return resultStr, 0, []analyzeSourceReference{{
+			Kind:        "search_query",
+			Label:       query,
+			Description: "Search results available",
+		}}
 	}
 
 	var b strings.Builder
+	refs := make([]analyzeSourceReference, 0, len(searchResp.Results))
 	for _, r := range searchResp.Results {
 		fmt.Fprintf(&b, "- %s\n  %s\n  %s\n\n", r.Title, r.URL, r.Description)
+		refs = append(refs, analyzeSourceReference{
+			Kind:        "search_result",
+			Label:       strings.TrimSpace(r.Title),
+			URL:         strings.TrimSpace(r.URL),
+			Description: strings.TrimSpace(r.Description),
+			Source:      strings.TrimSpace(r.Source),
+		})
 	}
 	count := searchResp.TotalCount
 	if count <= 0 {
 		count = len(searchResp.Results)
 	}
-	return b.String(), count
+	if len(refs) == 0 {
+		refs = append(refs, analyzeSourceReference{
+			Kind:        "search_query",
+			Label:       query,
+			Description: "Search query",
+		})
+	}
+	return b.String(), count, refs
 }
 
 // llmExtractAndAnalyze calls LLM to extract structured data and generate insights.
-func (t *AnalyzeTool) llmExtractAndAnalyze(ctx context.Context, bridge LLMBridge, topic, rawContent, lang string) (string, error) {
+func (t *AnalyzeTool) llmExtractAndAnalyze(ctx context.Context, bridge LLMBridge, topic, rawContent, lang, reportStyle string, sourceRefs []analyzeSourceReference) (string, error) {
 	langName := langDisplayName(lang)
+	styleLabel := reportStyle
+	if styleLabel == "" {
+		styleLabel = analyzeReportStyleDashboard
+	}
 
 	// Truncate raw content to fit context
 	if len(rawContent) > 30000 {
@@ -971,6 +1079,13 @@ func (t *AnalyzeTool) llmExtractAndAnalyze(ctx context.Context, bridge LLMBridge
 	}
 
 	prompt := fmt.Sprintf(`You are a senior data analyst. Analyze the following raw content about "%s" and produce a comprehensive structured analysis.
+
+Target report style: %s
+
+Source outline:
+---
+%s
+---
 
 Raw Content:
 ---
@@ -980,6 +1095,7 @@ Raw Content:
 Return ONLY valid JSON (no markdown fences, no explanation) with this structure:
 {
   "refined_title": "A more accurate, concise report title based on the actual content (same language as content)",
+  "research_question": "Restate the user's actual question or decision prompt in the same language as the report",
   "summary": "2-3 sentence executive summary",
   "stats": [
     {"label": "...", "value": "...", "color": "blue|green|orange|red"}
@@ -995,102 +1111,43 @@ Return ONLY valid JSON (no markdown fences, no explanation) with this structure:
   ],
   "recommendations": [
     {"priority": "high|medium|low", "title": "...", "description": "..."}
+  ],
+  "comparison_items": [
+    {
+      "name": "...",
+      "summary": "...",
+      "best_for": "...",
+      "caution": "...",
+      "metrics": [
+        {"label": "...", "value": "..."}
+      ],
+      "strengths": ["..."],
+      "tradeoffs": ["..."]
+    }
+  ],
+  "scenario_recommendations": [
+    {"scenario": "...", "recommended": "...", "reason": "..."}
+  ],
+  "references": [
+    {"label": "...", "url": "...", "description": "...", "source": "..."}
   ]
 }
 
 Requirements:
+- Always fill research_question using the user's actual ask; if the original topic is already a question, reuse it.
 - Extract 4-8 key statistics, distribute colors: 1st blue, 2nd green, 3rd orange, 4th red, then cycle
 - Identify 4-8 major themes with frequency counts and sentiment
 - Select 6-10 representative quotes with accurate attribution
 - Generate 4-8 insights: mix of strength, opportunity, challenge, risk types
 - Provide 3-6 prioritized recommendations
-- All text in %s`, topic, rawContent, langName)
+- Fill comparison_items and scenario_recommendations whenever the task is comparative, benchmark-oriented, recommendation-oriented, or solution-design oriented; otherwise return an empty array
+- references should capture identifiable URLs or named sources when possible; otherwise return an empty array
+- All text in %s`, topic, styleLabel, formatAnalyzeSourceOutline(sourceRefs, lang), rawContent, langName)
 
 	callCtx, cancel := ensureAnalyzeLLMTimeout(ctx)
 	defer cancel()
 
 	return bridge.Chat(callCtx, prompt, 8000)
-}
-
-// llmGenerateHTML calls LLM to generate the HTML body content.
-func (t *AnalyzeTool) llmGenerateHTML(ctx context.Context, bridge LLMBridge, topic, analysisJSON, lang string) (string, error) {
-	langName := langDisplayName(lang)
-
-	prompt := fmt.Sprintf(`You are an expert HTML report designer. Generate the HTML body content for an analysis report about "%s".
-
-Analysis Data (JSON):
----
-%s
----
-
-IMPORTANT RULES:
-1. Return ONLY raw HTML — no markdown fences, no <html>/<head>/<style> tags, no inline styles
-2. Use ONLY these pre-defined CSS classes (the stylesheet is already included):
-
-LAYOUT:
-  .hero, .hero .badge, .hero h1, .hero .subtitle, .hero .meta-row, .hero .meta-item (.num, .label)
-  .container, .toc, .toc-inner, .toc a
-  .section, .section-header, .section-icon, .card, .grid-2, .grid-3
-
-SECTION ICON BACKGROUNDS (use class, NOT inline style):
-  .section-icon.bg-blue   → light blue  (for data/stats sections)
-  .section-icon.bg-green  → light green (for positive/success sections)
-  .section-icon.bg-orange → light amber (for recommendations/opportunities)
-  .section-icon.bg-red    → light red   (for warnings/challenges)
-  .section-icon.bg-purple → light purple (for showcase/community sections)
-
-STAT BOXES (use color class for variety):
-  .stat-grid, .stat-box (default blue), .stat-box.green, .stat-box.orange, .stat-box.red
-
-INSIGHT BOXES (map insight type → color):
-  .insight-box (default blue = strength), .insight-box.green (opportunity), .insight-box.orange (challenge), .insight-box.red (risk)
-
-QUOTE CARDS (map sentiment → color):
-  .quote-grid, .quote-card.positive (green), .quote-card.negative (red), .quote-card.neutral (blue), .quote-card.orange
-  Inside: .quote-tag, .quote-text, .quote-author
-
-TAG CLOUD (alternate colors for visual variety):
-  .tag-cloud, .tag + color: .tag-blue, .tag-green, .tag-red, .tag-orange, .tag-purple
-  Inside: .tag .count
-
-PROGRESS BARS:
-  .progress-item, .progress-label, .progress-bar, .progress-fill + color: .fill-blue, .fill-green, .fill-orange, .fill-red, .fill-purple
-
-TABLES:
-  .data-table OR .homelab-table (identical styling)
-
-SHOWCASE CARDS:
-  .homelab-card (.user, .setup-text, .tags), .mini-tag + color: .mt-blue, .mt-green, .mt-orange, .mt-purple, .mt-gray
-
-OTHER:
-  .highlight-strip, .divider, .chart-wrap, .chart-caption
-
-3. COLOR MAPPING RULES — follow these strictly:
-   - Stat boxes: distribute colors evenly (1st=blue, 2nd=green, 3rd=orange, 4th=red or vary)
-   - Insight boxes: strength→default(blue), opportunity→green, challenge→orange, risk→red
-   - Quote cards: positive→.positive, negative→.negative, neutral→.neutral, mixed→.orange
-   - Tags: cycle through blue→green→orange→purple→red for visual variety
-   - Progress bars: cycle through fill-blue→fill-green→fill-orange→fill-purple→fill-red
-   - Section icons: each section should use a DIFFERENT bg-* color
-
-4. STRUCTURE — include these sections in order:
-   a. Hero: badge, h1 title, subtitle summary, meta-row with 3-4 key stats
-   b. TOC: sticky nav with links to each section
-   c. Overview: stat-grid with 4-8 colored stat-boxes + highlight-strip
-   d. Themes: tag-cloud + progress bars showing theme frequency
-   e. Key Findings: insight-boxes with proper color mapping per type
-   f. Voices: quote-grid with sentiment-colored quote-cards
-   g. Recommendations: cards in grid-2 layout
-   h. Summary: data-table with key metrics
-
-5. Use emoji icons in section headers (📊 📈 💡 🗣️ ✅ 📋 🎯 🔍)
-6. All text content in %s
-7. Make the report visually rich — use ALL available color variants, avoid monotone sections`, topic, analysisJSON, langName)
-
-	callCtx, cancel := ensureAnalyzeLLMTimeout(ctx)
-	defer cancel()
-
-	return bridge.Chat(callCtx, prompt, 12000)
 }
 
 func ensureAnalyzeLLMTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -1211,6 +1268,39 @@ func analyzeLocalized(lang, en, zh string) string {
 		return zh
 	}
 	return en
+}
+
+func formatAnalyzeSourceOutline(sourceRefs []analyzeSourceReference, lang string) string {
+	if len(sourceRefs) == 0 {
+		return analyzeLocalized(lang, "No explicit source references collected.", "未收集到明确来源参考。")
+	}
+	var b strings.Builder
+	limit := len(sourceRefs)
+	if limit > 12 {
+		limit = 12
+	}
+	for i := 0; i < limit; i++ {
+		ref := sourceRefs[i]
+		label := strings.TrimSpace(ref.Label)
+		if label == "" {
+			label = strings.TrimSpace(ref.URL)
+		}
+		if label == "" {
+			label = analyzeLocalized(lang, "Collected source", "收集来源")
+		}
+		fmt.Fprintf(&b, "- [%s] %s", ref.Kind, label)
+		if url := strings.TrimSpace(ref.URL); url != "" {
+			fmt.Fprintf(&b, " (%s)", url)
+		}
+		if description := strings.TrimSpace(ref.Description); description != "" {
+			fmt.Fprintf(&b, " — %s", description)
+		}
+		if source := strings.TrimSpace(ref.Source); source != "" {
+			fmt.Fprintf(&b, " [%s]", source)
+		}
+		b.WriteString("\n")
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func analyzeProgressLabel(lang, key string, current, total int) string {

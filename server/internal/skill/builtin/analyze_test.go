@@ -21,6 +21,7 @@ func (m *mockAnalyzeExecutor) Execute(_ context.Context, args map[string]interfa
 		"text":           args["text"],
 		"lang":           args["lang"],
 		"output_mode":    args["output_mode"],
+		"report_style":   args["report_style"],
 	}, nil
 }
 
@@ -53,6 +54,7 @@ func TestAnalyzeSkill_ExecuteAcceptsModernAliases(t *testing.T) {
 		"searchQueries": []interface{}{"query one"},
 		"language":      "en-US",
 		"outputMode":    "report",
+		"reportStyle":   "briefing",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -68,6 +70,9 @@ func TestAnalyzeSkill_ExecuteAcceptsModernAliases(t *testing.T) {
 	}
 	if got, _ := exec.lastArgs["output_mode"].(string); got != "report" {
 		t.Fatalf("output_mode = %q, want report", got)
+	}
+	if got, _ := exec.lastArgs["report_style"].(string); got != "briefing" {
+		t.Fatalf("report_style = %q, want briefing", got)
 	}
 	if got, _ := exec.lastArgs["text"].(string); got != "Some direct notes" {
 		t.Fatalf("text = %q, want Some direct notes", got)

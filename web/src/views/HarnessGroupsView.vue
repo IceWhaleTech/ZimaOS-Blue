@@ -1630,205 +1630,473 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="harness-groups-page">
-    <section class="hero-card">
-      <div class="hero-copy">
-        <p class="eyebrow">Harness V3</p>
-        <h1>{{ tr('automation.tabs.harness', 'Harness') }}</h1>
-        <p class="hero-description">
-          {{
-            tr(
-              'harness.groups.subtitle',
-              'Run the full eval loop from one place: define datasets, freeze versions, create reusable specs, launch runs, and still keep the raw group control plane in view.'
-            )
-          }}
-        </p>
+  <div class="harness-groups-page dashboard-page-frame">
+    <section class="harness-stage dashboard-page-stage configuration-page-stage">
+      <section class="harness-hero dashboard-page-hero configuration-page-hero">
+        <div class="harness-hero-copy dashboard-page-copy configuration-page-copy">
+          <p class="dashboard-page-eyebrow">{{ t('nav.automation') }}</p>
+          <h1 class="dashboard-page-title configuration-page-title">
+            {{ tr('automation.tabs.harness', 'Harness') }}
+          </h1>
+          <p
+            class="harness-hero-description dashboard-page-description configuration-page-description"
+          >
+            {{
+              tr(
+                'harness.groups.subtitle',
+                'Run the full eval loop from one place: define datasets, freeze versions, create reusable specs, launch runs, and still keep the raw group control plane in view.'
+              )
+            }}
+          </p>
+        </div>
+      </section>
+
+      <AutomationTabs class="automation-tab-strip" />
+
+      <div class="stats-toolbar">
+        <section class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-label">{{ tr('harness.datasets.total', 'Datasets') }}</span>
+            <strong class="stat-value">{{ datasets.length }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">{{ tr('harness.evalSpecs.total', 'Eval specs') }}</span>
+            <strong class="stat-value">{{ evalSpecs.length }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">{{ tr('harness.evalRuns.total', 'Eval runs') }}</span>
+            <strong class="stat-value">{{ evalRuns.length }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">{{ tr('harness.baseline.total', 'Baselines') }}</span>
+            <strong class="stat-value">{{ baselines.length }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">{{ tr('harness.evalRuns.active', 'Active eval runs') }}</span>
+            <strong class="stat-value">{{ activeEvalRuns }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">{{ tr('harness.groups.totalGroups', 'Groups') }}</span>
+            <strong class="stat-value">{{ groups.length }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">{{
+              tr('harness.groups.avgPassRate', 'Average pass rate')
+            }}</span>
+            <strong class="stat-value">{{ percentLabel(averageEvalPassRate) }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">{{
+              tr('harness.baseline.defaultCount', 'Default baselines')
+            }}</span>
+            <strong class="stat-value">{{ defaultBaselines }}</strong>
+          </article>
+        </section>
+
+        <div class="stats-toolbar-actions">
+          <button
+            class="refresh-button"
+            type="button"
+            :disabled="loading || refreshing"
+            @click="loadConsole({ silent: true })"
+          >
+            {{ refreshing ? tr('common.loading', 'Loading') : tr('common.refresh', 'Refresh') }}
+          </button>
+        </div>
       </div>
-      <div class="hero-actions">
-        <button
-          class="refresh-button"
-          type="button"
-          :disabled="loading || refreshing"
-          @click="loadConsole({ silent: true })"
-        >
-          {{ refreshing ? tr('common.loading', 'Loading') : tr('common.refresh', 'Refresh') }}
-        </button>
+
+      <div v-if="error" class="state-card is-error">
+        <h2>{{ tr('common.error', 'Error') }}</h2>
+        <p>{{ error }}</p>
       </div>
-    </section>
 
-    <AutomationTabs class="automation-tab-strip" />
+      <div v-else-if="loading" class="state-card">
+        <h2>{{ tr('common.loading', 'Loading') }}</h2>
+        <p>{{ tr('harness.groups.loading', 'Fetching the latest harness group summaries.') }}</p>
+      </div>
 
-    <section class="stats-grid">
-      <article class="stat-card">
-        <span class="stat-label">{{ tr('harness.datasets.total', 'Datasets') }}</span>
-        <strong class="stat-value">{{ datasets.length }}</strong>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">{{ tr('harness.evalSpecs.total', 'Eval specs') }}</span>
-        <strong class="stat-value">{{ evalSpecs.length }}</strong>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">{{ tr('harness.evalRuns.total', 'Eval runs') }}</span>
-        <strong class="stat-value">{{ evalRuns.length }}</strong>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">{{ tr('harness.baseline.total', 'Baselines') }}</span>
-        <strong class="stat-value">{{ baselines.length }}</strong>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">{{ tr('harness.evalRuns.active', 'Active eval runs') }}</span>
-        <strong class="stat-value">{{ activeEvalRuns }}</strong>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">{{ tr('harness.groups.totalGroups', 'Groups') }}</span>
-        <strong class="stat-value">{{ groups.length }}</strong>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">{{ tr('harness.groups.avgPassRate', 'Average pass rate') }}</span>
-        <strong class="stat-value">{{ percentLabel(averageEvalPassRate) }}</strong>
-      </article>
-      <article class="stat-card">
-        <span class="stat-label">{{
-          tr('harness.baseline.defaultCount', 'Default baselines')
-        }}</span>
-        <strong class="stat-value">{{ defaultBaselines }}</strong>
-      </article>
-    </section>
-
-    <div v-if="error" class="state-card is-error">
-      <h2>{{ tr('common.error', 'Error') }}</h2>
-      <p>{{ error }}</p>
-    </div>
-
-    <div v-else-if="loading" class="state-card">
-      <h2>{{ tr('common.loading', 'Loading') }}</h2>
-      <p>{{ tr('harness.groups.loading', 'Fetching the latest harness group summaries.') }}</p>
-    </div>
-
-    <div v-else class="console-layout">
-      <aside class="console-rail">
-        <section class="panel rail-panel quick-eval-panel">
-          <div class="section-header">
-            <div>
-              <p class="section-eyebrow">{{ tr('harness.quickEval.eyebrow', 'Default Path') }}</p>
-              <h2>{{ tr('harness.quickEval.title', 'Quick Eval') }}</h2>
-              <p class="section-description">
-                {{
-                  tr(
-                    'harness.quickEval.description',
-                    'Keep input minimal: choose cases, pick a preset, and Harness auto-creates the dataset version, eval spec, and run for you.'
-                  )
-                }}
-              </p>
-            </div>
-            <button
-              type="button"
-              class="secondary-button"
-              @click="advancedBuilderOpen = !advancedBuilderOpen"
-            >
-              {{
-                advancedBuilderOpen
-                  ? tr('harness.builder.hideAdvanced', 'Hide advanced')
-                  : tr('harness.builder.showAdvanced', 'Open advanced')
-              }}
-            </button>
-          </div>
-
-          <div class="quick-eval-layout">
-            <article class="detail-card quick-eval-copy-card">
-              <h3>{{ tr('harness.quickEval.minimalInput', 'Only two decisions') }}</h3>
-              <p class="card-copy">
-                {{
-                  tr(
-                    'harness.quickEval.minimalDescription',
-                    'Most runs only need the case source and a preset. Everything else becomes an implementation detail instead of a required form.'
-                  )
-                }}
-              </p>
-              <div class="version-list">
-                <span class="version-chip active">{{
-                  tr('harness.quickEval.sourceChip', '1. Cases')
-                }}</span>
-                <span class="version-chip active">{{
-                  tr('harness.quickEval.presetChip', '2. Preset')
-                }}</span>
-                <span class="version-chip">{{
-                  tr('harness.quickEval.autoChip', 'Auto: version + spec + run')
-                }}</span>
+      <div v-else class="console-layout">
+        <aside class="console-rail">
+          <section class="panel rail-panel quick-eval-panel">
+            <div class="section-header">
+              <div>
+                <p class="section-eyebrow">{{ tr('harness.quickEval.eyebrow', 'Default Path') }}</p>
+                <h2>{{ tr('harness.quickEval.title', 'Quick Eval') }}</h2>
+                <p class="section-description">
+                  {{
+                    tr(
+                      'harness.quickEval.description',
+                      'Keep input minimal: choose cases, pick a preset, and Harness auto-creates the dataset version, eval spec, and run for you.'
+                    )
+                  }}
+                </p>
               </div>
-            </article>
-
-            <form class="action-card quick-eval-card" @submit.prevent="submitQuickEval">
-              <div class="action-card-header">
-                <span class="step-chip">Q</span>
-                <div>
-                  <h3>{{ tr('harness.quickEval.launch', 'Launch quick eval') }}</h3>
-                  <p>
-                    {{
-                      tr(
-                        'harness.quickEval.launchHint',
-                        'Start from pasted cases, a past conversation, or an existing dataset. Harness fills in the object model behind the scenes.'
-                      )
-                    }}
-                  </p>
-                </div>
-              </div>
-
-              <div
-                class="filter-segment source-segment"
-                role="tablist"
-                :aria-label="tr('harness.quickEval.source', 'Case source')"
+              <button
+                type="button"
+                class="secondary-button"
+                @click="advancedBuilderOpen = !advancedBuilderOpen"
               >
-                <button
-                  type="button"
-                  class="segment-button"
-                  :class="{ active: quickEvalForm.sourceMode === 'manifest' }"
-                  @click="quickEvalForm.sourceMode = 'manifest'"
-                >
-                  {{ tr('harness.quickEval.pasteCases', 'Paste cases') }}
-                </button>
-                <button
-                  type="button"
-                  class="segment-button"
-                  :class="{ active: quickEvalForm.sourceMode === 'dataset' }"
-                  @click="quickEvalForm.sourceMode = 'dataset'"
-                >
-                  {{ tr('harness.quickEval.reuseDataset', 'Reuse dataset') }}
-                </button>
-                <button
-                  type="button"
-                  class="segment-button"
-                  :class="{ active: quickEvalForm.sourceMode === 'conversation' }"
-                  @click="quickEvalForm.sourceMode = 'conversation'"
-                >
-                  {{ tr('harness.quickEval.useConversation', 'Use conversation') }}
-                </button>
-              </div>
+                {{
+                  advancedBuilderOpen
+                    ? tr('harness.builder.hideAdvanced', 'Hide advanced')
+                    : tr('harness.builder.showAdvanced', 'Open advanced')
+                }}
+              </button>
+            </div>
 
-              <div class="form-grid">
-                <label v-if="quickEvalForm.sourceMode === 'manifest'" class="form-span-2">
-                  <span>{{ tr('harness.quickEval.caseManifest', 'Cases JSON') }}</span>
-                  <textarea
-                    v-model="quickEvalForm.manifestText"
-                    name="quick-eval-manifest"
-                    rows="11"
-                    spellcheck="false"
-                    required
-                  />
-                  <small class="field-hint">
+            <div class="quick-eval-layout">
+              <article class="detail-card quick-eval-copy-card">
+                <h3>{{ tr('harness.quickEval.minimalInput', 'Only two decisions') }}</h3>
+                <p class="card-copy">
+                  {{
+                    tr(
+                      'harness.quickEval.minimalDescription',
+                      'Most runs only need the case source and a preset. Everything else becomes an implementation detail instead of a required form.'
+                    )
+                  }}
+                </p>
+                <div class="version-list">
+                  <span class="version-chip active">{{
+                    tr('harness.quickEval.sourceChip', '1. Cases')
+                  }}</span>
+                  <span class="version-chip active">{{
+                    tr('harness.quickEval.presetChip', '2. Preset')
+                  }}</span>
+                  <span class="version-chip">{{
+                    tr('harness.quickEval.autoChip', 'Auto: version + spec + run')
+                  }}</span>
+                </div>
+              </article>
+
+              <form class="action-card quick-eval-card" @submit.prevent="submitQuickEval">
+                <div class="action-card-header">
+                  <span class="step-chip">Q</span>
+                  <div>
+                    <h3>{{ tr('harness.quickEval.launch', 'Launch quick eval') }}</h3>
+                    <p>
+                      {{
+                        tr(
+                          'harness.quickEval.launchHint',
+                          'Start from pasted cases, a past conversation, or an existing dataset. Harness fills in the object model behind the scenes.'
+                        )
+                      }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="filter-segment source-segment"
+                  role="tablist"
+                  :aria-label="tr('harness.quickEval.source', 'Case source')"
+                >
+                  <button
+                    type="button"
+                    class="segment-button"
+                    :class="{ active: quickEvalForm.sourceMode === 'manifest' }"
+                    @click="quickEvalForm.sourceMode = 'manifest'"
+                  >
+                    {{ tr('harness.quickEval.pasteCases', 'Paste cases') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-button"
+                    :class="{ active: quickEvalForm.sourceMode === 'dataset' }"
+                    @click="quickEvalForm.sourceMode = 'dataset'"
+                  >
+                    {{ tr('harness.quickEval.reuseDataset', 'Reuse dataset') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-button"
+                    :class="{ active: quickEvalForm.sourceMode === 'conversation' }"
+                    @click="quickEvalForm.sourceMode = 'conversation'"
+                  >
+                    {{ tr('harness.quickEval.useConversation', 'Use conversation') }}
+                  </button>
+                </div>
+
+                <div class="form-grid">
+                  <label v-if="quickEvalForm.sourceMode === 'manifest'" class="form-span-2">
+                    <span>{{ tr('harness.quickEval.caseManifest', 'Cases JSON') }}</span>
+                    <textarea
+                      v-model="quickEvalForm.manifestText"
+                      name="quick-eval-manifest"
+                      rows="11"
+                      spellcheck="false"
+                      required
+                    />
+                    <small class="field-hint">
+                      {{
+                        tr(
+                          'harness.quickEval.caseTemplateHint',
+                          'Template only. Paste real cases here before launching.'
+                        )
+                      }}
+                    </small>
+                  </label>
+
+                  <template v-else-if="quickEvalForm.sourceMode === 'dataset'">
+                    <label class="form-span-2">
+                      <span>{{ tr('harness.dataset.targetDataset', 'Dataset') }}</span>
+                      <select v-model="quickEvalForm.datasetID" name="quick-eval-dataset" required>
+                        <option disabled value="">
+                          {{ tr('harness.dataset.selectDataset', 'Select a dataset') }}
+                        </option>
+                        <option v-for="dataset in datasets" :key="dataset.id" :value="dataset.id">
+                          {{ dataset.name }}
+                        </option>
+                      </select>
+                    </label>
+                    <div class="quick-eval-summary form-span-2">
+                      <strong>{{ tr('harness.quickEval.activeVersion', 'Active version') }}</strong>
+                      <span>
+                        {{
+                          selectedQuickDatasetVersion
+                            ? `${selectedQuickDatasetVersion.version} · ${selectedQuickDatasetVersion.item_count} ${tr('harness.dataset.items', 'items')}`
+                            : tr(
+                                'harness.quickEval.datasetVersionRequired',
+                                'Publish a dataset version before launching a quick eval.'
+                              )
+                        }}
+                      </span>
+                    </div>
+                  </template>
+
+                  <template v-else>
+                    <label class="form-span-2">
+                      <span>{{
+                        tr('harness.quickEval.selectConversation', 'Select a conversation')
+                      }}</span>
+                      <select
+                        v-model="quickEvalForm.conversationID"
+                        name="quick-eval-conversation"
+                        required
+                      >
+                        <option disabled value="">
+                          {{ tr('harness.quickEval.selectConversation', 'Select a conversation') }}
+                        </option>
+                        <option
+                          v-for="conversation in quickEvalConversations"
+                          :key="conversation.id"
+                          :value="conversation.id"
+                        >
+                          {{ quickEvalConversationTitle(conversation) }}
+                        </option>
+                      </select>
+                      <small class="field-hint">
+                        {{
+                          tr(
+                            'harness.quickEval.conversationHint',
+                            'Generate draft cases by pairing each user message with the next assistant reply.'
+                          )
+                        }}
+                      </small>
+                    </label>
+                    <div class="quick-eval-summary form-span-2">
+                      <strong>{{ tr('harness.quickEval.draftCases', 'Draft cases') }}</strong>
+                      <span>
+                        {{
+                          quickEvalConversationLoading ||
+                          quickEvalConversationMessagesLoadingID === quickEvalForm.conversationID
+                            ? tr('common.loading', 'Loading')
+                            : quickEvalConversationError
+                              ? quickEvalConversationError
+                              : !quickEvalForm.conversationID
+                                ? tr(
+                                    'harness.quickEval.conversationRequired',
+                                    'Select a conversation before launching a quick eval.'
+                                  )
+                                : selectedQuickConversationCaseCount > 0
+                                  ? trp(
+                                      'harness.quickEval.conversationCaseCount',
+                                      '{count} draft cases from this conversation',
+                                      {
+                                        count: selectedQuickConversationCaseCount,
+                                      }
+                                    )
+                                  : tr(
+                                      'harness.quickEval.conversationEmpty',
+                                      'This conversation did not produce any draft cases yet.'
+                                    )
+                        }}
+                      </span>
+                    </div>
+                    <label class="form-span-2">
+                      <span>{{
+                        tr('harness.quickEval.previewManifest', 'Preview Cases JSON')
+                      }}</span>
+                      <textarea
+                        :value="selectedQuickConversationManifestText"
+                        name="quick-eval-conversation-preview"
+                        rows="11"
+                        spellcheck="false"
+                        readonly
+                      />
+                    </label>
+                    <div class="form-span-2">
+                      <button
+                        type="button"
+                        class="secondary-button"
+                        @click="copyConversationDraftToManifest"
+                      >
+                        {{ tr('harness.quickEval.editManifest', 'Edit Cases JSON') }}
+                      </button>
+                    </div>
+                  </template>
+
+                  <label class="form-span-2">
+                    <span>{{ tr('harness.quickEval.preset', 'Preset') }}</span>
+                    <select v-model="quickEvalForm.preset" name="quick-eval-preset">
+                      <option
+                        v-for="preset in quickEvalPresetOptions"
+                        :key="preset"
+                        :value="preset"
+                      >
+                        {{ quickPresetConfig(preset).label }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="quick-eval-summary">
+                  <strong>{{ tr('harness.quickEval.systemWillDo', 'Harness will do') }}</strong>
+                  <span>
                     {{
                       tr(
-                        'harness.quickEval.caseTemplateHint',
-                        'Template only. Paste real cases here before launching.'
+                        'harness.quickEval.systemWillDoHint',
+                        'Create or reuse the dataset snapshot, choose a matching spec, attach the default baseline, and launch the run.'
                       )
                     }}
-                  </small>
-                </label>
+                  </span>
+                  <span>{{ quickPresetDescription(quickEvalForm.preset) }}</span>
+                </div>
 
-                <template v-else-if="quickEvalForm.sourceMode === 'dataset'">
+                <button
+                  class="primary-button"
+                  type="submit"
+                  :disabled="
+                    createAction === 'quick' ||
+                    (quickEvalForm.sourceMode === 'dataset' && !quickEvalForm.datasetID) ||
+                    (quickEvalForm.sourceMode === 'conversation' && !quickEvalForm.conversationID)
+                  "
+                >
+                  {{
+                    createAction === 'quick'
+                      ? tr('common.loading', 'Loading')
+                      : tr('harness.quickEval.launch', 'Launch quick eval')
+                  }}
+                </button>
+              </form>
+            </div>
+          </section>
+
+          <section class="panel rail-panel">
+            <div class="section-header">
+              <div>
+                <p class="section-eyebrow">
+                  {{ tr('harness.builder.eyebrow', 'Advanced Controls') }}
+                </p>
+                <h2>{{ tr('harness.builder.title', 'Advanced V3 object model') }}</h2>
+                <p class="section-description">
+                  {{
+                    tr(
+                      'harness.builder.description',
+                      'Reach for the full dataset, version, spec, and run workflow when you need exact control over every eval object.'
+                    )
+                  }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="secondary-button"
+                @click="advancedBuilderOpen = !advancedBuilderOpen"
+              >
+                {{
+                  advancedBuilderOpen
+                    ? tr('harness.builder.hideAdvanced', 'Hide advanced')
+                    : tr('harness.builder.showAdvanced', 'Open advanced')
+                }}
+              </button>
+            </div>
+
+            <div v-if="advancedBuilderOpen" class="quickstart-grid">
+              <form class="action-card" @submit.prevent="submitDataset">
+                <div class="action-card-header">
+                  <span class="step-chip">1</span>
+                  <div>
+                    <h3>{{ tr('harness.dataset.create', 'Create dataset') }}</h3>
+                    <p>
+                      {{
+                        tr(
+                          'harness.dataset.createHint',
+                          'Start a reusable case collection with default run settings.'
+                        )
+                      }}
+                    </p>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    <span>{{ tr('common.name', 'Name') }}</span>
+                    <input v-model="datasetForm.name" name="dataset-name" required />
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.dataset.subject', 'Subject') }}</span>
+                    <input v-model="datasetForm.subject" name="dataset-subject" />
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.dataset.runKind', 'Run kind') }}</span>
+                    <select v-model="datasetForm.runKind" name="dataset-run-kind">
+                      <option v-for="kind in runKindOptions" :key="kind" :value="kind">
+                        {{ humanizeEnum(kind) }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.dataset.profile', 'Profile') }}</span>
+                    <input v-model="datasetForm.profile" name="dataset-profile" />
+                  </label>
+                  <label class="form-span-2">
+                    <span>{{ tr('common.description', 'Description') }}</span>
+                    <textarea
+                      v-model="datasetForm.description"
+                      name="dataset-description"
+                      rows="3"
+                    />
+                  </label>
+                </div>
+                <button class="primary-button" type="submit" :disabled="createAction === 'dataset'">
+                  {{
+                    createAction === 'dataset'
+                      ? tr('common.loading', 'Loading')
+                      : tr('harness.dataset.create', 'Create dataset')
+                  }}
+                </button>
+              </form>
+
+              <form class="action-card" @submit.prevent="submitDatasetVersion">
+                <div class="action-card-header">
+                  <span class="step-chip">2</span>
+                  <div>
+                    <h3>{{ tr('harness.dataset.publishVersion', 'Publish version') }}</h3>
+                    <p>
+                      {{
+                        tr(
+                          'harness.dataset.publishHint',
+                          'Freeze an immutable manifest so specs always bind to a concrete snapshot.'
+                        )
+                      }}
+                    </p>
+                  </div>
+                </div>
+                <div class="form-grid">
                   <label class="form-span-2">
                     <span>{{ tr('harness.dataset.targetDataset', 'Dataset') }}</span>
-                    <select v-model="quickEvalForm.datasetID" name="quick-eval-dataset" required>
+                    <select
+                      v-model="datasetVersionForm.datasetID"
+                      name="dataset-version-dataset"
+                      required
+                    >
                       <option disabled value="">
                         {{ tr('harness.dataset.selectDataset', 'Select a dataset') }}
                       </option>
@@ -1837,1027 +2105,407 @@ onUnmounted(() => {
                       </option>
                     </select>
                   </label>
-                  <div class="quick-eval-summary form-span-2">
-                    <strong>{{ tr('harness.quickEval.activeVersion', 'Active version') }}</strong>
-                    <span>
-                      {{
-                        selectedQuickDatasetVersion
-                          ? `${selectedQuickDatasetVersion.version} · ${selectedQuickDatasetVersion.item_count} ${tr('harness.dataset.items', 'items')}`
-                          : tr(
-                              'harness.quickEval.datasetVersionRequired',
-                              'Publish a dataset version before launching a quick eval.'
-                            )
-                      }}
-                    </span>
-                  </div>
-                </template>
-
-                <template v-else>
+                  <label>
+                    <span>{{ tr('harness.dataset.versionLabel', 'Version') }}</span>
+                    <input
+                      v-model="datasetVersionForm.version"
+                      name="dataset-version-label"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.dataset.sourceType', 'Source type') }}</span>
+                    <input
+                      v-model="datasetVersionForm.sourceType"
+                      name="dataset-version-source-type"
+                    />
+                  </label>
                   <label class="form-span-2">
-                    <span>{{
-                      tr('harness.quickEval.selectConversation', 'Select a conversation')
-                    }}</span>
+                    <span>{{ tr('harness.dataset.sourceRef', 'Source ref') }}</span>
+                    <input
+                      v-model="datasetVersionForm.sourceRef"
+                      name="dataset-version-source-ref"
+                    />
+                  </label>
+                  <label class="form-span-2">
+                    <span>{{ tr('harness.dataset.manifest', 'Manifest JSON') }}</span>
+                    <textarea
+                      v-model="datasetVersionForm.manifestText"
+                      name="dataset-version-manifest"
+                      rows="11"
+                      spellcheck="false"
+                      required
+                    />
+                  </label>
+                </div>
+                <button
+                  class="primary-button"
+                  type="submit"
+                  :disabled="createAction === 'version' || !datasetVersionForm.datasetID"
+                >
+                  {{
+                    createAction === 'version'
+                      ? tr('common.loading', 'Loading')
+                      : tr('harness.dataset.publishVersion', 'Publish version')
+                  }}
+                </button>
+              </form>
+
+              <form class="action-card" @submit.prevent="submitEvalSpec">
+                <div class="action-card-header">
+                  <span class="step-chip">3</span>
+                  <div>
+                    <h3>{{ tr('harness.evalSpec.create', 'Create eval spec') }}</h3>
+                    <p>
+                      {{
+                        tr(
+                          'harness.evalSpec.createHint',
+                          'Bind one dataset snapshot to a reusable scoring and runtime template.'
+                        )
+                      }}
+                    </p>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <label class="form-span-2">
+                    <span>{{ tr('common.name', 'Name') }}</span>
+                    <input v-model="evalSpecForm.name" name="eval-spec-name" required />
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.dataset.targetDataset', 'Dataset') }}</span>
+                    <select v-model="evalSpecForm.datasetID" name="eval-spec-dataset" required>
+                      <option disabled value="">
+                        {{ tr('harness.dataset.selectDataset', 'Select a dataset') }}
+                      </option>
+                      <option v-for="dataset in datasets" :key="dataset.id" :value="dataset.id">
+                        {{ dataset.name }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.dataset.versionLabel', 'Version') }}</span>
                     <select
-                      v-model="quickEvalForm.conversationID"
-                      name="quick-eval-conversation"
+                      v-model="evalSpecForm.datasetVersionID"
+                      name="eval-spec-version"
                       required
                     >
                       <option disabled value="">
-                        {{ tr('harness.quickEval.selectConversation', 'Select a conversation') }}
+                        {{ tr('harness.dataset.selectVersion', 'Select a version') }}
                       </option>
                       <option
-                        v-for="conversation in quickEvalConversations"
-                        :key="conversation.id"
-                        :value="conversation.id"
+                        v-for="version in selectedSpecDatasetVersions"
+                        :key="version.id"
+                        :value="version.id"
                       >
-                        {{ quickEvalConversationTitle(conversation) }}
+                        {{ version.version }} · {{ version.item_count }}
+                        {{ tr('harness.dataset.items', 'items') }}
                       </option>
                     </select>
-                    <small class="field-hint">
-                      {{
-                        tr(
-                          'harness.quickEval.conversationHint',
-                          'Generate draft cases by pairing each user message with the next assistant reply.'
-                        )
-                      }}
-                    </small>
                   </label>
-                  <div class="quick-eval-summary form-span-2">
-                    <strong>{{ tr('harness.quickEval.draftCases', 'Draft cases') }}</strong>
-                    <span>
-                      {{
-                        quickEvalConversationLoading ||
-                        quickEvalConversationMessagesLoadingID === quickEvalForm.conversationID
-                          ? tr('common.loading', 'Loading')
-                          : quickEvalConversationError
-                            ? quickEvalConversationError
-                            : !quickEvalForm.conversationID
-                              ? tr(
-                                  'harness.quickEval.conversationRequired',
-                                  'Select a conversation before launching a quick eval.'
-                                )
-                              : selectedQuickConversationCaseCount > 0
-                                ? trp(
-                                    'harness.quickEval.conversationCaseCount',
-                                    '{count} draft cases from this conversation',
-                                    {
-                                      count: selectedQuickConversationCaseCount,
-                                    }
-                                  )
-                                : tr(
-                                    'harness.quickEval.conversationEmpty',
-                                    'This conversation did not produce any draft cases yet.'
-                                  )
-                      }}
-                    </span>
-                  </div>
-                  <label class="form-span-2">
-                    <span>{{ tr('harness.quickEval.previewManifest', 'Preview Cases JSON') }}</span>
-                    <textarea
-                      :value="selectedQuickConversationManifestText"
-                      name="quick-eval-conversation-preview"
-                      rows="11"
-                      spellcheck="false"
-                      readonly
-                    />
+                  <label>
+                    <span>{{ tr('harness.dataset.subject', 'Subject') }}</span>
+                    <input v-model="evalSpecForm.subject" name="eval-spec-subject" />
                   </label>
-                  <div class="form-span-2">
-                    <button
-                      type="button"
-                      class="secondary-button"
-                      @click="copyConversationDraftToManifest"
-                    >
-                      {{ tr('harness.quickEval.editManifest', 'Edit Cases JSON') }}
-                    </button>
-                  </div>
-                </template>
-
-                <label class="form-span-2">
-                  <span>{{ tr('harness.quickEval.preset', 'Preset') }}</span>
-                  <select v-model="quickEvalForm.preset" name="quick-eval-preset">
-                    <option v-for="preset in quickEvalPresetOptions" :key="preset" :value="preset">
-                      {{ quickPresetConfig(preset).label }}
-                    </option>
-                  </select>
-                </label>
-              </div>
-
-              <div class="quick-eval-summary">
-                <strong>{{ tr('harness.quickEval.systemWillDo', 'Harness will do') }}</strong>
-                <span>
+                  <label>
+                    <span>{{ tr('harness.dataset.runKind', 'Run kind') }}</span>
+                    <select v-model="evalSpecForm.runKind" name="eval-spec-run-kind">
+                      <option v-for="kind in runKindOptions" :key="kind" :value="kind">
+                        {{ humanizeEnum(kind) }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.dataset.profile', 'Profile') }}</span>
+                    <input v-model="evalSpecForm.profile" name="eval-spec-profile" />
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.evalSpec.scoringMode', 'Scoring mode') }}</span>
+                    <select v-model="evalSpecForm.scoringMode" name="eval-spec-scoring-mode">
+                      <option v-for="mode in scoringModeOptions" :key="mode" :value="mode">
+                        {{ humanizeEnum(mode) }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.evalSpec.passThreshold', 'Pass threshold') }}</span>
+                    <input v-model="evalSpecForm.passThreshold" name="eval-spec-pass-threshold" />
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.evalSpec.ruleProfile', 'Rule profile') }}</span>
+                    <input v-model="evalSpecForm.ruleProfile" name="eval-spec-rule-profile" />
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.evalSpec.judgeModel', 'Judge model') }}</span>
+                    <input v-model="evalSpecForm.judgeModel" name="eval-spec-judge-model" />
+                  </label>
+                </div>
+                <button
+                  class="primary-button"
+                  type="submit"
+                  :disabled="
+                    createAction === 'spec' ||
+                    !evalSpecForm.datasetID ||
+                    !evalSpecForm.datasetVersionID
+                  "
+                >
                   {{
-                    tr(
-                      'harness.quickEval.systemWillDoHint',
-                      'Create or reuse the dataset snapshot, choose a matching spec, attach the default baseline, and launch the run.'
-                    )
+                    createAction === 'spec'
+                      ? tr('common.loading', 'Loading')
+                      : tr('harness.evalSpec.create', 'Create eval spec')
                   }}
-                </span>
-                <span>{{ quickPresetDescription(quickEvalForm.preset) }}</span>
-              </div>
+                </button>
+              </form>
 
-              <button
-                class="primary-button"
-                type="submit"
-                :disabled="
-                  createAction === 'quick' ||
-                  (quickEvalForm.sourceMode === 'dataset' && !quickEvalForm.datasetID) ||
-                  (quickEvalForm.sourceMode === 'conversation' && !quickEvalForm.conversationID)
-                "
-              >
-                {{
-                  createAction === 'quick'
-                    ? tr('common.loading', 'Loading')
-                    : tr('harness.quickEval.launch', 'Launch quick eval')
-                }}
-              </button>
-            </form>
-          </div>
-        </section>
-
-        <section class="panel rail-panel">
-          <div class="section-header">
-            <div>
-              <p class="section-eyebrow">
-                {{ tr('harness.builder.eyebrow', 'Advanced Controls') }}
-              </p>
-              <h2>{{ tr('harness.builder.title', 'Advanced V3 object model') }}</h2>
-              <p class="section-description">
-                {{
-                  tr(
-                    'harness.builder.description',
-                    'Reach for the full dataset, version, spec, and run workflow when you need exact control over every eval object.'
-                  )
-                }}
-              </p>
-            </div>
-            <button
-              type="button"
-              class="secondary-button"
-              @click="advancedBuilderOpen = !advancedBuilderOpen"
-            >
-              {{
-                advancedBuilderOpen
-                  ? tr('harness.builder.hideAdvanced', 'Hide advanced')
-                  : tr('harness.builder.showAdvanced', 'Open advanced')
-              }}
-            </button>
-          </div>
-
-          <div v-if="advancedBuilderOpen" class="quickstart-grid">
-            <form class="action-card" @submit.prevent="submitDataset">
-              <div class="action-card-header">
-                <span class="step-chip">1</span>
-                <div>
-                  <h3>{{ tr('harness.dataset.create', 'Create dataset') }}</h3>
-                  <p>
-                    {{
-                      tr(
-                        'harness.dataset.createHint',
-                        'Start a reusable case collection with default run settings.'
-                      )
-                    }}
-                  </p>
-                </div>
-              </div>
-              <div class="form-grid">
-                <label>
-                  <span>{{ tr('common.name', 'Name') }}</span>
-                  <input v-model="datasetForm.name" name="dataset-name" required />
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.subject', 'Subject') }}</span>
-                  <input v-model="datasetForm.subject" name="dataset-subject" />
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.runKind', 'Run kind') }}</span>
-                  <select v-model="datasetForm.runKind" name="dataset-run-kind">
-                    <option v-for="kind in runKindOptions" :key="kind" :value="kind">
-                      {{ humanizeEnum(kind) }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.profile', 'Profile') }}</span>
-                  <input v-model="datasetForm.profile" name="dataset-profile" />
-                </label>
-                <label class="form-span-2">
-                  <span>{{ tr('common.description', 'Description') }}</span>
-                  <textarea v-model="datasetForm.description" name="dataset-description" rows="3" />
-                </label>
-              </div>
-              <button class="primary-button" type="submit" :disabled="createAction === 'dataset'">
-                {{
-                  createAction === 'dataset'
-                    ? tr('common.loading', 'Loading')
-                    : tr('harness.dataset.create', 'Create dataset')
-                }}
-              </button>
-            </form>
-
-            <form class="action-card" @submit.prevent="submitDatasetVersion">
-              <div class="action-card-header">
-                <span class="step-chip">2</span>
-                <div>
-                  <h3>{{ tr('harness.dataset.publishVersion', 'Publish version') }}</h3>
-                  <p>
-                    {{
-                      tr(
-                        'harness.dataset.publishHint',
-                        'Freeze an immutable manifest so specs always bind to a concrete snapshot.'
-                      )
-                    }}
-                  </p>
-                </div>
-              </div>
-              <div class="form-grid">
-                <label class="form-span-2">
-                  <span>{{ tr('harness.dataset.targetDataset', 'Dataset') }}</span>
-                  <select
-                    v-model="datasetVersionForm.datasetID"
-                    name="dataset-version-dataset"
-                    required
-                  >
-                    <option disabled value="">
-                      {{ tr('harness.dataset.selectDataset', 'Select a dataset') }}
-                    </option>
-                    <option v-for="dataset in datasets" :key="dataset.id" :value="dataset.id">
-                      {{ dataset.name }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.versionLabel', 'Version') }}</span>
-                  <input
-                    v-model="datasetVersionForm.version"
-                    name="dataset-version-label"
-                    required
-                  />
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.sourceType', 'Source type') }}</span>
-                  <input
-                    v-model="datasetVersionForm.sourceType"
-                    name="dataset-version-source-type"
-                  />
-                </label>
-                <label class="form-span-2">
-                  <span>{{ tr('harness.dataset.sourceRef', 'Source ref') }}</span>
-                  <input v-model="datasetVersionForm.sourceRef" name="dataset-version-source-ref" />
-                </label>
-                <label class="form-span-2">
-                  <span>{{ tr('harness.dataset.manifest', 'Manifest JSON') }}</span>
-                  <textarea
-                    v-model="datasetVersionForm.manifestText"
-                    name="dataset-version-manifest"
-                    rows="11"
-                    spellcheck="false"
-                    required
-                  />
-                </label>
-              </div>
-              <button
-                class="primary-button"
-                type="submit"
-                :disabled="createAction === 'version' || !datasetVersionForm.datasetID"
-              >
-                {{
-                  createAction === 'version'
-                    ? tr('common.loading', 'Loading')
-                    : tr('harness.dataset.publishVersion', 'Publish version')
-                }}
-              </button>
-            </form>
-
-            <form class="action-card" @submit.prevent="submitEvalSpec">
-              <div class="action-card-header">
-                <span class="step-chip">3</span>
-                <div>
-                  <h3>{{ tr('harness.evalSpec.create', 'Create eval spec') }}</h3>
-                  <p>
-                    {{
-                      tr(
-                        'harness.evalSpec.createHint',
-                        'Bind one dataset snapshot to a reusable scoring and runtime template.'
-                      )
-                    }}
-                  </p>
-                </div>
-              </div>
-              <div class="form-grid">
-                <label class="form-span-2">
-                  <span>{{ tr('common.name', 'Name') }}</span>
-                  <input v-model="evalSpecForm.name" name="eval-spec-name" required />
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.targetDataset', 'Dataset') }}</span>
-                  <select v-model="evalSpecForm.datasetID" name="eval-spec-dataset" required>
-                    <option disabled value="">
-                      {{ tr('harness.dataset.selectDataset', 'Select a dataset') }}
-                    </option>
-                    <option v-for="dataset in datasets" :key="dataset.id" :value="dataset.id">
-                      {{ dataset.name }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.versionLabel', 'Version') }}</span>
-                  <select v-model="evalSpecForm.datasetVersionID" name="eval-spec-version" required>
-                    <option disabled value="">
-                      {{ tr('harness.dataset.selectVersion', 'Select a version') }}
-                    </option>
-                    <option
-                      v-for="version in selectedSpecDatasetVersions"
-                      :key="version.id"
-                      :value="version.id"
-                    >
-                      {{ version.version }} · {{ version.item_count }}
-                      {{ tr('harness.dataset.items', 'items') }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.subject', 'Subject') }}</span>
-                  <input v-model="evalSpecForm.subject" name="eval-spec-subject" />
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.runKind', 'Run kind') }}</span>
-                  <select v-model="evalSpecForm.runKind" name="eval-spec-run-kind">
-                    <option v-for="kind in runKindOptions" :key="kind" :value="kind">
-                      {{ humanizeEnum(kind) }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>{{ tr('harness.dataset.profile', 'Profile') }}</span>
-                  <input v-model="evalSpecForm.profile" name="eval-spec-profile" />
-                </label>
-                <label>
-                  <span>{{ tr('harness.evalSpec.scoringMode', 'Scoring mode') }}</span>
-                  <select v-model="evalSpecForm.scoringMode" name="eval-spec-scoring-mode">
-                    <option v-for="mode in scoringModeOptions" :key="mode" :value="mode">
-                      {{ humanizeEnum(mode) }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>{{ tr('harness.evalSpec.passThreshold', 'Pass threshold') }}</span>
-                  <input v-model="evalSpecForm.passThreshold" name="eval-spec-pass-threshold" />
-                </label>
-                <label>
-                  <span>{{ tr('harness.evalSpec.ruleProfile', 'Rule profile') }}</span>
-                  <input v-model="evalSpecForm.ruleProfile" name="eval-spec-rule-profile" />
-                </label>
-                <label>
-                  <span>{{ tr('harness.evalSpec.judgeModel', 'Judge model') }}</span>
-                  <input v-model="evalSpecForm.judgeModel" name="eval-spec-judge-model" />
-                </label>
-              </div>
-              <button
-                class="primary-button"
-                type="submit"
-                :disabled="
-                  createAction === 'spec' ||
-                  !evalSpecForm.datasetID ||
-                  !evalSpecForm.datasetVersionID
-                "
-              >
-                {{
-                  createAction === 'spec'
-                    ? tr('common.loading', 'Loading')
-                    : tr('harness.evalSpec.create', 'Create eval spec')
-                }}
-              </button>
-            </form>
-
-            <form class="action-card" @submit.prevent="submitEvalRun">
-              <div class="action-card-header">
-                <span class="step-chip">4</span>
-                <div>
-                  <h3>{{ tr('harness.evalRun.launch', 'Launch eval run') }}</h3>
-                  <p>
-                    {{
-                      tr(
-                        'harness.evalRun.launchHint',
-                        'Materialize the spec into a tracked run group and keep the report linked here.'
-                      )
-                    }}
-                  </p>
-                </div>
-              </div>
-              <div class="form-grid">
-                <label class="form-span-2">
-                  <span>{{ tr('harness.evalRun.spec', 'Eval spec') }}</span>
-                  <select v-model="evalRunForm.evalSpecID" name="eval-run-spec" required>
-                    <option disabled value="">
-                      {{ tr('harness.evalRun.selectSpec', 'Select an eval spec') }}
-                    </option>
-                    <option v-for="spec in evalSpecs" :key="spec.id" :value="spec.id">
-                      {{ spec.name }}
-                    </option>
-                  </select>
-                </label>
-                <label class="form-span-2">
-                  <span>{{ tr('common.title', 'Title') }}</span>
-                  <input v-model="evalRunForm.title" name="eval-run-title" />
-                </label>
-                <label class="form-span-2">
-                  <span>{{ tr('harness.evalRun.baseline', 'Baseline run') }}</span>
-                  <select v-model="evalRunForm.baselineEvalRunID" name="eval-run-baseline">
-                    <option value="">{{ tr('common.notAvailable', 'Not available') }}</option>
-                    <option v-for="run in baselineOptions" :key="run.id" :value="run.id">
-                      {{ run.title || run.id }} · {{ statusLabel(run.status) }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</span>
-                  <input v-model="evalRunForm.triggerKind" name="eval-run-trigger-kind" />
-                </label>
-                <label>
-                  <span>{{ tr('harness.evalRun.triggerRef', 'Trigger ref') }}</span>
-                  <input v-model="evalRunForm.triggerRef" name="eval-run-trigger-ref" />
-                </label>
-              </div>
-              <button
-                class="primary-button"
-                type="submit"
-                :disabled="createAction === 'run' || !evalRunForm.evalSpecID"
-              >
-                {{
-                  createAction === 'run'
-                    ? tr('common.loading', 'Loading')
-                    : tr('harness.evalRun.launch', 'Launch eval run')
-                }}
-              </button>
-            </form>
-          </div>
-
-          <div v-else class="empty-panel">
-            {{
-              tr(
-                'harness.builder.collapsed',
-                'Advanced mode is collapsed. Open it when you need to hand-author datasets, immutable versions, eval specs, or run metadata.'
-              )
-            }}
-          </div>
-        </section>
-      </aside>
-
-      <div class="console-main">
-        <div class="content-split support-stack">
-          <section class="panel support-panel">
-            <div class="section-header">
-              <div>
-                <p class="section-eyebrow">
-                  {{ tr('harness.datasets.eyebrow', 'Reusable Sources') }}
-                </p>
-                <h2>{{ tr('harness.datasets.title', 'Datasets & versions') }}</h2>
-                <p class="section-description">
-                  {{
-                    tr(
-                      'harness.datasets.description',
-                      'Each dataset can carry multiple frozen versions, letting specs rerun against the same manifest later.'
-                    )
-                  }}
-                </p>
-              </div>
-            </div>
-
-            <div v-if="datasets.length === 0" class="empty-panel">
-              {{
-                tr(
-                  'harness.datasets.empty',
-                  'No datasets yet. Create one to begin the V3 eval flow.'
-                )
-              }}
-            </div>
-
-            <div v-else class="entity-grid">
-              <article v-for="dataset in datasets" :key="dataset.id" class="entity-card">
-                <div class="entity-header">
+              <form class="action-card" @submit.prevent="submitEvalRun">
+                <div class="action-card-header">
+                  <span class="step-chip">4</span>
                   <div>
-                    <h3>{{ dataset.name }}</h3>
+                    <h3>{{ tr('harness.evalRun.launch', 'Launch eval run') }}</h3>
                     <p>
                       {{
-                        dataset.description ||
-                        dataset.subject ||
-                        tr('harness.groups.noSubject', 'No subject provided')
+                        tr(
+                          'harness.evalRun.launchHint',
+                          'Materialize the spec into a tracked run group and keep the report linked here.'
+                        )
                       }}
                     </p>
                   </div>
-                  <span class="kind-chip is-eval">{{
-                    humanizeEnum(dataset.default_run_kind || 'agent_task')
-                  }}</span>
                 </div>
-
-                <dl class="meta-grid">
-                  <div>
-                    <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
-                    <dd>
-                      {{ dataset.default_profile || tr('common.notAvailable', 'Not available') }}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{{ tr('harness.dataset.activeVersion', 'Active version') }}</dt>
-                    <dd>
-                      {{
-                        activeVersionForDataset(dataset)?.version ||
-                        dataset.active_version_id ||
-                        tr('common.notAvailable', 'Not available')
-                      }}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{{ tr('harness.dataset.caseCount', 'Cases') }}</dt>
-                    <dd>{{ activeVersionForDataset(dataset)?.item_count || 0 }}</dd>
-                  </div>
-                  <div>
-                    <dt>{{ tr('common.updatedAt', 'Updated') }}</dt>
-                    <dd>{{ formatDate(dataset.updated_at) }}</dd>
-                  </div>
-                </dl>
-
-                <div class="version-list">
-                  <button
-                    v-for="version in versionsForDataset(dataset.id)"
-                    :key="version.id"
-                    type="button"
-                    class="version-chip"
-                    :class="{ active: version.id === dataset.active_version_id }"
-                    @click="prefillSpecFromDataset(dataset, version)"
-                  >
-                    {{ version.version }} · {{ version.item_count }}
-                    {{ tr('harness.dataset.items', 'items') }}
-                  </button>
+                <div class="form-grid">
+                  <label class="form-span-2">
+                    <span>{{ tr('harness.evalRun.spec', 'Eval spec') }}</span>
+                    <select v-model="evalRunForm.evalSpecID" name="eval-run-spec" required>
+                      <option disabled value="">
+                        {{ tr('harness.evalRun.selectSpec', 'Select an eval spec') }}
+                      </option>
+                      <option v-for="spec in evalSpecs" :key="spec.id" :value="spec.id">
+                        {{ spec.name }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="form-span-2">
+                    <span>{{ tr('common.title', 'Title') }}</span>
+                    <input v-model="evalRunForm.title" name="eval-run-title" />
+                  </label>
+                  <label class="form-span-2">
+                    <span>{{ tr('harness.evalRun.baseline', 'Baseline run') }}</span>
+                    <select v-model="evalRunForm.baselineEvalRunID" name="eval-run-baseline">
+                      <option value="">{{ tr('common.notAvailable', 'Not available') }}</option>
+                      <option v-for="run in baselineOptions" :key="run.id" :value="run.id">
+                        {{ run.title || run.id }} · {{ statusLabel(run.status) }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</span>
+                    <input v-model="evalRunForm.triggerKind" name="eval-run-trigger-kind" />
+                  </label>
+                  <label>
+                    <span>{{ tr('harness.evalRun.triggerRef', 'Trigger ref') }}</span>
+                    <input v-model="evalRunForm.triggerRef" name="eval-run-trigger-ref" />
+                  </label>
                 </div>
-
-                <div class="action-row">
-                  <button
-                    type="button"
-                    class="secondary-button"
-                    @click="prefillVersionFromDataset(dataset)"
-                  >
-                    {{ tr('harness.dataset.publishVersion', 'Publish version') }}
-                  </button>
-                  <button
-                    type="button"
-                    class="secondary-button"
-                    @click="prefillSpecFromDataset(dataset, activeVersionForDataset(dataset))"
-                  >
-                    {{ tr('harness.evalSpec.create', 'Create eval spec') }}
-                  </button>
-                </div>
-              </article>
-            </div>
-          </section>
-
-          <section class="panel support-panel">
-            <div class="section-header">
-              <div>
-                <p class="section-eyebrow">
-                  {{ tr('harness.evalSpecs.eyebrow', 'Reusable Templates') }}
-                </p>
-                <h2>{{ tr('harness.evalSpecs.title', 'Eval specs') }}</h2>
-                <p class="section-description">
+                <button
+                  class="primary-button"
+                  type="submit"
+                  :disabled="createAction === 'run' || !evalRunForm.evalSpecID"
+                >
                   {{
-                    tr(
-                      'harness.evalSpecs.description',
-                      'Specs capture one dataset snapshot plus the run kind, profile, and scoring setup needed to materialize repeatable runs.'
-                    )
+                    createAction === 'run'
+                      ? tr('common.loading', 'Loading')
+                      : tr('harness.evalRun.launch', 'Launch eval run')
                   }}
-                </p>
-              </div>
+                </button>
+              </form>
             </div>
 
-            <div v-if="evalSpecs.length === 0" class="empty-panel">
+            <div v-else class="empty-panel">
               {{
                 tr(
-                  'harness.evalSpecs.empty',
-                  'No eval specs yet. Publish a version and bind it to a spec.'
+                  'harness.builder.collapsed',
+                  'Advanced mode is collapsed. Open it when you need to hand-author datasets, immutable versions, eval specs, or run metadata.'
                 )
               }}
             </div>
+          </section>
+        </aside>
 
-            <div v-else class="entity-list">
-              <article v-for="spec in evalSpecs" :key="spec.id" class="list-card">
-                <div class="list-card-main">
-                  <div class="entity-header compact">
+        <div class="console-main">
+          <div class="content-split support-stack">
+            <section class="panel support-panel">
+              <div class="section-header">
+                <div>
+                  <p class="section-eyebrow">
+                    {{ tr('harness.datasets.eyebrow', 'Reusable Sources') }}
+                  </p>
+                  <h2>{{ tr('harness.datasets.title', 'Datasets & versions') }}</h2>
+                  <p class="section-description">
+                    {{
+                      tr(
+                        'harness.datasets.description',
+                        'Each dataset can carry multiple frozen versions, letting specs rerun against the same manifest later.'
+                      )
+                    }}
+                  </p>
+                </div>
+              </div>
+
+              <div v-if="datasets.length === 0" class="empty-panel">
+                {{
+                  tr(
+                    'harness.datasets.empty',
+                    'No datasets yet. Create one to begin the V3 eval flow.'
+                  )
+                }}
+              </div>
+
+              <div v-else class="entity-grid">
+                <article v-for="dataset in datasets" :key="dataset.id" class="entity-card">
+                  <div class="entity-header">
                     <div>
-                      <h3>{{ spec.name }}</h3>
+                      <h3>{{ dataset.name }}</h3>
                       <p>
-                        {{ datasetByID[spec.dataset_id]?.name || spec.dataset_id }}
-                        <span class="dot-separator">·</span>
                         {{
-                          datasetVersionByID[spec.dataset_version_id || '']?.version ||
-                          spec.dataset_version_id ||
-                          tr('common.notAvailable', 'Not available')
+                          dataset.description ||
+                          dataset.subject ||
+                          tr('harness.groups.noSubject', 'No subject provided')
                         }}
                       </p>
                     </div>
-                    <span
-                      class="status-chip"
-                      :class="statusTone(spec.scoring_config?.mode || 'pending')"
-                    >
-                      {{ humanizeEnum(spec.scoring_config?.mode || 'rule') }}
-                    </span>
+                    <span class="kind-chip is-eval">{{
+                      humanizeEnum(dataset.default_run_kind || 'agent_task')
+                    }}</span>
                   </div>
 
-                  <dl class="meta-grid compact">
-                    <div>
-                      <dt>{{ tr('harness.dataset.runKind', 'Run kind') }}</dt>
-                      <dd>{{ humanizeEnum(spec.run_kind) }}</dd>
-                    </div>
+                  <dl class="meta-grid">
                     <div>
                       <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
                       <dd>
-                        {{ spec.profile || tr('harness.group.unprofiled', 'Unprofiled item') }}
+                        {{ dataset.default_profile || tr('common.notAvailable', 'Not available') }}
                       </dd>
                     </div>
                     <div>
-                      <dt>{{ tr('harness.evalSpec.passThreshold', 'Pass threshold') }}</dt>
+                      <dt>{{ tr('harness.dataset.activeVersion', 'Active version') }}</dt>
                       <dd>
                         {{
-                          spec.scoring_config?.pass_threshold ??
+                          activeVersionForDataset(dataset)?.version ||
+                          dataset.active_version_id ||
                           tr('common.notAvailable', 'Not available')
                         }}
                       </dd>
                     </div>
                     <div>
-                      <dt>{{ tr('harness.evalSpec.judgeModel', 'Judge model') }}</dt>
-                      <dd>
-                        {{
-                          spec.scoring_config?.judge_model ||
-                          tr('common.notAvailable', 'Not available')
-                        }}
-                      </dd>
+                      <dt>{{ tr('harness.dataset.caseCount', 'Cases') }}</dt>
+                      <dd>{{ activeVersionForDataset(dataset)?.item_count || 0 }}</dd>
+                    </div>
+                    <div>
+                      <dt>{{ tr('common.updatedAt', 'Updated') }}</dt>
+                      <dd>{{ formatDate(dataset.updated_at) }}</dd>
                     </div>
                   </dl>
-                </div>
 
-                <div class="action-row">
-                  <button type="button" class="secondary-button" @click="prefillRunFromSpec(spec)">
-                    {{ tr('harness.evalRun.launch', 'Launch eval run') }}
-                  </button>
-                </div>
-              </article>
-            </div>
-          </section>
-        </div>
+                  <div class="version-list">
+                    <button
+                      v-for="version in versionsForDataset(dataset.id)"
+                      :key="version.id"
+                      type="button"
+                      class="version-chip"
+                      :class="{ active: version.id === dataset.active_version_id }"
+                      @click="prefillSpecFromDataset(dataset, version)"
+                    >
+                      {{ version.version }} · {{ version.item_count }}
+                      {{ tr('harness.dataset.items', 'items') }}
+                    </button>
+                  </div>
 
-        <section class="panel eval-runs-panel">
-          <div class="section-header">
-            <div>
-              <p class="section-eyebrow">
-                {{ tr('harness.evalRuns.eyebrow', 'Tracked Executions') }}
-              </p>
-              <h2>{{ tr('harness.evalRuns.title', 'Eval runs') }}</h2>
-              <p class="section-description">
+                  <div class="action-row">
+                    <button
+                      type="button"
+                      class="secondary-button"
+                      @click="prefillVersionFromDataset(dataset)"
+                    >
+                      {{ tr('harness.dataset.publishVersion', 'Publish version') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="secondary-button"
+                      @click="prefillSpecFromDataset(dataset, activeVersionForDataset(dataset))"
+                    >
+                      {{ tr('harness.evalSpec.create', 'Create eval spec') }}
+                    </button>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="panel support-panel">
+              <div class="section-header">
+                <div>
+                  <p class="section-eyebrow">
+                    {{ tr('harness.evalSpecs.eyebrow', 'Reusable Templates') }}
+                  </p>
+                  <h2>{{ tr('harness.evalSpecs.title', 'Eval specs') }}</h2>
+                  <p class="section-description">
+                    {{
+                      tr(
+                        'harness.evalSpecs.description',
+                        'Specs capture one dataset snapshot plus the run kind, profile, and scoring setup needed to materialize repeatable runs.'
+                      )
+                    }}
+                  </p>
+                </div>
+              </div>
+
+              <div v-if="evalSpecs.length === 0" class="empty-panel">
                 {{
                   tr(
-                    'harness.evalRuns.description',
-                    'Run rows keep the V3 entrypoint visible while still linking back to the underlying group report and raw runtime trail.'
+                    'harness.evalSpecs.empty',
+                    'No eval specs yet. Publish a version and bind it to a spec.'
                   )
                 }}
-              </p>
-            </div>
-          </div>
+              </div>
 
-          <div v-if="evalRuns.length === 0" class="empty-panel">
-            {{
-              tr(
-                'harness.evalRuns.empty',
-                'No eval runs yet. Launch one from a spec to populate the tracked run ledger.'
-              )
-            }}
-          </div>
-
-          <div v-else class="eval-runs-console">
-            <div class="eval-runs-list">
-              <article
-                v-for="run in evalRuns"
-                :key="run.id"
-                class="list-card eval-run-card"
-                :class="[statusTone(run.status), { selected: run.id === selectedEvalRunID }]"
-                role="button"
-                tabindex="0"
-                @click="loadEvalRunReport(run.id)"
-                @keydown.enter.prevent="loadEvalRunReport(run.id)"
-                @keydown.space.prevent="loadEvalRunReport(run.id)"
-              >
-                <div class="list-card-main eval-run-card-main">
-                  <div class="entity-header compact">
-                    <div>
-                      <h3>{{ run.title || run.id }}</h3>
-                      <p>
-                        {{ evalSpecByID[run.eval_spec_id]?.name || run.eval_spec_id }}
-                        <span class="dot-separator">·</span>
-                        {{
-                          datasetVersionByID[run.dataset_version_id || '']?.version ||
-                          run.dataset_version_id ||
-                          tr('common.notAvailable', 'Not available')
-                        }}
-                      </p>
-                    </div>
-                    <span class="status-chip" :class="statusTone(run.status)">{{
-                      statusLabel(run.status)
-                    }}</span>
-                  </div>
-
-                  <div class="run-compact-metrics">
-                    <div class="run-metric-pill">
-                      <span>{{ tr('harness.groups.passRate', 'Pass rate') }}</span>
-                      <strong>{{ percentLabel(passRate(run.summary)) }}</strong>
-                    </div>
-                    <div class="run-metric-pill">
-                      <span>{{ tr('harness.groups.score', 'Score') }}</span>
-                      <strong>{{ fixedScore(overallScore(run.summary)) }}</strong>
-                    </div>
-                    <div class="run-metric-pill">
-                      <span>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</span>
-                      <strong>{{
-                        run.trigger_kind || tr('common.notAvailable', 'Not available')
-                      }}</strong>
-                    </div>
-                    <div class="run-metric-pill">
-                      <span>{{ tr('harness.group.linkedRuns', 'Linked runs') }}</span>
-                      <strong>{{ run.group_id ? 1 : 0 }}</strong>
-                    </div>
-                  </div>
-
-                  <div class="run-submeta">
-                    <span
-                      >{{ tr('common.updatedAt', 'Updated') }}:
-                      {{ formatDate(run.updated_at) }}</span
-                    >
-                    <span>
-                      {{ tr('harness.evalRun.report', 'Linked report') }}:
-                      {{
-                        run.group_id
-                          ? tr('common.available', 'Available')
-                          : tr('common.notAvailable', 'Not available')
-                      }}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="action-row run-actions">
-                  <button
-                    type="button"
-                    class="secondary-button"
-                    :disabled="reportLoadingRunID === run.id"
-                    @click.stop="loadEvalRunReport(run.id)"
-                  >
-                    {{
-                      reportLoadingRunID === run.id
-                        ? tr('common.loading', 'Loading')
-                        : tr('harness.evalRun.inspect', 'Inspect report')
-                    }}
-                  </button>
-                  <RouterLink
-                    v-if="run.group_id"
-                    class="secondary-button link-button"
-                    :to="{ name: 'HarnessGroupDetail', params: { id: run.group_id } }"
-                    @click.stop
-                  >
-                    {{ tr('harness.group.jumpToRun', 'Open group') }}
-                  </RouterLink>
-                  <button
-                    v-if="runStatusIsActive(run.status)"
-                    type="button"
-                    class="secondary-button danger-button"
-                    :disabled="cancelEvalRunID === run.id"
-                    @click.stop="cancelEvalRun(run.id)"
-                  >
-                    {{
-                      cancelEvalRunID === run.id
-                        ? tr('common.loading', 'Loading')
-                        : tr('common.cancel', 'Cancel')
-                    }}
-                  </button>
-                </div>
-              </article>
-            </div>
-
-            <section class="report-panel docked-report-panel">
-              <template v-if="selectedEvalRunReport">
-                <div class="report-hero">
-                  <div class="report-hero-copy">
-                    <p class="section-eyebrow">
-                      {{ tr('harness.evalRun.report', 'Linked report') }}
-                    </p>
-                    <h2>
-                      {{ selectedReportRun?.title || selectedReportRun?.id || selectedEvalRunID }}
-                    </h2>
-                    <p class="section-description">
-                      {{
-                        tr(
-                          'harness.evalRun.reportDescription',
-                          'This preview joins the V3 eval run record with the underlying group report so you can inspect outcomes without leaving the console.'
-                        )
-                      }}
-                    </p>
-                    <div class="report-hero-meta">
+              <div v-else class="entity-list">
+                <article v-for="spec in evalSpecs" :key="spec.id" class="list-card">
+                  <div class="list-card-main">
+                    <div class="entity-header compact">
+                      <div>
+                        <h3>{{ spec.name }}</h3>
+                        <p>
+                          {{ datasetByID[spec.dataset_id]?.name || spec.dataset_id }}
+                          <span class="dot-separator">·</span>
+                          {{
+                            datasetVersionByID[spec.dataset_version_id || '']?.version ||
+                            spec.dataset_version_id ||
+                            tr('common.notAvailable', 'Not available')
+                          }}
+                        </p>
+                      </div>
                       <span
                         class="status-chip"
-                        :class="statusTone(selectedReportRun?.status || 'pending')"
+                        :class="statusTone(spec.scoring_config?.mode || 'pending')"
                       >
-                        {{ statusLabel(selectedReportRun?.status || 'pending') }}
-                      </span>
-                      <span
-                        class="kind-chip"
-                        :class="kindTone(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task')"
-                      >
-                        {{
-                          humanizeEnum(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task')
-                        }}
-                      </span>
-                      <span class="version-chip">
-                        {{
-                          selectedEvalRunReport.dataset_version?.version ||
-                          tr('common.notAvailable', 'Not available')
-                        }}
+                        {{ humanizeEnum(spec.scoring_config?.mode || 'rule') }}
                       </span>
                     </div>
-                  </div>
 
-                  <div class="report-hero-actions">
-                    <div class="action-row report-actions">
-                      <button
-                        v-if="selectedReportRun && runStatusIsActive(selectedReportRun.status)"
-                        type="button"
-                        class="secondary-button danger-button"
-                        :disabled="cancelEvalRunID === selectedReportRun.id"
-                        @click="cancelEvalRun(selectedReportRun.id)"
-                      >
-                        {{
-                          cancelEvalRunID === selectedReportRun.id
-                            ? tr('common.loading', 'Loading')
-                            : tr('common.cancel', 'Cancel')
-                        }}
-                      </button>
-                      <RouterLink
-                        v-if="selectedEvalRunReport.group_report?.group?.id"
-                        class="secondary-button link-button"
-                        :to="{
-                          name: 'HarnessGroupDetail',
-                          params: { id: selectedEvalRunReport.group_report.group.id },
-                        }"
-                      >
-                        {{ tr('harness.group.inspectRun', 'Inspect group detail') }}
-                      </RouterLink>
-                    </div>
-                    <p class="card-copy muted report-hero-caption">
-                      {{ tr('common.updatedAt', 'Updated') }}:
-                      {{ formatDate(selectedReportRun?.updated_at || null) }}
-                    </p>
-                  </div>
-                </div>
-
-                <div class="report-highlight-grid">
-                  <article class="highlight-card">
-                    <span>{{ tr('harness.groups.passRate', 'Pass rate') }}</span>
-                    <strong>{{
-                      percentLabel(selectedEvalRunReport.group_report?.pass_rate || 0)
-                    }}</strong>
-                  </article>
-                  <article class="highlight-card">
-                    <span>{{ tr('harness.groups.score', 'Score') }}</span>
-                    <strong>{{
-                      fixedScore(selectedEvalRunReport.group_report?.overall_score || 0)
-                    }}</strong>
-                  </article>
-                  <article class="highlight-card">
-                    <span>{{
-                      tr('harness.group.verificationPassRate', 'Verification pass rate')
-                    }}</span>
-                    <strong>
-                      {{
-                        optionalPercentLabel(
-                          selectedEvalRunReport.group_report?.group?.summary,
-                          'verification_pass_rate'
-                        )
-                      }}
-                    </strong>
-                  </article>
-                  <article class="highlight-card">
-                    <span>
-                      {{ tr('harness.group.evidenceBackedPassRate', 'Evidence-backed pass rate') }}
-                    </span>
-                    <strong>
-                      {{
-                        optionalPercentLabel(
-                          selectedEvalRunReport.group_report?.group?.summary,
-                          'evidence_backed_pass_rate'
-                        )
-                      }}
-                    </strong>
-                  </article>
-                  <article class="highlight-card">
-                    <span>{{ tr('harness.groups.itemCount', 'Items') }}</span>
-                    <strong>
-                      {{
-                        selectedEvalRunReport.group_report?.group
-                          ? groupItemCount(selectedEvalRunReport.group_report.group)
-                          : 0
-                      }}
-                    </strong>
-                  </article>
-                  <article class="highlight-card">
-                    <span>{{ tr('harness.group.retryRecovered', 'Retry recovered') }}</span>
-                    <strong>
-                      {{
-                        summaryNumber(
-                          selectedEvalRunReport.group_report?.group?.summary,
-                          'retry_recovered_count'
-                        )
-                      }}
-                    </strong>
-                  </article>
-                </div>
-
-                <div class="report-grid">
-                  <article class="detail-card detail-card-feature">
-                    <h3>{{ tr('harness.dataset.snapshot', 'Dataset snapshot') }}</h3>
                     <dl class="meta-grid compact">
-                      <div>
-                        <dt>{{ tr('harness.dataset.targetDataset', 'Dataset') }}</dt>
-                        <dd>
-                          {{
-                            selectedEvalRunReport.dataset?.name ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.dataset.versionLabel', 'Version') }}</dt>
-                        <dd>
-                          {{
-                            selectedEvalRunReport.dataset_version?.version ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.dataset.caseCount', 'Cases') }}</dt>
-                        <dd>{{ selectedEvalRunReport.dataset_version?.item_count ?? 0 }}</dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.evalRun.baseline', 'Baseline run') }}</dt>
-                        <dd>
-                          {{
-                            selectedReportRun?.baseline_eval_run_id ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</dt>
-                        <dd>
-                          {{
-                            selectedReportRun?.trigger_kind ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.evalRun.triggerRef', 'Trigger ref') }}</dt>
-                        <dd>
-                          {{
-                            selectedReportRun?.trigger_ref ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                    </dl>
-                  </article>
-
-                  <article class="detail-card detail-card-feature">
-                    <h3>{{ tr('harness.evalSpec.title', 'Eval spec') }}</h3>
-                    <dl class="meta-grid compact">
-                      <div>
-                        <dt>{{ tr('common.name', 'Name') }}</dt>
-                        <dd>
-                          {{
-                            selectedEvalRunReport.eval_spec?.name ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
                       <div>
                         <dt>{{ tr('harness.dataset.runKind', 'Run kind') }}</dt>
+                        <dd>{{ humanizeEnum(spec.run_kind) }}</dd>
+                      </div>
+                      <div>
+                        <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
                         <dd>
-                          {{
-                            humanizeEnum(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task')
-                          }}
+                          {{ spec.profile || tr('harness.group.unprofiled', 'Unprofiled item') }}
                         </dd>
                       </div>
                       <div>
-                        <dt>{{ tr('harness.evalSpec.scoringMode', 'Scoring mode') }}</dt>
+                        <dt>{{ tr('harness.evalSpec.passThreshold', 'Pass threshold') }}</dt>
                         <dd>
                           {{
-                            humanizeEnum(
-                              selectedEvalRunReport.eval_spec?.scoring_config?.mode || 'rule'
-                            )
+                            spec.scoring_config?.pass_threshold ??
+                            tr('common.notAvailable', 'Not available')
                           }}
                         </dd>
                       </div>
@@ -2865,715 +2513,1116 @@ onUnmounted(() => {
                         <dt>{{ tr('harness.evalSpec.judgeModel', 'Judge model') }}</dt>
                         <dd>
                           {{
-                            selectedEvalRunReport.eval_spec?.scoring_config?.judge_model ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
-                        <dd>
-                          {{
-                            selectedEvalRunReport.eval_spec?.profile ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.evalSpec.passThreshold', 'Pass threshold') }}</dt>
-                        <dd>
-                          {{
-                            selectedEvalRunReport.eval_spec?.scoring_config?.pass_threshold ??
+                            spec.scoring_config?.judge_model ||
                             tr('common.notAvailable', 'Not available')
                           }}
                         </dd>
                       </div>
                     </dl>
-                  </article>
+                  </div>
 
-                  <article class="detail-card detail-card-wide report-outcome-card">
-                    <div class="detail-card-header">
+                  <div class="action-row">
+                    <button
+                      type="button"
+                      class="secondary-button"
+                      @click="prefillRunFromSpec(spec)"
+                    >
+                      {{ tr('harness.evalRun.launch', 'Launch eval run') }}
+                    </button>
+                  </div>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel eval-runs-panel">
+            <div class="section-header">
+              <div>
+                <p class="section-eyebrow">
+                  {{ tr('harness.evalRuns.eyebrow', 'Tracked Executions') }}
+                </p>
+                <h2>{{ tr('harness.evalRuns.title', 'Eval runs') }}</h2>
+                <p class="section-description">
+                  {{
+                    tr(
+                      'harness.evalRuns.description',
+                      'Run rows keep the V3 entrypoint visible while still linking back to the underlying group report and raw runtime trail.'
+                    )
+                  }}
+                </p>
+              </div>
+            </div>
+
+            <div v-if="evalRuns.length === 0" class="empty-panel">
+              {{
+                tr(
+                  'harness.evalRuns.empty',
+                  'No eval runs yet. Launch one from a spec to populate the tracked run ledger.'
+                )
+              }}
+            </div>
+
+            <div v-else class="eval-runs-console">
+              <div class="eval-runs-list">
+                <article
+                  v-for="run in evalRuns"
+                  :key="run.id"
+                  class="list-card eval-run-card"
+                  :class="[statusTone(run.status), { selected: run.id === selectedEvalRunID }]"
+                  role="button"
+                  tabindex="0"
+                  @click="loadEvalRunReport(run.id)"
+                  @keydown.enter.prevent="loadEvalRunReport(run.id)"
+                  @keydown.space.prevent="loadEvalRunReport(run.id)"
+                >
+                  <div class="list-card-main eval-run-card-main">
+                    <div class="entity-header compact">
                       <div>
-                        <h3>{{ tr('harness.group.outcomeTitle', 'Group outcome') }}</h3>
-                        <p class="card-copy">
+                        <h3>{{ run.title || run.id }}</h3>
+                        <p>
+                          {{ evalSpecByID[run.eval_spec_id]?.name || run.eval_spec_id }}
+                          <span class="dot-separator">·</span>
                           {{
-                            tr(
-                              'harness.group.outcomeDescription',
-                              'Keep the operational result, failure labels, and remediation hints together so this selected run reads like a single report instead of scattered mini-cards.'
-                            )
+                            datasetVersionByID[run.dataset_version_id || '']?.version ||
+                            run.dataset_version_id ||
+                            tr('common.notAvailable', 'Not available')
                           }}
                         </p>
                       </div>
+                      <span class="status-chip" :class="statusTone(run.status)">{{
+                        statusLabel(run.status)
+                      }}</span>
                     </div>
-                    <dl class="meta-grid compact">
-                      <div>
-                        <dt>{{ tr('harness.group.linkedRuns', 'Linked runs') }}</dt>
-                        <dd>
-                          {{ selectedEvalRunReport.group_report?.linked_runs?.length || 0 }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('common.updatedAt', 'Updated') }}</dt>
-                        <dd>
-                          {{
-                            formatDate(
-                              selectedEvalRunReport.group_report?.group?.updated_at || null
-                            )
-                          }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.evalRun.report', 'Linked report') }}</dt>
-                        <dd>
-                          {{
-                            selectedEvalRunReport.group_report?.group?.id ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{{ tr('harness.evalRun.baseline', 'Baseline run') }}</dt>
-                        <dd>
-                          {{
-                            selectedReportRun?.baseline_eval_run_id ||
-                            tr('common.notAvailable', 'Not available')
-                          }}
-                        </dd>
-                      </div>
-                    </dl>
 
-                    <div class="report-outcome-section">
-                      <p class="card-copy">
-                        {{ tr('harness.group.failureLabels', 'Failure labels') }}
+                    <div class="run-compact-metrics">
+                      <div class="run-metric-pill">
+                        <span>{{ tr('harness.groups.passRate', 'Pass rate') }}</span>
+                        <strong>{{ percentLabel(passRate(run.summary)) }}</strong>
+                      </div>
+                      <div class="run-metric-pill">
+                        <span>{{ tr('harness.groups.score', 'Score') }}</span>
+                        <strong>{{ fixedScore(overallScore(run.summary)) }}</strong>
+                      </div>
+                      <div class="run-metric-pill">
+                        <span>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</span>
+                        <strong>{{
+                          run.trigger_kind || tr('common.notAvailable', 'Not available')
+                        }}</strong>
+                      </div>
+                      <div class="run-metric-pill">
+                        <span>{{ tr('harness.group.linkedRuns', 'Linked runs') }}</span>
+                        <strong>{{ run.group_id ? 1 : 0 }}</strong>
+                      </div>
+                    </div>
+
+                    <div class="run-submeta">
+                      <span
+                        >{{ tr('common.updatedAt', 'Updated') }}:
+                        {{ formatDate(run.updated_at) }}</span
+                      >
+                      <span>
+                        {{ tr('harness.evalRun.report', 'Linked report') }}:
+                        {{
+                          run.group_id
+                            ? tr('common.available', 'Available')
+                            : tr('common.notAvailable', 'Not available')
+                        }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="action-row run-actions">
+                    <button
+                      type="button"
+                      class="secondary-button"
+                      :disabled="reportLoadingRunID === run.id"
+                      @click.stop="loadEvalRunReport(run.id)"
+                    >
+                      {{
+                        reportLoadingRunID === run.id
+                          ? tr('common.loading', 'Loading')
+                          : tr('harness.evalRun.inspect', 'Inspect report')
+                      }}
+                    </button>
+                    <RouterLink
+                      v-if="run.group_id"
+                      class="secondary-button link-button"
+                      :to="{ name: 'HarnessGroupDetail', params: { id: run.group_id } }"
+                      @click.stop
+                    >
+                      {{ tr('harness.group.jumpToRun', 'Open group') }}
+                    </RouterLink>
+                    <button
+                      v-if="runStatusIsActive(run.status)"
+                      type="button"
+                      class="secondary-button danger-button"
+                      :disabled="cancelEvalRunID === run.id"
+                      @click.stop="cancelEvalRun(run.id)"
+                    >
+                      {{
+                        cancelEvalRunID === run.id
+                          ? tr('common.loading', 'Loading')
+                          : tr('common.cancel', 'Cancel')
+                      }}
+                    </button>
+                  </div>
+                </article>
+              </div>
+
+              <section class="report-panel docked-report-panel">
+                <template v-if="selectedEvalRunReport">
+                  <div class="report-hero">
+                    <div class="report-hero-copy">
+                      <p class="section-eyebrow">
+                        {{ tr('harness.evalRun.report', 'Linked report') }}
                       </p>
-                      <div v-if="selectedFailureLabelEntries.length" class="version-list">
+                      <h2>
+                        {{ selectedReportRun?.title || selectedReportRun?.id || selectedEvalRunID }}
+                      </h2>
+                      <p class="section-description">
+                        {{
+                          tr(
+                            'harness.evalRun.reportDescription',
+                            'This preview joins the V3 eval run record with the underlying group report so you can inspect outcomes without leaving the console.'
+                          )
+                        }}
+                      </p>
+                      <div class="report-hero-meta">
                         <span
-                          class="version-chip"
-                          v-for="entry in selectedFailureLabelEntries"
-                          :key="`failure-label-${entry.key}`"
+                          class="status-chip"
+                          :class="statusTone(selectedReportRun?.status || 'pending')"
                         >
-                          {{ entry.key }} · {{ entry.value }}
+                          {{ statusLabel(selectedReportRun?.status || 'pending') }}
+                        </span>
+                        <span
+                          class="kind-chip"
+                          :class="
+                            kindTone(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task')
+                          "
+                        >
+                          {{
+                            humanizeEnum(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task')
+                          }}
+                        </span>
+                        <span class="version-chip">
+                          {{
+                            selectedEvalRunReport.dataset_version?.version ||
+                            tr('common.notAvailable', 'Not available')
+                          }}
                         </span>
                       </div>
-                      <p v-else class="card-copy muted">
-                        {{ tr('harness.group.noFailureLabels', 'No failure labels recorded.') }}
+                    </div>
+
+                    <div class="report-hero-actions">
+                      <div class="action-row report-actions">
+                        <button
+                          v-if="selectedReportRun && runStatusIsActive(selectedReportRun.status)"
+                          type="button"
+                          class="secondary-button danger-button"
+                          :disabled="cancelEvalRunID === selectedReportRun.id"
+                          @click="cancelEvalRun(selectedReportRun.id)"
+                        >
+                          {{
+                            cancelEvalRunID === selectedReportRun.id
+                              ? tr('common.loading', 'Loading')
+                              : tr('common.cancel', 'Cancel')
+                          }}
+                        </button>
+                        <RouterLink
+                          v-if="selectedEvalRunReport.group_report?.group?.id"
+                          class="secondary-button link-button"
+                          :to="{
+                            name: 'HarnessGroupDetail',
+                            params: { id: selectedEvalRunReport.group_report.group.id },
+                          }"
+                        >
+                          {{ tr('harness.group.inspectRun', 'Inspect group detail') }}
+                        </RouterLink>
+                      </div>
+                      <p class="card-copy muted report-hero-caption">
+                        {{ tr('common.updatedAt', 'Updated') }}:
+                        {{ formatDate(selectedReportRun?.updated_at || null) }}
                       </p>
                     </div>
+                  </div>
 
-                    <div
-                      v-if="selectedFailureLabelEntries.length"
-                      class="comparison-column failure-hints"
-                    >
-                      <span class="report-subtitle">
-                        {{ tr('harness.group.remediation', 'Remediation') }}
-                      </span>
-                      <article
-                        v-for="entry in selectedFailureLabelEntries"
-                        :key="`failure-hint-${entry.key}`"
-                        class="comparison-item is-regression"
-                      >
-                        <strong>{{ entry.key }}</strong>
-                        <p>
-                          {{ tr('harness.group.remediation', 'Remediation') }}:
-                          {{ remediationHint(entry.key) }}
-                        </p>
-                      </article>
-                    </div>
-                  </article>
-                </div>
-
-                <div class="comparison-grid">
-                  <article class="detail-card detail-card-feature">
-                    <h3>{{ tr('harness.baseline.title', 'Baseline registry') }}</h3>
-                    <p class="card-copy">
-                      {{
-                        tr(
-                          'harness.baseline.description',
-                          'Pin the selected eval run as a reusable baseline, then compare future candidates against it from the same console.'
-                        )
-                      }}
-                    </p>
-                    <div v-if="selectedEvalRunBaselines.length" class="version-list">
-                      <span
-                        v-for="baseline in selectedEvalRunBaselines"
-                        :key="baseline.id"
-                        class="version-chip"
-                        :class="{ active: baseline.is_default }"
-                      >
-                        {{ baseline.name
-                        }}<span v-if="baseline.is_default">
-                          · {{ tr('harness.baseline.default', 'Default') }}</span
-                        >
-                      </span>
-                    </div>
-                    <p v-else class="card-copy muted">
-                      {{
-                        tr('harness.baseline.empty', 'No baselines pinned for this eval spec yet.')
-                      }}
-                    </p>
-
-                    <div class="form-grid compact-grid">
-                      <label class="form-span-2">
-                        <span>{{ tr('harness.baseline.name', 'Baseline name') }}</span>
-                        <input v-model="inlineBaselineForm.name" name="inline-baseline-name" />
-                      </label>
-                      <label class="checkbox-field form-span-2">
-                        <input
-                          v-model="inlineBaselineForm.isDefault"
-                          type="checkbox"
-                          name="inline-baseline-default"
-                        />
-                        <span>{{
-                          tr('harness.baseline.makeDefault', 'Make this the default baseline')
-                        }}</span>
-                      </label>
-                    </div>
-
-                    <div class="action-row">
-                      <button
-                        type="button"
-                        class="primary-button"
-                        :disabled="baselineCreateRunID === (selectedReportRun?.id || '')"
-                        @click="createBaselineForSelectedRun()"
-                      >
+                  <div class="report-highlight-grid">
+                    <article class="highlight-card">
+                      <span>{{ tr('harness.groups.passRate', 'Pass rate') }}</span>
+                      <strong>{{
+                        percentLabel(selectedEvalRunReport.group_report?.pass_rate || 0)
+                      }}</strong>
+                    </article>
+                    <article class="highlight-card">
+                      <span>{{ tr('harness.groups.score', 'Score') }}</span>
+                      <strong>{{
+                        fixedScore(selectedEvalRunReport.group_report?.overall_score || 0)
+                      }}</strong>
+                    </article>
+                    <article class="highlight-card">
+                      <span>{{
+                        tr('harness.group.verificationPassRate', 'Verification pass rate')
+                      }}</span>
+                      <strong>
                         {{
-                          baselineCreateRunID === (selectedReportRun?.id || '')
-                            ? tr('common.loading', 'Loading')
-                            : tr('harness.baseline.pin', 'Pin as baseline')
+                          optionalPercentLabel(
+                            selectedEvalRunReport.group_report?.group?.summary,
+                            'verification_pass_rate'
+                          )
                         }}
-                      </button>
-                    </div>
-                  </article>
-
-                  <article class="detail-card detail-card-feature">
-                    <h3>{{ tr('harness.compare.title', 'Compare runs') }}</h3>
-                    <p class="card-copy">
-                      {{
-                        tr(
-                          'harness.compare.description',
-                          'Generate a persisted comparison report against a named baseline or another eval run from the same spec.'
-                        )
-                      }}
-                    </p>
-
-                    <div class="form-grid compact-grid">
-                      <label class="form-span-2">
-                        <span>{{ tr('harness.compare.baseline', 'Baseline') }}</span>
-                        <select
-                          v-model="inlineCompareForm.baselineID"
-                          name="inline-compare-baseline"
-                        >
-                          <option value="">
-                            {{ tr('common.notAvailable', 'Not available') }}
-                          </option>
-                          <option
-                            v-for="baseline in selectedEvalRunBaselines"
-                            :key="baseline.id"
-                            :value="baseline.id"
-                          >
-                            {{ baseline.name
-                            }}{{
-                              baseline.is_default
-                                ? ` · ${tr('harness.baseline.default', 'Default')}`
-                                : ''
-                            }}
-                          </option>
-                        </select>
-                      </label>
-                      <label class="form-span-2">
-                        <span>{{ tr('harness.compare.baseRun', 'Fallback run') }}</span>
-                        <select v-model="inlineCompareForm.baseEvalRunID" name="inline-compare-run">
-                          <option value="">
-                            {{ tr('common.notAvailable', 'Not available') }}
-                          </option>
-                          <option
-                            v-for="run in selectedEvalRunCompareOptions"
-                            :key="run.id"
-                            :value="run.id"
-                          >
-                            {{ run.title || run.id }} · {{ statusLabel(run.status) }}
-                          </option>
-                        </select>
-                        <small class="field-hint">
-                          {{
-                            tr(
-                              'harness.compare.hint',
-                              'If a baseline is selected it wins. Otherwise Harness compares against the chosen eval run or the target run’s default baseline.'
-                            )
-                          }}
-                        </small>
-                      </label>
-                    </div>
-
-                    <div class="action-row">
-                      <button
-                        type="button"
-                        class="primary-button"
-                        :disabled="compareLoadingRunID === (selectedReportRun?.id || '')"
-                        @click="compareSelectedRun()"
-                      >
+                      </strong>
+                    </article>
+                    <article class="highlight-card">
+                      <span>
                         {{
-                          compareLoadingRunID === (selectedReportRun?.id || '')
-                            ? tr('common.loading', 'Loading')
-                            : tr('harness.compare.generate', 'Generate comparison')
+                          tr('harness.group.evidenceBackedPassRate', 'Evidence-backed pass rate')
                         }}
-                      </button>
-                    </div>
+                      </span>
+                      <strong>
+                        {{
+                          optionalPercentLabel(
+                            selectedEvalRunReport.group_report?.group?.summary,
+                            'evidence_backed_pass_rate'
+                          )
+                        }}
+                      </strong>
+                    </article>
+                    <article class="highlight-card">
+                      <span>{{ tr('harness.groups.itemCount', 'Items') }}</span>
+                      <strong>
+                        {{
+                          selectedEvalRunReport.group_report?.group
+                            ? groupItemCount(selectedEvalRunReport.group_report.group)
+                            : 0
+                        }}
+                      </strong>
+                    </article>
+                    <article class="highlight-card">
+                      <span>{{ tr('harness.group.retryRecovered', 'Retry recovered') }}</span>
+                      <strong>
+                        {{
+                          summaryNumber(
+                            selectedEvalRunReport.group_report?.group?.summary,
+                            'retry_recovered_count'
+                          )
+                        }}
+                      </strong>
+                    </article>
+                  </div>
 
-                    <div v-if="selectedComparisonReport" class="comparison-report">
-                      <div class="report-highlight-grid comparison-highlight-grid">
-                        <article class="highlight-card">
-                          <span>{{ tr('harness.compare.kind', 'Compare mode') }}</span>
-                          <strong>
-                            {{
-                              humanizeEnum(
-                                String(
-                                  selectedComparisonReport.summary?.comparison_kind || 'eval_run'
-                                )
-                              )
-                            }}
-                          </strong>
-                        </article>
-                        <article class="highlight-card">
-                          <span>{{ tr('harness.evalRun.baseline', 'Baseline run') }}</span>
-                          <strong>
-                            {{
-                              String(
-                                selectedComparisonReport.summary?.baseline_name ||
-                                  baselineNameByID(selectedComparisonReport.baseline_id)
-                              )
-                            }}
-                          </strong>
-                        </article>
-                        <article class="highlight-card">
-                          <span>{{ tr('harness.compare.scoreDelta', 'Score delta') }}</span>
-                          <strong>
-                            {{
-                              fixedScore(
-                                summaryNumber(
-                                  selectedComparisonReport.summary,
-                                  'overall_score_delta'
-                                )
-                              )
-                            }}
-                          </strong>
-                        </article>
-                        <article class="highlight-card">
-                          <span>{{ tr('harness.compare.passRateDelta', 'Pass rate delta') }}</span>
-                          <strong>
-                            {{
-                              signedPercentLabel(
-                                summaryNumber(selectedComparisonReport.summary, 'pass_rate_delta')
-                              )
-                            }}
-                          </strong>
-                        </article>
-                        <article class="highlight-card">
-                          <span>{{ tr('harness.compare.regressions', 'Regressions') }}</span>
-                          <strong>
-                            {{
-                              summaryNumber(selectedComparisonReport.summary, 'regression_count')
-                            }}
-                          </strong>
-                        </article>
-                        <article class="highlight-card">
-                          <span>{{ tr('harness.compare.improvements', 'Improvements') }}</span>
-                          <strong>
-                            {{
-                              summaryNumber(selectedComparisonReport.summary, 'improvement_count')
-                            }}
-                          </strong>
-                        </article>
-                      </div>
-
+                  <div class="report-grid">
+                    <article class="detail-card detail-card-feature">
+                      <h3>{{ tr('harness.dataset.snapshot', 'Dataset snapshot') }}</h3>
                       <dl class="meta-grid compact">
                         <div>
-                          <dt>
-                            {{
-                              tr(
-                                'harness.compare.verificationPassRateDelta',
-                                'Verification pass rate delta'
-                              )
-                            }}
-                          </dt>
+                          <dt>{{ tr('harness.dataset.targetDataset', 'Dataset') }}</dt>
                           <dd>
                             {{
-                              signedPercentLabel(
-                                summaryNumber(
-                                  selectedComparisonReport.summary,
-                                  'verification_pass_rate_delta'
-                                )
+                              selectedEvalRunReport.dataset?.name ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.dataset.versionLabel', 'Version') }}</dt>
+                          <dd>
+                            {{
+                              selectedEvalRunReport.dataset_version?.version ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.dataset.caseCount', 'Cases') }}</dt>
+                          <dd>{{ selectedEvalRunReport.dataset_version?.item_count ?? 0 }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.evalRun.baseline', 'Baseline run') }}</dt>
+                          <dd>
+                            {{
+                              selectedReportRun?.baseline_eval_run_id ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</dt>
+                          <dd>
+                            {{
+                              selectedReportRun?.trigger_kind ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.evalRun.triggerRef', 'Trigger ref') }}</dt>
+                          <dd>
+                            {{
+                              selectedReportRun?.trigger_ref ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                      </dl>
+                    </article>
+
+                    <article class="detail-card detail-card-feature">
+                      <h3>{{ tr('harness.evalSpec.title', 'Eval spec') }}</h3>
+                      <dl class="meta-grid compact">
+                        <div>
+                          <dt>{{ tr('common.name', 'Name') }}</dt>
+                          <dd>
+                            {{
+                              selectedEvalRunReport.eval_spec?.name ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.dataset.runKind', 'Run kind') }}</dt>
+                          <dd>
+                            {{
+                              humanizeEnum(
+                                selectedEvalRunReport.eval_spec?.run_kind || 'agent_task'
                               )
                             }}
                           </dd>
                         </div>
                         <div>
-                          <dt>
-                            {{
-                              tr(
-                                'harness.compare.evidenceBackedPassRateDelta',
-                                'Evidence-backed pass rate delta'
-                              )
-                            }}
-                          </dt>
+                          <dt>{{ tr('harness.evalSpec.scoringMode', 'Scoring mode') }}</dt>
                           <dd>
                             {{
-                              signedPercentLabel(
-                                summaryNumber(
-                                  selectedComparisonReport.summary,
-                                  'evidence_backed_pass_rate_delta'
-                                )
+                              humanizeEnum(
+                                selectedEvalRunReport.eval_spec?.scoring_config?.mode || 'rule'
                               )
                             }}
                           </dd>
                         </div>
                         <div>
-                          <dt>
-                            {{ tr('harness.compare.retryRecoveredDelta', 'Retry recovered delta') }}
-                          </dt>
+                          <dt>{{ tr('harness.evalSpec.judgeModel', 'Judge model') }}</dt>
                           <dd>
                             {{
-                              signedIntegerLabel(
-                                summaryNumber(
-                                  selectedComparisonReport.summary,
-                                  'retry_recovered_delta'
-                                )
+                              selectedEvalRunReport.eval_spec?.scoring_config?.judge_model ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
+                          <dd>
+                            {{
+                              selectedEvalRunReport.eval_spec?.profile ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.evalSpec.passThreshold', 'Pass threshold') }}</dt>
+                          <dd>
+                            {{
+                              selectedEvalRunReport.eval_spec?.scoring_config?.pass_threshold ??
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                      </dl>
+                    </article>
+
+                    <article class="detail-card detail-card-wide report-outcome-card">
+                      <div class="detail-card-header">
+                        <div>
+                          <h3>{{ tr('harness.group.outcomeTitle', 'Group outcome') }}</h3>
+                          <p class="card-copy">
+                            {{
+                              tr(
+                                'harness.group.outcomeDescription',
+                                'Keep the operational result, failure labels, and remediation hints together so this selected run reads like a single report instead of scattered mini-cards.'
                               )
+                            }}
+                          </p>
+                        </div>
+                      </div>
+                      <dl class="meta-grid compact">
+                        <div>
+                          <dt>{{ tr('harness.group.linkedRuns', 'Linked runs') }}</dt>
+                          <dd>
+                            {{ selectedEvalRunReport.group_report?.linked_runs?.length || 0 }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('common.updatedAt', 'Updated') }}</dt>
+                          <dd>
+                            {{
+                              formatDate(
+                                selectedEvalRunReport.group_report?.group?.updated_at || null
+                              )
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.evalRun.report', 'Linked report') }}</dt>
+                          <dd>
+                            {{
+                              selectedEvalRunReport.group_report?.group?.id ||
+                              tr('common.notAvailable', 'Not available')
+                            }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.evalRun.baseline', 'Baseline run') }}</dt>
+                          <dd>
+                            {{
+                              selectedReportRun?.baseline_eval_run_id ||
+                              tr('common.notAvailable', 'Not available')
                             }}
                           </dd>
                         </div>
                       </dl>
 
-                      <div v-if="selectedComparisonFailureLabelDeltaEntries.length">
+                      <div class="report-outcome-section">
                         <p class="card-copy">
-                          {{ tr('harness.compare.failureLabelDelta', 'Failure label delta') }}
+                          {{ tr('harness.group.failureLabels', 'Failure labels') }}
                         </p>
-                        <div class="version-list">
+                        <div v-if="selectedFailureLabelEntries.length" class="version-list">
                           <span
-                            v-for="entry in selectedComparisonFailureLabelDeltaEntries"
-                            :key="`failure-label-delta-${entry.key}`"
                             class="version-chip"
+                            v-for="entry in selectedFailureLabelEntries"
+                            :key="`failure-label-${entry.key}`"
                           >
-                            {{ entry.key }} {{ signedIntegerLabel(entry.value) }}
+                            {{ entry.key }} · {{ entry.value }}
                           </span>
                         </div>
+                        <p v-else class="card-copy muted">
+                          {{ tr('harness.group.noFailureLabels', 'No failure labels recorded.') }}
+                        </p>
+                      </div>
+
+                      <div
+                        v-if="selectedFailureLabelEntries.length"
+                        class="comparison-column failure-hints"
+                      >
+                        <span class="report-subtitle">
+                          {{ tr('harness.group.remediation', 'Remediation') }}
+                        </span>
+                        <article
+                          v-for="entry in selectedFailureLabelEntries"
+                          :key="`failure-hint-${entry.key}`"
+                          class="comparison-item is-regression"
+                        >
+                          <strong>{{ entry.key }}</strong>
+                          <p>
+                            {{ tr('harness.group.remediation', 'Remediation') }}:
+                            {{ remediationHint(entry.key) }}
+                          </p>
+                        </article>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div class="comparison-grid">
+                    <article class="detail-card detail-card-feature">
+                      <h3>{{ tr('harness.baseline.title', 'Baseline registry') }}</h3>
+                      <p class="card-copy">
+                        {{
+                          tr(
+                            'harness.baseline.description',
+                            'Pin the selected eval run as a reusable baseline, then compare future candidates against it from the same console.'
+                          )
+                        }}
+                      </p>
+                      <div v-if="selectedEvalRunBaselines.length" class="version-list">
+                        <span
+                          v-for="baseline in selectedEvalRunBaselines"
+                          :key="baseline.id"
+                          class="version-chip"
+                          :class="{ active: baseline.is_default }"
+                        >
+                          {{ baseline.name
+                          }}<span v-if="baseline.is_default">
+                            · {{ tr('harness.baseline.default', 'Default') }}</span
+                          >
+                        </span>
                       </div>
                       <p v-else class="card-copy muted">
                         {{
                           tr(
-                            'harness.compare.noFailureLabelDelta',
-                            'No failure label changes recorded.'
+                            'harness.baseline.empty',
+                            'No baselines pinned for this eval spec yet.'
                           )
                         }}
                       </p>
 
-                      <div class="comparison-columns">
-                        <div class="comparison-column">
-                          <h4>{{ tr('harness.compare.regressions', 'Regressions') }}</h4>
-                          <p
-                            v-if="!selectedComparisonReport.regressions?.length"
-                            class="card-copy muted"
+                      <div class="form-grid compact-grid">
+                        <label class="form-span-2">
+                          <span>{{ tr('harness.baseline.name', 'Baseline name') }}</span>
+                          <input v-model="inlineBaselineForm.name" name="inline-baseline-name" />
+                        </label>
+                        <label class="checkbox-field form-span-2">
+                          <input
+                            v-model="inlineBaselineForm.isDefault"
+                            type="checkbox"
+                            name="inline-baseline-default"
+                          />
+                          <span>{{
+                            tr('harness.baseline.makeDefault', 'Make this the default baseline')
+                          }}</span>
+                        </label>
+                      </div>
+
+                      <div class="action-row">
+                        <button
+                          type="button"
+                          class="primary-button"
+                          :disabled="baselineCreateRunID === (selectedReportRun?.id || '')"
+                          @click="createBaselineForSelectedRun()"
+                        >
+                          {{
+                            baselineCreateRunID === (selectedReportRun?.id || '')
+                              ? tr('common.loading', 'Loading')
+                              : tr('harness.baseline.pin', 'Pin as baseline')
+                          }}
+                        </button>
+                      </div>
+                    </article>
+
+                    <article class="detail-card detail-card-feature">
+                      <h3>{{ tr('harness.compare.title', 'Compare runs') }}</h3>
+                      <p class="card-copy">
+                        {{
+                          tr(
+                            'harness.compare.description',
+                            'Generate a persisted comparison report against a named baseline or another eval run from the same spec.'
+                          )
+                        }}
+                      </p>
+
+                      <div class="form-grid compact-grid">
+                        <label class="form-span-2">
+                          <span>{{ tr('harness.compare.baseline', 'Baseline') }}</span>
+                          <select
+                            v-model="inlineCompareForm.baselineID"
+                            name="inline-compare-baseline"
                           >
+                            <option value="">
+                              {{ tr('common.notAvailable', 'Not available') }}
+                            </option>
+                            <option
+                              v-for="baseline in selectedEvalRunBaselines"
+                              :key="baseline.id"
+                              :value="baseline.id"
+                            >
+                              {{ baseline.name
+                              }}{{
+                                baseline.is_default
+                                  ? ` · ${tr('harness.baseline.default', 'Default')}`
+                                  : ''
+                              }}
+                            </option>
+                          </select>
+                        </label>
+                        <label class="form-span-2">
+                          <span>{{ tr('harness.compare.baseRun', 'Fallback run') }}</span>
+                          <select
+                            v-model="inlineCompareForm.baseEvalRunID"
+                            name="inline-compare-run"
+                          >
+                            <option value="">
+                              {{ tr('common.notAvailable', 'Not available') }}
+                            </option>
+                            <option
+                              v-for="run in selectedEvalRunCompareOptions"
+                              :key="run.id"
+                              :value="run.id"
+                            >
+                              {{ run.title || run.id }} · {{ statusLabel(run.status) }}
+                            </option>
+                          </select>
+                          <small class="field-hint">
                             {{
                               tr(
-                                'harness.compare.noRegressions',
-                                'No regressions recorded in this comparison.'
+                                'harness.compare.hint',
+                                'If a baseline is selected it wins. Otherwise Harness compares against the chosen eval run or the target run’s default baseline.'
                               )
                             }}
-                          </p>
-                          <article
-                            v-for="entry in selectedComparisonReport.regressions || []"
-                            :key="`regression-${entry.key}`"
-                            class="comparison-item is-regression"
-                          >
-                            <strong>{{ entry.label || entry.key }}</strong>
-                            <span
-                              >{{ statusLabel(entry.base_verdict || entry.base_status || '') }} ->
+                          </small>
+                        </label>
+                      </div>
+
+                      <div class="action-row">
+                        <button
+                          type="button"
+                          class="primary-button"
+                          :disabled="compareLoadingRunID === (selectedReportRun?.id || '')"
+                          @click="compareSelectedRun()"
+                        >
+                          {{
+                            compareLoadingRunID === (selectedReportRun?.id || '')
+                              ? tr('common.loading', 'Loading')
+                              : tr('harness.compare.generate', 'Generate comparison')
+                          }}
+                        </button>
+                      </div>
+
+                      <div v-if="selectedComparisonReport" class="comparison-report">
+                        <div class="report-highlight-grid comparison-highlight-grid">
+                          <article class="highlight-card">
+                            <span>{{ tr('harness.compare.kind', 'Compare mode') }}</span>
+                            <strong>
                               {{
-                                statusLabel(entry.target_verdict || entry.target_status || '')
-                              }}</span
-                            >
-                            <p v-if="entry.base_verification || entry.target_verification">
-                              {{ tr('harness.group.verification', 'Verification') }}:
-                              {{ verificationLabel(entry.base_verification) }} ->
-                              {{ verificationLabel(entry.target_verification) }}
-                            </p>
-                            <p
-                              v-if="
-                                hasFiniteNumber(entry.base_evidence_score) ||
-                                hasFiniteNumber(entry.target_evidence_score)
-                              "
-                            >
-                              {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
-                              {{
-                                hasFiniteNumber(entry.base_evidence_score)
-                                  ? fixedScore(Number(entry.base_evidence_score))
-                                  : tr('common.notAvailable', 'Not available')
+                                humanizeEnum(
+                                  String(
+                                    selectedComparisonReport.summary?.comparison_kind || 'eval_run'
+                                  )
+                                )
                               }}
-                              ->
+                            </strong>
+                          </article>
+                          <article class="highlight-card">
+                            <span>{{ tr('harness.evalRun.baseline', 'Baseline run') }}</span>
+                            <strong>
                               {{
-                                hasFiniteNumber(entry.target_evidence_score)
-                                  ? fixedScore(Number(entry.target_evidence_score))
-                                  : tr('common.notAvailable', 'Not available')
+                                String(
+                                  selectedComparisonReport.summary?.baseline_name ||
+                                    baselineNameByID(selectedComparisonReport.baseline_id)
+                                )
                               }}
-                            </p>
-                            <p v-if="entry.base_failure_label || entry.target_failure_label">
-                              {{ tr('harness.group.failureLabel', 'Failure label') }}:
-                              {{ failureLabelText(entry.base_failure_label) }} ->
-                              {{ failureLabelText(entry.target_failure_label) }}
-                            </p>
-                            <p v-if="entry.target_failure_label">
-                              {{ tr('harness.group.remediation', 'Remediation') }}:
-                              {{ remediationHint(entry.target_failure_label) }}
-                            </p>
-                            <p>
+                            </strong>
+                          </article>
+                          <article class="highlight-card">
+                            <span>{{ tr('harness.compare.scoreDelta', 'Score delta') }}</span>
+                            <strong>
                               {{
-                                entry.target_reason ||
-                                entry.base_reason ||
-                                tr('harness.group.noFailureReason', 'No failure reason recorded.')
+                                fixedScore(
+                                  summaryNumber(
+                                    selectedComparisonReport.summary,
+                                    'overall_score_delta'
+                                  )
+                                )
                               }}
-                            </p>
+                            </strong>
+                          </article>
+                          <article class="highlight-card">
+                            <span>{{
+                              tr('harness.compare.passRateDelta', 'Pass rate delta')
+                            }}</span>
+                            <strong>
+                              {{
+                                signedPercentLabel(
+                                  summaryNumber(selectedComparisonReport.summary, 'pass_rate_delta')
+                                )
+                              }}
+                            </strong>
+                          </article>
+                          <article class="highlight-card">
+                            <span>{{ tr('harness.compare.regressions', 'Regressions') }}</span>
+                            <strong>
+                              {{
+                                summaryNumber(selectedComparisonReport.summary, 'regression_count')
+                              }}
+                            </strong>
+                          </article>
+                          <article class="highlight-card">
+                            <span>{{ tr('harness.compare.improvements', 'Improvements') }}</span>
+                            <strong>
+                              {{
+                                summaryNumber(selectedComparisonReport.summary, 'improvement_count')
+                              }}
+                            </strong>
                           </article>
                         </div>
 
-                        <div class="comparison-column">
-                          <h4>{{ tr('harness.compare.improvements', 'Improvements') }}</h4>
-                          <p
-                            v-if="!selectedComparisonReport.improvements?.length"
-                            class="card-copy muted"
-                          >
-                            {{
-                              tr(
-                                'harness.compare.noImprovements',
-                                'No improvements recorded in this comparison.'
-                              )
-                            }}
+                        <dl class="meta-grid compact">
+                          <div>
+                            <dt>
+                              {{
+                                tr(
+                                  'harness.compare.verificationPassRateDelta',
+                                  'Verification pass rate delta'
+                                )
+                              }}
+                            </dt>
+                            <dd>
+                              {{
+                                signedPercentLabel(
+                                  summaryNumber(
+                                    selectedComparisonReport.summary,
+                                    'verification_pass_rate_delta'
+                                  )
+                                )
+                              }}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>
+                              {{
+                                tr(
+                                  'harness.compare.evidenceBackedPassRateDelta',
+                                  'Evidence-backed pass rate delta'
+                                )
+                              }}
+                            </dt>
+                            <dd>
+                              {{
+                                signedPercentLabel(
+                                  summaryNumber(
+                                    selectedComparisonReport.summary,
+                                    'evidence_backed_pass_rate_delta'
+                                  )
+                                )
+                              }}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>
+                              {{
+                                tr('harness.compare.retryRecoveredDelta', 'Retry recovered delta')
+                              }}
+                            </dt>
+                            <dd>
+                              {{
+                                signedIntegerLabel(
+                                  summaryNumber(
+                                    selectedComparisonReport.summary,
+                                    'retry_recovered_delta'
+                                  )
+                                )
+                              }}
+                            </dd>
+                          </div>
+                        </dl>
+
+                        <div v-if="selectedComparisonFailureLabelDeltaEntries.length">
+                          <p class="card-copy">
+                            {{ tr('harness.compare.failureLabelDelta', 'Failure label delta') }}
                           </p>
-                          <article
-                            v-for="entry in selectedComparisonReport.improvements || []"
-                            :key="`improvement-${entry.key}`"
-                            class="comparison-item is-improvement"
-                          >
-                            <strong>{{ entry.label || entry.key }}</strong>
+                          <div class="version-list">
                             <span
-                              >{{ statusLabel(entry.base_verdict || entry.base_status || '') }} ->
-                              {{
-                                statusLabel(entry.target_verdict || entry.target_status || '')
-                              }}</span
+                              v-for="entry in selectedComparisonFailureLabelDeltaEntries"
+                              :key="`failure-label-delta-${entry.key}`"
+                              class="version-chip"
                             >
-                            <p v-if="entry.base_verification || entry.target_verification">
-                              {{ tr('harness.group.verification', 'Verification') }}:
-                              {{ verificationLabel(entry.base_verification) }} ->
-                              {{ verificationLabel(entry.target_verification) }}
-                            </p>
+                              {{ entry.key }} {{ signedIntegerLabel(entry.value) }}
+                            </span>
+                          </div>
+                        </div>
+                        <p v-else class="card-copy muted">
+                          {{
+                            tr(
+                              'harness.compare.noFailureLabelDelta',
+                              'No failure label changes recorded.'
+                            )
+                          }}
+                        </p>
+
+                        <div class="comparison-columns">
+                          <div class="comparison-column">
+                            <h4>{{ tr('harness.compare.regressions', 'Regressions') }}</h4>
                             <p
-                              v-if="
-                                hasFiniteNumber(entry.base_evidence_score) ||
-                                hasFiniteNumber(entry.target_evidence_score)
-                              "
+                              v-if="!selectedComparisonReport.regressions?.length"
+                              class="card-copy muted"
                             >
-                              {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
                               {{
-                                hasFiniteNumber(entry.base_evidence_score)
-                                  ? fixedScore(Number(entry.base_evidence_score))
-                                  : tr('common.notAvailable', 'Not available')
-                              }}
-                              ->
-                              {{
-                                hasFiniteNumber(entry.target_evidence_score)
-                                  ? fixedScore(Number(entry.target_evidence_score))
-                                  : tr('common.notAvailable', 'Not available')
+                                tr(
+                                  'harness.compare.noRegressions',
+                                  'No regressions recorded in this comparison.'
+                                )
                               }}
                             </p>
-                            <p v-if="entry.base_failure_label || entry.target_failure_label">
-                              {{ tr('harness.group.failureLabel', 'Failure label') }}:
-                              {{ failureLabelText(entry.base_failure_label) }} ->
-                              {{ failureLabelText(entry.target_failure_label) }}
-                            </p>
-                            <p v-if="entry.target_failure_label">
-                              {{ tr('harness.group.remediation', 'Remediation') }}:
-                              {{ remediationHint(entry.target_failure_label) }}
-                            </p>
-                            <p>
+                            <article
+                              v-for="entry in selectedComparisonReport.regressions || []"
+                              :key="`regression-${entry.key}`"
+                              class="comparison-item is-regression"
+                            >
+                              <strong>{{ entry.label || entry.key }}</strong>
+                              <span
+                                >{{ statusLabel(entry.base_verdict || entry.base_status || '') }} ->
+                                {{
+                                  statusLabel(entry.target_verdict || entry.target_status || '')
+                                }}</span
+                              >
+                              <p v-if="entry.base_verification || entry.target_verification">
+                                {{ tr('harness.group.verification', 'Verification') }}:
+                                {{ verificationLabel(entry.base_verification) }} ->
+                                {{ verificationLabel(entry.target_verification) }}
+                              </p>
+                              <p
+                                v-if="
+                                  hasFiniteNumber(entry.base_evidence_score) ||
+                                  hasFiniteNumber(entry.target_evidence_score)
+                                "
+                              >
+                                {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
+                                {{
+                                  hasFiniteNumber(entry.base_evidence_score)
+                                    ? fixedScore(Number(entry.base_evidence_score))
+                                    : tr('common.notAvailable', 'Not available')
+                                }}
+                                ->
+                                {{
+                                  hasFiniteNumber(entry.target_evidence_score)
+                                    ? fixedScore(Number(entry.target_evidence_score))
+                                    : tr('common.notAvailable', 'Not available')
+                                }}
+                              </p>
+                              <p v-if="entry.base_failure_label || entry.target_failure_label">
+                                {{ tr('harness.group.failureLabel', 'Failure label') }}:
+                                {{ failureLabelText(entry.base_failure_label) }} ->
+                                {{ failureLabelText(entry.target_failure_label) }}
+                              </p>
+                              <p v-if="entry.target_failure_label">
+                                {{ tr('harness.group.remediation', 'Remediation') }}:
+                                {{ remediationHint(entry.target_failure_label) }}
+                              </p>
+                              <p>
+                                {{
+                                  entry.target_reason ||
+                                  entry.base_reason ||
+                                  tr('harness.group.noFailureReason', 'No failure reason recorded.')
+                                }}
+                              </p>
+                            </article>
+                          </div>
+
+                          <div class="comparison-column">
+                            <h4>{{ tr('harness.compare.improvements', 'Improvements') }}</h4>
+                            <p
+                              v-if="!selectedComparisonReport.improvements?.length"
+                              class="card-copy muted"
+                            >
                               {{
-                                entry.target_reason ||
-                                entry.base_reason ||
-                                tr('common.notAvailable', 'Not available')
+                                tr(
+                                  'harness.compare.noImprovements',
+                                  'No improvements recorded in this comparison.'
+                                )
                               }}
                             </p>
-                          </article>
+                            <article
+                              v-for="entry in selectedComparisonReport.improvements || []"
+                              :key="`improvement-${entry.key}`"
+                              class="comparison-item is-improvement"
+                            >
+                              <strong>{{ entry.label || entry.key }}</strong>
+                              <span
+                                >{{ statusLabel(entry.base_verdict || entry.base_status || '') }} ->
+                                {{
+                                  statusLabel(entry.target_verdict || entry.target_status || '')
+                                }}</span
+                              >
+                              <p v-if="entry.base_verification || entry.target_verification">
+                                {{ tr('harness.group.verification', 'Verification') }}:
+                                {{ verificationLabel(entry.base_verification) }} ->
+                                {{ verificationLabel(entry.target_verification) }}
+                              </p>
+                              <p
+                                v-if="
+                                  hasFiniteNumber(entry.base_evidence_score) ||
+                                  hasFiniteNumber(entry.target_evidence_score)
+                                "
+                              >
+                                {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
+                                {{
+                                  hasFiniteNumber(entry.base_evidence_score)
+                                    ? fixedScore(Number(entry.base_evidence_score))
+                                    : tr('common.notAvailable', 'Not available')
+                                }}
+                                ->
+                                {{
+                                  hasFiniteNumber(entry.target_evidence_score)
+                                    ? fixedScore(Number(entry.target_evidence_score))
+                                    : tr('common.notAvailable', 'Not available')
+                                }}
+                              </p>
+                              <p v-if="entry.base_failure_label || entry.target_failure_label">
+                                {{ tr('harness.group.failureLabel', 'Failure label') }}:
+                                {{ failureLabelText(entry.base_failure_label) }} ->
+                                {{ failureLabelText(entry.target_failure_label) }}
+                              </p>
+                              <p v-if="entry.target_failure_label">
+                                {{ tr('harness.group.remediation', 'Remediation') }}:
+                                {{ remediationHint(entry.target_failure_label) }}
+                              </p>
+                              <p>
+                                {{
+                                  entry.target_reason ||
+                                  entry.base_reason ||
+                                  tr('common.notAvailable', 'Not available')
+                                }}
+                              </p>
+                            </article>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </article>
-                </div>
-              </template>
+                    </article>
+                  </div>
+                </template>
 
-              <div v-else class="empty-panel report-empty-panel">
-                {{
-                  tr(
-                    'harness.evalRun.selectReportHint',
-                    'Select an eval run to open the linked report, baseline controls, and comparison view.'
-                  )
-                }}
+                <div v-else class="empty-panel report-empty-panel">
+                  {{
+                    tr(
+                      'harness.evalRun.selectReportHint',
+                      'Select an eval run to open the linked report, baseline controls, and comparison view.'
+                    )
+                  }}
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="panel groups-panel">
+            <div class="section-header">
+              <div>
+                <p class="section-eyebrow">
+                  {{ tr('harness.groups.eyebrow', 'Execution Substrate') }}
+                </p>
+                <h2>
+                  {{ tr('automation.tabs.harness', 'Harness') }}
+                  {{ tr('harness.groups.title', 'Groups') }}
+                </h2>
+                <p class="section-description">
+                  {{
+                    tr(
+                      'harness.groups.controlPlaneDescription',
+                      'The raw group ledger still matters for retries, scorecards, linked runs, and runtime debugging, so it stays visible alongside the higher-level V3 objects.'
+                    )
+                  }}
+                </p>
               </div>
+            </div>
+
+            <section class="toolbar">
+              <div
+                class="filter-segment"
+                role="tablist"
+                :aria-label="tr('harness.groups.filters', 'Filters')"
+              >
+                <button
+                  type="button"
+                  class="segment-button"
+                  :class="{ active: groupFilterMode === 'all' }"
+                  @click="groupFilterMode = 'all'"
+                >
+                  {{ tr('common.all', 'All') }}
+                </button>
+                <button
+                  type="button"
+                  class="segment-button"
+                  :class="{ active: groupFilterMode === 'active' }"
+                  @click="groupFilterMode = 'active'"
+                >
+                  {{ tr('harness.groups.activeOnly', 'Active') }}
+                </button>
+                <button
+                  type="button"
+                  class="segment-button"
+                  :class="{ active: groupFilterMode === 'terminal' }"
+                  @click="groupFilterMode = 'terminal'"
+                >
+                  {{ tr('harness.groups.terminalOnly', 'Terminal') }}
+                </button>
+              </div>
+              <label class="search-field">
+                <span class="search-label">{{ tr('common.search', 'Search') }}</span>
+                <input
+                  v-model="groupSearch"
+                  type="search"
+                  :placeholder="
+                    tr('harness.groups.searchPlaceholder', 'Search title, subject, kind, or status')
+                  "
+                />
+              </label>
             </section>
-          </div>
-        </section>
 
-        <section class="panel groups-panel">
-          <div class="section-header">
-            <div>
-              <p class="section-eyebrow">
-                {{ tr('harness.groups.eyebrow', 'Execution Substrate') }}
-              </p>
-              <h2>
-                {{ tr('automation.tabs.harness', 'Harness') }}
-                {{ tr('harness.groups.title', 'Groups') }}
-              </h2>
-              <p class="section-description">
-                {{
-                  tr(
-                    'harness.groups.controlPlaneDescription',
-                    'The raw group ledger still matters for retries, scorecards, linked runs, and runtime debugging, so it stays visible alongside the higher-level V3 objects.'
-                  )
-                }}
-              </p>
+            <div v-if="filteredGroups.length === 0" class="empty-panel">
+              {{
+                tr(
+                  'harness.groups.emptyDescription',
+                  'Groups will appear here once eval batches, experiments, or projected research runs are recorded.'
+                )
+              }}
             </div>
-          </div>
 
-          <section class="toolbar">
-            <div
-              class="filter-segment"
-              role="tablist"
-              :aria-label="tr('harness.groups.filters', 'Filters')"
-            >
-              <button
-                type="button"
-                class="segment-button"
-                :class="{ active: groupFilterMode === 'all' }"
-                @click="groupFilterMode = 'all'"
+            <section v-else class="groups-grid">
+              <RouterLink
+                v-for="group in filteredGroups"
+                :key="group.id"
+                :to="{ name: 'HarnessGroupDetail', params: { id: group.id } }"
+                class="group-card"
               >
-                {{ tr('common.all', 'All') }}
-              </button>
-              <button
-                type="button"
-                class="segment-button"
-                :class="{ active: groupFilterMode === 'active' }"
-                @click="groupFilterMode = 'active'"
-              >
-                {{ tr('harness.groups.activeOnly', 'Active') }}
-              </button>
-              <button
-                type="button"
-                class="segment-button"
-                :class="{ active: groupFilterMode === 'terminal' }"
-                @click="groupFilterMode = 'terminal'"
-              >
-                {{ tr('harness.groups.terminalOnly', 'Terminal') }}
-              </button>
-            </div>
-            <label class="search-field">
-              <span class="search-label">{{ tr('common.search', 'Search') }}</span>
-              <input
-                v-model="groupSearch"
-                type="search"
-                :placeholder="
-                  tr('harness.groups.searchPlaceholder', 'Search title, subject, kind, or status')
-                "
-              />
-            </label>
+                <div class="group-card-header">
+                  <span class="kind-chip" :class="kindTone(group.kind)">{{
+                    humanizeEnum(group.kind)
+                  }}</span>
+                  <span class="status-chip" :class="statusTone(group.status)">{{
+                    statusLabel(group.status)
+                  }}</span>
+                </div>
+
+                <h2 class="group-title">{{ group.title || group.subject || group.id }}</h2>
+                <p class="group-subject">
+                  {{ group.subject || tr('harness.groups.noSubject', 'No subject provided') }}
+                </p>
+
+                <div class="metrics-row">
+                  <div class="metric">
+                    <span>{{ tr('harness.groups.itemCount', 'Items') }}</span>
+                    <strong>{{ groupItemCount(group) }}</strong>
+                  </div>
+                  <div class="metric">
+                    <span>{{ tr('harness.groups.passRate', 'Pass rate') }}</span>
+                    <strong>{{ percentLabel(passRate(group.summary)) }}</strong>
+                  </div>
+                  <div class="metric">
+                    <span>{{ tr('harness.groups.score', 'Score') }}</span>
+                    <strong>{{ fixedScore(overallScore(group.summary)) }}</strong>
+                  </div>
+                </div>
+
+                <div class="count-row">
+                  <span
+                    >{{ tr('harness.groups.running', 'Running') }}:
+                    {{ summaryCounts(group.summary).running || 0 }}</span
+                  >
+                  <span
+                    >{{ tr('harness.groups.failed', 'Failed') }}:
+                    {{ summaryCounts(group.summary).failed || 0 }}</span
+                  >
+                  <span
+                    >{{ tr('harness.groups.passed', 'Passed') }}:
+                    {{ summaryCounts(group.summary).passed || 0 }}</span
+                  >
+                </div>
+
+                <div class="count-row">
+                  <span
+                    >{{ tr('harness.group.verificationPassRate', 'Verification pass rate') }}:
+                    {{ optionalPercentLabel(group.summary, 'verification_pass_rate') }}</span
+                  >
+                  <span
+                    >{{ tr('harness.group.evidenceBackedPassRate', 'Evidence-backed pass rate') }}:
+                    {{ optionalPercentLabel(group.summary, 'evidence_backed_pass_rate') }}</span
+                  >
+                  <span
+                    >{{ tr('harness.group.retryRecovered', 'Retry recovered') }}:
+                    {{ summaryNumber(group.summary, 'retry_recovered_count') }}</span
+                  >
+                </div>
+
+                <div class="footer-row">
+                  <span>{{ tr('common.updatedAt', 'Updated') }}</span>
+                  <strong>{{ formatDate(group.updated_at) }}</strong>
+                </div>
+              </RouterLink>
+            </section>
           </section>
-
-          <div v-if="filteredGroups.length === 0" class="empty-panel">
-            {{
-              tr(
-                'harness.groups.emptyDescription',
-                'Groups will appear here once eval batches, experiments, or projected research runs are recorded.'
-              )
-            }}
-          </div>
-
-          <section v-else class="groups-grid">
-            <RouterLink
-              v-for="group in filteredGroups"
-              :key="group.id"
-              :to="{ name: 'HarnessGroupDetail', params: { id: group.id } }"
-              class="group-card"
-            >
-              <div class="group-card-header">
-                <span class="kind-chip" :class="kindTone(group.kind)">{{
-                  humanizeEnum(group.kind)
-                }}</span>
-                <span class="status-chip" :class="statusTone(group.status)">{{
-                  statusLabel(group.status)
-                }}</span>
-              </div>
-
-              <h2 class="group-title">{{ group.title || group.subject || group.id }}</h2>
-              <p class="group-subject">
-                {{ group.subject || tr('harness.groups.noSubject', 'No subject provided') }}
-              </p>
-
-              <div class="metrics-row">
-                <div class="metric">
-                  <span>{{ tr('harness.groups.itemCount', 'Items') }}</span>
-                  <strong>{{ groupItemCount(group) }}</strong>
-                </div>
-                <div class="metric">
-                  <span>{{ tr('harness.groups.passRate', 'Pass rate') }}</span>
-                  <strong>{{ percentLabel(passRate(group.summary)) }}</strong>
-                </div>
-                <div class="metric">
-                  <span>{{ tr('harness.groups.score', 'Score') }}</span>
-                  <strong>{{ fixedScore(overallScore(group.summary)) }}</strong>
-                </div>
-              </div>
-
-              <div class="count-row">
-                <span
-                  >{{ tr('harness.groups.running', 'Running') }}:
-                  {{ summaryCounts(group.summary).running || 0 }}</span
-                >
-                <span
-                  >{{ tr('harness.groups.failed', 'Failed') }}:
-                  {{ summaryCounts(group.summary).failed || 0 }}</span
-                >
-                <span
-                  >{{ tr('harness.groups.passed', 'Passed') }}:
-                  {{ summaryCounts(group.summary).passed || 0 }}</span
-                >
-              </div>
-
-              <div class="count-row">
-                <span
-                  >{{ tr('harness.group.verificationPassRate', 'Verification pass rate') }}:
-                  {{ optionalPercentLabel(group.summary, 'verification_pass_rate') }}</span
-                >
-                <span
-                  >{{ tr('harness.group.evidenceBackedPassRate', 'Evidence-backed pass rate') }}:
-                  {{ optionalPercentLabel(group.summary, 'evidence_backed_pass_rate') }}</span
-                >
-                <span
-                  >{{ tr('harness.group.retryRecovered', 'Retry recovered') }}:
-                  {{ summaryNumber(group.summary, 'retry_recovered_count') }}</span
-                >
-              </div>
-
-              <div class="footer-row">
-                <span>{{ tr('common.updatedAt', 'Updated') }}</span>
-                <strong>{{ formatDate(group.updated_at) }}</strong>
-              </div>
-            </RouterLink>
-          </section>
-        </section>
+        </div>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
 .harness-groups-page {
+  --dashboard-page-accent: 37, 99, 235;
   --harness-surface-radius: 0.78rem;
   --harness-control-radius: 0.62rem;
   --harness-chip-radius: 999px;
@@ -3583,10 +3632,22 @@ onUnmounted(() => {
   --harness-card-bg: #ffffff;
   --harness-subsurface-bg: rgba(248, 250, 252, 0.96);
   --harness-selected-card-bg: rgba(239, 246, 255, 0.92);
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0 0.75rem 1.8rem;
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
   font-size: 0.82rem;
+}
+
+.harness-stage {
+  position: relative;
+  padding: 1.15rem 0 0.35rem;
+}
+
+.automation-tab-strip {
+  position: relative;
+  z-index: 1;
 }
 
 .console-layout {
@@ -3648,27 +3709,6 @@ onUnmounted(() => {
   grid-template-columns: 1fr;
 }
 
-.hero-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.85rem;
-  padding: 0.82rem 0.88rem;
-  border-radius: 1.05rem;
-  background: var(--harness-panel-bg);
-  border: 1px solid rgba(203, 213, 225, 0.96);
-  box-shadow:
-    0 14px 24px -26px rgba(15, 23, 42, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-.hero-copy h1 {
-  margin: 0.12rem 0 0.32rem;
-  font-size: 1.32rem;
-  line-height: 1.08;
-  color: #111827;
-}
-
-.eyebrow,
 .section-eyebrow {
   margin: 0;
   text-transform: uppercase;
@@ -3678,17 +3718,11 @@ onUnmounted(() => {
   color: #0f766e;
 }
 
-.hero-description,
 .section-description {
   margin: 0;
   color: #475569;
   font-size: 0.8rem;
   line-height: 1.42;
-}
-
-.hero-actions {
-  display: flex;
-  align-items: flex-start;
 }
 
 .refresh-button,
@@ -3745,6 +3779,27 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.6rem;
+}
+
+.stats-toolbar {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+}
+
+.stats-toolbar .stats-grid {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stats-toolbar-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.stats-toolbar-actions .refresh-button {
+  white-space: nowrap;
 }
 
 .stat-card,
@@ -4604,6 +4659,14 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1200px) {
+  .stats-toolbar {
+    flex-direction: column;
+  }
+
+  .stats-toolbar-actions {
+    width: 100%;
+  }
+
   .console-layout {
     grid-template-columns: 1fr;
   }
@@ -4693,14 +4756,10 @@ onUnmounted(() => {
     grid-column: span 1;
   }
 
-  .hero-card,
+  .harness-hero,
   .section-header,
   .entity-header {
     flex-direction: column;
-  }
-
-  .hero-actions {
-    align-items: stretch;
   }
 
   .refresh-button,

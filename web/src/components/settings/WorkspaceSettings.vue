@@ -36,9 +36,14 @@ const visibleTokenCount = computed(() =>
   getWorkspaceVisibleTokenCount(stats.value, editableFileNames)
 )
 
-function tr(key?: string, fallback = ''): string {
+function tr(
+  key?: string,
+  fallback = '',
+  values?: Record<string, string | number>
+): string {
   if (!key) return fallback
-  return te(key) ? t(key) : fallback
+  if (!te(key)) return fallback
+  return values ? t(key, values) : t(key)
 }
 
 async function fetchFiles() {
@@ -137,7 +142,11 @@ onUnmounted(() => {
             : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
         "
       >
-        {{ tr('workspace.coreTokens', `~${visibleTokenCount.toLocaleString()} core-file tokens`) }}
+        {{
+          tr('workspace.coreTokens', `~${visibleTokenCount.toLocaleString()} core-file tokens`, {
+            count: visibleTokenCount.toLocaleString(),
+          })
+        }}
       </span>
     </div>
 
