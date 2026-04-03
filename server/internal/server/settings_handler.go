@@ -17,6 +17,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/optimization"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -43,15 +44,16 @@ var (
 
 // SettingsHandler handles user settings API endpoints
 type SettingsHandler struct {
-	mu                        sync.RWMutex
-	kv                        kvstore.Store
-	settings                  *Settings
-	skillRerankerModelManager *agentcore.SkillRerankerModelManager
-	smallModelManager         *smallmodel.Manager
-	agentcoreRunnerManager    agentcoreRunnerManager
-	chatHandler               *ChatHandler
-	voiceWakeManager          *voicewake.Manager
-	skillAdvisor              *skilladvisor.Service
+	mu                         sync.RWMutex
+	kv                         kvstore.Store
+	settings                   *Settings
+	skillRerankerModelManager  *agentcore.SkillRerankerModelManager
+	smallModelManager          *smallmodel.Manager
+	agentcoreRunnerManager     agentcoreRunnerManager
+	agentcoreRunnerTagResolver agentcoreRunnerTagResolver
+	chatHandler                *ChatHandler
+	voiceWakeManager           *voicewake.Manager
+	skillAdvisor               *skilladvisor.Service
 }
 
 type DirectoryWhitelistEntry struct {
@@ -124,8 +126,9 @@ var allowedMemoryRecallModes = map[string]struct{}{
 // NewSettingsHandler creates a new settings handler
 func NewSettingsHandler(kv kvstore.Store) *SettingsHandler {
 	h := &SettingsHandler{
-		kv:       kv,
-		settings: &Settings{},
+		kv:                         kv,
+		settings:                   &Settings{},
+		agentcoreRunnerTagResolver: optimization.ListGitHubRepoTags,
 	}
 	h.load()
 	return h
@@ -146,6 +149,7 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/settings/small-model/cancel", h.CancelSmallModelDownload)
 	g.GET("/settings/agentcore-runner/status", h.GetAgentcoreRunnerStatus)
 	g.GET("/settings/agentcore-runner/last-run", h.GetAgentcoreRunnerLastRun)
+	g.GET("/settings/agentcore-runner/tags", h.GetAgentcoreRunnerTags)
 	g.POST("/settings/agentcore-runner/prepare", h.PrepareAgentcoreRunner)
 }
 
@@ -1966,6 +1970,9 @@ func (h *SettingsHandler) normalizedSettingsSnapshot() Settings {
 	snapshot := *h.settings
 	snapshot.ExperimentalAgentcoreRunnerRepoURL = normalizeAgentcoreRunnerRepoURL(
 		snapshot.ExperimentalAgentcoreRunnerRepoURL,
+	)
+	snapshot.ExperimentalAgentcoreRunnerRef = normalizeAgentcoreRunnerRef(
+		snapshot.ExperimentalAgentcoreRunnerRef,
 	)
 	return snapshot
 }

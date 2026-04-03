@@ -53,6 +53,7 @@ const LEGACY_DEFAULT_MAX_TOKENS = 2048
 const PREVIOUS_DEFAULT_MAX_TOKENS = 8192
 const DEFAULT_MAX_TOKENS = 16384
 const DEFAULT_AGENTCORE_RUNNER_REPO_URL = 'https://github.com/IceWhaleTech/ZimaOS-Blue'
+const DEFAULT_AGENTCORE_RUNNER_REF = 'main'
 
 // Provider info for Chat page (simplified view of Provider Pool data)
 export interface ChatModelInfo {
@@ -600,7 +601,7 @@ export const useSettingsStore = defineStore('settings', () => {
       DEFAULT_AGENTCORE_RUNNER_REPO_URL
   )
   const experimentalAgentcoreRunnerRef = computed(
-    () => backendSettings.value.experimental_agentcore_runner_ref ?? ''
+    () => backendSettings.value.experimental_agentcore_runner_ref ?? DEFAULT_AGENTCORE_RUNNER_REF
   )
 
   async function setAgentMode(enabled: boolean) {

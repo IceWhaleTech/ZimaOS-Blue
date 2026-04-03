@@ -18,11 +18,13 @@ type officialProviderCatalogProvider struct {
 }
 
 type officialProviderCatalogModel struct {
-	ID            string   `json:"id"`
-	DisplayName   string   `json:"display_name,omitempty"`
-	ContextWindow int      `json:"context_window,omitempty"`
-	MaxOutput     int      `json:"max_output,omitempty"`
-	Capabilities  []string `json:"capabilities,omitempty"`
+	ID              string   `json:"id"`
+	DisplayName     string   `json:"display_name,omitempty"`
+	ContextWindow   int      `json:"context_window,omitempty"`
+	MaxOutput       int      `json:"max_output,omitempty"`
+	Capabilities    []string `json:"capabilities,omitempty"`
+	PinchBenchScore *float64 `json:"pinchbench_score,omitempty"`
+	PinchBenchURL   string   `json:"pinchbench_url,omitempty"`
 }
 
 var officialProviderCatalogState struct {
@@ -56,11 +58,13 @@ func SetOfficialProviderCatalog(catalog officialProviderCatalog) {
 				continue
 			}
 			copied = append(copied, officialProviderCatalogModel{
-				ID:            model.ID,
-				DisplayName:   model.DisplayName,
-				ContextWindow: model.ContextWindow,
-				MaxOutput:     model.MaxOutput,
-				Capabilities:  append([]string(nil), model.Capabilities...),
+				ID:              model.ID,
+				DisplayName:     model.DisplayName,
+				ContextWindow:   model.ContextWindow,
+				MaxOutput:       model.MaxOutput,
+				Capabilities:    append([]string(nil), model.Capabilities...),
+				PinchBenchScore: cloneOptionalFloat64(model.PinchBenchScore),
+				PinchBenchURL:   model.PinchBenchURL,
 			})
 		}
 		normalized.Models[providerID] = copied
@@ -170,6 +174,12 @@ func applyOfficialProviderCatalogToModels(models map[string][]*Model) {
 			if len(catalogModel.Capabilities) > 0 {
 				model.Capabilities = capabilitiesFromCatalogStrings(catalogModel.Capabilities)
 			}
+			if catalogModel.PinchBenchScore != nil {
+				model.PinchBenchScore = cloneOptionalFloat64(catalogModel.PinchBenchScore)
+			}
+			if catalogModel.PinchBenchURL != "" {
+				model.PinchBenchURL = catalogModel.PinchBenchURL
+			}
 
 			merged = append(merged, model)
 			seen[catalogModel.ID] = struct{}{}
@@ -194,6 +204,15 @@ func cloneBuiltinModel(model *Model) *Model {
 		return nil
 	}
 	copied := *model
+	copied.PinchBenchScore = cloneOptionalFloat64(model.PinchBenchScore)
+	return &copied
+}
+
+func cloneOptionalFloat64(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	copied := *value
 	return &copied
 }
 

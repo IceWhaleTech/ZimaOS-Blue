@@ -839,7 +839,7 @@ onMounted(() => {
 <style scoped>
 .external-agents {
   display: grid;
-  gap: 0.44rem;
+  gap: 0.56rem;
   width: 100%;
 }
 
@@ -855,8 +855,7 @@ onMounted(() => {
 
 .external-agents__toolbar {
   justify-content: flex-end;
-  padding-bottom: 0.16rem;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.88);
+  padding-bottom: 0.08rem;
 }
 
 .external-agents__actions {
@@ -952,12 +951,19 @@ onMounted(() => {
 
 .external-agents__notice,
 .external-agents__empty,
-.external-agents__locked,
-.external-agents__advanced {
+.external-agents__locked {
   padding: 0.42rem 0.46rem;
   border-radius: 0.72rem;
-  border: 1px solid rgba(226, 232, 240, 0.96);
   background: rgba(248, 250, 252, 0.84);
+}
+
+.external-agents__notice {
+  border: 1px solid rgba(226, 232, 240, 0.96);
+}
+
+.external-agents__empty,
+.external-agents__locked {
+  border: 0;
 }
 
 .external-agents__notice--success {
@@ -975,18 +981,25 @@ onMounted(() => {
 .external-agents__workspace {
   display: grid;
   grid-template-columns: minmax(14rem, 0.72fr) minmax(0, 1.28fr);
-  gap: 0.42rem;
+  gap: 0.88rem;
+  align-items: start;
 }
 
 .external-agents__panel {
   display: grid;
   align-content: start;
-  gap: 0.38rem;
-  padding: 0.48rem;
-  border-radius: 0.74rem;
-  border: 1px solid rgba(226, 232, 240, 0.96);
-  background: #ffffff;
+  gap: 0.56rem;
+  padding: 0;
   min-width: 0;
+}
+
+.external-agents__panel--sidebar {
+  padding-right: 0.88rem;
+  border-right: 1px solid rgba(226, 232, 240, 0.96);
+}
+
+.external-agents__panel--editor {
+  padding-left: 0.12rem;
 }
 
 .external-agents__count,
@@ -1042,23 +1055,22 @@ onMounted(() => {
 
 .external-agents__profile-list {
   display: grid;
-  gap: 0.42rem;
+  gap: 0.12rem;
   max-height: 30rem;
   overflow-y: auto;
-  padding-right: 0.08rem;
+  padding-right: 0.12rem;
 }
 
 .external-agents__profile-card {
   display: grid;
   gap: 0.18rem;
-  padding: 0.62rem 0.68rem;
+  padding: 0.68rem 0.72rem;
   text-align: left;
   cursor: pointer;
-  border: 1px solid rgba(226, 232, 240, 0.96);
-  border-radius: 0.82rem;
-  background: rgba(248, 250, 252, 0.72);
+  border: 0;
+  border-radius: 0.78rem;
+  background: transparent;
   transition:
-    border-color 160ms ease,
     background-color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
@@ -1066,9 +1078,8 @@ onMounted(() => {
 
 .external-agents__profile-card:hover,
 .external-agents__profile-card--active {
-  border-color: rgba(148, 163, 184, 0.62);
-  background: rgba(241, 245, 249, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1);
+  background: rgba(241, 245, 249, 0.88);
+  box-shadow: inset 3px 0 0 rgba(var(--settings-accent, 37, 99, 235), 0.34);
 }
 
 .external-agents__profile-heading {
@@ -1097,11 +1108,7 @@ onMounted(() => {
 .external-agents__protocol-switch {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.16rem;
-  padding: 0.14rem;
-  border-radius: 0.72rem;
-  border: 1px solid rgba(226, 232, 240, 0.96);
-  background: rgba(248, 250, 252, 0.84);
+  gap: 0.22rem;
 }
 
 .external-agents__protocol-switch-button {
@@ -1172,6 +1179,8 @@ onMounted(() => {
 .external-agents__advanced {
   display: grid;
   gap: 0.3rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(226, 232, 240, 0.96);
 }
 
 .external-agents__advanced-summary {
@@ -1201,6 +1210,17 @@ onMounted(() => {
 @media (max-width: 1100px) {
   .external-agents__workspace {
     grid-template-columns: 1fr;
+  }
+
+  .external-agents__panel--sidebar {
+    padding-right: 0;
+    padding-bottom: 0.72rem;
+    border-right: 0;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.96);
+  }
+
+  .external-agents__panel--editor {
+    padding-left: 0;
   }
 }
 
@@ -1238,23 +1258,31 @@ onMounted(() => {
   }
 }
 
-:global(.dark) .external-agents__panel,
-:global(.dark) .external-agents__protocol-switch,
-:global(.dark) .external-agents__protocol-switch-button,
-:global(.dark) .external-agents__profile-card,
 :global(.dark) .external-agents__notice,
 :global(.dark) .external-agents__empty,
 :global(.dark) .external-agents__locked,
-:global(.dark) .external-agents__advanced,
+:global(.dark) .external-agents__protocol-switch-button,
 :global(.dark) .external-agents__input,
 :global(.dark) .external-agents__textarea {
   background: rgba(15, 23, 42, 0.76);
-  border-color: rgba(71, 85, 105, 0.86);
   color: rgba(226, 232, 240, 0.94);
 }
 
-:global(.dark) .external-agents__toolbar {
-  border-bottom-color: rgba(51, 65, 85, 0.86);
+:global(.dark) .external-agents__notice,
+:global(.dark) .external-agents__protocol-switch-button,
+:global(.dark) .external-agents__input,
+:global(.dark) .external-agents__textarea {
+  border-color: rgba(71, 85, 105, 0.86);
+}
+
+:global(.dark) .external-agents__empty,
+:global(.dark) .external-agents__locked {
+  background: rgba(15, 23, 42, 0.48);
+}
+
+:global(.dark) .external-agents__panel--sidebar,
+:global(.dark) .external-agents__advanced {
+  border-color: rgba(51, 65, 85, 0.86);
 }
 
 :global(.dark) .external-agents__editor-title,
@@ -1284,8 +1312,12 @@ onMounted(() => {
 :global(.dark) .external-agents__protocol-switch-button--active,
 :global(.dark) .external-agents__profile-card:hover,
 :global(.dark) .external-agents__profile-card--active {
-  background: rgba(30, 41, 59, 0.98);
-  border-color: rgba(100, 116, 139, 0.92);
+  background: rgba(30, 41, 59, 0.9);
+}
+
+:global(.dark) .external-agents__profile-card:hover,
+:global(.dark) .external-agents__profile-card--active {
+  box-shadow: inset 3px 0 0 rgba(var(--settings-accent, 37, 99, 235), 0.44);
 }
 
 :global(.dark) .external-agents__button--primary,

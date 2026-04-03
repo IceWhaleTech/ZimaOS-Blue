@@ -4,6 +4,7 @@ import harnessGroupBackfills from './harness-group-backfills'
 import localeFollowupBackfills from './locale-followup-backfills'
 import { buildLocalePostMergeBackfill } from './locale-post-merge-backfills'
 import localeStructuralBackfills from './locale-structural-backfills'
+import skillStoreHighRiskBackfills from './skill-store-high-risk-backfills'
 import { buildSkillStoreDerivedBackfill } from './skill-store-derived-backfills'
 import systemDashboardCardOverrides from './system-dashboard-card-overrides'
 
@@ -7715,7 +7716,10 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
           (systemDashboardCardOverrides[localeKey] ?? {}) as LocaleNode,
           (dashboardCardCopyOverrides[localeKey] ?? {}) as LocaleNode
         ),
-        (localeStructuralBackfills[localeKey] ?? {}) as LocaleNode
+        mergeLocaleNodes(
+          (localeStructuralBackfills[localeKey] ?? {}) as LocaleNode,
+          (skillStoreHighRiskBackfills[localeKey] ?? {}) as LocaleNode
+        )
       ),
       (extensionsBrowseBackfills[localeKey] ?? {}) as LocaleNode
     ),

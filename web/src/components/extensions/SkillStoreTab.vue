@@ -98,6 +98,8 @@ type InstallSkillOptions = {
   forceInstall?: boolean
 }
 
+type SummaryTone = 'safe' | 'warn' | 'danger' | 'neutral'
+
 const selectedSkill = computed<RemoteSkill | null>(() => {
   if (!selectedSkillId.value) return null
   return skills.value.find((skill) => skill.id === selectedSkillId.value) ?? null
@@ -1793,6 +1795,14 @@ function evidenceSeverityLabel(severity?: string): string {
   return marketplaceText(`riskLevels.${normalized}`, fallback[normalized] || severity || 'Unknown')
 }
 
+function evidenceSeverityClass(severity?: string): string {
+  const normalized = severity?.trim().toLowerCase() || 'unknown'
+  if (normalized === 'critical' || normalized === 'high') return 'severity-chip--red'
+  if (normalized === 'medium') return 'severity-chip--yellow'
+  if (normalized === 'low') return 'severity-chip--green'
+  return 'severity-chip--neutral'
+}
+
 function localizedSecurityText(value?: string | null): string {
   const trimmed = value?.trim()
   if (!trimmed) return ''
@@ -1893,6 +1903,37 @@ function detailStat(value: boolean | undefined, positive = 'Yes', negative = 'No
 function detailBadgeClass(kind: SecurityBadge | string | undefined) {
   if (kind === 'green' || kind === 'yellow' || kind === 'red') return `badge-${kind}`
   return 'badge-neutral'
+}
+
+function scoreCardToneClass(tone: SummaryTone): string {
+  return `score-card--${tone}`
+}
+
+function securityScoreTone(score?: number | null): SummaryTone {
+  if (!Number.isFinite(score)) return 'neutral'
+  if (Number(score) >= 85) return 'safe'
+  if (Number(score) >= 60) return 'warn'
+  return 'danger'
+}
+
+function securityBadgeTone(badge?: SecurityBadge | string): SummaryTone {
+  if (badge === 'green') return 'safe'
+  if (badge === 'yellow') return 'warn'
+  if (badge === 'red') return 'danger'
+  return 'neutral'
+}
+
+function vulnerabilityTone(value?: string | null): SummaryTone {
+  if (value === 'none') return 'safe'
+  if (value === 'suspected' || value === 'unknown') return 'warn'
+  if (value === 'detected') return 'danger'
+  return 'neutral'
+}
+
+function installableTone(value?: boolean | null): SummaryTone {
+  if (value === true) return 'safe'
+  if (value === false) return 'danger'
+  return 'neutral'
 }
 
 function optionLabel(
@@ -2964,16 +3005,37 @@ onBeforeUnmount(() => {
               </div>
               <template v-else-if="selectedSecurity">
                 <div class="security-overview">
-                  <div class="score-card score-card-emphasis">
+                  <div
+                    :class="[
+                      'score-card',
+                      'score-card-emphasis',
+                      'score-card--score',
+                      scoreCardToneClass(securityScoreTone(selectedSecurity.score)),
+                    ]"
+                  >
                     <span>{{ marketplaceText('security.score', 'Score') }}</span>
                     <strong>{{ selectedSecurity.score }}</strong>
                   </div>
                   <div class="security-summary-grid">
-                    <div class="score-card">
+                    <div
+                      :class="[
+                        'score-card',
+                        'score-card--badge',
+                        scoreCardToneClass(securityBadgeTone(selectedSecurity.security_badge)),
+                      ]"
+                    >
                       <span>{{ marketplaceText('security.badge', 'Badge') }}</span>
                       <strong>{{ badgeLabelByValue(selectedSecurity.security_badge) }}</strong>
                     </div>
-                    <div class="score-card">
+                    <div
+                      :class="[
+                        'score-card',
+                        'score-card--vulnerabilities',
+                        scoreCardToneClass(
+                          vulnerabilityTone(selectedSecurity.vulnerability_status)
+                        ),
+                      ]"
+                    >
                       <span>{{
                         marketplaceText('filters.vulnerabilities', 'Vulnerabilities')
                       }}</span>
@@ -2981,7 +3043,15 @@ onBeforeUnmount(() => {
                         vulnerabilityLabel(selectedSecurity.vulnerability_status)
                       }}</strong>
                     </div>
-                    <div class="score-card">
+                    <div
+                      :class="[
+                        'score-card',
+                        'score-card--installable',
+                        scoreCardToneClass(
+                          installableTone(selectedSecurity.install_surface?.installable)
+                        ),
+                      ]"
+                    >
                       <span>{{ marketplaceText('security.installable', 'Installable') }}</span>
                       <strong>{{
                         detailStat(selectedSecurity.install_surface?.installable)
@@ -3042,7 +3112,7 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div v-if="visibleSecurityEvidence.length" class="list-block">
-                  <span class="section-label">{{
+                  <span class="section-label section-label--compact">{{
                     marketplaceText('security.evidence', 'Evidence')
                   }}</span>
                   <div class="evidence-list">
@@ -3053,7 +3123,9 @@ onBeforeUnmount(() => {
                     >
                       <header>
                         <strong>{{ evidenceGroupLabel(item.type) }}</strong>
-                        <span>{{ evidenceSeverityLabel(item.severity) }}</span>
+                        <span :class="['severity-chip', evidenceSeverityClass(item.severity)]">{{
+                          evidenceSeverityLabel(item.severity)
+                        }}</span>
                       </header>
                       <p>{{ localizedSecurityText(item.title) }}</p>
                       <small v-if="item.description">{{
@@ -3411,6 +3483,11 @@ onBeforeUnmount(() => {
   text-transform: none;
   letter-spacing: 0;
   font-size: 10px;
+}
+
+.section-label--compact {
+  font-size: 8px;
+  letter-spacing: 0.06em;
 }
 
 .toolbar-search-row,
@@ -4678,11 +4755,11 @@ onBeforeUnmount(() => {
 .score-card {
   padding: 8px 10px;
   border-radius: 8px;
-  background: var(--panel-bg);
-  border: 1px solid var(--border);
 }
 
 .meta-item {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
   min-height: 48px;
 }
 
@@ -4690,15 +4767,120 @@ onBeforeUnmount(() => {
 .score-card span,
 .section-label {
   margin-bottom: 4px;
-  color: var(--text-secondary);
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.meta-item strong,
-.score-card strong {
+.meta-item strong {
   color: var(--text-primary);
+}
+
+.meta-item span,
+.section-label {
+  color: var(--text-secondary);
+}
+
+.score-card {
+  --score-card-border: var(--border);
+  --score-card-bg: var(--panel-bg);
+  --score-card-accent: transparent;
+  --score-card-label: var(--text-secondary);
+  --score-card-value: var(--text-primary);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 76px;
+  overflow: hidden;
+  border: 1px solid var(--score-card-border);
+  background: var(--score-card-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.score-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--score-card-accent);
+}
+
+.score-card span {
+  color: var(--score-card-label);
+}
+
+.score-card strong {
+  color: var(--score-card-value);
+}
+
+.score-card--safe {
+  --score-card-border: color-mix(in srgb, var(--security-green-border) 82%, var(--border));
+  --score-card-bg:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--security-green-bg) 95%, var(--panel-bg-strong)) 0%,
+      color-mix(in srgb, var(--panel-bg) 78%, var(--security-green-bg) 22%) 100%
+    );
+  --score-card-accent: color-mix(in srgb, var(--security-green-text) 72%, #22c55e);
+  --score-card-label: color-mix(in srgb, var(--security-green-text) 62%, var(--text-secondary));
+  --score-card-value: color-mix(in srgb, var(--security-green-text) 90%, var(--text-primary));
+}
+
+.score-card--warn {
+  --score-card-border: color-mix(in srgb, var(--security-yellow-border) 84%, var(--border));
+  --score-card-bg:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--security-yellow-bg) 94%, var(--panel-bg-strong)) 0%,
+      color-mix(in srgb, var(--panel-bg) 78%, var(--security-yellow-bg) 22%) 100%
+    );
+  --score-card-accent: color-mix(in srgb, var(--security-yellow-text) 74%, #f59e0b);
+  --score-card-label: color-mix(
+    in srgb,
+    var(--security-yellow-text) 62%,
+    var(--text-secondary)
+  );
+  --score-card-value: color-mix(in srgb, var(--security-yellow-text) 92%, var(--text-primary));
+}
+
+.score-card--danger {
+  --score-card-border: color-mix(in srgb, var(--security-red-border) 84%, var(--border));
+  --score-card-bg:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--security-red-bg) 94%, var(--panel-bg-strong)) 0%,
+      color-mix(in srgb, var(--panel-bg) 78%, var(--security-red-bg) 22%) 100%
+    );
+  --score-card-accent: color-mix(in srgb, var(--security-red-text) 72%, #ef4444);
+  --score-card-label: color-mix(in srgb, var(--security-red-text) 58%, var(--text-secondary));
+  --score-card-value: color-mix(in srgb, var(--security-red-text) 92%, var(--text-primary));
+}
+
+.score-card--neutral {
+  --score-card-border: color-mix(in srgb, var(--security-neutral-border) 86%, var(--border));
+  --score-card-bg:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--security-neutral-bg) 92%, var(--panel-bg-strong)) 0%,
+      color-mix(in srgb, var(--panel-bg) 84%, var(--security-neutral-bg) 16%) 100%
+    );
+  --score-card-accent: color-mix(in srgb, var(--security-neutral-text) 78%, #94a3b8);
+  --score-card-label: color-mix(
+    in srgb,
+    var(--security-neutral-text) 66%,
+    var(--text-secondary)
+  );
+  --score-card-value: color-mix(
+    in srgb,
+    var(--security-neutral-text) 94%,
+    var(--text-primary)
+  );
 }
 
 .signal-detail-safe {
@@ -4743,12 +4925,12 @@ onBeforeUnmount(() => {
 }
 
 .score-card-emphasis {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: flex-start;
   min-height: 92px;
-  background: var(--panel-bg);
+}
+
+.score-card-emphasis::before {
+  width: 6px;
 }
 
 .score-card-emphasis strong {
@@ -4779,11 +4961,31 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
 }
 
+.evidence-item header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.evidence-item header strong {
+  color: var(--text-primary);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
 .evidence-item p,
 .evidence-item small {
   display: block;
-  margin-top: 4px;
+  margin-top: 3px;
   color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.evidence-item p {
+  font-size: 9px;
+}
+
+.evidence-item small {
+  font-size: 8px;
 }
 
 .evidence-item code {
@@ -4794,7 +4996,46 @@ onBeforeUnmount(() => {
   background: var(--bg-hover);
   color: var(--text-primary);
   overflow-x: auto;
-  font-size: 10px;
+  font-size: 8.5px;
+  line-height: 1.45;
+}
+
+.severity-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  font-size: 7.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.severity-chip--green {
+  background: var(--security-green-bg);
+  border-color: var(--security-green-border);
+  color: var(--security-green-text);
+}
+
+.severity-chip--yellow {
+  background: var(--security-yellow-bg);
+  border-color: var(--security-yellow-border);
+  color: var(--security-yellow-text);
+}
+
+.severity-chip--red {
+  background: var(--security-red-bg);
+  border-color: var(--security-red-border);
+  color: var(--security-red-text);
+}
+
+.severity-chip--neutral {
+  background: var(--security-neutral-bg);
+  border-color: var(--security-neutral-border);
+  color: var(--security-neutral-text);
 }
 
 .risk-modal-backdrop {

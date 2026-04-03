@@ -1554,6 +1554,25 @@ function mediaPricingLabel(model: Model): string {
   return `$${price.toFixed(3)}${unitLabel[unit] || `/${unit}`}`
 }
 
+function hasPinchBenchBadge(model: Model): boolean {
+  return typeof model.pinchbench_score === 'number' && !!model.pinchbench_url
+}
+
+function pinchBenchBadgeLabel(model: Model): string {
+  return `PinchBench ${(model.pinchbench_score ?? 0).toFixed(1)}%`
+}
+
+function pinchBenchBadgeClass(model: Model): string {
+  const score = model.pinchbench_score ?? 0
+  if (score >= 85) {
+    return 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30 dark:hover:bg-emerald-500/20'
+  }
+  if (score >= 70) {
+    return 'bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30 dark:hover:bg-amber-500/20'
+  }
+  return 'bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30 dark:hover:bg-rose-500/20'
+}
+
 function openPricingModal(model?: Model) {
   if (model) {
     const customPricing = getModelCustomPricing(model.id)
@@ -3177,6 +3196,18 @@ onMounted(() => {
                     <span class="text-gray-900 dark:text-white font-medium">{{
                       getLocalizedProviderModelName(model)
                     }}</span>
+                    <a
+                      v-if="hasPinchBenchBadge(model)"
+                      :href="model.pinchbench_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      :class="pinchBenchBadgeClass(model)"
+                      class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-colors"
+                      data-testid="pinchbench-badge"
+                      @click.stop
+                    >
+                      {{ pinchBenchBadgeLabel(model) }}
+                    </a>
                     <span
                       v-if="model.capabilities?.length"
                       class="text-[10px] leading-none text-gray-400 provider-inline-start-0_5"
@@ -4073,6 +4104,18 @@ onMounted(() => {
                   <span class="text-sm text-gray-900 dark:text-white">{{
                     getLocalizedProviderModelName(model)
                   }}</span>
+                  <a
+                    v-if="hasPinchBenchBadge(model)"
+                    :href="model.pinchbench_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    :class="pinchBenchBadgeClass(model)"
+                    class="provider-inline-start-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-colors"
+                    data-testid="pinchbench-badge"
+                    @click.stop
+                  >
+                    {{ pinchBenchBadgeLabel(model) }}
+                  </a>
                   <span
                     v-if="model.capabilities?.length"
                     class="text-[10px] leading-none text-gray-400 provider-inline-start-0_5"

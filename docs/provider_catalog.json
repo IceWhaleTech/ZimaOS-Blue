@@ -105,14 +105,18 @@
         "display_name": "Claude Opus 4.5",
         "context_window": 200000,
         "max_output": 32000,
-        "capabilities": ["chat", "vision", "function_call", "streaming", "thinking", "json", "system_prompt"]
+        "capabilities": ["chat", "vision", "function_call", "streaming", "thinking", "json", "system_prompt"],
+        "pinchbench_score": 87.2,
+        "pinchbench_url": "https://pinchbench.com/model/anthropic/anthropic/claude-opus-4.5"
       },
       {
         "id": "claude-sonnet-4-5-20250929",
         "display_name": "Claude Sonnet 4.5",
         "context_window": 200000,
         "max_output": 64000,
-        "capabilities": ["chat", "vision", "function_call", "streaming", "thinking", "json", "system_prompt"]
+        "capabilities": ["chat", "vision", "function_call", "streaming", "thinking", "json", "system_prompt"],
+        "pinchbench_score": 88.6,
+        "pinchbench_url": "https://pinchbench.com/model/anthropic/anthropic/claude-sonnet-4.5"
       },
       {
         "id": "claude-3-5-haiku-20241022",
@@ -340,14 +344,18 @@
         "display_name": "GPT-4o",
         "context_window": 128000,
         "max_output": 16384,
-        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"],
+        "pinchbench_score": 71.1,
+        "pinchbench_url": "https://pinchbench.com/model/openai/openai/gpt-4o"
       },
       {
         "id": "gpt-4o-mini",
         "display_name": "GPT-4o Mini",
         "context_window": 128000,
         "max_output": 16384,
-        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
+        "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"],
+        "pinchbench_score": 75.0,
+        "pinchbench_url": "https://pinchbench.com/model/openai/openai/gpt-4o-mini"
       },
       {
         "id": "o1",

@@ -692,6 +692,39 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(localCard?.text()).toContain('本地')
   })
 
+  it('renders a clickable PinchBench badge for models with score metadata', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+    mocks.providerPoolStore.models = [
+      {
+        id: 'gpt-4o-mini',
+        provider_id: 'openai',
+        name: 'gpt-4o-mini',
+        display_name: 'GPT-4o Mini',
+        enabled: true,
+        capabilities: ['chat'],
+        pinchbench_score: 75,
+        pinchbench_url: 'https://pinchbench.com/model/openai/openai/gpt-4o-mini',
+      },
+    ]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const badge = wrapper.find('[data-testid="pinchbench-badge"]')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toContain('PinchBench 75.0%')
+    expect(badge.attributes('href')).toBe('https://pinchbench.com/model/openai/openai/gpt-4o-mini')
+  })
+
   it('reorders provider cards during dragover before drop', async () => {
     const providerA = createRankedProvider('alpha', 90)
     const providerB = createRankedProvider('beta', 60)

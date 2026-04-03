@@ -30,7 +30,9 @@ func TestProviderCatalogUpdaterFetchAndApply(t *testing.T) {
 						"display_name": "Catalog GPT-4o",
 						"context_window": 999,
 						"max_output": 111,
-						"capabilities": ["chat", "streaming"]
+						"capabilities": ["chat", "streaming"],
+						"pinchbench_score": 71.1,
+						"pinchbench_url": "https://pinchbench.com/model/openai/openai/gpt-4o"
 					}
 				]
 			}
@@ -83,6 +85,12 @@ func TestProviderCatalogUpdaterFetchAndApply(t *testing.T) {
 	}
 	if models[0].ContextWindow != 999 {
 		t.Fatalf("expected context window override, got %d", models[0].ContextWindow)
+	}
+	if models[0].PinchBenchScore == nil || *models[0].PinchBenchScore != 71.1 {
+		t.Fatalf("expected pinchbench score override, got %#v", models[0].PinchBenchScore)
+	}
+	if models[0].PinchBenchURL != "https://pinchbench.com/model/openai/openai/gpt-4o" {
+		t.Fatalf("expected pinchbench url override, got %q", models[0].PinchBenchURL)
 	}
 
 	updater.fetchAndApply()

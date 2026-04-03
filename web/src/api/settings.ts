@@ -197,6 +197,12 @@ export interface AgentcoreRunnerLastRun {
   [key: string]: unknown
 }
 
+export interface AgentcoreRunnerTagList {
+  repo_url: string
+  default_ref: string
+  tags: string[]
+}
+
 export interface PromptPolicyStatus {
   prompt_policy_version: string
   prompt_policy_profile: string
@@ -246,6 +252,10 @@ export const settingsApi = {
   cancelSmallModelDownload: () => api.post<{ success: boolean }>('/settings/small-model/cancel'),
   getAgentcoreRunnerStatus: () => api.get<AgentcoreRunnerStatus>('/settings/agentcore-runner/status'),
   getAgentcoreRunnerLastRun: () => api.get<AgentcoreRunnerLastRun | null>('/settings/agentcore-runner/last-run'),
+  getAgentcoreRunnerTags: (repoURL?: string) =>
+    api.get<AgentcoreRunnerTagList>('/settings/agentcore-runner/tags', {
+      params: repoURL ? { repo_url: repoURL } : undefined,
+    }),
   prepareAgentcoreRunner: () => api.post<AgentcoreRunnerStatus>('/settings/agentcore-runner/prepare'),
   // Small-model observability counters
   getSmallModelStats: () => api.get<SmallModelStats>('/small-model/stats'),

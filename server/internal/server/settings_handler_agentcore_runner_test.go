@@ -94,6 +94,32 @@ func TestSettingsHandlerGetDefaultsAgentcoreRunnerRepoURLWhenUnset(t *testing.T)
 	}
 }
 
+func TestSettingsHandlerGetDefaultsAgentcoreRunnerRefWhenUnset(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+
+	if err := handler.Get(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body Settings
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got := handler.GetExperimentalAgentcoreRunnerRef(); got != "main" {
+		t.Fatalf("default getter ref = %q", got)
+	}
+	if got := strings.TrimSpace(body.ExperimentalAgentcoreRunnerRef); got != "main" {
+		t.Fatalf("default response ref = %q", got)
+	}
+}
+
 func TestSettingsHandlerAgentcoreRunnerStatusEndpoint(t *testing.T) {
 	handler := NewSettingsHandler(kvstore.NewMemoryStore())
 	prepareAt := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
@@ -180,5 +206,39 @@ func TestSettingsHandlerAgentcoreRunnerPrepareEndpointUsesDefaultRepoWhenUnset(t
 	}
 	if manager.lastPrepareRepo != "https://github.com/IceWhaleTech/ZimaOS-Blue" {
 		t.Fatalf("prepare request repo = %q", manager.lastPrepareRepo)
+	}
+}
+
+func TestSettingsHandlerAgentcoreRunnerTagsEndpointUsesRequestedRepo(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+	handler.agentcoreRunnerTagResolver = func(_ context.Context, repoURL string) ([]string, error) {
+		if repoURL != "owner/repo" {
+			t.Fatalf("repoURL = %q, want owner/repo", repoURL)
+		}
+		return []string{"v1.2.0", "v1.1.0"}, nil
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/agentcore-runner/tags?repo_url=owner/repo", nil)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	if err := handler.GetAgentcoreRunnerTags(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("GetAgentcoreRunnerTags returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body AgentcoreRunnerTagList
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.RepoURL != "https://github.com/owner/repo" {
+		t.Fatalf("repo_url = %q", body.RepoURL)
+	}
+	if body.DefaultRef != "main" {
+		t.Fatalf("default_ref = %q", body.DefaultRef)
+	}
+	if strings.Join(body.Tags, ",") != "v1.2.0,v1.1.0" {
+		t.Fatalf("tags = %#v", body.Tags)
 	}
 }

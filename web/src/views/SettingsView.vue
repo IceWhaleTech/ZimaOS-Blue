@@ -7,7 +7,7 @@ import { type CloseBehavior, type MemoryRecallMode } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore, type Theme } from '@/stores/theme'
 import { backupApi } from '@/api/index'
-import type { ContextCompressionMode } from '@/api/settings'
+import { settingsApi, type AgentcoreRunnerTagList, type ContextCompressionMode } from '@/api/settings'
 import type { LocaleKey } from '@/i18n'
 import type { BackupInfo } from '@/api/index'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
@@ -167,9 +167,31 @@ const agentcoreRunnerRefreshing = ref(false)
 const agentcoreRunnerStatusExpanded = ref(false)
 const agentcoreRunnerRepoURL = ref('')
 const agentcoreRunnerRef = ref('')
+const agentcoreRunnerTags = ref<AgentcoreRunnerTagList | null>(null)
+const agentcoreRunnerTagsLoading = ref(false)
 const agentcoreRunnerStatus = computed(() => settingsStore.agentcoreRunnerStatus)
 const agentcoreRunnerLastRun = computed(() => settingsStore.agentcoreRunnerLastRun)
 const agentcoreRunnerEnabled = computed(() => settingsStore.experimentalAgentcoreRunnerEnabled)
+const agentcoreRunnerLastError = computed(() =>
+  normalizeAgentcoreRunnerStatusError(agentcoreRunnerStatus.value?.last_error)
+)
+const agentcoreRunnerHasLastError = computed(() => agentcoreRunnerLastError.value !== '')
+const agentcoreRunnerRefOptions = computed(() => {
+  const options: string[] = []
+  const seen = new Set<string>()
+  const push = (value: unknown) => {
+    const normalized = normalizeAgentcoreRunnerRefValue(value)
+    if (seen.has(normalized)) return
+    seen.add(normalized)
+    options.push(normalized)
+  }
+  push(agentcoreRunnerTags.value?.default_ref)
+  push(agentcoreRunnerRef.value)
+  for (const tag of agentcoreRunnerTags.value?.tags ?? []) {
+    push(tag)
+  }
+  return options
+})
 const agentcoreRunnerBusy = computed(
   () =>
     agentcoreRunnerSaving.value ||
@@ -234,7 +256,7 @@ watch(
   ],
   ([repoURL, refValue]) => {
     agentcoreRunnerRepoURL.value = repoURL
-    agentcoreRunnerRef.value = refValue
+    agentcoreRunnerRef.value = normalizeAgentcoreRunnerRefValue(refValue)
   },
   { immediate: true }
 )
@@ -628,6 +650,7 @@ async function ensureProxyTabDataLoaded() {
   ) {
     tasks.push(fetchAgentcoreRunnerLastRun())
   }
+  tasks.push(fetchAgentcoreRunnerTags())
 
   if (tasks.length > 0) {
     await Promise.allSettled(tasks)
@@ -652,6 +675,26 @@ function normalizeEvidenceText(value: unknown) {
   return value.trim()
 }
 
+function normalizeAgentcoreRunnerStatusError(value: unknown) {
+  const text = normalizeEvidenceText(value)
+  if (text.toLowerCase() === 'repo url is required') {
+    return ''
+  }
+  return text
+}
+
+function normalizeAgentcoreRunnerRepoURLValue(value: unknown) {
+  const text = normalizeEvidenceText(value)
+  if (text) return text
+  return 'https://github.com/IceWhaleTech/ZimaOS-Blue'
+}
+
+function normalizeAgentcoreRunnerRefValue(value: unknown) {
+  const text = normalizeEvidenceText(value)
+  if (text) return text
+  return 'main'
+}
+
 async function fetchAgentcoreRunnerStatus() {
   try {
     await settingsStore.fetchAgentcoreRunnerStatus()
@@ -668,11 +711,28 @@ async function fetchAgentcoreRunnerLastRun() {
   }
 }
 
+async function fetchAgentcoreRunnerTags(repoURL = agentcoreRunnerRepoURL.value) {
+  const resolvedRepoURL = normalizeAgentcoreRunnerRepoURLValue(repoURL)
+  try {
+    agentcoreRunnerTagsLoading.value = true
+    const response = await settingsApi.getAgentcoreRunnerTags(resolvedRepoURL)
+    agentcoreRunnerTags.value = response.data
+  } catch {
+    agentcoreRunnerTags.value = {
+      repo_url: resolvedRepoURL,
+      default_ref: 'main',
+      tags: [],
+    }
+  } finally {
+    agentcoreRunnerTagsLoading.value = false
+  }
+}
+
 async function refreshAgentcoreRunnerStatus() {
   if (agentcoreRunnerRefreshing.value) return
   try {
     agentcoreRunnerRefreshing.value = true
-    await fetchAgentcoreRunnerStatus()
+    await Promise.allSettled([fetchAgentcoreRunnerStatus(), fetchAgentcoreRunnerTags()])
   } finally {
     agentcoreRunnerRefreshing.value = false
   }
@@ -680,14 +740,18 @@ async function refreshAgentcoreRunnerStatus() {
 
 async function saveAgentcoreRunnerConfig() {
   if (agentcoreRunnerSaving.value) return
+  const repoURL = normalizeAgentcoreRunnerRepoURLValue(agentcoreRunnerRepoURL.value)
+  const refValue = normalizeAgentcoreRunnerRefValue(agentcoreRunnerRef.value)
+  agentcoreRunnerRepoURL.value = repoURL
+  agentcoreRunnerRef.value = refValue
   try {
     agentcoreRunnerSaving.value = true
     await settingsStore.updateBackendSettings({
-      experimental_agentcore_runner_repo_url: agentcoreRunnerRepoURL.value.trim(),
-      experimental_agentcore_runner_ref: agentcoreRunnerRef.value.trim(),
+      experimental_agentcore_runner_repo_url: repoURL,
+      experimental_agentcore_runner_ref: refValue,
     })
     showSaveStatus(t('settings.saved', 'Saved'))
-    await fetchAgentcoreRunnerStatus()
+    await Promise.allSettled([fetchAgentcoreRunnerStatus(), fetchAgentcoreRunnerTags(repoURL)])
   } catch {
     showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
   } finally {
@@ -711,14 +775,18 @@ async function handleAgentcoreRunnerEnabledChange(next: boolean) {
 
 async function prepareAgentcoreRunner() {
   if (agentcoreRunnerPreparing.value) return
+  const repoURL = normalizeAgentcoreRunnerRepoURLValue(agentcoreRunnerRepoURL.value)
+  const refValue = normalizeAgentcoreRunnerRefValue(agentcoreRunnerRef.value)
+  agentcoreRunnerRepoURL.value = repoURL
+  agentcoreRunnerRef.value = refValue
   try {
     agentcoreRunnerPreparing.value = true
     await settingsStore.updateBackendSettings({
-      experimental_agentcore_runner_repo_url: agentcoreRunnerRepoURL.value.trim(),
-      experimental_agentcore_runner_ref: agentcoreRunnerRef.value.trim(),
+      experimental_agentcore_runner_repo_url: repoURL,
+      experimental_agentcore_runner_ref: refValue,
     })
     await settingsStore.prepareAgentcoreRunner()
-    await fetchAgentcoreRunnerStatus()
+    await Promise.allSettled([fetchAgentcoreRunnerStatus(), fetchAgentcoreRunnerTags(repoURL)])
     showSaveStatus(
       t('settings.agentcoreRunner.prepareSuccess', 'Agentcore Runner prepared successfully')
     )
@@ -1319,14 +1387,24 @@ onUnmounted(() => {
                   <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
                     {{ t('settings.agentcoreRunner.ref', 'Ref') }}
                   </span>
-                  <input
+                  <select
                     data-testid="agentcore-runner-ref-input"
                     v-model="agentcoreRunnerRef"
-                    type="text"
                     class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
-                    :placeholder="t('settings.agentcoreRunner.refPlaceholder', 'main or tag')"
-                    @blur="saveAgentcoreRunnerConfig"
-                  />
+                    :disabled="agentcoreRunnerSaving"
+                    @change="saveAgentcoreRunnerConfig"
+                  >
+                    <option v-for="option in agentcoreRunnerRefOptions" :key="option" :value="option">
+                      {{ option }}
+                    </option>
+                  </select>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      agentcoreRunnerTagsLoading
+                        ? t('settings.agentcoreRunner.refLoading', 'Loading tags...')
+                        : t('settings.agentcoreRunner.refHint', 'Defaults to main and lists tags from the selected repo.')
+                    }}
+                  </p>
                 </label>
               </div>
 
@@ -1609,11 +1687,15 @@ onUnmounted(() => {
                     }}</span>
                     <div
                       data-testid="agentcore-runner-last-error"
-                      class="text-red-600 dark:text-red-400 break-all"
+                      class="break-all"
+                      :class="
+                        agentcoreRunnerHasLastError
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-gray-500 dark:text-gray-400'
+                      "
                     >
                       {{
-                        agentcoreRunnerStatus?.last_error ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
+                        agentcoreRunnerLastError || t('settings.agentcoreRunner.empty', 'Not available')
                       }}
                     </div>
                   </div>

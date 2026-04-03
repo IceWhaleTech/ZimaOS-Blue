@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"golang.org/x/mod/modfile"
+	"slices"
 )
 
 const DefaultGoVersion = "1.24.0"
@@ -153,6 +155,42 @@ func NormalizeGitHubRepo(input string) (GitHubRepo, error) {
 		CanonicalURL: "https://github.com/" + owner + "/" + name,
 		Slug:         owner + "__" + name,
 	}, nil
+}
+
+func ListGitHubRepoTags(ctx context.Context, input string) ([]string, error) {
+	repo, err := NormalizeGitHubRepo(input)
+	if err != nil {
+		return nil, err
+	}
+	output, err := runCommand(ctx, "", "git", "ls-remote", "--refs", "--tags", repo.CanonicalURL)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{})
+	tags := make([]string, 0)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 {
+			continue
+		}
+		ref := strings.TrimSpace(fields[1])
+		if !strings.HasPrefix(ref, "refs/tags/") {
+			continue
+		}
+		tag := strings.TrimSpace(strings.TrimPrefix(ref, "refs/tags/"))
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		tags = append(tags, tag)
+	}
+	slices.SortFunc(tags, func(a, b string) int {
+		return cmp.Compare(b, a)
+	})
+	return tags, nil
 }
 
 func DetectRequiredGoVersion(goMod []byte) string {

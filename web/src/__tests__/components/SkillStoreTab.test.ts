@@ -712,6 +712,55 @@ describe('SkillStoreTab', () => {
     wrapper.unmount()
   })
 
+  it('applies semantic tones to the security summary cards in the detail modal', async () => {
+    const skill = makeSkill({
+      security_badge: 'yellow',
+      risk_level: 'medium',
+    })
+    const detail = makeDetailResponse(skill)
+    detail.data.security = {
+      ...detail.data.security,
+      score: 100,
+      risk_level: 'medium',
+      security_badge: 'yellow',
+      vulnerability_status: 'not_applicable',
+      install_surface: {
+        install_type: 'raw_skill',
+        artifact_kind: 'open_source',
+        installable: true,
+        has_binary: false,
+        has_scripts: false,
+      },
+    }
+
+    vi.mocked(skillApi.getMarketplaceSkill).mockResolvedValue(detail as never)
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('.skill-card').trigger('click')
+    await flushPromises()
+
+    const scoreCard = document.body.querySelector(
+      '.security-overview .score-card--score'
+    ) as HTMLElement | null
+    const badgeCard = document.body.querySelector(
+      '.security-summary-grid .score-card--badge'
+    ) as HTMLElement | null
+    const vulnerabilityCard = document.body.querySelector(
+      '.security-summary-grid .score-card--vulnerabilities'
+    ) as HTMLElement | null
+    const installableCard = document.body.querySelector(
+      '.security-summary-grid .score-card--installable'
+    ) as HTMLElement | null
+
+    expect(scoreCard?.classList.contains('score-card--safe')).toBe(true)
+    expect(badgeCard?.classList.contains('score-card--warn')).toBe(true)
+    expect(vulnerabilityCard?.classList.contains('score-card--neutral')).toBe(true)
+    expect(installableCard?.classList.contains('score-card--safe')).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('shows a toast when a skill is blocked by policy', async () => {
     const blockedSkill = makeSkill({
       security_badge: 'red',

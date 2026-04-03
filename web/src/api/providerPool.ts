@@ -93,6 +93,8 @@ export interface Model {
   context_window?: number
   max_output?: number
   description?: string
+  pinchbench_score?: number
+  pinchbench_url?: string
 }
 
 export interface HealthCheckResult {

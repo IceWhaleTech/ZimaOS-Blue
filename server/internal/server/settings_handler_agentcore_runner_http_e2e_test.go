@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -79,6 +80,42 @@ func TestSettingsHandlerAgentcoreRunnerRoutesHTTPE2E(t *testing.T) {
 	}
 	if manager.lastPrepareRepo != "https://github.com/IceWhaleTech/ZimaOS-Blue" || manager.lastPrepareRef != "main" {
 		t.Fatalf("prepare request repo=%q ref=%q", manager.lastPrepareRepo, manager.lastPrepareRef)
+	}
+}
+
+func TestSettingsHandlerAgentcoreRunnerTagsRouteHTTPE2E(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+	handler.agentcoreRunnerTagResolver = func(_ context.Context, repoURL string) ([]string, error) {
+		if repoURL != "owner/repo" {
+			t.Fatalf("repoURL=%q, want owner/repo", repoURL)
+		}
+		return []string{"v2.0.0", "v1.9.0"}, nil
+	}
+
+	e := echo.New()
+	api := e.Group("/api/v1")
+	handler.RegisterRoutes(api)
+	srv := httptest.NewServer(e)
+	defer srv.Close()
+
+	resp, err := srv.Client().Get(srv.URL + "/api/v1/settings/agentcore-runner/tags?repo_url=owner/repo")
+	if err != nil {
+		t.Fatalf("GET tags: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET tags code=%d", resp.StatusCode)
+	}
+
+	var body AgentcoreRunnerTagList
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode tags: %v", err)
+	}
+	if body.DefaultRef != "main" {
+		t.Fatalf("default_ref=%q", body.DefaultRef)
+	}
+	if strings.Join(body.Tags, ",") != "v2.0.0,v1.9.0" {
+		t.Fatalf("tags=%#v", body.Tags)
 	}
 }
 

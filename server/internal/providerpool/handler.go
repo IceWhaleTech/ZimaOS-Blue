@@ -773,8 +773,10 @@ type modelResponse struct {
 	PricePerRequest float64 `json:"price_per_request,omitempty"`
 	PricingUnit     string  `json:"pricing_unit,omitempty"` // "image", "second", "video" for media models
 
-	ContextWindow int `json:"context_window,omitempty"`
-	MaxOutput     int `json:"max_output,omitempty"`
+	ContextWindow   int      `json:"context_window,omitempty"`
+	MaxOutput       int      `json:"max_output,omitempty"`
+	PinchBenchScore *float64 `json:"pinchbench_score,omitempty"`
+	PinchBenchURL   string   `json:"pinchbench_url,omitempty"`
 }
 
 // capabilitiesToStrings converts ModelCapabilities to a list of enabled capability names.
@@ -932,6 +934,8 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 			PricePerRequest: m.PricePerRequest,
 			ContextWindow:   m.ContextWindow,
 			MaxOutput:       m.MaxOutput,
+			PinchBenchScore: cloneOptionalFloat64(m.PinchBenchScore),
+			PinchBenchURL:   m.PinchBenchURL,
 		}
 		// Always prefer PricingManager pricing so runtime updates and canonical
 		// pricing data are reflected even when built-in models have stale values.
@@ -997,6 +1001,8 @@ func toModelResponses(models []*Model, pm *PricingManager, mpLookup MediaPricing
 			PricePerRequest: m.PricePerRequest,
 			ContextWindow:   m.ContextWindow,
 			MaxOutput:       m.MaxOutput,
+			PinchBenchScore: cloneOptionalFloat64(m.PinchBenchScore),
+			PinchBenchURL:   m.PinchBenchURL,
 		}
 		if pm != nil {
 			if pricing := pm.GetModelPricingWithHeuristics(m.ID, m.ProviderID); pricing != nil {

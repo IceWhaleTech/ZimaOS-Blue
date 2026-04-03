@@ -285,10 +285,12 @@ type Model struct {
 	MaxOutput     int `json:"max_output,omitempty"`
 
 	// Metadata
-	Description string    `json:"description,omitempty"`
-	Deprecated  bool      `json:"deprecated,omitempty"`
-	CreatedAt   time.Time `json:"created_at,omitempty"`
-	UpdatedAt   time.Time `json:"updated_at,omitempty"`
+	Description     string    `json:"description,omitempty"`
+	Deprecated      bool      `json:"deprecated,omitempty"`
+	PinchBenchScore *float64  `json:"pinchbench_score,omitempty"`
+	PinchBenchURL   string    `json:"pinchbench_url,omitempty"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at,omitempty"`
 }
 
 // ModelCapabilities describes what a model can do

@@ -15,6 +15,14 @@ const defaultAgentcoreRunnerRepoURL = "https://github.com/IceWhaleTech/ZimaOS-Bl
 type AgentcoreRunnerStatus = optimization.Status
 type AgentcoreRunnerPrepareRequest = optimization.PrepareRequest
 
+type AgentcoreRunnerTagList struct {
+	RepoURL    string   `json:"repo_url"`
+	DefaultRef string   `json:"default_ref"`
+	Tags       []string `json:"tags"`
+}
+
+type agentcoreRunnerTagResolver func(ctx context.Context, repoURL string) ([]string, error)
+
 type agentcoreRunnerManager interface {
 	GetStatus(ctx context.Context) optimization.Status
 	Prepare(ctx context.Context, req optimization.PrepareRequest) (optimization.Status, error)
@@ -59,7 +67,7 @@ func (h *SettingsHandler) GetExperimentalAgentcoreRunnerRepoURL() string {
 func (h *SettingsHandler) GetExperimentalAgentcoreRunnerRef() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return strings.TrimSpace(h.settings.ExperimentalAgentcoreRunnerRef)
+	return normalizeAgentcoreRunnerRef(h.settings.ExperimentalAgentcoreRunnerRef)
 }
 
 func (h *SettingsHandler) GetAgentcoreRunnerStatus(c echo.Context) error {
@@ -85,11 +93,38 @@ func (h *SettingsHandler) GetAgentcoreRunnerLastRun(c echo.Context) error {
 	return c.JSON(http.StatusOK, record)
 }
 
+func (h *SettingsHandler) GetAgentcoreRunnerTags(c echo.Context) error {
+	h.mu.RLock()
+	resolver := h.agentcoreRunnerTagResolver
+	storedRepoURL := h.settings.ExperimentalAgentcoreRunnerRepoURL
+	h.mu.RUnlock()
+	if resolver == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "agentcore runner tag resolver not initialized"})
+	}
+	repoURL := normalizeAgentcoreRunnerRepoURL(c.QueryParam("repo_url"))
+	if repoURL == defaultAgentcoreRunnerRepoURL && strings.TrimSpace(c.QueryParam("repo_url")) == "" {
+		repoURL = normalizeAgentcoreRunnerRepoURL(storedRepoURL)
+	}
+	repo, err := optimization.NormalizeGitHubRepo(repoURL)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	tags, err := resolver(c.Request().Context(), repoURL)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, AgentcoreRunnerTagList{
+		RepoURL:    repo.CanonicalURL,
+		DefaultRef: defaultAgentcoreRunnerRef,
+		Tags:       append([]string(nil), tags...),
+	})
+}
+
 func (h *SettingsHandler) PrepareAgentcoreRunner(c echo.Context) error {
 	h.mu.RLock()
 	manager := h.agentcoreRunnerManager
 	repoURL := normalizeAgentcoreRunnerRepoURL(h.settings.ExperimentalAgentcoreRunnerRepoURL)
-	ref := strings.TrimSpace(h.settings.ExperimentalAgentcoreRunnerRef)
+	ref := normalizeAgentcoreRunnerRef(h.settings.ExperimentalAgentcoreRunnerRef)
 	h.mu.RUnlock()
 	if manager == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "agentcore runner manager not initialized"})
@@ -116,7 +151,7 @@ func (h *SettingsHandler) agentcoreRunnerStatus(ctx context.Context) (optimizati
 	manager := h.agentcoreRunnerManager
 	enabled := h.settings.ExperimentalAgentcoreRunnerEnabled != nil && *h.settings.ExperimentalAgentcoreRunnerEnabled
 	repoURL := normalizeAgentcoreRunnerRepoURL(h.settings.ExperimentalAgentcoreRunnerRepoURL)
-	ref := strings.TrimSpace(h.settings.ExperimentalAgentcoreRunnerRef)
+	ref := normalizeAgentcoreRunnerRef(h.settings.ExperimentalAgentcoreRunnerRef)
 	h.mu.RUnlock()
 
 	status := optimization.Status{
@@ -142,6 +177,16 @@ func normalizeAgentcoreRunnerRepoURL(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return defaultAgentcoreRunnerRepoURL
+	}
+	return value
+}
+
+const defaultAgentcoreRunnerRef = "main"
+
+func normalizeAgentcoreRunnerRef(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultAgentcoreRunnerRef
 	}
 	return value
 }
