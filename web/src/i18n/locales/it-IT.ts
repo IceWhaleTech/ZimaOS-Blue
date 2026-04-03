@@ -1,5 +1,5 @@
 // Italian (Italiano)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('it-IT', {
   common: {
@@ -1955,7 +1955,12 @@ export default mergeHarnessLocale('it-IT', {
       saveBeforeHealth: 'Salvare il profilo prima di eseguire un controllo dello stato.',
       duplicate: 'Duplicato',
       builtinHelp:
-        'I profili integrati rimangono di sola lettura, quindi le voci Claude, Codex, Gemini e le voci generiche A2A rimangono stabili.',
+        'I profili integrati restano di sola lettura. Duplicane uno per creare una copia personalizzata.',
+      acpTemplateSummary: 'Duplica per aggiungere un comando ACP eseguibile.',
+      acpTemplateHelp:
+        'Le voci ACP integrate sono solo modelli di configurazione. Duplicane una, quindi aggiungi qualsiasi comando ACP eseguibile.',
+      acpTemplateActionDisabled:
+        'I modelli ACP integrati non possono eseguire verifiche o controlli di stato. Duplicane uno e configura prima un comando.',
       command: 'Comando e Arg',
       credentialSource: 'Origine credenziale',
       authMethod: 'Metodo di autenticazione',

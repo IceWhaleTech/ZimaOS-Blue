@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
+  hasTypelessCards,
   parseTypelessContent,
   parseTypelessContentIncremental,
   splitIntoSegments,
@@ -102,6 +103,49 @@ describe('Typeless Card Parsing', () => {
     expect(result.text).toContain('[[TYPELESS_CARD:card-0]]')
     expect(result.text).not.toContain('```typeless')
     expect(result.text).not.toContain('"type":"exec"')
+  })
+
+  it('treats function_calls-only payloads as typeless content', () => {
+    const content = [
+      '<function_calls>',
+      '<invoke name="web_query">',
+      '<parameter name="query">OpenAI Responses API docs</parameter>',
+      '</invoke>',
+      '</function_calls>',
+    ].join('\n')
+
+    expect(hasTypelessCards(content)).toBe(true)
+  })
+
+  it('unwraps $blue wrapper invocations into the underlying tool calls', () => {
+    const content = [
+      '<function_calls>',
+      '<invoke name="$blue">',
+      '<parameter name="command">deep_research</parameter>',
+      '<parameter name="args">',
+      '<parameter name="query">Apple AAPL stock price today April 2026</parameter>',
+      '</parameter>',
+      '</invoke>',
+      '</function_calls>',
+      '<function_calls>',
+      '<invoke name="file_write">',
+      '<parameter name="path">stock_report.txt</parameter>',
+      '<parameter name="content">苹果公司(AAPL)股票报告</parameter>',
+      '</invoke>',
+      '</function_calls>',
+    ].join('\n')
+
+    const result = parseTypelessContent(content)
+    const stepsCards = result.cards.filter((card) => card.type === 'steps') as any[]
+    const allSteps = stepsCards.flatMap((card) => card.steps ?? [])
+
+    expect(stepsCards).toHaveLength(2)
+    expect(result.text).not.toContain('<function_calls>')
+    expect(allSteps).toHaveLength(2)
+    expect(allSteps[0]?.title).toContain('Apple AAPL stock price today April 2026')
+    expect(allSteps[0]?.title).not.toContain('$blue')
+    expect(allSteps[1]?.title.toLowerCase()).toContain('file')
+    expect(allSteps[1]?.description).toContain('stock_report.txt')
   })
 
   it('keeps streaming typeless exec block stable with function_calls prefix', () => {

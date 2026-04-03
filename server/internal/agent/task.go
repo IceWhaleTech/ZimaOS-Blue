@@ -71,6 +71,17 @@ func preferredTaskModel(task *Task) string {
 			return model
 		}
 	}
+	for _, source := range []map[string]interface{}{
+		task.Metadata,
+		metadataMapValue(task.Metadata, "group_input"),
+	} {
+		if model := metadataStringValue(source, "policy_model_hint"); model != "" {
+			return model
+		}
+		if model := metadataStringValue(source, "policyModelHint"); model != "" {
+			return model
+		}
+	}
 	return "auto"
 }
 

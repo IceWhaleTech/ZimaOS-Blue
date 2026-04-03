@@ -31,6 +31,8 @@ const defaultDirectoryWhitelistPath = "/tmp"
 
 var removedSettingsKeys = map[string]struct{}{
 	"smart_tool_selection":                    {},
+	"smart_skill_selection":                   {},
+	"skill_dynamic_exposure":                  {},
 	"small_model_route_tool_dispatch_enabled": {},
 }
 
@@ -46,6 +48,7 @@ type SettingsHandler struct {
 	settings                  *Settings
 	skillRerankerModelManager *agentcore.SkillRerankerModelManager
 	smallModelManager         *smallmodel.Manager
+	agentcoreRunnerManager    agentcoreRunnerManager
 	chatHandler               *ChatHandler
 	voiceWakeManager          *voicewake.Manager
 	skillAdvisor              *skilladvisor.Service
@@ -60,14 +63,12 @@ type DirectoryWhitelistEntry struct {
 type Settings struct {
 	Locale                              string                    `json:"locale,omitempty"`                                    // User's preferred locale (e.g., "zh-CN", "en-US")
 	Timezone                            string                    `json:"timezone,omitempty"`                                  // User's timezone
-	SmartSkillSelection                 *bool                     `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default true)
 	SkillSelectorMode                   string                    `json:"skill_selector_mode,omitempty"`                       // hybrid|ir_only|llm_only
 	SkillRerankEnabled                  *bool                     `json:"skill_rerank_enabled,omitempty"`                      // Enable stage-2 rerank (nil = default false)
 	SkillRerankModel                    string                    `json:"skill_rerank_model,omitempty"`                        // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
 	SkillRerankONNXEnabled              *bool                     `json:"skill_rerank_onnx_enabled,omitempty"`                 // Enable ONNX reranker path (nil = default false)
 	SkillRerankONNXAutoDownload         *bool                     `json:"skill_rerank_onnx_auto_download,omitempty"`           // Allow ONNX model auto-download (nil = default false)
 	SkillSelectorConfidenceThreshold    *float64                  `json:"skill_selector_confidence_threshold,omitempty"`       // default 0.78
-	SkillDynamicExposure                *bool                     `json:"skill_dynamic_exposure,omitempty"`                    // Enable runtime nested discovery + path activation (nil = default true)
 	PromptPolicyVersion                 string                    `json:"prompt_policy_version,omitempty"`                     // prompt policy version marker
 	PromptPolicyProfile                 string                    `json:"prompt_policy_profile,omitempty"`                     // prompt policy profile
 	MemoryRecallMode                    string                    `json:"memory_recall_mode,omitempty"`                        // Memory recall strategy: aggressive|balanced|quality
@@ -109,6 +110,9 @@ type Settings struct {
 	VoiceWakeTriggers                   []string                  `json:"voice_wake_triggers,omitempty"`                       // default ["Hey Blue"]
 	VoiceWakeLocale                     string                    `json:"voice_wake_locale,omitempty"`                         // optional locale override
 	VoiceWakeTargetConversationID       string                    `json:"voice_wake_target_conversation_id,omitempty"`         // fixed background target conversation
+	ExperimentalAgentcoreRunnerEnabled  *bool                     `json:"experimental_agentcore_runner_enabled,omitempty"`
+	ExperimentalAgentcoreRunnerRepoURL  string                    `json:"experimental_agentcore_runner_repo_url,omitempty"`
+	ExperimentalAgentcoreRunnerRef      string                    `json:"experimental_agentcore_runner_ref,omitempty"`
 }
 
 var allowedMemoryRecallModes = map[string]struct{}{
@@ -140,6 +144,9 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/settings/small-model/status", h.GetSmallModelStatus)
 	g.POST("/settings/small-model/download", h.StartSmallModelDownload)
 	g.POST("/settings/small-model/cancel", h.CancelSmallModelDownload)
+	g.GET("/settings/agentcore-runner/status", h.GetAgentcoreRunnerStatus)
+	g.GET("/settings/agentcore-runner/last-run", h.GetAgentcoreRunnerLastRun)
+	g.POST("/settings/agentcore-runner/prepare", h.PrepareAgentcoreRunner)
 }
 
 // SetSkillRerankerModelManager wires ONNX skill-reranker model manager for UI download APIs.
@@ -397,8 +404,6 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 	response := map[string]interface{}{
 		"query":                        query,
 		"model":                        model,
-		"smart_skill_selection":        h.GetSmartSkillSelection(),
-		"skill_dynamic_exposure":       h.GetSkillDynamicExposure(),
 		"selected_tools":               toolNames,
 		"selected_tool_surface":        toolSurface,
 		"selected_native_tools":        selectedNativeNames,
@@ -429,13 +434,12 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 			response["clarify_outcome"] = outcome
 		}
 		discoveryRuntime := map[string]interface{}{
-			"dynamic_exposure_enabled": h.GetSkillDynamicExposure(),
-			"native_surface_mode":      string(copied.NativeSurfaceMode),
-			"selected_native_mode":     string(selection.NativeMode),
-			"surface_reason":           surfaceReason,
-			"execution_profile":        string(observation.ExecutionProfile),
-			"skill_exec_cutover":       observation.SkillExecCutover,
-			"forked_skill_execution":   observation.ForkedSkillExecution,
+			"native_surface_mode":    string(copied.NativeSurfaceMode),
+			"selected_native_mode":   string(selection.NativeMode),
+			"surface_reason":         surfaceReason,
+			"execution_profile":      string(observation.ExecutionProfile),
+			"skill_exec_cutover":     observation.SkillExecCutover,
+			"forked_skill_execution": observation.ForkedSkillExecution,
 		}
 		if copied.CanonicalTarget != "" && copied.CanonicalTarget != agentcore.CanonicalUnknown {
 			discoveryRuntime["canonical_target"] = string(copied.CanonicalTarget)
@@ -725,6 +729,8 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 	newSettings.VoiceWakeTriggers = sanitizeStringList(newSettings.VoiceWakeTriggers, 8, 64)
 	newSettings.VoiceWakeLocale = strings.TrimSpace(newSettings.VoiceWakeLocale)
 	newSettings.VoiceWakeTargetConversationID = strings.TrimSpace(newSettings.VoiceWakeTargetConversationID)
+	newSettings.ExperimentalAgentcoreRunnerRepoURL = strings.TrimSpace(newSettings.ExperimentalAgentcoreRunnerRepoURL)
+	newSettings.ExperimentalAgentcoreRunnerRef = strings.TrimSpace(newSettings.ExperimentalAgentcoreRunnerRef)
 	applyDefaultDirectoryWhitelist(&newSettings)
 
 	h.mu.Lock()
@@ -760,16 +766,6 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	}
 	if timezone, ok := updates["timezone"].(string); ok {
 		h.settings.Timezone = timezone
-	}
-	if v, ok := updates["smart_skill_selection"]; ok {
-		if b, isBool := v.(bool); isBool {
-			h.settings.SmartSkillSelection = &b
-		}
-	}
-	if v, ok := updates["skill_dynamic_exposure"]; ok {
-		if b, isBool := v.(bool); isBool {
-			h.settings.SkillDynamicExposure = &b
-		}
 	}
 	if mode, ok := updates["skill_selector_mode"].(string); ok {
 		switch mode {
@@ -1031,6 +1027,17 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	if target, ok := updates["voice_wake_target_conversation_id"].(string); ok {
 		h.settings.VoiceWakeTargetConversationID = strings.TrimSpace(target)
 	}
+	if v, ok := updates["experimental_agentcore_runner_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.ExperimentalAgentcoreRunnerEnabled = &b
+		}
+	}
+	if repoURL, ok := updates["experimental_agentcore_runner_repo_url"].(string); ok {
+		h.settings.ExperimentalAgentcoreRunnerRepoURL = strings.TrimSpace(repoURL)
+	}
+	if ref, ok := updates["experimental_agentcore_runner_ref"].(string); ok {
+		h.settings.ExperimentalAgentcoreRunnerRef = strings.TrimSpace(ref)
+	}
 	applyDefaultDirectoryWhitelist(h.settings)
 	voiceWakeManager := h.voiceWakeManager
 	h.mu.Unlock()
@@ -1109,33 +1116,16 @@ func (h *SettingsHandler) GetVoiceWakeTargetConversationID() string {
 	return strings.TrimSpace(h.settings.VoiceWakeTargetConversationID)
 }
 
-// GetSmartSkillSelection returns whether smart skill selection is enabled (default true).
+// GetSmartSkillSelection returns the effective smart-skill routing state.
+// After cutover this remains enabled even if older settings still carry false.
 func (h *SettingsHandler) GetSmartSkillSelection() bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SmartSkillSelection == nil {
-		return true
-	}
-	return *h.settings.SmartSkillSelection
+	return true
 }
 
-// GetSkillDynamicExposure returns whether runtime skill dynamic exposure is enabled (default true).
+// GetSkillDynamicExposure returns the effective discover-first activation state.
+// After cutover this remains enabled even if older settings still carry false.
 func (h *SettingsHandler) GetSkillDynamicExposure() bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SkillDynamicExposure == nil {
-		return true
-	}
-	return *h.settings.SkillDynamicExposure
-}
-
-func (h *SettingsHandler) GetSkillDynamicExposureExplicit() (bool, bool) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SkillDynamicExposure == nil {
-		return false, false
-	}
-	return *h.settings.SkillDynamicExposure, true
+	return true
 }
 
 // GetSkillSelectorMode returns selector mode (default "hybrid").

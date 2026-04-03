@@ -101,6 +101,9 @@ vi.mock('@/api/settings', () => ({
     getSmallModelStatus: vi.fn(),
     downloadSmallModel: vi.fn(),
     cancelSmallModelDownload: vi.fn(),
+    getAgentcoreRunnerStatus: vi.fn(),
+    getAgentcoreRunnerLastRun: vi.fn(),
+    prepareAgentcoreRunner: vi.fn(),
     getSmallModelStats: vi.fn(),
     resetSmallModelStats: vi.fn(),
   },
@@ -208,6 +211,71 @@ function primeApiMocks() {
       state: 'idle',
     },
   } as never)
+  vi.mocked(settingsApi.getAgentcoreRunnerStatus).mockResolvedValue({
+    data: {
+      enabled: true,
+      repo_url: 'https://github.com/example/runner',
+      resolved_ref: 'main',
+      resolved_commit: 'abc123',
+      required_go_version: '1.24.0',
+      installed_go_version: '1.24.0',
+      toolchain_ready: true,
+      binary_ready: true,
+      binary_path: '/tmp/agentcore-runner',
+      binary_sha256: 'deadbeef',
+      last_prepare_at: '2026-04-03T12:00:00Z',
+      last_prepare_state: 'ready',
+      last_error: '',
+      last_optimization_run_id: 'opt-123',
+      last_optimization_at: '2026-04-03T12:05:00Z',
+      last_optimization_state: 'completed',
+      last_optimization_summary: 'agentcore runner summary',
+    },
+  } as never)
+  vi.mocked(settingsApi.getAgentcoreRunnerLastRun).mockResolvedValue({
+    data: {
+      id: 'opt-123',
+      reason: 'execution_gate_failed',
+      candidate_id: 'candidate-123',
+      runner_protocol: 'acp',
+      runner_stop_reason: 'completed',
+      runner_duration_ms: 128,
+      runner_response_text: 'agentcore-runner received optimization evidence',
+      runner_transcript: [
+        {
+          direction: 'out',
+          method: 'session/prompt',
+          text: 'Optimization trigger received.',
+        },
+        {
+          direction: 'in',
+          method: 'session/update',
+          text: 'agentcore-runner received optimization evidence',
+        },
+      ],
+    },
+  } as never)
+  vi.mocked(settingsApi.prepareAgentcoreRunner).mockResolvedValue({
+    data: {
+      enabled: true,
+      repo_url: 'https://github.com/example/runner',
+      resolved_ref: 'main',
+      resolved_commit: 'def456',
+      required_go_version: '1.24.0',
+      installed_go_version: '1.24.0',
+      toolchain_ready: true,
+      binary_ready: true,
+      binary_path: '/tmp/agentcore-runner',
+      binary_sha256: 'beadfeed',
+      last_prepare_at: '2026-04-03T12:30:00Z',
+      last_prepare_state: 'ready',
+      last_error: '',
+      last_optimization_run_id: 'opt-456',
+      last_optimization_at: '2026-04-03T12:31:45Z',
+      last_optimization_state: 'completed',
+      last_optimization_summary: 'agentcore runner summary 2',
+    },
+  } as never)
   vi.mocked(settingsApi.getSmallModelStats).mockResolvedValue({
     data: {
       short_qa_route_attempts: 12,
@@ -278,7 +346,7 @@ describe('SettingsView small-model controls', () => {
   beforeEach(async () => {
     localStorageMock.clear()
     routerReplace.mockReset()
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     tauriState.isTauri = false
     tauriState.platform = 'unknown'
     tauriState.restartServerRuntime.mockReset()
@@ -491,6 +559,418 @@ describe('SettingsView small-model controls', () => {
     )
     expect(wrapper.text()).not.toContain('deepresearch_unavailable')
     expect(wrapper.text()).not.toContain('auto_rollback_doc_extract_fallback_rate')
+
+    wrapper.unmount()
+  })
+
+  it('renders the agentcore runner card, refreshes status, and prepares the runner', async () => {
+    routeTab = 'proxy'
+    vi.mocked(settingsApi.getAgentcoreRunnerStatus)
+      .mockResolvedValueOnce({
+        data: {
+          enabled: true,
+          repo_url: 'https://github.com/example/runner',
+          resolved_ref: 'main',
+          resolved_commit: 'abc123',
+          required_go_version: '1.24.0',
+          installed_go_version: '1.24.0',
+          toolchain_ready: true,
+          binary_ready: false,
+          binary_path: '',
+          binary_sha256: '',
+          last_prepare_at: '2026-04-03T12:00:00Z',
+          last_prepare_state: 'idle',
+          last_error: '',
+          last_optimization_run_id: 'opt-123',
+          last_optimization_at: '2026-04-03T12:05:00Z',
+          last_optimization_state: 'failed',
+          last_optimization_summary: 'runner binary checksum mismatch',
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          enabled: true,
+          repo_url: 'https://github.com/example/runner',
+          resolved_ref: 'release/v1',
+          resolved_commit: 'def456',
+          required_go_version: '1.24.0',
+          installed_go_version: '1.24.0',
+          toolchain_ready: true,
+          binary_ready: true,
+          binary_path: '/tmp/agentcore-runner',
+          binary_sha256: 'beadfeed',
+          last_prepare_at: '2026-04-03T12:30:00Z',
+          last_prepare_state: 'ready',
+          last_error: '',
+          last_optimization_run_id: 'opt-456',
+          last_optimization_at: '2026-04-03T12:31:45Z',
+          last_optimization_state: 'completed',
+          last_optimization_summary: 'execution gate improved after managed runner check',
+        },
+      } as never)
+    vi.mocked(settingsApi.getAgentcoreRunnerLastRun)
+      .mockResolvedValueOnce({
+        data: {
+          id: 'opt-123',
+          reason: 'selector_gate_failed',
+          candidate_id: 'candidate-123',
+          runner_protocol: 'acp',
+          runner_error: 'runner binary checksum mismatch',
+          runner_transcript: [],
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          id: 'opt-456',
+          reason: 'execution_gate_failed',
+          candidate_id: 'candidate-456',
+          eval_run_id: 'eval-456',
+          runner_protocol: 'acp',
+          runner_stop_reason: 'completed',
+          runner_duration_ms: 612,
+          optimization_surface: 'runner_code',
+          runner_response_text: 'execution gate improved after managed runner check',
+          runner_transcript: [
+            {
+              direction: 'out',
+              method: 'session/prompt',
+              text: 'Optimization trigger received.',
+            },
+            {
+              direction: 'out',
+              method: 'session/context',
+              text: 'Constraint diff prepared.',
+            },
+            {
+              direction: 'out',
+              method: 'session/context',
+              text: 'Build recipe prepared.',
+            },
+            {
+              direction: 'in',
+              method: 'session/update',
+              text: 'execution gate improved after managed runner check',
+            },
+          ],
+        },
+      } as never)
+
+    vi.mocked(settingsApi.prepareAgentcoreRunner).mockResolvedValueOnce({
+      data: {
+        enabled: true,
+        repo_url: 'https://github.com/example/runner',
+        resolved_ref: 'release/v1',
+        resolved_commit: 'def456',
+        required_go_version: '1.24.0',
+        installed_go_version: '1.24.0',
+        toolchain_ready: true,
+        binary_ready: true,
+        binary_path: '/tmp/agentcore-runner',
+        binary_sha256: 'beadfeed',
+        last_prepare_at: '2026-04-03T12:30:00Z',
+        last_prepare_state: 'ready',
+        last_error: '',
+        last_optimization_run_id: 'opt-456',
+        last_optimization_at: '2026-04-03T12:31:45Z',
+        last_optimization_state: 'completed',
+        last_optimization_summary: 'execution gate improved after managed runner check',
+      },
+    } as never)
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await settleSettingsAsyncTabComponents()
+
+    expect(settingsApi.getAgentcoreRunnerStatus).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="agentcore-runner-card"]').text()).toContain('Agentcore Runner')
+    expect(wrapper.get('[data-testid="agentcore-runner-resolved-commit"]').text()).toContain('abc123')
+    expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-state"]').text()).toContain(
+      'failed'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-summary"]').text()).toContain(
+      'checksum mismatch'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain(
+      'selector_gate_failed'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain(
+      'candidate-123'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-error"]').text()).toContain(
+      'runner binary checksum mismatch'
+    )
+
+    await wrapper.get('[data-testid="agentcore-runner-repo-input"]').setValue('owner/repo-next')
+    await wrapper.get('[data-testid="agentcore-runner-ref-input"]').setValue('release/v1')
+    await wrapper.get('[data-testid="agentcore-runner-prepare"]').trigger('click')
+    await flushPromises()
+
+    expect(settingsApi.patch).toHaveBeenCalledWith({
+      experimental_agentcore_runner_repo_url: 'owner/repo-next',
+      experimental_agentcore_runner_ref: 'release/v1',
+    })
+    expect(settingsApi.prepareAgentcoreRunner).toHaveBeenCalledTimes(1)
+    expect(settingsApi.getAgentcoreRunnerStatus).toHaveBeenCalledTimes(2)
+    expect(settingsApi.getAgentcoreRunnerLastRun).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="agentcore-runner-resolved-commit"]').text()).toContain('def456')
+    expect(wrapper.get('[data-testid="agentcore-runner-binary-path"]').text()).toContain(
+      '/tmp/agentcore-runner'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-state"]').text()).toContain(
+      'completed'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-time"]').text()).toContain(
+      '2026'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-summary"]').text()).toContain(
+      'execution gate improved after managed runner check'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain('acp')
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain(
+      'completed'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain(
+      'runner_code'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain(
+      'execution_gate_failed'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain(
+      'candidate-456'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain('612ms')
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-response"]').text()).toContain(
+      'execution gate improved after managed runner check'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-transcript"]').text()).toContain(
+      'session/prompt'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-transcript"]').text()).toContain(
+      'Optimization trigger received.'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-transcript"]').text()).toContain(
+      'Constraint diff prepared.'
+    )
+    expect(
+      wrapper.get('[data-testid="agentcore-runner-last-run-transcript"]').text()
+    ).not.toContain('Build recipe prepared.')
+    expect(wrapper.get('[data-testid="agentcore-runner-transcript-toggle"]').text()).toContain(
+      'Expand'
+    )
+    expect(
+      wrapper.get('[data-testid="agentcore-runner-last-run-transcript"]').text()
+    ).not.toContain('execution gate improved after managed runner check')
+
+    await wrapper.get('[data-testid="agentcore-runner-transcript-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="agentcore-runner-transcript-toggle"]').text()).toContain(
+      'Collapse'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-transcript"]').text()).toContain(
+      'Build recipe prepared.'
+    )
+    expect(wrapper.text()).toContain('Agentcore Runner prepared successfully')
+
+    wrapper.unmount()
+  })
+
+  it('shows prepare failure state and restores the prepare button label', async () => {
+    routeTab = 'proxy'
+    let rejectPrepare: ((reason?: unknown) => void) | null = null
+    const preparePromise = new Promise((_, reject) => {
+      rejectPrepare = reject
+    })
+    vi.mocked(settingsApi.getAgentcoreRunnerStatus).mockResolvedValueOnce({
+      data: {
+        enabled: true,
+        repo_url: 'https://github.com/example/runner',
+        resolved_ref: 'main',
+        resolved_commit: 'abc123',
+        required_go_version: '1.24.0',
+        installed_go_version: '1.24.0',
+        toolchain_ready: true,
+        binary_ready: false,
+        binary_path: '',
+        binary_sha256: '',
+        last_prepare_at: '2026-04-03T12:00:00Z',
+        last_prepare_state: 'failed',
+        last_error: 'previous prepare error',
+        last_optimization_run_id: '',
+        last_optimization_at: '',
+        last_optimization_state: '',
+        last_optimization_summary: '',
+      },
+    } as never)
+    vi.mocked(settingsApi.prepareAgentcoreRunner).mockReturnValueOnce(preparePromise as never)
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await settleSettingsAsyncTabComponents()
+
+    const prepareButton = wrapper.get('[data-testid="agentcore-runner-prepare"]')
+    expect(prepareButton.text()).toContain('Prepare Runner')
+    expect(wrapper.get('[data-testid="agentcore-runner-resolved-commit"]').text()).toContain(
+      'abc123'
+    )
+
+    await prepareButton.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="agentcore-runner-prepare"]').text()).toContain('Preparing...')
+
+    rejectPrepare?.(new Error('prepare failed'))
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="agentcore-runner-prepare"]').text()).toContain(
+      'Prepare Runner'
+    )
+    expect(wrapper.text()).toContain('Failed to prepare Agentcore Runner')
+    expect(settingsApi.getAgentcoreRunnerStatus).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+  })
+
+  it('refreshes agentcore runner status and last-run details without preparing again', async () => {
+    routeTab = 'proxy'
+    vi.mocked(settingsApi.getAgentcoreRunnerStatus)
+      .mockResolvedValueOnce({
+        data: {
+          enabled: true,
+          repo_url: 'https://github.com/example/runner',
+          resolved_ref: 'main',
+          resolved_commit: 'abc123',
+          required_go_version: '1.24.0',
+          installed_go_version: '1.24.0',
+          toolchain_ready: true,
+          binary_ready: true,
+          binary_path: '/tmp/agentcore-runner',
+          binary_sha256: 'deadbeef',
+          last_prepare_at: '2026-04-03T12:00:00Z',
+          last_prepare_state: 'ready',
+          last_error: '',
+          last_optimization_run_id: 'opt-123',
+          last_optimization_at: '2026-04-03T12:05:00Z',
+          last_optimization_state: 'failed',
+          last_optimization_summary: 'selector gate still blocked',
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          enabled: true,
+          repo_url: 'https://github.com/example/runner',
+          resolved_ref: 'main',
+          resolved_commit: 'abc789',
+          required_go_version: '1.24.0',
+          installed_go_version: '1.24.0',
+          toolchain_ready: true,
+          binary_ready: true,
+          binary_path: '/tmp/agentcore-runner',
+          binary_sha256: 'beadfeed',
+          last_prepare_at: '2026-04-03T12:00:00Z',
+          last_prepare_state: 'ready',
+          last_error: '',
+          last_optimization_run_id: 'opt-789',
+          last_optimization_at: '2026-04-03T12:45:00Z',
+          last_optimization_state: 'completed',
+          last_optimization_summary: 'selector gate improved after refresh',
+        },
+      } as never)
+    vi.mocked(settingsApi.getAgentcoreRunnerLastRun)
+      .mockResolvedValueOnce({
+        data: {
+          id: 'opt-123',
+          reason: 'selector_gate_failed',
+          candidate_id: 'candidate-123',
+          runner_protocol: 'acp',
+          runner_error: 'selector gate still blocked',
+          runner_transcript: [],
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          id: 'opt-789',
+          reason: 'selector_gate_failed',
+          candidate_id: 'candidate-789',
+          runner_protocol: 'acp',
+          runner_stop_reason: 'completed',
+          runner_duration_ms: 245,
+          optimization_surface: 'constraints',
+          runner_response_text: 'selector gate improved after refresh',
+          runner_transcript: [
+            {
+              direction: 'out',
+              method: 'session/prompt',
+              text: 'Optimization trigger received.',
+            },
+            {
+              direction: 'out',
+              method: 'session/context',
+              text: 'Constraint delta applied.',
+            },
+            {
+              direction: 'in',
+              method: 'session/update',
+              text: 'selector gate improved after refresh',
+            },
+          ],
+        },
+      } as never)
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await settleSettingsAsyncTabComponents()
+
+    expect(wrapper.get('[data-testid="agentcore-runner-resolved-commit"]').text()).toContain('abc123')
+    expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-summary"]').text()).toContain(
+      'selector gate still blocked'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-error"]').text()).toContain(
+      'selector gate still blocked'
+    )
+
+    await wrapper.get('[data-testid="agentcore-runner-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(settingsApi.prepareAgentcoreRunner).not.toHaveBeenCalled()
+    expect(settingsApi.getAgentcoreRunnerStatus).toHaveBeenCalledTimes(2)
+    expect(settingsApi.getAgentcoreRunnerLastRun).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="agentcore-runner-resolved-commit"]').text()).toContain('abc789')
+    expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-state"]').text()).toContain(
+      'completed'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-summary"]').text()).toContain(
+      'selector gate improved after refresh'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain(
+      'candidate-789'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-meta"]').text()).toContain(
+      'constraints'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-response"]').text()).toContain(
+      'selector gate improved after refresh'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-last-run-transcript"]').text()).toContain(
+      'Constraint delta applied.'
+    )
 
     wrapper.unmount()
   })

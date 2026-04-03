@@ -293,7 +293,7 @@ func TestToolSelector_StructuredWorkspaceArtifactTaskKeepsBroadWorkflowForNonPDF
 func TestToolSelector_LiveWebQueryAvoidsLocalFileTools(t *testing.T) {
 	ts := DefaultToolSelector()
 	defs := []ToolDefinition{
-		{Name: "web_search", Description: "Search the web for latest sources and references."},
+		{Name: "web_query", Description: "Search the web for latest sources and references."},
 		{Name: "file_read", Description: "Read workspace files."},
 		{Name: "file_write", Description: "Write workspace files."},
 		{Name: "convert", Description: "Convert CSV and XLSX files."},
@@ -302,8 +302,8 @@ func TestToolSelector_LiveWebQueryAvoidsLocalFileTools(t *testing.T) {
 
 	selected := ts.Select("搜索最新新闻并给我来源和引用", defs)
 	names := toolNames(selected)
-	if !containsToolName(selected, "web_search") {
-		t.Fatalf("expected web_search for live web query, got=%v", names)
+	if !containsToolName(selected, "web_query") {
+		t.Fatalf("expected web_query for live web query, got=%v", names)
 	}
 	if containsToolName(selected, "file_read") || containsToolName(selected, "file_write") || containsToolName(selected, "convert") {
 		t.Fatalf("expected live web query to suppress local file tools, got=%v", names)
@@ -334,7 +334,7 @@ func TestToolSelector_URLAnalysisKeepsAnalyzeVisible(t *testing.T) {
 	defs := []ToolDefinition{
 		{Name: "analyze", Description: "Analyze URLs, files, and reports."},
 		{Name: "browser", Description: "Open web pages."},
-		{Name: "web_search", Description: "Search the web."},
+		{Name: "web_query", Description: "Search the web."},
 	}
 
 	selected := ts.Select("Analyze https://example.com/blog and summarize the key findings into a report.", defs)
@@ -346,12 +346,12 @@ func TestToolSelector_URLAnalysisKeepsAnalyzeVisible(t *testing.T) {
 func TestToolSelector_DefinitionMetaQuerySuppressesTools(t *testing.T) {
 	ts := DefaultToolSelector()
 	defs := []ToolDefinition{
-		{Name: "web_search", Description: "Search the web."},
+		{Name: "web_query", Description: "Search the web."},
 		{Name: "browser", Description: "Open web pages."},
 		{Name: "exec", Description: "Run commands."},
 	}
 
-	selected := ts.Select("How to use the web_search tool?", defs)
+	selected := ts.Select("How to use the web_query tool?", defs)
 	if len(selected) != 0 {
 		t.Fatalf("definition/meta query should suppress tool exposure, got=%v", toolNames(selected))
 	}

@@ -4,18 +4,38 @@ import { reactive } from 'vue'
 import TalkMode from '@/components/chat/TalkMode.vue'
 import { i18n } from '@/i18n'
 
-const mocks = vi.hoisted(() => ({
-  latestVADOptions: null as any,
-  latestVAD: null as any,
-  speechGetStatus: vi.fn(),
-  speechTranscribe: vi.fn(),
-  speechSynthesize: vi.fn(),
-  convertToWav: vi.fn(),
-  ttsPlay: vi.fn(),
-  ttsStop: vi.fn(),
-  ttsIsPlaying: vi.fn(),
-  stopSpeaking: vi.fn(),
-}))
+const mocks = vi.hoisted(() => {
+  const localStorage = {
+    getItem: vi.fn((key: string) => {
+      if (key === 'tts-auto-play') return 'true'
+      if (key === 'tts-speech-volume') return '100'
+      return null
+    }),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+  }
+
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: localStorage,
+    configurable: true,
+  })
+
+  return {
+    latestVADOptions: null as any,
+    latestVAD: null as any,
+    markdownModuleLoadCount: 0,
+    markdownToText: vi.fn((text: string) => text),
+    localStorage,
+    speechGetStatus: vi.fn(),
+    speechTranscribe: vi.fn(),
+    speechSynthesize: vi.fn(),
+    convertToWav: vi.fn(),
+    ttsPlay: vi.fn(),
+    ttsStop: vi.fn(),
+    ttsIsPlaying: vi.fn(),
+    stopSpeaking: vi.fn(),
+  }
+})
 
 const chatStore = reactive({
   messages: [] as Array<Record<string, any>>,
@@ -59,9 +79,13 @@ vi.mock('@/utils/audioConverter', () => ({
   convertToWav: (...args: unknown[]) => mocks.convertToWav(...args),
 }))
 
-vi.mock('@/utils/markdown', () => ({
-  markdownToText: (text: string) => text,
-}))
+vi.mock('@/utils/markdown', () => {
+  mocks.markdownModuleLoadCount += 1
+  return {
+    markdownToText: (...args: Parameters<typeof mocks.markdownToText>) =>
+      mocks.markdownToText(...args),
+  }
+})
 
 vi.mock('@/utils/vad', () => ({
   EnergyVAD: class {
@@ -125,6 +149,7 @@ describe('TalkMode', () => {
     chatStore.processTrace = []
     mocks.latestVADOptions = null
     mocks.latestVAD = null
+    mocks.markdownToText.mockClear()
     mocks.speechGetStatus.mockResolvedValue({ data: { asr: { ready: true } } })
     mocks.convertToWav.mockResolvedValue(new Blob(['wav'], { type: 'audio/wav' }))
     mocks.speechTranscribe.mockResolvedValue({
@@ -141,15 +166,13 @@ describe('TalkMode', () => {
     mocks.ttsIsPlaying.mockReturnValue(false)
     mocks.stopSpeaking.mockResolvedValue(undefined)
 
-    vi.stubGlobal('localStorage', {
-      getItem: vi.fn((key: string) => {
-        if (key === 'tts-auto-play') return 'true'
-        if (key === 'tts-speech-volume') return '100'
-        return null
-      }),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
+    mocks.localStorage.getItem.mockImplementation((key: string) => {
+      if (key === 'tts-auto-play') return 'true'
+      if (key === 'tts-speech-volume') return '100'
+      return null
     })
+    mocks.localStorage.setItem.mockClear()
+    mocks.localStorage.removeItem.mockClear()
     Object.defineProperty(window, 'isSecureContext', {
       value: true,
       configurable: true,
@@ -166,6 +189,31 @@ describe('TalkMode', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('keeps markdown helpers off the startup path even when talk mode opens', async () => {
+    const wrapper = mount(TalkMode, {
+      props: {
+        modelValue: false,
+        conversationId: 'conv-1',
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          Teleport: true,
+          Transition: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    expect(mocks.markdownModuleLoadCount).toBe(0)
+
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+
+    expect(mocks.markdownModuleLoadCount).toBe(0)
   })
 
   it('shows audio upload progress and emits the transcript once transcription completes', async () => {
@@ -224,7 +272,9 @@ describe('TalkMode', () => {
     chatStore.streaming = false
     await flushPromises()
 
-    expect(mocks.ttsPlay).toHaveBeenCalled()
+    await vi.waitFor(() => {
+      expect(mocks.ttsPlay).toHaveBeenCalled()
+    })
 
     mocks.latestVADOptions.onBargeIn()
     await flushPromises()

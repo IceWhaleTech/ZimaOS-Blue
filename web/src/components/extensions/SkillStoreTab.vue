@@ -93,6 +93,11 @@ const pageSize = 20
 const installingSkillId = ref<string | null>(null)
 const pendingRiskSkill = ref<RemoteSkill | null>(null)
 
+type InstallSkillOptions = {
+  ackRisk?: boolean
+  forceInstall?: boolean
+}
+
 const selectedSkill = computed<RemoteSkill | null>(() => {
   if (!selectedSkillId.value) return null
   return skills.value.find((skill) => skill.id === selectedSkillId.value) ?? null
@@ -648,10 +653,22 @@ function normalizeSearchQuery(value: string): string {
 
 function localizeInstallWarning(warning: string): string {
   const normalized = warning.trim().toLowerCase()
+  if (normalized.includes('overriding a blocked high-risk skill')) {
+    return marketplaceText(
+      'warnings.forceInstallOverride',
+      'Installed after explicitly overriding a blocked high-risk skill. Review the security report before using this skill.'
+    )
+  }
   if (normalized.includes('payload scan escalated')) {
     return marketplaceText(
       'warnings.payloadScanEscalatedHighRisk',
-      'Installed payload scan escalated this skill from medium risk to high risk. Review the security report before using this skill.'
+      'Installed payload scan raised the risk level. Review the security report before using this skill.'
+    )
+  }
+  if (normalized.includes('payload scan flagged this skill as')) {
+    return marketplaceText(
+      'warnings.payloadScanFlaggedHighRisk',
+      'Installed payload scan marked this skill as high risk. Review the security report before using this skill.'
     )
   }
   if (
@@ -1629,23 +1646,22 @@ function clearSearch() {
   handleSearch()
 }
 
-async function installSkill(skill: RemoteSkill, ackRisk = false) {
+async function installSkill(skill: RemoteSkill, options: InstallSkillOptions = {}) {
   if (installingSkillId.value === skill.id) return
   if (!skill.installable) {
     openSkillSource(skill)
     return
   }
   const badge = skill.security_badge ?? 'yellow'
-  if (badge === 'red') {
-    const blockedMessage = marketplaceText(
-      'messages.blockedByPolicy',
-      'This skill is blocked by the security policy.'
-    )
-    error.value = blockedMessage
-    notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, { duration: 6000 })
+  const ackRisk = !!options.ackRisk
+  const forceInstall = !!options.forceInstall
+  if (badge === 'red' && !forceInstall) {
+    error.value = null
+    pendingRiskSkill.value = skill
     return
   }
   if (badge === 'yellow' && !ackRisk) {
+    error.value = null
     pendingRiskSkill.value = skill
     return
   }
@@ -1656,7 +1672,8 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
   try {
     const response = await skillApi.installMarket({
       id: skill.id,
-      ack_risk: ackRisk || badge === 'yellow',
+      ack_risk: ackRisk || badge === 'yellow' || forceInstall,
+      force_install: forceInstall,
     })
     const current = skills.value.find((item) => item.id === skill.id)
     if (current) current.installed = true
@@ -1698,21 +1715,19 @@ async function installSkill(skill: RemoteSkill, ackRisk = false) {
       normalized.includes('blocked by security policy') ||
       normalized.includes('security policy')
     ) {
-      // Check if it's specifically a medium risk block
-      if (normalized.includes('medium risk')) {
-        const blockedMessage = marketplaceText(
-          'messages.blockedByPolicyMediumRisk',
-          'This skill is blocked by security policy (medium risk).'
-        )
-        error.value = blockedMessage
-        notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, {
-          duration: 6000,
-        })
+      if (!forceInstall) {
+        error.value = null
+        pendingRiskSkill.value = skill
       } else {
-        const blockedMessage = marketplaceText(
-          'messages.blockedByPolicy',
-          'This skill is blocked by the security policy.'
-        )
+        const blockedMessage = normalized.includes('medium risk')
+          ? marketplaceText(
+              'messages.blockedByPolicyMediumRisk',
+              'This skill is blocked by security policy (medium risk).'
+            )
+          : marketplaceText(
+              'messages.blockedByPolicy',
+              'This skill is blocked by the security policy.'
+            )
         error.value = blockedMessage
         notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, {
           duration: 6000,
@@ -1731,7 +1746,10 @@ function closeRiskModal() {
 
 function confirmRiskInstall() {
   if (!pendingRiskSkill.value) return
-  void installSkill(pendingRiskSkill.value, true)
+  void installSkill(pendingRiskSkill.value, {
+    ackRisk: true,
+    forceInstall: pendingRiskRequiresForceInstall.value,
+  })
 }
 
 function evidenceGroupLabel(type: string) {
@@ -1989,6 +2007,43 @@ const pendingRiskSignals = computed(() => {
   if (!pendingRiskSkill.value) return []
   return activeSkillSignals(pendingRiskSkill.value)
 })
+const pendingRiskRequiresForceInstall = computed(
+  () => (pendingRiskSkill.value?.security_badge ?? 'yellow') === 'red'
+)
+const pendingRiskNoticeClass = computed(() =>
+  pendingRiskRequiresForceInstall.value ? 'badge-red' : 'badge-yellow'
+)
+const pendingRiskNoticeLabel = computed(() =>
+  pendingRiskRequiresForceInstall.value
+    ? marketplaceText('modal.highRiskWarning', 'High risk')
+    : commonText('warning', 'Warning')
+)
+const pendingRiskModalTitle = computed(() =>
+  pendingRiskRequiresForceInstall.value
+    ? marketplaceText('modal.highRiskInstallTitle', 'High-risk install confirmation')
+    : marketplaceText('modal.riskAcknowledgementTitle', 'Risk acknowledgement required')
+)
+const pendingRiskModalBody = computed(() => {
+  const skill = pendingRiskSkill.value
+  if (!skill) return ''
+  if (pendingRiskRequiresForceInstall.value) {
+    return marketplaceText(
+      'modal.highRiskInstallBody',
+      '{name} is currently blocked by the security policy because it is marked high risk. You can still install it if you understand and accept the risk.',
+      { name: skill.name }
+    )
+  }
+  return marketplaceText(
+    'modal.riskAcknowledgementBody',
+    '{name} requires acknowledgement before installing. Review the security summary first.',
+    { name: skill.name }
+  )
+})
+const pendingRiskConfirmLabel = computed(() =>
+  pendingRiskRequiresForceInstall.value
+    ? marketplaceText('modal.confirmForceInstall', 'Install anyway')
+    : marketplaceText('modal.confirmInstall', 'Confirm install')
+)
 
 const selectedSecuritySignals = computed(() => {
   const report = selectedSecurity.value
@@ -3062,30 +3117,15 @@ onBeforeUnmount(() => {
               </div>
               <div class="risk-modal__copy">
                 <div class="risk-modal__eyebrow">
-                  <span class="shield-chip badge-yellow">{{
-                    commonText('warning', 'Warning')
+                  <span :class="['shield-chip', pendingRiskNoticeClass]">{{
+                    pendingRiskNoticeLabel
                   }}</span>
                   <span :class="['shield-chip', detailBadgeClass(pendingRiskSkill.security_badge)]">
                     {{ badgeLabel(pendingRiskSkill) }}
                   </span>
                 </div>
-                <h3>
-                  {{
-                    marketplaceText(
-                      'modal.riskAcknowledgementTitle',
-                      'Risk acknowledgement required'
-                    )
-                  }}
-                </h3>
-                <p>
-                  {{
-                    marketplaceText(
-                      'modal.riskAcknowledgementBody',
-                      '{name} requires acknowledgement before installing. Review the security summary first.',
-                      { name: pendingRiskSkill.name }
-                    )
-                  }}
-                </p>
+                <h3>{{ pendingRiskModalTitle }}</h3>
+                <p>{{ pendingRiskModalBody }}</p>
               </div>
             </div>
           </header>
@@ -3165,7 +3205,7 @@ onBeforeUnmount(() => {
               type="button"
               @click="confirmRiskInstall"
             >
-              {{ marketplaceText('modal.confirmInstall', 'Confirm install') }}
+              {{ pendingRiskConfirmLabel }}
             </button>
           </div>
         </div>

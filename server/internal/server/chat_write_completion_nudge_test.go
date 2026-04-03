@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -647,6 +649,48 @@ func TestSelectResearchFailureWriteRecoveryModel_FallsBackToSiblingFamily(t *tes
 	)
 	if got != "claude-3-5-haiku-20241022" {
 		t.Fatalf("expected sibling-family fallback model, got=%q", got)
+	}
+}
+
+func TestSelectResearchFailureWriteRecoveryModel_DottedAliasUsesProviderScopedConcreteModel(t *testing.T) {
+	got := selectResearchFailureWriteRecoveryModel(
+		"claude-3.5-haiku",
+		[]string{"claude-haiku-4-5-20251001", "claude-sonnet-4-6"},
+	)
+	if got != "claude-haiku-4-5-20251001" {
+		t.Fatalf("expected provider-scoped concrete haiku fallback, got=%q", got)
+	}
+}
+
+func TestRecoveryAvailableModelIDs_PrefersPinnedProviderModels(t *testing.T) {
+	handler := &ChatHandler{
+		providerPool: newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+			{ProviderID: "api123-haiku45", ModelID: "claude-haiku-4-5-20251001", ContextWindow: 200000},
+			{ProviderID: "anthropic", ModelID: "claude-3-5-haiku-20241022", ContextWindow: 200000},
+		}),
+	}
+
+	ctx := proxy.WithPinnedProvider(context.Background(), "api123-haiku45")
+	got := handler.recoveryAvailableModelIDs(ctx)
+	want := []string{"claude-haiku-4-5-20251001"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("recoveryAvailableModelIDs() = %v, want %v", got, want)
+	}
+}
+
+func TestRecoveryAvailableModelIDs_FallsBackToResolvedRouteProviderModels(t *testing.T) {
+	handler := &ChatHandler{
+		providerPool: newProviderPoolWithContextWindowModels(t, []contextWindowModelSpec{
+			{ProviderID: "api123-haiku45", ModelID: "claude-haiku-4-5-20251001", ContextWindow: 200000},
+			{ProviderID: "anthropic", ModelID: "claude-3-5-haiku-20241022", ContextWindow: 200000},
+		}),
+	}
+
+	ctx := proxy.WithResolvedRoute(context.Background(), &proxy.ResolvedRoute{ProviderID: "api123-haiku45"})
+	got := handler.recoveryAvailableModelIDs(ctx)
+	want := []string{"claude-haiku-4-5-20251001"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("recoveryAvailableModelIDs() = %v, want %v", got, want)
 	}
 }
 

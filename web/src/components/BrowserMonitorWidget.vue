@@ -11,6 +11,7 @@ import {
 } from '@/api/browser'
 import { taskProjectionApi, type UserTaskProjection } from '@/api/tasks'
 import { useBrowserMonitor } from '@/composables/useBrowserMonitor'
+import { offSSEEvent, onSSEEvent } from '@/composables/useEventStream'
 import { useChatStore } from '@/stores/chat'
 import {
   localizeTaskProjectionSubtitle,
@@ -37,6 +38,26 @@ const VIEWPORT_PADDING = 12
 const DEFAULT_PANEL_TOP_OFFSET = 88
 const OVERVIEW_POLL_MS = 4000
 const SCREENSHOT_POLL_MS = 2200
+const TASK_OVERVIEW_EVENT_REFRESH_DELAY_MS = 150
+const TASK_OVERVIEW_EVENT_TYPES = [
+  'task_created',
+  'task_planning',
+  'task_progress',
+  'task_step_completed',
+  'task_reflection_started',
+  'task_reflection_completed',
+  'task_completed',
+  'task_failed',
+  'task_cancelled',
+  'task_user_message',
+  'task_question',
+  'task_question_answered',
+  'deep_research.job_created',
+  'deep_research.job_updated',
+  'deep_research.job_completed',
+  'deep_research.job_failed',
+  'deep_research.job_cancelled',
+] as const
 type TaskViewMode = 'smart' | 'current' | 'all'
 type ScreenshotState = {
   screenshot: string
@@ -98,6 +119,7 @@ let overviewTimer: ReturnType<typeof setInterval> | null = null
 let screenshotTimer: ReturnType<typeof setInterval> | null = null
 let panelResizeObserver: ResizeObserver | null = null
 let launcherClickResetTimer: ReturnType<typeof setTimeout> | null = null
+let taskOverviewEventRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
 function tr(key: string, fallback: string): string {
   return te(key) ? t(key) : fallback
@@ -817,6 +839,14 @@ async function refreshOverview() {
   }
 }
 
+function scheduleOverviewRefreshFromEvent() {
+  if (taskOverviewEventRefreshTimer) return
+  taskOverviewEventRefreshTimer = setTimeout(() => {
+    taskOverviewEventRefreshTimer = null
+    void refreshOverview()
+  }, TASK_OVERVIEW_EVENT_REFRESH_DELAY_MS)
+}
+
 async function refreshScreenshot() {
   const session = selectedSession.value
   if (!isOpen.value || isCollapsed.value || !session?.id) return
@@ -1295,6 +1325,9 @@ watch(
 )
 
 onMounted(() => {
+  for (const eventType of TASK_OVERVIEW_EVENT_TYPES) {
+    onSSEEvent(eventType, scheduleOverviewRefreshFromEvent)
+  }
   void refreshOverview()
   overviewTimer = setInterval(() => {
     void refreshOverview()
@@ -1320,9 +1353,13 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopDragging()
+  for (const eventType of TASK_OVERVIEW_EVENT_TYPES) {
+    offSSEEvent(eventType, scheduleOverviewRefreshFromEvent)
+  }
   if (overviewTimer) clearInterval(overviewTimer)
   if (screenshotTimer) clearInterval(screenshotTimer)
   if (launcherClickResetTimer) clearTimeout(launcherClickResetTimer)
+  if (taskOverviewEventRefreshTimer) clearTimeout(taskOverviewEventRefreshTimer)
   panelResizeObserver?.disconnect()
   window.removeEventListener('resize', clampLauncherPosition)
   window.removeEventListener('resize', clampPanelPosition)

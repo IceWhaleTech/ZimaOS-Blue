@@ -1,4 +1,6 @@
 import { createI18n } from 'vue-i18n'
+import { hasStoredSessionHint } from '@/utils/authStorage'
+import { shouldDeferLocaleEnhancementsOnDesktopStartup } from '@/utils/desktopStartup'
 import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
 import { localeKeys, localeOptions, type LocaleKey } from './locale-catalog'
 import smallModelFallbackReasonOverrides from './small-model-fallback-reason-overrides'
@@ -10,6 +12,9 @@ export type { LocaleKey }
 type LocaleMessages = Record<string, unknown>
 type LocaleModule = { default: LocaleMessages }
 type LocaleOverrideCatalog = Partial<Record<LocaleKey, LocaleMessages>>
+type LocaleEnhancerModule = {
+  mergeHarnessLocale: <T extends Record<string, unknown>>(localeKey: LocaleKey, messages: T) => T
+}
 type I18nBridge = {
   install: (app: unknown, ...options: unknown[]) => unknown
   global: {
@@ -83,8 +88,17 @@ export function getLocaleDirection(locale: string): LocaleDirection {
   return languageCode && RTL_LANGUAGE_CODES.has(languageCode) ? 'rtl' : 'ltr'
 }
 
+function hasLocalStorageApi(): boolean {
+  return (
+    typeof localStorage !== 'undefined' &&
+    typeof localStorage.getItem === 'function' &&
+    typeof localStorage.setItem === 'function' &&
+    typeof localStorage.removeItem === 'function'
+  )
+}
+
 function getDefaultLocale(): LocaleKey {
-  if (typeof localStorage !== 'undefined') {
+  if (hasLocalStorageApi()) {
     const saved = localStorage.getItem(LOCALE_KEY)
     if (saved && localeKeySet.has(saved as LocaleKey)) {
       return saved as LocaleKey
@@ -113,7 +127,7 @@ function localeCacheKey(locale: LocaleKey): string {
 }
 
 function readCachedLocaleMessages(locale: LocaleKey): LocaleMessages | null {
-  if (typeof localStorage === 'undefined') {
+  if (!hasLocalStorageApi()) {
     return null
   }
 
@@ -133,7 +147,7 @@ function readCachedLocaleMessages(locale: LocaleKey): LocaleMessages | null {
 }
 
 function writeCachedLocaleMessages(locale: LocaleKey, messages: LocaleMessages): void {
-  if (typeof localStorage === 'undefined') {
+  if (!hasLocalStorageApi()) {
     return
   }
 
@@ -166,6 +180,7 @@ const rawI18n = createI18n({
 export const i18n = rawI18n as unknown as I18nBridge
 
 type LocaleComposerBridge = {
+  getLocaleMessage: (locale: string) => LocaleMessages
   setLocaleMessage: (locale: string, message: LocaleMessages) => void
   locale: { value: string }
 }
@@ -201,9 +216,16 @@ const localeLoaders: Record<LocaleKey, () => Promise<LocaleModule>> = {
 }
 
 const loadedLocales = new Set<LocaleKey>()
+const enhancedLocales = new Set<LocaleKey>()
 const loadingLocales = new Map<LocaleKey, Promise<LocaleKey>>()
+const enhancingLocales = new Map<LocaleKey, Promise<LocaleKey>>()
 const scheduledLocaleRefreshes = new Set<LocaleKey>()
+const scheduledLocaleEnhancements = new Set<LocaleKey>()
 let localeOverridesPromise: Promise<LocaleOverrideCatalog> | null = null
+let localeEnhancerPromise: Promise<LocaleEnhancerModule> | null = null
+
+const DEFERRED_LOCALE_ENHANCEMENT_TIMEOUT_MS = 1500
+const DEFERRED_LOCALE_ENHANCEMENT_START_DELAY_MS = 600
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -271,6 +293,137 @@ async function loadLocaleOverrides(): Promise<LocaleOverrideCatalog> {
   return localeOverridesPromise
 }
 
+async function loadLocaleEnhancer(): Promise<LocaleEnhancerModule> {
+  if (localeEnhancerPromise) {
+    return localeEnhancerPromise
+  }
+
+  localeEnhancerPromise = import('./harnessLocaleAdditions')
+  return localeEnhancerPromise
+}
+
+async function applyLocaleEnhancements(
+  locale: LocaleKey,
+  messages: LocaleMessages
+): Promise<LocaleMessages> {
+  const { mergeHarnessLocale } = await loadLocaleEnhancer()
+  return mergeHarnessLocale(locale, messages)
+}
+
+function storeLoadedLocaleMessages(
+  locale: LocaleKey,
+  messages: LocaleMessages,
+  options: { cache?: boolean; enhanced?: boolean } = {}
+): void {
+  ;(i18n.global as unknown as LocaleComposerBridge).setLocaleMessage(locale, messages)
+  if (options.cache !== false) {
+    writeCachedLocaleMessages(locale, messages)
+  }
+  loadedLocales.add(locale)
+  if (options.enhanced) {
+    enhancedLocales.add(locale)
+  }
+}
+
+async function buildLocaleMessages(
+  locale: LocaleKey,
+  messages: LocaleMessages,
+  requireEnhancements: boolean
+): Promise<{ messages: LocaleMessages; enhanced: boolean }> {
+  if (!requireEnhancements) {
+    return { messages, enhanced: false }
+  }
+
+  try {
+    const enhancedMessages = await applyLocaleEnhancements(locale, messages)
+    return { messages: enhancedMessages, enhanced: true }
+  } catch (error) {
+    console.warn(`Failed to load locale enhancements for ${locale}, using base locale messages`, error)
+    return { messages, enhanced: false }
+  }
+}
+
+async function ensureLocaleEnhancements(locale: LocaleKey): Promise<LocaleKey> {
+  if (enhancedLocales.has(locale)) {
+    return locale
+  }
+
+  const existing = enhancingLocales.get(locale)
+  if (existing) {
+    return existing
+  }
+
+  const pending = (async () => {
+    try {
+      const currentMessages = (i18n.global as unknown as LocaleComposerBridge).getLocaleMessage(locale)
+      const baseMessages = isPlainObject(currentMessages) ? currentMessages : {}
+      const { messages, enhanced } = await buildLocaleMessages(locale, baseMessages, true)
+      storeLoadedLocaleMessages(locale, messages, { enhanced })
+      return locale
+    } finally {
+      enhancingLocales.delete(locale)
+    }
+  })()
+
+  enhancingLocales.set(locale, pending)
+  return pending
+}
+
+function scheduleLocaleEnhancement(
+  locale: LocaleKey,
+  options: { minDelayMs?: number } = {}
+): void {
+  if (enhancedLocales.has(locale) || scheduledLocaleEnhancements.has(locale)) {
+    return
+  }
+
+  scheduledLocaleEnhancements.add(locale)
+  const runEnhancement = () => {
+    scheduledLocaleEnhancements.delete(locale)
+    void ensureLocaleEnhancements(locale).catch(() => {})
+  }
+
+  const queueEnhancement = () => {
+    if (typeof window !== 'undefined') {
+      const idleWindow = window as IdleWindow
+      if (typeof idleWindow.requestIdleCallback === 'function') {
+        idleWindow.requestIdleCallback(() => runEnhancement(), {
+          timeout: DEFERRED_LOCALE_ENHANCEMENT_TIMEOUT_MS,
+        })
+        return
+      }
+
+      window.setTimeout(runEnhancement, 0)
+      return
+    }
+
+    runEnhancement()
+  }
+
+  const minDelayMs = options.minDelayMs ?? 0
+
+  if (typeof window !== 'undefined') {
+    if (minDelayMs > 0) {
+      window.setTimeout(queueEnhancement, minDelayMs)
+      return
+    }
+  }
+
+  queueEnhancement()
+}
+
+function shouldDeferInitialLocaleEnhancements(): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return shouldDeferLocaleEnhancementsOnDesktopStartup(
+    !!window.__BLUE_DESKTOP__,
+    hasStoredSessionHint(),
+    window.location.pathname || '/'
+  )
+}
+
 function applyLocaleState(locale: LocaleKey): void {
   const direction = getLocaleDirection(locale)
   ;(i18n.global as unknown as LocaleComposerBridge).locale.value = locale
@@ -290,14 +443,31 @@ function applyLocaleState(locale: LocaleKey): void {
   }
 }
 
-async function loadLocaleMessages(locale: LocaleKey): Promise<LocaleKey> {
+async function loadLocaleMessages(
+  locale: LocaleKey,
+  options: { requireEnhancements?: boolean; deferEnhancements?: boolean } = {}
+): Promise<LocaleKey> {
+  const requireEnhancements = options.requireEnhancements ?? true
+
   if (loadedLocales.has(locale)) {
-    return locale
+    if (!requireEnhancements || enhancedLocales.has(locale)) {
+      return locale
+    }
+    return ensureLocaleEnhancements(locale)
+  }
+
+  const existingEnhancement = requireEnhancements ? enhancingLocales.get(locale) : null
+  if (existingEnhancement) {
+    return existingEnhancement
   }
 
   const existing = loadingLocales.get(locale)
   if (existing) {
-    return existing
+    const resolvedLocale = await existing
+    if (!requireEnhancements || enhancedLocales.has(resolvedLocale)) {
+      return resolvedLocale
+    }
+    return ensureLocaleEnhancements(resolvedLocale)
   }
 
   const pending = (async () => {
@@ -307,9 +477,24 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<LocaleKey> {
         loadLocaleOverrides(),
       ])
       const mergedMessages = deepMergeMessages(module.default, localeOverrides[locale] || {})
-      ;(i18n.global as unknown as LocaleComposerBridge).setLocaleMessage(locale, mergedMessages)
-      writeCachedLocaleMessages(locale, mergedMessages)
-      loadedLocales.add(locale)
+      const deferEnhancements = options.deferEnhancements ?? false
+      const { messages, enhanced } = await buildLocaleMessages(
+        locale,
+        mergedMessages,
+        !deferEnhancements && requireEnhancements
+      )
+
+      storeLoadedLocaleMessages(locale, messages, {
+        cache: !deferEnhancements || enhanced,
+        enhanced,
+      })
+
+      if (deferEnhancements && requireEnhancements) {
+        scheduleLocaleEnhancement(locale, {
+          minDelayMs: DEFERRED_LOCALE_ENHANCEMENT_START_DELAY_MS,
+        })
+      }
+
       return locale
     } catch (error) {
       if (locale === 'en-US') {
@@ -328,7 +513,10 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<LocaleKey> {
   return pending
 }
 
-function scheduleLocaleRefresh(locale: LocaleKey): void {
+function scheduleLocaleRefresh(
+  locale: LocaleKey,
+  options: { deferEnhancements?: boolean; minDelayMs?: number } = {}
+): void {
   if (loadedLocales.has(locale) || scheduledLocaleRefreshes.has(locale)) {
     return
   }
@@ -336,22 +524,40 @@ function scheduleLocaleRefresh(locale: LocaleKey): void {
   scheduledLocaleRefreshes.add(locale)
   const runRefresh = () => {
     scheduledLocaleRefreshes.delete(locale)
-    void loadLocaleMessages(locale).catch(() => {})
+    void loadLocaleMessages(locale, {
+      deferEnhancements: options.deferEnhancements,
+    }).catch(() => {})
   }
 
+  const queueRefresh = () => {
+    if (typeof window !== 'undefined') {
+      const idleWindow = window as IdleWindow
+      if (typeof idleWindow.requestIdleCallback === 'function') {
+        idleWindow.requestIdleCallback(() => runRefresh(), { timeout: 2000 })
+        return
+      }
+
+      window.setTimeout(runRefresh, 0)
+      return
+    }
+
+    runRefresh()
+  }
+
+  const minDelayMs = options.minDelayMs ?? 0
+
   if (typeof window !== 'undefined') {
-    const idleWindow = window as IdleWindow
-    if (typeof idleWindow.requestIdleCallback === 'function') {
-      idleWindow.requestIdleCallback(() => runRefresh(), { timeout: 2000 })
+    if (minDelayMs > 0) {
+      window.setTimeout(queueRefresh, minDelayMs)
       return
     }
   }
 
-  window.setTimeout(runRefresh, 0)
+  queueRefresh()
 }
 
 export async function setLocale(locale: LocaleKey): Promise<void> {
-  const resolvedLocale = await loadLocaleMessages(locale)
+  const resolvedLocale = await loadLocaleMessages(locale, { requireEnhancements: true })
   applyLocaleState(resolvedLocale)
 }
 
@@ -362,11 +568,18 @@ export function getLocale(): LocaleKey {
 export async function initLocale(): Promise<void> {
   const defaultLocale = getDefaultLocale()
   if (readCachedLocaleMessages(defaultLocale)) {
+    const deferEnhancements = shouldDeferInitialLocaleEnhancements()
     applyLocaleState(defaultLocale)
-    scheduleLocaleRefresh(defaultLocale)
+    scheduleLocaleRefresh(defaultLocale, {
+      deferEnhancements,
+      minDelayMs: deferEnhancements ? DEFERRED_LOCALE_ENHANCEMENT_START_DELAY_MS : 0,
+    })
     return
   }
 
-  const resolvedLocale = await loadLocaleMessages(defaultLocale)
+  const resolvedLocale = await loadLocaleMessages(defaultLocale, {
+    requireEnhancements: true,
+    deferEnhancements: shouldDeferInitialLocaleEnhancements(),
+  })
   applyLocaleState(resolvedLocale)
 }

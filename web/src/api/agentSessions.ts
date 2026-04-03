@@ -9,6 +9,7 @@ export interface AgentProfile {
   title?: string
   description?: string
   builtin?: boolean
+  template_only?: boolean
   command?: string[]
   env?: Record<string, string>
   cwd?: string

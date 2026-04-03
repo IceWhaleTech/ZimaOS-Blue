@@ -80,7 +80,6 @@ describe('settings store - small model integration', () => {
     expect(store.smallModelUnavailablePolicy).toBe('ir_first')
     expect(store.offlineIRFallbackEnabled).toBe(false)
     expect(store.featureIntentIREnabled).toBe(false)
-    expect(store.smartSkillSelection).toBe(false)
   })
 
   it('migrates legacy maxTokens 2048 to 16384 once', () => {

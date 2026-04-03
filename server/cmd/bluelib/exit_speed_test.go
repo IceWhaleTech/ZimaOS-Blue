@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -76,5 +79,50 @@ func TestBlueServerStopCompletesWithinTwoSeconds(t *testing.T) {
 
 	if elapsed > 2*time.Second {
 		t.Fatalf("BlueServerStop() took %s, want <= 2s", elapsed)
+	}
+}
+
+func TestBlueServerStopMarksStartupIntegrityClean(t *testing.T) {
+	t.Setenv("BLUE_DISABLE_BROWSER_MONITOR", "1")
+
+	dataDir := t.TempDir()
+	port := reserveTCPPort(t)
+	statePath := filepath.Join(dataDir, ".startup-integrity-state")
+
+	serverMu.Lock()
+	if isRunning {
+		serverMu.Unlock()
+		t.Fatal("embedded server unexpectedly already running")
+	}
+	setupSignalHandler()
+	startEmbeddedServerLocked(port, dataDir, "")
+	serverMu.Unlock()
+
+	t.Cleanup(func() {
+		if isRunning {
+			_ = BlueServerStop()
+		}
+	})
+
+	waitForEmbeddedHealth(t, port, 20*time.Second)
+
+	raw, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read dirty startup integrity marker: %v", err)
+	}
+	if got := strings.TrimSpace(string(raw)); got != "dirty" {
+		t.Fatalf("startup marker during runtime = %q, want dirty", got)
+	}
+
+	if rc := BlueServerStop(); rc != 0 {
+		t.Fatalf("BlueServerStop() = %d, want 0", rc)
+	}
+
+	raw, err = os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read clean startup integrity marker: %v", err)
+	}
+	if got := strings.TrimSpace(string(raw)); got != "clean" {
+		t.Fatalf("startup marker after clean stop = %q, want clean", got)
 	}
 }

@@ -515,9 +515,24 @@ CREATE TABLE harness_runs (
 func TestNewPolicyResolverArtifactRoot(t *testing.T) {
 	resolver := NewPolicyResolver(*config.DefaultHarnessConfig(), nil)
 	got := resolver.ArtifactRoot("run-1")
-	want := "data/harness/artifacts/run-1"
-	if got != "./"+want && got != want {
-		t.Fatalf("ArtifactRoot() = %q", got)
+	want, err := filepath.Abs(filepath.Join(".", "data", "harness", "artifacts", "run-1"))
+	if err != nil {
+		t.Fatalf("filepath.Abs failed: %v", err)
+	}
+	if filepath.Clean(got) != filepath.Clean(want) {
+		t.Fatalf("ArtifactRoot() = %q, want %q", got, want)
+	}
+}
+
+func TestNewPolicyResolverDefaultWorkspaceRootIsAbsolute(t *testing.T) {
+	resolver := NewPolicyResolver(*config.DefaultHarnessConfig(), nil)
+	got := resolver.defaultWorkspaceRoot()
+	want, err := filepath.Abs(filepath.Join(".", "data", "workspace"))
+	if err != nil {
+		t.Fatalf("filepath.Abs failed: %v", err)
+	}
+	if filepath.Clean(got) != filepath.Clean(want) {
+		t.Fatalf("defaultWorkspaceRoot() = %q, want %q", got, want)
 	}
 }
 
@@ -526,7 +541,11 @@ func TestNewPolicyResolverUsesSharedBlueDBPath(t *testing.T) {
 	cfg.StorePath = "./data/harness.db"
 	resolver := NewPolicyResolver(cfg, nil)
 	got := filepath.Clean(resolver.defaults.StorePath)
-	want := filepath.Clean(filepath.Join(".", "data", "blue.db"))
+	want, err := filepath.Abs(filepath.Join(".", "data", "blue.db"))
+	if err != nil {
+		t.Fatalf("filepath.Abs failed: %v", err)
+	}
+	want = filepath.Clean(want)
 	if got != want {
 		t.Fatalf("defaults.StorePath = %q, want %q", got, want)
 	}

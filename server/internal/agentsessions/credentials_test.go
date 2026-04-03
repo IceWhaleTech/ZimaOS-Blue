@@ -126,6 +126,95 @@ func TestProviderPoolCredentialResolverMaterializesCodexOAuth(t *testing.T) {
 	}
 }
 
+func TestProviderPoolCredentialResolverMaterializesCodexOAuthFromCLICommand(t *testing.T) {
+	expiry := time.Now().Add(2 * time.Hour).UTC()
+	oauthSource := &stubOAuthCredentialSource{
+		tokensByProvider: map[string][]*oauth.Token{
+			"openai-codex": {
+				{
+					ID:           "codex-cli-token",
+					ProviderID:   "openai-codex",
+					ProviderType: "codex",
+					AccessToken:  "stale-access",
+					RefreshToken: "refresh-token",
+					TokenExpiry:  expiry,
+					Email:        "acct_cli",
+				},
+			},
+		},
+		accessByTokenID: map[string]string{
+			"codex-cli-token": "fresh-access",
+		},
+	}
+	resolver := NewProviderPoolCredentialResolver(func() OAuthCredentialSource {
+		return oauthSource
+	}, nil, zap.NewNop())
+
+	creds, err := resolver.Materialize(context.Background(), AgentProfile{
+		ID:       "custom-acp",
+		Protocol: ProtocolACP,
+		Name:     "project-agent",
+		Title:    "Project Agent",
+		Command:  []string{"/usr/local/bin/codex"},
+	})
+	if err != nil {
+		t.Fatalf("Materialize() error = %v", err)
+	}
+	if creds == nil {
+		t.Fatal("Materialize() returned nil credentials")
+	}
+	if got := creds.Env["CODEX_HOME"]; got == "" {
+		t.Fatal("expected CODEX_HOME to be set for codex CLI command")
+	}
+	if err := creds.Cleanup(); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+}
+
+func TestProviderPoolCredentialResolverMaterializesBuiltinTemplateByCredentialProviderID(t *testing.T) {
+	expiry := time.Now().Add(2 * time.Hour).UTC()
+	oauthSource := &stubOAuthCredentialSource{
+		tokensByProvider: map[string][]*oauth.Token{
+			"openai-codex": {
+				{
+					ID:           "codex-template-token",
+					ProviderID:   "openai-codex",
+					ProviderType: "codex",
+					AccessToken:  "stale-access",
+					RefreshToken: "refresh-token",
+					TokenExpiry:  expiry,
+					Email:        "acct_template",
+				},
+			},
+		},
+		accessByTokenID: map[string]string{
+			"codex-template-token": "fresh-access",
+		},
+	}
+	resolver := NewProviderPoolCredentialResolver(func() OAuthCredentialSource {
+		return oauthSource
+	}, nil, zap.NewNop())
+
+	creds, err := resolver.Materialize(context.Background(), AgentProfile{
+		ID:                   "codex",
+		Protocol:             ProtocolACP,
+		TemplateOnly:         true,
+		CredentialProviderID: "openai-codex",
+	})
+	if err != nil {
+		t.Fatalf("Materialize() error = %v", err)
+	}
+	if creds == nil {
+		t.Fatal("Materialize() returned nil credentials")
+	}
+	if got := creds.Env["CODEX_HOME"]; got == "" {
+		t.Fatal("expected CODEX_HOME to be set from credential_provider_id without command fallback")
+	}
+	if err := creds.Cleanup(); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+}
+
 func TestProviderPoolCredentialResolverMaterializesGeminiOAuth(t *testing.T) {
 	expiry := time.Now().Add(90 * time.Minute).UTC()
 	oauthSource := &stubOAuthCredentialSource{
@@ -215,6 +304,96 @@ func TestProviderPoolCredentialResolverMaterializesGeminiOAuth(t *testing.T) {
 	}
 }
 
+func TestProviderPoolCredentialResolverMaterializesGeminiOAuthFromCLICommand(t *testing.T) {
+	expiry := time.Now().Add(90 * time.Minute).UTC()
+	oauthSource := &stubOAuthCredentialSource{
+		tokensByProvider: map[string][]*oauth.Token{
+			"google-gemini-cli": {
+				{
+					ID:           "gemini-cli-token",
+					ProviderID:   "google-gemini-cli",
+					ProviderType: "gemini-cli",
+					AccessToken:  "stale-access",
+					RefreshToken: "refresh-token",
+					TokenExpiry:  expiry,
+					Email:        "user@example.com",
+					ProjectID:    "project-123",
+				},
+			},
+		},
+		accessByTokenID: map[string]string{
+			"gemini-cli-token": "fresh-access",
+		},
+	}
+	resolver := NewProviderPoolCredentialResolver(func() OAuthCredentialSource {
+		return oauthSource
+	}, nil, zap.NewNop())
+
+	creds, err := resolver.Materialize(context.Background(), AgentProfile{
+		ID:       "custom-acp",
+		Protocol: ProtocolACP,
+		Name:     "project-agent",
+		Title:    "Project Agent",
+		Command:  []string{"/opt/bin/gemini", "--acp"},
+	})
+	if err != nil {
+		t.Fatalf("Materialize() error = %v", err)
+	}
+	if creds == nil {
+		t.Fatal("Materialize() returned nil credentials")
+	}
+	if got := creds.Env["HOME"]; got == "" {
+		t.Fatal("expected HOME to be set for gemini CLI command")
+	}
+	if err := creds.Cleanup(); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+}
+
+func TestProviderPoolCredentialResolverMaterializesCustomACPByCredentialProviderID(t *testing.T) {
+	expiry := time.Now().Add(2 * time.Hour).UTC()
+	oauthSource := &stubOAuthCredentialSource{
+		tokensByProvider: map[string][]*oauth.Token{
+			"openai-codex": {
+				{
+					ID:           "codex-custom-token",
+					ProviderID:   "openai-codex",
+					ProviderType: "codex",
+					AccessToken:  "stale-access",
+					RefreshToken: "refresh-token",
+					TokenExpiry:  expiry,
+					Email:        "acct_custom",
+				},
+			},
+		},
+		accessByTokenID: map[string]string{
+			"codex-custom-token": "fresh-access",
+		},
+	}
+	resolver := NewProviderPoolCredentialResolver(func() OAuthCredentialSource {
+		return oauthSource
+	}, nil, zap.NewNop())
+
+	creds, err := resolver.Materialize(context.Background(), AgentProfile{
+		ID:                   "custom-codex",
+		Protocol:             ProtocolACP,
+		Command:              []string{"/opt/acp/bin/codex", "serve"},
+		CredentialProviderID: "openai-codex",
+	})
+	if err != nil {
+		t.Fatalf("Materialize() error = %v", err)
+	}
+	if creds == nil {
+		t.Fatal("Materialize() returned nil credentials")
+	}
+	if got := creds.Env["CODEX_HOME"]; got == "" {
+		t.Fatal("expected CODEX_HOME to be set for custom ACP profile")
+	}
+	if err := creds.Cleanup(); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+}
+
 func TestProviderPoolCredentialResolverInfersClaudeAPIKey(t *testing.T) {
 	resolver := NewProviderPoolCredentialResolver(
 		nil,
@@ -240,6 +419,36 @@ func TestProviderPoolCredentialResolverInfersClaudeAPIKey(t *testing.T) {
 	}
 	if got := creds.Env["ANTHROPIC_API_KEY"]; got != "sk-ant-test" {
 		t.Fatalf("ANTHROPIC_API_KEY = %q, want %q", got, "sk-ant-test")
+	}
+}
+
+func TestProviderPoolCredentialResolverInfersClaudeAPIKeyFromCLICommand(t *testing.T) {
+	resolver := NewProviderPoolCredentialResolver(
+		nil,
+		func(providerID string) (string, error) {
+			if providerID != "anthropic" {
+				return "", fmt.Errorf("unexpected provider id %q", providerID)
+			}
+			return "sk-ant-cli", nil
+		},
+		zap.NewNop(),
+	)
+
+	creds, err := resolver.Materialize(context.Background(), AgentProfile{
+		ID:       "custom-acp",
+		Protocol: ProtocolACP,
+		Name:     "project-agent",
+		Title:    "Project Agent",
+		Command:  []string{"/usr/local/bin/claude"},
+	})
+	if err != nil {
+		t.Fatalf("Materialize() error = %v", err)
+	}
+	if creds == nil {
+		t.Fatal("Materialize() returned nil credentials")
+	}
+	if got := creds.Env["ANTHROPIC_API_KEY"]; got != "sk-ant-cli" {
+		t.Fatalf("ANTHROPIC_API_KEY = %q, want %q", got, "sk-ant-cli")
 	}
 }
 

@@ -599,7 +599,7 @@ func (t *WebTool) tryExecuteVideoSearchQuery(ctx context.Context, args map[strin
 	selectedResult := resolved[bestIndex]
 	pageResult := webQueryReadResult{}
 	if !selectedResult.Target.DirectMedia {
-		pageResult, _ = t.runReadPipeline(ctx, args, selected.Search.URL, format, maxChars)
+		pageResult, _ = t.runReadPipeline(ctx, args, selected.Search.URL, format, maxChars, nil)
 	}
 
 	envelope := newWebQueryEnvelope(query, format)
@@ -651,7 +651,7 @@ func (t *WebTool) executeVideoURLQuery(ctx context.Context, args map[string]inte
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pageResult, _ = t.runReadPipeline(ctx, args, input, format, maxChars)
+			pageResult, _ = t.runReadPipeline(ctx, args, input, format, maxChars, nil)
 		}()
 	}
 	wg.Wait()

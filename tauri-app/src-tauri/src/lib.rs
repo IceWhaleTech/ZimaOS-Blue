@@ -1121,6 +1121,13 @@ fn startup_trace_disable_notification_plugin() -> bool {
     .any(|raw| parse_bool_env_flag(&raw).unwrap_or(false))
 }
 
+fn single_instance_plugin_enabled(startup_trace_enabled: bool) -> bool {
+    let _ = startup_trace_enabled;
+    // Startup tracing is a profiling aid and must not weaken the app's
+    // single-instance guarantee.
+    true
+}
+
 fn startup_trace_path(path: &str) -> String {
     if !startup_trace_env_enabled() || path.contains("startup_trace=") {
         return path.to_string();
@@ -1456,8 +1463,8 @@ mod tests {
     use super::{
         build_args_string, cli_compatible_data_dir_for_home, embedded_server_port_bind_timeout,
         normalize_server_restart_path, parent_directory_for_reveal_fallback, parse_bool_env_flag,
-        reveal_path_with_fallback, server_origin_from_parts, stt_auth_startup_enabled,
-        ABOUT_BLANK_SPLASH_SCRIPT, CliArgs,
+        reveal_path_with_fallback, server_origin_from_parts, single_instance_plugin_enabled,
+        stt_auth_startup_enabled, CliArgs, ABOUT_BLANK_SPLASH_SCRIPT,
     };
     #[cfg(target_os = "macos")]
     use super::{macos_app_bundle_path, should_relaunch_bundle_via_open};
@@ -1489,6 +1496,12 @@ mod tests {
         assert!(stt_auth_startup_enabled(true, true, Some("1")));
         assert!(!stt_auth_startup_enabled(false, false, Some("0")));
         assert!(stt_auth_startup_enabled(false, false, Some("invalid")));
+    }
+
+    #[test]
+    fn single_instance_plugin_stays_enabled_even_for_startup_trace_runs() {
+        assert!(single_instance_plugin_enabled(false));
+        assert!(single_instance_plugin_enabled(true));
     }
 
     #[test]
@@ -2195,10 +2208,11 @@ pub fn run() {
     let builder = tauri::Builder::default();
     DESKTOP_STARTUP_TRACE.mark("builder_default_ready");
 
-    let builder = if startup_trace_enabled {
-        info!("Startup trace enabled; single-instance plugin disabled for clean profiling");
-        builder
-    } else {
+    if startup_trace_enabled {
+        info!("Startup trace enabled; keeping single-instance enforcement active");
+    }
+
+    let builder = if single_instance_plugin_enabled(startup_trace_enabled) {
         builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When second instance is launched, show and focus the first instance
             info!("Second instance detected, focusing existing window");
@@ -2206,6 +2220,8 @@ pub fn run() {
                 error!("Failed to focus main window for second instance: {}", e);
             }
         }))
+    } else {
+        builder
     };
     DESKTOP_STARTUP_TRACE.mark("single_instance_configured");
 
@@ -2253,8 +2269,8 @@ pub fn run() {
         .on_page_load(|webview, payload| {
             let url = payload.url().to_string();
 
-            // For about:blank, inject a splash spinner and show the window immediately.
-            // This gives instant visual feedback while the Go server boots.
+            // For about:blank, inject the startup skeleton and only then reveal the window.
+            // This avoids showing an empty webview before the first paint is ready.
             if url == "about:blank" {
                 DESKTOP_STARTUP_TRACE.mark("about_blank_page_loaded");
                 let _ = webview.eval(ABOUT_BLANK_SPLASH_SCRIPT);

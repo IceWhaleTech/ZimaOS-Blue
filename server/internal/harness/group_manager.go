@@ -18,6 +18,9 @@ const (
 	defaultGroupLeaseTTL       = 2 * time.Minute
 	defaultGroupRetryBackoff   = 3 * time.Second
 	defaultGroupPassThreshold  = 0.5
+
+	contextPackSnapshotMetadataKey = "contextpack_snapshot"
+	contextPackBreakdownSummaryKey = "contextpack_breakdown"
 )
 
 type groupReportContext struct {
@@ -661,6 +664,9 @@ func (c *Controller) projectGroupSummary(ctx context.Context, group *RunGroup) (
 	if len(metrics.failureLabelCounts) > 0 {
 		summary["failure_label_counts"] = intMapToMetadataMap(metrics.failureLabelCounts)
 	}
+	if contextPackBreakdown := buildContextPackBreakdown(items); len(contextPackBreakdown) > 0 {
+		summary[contextPackBreakdownSummaryKey] = contextPackBreakdown
+	}
 
 	nextStatus := deriveGroupStatus(group.Status, metrics.statusCounts)
 	summary = preserveGroupSummaryAnnotations(nextStatus, group.Summary, summary)
@@ -719,6 +725,63 @@ func cloneIntMap(values map[string]int) map[string]int {
 	return out
 }
 
+func buildContextPackBreakdown(items []RunGroupItem) map[string]interface{} {
+	if len(items) == 0 {
+		return nil
+	}
+	var (
+		itemsWithSnapshot   int
+		selectedSkillCounts map[string]int
+		entryIDCounts       map[string]int
+		sourceTrustCounts   map[string]int
+	)
+	for _, item := range items {
+		snapshot := nestedMetadataMap(item.Metadata, contextPackSnapshotMetadataKey)
+		if len(snapshot) == 0 {
+			continue
+		}
+		itemsWithSnapshot++
+		incrementBreakdownValue(&selectedSkillCounts, metadataString(snapshot, "selected_skill"))
+		for _, file := range metadataMapSliceValue(snapshot["files"]) {
+			incrementBreakdownValue(&entryIDCounts, metadataString(file, "entry_id"))
+			incrementBreakdownValue(&sourceTrustCounts, metadataString(file, "source_trust"))
+		}
+	}
+	if itemsWithSnapshot == 0 {
+		return nil
+	}
+	breakdown := map[string]interface{}{
+		"items_with_snapshot": itemsWithSnapshot,
+	}
+	if len(selectedSkillCounts) > 0 {
+		breakdown["selected_skill_counts"] = intMapToMetadataMap(selectedSkillCounts)
+	}
+	if len(entryIDCounts) > 0 {
+		breakdown["entry_id_counts"] = intMapToMetadataMap(entryIDCounts)
+	}
+	if len(sourceTrustCounts) > 0 {
+		breakdown["source_trust_counts"] = intMapToMetadataMap(sourceTrustCounts)
+	}
+	return breakdown
+}
+
+func metadataMapSliceValue(raw interface{}) []map[string]interface{} {
+	switch value := raw.(type) {
+	case []map[string]interface{}:
+		return value
+	case []interface{}:
+		out := make([]map[string]interface{}, 0, len(value))
+		for _, entry := range value {
+			if record := metadataMapValue(entry); len(record) > 0 {
+				out = append(out, record)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 func preserveGroupSummaryAnnotations(status RunGroupStatus, currentSummary map[string]interface{}, nextSummary map[string]interface{}) map[string]interface{} {
 	if len(nextSummary) == 0 {
 		nextSummary = map[string]interface{}{}
@@ -744,7 +807,7 @@ func preserveGroupSummaryAnnotations(status RunGroupStatus, currentSummary map[s
 
 func isDerivedGroupSummaryKey(key string) bool {
 	switch strings.TrimSpace(key) {
-	case "item_count", "counts", "total_attempts", "overall_score", "pass_rate", "verification_pass_rate", "evidence_backed_pass_rate", "retry_recovered_count", "failure_label_counts", "cancel_reason":
+	case "item_count", "counts", "total_attempts", "overall_score", "pass_rate", "verification_pass_rate", "evidence_backed_pass_rate", "retry_recovered_count", "failure_label_counts", "cancel_reason", contextPackBreakdownSummaryKey:
 		return true
 	default:
 		return false

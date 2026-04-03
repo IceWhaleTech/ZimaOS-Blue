@@ -12,14 +12,14 @@ const (
 	Batch1ExecutionDatasetName        = "skill-exec-batch1"
 	Batch1ExecutionDatasetDescription = "Curated batch-1 execution equivalence dataset for tool-to-skill migration."
 	Batch1ExecutionDatasetSubject     = "skill_execution_batch1"
-	Batch1ExecutionDatasetVersion     = "skill-exec-batch1-v5"
+	Batch1ExecutionDatasetVersion     = "skill-exec-batch1-v6"
 	Batch1ExecutionEvalName           = "Skill Execution Batch 1"
 	batch1ExecutionMaxConcurrency     = 4
 	batch1ExecutionMaxAttempts        = 3
 	batch1ExecutionRetryBackoff       = 20 * time.Second
 
 	batch1ExecutionProfile         = "skill_execution_batch1"
-	batch1ExecutionPolicyModelHint = "claude-haiku-4-5-20251001"
+	batch1ExecutionPolicyModelHint = "claude-sonnet-4-6"
 )
 
 var batch1ExecutionSkills = []string{

@@ -1783,7 +1783,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
+  <div data-form-filler-scope="provider">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
       <div>
@@ -2901,7 +2901,10 @@ onMounted(() => {
               v-if="deviceFlowState"
               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
             >
-              <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+              <div
+                class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4"
+                data-form-filler-scope="provider"
+              >
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                   {{ t('providerPool.oauth.deviceFlow') }}
                 </h3>
@@ -3299,6 +3302,7 @@ onMounted(() => {
       >
         <div
           class="bg-white dark:bg-slate-800 rounded-lg w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col"
+          data-form-filler-scope="provider"
         >
           <div
             class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-slate-700"
@@ -3332,6 +3336,7 @@ onMounted(() => {
               'flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-800 sm:max-h-[90vh]',
               addProviderMode === 'chooser' ? 'max-w-5xl' : 'max-w-2xl',
             ]"
+            data-form-filler-scope="provider"
           >
             <template v-if="addProviderMode === 'chooser'">
               <div
@@ -3680,7 +3685,10 @@ onMounted(() => {
         v-if="showKeyModal"
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       >
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
+        <div
+          class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4"
+          data-form-filler-scope="provider"
+        >
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.addApiKey') }}
           </h2>
@@ -3779,7 +3787,10 @@ onMounted(() => {
         v-if="showPricingModal"
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       >
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
+        <div
+          class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4"
+          data-form-filler-scope="provider"
+        >
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.addModelPricing') }}
           </h2>
@@ -3911,7 +3922,10 @@ onMounted(() => {
         v-if="showParamsModal"
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       >
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
+        <div
+          class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4"
+          data-form-filler-scope="provider"
+        >
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.editModelParams') }}
           </h2>
@@ -3997,6 +4011,7 @@ onMounted(() => {
       >
         <div
           class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-lg mx-4 max-h-[80vh] flex flex-col"
+          data-form-filler-scope="provider"
         >
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-2">
             {{ t('providerPool.selectPreferredModels') }}

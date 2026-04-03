@@ -5,6 +5,8 @@ import { taskProjectionApi } from '@/api/tasks'
 
 const mocks = vi.hoisted(() => ({
   routerPush: vi.fn(),
+  onSSEEvent: vi.fn(),
+  offSSEEvent: vi.fn(),
   chatStore: {
     selectConversation: vi.fn(),
   },
@@ -29,6 +31,11 @@ vi.mock('@/stores/notification', () => ({
   useNotificationStore: () => mocks.notificationStore,
 }))
 
+vi.mock('@/composables/useEventStream', () => ({
+  onSSEEvent: (...args: unknown[]) => mocks.onSSEEvent(...args),
+  offSSEEvent: (...args: unknown[]) => mocks.offSSEEvent(...args),
+}))
+
 vi.mock('@/api/tasks', () => ({
   taskProjectionApi: {
     listTasks: vi.fn(),
@@ -51,6 +58,17 @@ describe('taskProjections store', () => {
     vi.mocked(taskProjectionApi.performTaskActionDescriptor).mockResolvedValue({
       data: {},
     } as never)
+  })
+
+  it('registers task projection SSE listeners on first use', () => {
+    useTaskProjectionsStore()
+
+    expect(mocks.onSSEEvent).toHaveBeenCalledWith('task_created', expect.any(Function))
+    expect(mocks.onSSEEvent).toHaveBeenCalledWith('task_progress', expect.any(Function))
+    expect(mocks.onSSEEvent).toHaveBeenCalledWith(
+      'deep_research.job_updated',
+      expect.any(Function)
+    )
   })
 
   it('hydrates current and background projections through the unified tasks API', async () => {
@@ -167,6 +185,116 @@ describe('taskProjections store', () => {
       score: 0.91,
       evidence_count: 4,
       detail_href: '/automation/harness/group-1',
+    })
+
+    store.stopPolling()
+  })
+
+  it('applies task_progress SSE updates locally for known tasks without a full list refresh', async () => {
+    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
+      if (scope === 'current') {
+        return {
+          data: [
+            {
+              id: 'task-current',
+              kind: 'agent_task',
+              scope: 'current',
+              conversation_id: 'conv-1',
+              title: 'Current task',
+              status: 'running',
+              stage: 'planning',
+              progress: 10,
+              actions: { items: [] },
+              updated_at: '2026-03-20T12:00:00.000Z',
+            },
+          ],
+        } as never
+      }
+      return { data: [] } as never
+    })
+
+    const store = useTaskProjectionsStore()
+    await store.setConversation('conv-1')
+
+    const taskProgressHandler = mocks.onSSEEvent.mock.calls.find(
+      ([eventType]) => eventType === 'task_progress'
+    )?.[1] as ((payload: unknown) => void) | undefined
+
+    expect(taskProgressHandler).toBeTypeOf('function')
+    expect(taskProjectionApi.listTasks).toHaveBeenCalledTimes(2)
+
+    taskProgressHandler?.({
+      task_id: 'task-current',
+      conversation_id: 'conv-1',
+      progress: 55,
+      message: 'Execute the failing step',
+    })
+
+    expect(store.currentTasks[0]).toMatchObject({
+      id: 'task-current',
+      progress: 55,
+      status: 'running',
+      stage: 'working',
+    })
+    expect(taskProjectionApi.listTasks).toHaveBeenCalledTimes(2)
+    expect(taskProjectionApi.getTask).not.toHaveBeenCalled()
+
+    store.stopPolling()
+  })
+
+  it('hydrates unknown task_created SSE updates with a targeted task fetch', async () => {
+    const store = useTaskProjectionsStore()
+    await store.setConversation('conv-1')
+
+    vi.mocked(taskProjectionApi.getTask).mockResolvedValue({
+      data: {
+        id: 'task-new',
+        kind: 'agent_task',
+        scope: 'current',
+        conversation_id: 'conv-1',
+        title: 'New task',
+        status: 'running',
+        stage: 'planning',
+        progress: 5,
+        actions: {
+          items: [
+            {
+              id: 'cancel',
+              label: 'Cancel',
+              method: 'POST',
+              path: '/tasks/task-new/actions/cancel',
+              variant: 'danger',
+            },
+          ],
+        },
+        updated_at: '2026-03-20T12:03:00.000Z',
+      },
+    } as never)
+
+    const taskCreatedHandler = mocks.onSSEEvent.mock.calls.find(
+      ([eventType]) => eventType === 'task_created'
+    )?.[1] as ((payload: unknown) => void) | undefined
+
+    expect(taskCreatedHandler).toBeTypeOf('function')
+
+    taskCreatedHandler?.({
+      task_id: 'task-new',
+      conversation_id: 'conv-1',
+    })
+
+    expect(store.currentTasks[0]).toMatchObject({
+      id: 'task-new',
+      status: 'running',
+      stage: 'planning',
+    })
+
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(taskProjectionApi.getTask).toHaveBeenCalledWith('task-new', 'conv-1')
+    expect(store.currentTasks[0]).toMatchObject({
+      id: 'task-new',
+      title: 'New task',
+      progress: 5,
     })
 
     store.stopPolling()

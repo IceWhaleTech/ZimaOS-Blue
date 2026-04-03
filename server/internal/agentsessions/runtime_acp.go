@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -306,8 +307,16 @@ func (r *ACPRuntime) spawnACPProcess(ctx context.Context, profile AgentProfile) 
 	if err != nil {
 		return nil, nil, err
 	}
+	resolvedCommand := resolveACPCommandBinary(command, exec.LookPath, "")
+	if resolvedCommand != command && r.logger != nil {
+		r.logger.Debug("resolved ACP runtime command from scenario path",
+			zap.String("profile_id", profile.ID),
+			zap.String("requested_command", command),
+			zap.String("resolved_command", resolvedCommand),
+		)
+	}
 	cwd := resolveProcessCWD(profile)
-	cmd := exec.CommandContext(ctx, command, args...)
+	cmd := exec.CommandContext(ctx, resolvedCommand, args...)
 	cmd.Dir = cwd
 
 	runtimeEnv := mergeStringMap(nil, profile.Env)
@@ -808,6 +817,111 @@ func splitCommand(command []string) (string, []string, error) {
 		return "", nil, fmt.Errorf("ACP profile command is required")
 	}
 	return command[0], append([]string(nil), command[1:]...), nil
+}
+
+func resolveACPCommandBinary(command string, lookPath func(string) (string, error), homeDir string) string {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return ""
+	}
+	if filepath.Base(trimmed) != trimmed {
+		return trimmed
+	}
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	if resolved, err := lookPath(trimmed); err == nil && strings.TrimSpace(resolved) != "" {
+		return resolved
+	}
+	if scenarioPath := resolveACPCommandScenarioPath(trimmed, homeDir); scenarioPath != "" {
+		return scenarioPath
+	}
+	return trimmed
+}
+
+func resolveACPCommandScenarioPath(command, homeDir string) string {
+	normalized := normalizedCommandBinary([]string{command})
+	if normalized == "" {
+		return ""
+	}
+	if strings.TrimSpace(homeDir) == "" {
+		resolvedHome, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		homeDir = resolvedHome
+	}
+	if strings.TrimSpace(homeDir) == "" {
+		return ""
+	}
+	for _, pattern := range acpCommandScenarioPatterns(normalized, homeDir) {
+		matches, err := filepath.Glob(pattern)
+		if err != nil || len(matches) == 0 {
+			continue
+		}
+		if resolved := preferredExecutableMatch(matches); resolved != "" {
+			return resolved
+		}
+	}
+	return ""
+}
+
+func acpCommandScenarioPatterns(command, homeDir string) []string {
+	roots := acpScenarioExtensionRoots(homeDir)
+	patterns := make([]string, 0, len(roots)*3)
+	for _, root := range roots {
+		switch command {
+		case "claude", "claude-code":
+			patterns = append(patterns,
+				filepath.Join(root, "anthropic.claude-code-*", "resources", "native-binary", "claude"),
+				filepath.Join(root, "*claude*", "resources", "native-binary", "claude"),
+				filepath.Join(root, "*claude*", "bin", "*", "claude"),
+			)
+		case "codex":
+			patterns = append(patterns,
+				filepath.Join(root, "openai.chatgpt-*", "bin", "*", "codex"),
+				filepath.Join(root, "openai.codex-*", "bin", "*", "codex"),
+				filepath.Join(root, "*codex*", "bin", "*", "codex"),
+			)
+		case "gemini":
+			patterns = append(patterns,
+				filepath.Join(root, "google.gemini-*", "bin", "*", "gemini"),
+				filepath.Join(root, "*gemini*", "bin", "*", "gemini"),
+				filepath.Join(root, "*gemini*", "resources", "native-binary", "gemini"),
+				filepath.Join(root, "*gemini*", "gemini"),
+			)
+		}
+	}
+	return patterns
+}
+
+func acpScenarioExtensionRoots(homeDir string) []string {
+	return []string{
+		filepath.Join(homeDir, ".vscode", "extensions"),
+		filepath.Join(homeDir, ".vscode-insiders", "extensions"),
+		filepath.Join(homeDir, ".cursor", "extensions"),
+		filepath.Join(homeDir, ".cursor-server", "extensions"),
+		filepath.Join(homeDir, ".vscode-server", "extensions"),
+		filepath.Join(homeDir, ".vscode-server-insiders", "extensions"),
+	}
+}
+
+func preferredExecutableMatch(matches []string) string {
+	if len(matches) == 0 {
+		return ""
+	}
+	sorted := append([]string(nil), matches...)
+	sort.Sort(sort.Reverse(sort.StringSlice(sorted)))
+	for _, match := range sorted {
+		info, err := os.Stat(match)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if info.Mode()&0111 != 0 {
+			return match
+		}
+	}
+	return ""
 }
 
 func resolveProcessCWD(profile AgentProfile) string {

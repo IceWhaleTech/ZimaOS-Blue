@@ -450,6 +450,10 @@ const streamingMayContainTypelessCards = ref(true)
 function hasStreamingTypelessHints(content: string): boolean {
   if (
     content.includes('```') ||
+    content.includes('<function_calls') ||
+    content.includes('<antml:function_calls') ||
+    content.includes('<invoke ') ||
+    content.includes('<antml:invoke ') ||
     content.includes('|') ||
     content.includes('- ') ||
     content.includes('* ') ||

@@ -1,5 +1,5 @@
 // Swedish (Svenska)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('sv-SE', {
   common: {
@@ -1846,7 +1846,12 @@ export default mergeHarnessLocale('sv-SE', {
       saveBeforeHealth: 'Spara profilen innan du kör en hälsokontroll.',
       duplicate: 'Duplicera',
       builtinHelp:
-        'Inbyggda profiler förblir skrivskyddade så att de seedade Claude, Codex, Gemini och generiska A2A-posterna förblir stabila.',
+        'Inbyggda profiler förblir skrivskyddade. Duplicera en för att skapa en anpassad kopia.',
+      acpTemplateSummary: 'Duplicera för att lägga till ett körbart ACP-kommando.',
+      acpTemplateHelp:
+        'Inbyggda ACP-poster är bara installationsmallar. Duplicera en och lägg sedan till valfritt körbart ACP-kommando.',
+      acpTemplateActionDisabled:
+        'Inbyggda ACP-mallar kan inte köra verifiering eller hälsokontroll. Duplicera en först och konfigurera ett kommando.',
       command: 'Command och Args',
       credentialSource: 'Autentiseringskälla',
       authMethod: 'Auth-metod',

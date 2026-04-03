@@ -115,4 +115,40 @@ describe('App route prefetch', () => {
 
     wrapper.unmount()
   })
+
+  it('only mounts the ask-user-question dialog when a pending question exists', async () => {
+    vi.useFakeTimers()
+    ;(window as any).__BLUE_DESKTOP__ = true
+
+    const router = createTestRouter()
+    await router.push('/chat')
+    await router.isReady()
+
+    try {
+      const wrapper = mount(App, {
+        global: {
+          plugins: [router],
+        },
+      })
+
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(wrapper.find('.ask-user-question-dialog-stub').exists()).toBe(false)
+
+      vi.advanceTimersByTime(600)
+      vi.runOnlyPendingTimers()
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(wrapper.find('.ask-user-question-dialog-stub').exists()).toBe(true)
+
+      wrapper.unmount()
+    } finally {
+      delete (window as any).__BLUE_DESKTOP__
+      vi.useRealTimers()
+    }
+  })
 })

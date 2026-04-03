@@ -15,9 +15,15 @@ const FormFillerWidget = defineAsyncComponent(
   () => import('@/components/formfiller/FormFillerWidget.vue')
 )
 import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
+import { isFullscreen } from '@/composables/useFullscreen'
 import { refreshTauriDetection, useTauri } from '@/composables/useTauri'
 import { useSettingsStore } from '@/stores/settings'
+import {
+  shouldDeferBrowserMonitorOnDesktopStartup,
+  shouldDeferFormFillerWidgetOnDesktopStartup,
+} from '@/utils/desktopStartup'
 import { rafThrottle } from '@/utils/rafThrottle'
+import { scheduleStartupBackgroundTask } from '@/utils/startupBackgroundTask'
 
 const AppSidebar = defineAsyncComponent(() => import('@/components/AppSidebar.vue'))
 const BrowserMonitorWidget = defineAsyncComponent(
@@ -64,6 +70,18 @@ const canShowBackToTop = computed(
 )
 const showBackToTopButton = computed(() => canShowBackToTop.value && backToTopVisible.value)
 const backToTopLabel = computed(() => t('common.backToTop', 'Back to top'))
+const formFillerWidgetReady = ref(
+  !shouldDeferFormFillerWidgetOnDesktopStartup(
+    typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__,
+    route.path
+  )
+)
+const browserMonitorReady = ref(
+  !shouldDeferBrowserMonitorOnDesktopStartup(
+    typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__,
+    route.path
+  )
+)
 
 // Sidebar ref for mobile toggle
 type AppSidebarExposed = ComponentPublicInstance & {
@@ -76,6 +94,8 @@ const sidebarRef = ref<AppSidebarExposed | null>(null)
 const workspacePanelOpen = computed(() => Boolean(sidebarRef.value?.workspacePanelOpen))
 const sidebarCollapsed = computed(() => Boolean(sidebarRef.value?.isCollapsed))
 let windowResizePerfTimer: ReturnType<typeof window.setTimeout> | null = null
+let formFillerWidgetStartupCleanup: (() => void) | null = null
+let browserMonitorStartupCleanup: (() => void) | null = null
 
 function toggleSidebar() {
   sidebarRef.value?.toggle?.()
@@ -157,6 +177,18 @@ onMounted(() => {
   syncViewportState()
   window.addEventListener('resize', handleWindowResize)
   setup()
+  if (!formFillerWidgetReady.value) {
+    formFillerWidgetStartupCleanup = scheduleStartupBackgroundTask(() => {
+      formFillerWidgetReady.value = true
+      formFillerWidgetStartupCleanup = null
+    }, 600)
+  }
+  if (!browserMonitorReady.value) {
+    browserMonitorStartupCleanup = scheduleStartupBackgroundTask(() => {
+      browserMonitorReady.value = true
+      browserMonitorStartupCleanup = null
+    }, 600)
+  }
   // Sync close behavior setting to Tauri backend on startup
   if (isTauri.value) {
     setCloseBehavior(settingsStore.closeBehavior)
@@ -164,6 +196,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  formFillerWidgetStartupCleanup?.()
+  formFillerWidgetStartupCleanup = null
+  browserMonitorStartupCleanup?.()
+  browserMonitorStartupCleanup = null
   window.removeEventListener('resize', handleWindowResize)
   layoutMainRef.value?.removeEventListener('scroll', syncBackToTopVisibilityOnScroll)
   syncViewportStateOnResize.cancel()
@@ -325,11 +361,11 @@ watch(canShowBackToTop, () => {
       </div>
     </div>
     <!-- Form filler widget - lazy loaded, hidden on chat page -->
-    <FormFillerWidget v-if="!hideLayout && route.path !== '/chat'" />
-    <BrowserMonitorWidget v-if="!hideLayout" />
+    <FormFillerWidget v-if="!hideLayout && route.path !== '/chat' && formFillerWidgetReady" />
+    <BrowserMonitorWidget v-if="!hideLayout && browserMonitorReady" />
     <GlobalVoiceWakeBanner v-if="!hideLayout" />
     <!-- Fullscreen modal for code/diff/terminal cards -->
-    <FullscreenModal v-if="!hideLayout" />
+    <FullscreenModal v-if="!hideLayout && isFullscreen" />
   </div>
 </template>
 

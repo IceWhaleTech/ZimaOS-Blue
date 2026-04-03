@@ -654,6 +654,84 @@ function te(key: string): boolean {
   return i18n.global.te(key)
 }
 
+type InvocationParameter = {
+  name: string
+  value: string
+}
+
+function extractTopLevelParameters(block: string): InvocationParameter[] {
+  const params: InvocationParameter[] = []
+  const openRegex = /<(?:antml:)?parameter\s+name="([^"]+)">/g
+  let searchIndex = 0
+
+  while (searchIndex < block.length) {
+    openRegex.lastIndex = searchIndex
+    const open = openRegex.exec(block)
+    if (!open) break
+
+    const name = open[1] || ''
+    const contentStart = openRegex.lastIndex
+    const tokenRegex = /<(\/?)(?:antml:)?parameter(?:\s+name="[^"]+")?>/g
+    tokenRegex.lastIndex = contentStart
+
+    let depth = 1
+    let closeStart = -1
+    let nextSearchIndex = block.length
+    let token
+    while ((token = tokenRegex.exec(block)) !== null) {
+      if (token[1] === '/') {
+        depth--
+      } else {
+        depth++
+      }
+      if (depth === 0) {
+        closeStart = token.index
+        nextSearchIndex = tokenRegex.lastIndex
+        break
+      }
+    }
+
+    if (closeStart < 0) {
+      break
+    }
+
+    params.push({
+      name,
+      value: block.slice(contentStart, closeStart).trim(),
+    })
+    searchIndex = nextSearchIndex
+  }
+
+  return params
+}
+
+function normalizeInvocation(
+  rawName: string,
+  paramsBlock: string
+): { name: string; params: InvocationParameter[] } {
+  const params = extractTopLevelParameters(paramsBlock)
+  if (rawName !== '$blue' && rawName !== 'blue') {
+    return { name: rawName, params }
+  }
+
+  const command = params.find((param) => param.name === 'command')?.value.trim()
+  if (!command) {
+    return { name: rawName, params }
+  }
+
+  const argsBlock = params.find((param) => param.name === 'args')?.value ?? ''
+  const nestedArgs = argsBlock ? extractTopLevelParameters(argsBlock) : []
+  const normalizedParams =
+    nestedArgs.length > 0
+      ? nestedArgs
+      : params.filter((param) => param.name !== 'command' && param.name !== 'args')
+
+  return {
+    name: command,
+    params: normalizedParams,
+  }
+}
+
 /**
  * Extract tool invocations from a <function_calls> block into StepItems.
  */
@@ -664,15 +742,18 @@ function extractInvocations(innerXml: string): StepItem[] {
   while ((inv = invokeRegex.exec(innerXml)) !== null) {
     const rawName = inv[1] || 'unknown'
     const paramsBlock = inv[2] || ''
-    const displayName = getLocalizedToolName(rawName, (key) => String(i18n.global.t(key)), te)
-    const icon = toolIconMap[rawName] || '🔧'
+    const normalized = normalizeInvocation(rawName, paramsBlock)
+    const displayName = getLocalizedToolName(
+      normalized.name,
+      (key) => String(i18n.global.t(key)),
+      te
+    )
+    const icon = toolIconMap[normalized.name] || '🔧'
     const keywords: string[] = []
     const tags: string[] = []
-    const paramRegex = /<(?:antml:)?parameter\s+name="([^"]+)">([\s\S]*?)<\/(?:antml:)?parameter>/g
-    let p
-    while ((p = paramRegex.exec(paramsBlock)) !== null) {
-      const paramName = p[1] || ''
-      const val = (p[2] || '').trim()
+    for (const param of normalized.params) {
+      const paramName = param.name || ''
+      const val = (param.value || '').trim()
       const truncated = val.length > 60 ? val.slice(0, 60) + '...' : val
       if (keywordParams.has(paramName)) {
         keywords.push(truncated)
@@ -1224,6 +1305,11 @@ export function hasTypelessCards(content: string, useCache = true): boolean {
 
   // Fast path: check for explicit typeless blocks (cheapest check)
   if (content.includes(TYPELESS_MARKER_START)) {
+    return finalize(true)
+  }
+
+  // Fast path: Claude-style / pseudo-XML tool call wrappers.
+  if (content.includes('<function_calls') || content.includes('<antml:function_calls')) {
     return finalize(true)
   }
 

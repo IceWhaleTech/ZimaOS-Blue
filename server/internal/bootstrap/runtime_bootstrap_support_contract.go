@@ -6,6 +6,7 @@ import (
 	"go.uber.org/zap"
 
 	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/optimization"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -31,6 +32,11 @@ func bindRouteRuntimeBootstrapSupport(
 	settingsHandler.SetChatHandler(options.chatHandler)
 	smallModelManager := smallmodel.NewManager(routeRuntimeServerDataDir(options.serverConfig))
 	settingsHandler.SetSmallModelManager(smallModelManager)
+	if runnerManager, err := optimization.NewDefaultManager(); err == nil {
+		settingsHandler.SetAgentcoreRunnerManager(runnerManager)
+	} else if options.logger != nil {
+		options.logger.Warn("Agentcore runner manager init failed", zap.Error(err))
+	}
 	if options.authPageV1Group != nil {
 		settingsHandler.RegisterRoutes(options.authPageV1Group(permission.PageSettings))
 	}

@@ -1,5 +1,5 @@
 // English (US) - Base locale
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('en-US', {
   common: {
@@ -176,9 +176,9 @@ export default mergeHarnessLocale('en-US', {
     refresh: 'Refresh',
     refreshing: 'Refreshing',
     screenshotError: 'Preview unavailable',
-    sessionKindRead: '读取会话',
-    sessionKindBrowserLite: '轻量浏览会话',
-    sessionKindFullBrowser: '完整浏览器会话',
+    sessionKindRead: 'Read session',
+    sessionKindBrowserLite: 'Light browser session',
+    sessionKindFullBrowser: 'Full browser session',
     stageRunning: 'Running',
     subtitle: 'Track the latest task and tab state here.',
     tabsShort: 'tabs',
@@ -1451,8 +1451,12 @@ export default mergeHarnessLocale('en-US', {
       healthRequestFailed: 'Failed to check external agent health.',
       saveBeforeHealth: 'Save the profile before running a health check.',
       duplicate: 'Duplicate',
-      builtinHelp:
-        'Built-in profiles stay read-only so the seeded Claude, Codex, Gemini, and generic A2A entries remain stable.',
+      builtinHelp: 'Built-in profiles stay read-only. Duplicate one to create a custom copy.',
+      acpTemplateSummary: 'Duplicate to add a runnable ACP command.',
+      acpTemplateHelp:
+        'Built-in ACP entries are setup templates only. Duplicate one, then add any runnable ACP command.',
+      acpTemplateActionDisabled:
+        'Built-in ACP templates cannot run verify or health checks. Duplicate one and configure a command first.',
       command: 'Command and Args',
       credentialSource: 'Credential Source',
       authMethod: 'Auth Method',

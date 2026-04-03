@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { mergeHarnessLocale as mergeRuntimeHarnessLocale } from './harnessLocaleAdditions'
+import type { LocaleKey } from './locale-catalog'
 
 type LocaleMessages = Record<string, unknown>
 
@@ -72,6 +74,10 @@ function getPathValue(root: unknown, path: string): unknown {
     )
 }
 
+function resolveRuntimeMessages(locale: string, messages: LocaleMessages): LocaleMessages {
+  return mergeRuntimeHarnessLocale(locale as LocaleKey, messages)
+}
+
 describe('locale integrity', () => {
   it('keeps the full 27-locale set', () => {
     expect(Object.keys(localeModules)).toHaveLength(27)
@@ -102,12 +108,14 @@ describe('locale integrity', () => {
       throw new Error('Missing en-US locale module')
     }
 
-    const referenceMessages = enUSEntry[1].default
+    const referenceLocale = localeFromModulePath(enUSEntry[0])
+    const referenceMessages = resolveRuntimeMessages(referenceLocale, enUSEntry[1].default)
 
     for (const [modulePath, mod] of entries) {
       const locale = localeFromModulePath(modulePath)
-      const missingPaths = collectMissingPaths(referenceMessages, mod.default)
-      const typeMismatches = collectTypeMismatches(referenceMessages, mod.default)
+      const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
+      const missingPaths = collectMissingPaths(referenceMessages, runtimeMessages)
+      const typeMismatches = collectTypeMismatches(referenceMessages, runtimeMessages)
 
       expect(missingPaths, `${locale} is missing locale keys`).toEqual([])
       expect(typeMismatches, `${locale} has locale type mismatches`).toEqual([])
@@ -123,7 +131,8 @@ describe('locale integrity', () => {
       throw new Error('Missing en-US locale module')
     }
 
-    const referenceMessages = enUSEntry[1].default
+    const referenceLocale = localeFromModulePath(enUSEntry[0])
+    const referenceMessages = resolveRuntimeMessages(referenceLocale, enUSEntry[1].default)
     const protectedPaths = [
       'common.backToTop',
       'chat.streamConnecting',
@@ -147,6 +156,33 @@ describe('locale integrity', () => {
       'skillStore.marketplace.dynamic.permissions.network',
       'skillStore.marketplace.dynamic.valuePrefixes.matched',
       'skillStore.marketplace.dynamic.messages.commandInjectionAttemptDetected',
+      'settings.agentcoreRunner.eyebrow',
+      'settings.agentcoreRunner.title',
+      'settings.agentcoreRunner.description',
+      'settings.agentcoreRunner.enabled',
+      'settings.agentcoreRunner.enabledHint',
+      'settings.agentcoreRunner.repoUrl',
+      'settings.agentcoreRunner.repoPlaceholder',
+      'settings.agentcoreRunner.ref',
+      'settings.agentcoreRunner.refPlaceholder',
+      'settings.agentcoreRunner.prepareHint',
+      'settings.agentcoreRunner.prepare',
+      'settings.agentcoreRunner.preparing',
+      'settings.agentcoreRunner.prepareSuccess',
+      'settings.agentcoreRunner.prepareFailed',
+      'settings.agentcoreRunner.status',
+      'settings.agentcoreRunner.resolvedCommit',
+      'settings.agentcoreRunner.requiredGoVersion',
+      'settings.agentcoreRunner.installedGoVersion',
+      'settings.agentcoreRunner.toolchainReady',
+      'settings.agentcoreRunner.binaryReady',
+      'settings.agentcoreRunner.lastPrepareState',
+      'settings.agentcoreRunner.binaryPath',
+      'settings.agentcoreRunner.binaryChecksum',
+      'settings.agentcoreRunner.lastPrepareAt',
+      'settings.agentcoreRunner.lastOptimizationRunId',
+      'settings.agentcoreRunner.lastError',
+      'settings.agentcoreRunner.empty',
     ]
 
     for (const [modulePath, mod] of entries) {
@@ -155,8 +191,10 @@ describe('locale integrity', () => {
         continue
       }
 
+      const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
+
       for (const path of protectedPaths) {
-        expect(getPathValue(mod.default, path), `${locale} should translate ${path}`).not.toEqual(
+        expect(getPathValue(runtimeMessages, path), `${locale} should translate ${path}`).not.toEqual(
           getPathValue(referenceMessages, path)
         )
       }

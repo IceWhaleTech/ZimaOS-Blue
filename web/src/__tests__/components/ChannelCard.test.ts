@@ -2,12 +2,6 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import ChannelCard from '@/components/channels/ChannelCard.vue'
 
-vi.mock('@/composables/useTauri', () => ({
-  useTauri: () => ({
-    openInBrowser: vi.fn(),
-  }),
-}))
-
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
 
@@ -21,7 +15,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('ChannelCard', () => {
-  it('renders password fields through the dedicated wrapper used for shared input styling', () => {
+  it('emits toggle when the summary card is clicked', async () => {
     const wrapper = mount(ChannelCard, {
       props: {
         channel: {
@@ -32,71 +26,41 @@ describe('ChannelCard', () => {
           status: 'disconnected',
           descriptionKey: 'channels.telegramDesc',
           hintKey: 'channels.telegramHint',
-          fields: [
-            {
-              key: 'bot_token',
-              labelKey: 'channels.botToken',
-              type: 'password',
-              placeholderKey: 'channels.placeholderBotToken',
-              value: '',
-              required: true,
-            },
-          ],
+          fields: [],
         },
-        expanded: true,
+        expanded: false,
         toggling: false,
-        saving: false,
-        testingConnection: false,
-        testResult: null,
-      },
-      global: {
-        mocks: {
-          $t: (key: string) => key,
-        },
       },
     })
 
-    const passwordInput = wrapper.find('input.channel-card__password-field')
+    await wrapper.find('.channel-card__header').trigger('click')
 
-    expect(passwordInput.exists()).toBe(true)
-    expect(passwordInput.attributes('type')).toBe('password')
+    expect(wrapper.emitted('toggle')).toEqual([[]])
   })
 
-  it('renders toggle fields and emits string booleans when switched', async () => {
+  it('emits toggleEnabled when the list switch changes', async () => {
     const wrapper = mount(ChannelCard, {
       props: {
         channel: {
-          id: 'feishu',
-          name: 'Feishu',
-          icon: '/icons/channels/feishu.svg',
+          id: 'telegram',
+          name: 'Telegram',
+          icon: '/icons/channels/telegram.svg',
           enabled: false,
           status: 'disconnected',
-          descriptionKey: 'channels.feishuDesc',
-          hintKey: 'channels.feishuHint',
-          fields: [
-            {
-              key: 'session_mode',
-              labelKey: 'channels.feishuSessionMode',
-              type: 'toggle',
-              value: 'false',
-            },
-          ],
+          descriptionKey: 'channels.telegramDesc',
+          hintKey: 'channels.telegramHint',
+          fields: [],
         },
         expanded: true,
         toggling: false,
-        saving: false,
-        testingConnection: false,
-        testResult: null,
       },
     })
 
-    const checkbox = wrapper.find('.channel-card__toggle-field input[type="checkbox"].sr-only')
+    const checkbox = wrapper.find('.channel-card__toggle-input')
     expect(checkbox.exists()).toBe(true)
-    expect(wrapper.text()).toContain('channels.feishuSessionMode')
-    expect(wrapper.text()).toContain('common.disabled')
 
     await checkbox.setValue(true)
 
-    expect(wrapper.emitted('updateField')).toEqual([[0, 'true']])
+    expect(wrapper.emitted('toggleEnabled')).toEqual([[true]])
   })
 })

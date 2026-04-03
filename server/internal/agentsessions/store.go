@@ -401,6 +401,19 @@ func (s *SQLiteStore) ListSessions(limit, offset int, userID string, protocol Pr
 	return decodeSessions(rows)
 }
 
+func (s *SQLiteStore) ListSessionsByProfileID(profileID string) ([]ExternalSession, error) {
+	var rows []jsonDataRow
+	_, err := s.readTable("agent_sessions").Select(
+		&rows,
+		z.Where(z.Eq("profile_id", strings.TrimSpace(profileID))),
+		z.OrderBy("updated_at DESC"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return decodeSessions(rows)
+}
+
 func (s *SQLiteStore) SaveRun(run *ExternalRun) error {
 	if run == nil {
 		return fmt.Errorf("run is nil")

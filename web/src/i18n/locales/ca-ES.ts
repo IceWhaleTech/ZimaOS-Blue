@@ -1,5 +1,5 @@
 // Catalan (Català)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('ca-ES', {
   common: {
@@ -1869,7 +1869,12 @@ export default mergeHarnessLocale('ca-ES', {
       saveBeforeHealth: "Deseu el perfil abans d'executar una comprovació de salut.",
       duplicate: 'Duplicat',
       builtinHelp:
-        'Els perfils integrats es mantenen només de lectura, de manera que les entrades inicialitzades Claude, Codex, Gemini i genèriques A2A es mantenen estables.',
+        'Els perfils integrats es mantenen només de lectura. Dupliqueu-ne un per crear una còpia personalitzada.',
+      acpTemplateSummary: 'Dupliqueu per afegir una ordre ACP executable.',
+      acpTemplateHelp:
+        'Les entrades ACP integrades només són plantilles de configuració. Dupliqueu-ne una i després afegiu qualsevol ordre ACP executable.',
+      acpTemplateActionDisabled:
+        "Les plantilles ACP integrades no poden executar verificacions ni comprovacions d'estat. Dupliqueu-ne una primer i configureu una ordre.",
       command: 'Comandament i Args',
       credentialSource: 'Font de la credencial',
       authMethod: "Mètode d'autenticació",

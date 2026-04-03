@@ -124,7 +124,7 @@ func (c *Controller) EvaluateSkillCutoverBudgetGate(ctx context.Context, targetE
 	metrics := buildSkillCutoverBudgetMetrics(baseReport, targetReport, thresholds.allowedFinalNativeTools)
 	checks := evaluateSkillCutoverBudgetChecks(metrics, thresholds)
 
-	return &SkillCutoverBudgetReport{
+	report := &SkillCutoverBudgetReport{
 		TargetEvalRunID: targetReport.EvalRun.ID,
 		BaseEvalRunID:   strings.TrimSpace(baseEvalRun.ID),
 		BaselineID:      baselineID(baseline),
@@ -137,7 +137,22 @@ func (c *Controller) EvaluateSkillCutoverBudgetGate(ctx context.Context, targetE
 		Checks:    checks,
 		Passed:    skillCutoverBudgetChecksPassed(checks),
 		CreatedAt: timeutil.NowTime(),
-	}, nil
+	}
+	c.emitOptimizationTrigger(ctx, OptimizationTrigger{
+		Reason:          budgetGateReason(report.Passed),
+		CandidateID:     evalRunCandidateID(targetReport.EvalRun),
+		EvalRunID:       targetReport.EvalRun.ID,
+		BaseEvalRunID:   strings.TrimSpace(baseEvalRun.ID),
+		OptimizationRun: evalRunIsOptimizationChild(targetReport.EvalRun),
+	})
+	return report, nil
+}
+
+func budgetGateReason(passed bool) OptimizationReason {
+	if passed {
+		return OptimizationReasonBudgetGatePassed
+	}
+	return OptimizationReasonBudgetGateFailed
 }
 
 func normalizeSkillCutoverBudgetThresholds(raw SkillCutoverBudgetThresholds) normalizedSkillCutoverBudgetThresholds {

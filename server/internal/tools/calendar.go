@@ -1001,6 +1001,11 @@ func calendarLocalized(lang, en, zh string) string {
 }
 
 func parseCalendarTimeInput(raw string, now time.Time, anchor *time.Time) (time.Time, error) {
+	if shouldPreferNaturalCalendarTime(raw, anchor) {
+		if parsed, ok := parseNaturalCalendarTime(raw, now, anchor); ok {
+			return parsed, nil
+		}
+	}
 	if parsed, err := remindertime.Parse(raw); err == nil {
 		return parsed, nil
 	}
@@ -1008,6 +1013,34 @@ func parseCalendarTimeInput(raw string, now time.Time, anchor *time.Time) (time.
 		return parsed, nil
 	}
 	return time.Time{}, fmt.Errorf("invalid time format: %s", raw)
+}
+
+func shouldPreferNaturalCalendarTime(raw string, anchor *time.Time) bool {
+	if anchor != nil && !anchor.IsZero() {
+		return true
+	}
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	return strings.Contains(lower, "today") ||
+		strings.Contains(lower, "tomorrow") ||
+		strings.Contains(lower, "next week") ||
+		strings.Contains(lower, "morning") ||
+		strings.Contains(lower, "afternoon") ||
+		strings.Contains(lower, "evening") ||
+		strings.Contains(lower, "tonight") ||
+		strings.Contains(lower, "noon") ||
+		strings.Contains(trimmed, "今天") ||
+		strings.Contains(trimmed, "明天") ||
+		strings.Contains(trimmed, "下周") ||
+		strings.Contains(trimmed, "上午") ||
+		strings.Contains(trimmed, "下午") ||
+		strings.Contains(trimmed, "晚上") ||
+		strings.Contains(trimmed, "今晚") ||
+		strings.Contains(trimmed, "早上") ||
+		strings.Contains(trimmed, "中午")
 }
 
 func parseNaturalCalendarTime(raw string, now time.Time, anchor *time.Time) (time.Time, bool) {

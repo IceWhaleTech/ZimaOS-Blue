@@ -1654,12 +1654,14 @@ func TestParseSkillContent(t *testing.T) {
 	handler := newTestSkillHandler(t, registry)
 
 	testCases := []struct {
-		name        string
-		content     string
-		sourceURL   string
-		expectID    string
-		expectName  string
-		expectError bool
+		name                 string
+		content              string
+		sourceURL            string
+		expectID             string
+		expectName           string
+		expectError          bool
+		expectContractStatus string
+		expectContractSource string
 	}{
 		{
 			name: "valid SKILL.md",
@@ -1708,10 +1710,14 @@ card_support: none
 			expectError: false,
 		},
 		{
-			name:        "no frontmatter - rejected by required contract",
-			content:     "# Just a skill\n\nNo frontmatter here.",
-			sourceURL:   "https://example.com/my-skill/SKILL.md",
-			expectError: true,
+			name:                 "no frontmatter - generated contract in permissive install mode",
+			content:              "# Just a skill\n\nNo frontmatter here.",
+			sourceURL:            "https://example.com/my-skill/SKILL.md",
+			expectID:             "skill",
+			expectName:           "skill",
+			expectError:          false,
+			expectContractStatus: skillmanifest.ContractStatusGenerated,
+			expectContractSource: skillmanifest.ContractSourceGeneratedSafeDefaults,
 		},
 	}
 
@@ -1736,6 +1742,14 @@ card_support: none
 
 			if manifest.Name != tc.expectName {
 				t.Errorf("expected name '%s', got '%s'", tc.expectName, manifest.Name)
+			}
+
+			if tc.expectContractStatus != "" && manifest.Metadata[skillmanifest.ManifestMetadataContractStatus] != tc.expectContractStatus {
+				t.Errorf("expected contract status %q, got %q", tc.expectContractStatus, manifest.Metadata[skillmanifest.ManifestMetadataContractStatus])
+			}
+
+			if tc.expectContractSource != "" && manifest.Metadata[skillmanifest.ManifestMetadataContractSource] != tc.expectContractSource {
+				t.Errorf("expected contract source %q, got %q", tc.expectContractSource, manifest.Metadata[skillmanifest.ManifestMetadataContractSource])
 			}
 		})
 	}

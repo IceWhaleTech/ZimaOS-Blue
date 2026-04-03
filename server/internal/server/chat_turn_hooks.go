@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -12,13 +13,14 @@ import (
 
 // TurnContext captures the normalized chat-turn state shared by internal hooks.
 type TurnContext struct {
-	ConversationID   string
-	UserMessage      string
-	Model            string
-	Source           MemoryRecallSource
-	RecallMode       MemoryRecallMode
-	IsRegenerate     bool
-	UsesContinuation bool
+	ConversationID       string
+	UserMessage          string
+	Model                string
+	ContextPackSelection *contextpack.SelectionSet
+	Source               MemoryRecallSource
+	RecallMode           MemoryRecallMode
+	IsRegenerate         bool
+	UsesContinuation     bool
 }
 
 // TurnHook defines typed chat-turn lifecycle hooks.

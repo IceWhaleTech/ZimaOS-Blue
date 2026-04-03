@@ -302,7 +302,7 @@ func TestSendMessage_GenericPromptSkipsSessionCompactionMemory(t *testing.T) {
 	}
 }
 
-func TestSendMessage_RetrospectiveWeekPromptIncludesCompressedHistoryAndSessionMemory(t *testing.T) {
+func TestSendMessage_RetrospectiveWeekPromptKeepsCompressedHistoryButOmitsSessionMemory(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("memory.NewStore: %v", err)
@@ -391,15 +391,12 @@ func TestSendMessage_RetrospectiveWeekPromptIncludesCompressedHistoryAndSessionM
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	if !backend.called {
-		t.Fatal("expected provider send path to recall memories for retrospective week prompt")
+		t.Fatal("expected provider send path to run recall so session-compaction filtering is exercised")
 	}
 
 	lastReq := captureProvider.LastRequest()
-	if !containsMemoryContext(lastReq.Messages) {
-		t.Fatalf("expected provider request to include memory context, got %+v", lastReq.Messages)
-	}
-	if got := memoryContextContent(lastReq.Messages); !strings.Contains(got, "source=session_compaction") {
-		t.Fatalf("memory context = %q, want session-compaction source", got)
+	if containsMemoryContext(lastReq.Messages) {
+		t.Fatalf("expected provider request to omit session-compaction memory, got %+v", lastReq.Messages)
 	}
 
 	foundAnchor := false

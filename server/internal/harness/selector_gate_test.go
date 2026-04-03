@@ -54,7 +54,7 @@ func TestController_EvaluateSelectorGate_PassesWithOptionalComparisonThresholds(
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -70,7 +70,7 @@ func TestController_EvaluateSelectorGate_PassesWithOptionalComparisonThresholds(
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -146,7 +146,7 @@ func TestController_EvaluateSelectorGate_FailsCriticalRegressionWhenEnabled(t *t
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -162,8 +162,8 @@ func TestController_EvaluateSelectorGate_FailsCriticalRegressionWhenEnabled(t *t
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
-			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_query", false, "selected"),
 		},
 	}, len(items))
 
@@ -204,7 +204,7 @@ func TestController_EvaluateSelectorGate_FailsClarifyDeltaWhenEnabled(t *testing
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -220,7 +220,7 @@ func TestController_EvaluateSelectorGate_FailsClarifyDeltaWhenEnabled(t *testing
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", true, "clarify"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", true, "clarify"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -253,8 +253,8 @@ func TestController_EvaluateSelectorGate_DefaultsFavorTruthOverBaselineAgreement
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
-			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_query", false, "selected"),
 		},
 	}, len(items))
 	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
@@ -269,7 +269,7 @@ func TestController_EvaluateSelectorGate_DefaultsFavorTruthOverBaselineAgreement
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -307,8 +307,8 @@ func TestController_EvaluateSelectorGate_PassesRouteCompatibleThresholdForTruthI
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
-			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_query", false, "selected"),
 		},
 	}, len(items))
 	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
@@ -323,7 +323,7 @@ func TestController_EvaluateSelectorGate_PassesRouteCompatibleThresholdForTruthI
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))

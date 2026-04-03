@@ -1,25 +1,73 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, nextTick, onMounted, watch } from 'vue'
+import { ref, computed, onUnmounted, nextTick, onMounted, watch, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { type MarketplaceAdviceResponse, type RemoteSkill, skillApi } from '@/api/skill'
-import { AudioRecorder, voiceApi } from '@/api/voice'
-import { speechApi } from '@/api/speech'
-import { convertToWav } from '@/utils/audioConverter'
+import type { MarketplaceAdviceResponse, RemoteSkill } from '@/api/skill'
 import {
   clearDraftAttachments as clearStoredDraftAttachments,
   loadDraftAttachments as loadStoredDraftAttachments,
   saveDraftAttachments as saveStoredDraftAttachments,
   type DraftAttachmentPayload,
 } from '@/utils/chatDraftAttachmentStorage'
-import { EnergyVAD } from '@/utils/vad'
-import ImagePreview from '@/components/chat/ImagePreview.vue'
-import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { classifyFeatureIntent } from '@/composables/useFeatureIntent'
 import { rafThrottle } from '@/utils/rafThrottle'
 import { useRouter } from 'vue-router'
+
+const ImagePreview = defineAsyncComponent(() => import('@/components/chat/ImagePreview.vue'))
+const ModelDownloadPrompt = defineAsyncComponent(
+  () => import('@/components/speech/ModelDownloadPrompt.vue')
+)
+
+type SkillApiModule = typeof import('@/api/skill')
+type VoiceApiModule = typeof import('@/api/voice')
+type SpeechApiModule = typeof import('@/api/speech')
+type AudioConverterModule = typeof import('@/utils/audioConverter')
+type VadModule = typeof import('@/utils/vad')
+type AudioRecorderInstance = InstanceType<VoiceApiModule['AudioRecorder']>
+type EnergyVADInstance = InstanceType<VadModule['EnergyVAD']>
+
+let skillApiModulePromise: Promise<SkillApiModule> | null = null
+let voiceApiModulePromise: Promise<VoiceApiModule> | null = null
+let speechApiModulePromise: Promise<SpeechApiModule> | null = null
+let audioConverterModulePromise: Promise<AudioConverterModule> | null = null
+let vadModulePromise: Promise<VadModule> | null = null
+
+function loadSkillApiModule(): Promise<SkillApiModule> {
+  if (!skillApiModulePromise) {
+    skillApiModulePromise = import('@/api/skill')
+  }
+  return skillApiModulePromise
+}
+
+function loadVoiceApiModule(): Promise<VoiceApiModule> {
+  if (!voiceApiModulePromise) {
+    voiceApiModulePromise = import('@/api/voice')
+  }
+  return voiceApiModulePromise
+}
+
+function loadSpeechApiModule(): Promise<SpeechApiModule> {
+  if (!speechApiModulePromise) {
+    speechApiModulePromise = import('@/api/speech')
+  }
+  return speechApiModulePromise
+}
+
+function loadAudioConverterModule(): Promise<AudioConverterModule> {
+  if (!audioConverterModulePromise) {
+    audioConverterModulePromise = import('@/utils/audioConverter')
+  }
+  return audioConverterModulePromise
+}
+
+function loadVadModule(): Promise<VadModule> {
+  if (!vadModulePromise) {
+    vadModulePromise = import('@/utils/vad')
+  }
+  return vadModulePromise
+}
 
 const { t, te } = useI18n()
 const localeStore = useLocaleStore()
@@ -187,7 +235,7 @@ function persistDraftToStorage(key: string, value: string, clearLegacy = false) 
 // Voice recording state
 const isRecording = ref(false)
 const isTranscribing = ref(false)
-const recorder = ref<AudioRecorder | null>(null)
+const recorder = ref<AudioRecorderInstance | null>(null)
 const voiceError = ref<string | null>(null)
 const recordingStartTime = ref(0)
 const recordingDuration = ref(0) // seconds
@@ -203,7 +251,7 @@ const showASRDownloadPrompt = ref(false)
 
 // Inline dictation (VAD-based tap-to-dictate)
 const isDictating = ref(false)
-let dictationVAD: EnergyVAD | null = null
+let dictationVAD: EnergyVADInstance | null = null
 const skillAdvice = ref<MarketplaceAdviceResponse | null>(null)
 const skillAdviceLoading = ref(false)
 let latestSkillAdviceRequestId = 0
@@ -524,6 +572,7 @@ async function fetchSkillAdvice(options?: { force?: boolean }) {
   skillAdviceLoading.value = true
 
   try {
+    const { skillApi } = await loadSkillApiModule()
     const response = await skillApi.adviseMarket({ query })
     if (requestId !== latestSkillAdviceRequestId) return
     skillAdvice.value = response.data
@@ -902,6 +951,7 @@ function getFileIcon(type: string): string {
 // Voice recording functions
 async function checkASRModelReady(): Promise<boolean> {
   try {
+    const { speechApi } = await loadSpeechApiModule()
     const res = await speechApi.getStatus()
     // Check for macOS permission denied
     if (res.data?.asr?.permission_denied) {
@@ -929,75 +979,79 @@ async function startRecording() {
   }
 
   voiceError.value = null
-  recorder.value = new AudioRecorder()
+  try {
+    const [{ AudioRecorder, voiceApi }, { convertToWav }] = await Promise.all([
+      loadVoiceApiModule(),
+      loadAudioConverterModule(),
+    ])
+    recorder.value = new AudioRecorder()
 
-  // Trigger warmup when voice recording starts
-  if (!warmupSent.value) {
-    warmupSent.value = true
-    emit('warmup')
-  }
+    // Trigger warmup when voice recording starts
+    if (!warmupSent.value) {
+      warmupSent.value = true
+      emit('warmup')
+    }
 
-  recorder.value.onStop = async (audioBlob: Blob) => {
-    isRecording.value = false
-    isTranscribing.value = true
+    recorder.value.onStop = async (audioBlob: Blob) => {
+      isRecording.value = false
+      isTranscribing.value = true
 
-    try {
-      // Convert webm to wav for whisper.cpp
-      const wavBlob = await convertToWav(audioBlob)
-      if (!wavBlob) {
+      try {
+        // Convert webm to wav for whisper.cpp
+        const wavBlob = await convertToWav(audioBlob)
+        if (!wavBlob) {
+          isTranscribing.value = false
+          return
+        }
+
+        // Transcribe audio with user's locale language
+        const lang = localeStore.currentLocale.split('-')[0]
+        const response = await voiceApi.transcribe(wavBlob, 'wav', lang)
+        if (response.data.text) {
+          // In compact voice mode, exit voice mode so textarea becomes visible
+          if (isCompact.value && voiceMode.value) {
+            voiceMode.value = false
+          }
+          // Append transcribed text to message textarea
+          if (message.value.trim()) {
+            message.value += ' ' + response.data.text
+          } else {
+            message.value = response.data.text
+          }
+          handleInput()
+          // Focus textarea so user can edit or press Enter to send
+          nextTick(() => textareaRef.value?.focus())
+        }
+      } catch (error: any) {
+        console.error('Transcription error:', error)
+        const errorCode = error?.response?.data?.error_code
+        if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+          voiceError.value = t('chat.voiceTranscriptionTimeout')
+        } else if (errorCode === 'on_device_unavailable') {
+          voiceError.value = t('speech.onDeviceUnavailableError')
+        } else {
+          const mappedError = getSpeechErrorMessage(errorCode)
+          if (mappedError) {
+            voiceError.value = mappedError
+          } else {
+            const serverMsg =
+              error?.response?.data?.error || error?.response?.data?.message || error?.message
+            voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
+          }
+        }
+      } finally {
         isTranscribing.value = false
-        return
+        recorder.value = null
       }
+    }
 
-      // Transcribe audio with user's locale language
-      const lang = localeStore.currentLocale.split('-')[0]
-      const response = await voiceApi.transcribe(wavBlob, 'wav', lang)
-      if (response.data.text) {
-        // In compact voice mode, exit voice mode so textarea becomes visible
-        if (isCompact.value && voiceMode.value) {
-          voiceMode.value = false
-        }
-        // Append transcribed text to message textarea
-        if (message.value.trim()) {
-          message.value += ' ' + response.data.text
-        } else {
-          message.value = response.data.text
-        }
-        handleInput()
-        // Focus textarea so user can edit or press Enter to send
-        nextTick(() => textareaRef.value?.focus())
-      }
-    } catch (error: any) {
-      console.error('Transcription error:', error)
-      const errorCode = error?.response?.data?.error_code
-      if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
-        voiceError.value = t('chat.voiceTranscriptionTimeout')
-      } else if (errorCode === 'on_device_unavailable') {
-        voiceError.value = t('speech.onDeviceUnavailableError')
-      } else {
-        const mappedError = getSpeechErrorMessage(errorCode)
-        if (mappedError) {
-          voiceError.value = mappedError
-        } else {
-          const serverMsg =
-            error?.response?.data?.error || error?.response?.data?.message || error?.message
-          voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
-        }
-      }
-    } finally {
-      isTranscribing.value = false
+    recorder.value.onError = (error: Error) => {
+      console.error('Recording error:', error)
+      voiceError.value = t('chat.voiceRecordingError')
+      isRecording.value = false
       recorder.value = null
     }
-  }
 
-  recorder.value.onError = (error: Error) => {
-    console.error('Recording error:', error)
-    voiceError.value = t('chat.voiceRecordingError')
-    isRecording.value = false
-    recorder.value = null
-  }
-
-  try {
     await recorder.value.start()
     isRecording.value = true
     recordingStartTime.value = Date.now()
@@ -1181,6 +1235,10 @@ async function handleVoiceChoiceTranscribe() {
   isTranscribing.value = true
 
   try {
+    const [{ convertToWav }, { voiceApi }] = await Promise.all([
+      loadAudioConverterModule(),
+      loadVoiceApiModule(),
+    ])
     const wavBlob = await convertToWav(audioBlob)
     if (!wavBlob) {
       isTranscribing.value = false
@@ -1267,42 +1325,47 @@ async function toggleDictation() {
     return
   }
 
-  const lang = localeStore.currentLocale.split('-')[0]
-
-  dictationVAD = new EnergyVAD({
-    speechThreshold: 0.015,
-    silenceThreshold: 0.01,
-    silenceDuration: 1200,
-    minSpeechDuration: 300,
-    onSpeechEnd: async (audioBlob: Blob) => {
-      isDictating.value = false
-      isTranscribing.value = true
-
-      try {
-        const wavBlob = await convertToWav(audioBlob)
-        if (!wavBlob) return
-        const result = await speechApi.transcribe(wavBlob, 'wav', lang)
-        if (result.text) {
-          // Insert at cursor position or append
-          if (message.value) {
-            message.value += ' ' + result.text
-          } else {
-            message.value = result.text
-          }
-          handleInput()
-          nextTick(() => textareaRef.value?.focus())
-        }
-      } catch (err: any) {
-        console.error('Dictation transcription error:', err)
-        voiceError.value = t('chat.voiceTranscriptionError')
-      } finally {
-        isTranscribing.value = false
-        stopDictation()
-      }
-    },
-  })
-
   try {
+    const lang = localeStore.currentLocale.split('-')[0]
+    const [{ EnergyVAD }, { convertToWav }, { speechApi }] = await Promise.all([
+      loadVadModule(),
+      loadAudioConverterModule(),
+      loadSpeechApiModule(),
+    ])
+
+    dictationVAD = new EnergyVAD({
+      speechThreshold: 0.015,
+      silenceThreshold: 0.01,
+      silenceDuration: 1200,
+      minSpeechDuration: 300,
+      onSpeechEnd: async (audioBlob: Blob) => {
+        isDictating.value = false
+        isTranscribing.value = true
+
+        try {
+          const wavBlob = await convertToWav(audioBlob)
+          if (!wavBlob) return
+          const result = await speechApi.transcribe(wavBlob, 'wav', lang)
+          if (result.text) {
+            // Insert at cursor position or append
+            if (message.value) {
+              message.value += ' ' + result.text
+            } else {
+              message.value = result.text
+            }
+            handleInput()
+            nextTick(() => textareaRef.value?.focus())
+          }
+        } catch (err: any) {
+          console.error('Dictation transcription error:', err)
+          voiceError.value = t('chat.voiceTranscriptionError')
+        } finally {
+          isTranscribing.value = false
+          stopDictation()
+        }
+      },
+    })
+
     await dictationVAD.start()
     isDictating.value = true
   } catch {
@@ -1525,10 +1588,16 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
       />
 
       <!-- Image Preview Modal -->
-      <ImagePreview v-model="showImagePreview" :src="previewImageSrc" :alt="previewImageAlt" />
+      <ImagePreview
+        v-if="showImagePreview"
+        v-model="showImagePreview"
+        :src="previewImageSrc"
+        :alt="previewImageAlt"
+      />
 
       <!-- ASR Model Download Prompt -->
       <ModelDownloadPrompt
+        v-if="showASRDownloadPrompt"
         v-model:model-visible="showASRDownloadPrompt"
         type="asr"
         @downloaded="startRecording"

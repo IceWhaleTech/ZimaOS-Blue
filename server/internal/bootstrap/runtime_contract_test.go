@@ -359,7 +359,6 @@ func TestRuntimeContractBinding_ConfiguresChatRuntimeThroughBoundary(t *testing.
 	t.Run("enabled", func(t *testing.T) {
 		cfg := &config.Config{}
 		cfg.ToolCalling.SmartSelectionMaxTools = 7
-		cfg.ToolCalling.SmartSkillSelection = true
 		cfg.ToolCalling.SkillRerankEnabled = true
 		cfg.ToolCalling.SkillRerankONNXEnabled = true
 		cfg.ToolCalling.SkillRerankONNXAutoDownload = true

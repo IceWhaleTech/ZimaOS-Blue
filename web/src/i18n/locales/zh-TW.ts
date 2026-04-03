@@ -1,5 +1,5 @@
 // Traditional Chinese (繁體中文)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('zh-TW', {
   common: {
@@ -1485,7 +1485,10 @@ export default mergeHarnessLocale('zh-TW', {
       saveBeforeHealth: '執行健康檢查前請先儲存設定檔。',
       duplicate: '複製',
       builtinHelp:
-        '內建設定檔保持唯讀，以確保預設的 Claude、Codex、Gemini 與通用 A2A 項目穩定可用。',
+        '內建設定檔保持唯讀。如需自訂，請先複製一份。',
+      acpTemplateSummary: '複製後填入可執行命令以啟用 ACP 執行階段。',
+      acpTemplateHelp: '內建 ACP 項目現在只提供設定範本。請先複製，再填入可執行的 ACP 命令。',
+      acpTemplateActionDisabled: '內建 ACP 範本不能直接驗證或進行健康檢查。請先複製並設定命令。',
       command: '命令與參數',
       credentialSource: '憑證來源',
       authMethod: '驗證方式',

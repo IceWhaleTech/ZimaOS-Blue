@@ -70,14 +70,11 @@ const mediaGen = useMediaGenerate()
 type VoiceApiModule = typeof import('@/api/voice')
 type MarkdownModule = typeof import('@/utils/markdown')
 type ApiClientModule = typeof import('@/api/client')
-type EventStreamModule = typeof import('@/composables/useEventStream')
 
 let voiceApiModulePromise: Promise<VoiceApiModule> | null = null
 let markdownModulePromise: Promise<MarkdownModule> | null = null
 let apiClientModulePromise: Promise<ApiClientModule> | null = null
-let eventStreamModulePromise: Promise<EventStreamModule> | null = null
 const startupBackgroundTaskCleanups: Array<() => void> = []
-let eventStreamListenersRegistered = false
 let viewUnmounted = false
 let initialChatBootstrapStarted = false
 
@@ -100,30 +97,6 @@ function loadApiClientModule(): Promise<ApiClientModule> {
     apiClientModulePromise = import('@/api/client')
   }
   return apiClientModulePromise
-}
-
-function loadEventStreamModule(): Promise<EventStreamModule> {
-  if (!eventStreamModulePromise) {
-    eventStreamModulePromise = import('@/composables/useEventStream')
-  }
-  return eventStreamModulePromise
-}
-
-async function registerEventStreamListeners() {
-  if (eventStreamListenersRegistered || viewUnmounted) return
-  const { onSSEEvent } = await loadEventStreamModule()
-  if (viewUnmounted || eventStreamListenersRegistered) return
-  for (const evt of agentEventTypes) onSSEEvent(evt, onAgentEvent)
-  for (const evt of deepResearchEventTypes) onSSEEvent(evt, deepResearchEventHandlers[evt]!)
-  eventStreamListenersRegistered = true
-}
-
-async function unregisterEventStreamListeners() {
-  if (!eventStreamListenersRegistered) return
-  const { offSSEEvent } = await loadEventStreamModule()
-  for (const evt of agentEventTypes) offSSEEvent(evt, onAgentEvent)
-  for (const evt of deepResearchEventTypes) offSSEEvent(evt, deepResearchEventHandlers[evt]!)
-  eventStreamListenersRegistered = false
 }
 
 function syncStreamingTtsLocale(nextLocale: string) {
@@ -154,20 +127,6 @@ function queuePostPaintTask(task: () => void) {
     window.cancelAnimationFrame(handle)
   })
 }
-
-const deepResearchEventTypes = [
-  'deep_research.job_created',
-  'deep_research.job_updated',
-  'deep_research.job_completed',
-  'deep_research.job_failed',
-  'deep_research.job_cancelled',
-] as const
-const deepResearchEventHandlers: Record<string, (data: unknown) => void> = Object.fromEntries(
-  deepResearchEventTypes.map((type) => [
-    type,
-    (data: unknown) => handleDeepResearchEvent(type, data as Record<string, unknown>),
-  ])
-)
 syncStreamingTtsLocale(locale.value)
 watch(locale, (newLocale) => {
   syncStreamingTtsLocale(newLocale)
@@ -429,27 +388,6 @@ async function navigateProjectedTask(target: string) {
     console.error('Failed to navigate projected task:', e)
   }
 }
-
-// SSE listener for real-time agent task updates
-function onAgentEvent(data: any) {
-  if (!data?.task_id) return
-  void taskProjections.refreshNow().catch(() => {})
-}
-
-const agentEventTypes = [
-  'task_created',
-  'task_planning',
-  'task_progress',
-  'task_step_completed',
-  'task_reflection_started',
-  'task_reflection_completed',
-  'task_completed',
-  'task_failed',
-  'task_cancelled',
-  'task_user_message',
-  'task_question',
-  'task_question_answered',
-]
 
 // Virtual scroll threshold - use virtual scroll when message count exceeds this
 const VIRTUAL_SCROLL_THRESHOLD = 50
@@ -1882,12 +1820,6 @@ function handleCancelSelection() {
   chatStore.exitMultiSelectMode()
 }
 
-function handleDeepResearchEvent(type: string, data: Record<string, unknown>) {
-  void type
-  void data
-  void taskProjections.refreshNow().catch(() => {})
-}
-
 function getMessageIndex(messageId: string): number {
   const normalizedMessageId = messageId.trim()
   if (!normalizedMessageId) return -1
@@ -2091,6 +2023,7 @@ onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobileOnResize)
   document.addEventListener('click', handleClickOutside)
+  void taskProjections.setConversation(chatStore.currentConversationId || '').catch(() => {})
 
   await nextTick()
   reportStartupMark('chat_view_shell_ready', {
@@ -2127,11 +2060,6 @@ onMounted(async () => {
       .then(({ authFetch }) => authFetch('/api/v1/speech/init', { method: 'POST' }))
       .catch(() => {})
   }, 2500)
-
-  queueBackgroundTask(() => {
-    taskProjections.setConversation(chatStore.currentConversationId || '').catch(() => {})
-    registerEventStreamListeners().catch(() => {})
-  }, 1200)
 
   queueBackgroundTask(() => {
     if (providerPoolStore.providers.length === 0) {
@@ -2180,7 +2108,6 @@ onUnmounted(() => {
   checkMobileOnResize.cancel()
   scheduleRoutingMenuReposition.cancel()
   document.removeEventListener('click', handleClickOutside)
-  void unregisterEventStreamListeners()
 })
 </script>
 
@@ -3938,6 +3865,7 @@ onUnmounted(() => {
 
           <!-- Talk Mode -->
           <TalkMode
+            v-if="showTalkMode"
             v-model="showTalkMode"
             :conversation-id="chatStore.currentConversationId || undefined"
             @transcript="handleVoiceTranscript"
@@ -3947,10 +3875,10 @@ onUnmounted(() => {
     </div>
 
     <!-- Tool call approval dialog -->
-    <ToolApprovalDialog />
+    <ToolApprovalDialog v-if="chatStore.pendingApproval" />
 
     <!-- Exec directory approval dialog -->
-    <ExecApprovalDialog />
+    <ExecApprovalDialog v-if="chatStore.pendingExecApproval" />
 
     <!-- Fixed-model unavailable dialog -->
     <Teleport to="body">

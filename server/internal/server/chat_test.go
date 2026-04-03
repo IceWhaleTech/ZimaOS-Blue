@@ -70,6 +70,19 @@ type deepResearchExecMock struct {
 	last   map[string]interface{}
 }
 
+type researchServiceMock struct {
+	createJob *tools.ResearchJob
+	getJob    *tools.ResearchJob
+	err       error
+
+	mu          sync.Mutex
+	createCalls int
+	statusCalls int
+	lastCreate  tools.ResearchCreateJobRequest
+	lastJobID   string
+	lastUserID  string
+}
+
 func (m *deepResearchExecMock) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
 	m.mu.Lock()
 	m.calls++
@@ -82,6 +95,49 @@ func (m *deepResearchExecMock) Execute(_ context.Context, args map[string]interf
 		return nil, m.err
 	}
 	return m.result, nil
+}
+
+func (m *researchServiceMock) CreateJob(_ context.Context, req tools.ResearchCreateJobRequest) (*tools.ResearchJob, error) {
+	m.mu.Lock()
+	m.createCalls++
+	m.lastCreate = req
+	m.mu.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.createJob != nil {
+		return m.createJob, nil
+	}
+	return &tools.ResearchJob{
+		ID:             "job-default",
+		ConversationID: req.ConversationID,
+		Status:         "completed",
+		Query:          req.Query,
+		Mode:           req.Mode,
+		Answer:         "default research answer",
+	}, nil
+}
+
+func (m *researchServiceMock) GetJobForUser(id, userID string) (*tools.ResearchJob, error) {
+	m.mu.Lock()
+	m.statusCalls++
+	m.lastJobID = id
+	m.lastUserID = userID
+	m.mu.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.getJob != nil {
+		return m.getJob, nil
+	}
+	return &tools.ResearchJob{
+		ID:       id,
+		Status:   "completed",
+		Query:    "default query",
+		Answer:   "default research answer",
+		Mode:     "deep",
+		Progress: 100,
+	}, nil
 }
 
 type smallModelRuntimeMock struct {
@@ -1562,6 +1618,117 @@ func TestProcessChannelMessage_AutoContinueRetriesEmptyReplyAfterWebQueryToolRou
 	}
 	if input != "OpenClaw recent updates" {
 		t.Fatalf("web_query input = %q, want OpenClaw recent updates", input)
+	}
+}
+
+func TestProcessChannelMessage_RecoversPseudoDirectXMLToolCallIntoRealToolExecution(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-pseudo-xml",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "im-pseudo-xml-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `<web_query><input>Apple AAPL stock price today2026</input></web_query>`,
+				},
+			},
+			{
+				ID:      "im-pseudo-xml-round-2",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "AAPL 当前股价页面已获取，并已基于真实工具结果完成总结。"},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today2026",
+			"query":       "Apple AAPL stock price today2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "im mock finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_pseudo_xml",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "Apple AAPL stock price today2026",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+	if !strings.Contains(resp, "AAPL 当前股价页面已获取，并已基于真实工具结果完成总结。") {
+		t.Fatalf("expected final summary, got %q", resp)
+	}
+	if strings.Contains(resp, "<web_query>") || strings.Contains(resp, "<input>Apple AAPL stock price today2026</input>") {
+		t.Fatalf("expected recovered pseudo xml to be removed from IM response, got %q", resp)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	input, _ := webQueryMock.last["input"].(string)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if input != "Apple AAPL stock price today2026" {
+		t.Fatalf("web_query input = %q, want Apple AAPL stock price today2026", input)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "im mock finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered IM tool execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered IM web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	messages, err := store.GetMessages(context.Background(), "feishu:chat_im_pseudo_xml", 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "<web_query>") || strings.Contains(m.Content, "<input>Apple AAPL stock price today2026</input>") {
+			t.Fatalf("expected recovered pseudo xml to be discarded from persisted IM assistant messages, got=%q", m.Content)
+		}
 	}
 }
 
@@ -3779,6 +3946,1446 @@ func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *
 	}
 }
 
+func TestChatHandlerSendMessage_RecoversPseudoFunctionCallsIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `<function_calls>
+<invoke name="$blue">
+<parameter name="command">web_query</parameter>
+<parameter name="args">
+<parameter name="input">Apple AAPL stock price today April 2026</parameter>
+</parameter>
+</invoke>
+</function_calls>
+正在查询最新股价信息...`
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-pseudo-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 50, CompletionTokens: 90, TotalTokens: 140},
+			},
+			{
+				ID:    "recovered-pseudo-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已查询 Apple AAPL 股价，并整理成最终结果。",
+				},
+				Usage: llm.Usage{PromptTokens: 70, CompletionTokens: 8, TotalTokens: 78},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "mock finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	input, _ := webQueryMock.last["input"].(string)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if input != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query input = %q, want Apple AAPL stock price today April 2026", input)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "mock finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered tool execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已查询 Apple AAPL 股价，并整理成最终结果。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, "<function_calls>") || strings.Contains(content, "<invoke name=\"$blue\">") {
+		t.Fatalf("expected recovered pseudo tool-call text to be removed from response body, got %q", content)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to read stored messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "<function_calls>") || strings.Contains(m.Content, "<invoke name=\"$blue\">") {
+			t.Fatalf("expected recovered pseudo tool-call text to be discarded from stored assistant message, got=%q", m.Content)
+		}
+	}
+}
+
+func TestChatHandlerSendMessage_PreservesXMLToolExampleProseWithoutExecutingTools(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "XML tool example prose send message")
+
+	registry := llm.NewProviderRegistry()
+	exampleContent := "下面是 XML 工具调用示例：<web_query><input>Apple AAPL stock price today2026</input></web_query>，不要实际执行。"
+	scripted := &scriptedChatProvider{
+		name: "scripted-xml-example-prose",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "xml-example-prose-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: exampleContent,
+				},
+				Usage: llm.Usage{PromptTokens: 36, CompletionTokens: 38, TotalTokens: 74},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status": "ok",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"给我一个 xml 工具调用示例","provider":"scripted-xml-example-prose","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 1 {
+		t.Fatalf("expected exactly 1 LLM round for example prose, got %d", scripted.CallCount())
+	}
+	if _, ok := scripted.RequestAt(1); ok {
+		t.Fatal("expected no second request capture for example prose")
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	webQueryMock.mu.Unlock()
+	if calls != 0 {
+		t.Fatalf("web_query calls = %d, want 0", calls)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if content != exampleContent {
+		t.Fatalf("expected example prose preserved, got %q", content)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to read stored messages: %v", err)
+	}
+	var assistantContent string
+	for _, m := range messages {
+		if m.Role == "assistant" {
+			assistantContent = m.Content
+		}
+	}
+	if assistantContent != exampleContent {
+		t.Fatalf("expected persisted example prose preserved, got %q", assistantContent)
+	}
+}
+
+func TestChatHandlerSendMessage_PreservesFormatGuidanceJSONProseWithoutExecutingTools(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Format guidance JSON prose send message")
+
+	registry := llm.NewProviderRegistry()
+	exampleContent := `工具调用格式如下：{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}`
+	scripted := &scriptedChatProvider{
+		name: "scripted-format-guidance-json-prose",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "format-guidance-json-prose-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: exampleContent,
+				},
+				Usage: llm.Usage{PromptTokens: 34, CompletionTokens: 32, TotalTokens: 66},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name:   "web_query",
+		result: map[string]interface{}{"status": "ok"},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"给我一个 json 工具调用格式","provider":"scripted-format-guidance-json-prose","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 1 {
+		t.Fatalf("expected exactly 1 LLM round for format guidance prose, got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	webQueryMock.mu.Unlock()
+	if calls != 0 {
+		t.Fatalf("web_query calls = %d, want 0", calls)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if content != exampleContent {
+		t.Fatalf("expected format guidance prose preserved, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_PreservesBlockquoteGuidanceJSONProseWithoutExecutingTools(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Blockquote guidance JSON prose send message")
+
+	registry := llm.NewProviderRegistry()
+	exampleContent := "文档说明：\n> {\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}"
+	scripted := &scriptedChatProvider{
+		name: "scripted-blockquote-guidance-json-prose",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "blockquote-guidance-json-prose-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: exampleContent,
+				},
+				Usage: llm.Usage{PromptTokens: 34, CompletionTokens: 34, TotalTokens: 68},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name:   "web_query",
+		result: map[string]interface{}{"status": "ok"},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"给我一个 blockquote 里的 json 工具调用说明","provider":"scripted-blockquote-guidance-json-prose","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 1 {
+		t.Fatalf("expected exactly 1 LLM round for blockquote guidance prose, got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	webQueryMock.mu.Unlock()
+	if calls != 0 {
+		t.Fatalf("web_query calls = %d, want 0", calls)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if content != exampleContent {
+		t.Fatalf("expected blockquote guidance prose preserved, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversScalarDirectXMLPseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered scalar direct xml pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `<web_query>Apple AAPL stock price today April 2026</web_query>
+正在查询最新股价信息...`
+	scripted := &scriptedChatProvider{
+		name: "scripted-scalar-xml",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-scalar-xml-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 50, CompletionTokens: 72, TotalTokens: 122},
+			},
+			{
+				ID:    "recovered-scalar-xml-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已查询 Apple AAPL 股价，并基于真实 web_query 结果完成总结。",
+				},
+				Usage: llm.Usage{PromptTokens: 68, CompletionTokens: 10, TotalTokens: 78},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "scalar direct xml finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-scalar-xml","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	input, _ := webQueryMock.last["input"].(string)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if input != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query input = %q, want Apple AAPL stock price today April 2026", input)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "scalar direct xml finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered scalar direct xml execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已查询 Apple AAPL 股价，并基于真实 web_query 结果完成总结。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, "<web_query>") {
+		t.Fatalf("expected recovered scalar direct xml text to be removed from response body, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversToolCallWrapperPseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered tool_call wrapper pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `<tool_call>
+{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}
+</tool_call>
+我整理好后发你。`
+	scripted := &scriptedChatProvider{
+		name: "scripted-tool-call-wrapper",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-tool-call-wrapper-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 44, CompletionTokens: 66, TotalTokens: 110},
+			},
+			{
+				ID:    "recovered-tool-call-wrapper-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好小米手机官网信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 58, CompletionTokens: 12, TotalTokens: 70},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "小米 官网 手机",
+			"query":       "小米 官网 手机",
+			"title":       "小米手机官网",
+			"target_url":  "https://www.mi.com/",
+			"final_url":   "https://www.mi.com/",
+			"content":     "tool_call wrapper finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"小米 官网 手机","provider":"scripted-tool-call-wrapper","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	query, _ := webQueryMock.last["query"].(string)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if query != "小米 官网 手机" {
+		t.Fatalf("web_query query = %q, want 小米 官网 手机", query)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "tool_call wrapper finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered tool_call wrapper execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已基于真实 web_query 结果整理好小米手机官网信息。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, "<tool_call>") || strings.Contains(content, "tzkz0_web_search") {
+		t.Fatalf("expected recovered tool_call wrapper text to be removed from response body, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversBracketedToolCallPseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered bracketed tool_call pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `[TOOL_CALL]
+{tool => "web_query", args => {
+  --input "Apple AAPL stock price today April 2026"
+  --max-results 5
+}}
+[/TOOL_CALL]
+我整理好后发你。`
+	scripted := &scriptedChatProvider{
+		name: "scripted-bracketed-tool-call",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-bracketed-tool-call-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 46, CompletionTokens: 68, TotalTokens: 114},
+			},
+			{
+				ID:    "recovered-bracketed-tool-call-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好 AAPL 股价信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 60, CompletionTokens: 12, TotalTokens: 72},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "bracketed tool_call finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-bracketed-tool-call","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	input, _ := webQueryMock.last["input"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if input != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query input = %q, want Apple AAPL stock price today April 2026", input)
+	}
+	if maxResults != 5 {
+		t.Fatalf("web_query max_results = %v, want 5", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "bracketed tool_call finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered bracketed tool_call execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已基于真实 web_query 结果整理好 AAPL 股价信息。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, "[TOOL_CALL]") || strings.Contains(content, "--input") {
+		t.Fatalf("expected recovered bracketed tool_call text to be removed from response body, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversNestedFunctionWrapperPseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered nested function wrapper pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `<tool_call>
+{"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"Apple AAPL stock price today April 2026\",\"max_results\":5}"}}
+</tool_call>
+我整理好后发你。`
+	scripted := &scriptedChatProvider{
+		name: "scripted-nested-function-wrapper",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-nested-function-wrapper-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 44, CompletionTokens: 64, TotalTokens: 108},
+			},
+			{
+				ID:    "recovered-nested-function-wrapper-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好 AAPL 股价信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 58, CompletionTokens: 12, TotalTokens: 70},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "nested function wrapper finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-nested-function-wrapper","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	query, _ := webQueryMock.last["query"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if query != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query query = %q, want Apple AAPL stock price today April 2026", query)
+	}
+	if maxResults != 5 {
+		t.Fatalf("web_query max_results = %v, want 5", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "nested function wrapper finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered nested function wrapper execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已基于真实 web_query 结果整理好 AAPL 股价信息。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, "<tool_call>") || strings.Contains(content, `"type":"function"`) {
+		t.Fatalf("expected recovered nested function wrapper text to be removed from response body, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversBareJSONWrapperPseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered bare json wrapper pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}`
+	scripted := &scriptedChatProvider{
+		name: "scripted-bare-json-wrapper",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-bare-json-wrapper-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 40, CompletionTokens: 52, TotalTokens: 92},
+			},
+			{
+				ID:    "recovered-bare-json-wrapper-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好小米手机官网信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 54, CompletionTokens: 12, TotalTokens: 66},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "小米 官网 手机",
+			"query":       "小米 官网 手机",
+			"title":       "小米手机官网",
+			"target_url":  "https://www.mi.com/",
+			"final_url":   "https://www.mi.com/",
+			"content":     "bare json wrapper finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"小米 官网 手机","provider":"scripted-bare-json-wrapper","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	query, _ := webQueryMock.last["query"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if query != "小米 官网 手机" {
+		t.Fatalf("web_query query = %q, want 小米 官网 手机", query)
+	}
+	if maxResults != 10 {
+		t.Fatalf("web_query max_results = %v, want 10", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "bare json wrapper finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered bare json wrapper execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已基于真实 web_query 结果整理好小米手机官网信息。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, "tzkz0_web_search") || strings.Contains(content, `"arguments"`) {
+		t.Fatalf("expected recovered bare json wrapper text to be removed from response body, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversBareJSONToolCallsArrayPseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered bare json tool_calls array pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `{"tool_calls":[{"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"Apple AAPL stock price today April 2026\",\"max_results\":5}"}}]}`
+	scripted := &scriptedChatProvider{
+		name: "scripted-bare-json-tool-calls-array",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-bare-json-tool-calls-array-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 42, CompletionTokens: 54, TotalTokens: 96},
+			},
+			{
+				ID:    "recovered-bare-json-tool-calls-array-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好 AAPL 股价信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 56, CompletionTokens: 12, TotalTokens: 68},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "bare json tool_calls array finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-bare-json-tool-calls-array","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	query, _ := webQueryMock.last["query"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if query != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query query = %q, want Apple AAPL stock price today April 2026", query)
+	}
+	if maxResults != 5 {
+		t.Fatalf("web_query max_results = %v, want 5", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "bare json tool_calls array finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered bare json tool_calls array execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversEmbeddedBareJSONWrapperPseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered embedded bare json wrapper pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `我先查一下。{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}我整理好后发你。`
+	scripted := &scriptedChatProvider{
+		name: "scripted-embedded-bare-json-wrapper",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-embedded-bare-json-wrapper-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 44, CompletionTokens: 60, TotalTokens: 104},
+			},
+			{
+				ID:    "recovered-embedded-bare-json-wrapper-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好小米手机官网信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 58, CompletionTokens: 12, TotalTokens: 70},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "小米 官网 手机",
+			"query":       "小米 官网 手机",
+			"title":       "小米手机官网",
+			"target_url":  "https://www.mi.com/",
+			"final_url":   "https://www.mi.com/",
+			"content":     "embedded bare json wrapper finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"小米 官网 手机","provider":"scripted-embedded-bare-json-wrapper","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	query, _ := webQueryMock.last["query"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if query != "小米 官网 手机" {
+		t.Fatalf("web_query query = %q, want 小米 官网 手机", query)
+	}
+	if maxResults != 10 {
+		t.Fatalf("web_query max_results = %v, want 10", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "embedded bare json wrapper finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered embedded bare json wrapper execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已基于真实 web_query 结果整理好小米手机官网信息。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, "tzkz0_web_search") || strings.Contains(content, `"arguments"`) {
+		t.Fatalf("expected recovered embedded bare json wrapper text to be removed from response body, got %q", content)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to read stored messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "tzkz0_web_search") || strings.Contains(m.Content, `"arguments"`) {
+			t.Fatalf("expected recovered embedded bare json wrapper text to be discarded from stored assistant message, got=%q", m.Content)
+		}
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversPseudoFileWriteInvokeIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered pseudo file write send message")
+	workspaceRoot := t.TempDir()
+	targetPath := filepath.Join(workspaceRoot, "stock_report.txt")
+	reportContent := "苹果公司(AAPL)股票报告\n生成日期：2026年4月3日\n\n当前股价：[待查询]\n市场概况：[待查询]\n"
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `<function_calls>
+<invoke name="file_write">
+<parameter name="path">` + targetPath + `</parameter>
+<parameter name="content">` + reportContent + `</parameter>
+</invoke>
+</function_calls>`
+	scripted := &scriptedChatProvider{
+		name: "scripted-write",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-file-write-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 48, CompletionTokens: 65, TotalTokens: 113},
+			},
+			{
+				ID:    "recovered-file-write-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已完成写入 stock_report.txt。",
+				},
+				Usage: llm.Usage{PromptTokens: 60, CompletionTokens: 10, TotalTokens: 70},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewFileWriteTool([]string{workspaceRoot}, 0))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"请写入白名单目录文件","provider":"scripted-write","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-write summary), got %d", scripted.CallCount())
+	}
+
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("expected recovered file write to create target file, read error: %v", err)
+	}
+	if strings.TrimRight(string(data), "\n") != strings.TrimRight(reportContent, "\n") {
+		t.Fatalf("unexpected recovered file content: %q", string(data))
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && (msg.ToolName == "write" || msg.ToolName == "file_write") && strings.Contains(msg.Content, "stock_report.txt") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered file write execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered write tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "已完成写入 stock_report.txt。") {
+		t.Fatalf("expected final write summary, got %q", content)
+	}
+	if strings.Contains(content, "<invoke name=\"file_write\">") {
+		t.Fatalf("expected recovered pseudo file-write text to be removed from response body, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversPseudoBlueDeepResearchIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered pseudo deep research send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `<function_calls>
+<invoke name="$blue">
+<parameter name="command">deep_research</parameter>
+<parameter name="args">
+<parameter name="query">Apple AAPL stock price today April 2026</parameter>
+<parameter name="mode">deep</parameter>
+</parameter>
+</invoke>
+</function_calls>
+正在查询最新股价信息...`
+	scripted := &scriptedChatProvider{
+		name: "scripted-deep-research",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-deep-research-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 52, CompletionTokens: 72, TotalTokens: 124},
+			},
+			{
+				ID:    "recovered-deep-research-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已完成 Apple AAPL 深度调研，并整理好结果摘要。",
+				},
+				Usage: llm.Usage{PromptTokens: 66, CompletionTokens: 10, TotalTokens: 76},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	researchSvc := &researchServiceMock{
+		createJob: &tools.ResearchJob{
+			ID:                 "job-aapl-1",
+			ConversationID:     conv.ID,
+			Status:             "completed",
+			Query:              "Apple AAPL stock price today April 2026",
+			Mode:               "deep",
+			RequestedRouteMode: "web",
+			EffectiveRouteMode: "web",
+			Progress:           100,
+			EvidenceCount:      4,
+			Answer:             "AAPL mock deep research answer",
+			Confidence:         0.91,
+		},
+		getJob: &tools.ResearchJob{
+			ID:                 "job-aapl-1",
+			ConversationID:     conv.ID,
+			Status:             "completed",
+			Query:              "Apple AAPL stock price today April 2026",
+			Mode:               "deep",
+			RequestedRouteMode: "web",
+			EffectiveRouteMode: "web",
+			Progress:           100,
+			EvidenceCount:      4,
+			Answer:             "AAPL mock deep research answer",
+			Confidence:         0.91,
+		},
+	}
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewDeepResearchTool(researchSvc))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-deep-research","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	researchSvc.mu.Lock()
+	createCalls := researchSvc.createCalls
+	statusCalls := researchSvc.statusCalls
+	lastCreate := researchSvc.lastCreate
+	lastJobID := researchSvc.lastJobID
+	researchSvc.mu.Unlock()
+	if createCalls != 1 {
+		t.Fatalf("deep_research create calls = %d, want 1", createCalls)
+	}
+	if statusCalls != 1 {
+		t.Fatalf("deep_research status calls = %d, want 1", statusCalls)
+	}
+	if lastCreate.Query != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("deep_research query = %q, want Apple AAPL stock price today April 2026", lastCreate.Query)
+	}
+	if lastCreate.Mode != "deep" {
+		t.Fatalf("deep_research mode = %q, want deep", lastCreate.Mode)
+	}
+	if lastJobID != "job-aapl-1" {
+		t.Fatalf("deep_research status job_id = %q, want job-aapl-1", lastJobID)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "deep_research" && strings.Contains(msg.Content, "AAPL mock deep research answer") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered deep_research execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered deep_research tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "已完成 Apple AAPL 深度调研，并整理好结果摘要。") {
+		t.Fatalf("expected final deep research summary, got %q", content)
+	}
+	if strings.Contains(content, "<invoke name=\"$blue\">") {
+		t.Fatalf("expected recovered pseudo deep research text to be removed from response body, got %q", content)
+	}
+}
+
 func TestChatHandlerSendMessageAutoContinue_RetriesEmptyReplyAfterToolRound(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -3874,6 +5481,594 @@ func TestChatHandlerSendMessageAutoContinue_RetriesEmptyReplyAfterToolRound(t *t
 	}
 	if strings.Contains(content, "最终总结生成失败") || strings.Contains(content, "Tool execution completed") {
 		t.Fatalf("expected no tool-fallback failure wording, got %q", content)
+	}
+}
+
+func TestRecoverPseudoToolCallsFromContent(t *testing.T) {
+	t.Run("blue wrapper with nested args", func(t *testing.T) {
+		content := `<function_calls>
+<invoke name="$blue">
+<parameter name="command">deep_research</parameter>
+<parameter name="args">
+<parameter name="query">Apple AAPL stock price today April 2026</parameter>
+<parameter name="iterations">3</parameter>
+</parameter>
+</invoke>
+</function_calls>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "deep_research"}})
+		if !ok {
+			t.Fatal("expected pseudo tool-call recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "deep_research" {
+			t.Fatalf("call name = %q, want deep_research", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "Apple AAPL stock price today April 2026" {
+			t.Fatalf("query = %q, want Apple AAPL stock price today April 2026", got)
+		}
+		if got, _ := args["iterations"].(float64); got != 3 {
+			t.Fatalf("iterations = %v, want 3", args["iterations"])
+		}
+	})
+
+	t.Run("direct xml tool tag", func(t *testing.T) {
+		content := `<web_query><input>Apple AAPL stock price today2026</input><max_results>5</max_results></web_query>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected pseudo xml tool tag recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["input"].(string); got != "Apple AAPL stock price today2026" {
+			t.Fatalf("input = %q, want Apple AAPL stock price today2026", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 5 {
+			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("direct xml scalar tool tag", func(t *testing.T) {
+		content := `<web_query>Apple AAPL stock price today2026</web_query>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected scalar pseudo xml tool tag recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["input"].(string); got != "Apple AAPL stock price today2026" {
+			t.Fatalf("input = %q, want Apple AAPL stock price today2026", got)
+		}
+	})
+
+	t.Run("direct invoke scalar body", func(t *testing.T) {
+		content := `<function_calls>
+<invoke name="web_query">Apple AAPL stock price today2026</invoke>
+</function_calls>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected scalar invoke recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["input"].(string); got != "Apple AAPL stock price today2026" {
+			t.Fatalf("input = %q, want Apple AAPL stock price today2026", got)
+		}
+	})
+
+	t.Run("xml tool_call wrapper with json body", func(t *testing.T) {
+		content := `<tool_call>
+{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}
+</tool_call>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected xml tool_call wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "小米 官网 手机" {
+			t.Fatalf("query = %q, want 小米 官网 手机", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 10 {
+			t.Fatalf("max_results = %v, want 10", args["max_results"])
+		}
+	})
+
+	t.Run("xml function_call wrapper with child arguments", func(t *testing.T) {
+		content := `<function_call>
+<name>web_query</name>
+<arguments>{"input":"Apple AAPL stock price today2026","max_results":5}</arguments>
+</function_call>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected xml function_call wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["input"].(string); got != "Apple AAPL stock price today2026" {
+			t.Fatalf("input = %q, want Apple AAPL stock price today2026", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 5 {
+			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("bracketed tool_call wrapper with json body", func(t *testing.T) {
+		content := `[TOOL_CALL]
+{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}
+[/TOOL_CALL]`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected bracketed tool_call wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "小米 官网 手机" {
+			t.Fatalf("query = %q, want 小米 官网 手机", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 10 {
+			t.Fatalf("max_results = %v, want 10", args["max_results"])
+		}
+	})
+
+	t.Run("bracketed tool_call wrapper with cli args body", func(t *testing.T) {
+		content := `[TOOL_CALL]
+{tool => "web_query", args => {
+  --input "Apple AAPL stock price today April 2026"
+  --max-results 5
+}}
+[/TOOL_CALL]`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected bracketed cli tool_call wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["input"].(string); got != "Apple AAPL stock price today April 2026" {
+			t.Fatalf("input = %q, want Apple AAPL stock price today April 2026", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 5 {
+			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("xml tool_call wrapper with nested function object body", func(t *testing.T) {
+		content := `<tool_call>
+{"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"Apple AAPL stock price today April 2026\",\"max_results\":5}"}}
+</tool_call>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected nested function wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "Apple AAPL stock price today April 2026" {
+			t.Fatalf("query = %q, want Apple AAPL stock price today April 2026", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 5 {
+			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("bracketed tool_call wrapper with nested function object body", func(t *testing.T) {
+		content := `[TOOL_CALL]
+{"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"Apple AAPL stock price today April 2026\",\"max_results\":5}"}}
+[/TOOL_CALL]`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected bracketed nested function wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "Apple AAPL stock price today April 2026" {
+			t.Fatalf("query = %q, want Apple AAPL stock price today April 2026", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 5 {
+			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("bare json tool_call wrapper body", func(t *testing.T) {
+		content := `{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected bare json wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "小米 官网 手机" {
+			t.Fatalf("query = %q, want 小米 官网 手机", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 10 {
+			t.Fatalf("max_results = %v, want 10", args["max_results"])
+		}
+	})
+
+	t.Run("bare json nested function wrapper body", func(t *testing.T) {
+		content := `{"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"Apple AAPL stock price today April 2026\",\"max_results\":5}"}}`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected bare json nested function wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "Apple AAPL stock price today April 2026" {
+			t.Fatalf("query = %q, want Apple AAPL stock price today April 2026", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 5 {
+			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("bare json tool_calls array body", func(t *testing.T) {
+		content := `[{"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}}]`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected bare json tool_calls array recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "小米 官网 手机" {
+			t.Fatalf("query = %q, want 小米 官网 手机", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 10 {
+			t.Fatalf("max_results = %v, want 10", args["max_results"])
+		}
+	})
+
+	t.Run("embedded bare json tool_call wrapper inside prose", func(t *testing.T) {
+		content := `我先查一下。{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}我整理好后发你。`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected embedded bare json wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "小米 官网 手机" {
+			t.Fatalf("query = %q, want 小米 官网 手机", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 10 {
+			t.Fatalf("max_results = %v, want 10", args["max_results"])
+		}
+	})
+
+	t.Run("embedded bare json tool_calls array inside prose", func(t *testing.T) {
+		content := `先查一下：{"tool_calls":[{"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"Apple AAPL stock price today April 2026\",\"max_results\":5}"}}]}我整理好后发你。`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected embedded bare json tool_calls array recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "Apple AAPL stock price today April 2026" {
+			t.Fatalf("query = %q, want Apple AAPL stock price today April 2026", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 5 {
+			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("does not recover embedded bare json wrapper inside explicit example prose", func(t *testing.T) {
+		content := `你可以参考这个 JSON 示例：{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}` + "\n" + `实际回答里不要真的调用。`
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected explicit JSON example prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover embedded bare json wrapper inside code fence", func(t *testing.T) {
+		content := "下面是工具调用示例：\n```json\n" +
+			`{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}` +
+			"\n```\n请按需改写。"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected code-fenced JSON example not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover direct xml tool tag inside code fence", func(t *testing.T) {
+		content := "下面是 XML 工具调用示例：\n```xml\n<web_query><input>Apple AAPL stock price today2026</input></web_query>\n```\n不要实际执行。"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected code-fenced XML example not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover bracketed tool_call inside code fence", func(t *testing.T) {
+		content := "下面是 bracketed 工具调用示例：\n```text\n[TOOL_CALL]\n{\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}\n[/TOOL_CALL]\n```\n不要实际执行。"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected code-fenced bracketed example not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover direct xml tool tag inside explicit example prose", func(t *testing.T) {
+		content := "下面是 XML 工具调用示例：<web_query><input>Apple AAPL stock price today2026</input></web_query>，不要实际执行。"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected explicit XML example prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover bracketed tool_call inside explicit example prose", func(t *testing.T) {
+		content := "下面是 bracketed 工具调用示例：[TOOL_CALL]{\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}[/TOOL_CALL]，不要实际执行。"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected explicit bracketed example prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover embedded bare json wrapper inside format guidance prose", func(t *testing.T) {
+		content := `工具调用格式如下：{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}`
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected format guidance JSON prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover direct xml tool tag inside return-guidance prose", func(t *testing.T) {
+		content := "你可以返回以下 XML：<web_query><input>Apple AAPL stock price today2026</input></web_query>"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected return-guidance XML prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover bracketed tool_call inside write-guidance prose", func(t *testing.T) {
+		content := "可写成 [TOOL_CALL]{\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}[/TOOL_CALL]"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected write-guidance bracketed prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover blockquote json guidance prose", func(t *testing.T) {
+		content := "文档说明：\n> {\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected blockquote guidance prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover list item xml guidance prose", func(t *testing.T) {
+		content := "可选写法：\n- <web_query><input>Apple AAPL stock price today2026</input></web_query>"
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected list-item XML guidance prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("does not recover quoted bracketed guidance prose", func(t *testing.T) {
+		content := "响应格式可写成 \"[TOOL_CALL]{\\\"name\\\":\\\"tzkz0_web_search\\\",\\\"arguments\\\":\\\"{\\\\\\\"query\\\\\\\":\\\\\\\"小米 官网 手机\\\\\\\",\\\\\\\"max_results\\\\\\\":10}\\\"}[/TOOL_CALL]\""
+		if calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+			t.Fatalf("expected quoted bracketed guidance prose not to recover tool calls, got %#v", calls)
+		}
+	})
+
+	t.Run("bare json choices delta tool_calls response fragment body", func(t *testing.T) {
+		content := `{"choices":[{"delta":{"tool_calls":[{"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"Apple AAPL stock price today April 2026\",\"max_results\":5}"}}]}}]}`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected bare json choices delta tool_calls recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["query"].(string); got != "Apple AAPL stock price today April 2026" {
+			t.Fatalf("query = %q, want Apple AAPL stock price today April 2026", got)
+		}
+		if got, _ := args["max_results"].(float64); got != 5 {
+			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("direct invoke tool name alias", func(t *testing.T) {
+		content := `<function_calls>
+<invoke name="file_write">
+<parameter name="path">stock_report.txt</parameter>
+<parameter name="content">苹果公司(AAPL)股票报告</parameter>
+</invoke>
+</function_calls>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "write"}})
+		if !ok {
+			t.Fatal("expected direct invoke alias recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "write" {
+			t.Fatalf("call name = %q, want write", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["path"].(string); got != "stock_report.txt" {
+			t.Fatalf("path = %q, want stock_report.txt", got)
+		}
+		if got, _ := args["content"].(string); got != "苹果公司(AAPL)股票报告" {
+			t.Fatalf("content = %q, want 苹果公司(AAPL)股票报告", got)
+		}
+	})
+}
+
+func TestPseudoJSONToolCallStartIndex_EmbeddedBareJSONWrapperInsideProse(t *testing.T) {
+	delta := `我先查一下。{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"format\":\"json\",\"max_results\":10}"}我整理好后发你。`
+	got := pseudoJSONToolCallStartIndex(delta, []llm.Tool{{Name: "web_query"}})
+	want := strings.Index(delta, `{"name":"tzkz0_web_search"`)
+	if got != want {
+		t.Fatalf("pseudoJSONToolCallStartIndex() = %d, want %d", got, want)
+	}
+}
+
+func TestPseudoJSONToolCallStartIndex_DoesNotFlagExplicitExampleProse(t *testing.T) {
+	delta := `你可以参考这个 JSON 示例：{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}`
+	if got := pseudoJSONToolCallStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
+		t.Fatalf("pseudoJSONToolCallStartIndex() = %d, want -1", got)
+	}
+}
+
+func TestPseudoJSONToolCallStartIndex_DoesNotFlagCodeFenceExample(t *testing.T) {
+	delta := "下面是工具调用示例：\n```json\n" +
+		`{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}` +
+		"\n```"
+	if got := pseudoJSONToolCallStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
+		t.Fatalf("pseudoJSONToolCallStartIndex() = %d, want -1", got)
+	}
+}
+
+func TestPseudoDirectiveStartIndex_DoesNotFlagExplicitXMLExampleProse(t *testing.T) {
+	delta := "下面是 XML 工具调用示例：<web_query><input>Apple AAPL stock price today2026</input></web_query>，不要实际执行。"
+	if got := pseudoDirectiveStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
+		t.Fatalf("pseudoDirectiveStartIndex() = %d, want -1", got)
+	}
+}
+
+func TestPseudoDirectiveStartIndex_DoesNotFlagExplicitBracketedExampleProse(t *testing.T) {
+	delta := "下面是 bracketed 工具调用示例：[TOOL_CALL]{\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}[/TOOL_CALL]，不要实际执行。"
+	if got := pseudoDirectiveStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
+		t.Fatalf("pseudoDirectiveStartIndex() = %d, want -1", got)
+	}
+}
+
+func TestPseudoDirectiveStartIndex_DoesNotFlagFormatGuidanceJSONProse(t *testing.T) {
+	delta := `工具调用格式如下：{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}`
+	if got := pseudoDirectiveStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
+		t.Fatalf("pseudoDirectiveStartIndex() = %d, want -1", got)
+	}
+}
+
+func TestPseudoDirectiveStartIndex_DoesNotFlagReturnGuidanceXMLProse(t *testing.T) {
+	delta := "你可以返回以下 XML：<web_query><input>Apple AAPL stock price today2026</input></web_query>"
+	if got := pseudoDirectiveStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
+		t.Fatalf("pseudoDirectiveStartIndex() = %d, want -1", got)
+	}
+}
+
+func TestPseudoDirectiveStartIndex_DoesNotFlagBlockquoteGuidanceJSONProse(t *testing.T) {
+	delta := "文档说明：\n> {\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}"
+	if got := pseudoDirectiveStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
+		t.Fatalf("pseudoDirectiveStartIndex() = %d, want -1", got)
+	}
+}
+
+func TestPseudoDirectiveStartIndex_DoesNotFlagListItemGuidanceXMLProse(t *testing.T) {
+	delta := "可选写法：\n- <web_query><input>Apple AAPL stock price today2026</input></web_query>"
+	if got := pseudoDirectiveStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
+		t.Fatalf("pseudoDirectiveStartIndex() = %d, want -1", got)
 	}
 }
 

@@ -783,7 +783,6 @@ func TestBindRuntimeToolSelection_WiresDefaultsAndOptionalSkillSelector(t *testi
 	handler := &serverpkg.ChatHandler{}
 	cfg := &config.Config{}
 	cfg.ToolCalling.SmartSelectionMaxTools = 7
-	cfg.ToolCalling.SmartSkillSelection = true
 	cfg.ToolCalling.SkillRerankEnabled = true
 	cfg.ToolCalling.SkillRerankONNXEnabled = true
 	cfg.ToolCalling.SkillRerankONNXAutoDownload = true
@@ -807,24 +806,24 @@ func TestBindRuntimeToolSelection_WiresDefaultsAndOptionalSkillSelector(t *testi
 		t.Fatal("expected tool router wiring")
 	}
 	if handler.GetSkillSelector() == nil {
-		t.Fatal("expected skill selector wiring when smart selection is enabled")
+		t.Fatal("expected skill selector wiring")
 	}
 }
 
-func TestBindRuntimeToolSelection_PrimesDormantSkillSelectorWhenDisabled(t *testing.T) {
+func TestBindRuntimeToolSelection_WiresSelectorUnderDefaultCutoverConfig(t *testing.T) {
 	handler := &serverpkg.ChatHandler{}
 	cfg := &config.Config{}
 
 	reranker := bindRuntimeToolSelection(handler, cfg, t.TempDir(), "/tmp/workspace", nil)
 
-	if reranker != nil {
-		t.Fatalf("expected no reranker when smart selection is disabled, got %#v", reranker)
+	if reranker == nil {
+		t.Fatal("expected cutover skill selector reranker to be created by default")
 	}
 	if handler.GetToolSelector() == nil || handler.GetToolPolicyResolver() == nil || handler.GetToolTraceStore() == nil || handler.GetToolRouter() == nil {
 		t.Fatalf("expected baseline tool-selection wiring, got selector=%#v policy=%#v trace=%#v router=%#v", handler.GetToolSelector(), handler.GetToolPolicyResolver(), handler.GetToolTraceStore(), handler.GetToolRouter())
 	}
 	if handler.GetSkillSelector() == nil {
-		t.Fatalf("expected dormant skill selector to be wired for runtime toggles")
+		t.Fatalf("expected cutover skill selector to be wired")
 	}
 }
 
@@ -2869,7 +2868,7 @@ func TestBindRuntimeExecTool_WiresAuditRegistrySkillExecutorAndSelector(t *testi
 	}
 }
 
-func TestNewRuntimeExecSkillSelector_RespectsDisabledSmartSkillSelection(t *testing.T) {
+func TestNewRuntimeExecSkillSelector_RejectsRemovedSmartSkillSettingAfterCutover(t *testing.T) {
 	settings := serverpkg.NewSettingsHandler(kvstore.NewMemoryStore())
 	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"smart_skill_selection":false}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -2878,12 +2877,12 @@ func TestNewRuntimeExecSkillSelector_RespectsDisabledSmartSkillSelection(t *test
 	if err := settings.Patch(c); err != nil {
 		t.Fatalf("Patch settings: %v", err)
 	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Patch settings status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Patch settings status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
 	}
 
 	selectorSource := &stubRuntimeExecSkillSelectionSource{
-		selector: &agentcore.SkillSelector{},
+		selector: nil,
 		settings: settings,
 	}
 
@@ -2894,13 +2893,13 @@ func TestNewRuntimeExecSkillSelector_RespectsDisabledSmartSkillSelection(t *test
 
 	decision := selectFn(context.Background(), "route this somewhere")
 	if decision.SelectedSkill != "" || decision.Confidence != 0 || decision.NeedClarify || decision.Reason != "" || len(decision.Candidates) != 0 {
-		t.Fatalf("expected disabled smart selection to short-circuit, got %#v", decision)
+		t.Fatalf("expected empty selection result when no selector is wired, got %#v", decision)
 	}
 	if selectorSource.settingsCalls == 0 {
 		t.Fatalf("expected settings handler to be consulted, got %#v", selectorSource)
 	}
-	if selectorSource.selectorCalls != 0 {
-		t.Fatalf("expected selector lookup to be skipped while disabled, got %#v", selectorSource)
+	if selectorSource.selectorCalls != 1 {
+		t.Fatalf("expected selector lookup to continue after cutover, got %#v", selectorSource)
 	}
 }
 

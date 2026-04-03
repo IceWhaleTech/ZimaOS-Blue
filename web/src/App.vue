@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { PagePermissions } from '@/constants/pagePermissions'
 import { useAuthStore } from '@/stores/auth'
@@ -7,6 +7,8 @@ import { usePreviewStore } from '@/stores/preview'
 import { reportStartupMark } from '@/utils/startupTrace'
 import { prefetchCriticalRoutes } from '@/utils/prefetch'
 import { hasStoredSessionHint } from '@/utils/authStorage'
+import { shouldDeferAskUserQuestionDialogOnDesktopStartup } from '@/utils/desktopStartup'
+import { scheduleStartupBackgroundTask } from '@/utils/startupBackgroundTask'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
 const NotificationContainer = defineAsyncComponent(
@@ -82,6 +84,13 @@ const hasProtectedSession = computed(() => {
 })
 
 const hideLayout = computed(() => route.meta.hideLayout === true)
+const askUserQuestionDialogReady = ref(
+  !shouldDeferAskUserQuestionDialogOnDesktopStartup(
+    typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__,
+    route.path
+  )
+)
+let askUserQuestionDialogStartupCleanup: (() => void) | null = null
 
 const canPrefetchProviders = computed(() => {
   return previewStore.isPreviewMode || authStore.hasPermission(PagePermissions.PROVIDERS)
@@ -188,6 +197,12 @@ onMounted(() => {
   if (initialRouteReady.value) {
     reportStartupMark('app_shell_eager_render')
   }
+  if (!askUserQuestionDialogReady.value) {
+    askUserQuestionDialogStartupCleanup = scheduleStartupBackgroundTask(() => {
+      askUserQuestionDialogReady.value = true
+      askUserQuestionDialogStartupCleanup = null
+    }, 600)
+  }
   dismissSplash()
   void initializeProtectedFeatures()
   void router.isReady().then(() => {
@@ -195,6 +210,11 @@ onMounted(() => {
     scheduleCriticalRoutePrefetch()
     reportStartupMark('app_initial_route_ready')
   })
+})
+
+onUnmounted(() => {
+  askUserQuestionDialogStartupCleanup?.()
+  askUserQuestionDialogStartupCleanup = null
 })
 </script>
 
@@ -205,7 +225,7 @@ onMounted(() => {
   <RouterView v-else-if="hideLayout" />
   <DefaultLayout v-else />
   <NotificationContainer v-if="initialRouteReady" />
-  <AskUserQuestionDialog v-if="initialRouteReady" />
+  <AskUserQuestionDialog v-if="initialRouteReady && askUserQuestionDialogReady" />
 </template>
 
 <style scoped>

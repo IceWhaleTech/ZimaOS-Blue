@@ -3,6 +3,7 @@
 package workspace
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -598,12 +599,27 @@ func (m *Manager) ReleaseSkills(fsys fs.FS) error {
 		return fmt.Errorf("workspace: mkdir %s: %w", skillsDir, err)
 	}
 
+	embeddedSkillData := make(map[string][]byte, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		data, err := fs.ReadFile(fsys, "skills/"+entry.Name()+"/SKILL.md")
-		if err != nil {
+		data, readErr := fs.ReadFile(fsys, "skills/"+entry.Name()+"/SKILL.md")
+		if readErr != nil {
+			continue
+		}
+		embeddedSkillData[entry.Name()] = data
+	}
+
+	migrateLegacyBundledSkillDirs(skillsDir, embeddedSkillData)
+	pruneRemovedPlaceholderSkills(skillsDir)
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		data, ok := embeddedSkillData[entry.Name()]
+		if !ok {
 			continue
 		}
 
@@ -726,9 +742,12 @@ func stripFrontmatterField(data []byte, key string) []byte {
 
 // skillMeta holds parsed frontmatter fields relevant to release decisions.
 type skillMeta struct {
-	Version string   // optional — parsed but not used for release decisions
-	OS      []string // from top-level `os:` or nested `metadata.<vendor>.os`
-	Enabled string   // "true" or "false" — preserved across upgrades
+	Name        string   // skill name from frontmatter
+	Version     string   // optional — parsed but not used for release decisions
+	Description string   // skill description from frontmatter
+	Category    string   // skill category from frontmatter
+	OS          []string // from top-level `os:` or nested `metadata.<vendor>.os`
+	Enabled     string   // "true" or "false" — preserved across upgrades
 }
 
 // parseSkillFrontmatter extracts version, os, and enabled from YAML frontmatter.
@@ -763,8 +782,14 @@ func parseSkillFrontmatter(data []byte) skillMeta {
 		value := strings.TrimSpace(trimmed[colonIdx+1:])
 
 		switch key {
+		case "name":
+			meta.Name = strings.Trim(value, `"'`)
 		case "version":
 			meta.Version = strings.Trim(value, `"'`)
+		case "description":
+			meta.Description = strings.Trim(value, `"'`)
+		case "category":
+			meta.Category = strings.Trim(value, `"'`)
 		case "enabled":
 			meta.Enabled = strings.Trim(value, `"'`)
 		case "os":
@@ -787,6 +812,164 @@ func parseSkillFrontmatter(data []byte) skillMeta {
 	}
 
 	return meta
+}
+
+type removedPlaceholderSignature struct {
+	Description  string
+	BodyPhrases  []string
+	CanonicalSHA string
+}
+
+var removedPlaceholderSkills = map[string]removedPlaceholderSignature{
+	"datetime": {
+		Description:  "Disabled placeholder for date/time/timezone helpers. ZimaOS Blue does not currently register a dedicated builtin datetime skill in the live runtime.",
+		BodyPhrases:  []string{"This skill is currently disabled.", "there is no dedicated builtin `datetime` skill registration backing that interface."},
+		CanonicalSHA: "b254b47a2fdf02bd4a40bd0551c9bcc279840be75619585e9fd2097740a0d314",
+	},
+	"search": {
+		Description:  "Disabled placeholder for the deprecated search skill name. ZimaOS Blue now uses web_query as the canonical public web skill.",
+		BodyPhrases:  []string{"This skill is currently disabled.", "The old `search` name is deprecated"},
+		CanonicalSHA: "4c4412807a26b066055e4db6c0dbaf837ba6e641d312c569dd3f9fca7c903e0e",
+	},
+	"timer": {
+		Description:  "Disabled placeholder for session-local countdown timers. ZimaOS Blue does not currently register a live builtin timer skill at runtime.",
+		BodyPhrases:  []string{"This skill is currently disabled.", "ZimaOS Blue does not currently register a live builtin `timer` skill at runtime"},
+		CanonicalSHA: "9cbe0145b5b9033c91a8cb4a6f1cc2e5f0be77305f03ac17bd0508e25f404e7a",
+	},
+	"unit_converter": {
+		Description:  "Disabled placeholder for unit conversion helpers. ZimaOS Blue does not currently register a dedicated builtin unit_converter skill in the live runtime.",
+		BodyPhrases:  []string{"This skill is currently disabled.", "there is no dedicated builtin `unit_converter` skill registration behind that contract."},
+		CanonicalSHA: "ecd08147365789f32000b86fb4605740f9bac71ebc26b32cd57d1512f14034ef",
+	},
+}
+
+func pruneRemovedPlaceholderSkills(skillsDir string) {
+	for name := range removedPlaceholderSkills {
+		dir := filepath.Join(skillsDir, name)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				log.Printf("workspace: read removed placeholder skill dir %s: %v", name, err)
+			}
+			continue
+		}
+		if len(entries) != 1 || entries[0].IsDir() || entries[0].Name() != "SKILL.md" {
+			continue
+		}
+
+		mdPath := filepath.Join(dir, "SKILL.md")
+		data, err := os.ReadFile(mdPath)
+		if err != nil {
+			log.Printf("workspace: read removed placeholder skill %s: %v", name, err)
+			continue
+		}
+		if !matchesRemovedPlaceholderSkill(name, data) {
+			continue
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			log.Printf("workspace: prune removed placeholder skill %s: %v", name, err)
+			continue
+		}
+		log.Printf("workspace: pruned removed placeholder skill %s", name)
+	}
+}
+
+func migrateLegacyBundledSkillDirs(skillsDir string, embeddedSkillData map[string][]byte) {
+	migrateLegacyBundledSkillDir(skillsDir, "web_search", "web_query", embeddedSkillData["web_query"])
+}
+
+func migrateLegacyBundledSkillDir(skillsDir, legacyName, canonicalName string, canonicalData []byte) {
+	if len(canonicalData) == 0 {
+		return
+	}
+
+	legacyDir := filepath.Join(skillsDir, legacyName)
+	entries, err := os.ReadDir(legacyDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("workspace: read legacy bundled skill dir %s: %v", legacyName, err)
+		}
+		return
+	}
+	if len(entries) != 1 || entries[0].IsDir() || entries[0].Name() != "SKILL.md" {
+		return
+	}
+
+	legacyPath := filepath.Join(legacyDir, "SKILL.md")
+	legacyData, err := os.ReadFile(legacyPath)
+	if err != nil {
+		log.Printf("workspace: read legacy bundled skill %s: %v", legacyName, err)
+		return
+	}
+	if !contentEqual(legacyData, canonicalData) {
+		return
+	}
+
+	migratedData := canonicalData
+	legacyMeta := parseSkillFrontmatter(legacyData)
+	if legacyMeta.Enabled != "" {
+		migratedData = setFrontmatterField(migratedData, "enabled", legacyMeta.Enabled)
+	}
+
+	canonicalDir := filepath.Join(skillsDir, canonicalName)
+	canonicalPath := filepath.Join(canonicalDir, "SKILL.md")
+	if existingData, readErr := os.ReadFile(canonicalPath); readErr == nil {
+		if !contentEqual(existingData, canonicalData) {
+			return
+		}
+		existingMeta := parseSkillFrontmatter(existingData)
+		if existingMeta.Enabled != "" {
+			migratedData = setFrontmatterField(canonicalData, "enabled", existingMeta.Enabled)
+		}
+	}
+
+	if err := os.MkdirAll(canonicalDir, 0o755); err != nil {
+		log.Printf("workspace: mkdir migrated bundled skill dir %s: %v", canonicalName, err)
+		return
+	}
+	if err := os.WriteFile(canonicalPath, migratedData, 0o644); err != nil {
+		log.Printf("workspace: write migrated bundled skill %s: %v", canonicalName, err)
+		return
+	}
+	if err := os.RemoveAll(legacyDir); err != nil {
+		log.Printf("workspace: remove legacy bundled skill dir %s: %v", legacyName, err)
+		return
+	}
+	log.Printf("workspace: migrated legacy bundled skill dir %s -> %s", legacyName, canonicalName)
+}
+
+func matchesRemovedPlaceholderSkill(name string, data []byte) bool {
+	signature, ok := removedPlaceholderSkills[name]
+	if !ok {
+		return false
+	}
+
+	meta := parseSkillFrontmatter(data)
+	if meta.Name != name || meta.Version != "0.1.0" || meta.Description != signature.Description || meta.Category != "internal" {
+		return false
+	}
+
+	body := skillBody(data)
+	for _, phrase := range signature.BodyPhrases {
+		if !strings.Contains(body, phrase) {
+			return false
+		}
+	}
+
+	sum := sha256.Sum256(stripFrontmatterField(data, "enabled"))
+	return fmt.Sprintf("%x", sum[:]) == signature.CanonicalSHA
+}
+
+func skillBody(data []byte) string {
+	content := string(data)
+	if !strings.HasPrefix(content, "---") {
+		return content
+	}
+	parts := strings.SplitN(content, "---", 3)
+	if len(parts) < 3 {
+		return content
+	}
+	return parts[2]
 }
 
 // parseOSList parses os field value: `["darwin"]`, `["darwin","linux"]`, or `darwin`

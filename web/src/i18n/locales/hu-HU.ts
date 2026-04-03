@@ -1,5 +1,5 @@
 // Hungarian (Magyar)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('hu-HU', {
   common: {
@@ -1850,7 +1850,12 @@ export default mergeHarnessLocale('hu-HU', {
       saveBeforeHealth: 'Mentse el a profilt az állapotfelmérés futtatása előtt.',
       duplicate: 'Megkettőzés',
       builtinHelp:
-        'A beépített profilok csak olvashatóak maradnak, így a Claude, Codex, Gemini és általános A2A bejegyzések stabilak maradnak.',
+        'A beépített profilok csak olvashatók maradnak. Másoljon le egyet egy egyéni példány létrehozásához.',
+      acpTemplateSummary: 'Másolja le egy futtatható ACP-parancs hozzáadásához.',
+      acpTemplateHelp:
+        'A beépített ACP-bejegyzések csak beállítási sablonok. Másoljon le egyet, majd adjon hozzá tetszőleges futtatható ACP-parancsot.',
+      acpTemplateActionDisabled:
+        'A beépített ACP-sablonok nem futtathatnak ellenőrzést vagy állapotvizsgálatot. Előbb másoljon le egyet, és állítson be egy parancsot.',
       command: 'Command és Args',
       credentialSource: 'Hitelesítési adatok forrása',
       authMethod: 'Hitelesítési mód',

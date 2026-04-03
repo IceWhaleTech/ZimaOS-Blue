@@ -269,6 +269,9 @@ func (h *SkillHandler) MarketInstallSkill(c echo.Context) error {
 	if !req.AckRisk {
 		req.AckRisk = parseTruthy(c.QueryParam("ack_risk"))
 	}
+	if !req.ForceInstall {
+		req.ForceInstall = parseTruthy(c.QueryParam("force_install"))
+	}
 	market, err := h.ensureMarketplace()
 	if market == nil {
 		if strings.TrimSpace(req.GitHub) != "" {
@@ -362,8 +365,9 @@ func (h *SkillHandler) MarketUpdateSkill(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	result, err := market.Install(c.Request().Context(), skillmarket.InstallRequest{
-		ID:      id,
-		AckRisk: parseTruthy(c.QueryParam("ack_risk")),
+		ID:           id,
+		AckRisk:      parseTruthy(c.QueryParam("ack_risk")),
+		ForceInstall: parseTruthy(c.QueryParam("force_install")),
 	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})

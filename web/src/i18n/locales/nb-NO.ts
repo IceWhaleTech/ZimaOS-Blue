@@ -1,5 +1,5 @@
 // Norwegian Bokmål (Norsk bokmål)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('nb-NO', {
   common: {
@@ -1845,7 +1845,12 @@ export default mergeHarnessLocale('nb-NO', {
       saveBeforeHealth: 'Lagre profilen før du kjører en helsesjekk.',
       duplicate: 'Duplikat',
       builtinHelp:
-        'Innebygde profiler forblir skrivebeskyttede, slik at de seedde Claude, Codex, Gemini og generiske A2A-oppføringene forblir stabile.',
+        'Innebygde profiler forblir skrivebeskyttet. Dupliser en for å lage en tilpasset kopi.',
+      acpTemplateSummary: 'Dupliser for å legge til en kjørbar ACP-kommando.',
+      acpTemplateHelp:
+        'Innebygde ACP-oppføringer er bare oppsettsmaler. Dupliser en, og legg deretter til en valgfri kjørbar ACP-kommando.',
+      acpTemplateActionDisabled:
+        'Innebygde ACP-maler kan ikke kjøre verifisering eller helsesjekk. Dupliser en først og konfigurer en kommando.',
       command: 'Kommando og Args',
       credentialSource: 'Legitimasjonskilde',
       authMethod: 'Auth metode',

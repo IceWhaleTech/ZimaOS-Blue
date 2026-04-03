@@ -1,5 +1,5 @@
 // Czech (Čeština)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('cs-CZ', {
   common: {
@@ -1848,7 +1848,12 @@ export default mergeHarnessLocale('cs-CZ', {
       saveBeforeHealth: 'Před spuštěním kontroly stavu uložte profil.',
       duplicate: 'Duplicitní',
       builtinHelp:
-        'Vestavěné profily zůstávají pouze pro čtení, takže nasazené položky Claude, Codex, Gemini a obecné A2A zůstávají stabilní.',
+        'Vestavěné profily zůstávají jen pro čtení. Duplikujte jeden a vytvořte vlastní kopii.',
+      acpTemplateSummary: 'Duplikujte a přidejte spustitelný příkaz ACP.',
+      acpTemplateHelp:
+        'Vestavěné položky ACP jsou pouze šablony nastavení. Duplikujte jednu a potom přidejte libovolný spustitelný příkaz ACP.',
+      acpTemplateActionDisabled:
+        'Vestavěné šablony ACP nemohou spustit ověření ani kontrolu stavu. Nejprve jednu duplikujte a nastavte příkaz.',
       command: 'Command a Args',
       credentialSource: 'Zdroj pověření',
       authMethod: 'Metoda ověřování',

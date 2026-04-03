@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import router from '@/router'
 import { i18n } from '@/i18n'
+import { offSSEEvent, onSSEEvent } from '@/composables/useEventStream'
 import type {
   UserTaskActionDescriptor,
   UserTaskActionID,
@@ -177,8 +178,103 @@ function normalizeTaskSnapshot(
   }
 }
 
+const TASK_PROJECTION_EVENT_TYPES = [
+  'task_created',
+  'task_planning',
+  'task_progress',
+  'task_step_completed',
+  'task_reflection_started',
+  'task_reflection_completed',
+  'task_completed',
+  'task_failed',
+  'task_cancelled',
+  'task_user_message',
+  'task_question',
+  'task_question_answered',
+  'deep_research.job_created',
+  'deep_research.job_updated',
+  'deep_research.job_completed',
+  'deep_research.job_failed',
+  'deep_research.job_cancelled',
+] as const
+
+const EVENT_STATUS_MAP: Partial<Record<(typeof TASK_PROJECTION_EVENT_TYPES)[number], UserTaskProjection['status']>> =
+  {
+    task_created: 'running',
+    task_planning: 'running',
+    task_progress: 'running',
+    task_step_completed: 'running',
+    task_reflection_started: 'running',
+    task_reflection_completed: 'running',
+    task_user_message: 'running',
+    task_question_answered: 'running',
+    task_question: 'waiting_user',
+    task_completed: 'completed',
+    task_failed: 'failed',
+    task_cancelled: 'cancelled',
+    'deep_research.job_created': 'running',
+    'deep_research.job_updated': 'running',
+    'deep_research.job_completed': 'completed',
+    'deep_research.job_failed': 'failed',
+    'deep_research.job_cancelled': 'cancelled',
+  }
+
+const EVENT_STAGE_MAP: Partial<Record<(typeof TASK_PROJECTION_EVENT_TYPES)[number], UserTaskProjection['stage']>> =
+  {
+    task_created: 'planning',
+    task_planning: 'planning',
+    task_progress: 'working',
+    task_step_completed: 'working',
+    task_reflection_started: 'verifying',
+    task_reflection_completed: 'verifying',
+    task_user_message: 'working',
+    task_question: 'waiting_user',
+    task_question_answered: 'working',
+    task_completed: 'completed',
+    task_failed: 'failed',
+    task_cancelled: 'cancelled',
+  }
+
+function normalizeTaskEventID(payload: Record<string, unknown> | null | undefined): string {
+  return normalizeString(payload?.task_id || payload?.id || payload?.job_id)
+}
+
+function normalizeTaskEventStatus(value: unknown): UserTaskProjection['status'] | undefined {
+  switch (normalizeString(value)) {
+    case 'running':
+    case 'waiting_user':
+    case 'completed':
+    case 'failed':
+    case 'cancelled':
+      return normalizeString(value) as UserTaskProjection['status']
+    default:
+      return undefined
+  }
+}
+
+function normalizeTaskEventStage(value: unknown): UserTaskProjection['stage'] | undefined {
+  switch (normalizeString(value)) {
+    case 'planning':
+    case 'working':
+    case 'verifying':
+    case 'waiting_user':
+    case 'completed':
+    case 'partial':
+    case 'failed':
+    case 'cancelled':
+      return normalizeString(value) as UserTaskProjection['stage']
+    default:
+      return undefined
+  }
+}
+
+function isTerminalTaskStatus(status: string | undefined): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled'
+}
+
 export const useTaskProjectionsStore = defineStore('taskProjections', () => {
   const RECENT_OUTCOME_TIMEOUT_MS = 5 * 60 * 1000
+  const DETAIL_HYDRATION_DELAY_MS = 120
   const currentConversationId = ref('')
   const currentTasks = ref<UserTaskProjection[]>([])
   const backgroundTasks = ref<UserTaskProjection[]>([])
@@ -192,6 +288,9 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
   let previousCurrentTasks: UserTaskProjection[] = []
   let previousBackgroundTasks: UserTaskProjection[] = []
   let previousConversationId = ''
+  let sseListening = false
+  const sseHandlers = new Map<string, (payload: unknown) => void>()
+  const detailHydrationTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   const currentActiveTasks = computed(() => currentTasks.value.filter((task) => isTaskActive(task)))
   const currentTerminalTasks = computed(() =>
@@ -230,6 +329,12 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     setRecentOutcome(null)
   }
 
+  function syncPreviousTaskSnapshots() {
+    previousCurrentTasks = [...currentTasks.value]
+    previousBackgroundTasks = [...backgroundTasks.value]
+    previousConversationId = normalizeString(currentConversationId.value)
+  }
+
   function syncPolling() {
     if (!hasActiveTasks.value) {
       stopPolling()
@@ -239,6 +344,193 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     pollTimer.value = setInterval(() => {
       void refreshNow().catch(() => {})
     }, 3000)
+  }
+
+  function findExistingTask(taskID: string): UserTaskProjection | null {
+    return (
+      currentTasks.value.find((task) => task.id === taskID) ||
+      backgroundTasks.value.find((task) => task.id === taskID) ||
+      null
+    )
+  }
+
+  function shouldTreatAsCurrentTask(
+    conversationId: string | undefined,
+    existing: UserTaskProjection | null
+  ): boolean {
+    if (existing?.scope === 'current') return true
+    const activeConversationId = normalizeString(currentConversationId.value)
+    const taskConversationId = normalizeString(conversationId)
+    return !!activeConversationId && !!taskConversationId && activeConversationId === taskConversationId
+  }
+
+  function upsertTaskSnapshot(snapshot: Partial<UserTaskProjection>) {
+    const taskID = normalizeString(snapshot.id)
+    if (!taskID) return null
+
+    const existing = findExistingTask(taskID)
+    const normalized = normalizeTaskSnapshot({
+      ...existing,
+      ...snapshot,
+      id: taskID,
+      actions: snapshot.actions ?? existing?.actions ?? { items: [] },
+      artifacts: snapshot.artifacts ?? existing?.artifacts ?? [],
+      research_sources: snapshot.research_sources ?? existing?.research_sources ?? [],
+      updated_at: normalizeString(snapshot.updated_at) || new Date().toISOString(),
+    })
+    if (!normalized) return null
+
+    const keepInCurrent = shouldTreatAsCurrentTask(normalized.conversation_id, existing)
+    const keepInBackground = !keepInCurrent && isTaskActive(normalized)
+
+    let nextCurrent = currentTasks.value.filter((task) => task.id !== normalized.id)
+    let nextBackground = backgroundTasks.value.filter((task) => task.id !== normalized.id)
+
+    if (keepInCurrent) {
+      normalized.scope = 'current'
+      nextCurrent = [...nextCurrent, normalized].sort(compareTasksByUpdatedAt)
+    } else if (keepInBackground) {
+      normalized.scope = 'background'
+      nextBackground = [...nextBackground, normalized].sort(compareTasksByUpdatedAt)
+    } else if (existing?.scope === 'current') {
+      normalized.scope = 'current'
+      nextCurrent = [...nextCurrent, normalized].sort(compareTasksByUpdatedAt)
+    } else {
+      normalized.scope = 'background'
+    }
+
+    currentTasks.value = nextCurrent
+    backgroundTasks.value = nextBackground
+    return {
+      task: normalized,
+      previous: existing,
+    }
+  }
+
+  function hydrateConversationIdForTask(conversationId: string | undefined): string | undefined {
+    const normalizedConversationId = normalizeString(conversationId)
+    const activeConversationId = normalizeString(currentConversationId.value)
+    if (!normalizedConversationId || !activeConversationId) return undefined
+    return normalizedConversationId === activeConversationId ? activeConversationId : undefined
+  }
+
+  async function hydrateTaskByID(taskID: string, conversationId?: string) {
+    const normalizedTaskID = normalizeString(taskID)
+    if (!normalizedTaskID) return
+    const { taskProjectionApi } = await loadTasksApiModule()
+    const response = await taskProjectionApi.getTask(
+      normalizedTaskID,
+      hydrateConversationIdForTask(conversationId)
+    )
+    const detail = normalizeTaskSnapshot(response.data)
+    if (!detail) return
+    const merged = upsertTaskSnapshot(detail)
+    if (!merged) return
+    if (merged.previous && isTaskActive(merged.previous) && !isTaskActive(merged.task)) {
+      if (merged.previous.scope === 'background' || merged.task.scope === 'background') {
+        notifyTaskTerminalState(merged.task)
+      }
+      setRecentOutcome(merged.task)
+    }
+    syncPreviousTaskSnapshots()
+    syncPolling()
+  }
+
+  function scheduleTaskDetailHydration(taskID: string, conversationId?: string, delayMs = DETAIL_HYDRATION_DELAY_MS) {
+    const normalizedTaskID = normalizeString(taskID)
+    if (!normalizedTaskID || detailHydrationTimers.has(normalizedTaskID)) return
+    detailHydrationTimers.set(
+      normalizedTaskID,
+      setTimeout(() => {
+        detailHydrationTimers.delete(normalizedTaskID)
+        void hydrateTaskByID(normalizedTaskID, conversationId).catch(() => {})
+      }, Math.max(0, delayMs))
+    )
+  }
+
+  function handleProjectionEvent(type: string, rawPayload: unknown) {
+    const payload = (rawPayload || {}) as Record<string, unknown>
+    const taskID = normalizeTaskEventID(payload)
+    if (!taskID) return
+
+    const existing = findExistingTask(taskID)
+    const status =
+      normalizeTaskEventStatus(payload.status) ||
+      EVENT_STATUS_MAP[type as keyof typeof EVENT_STATUS_MAP] ||
+      existing?.status ||
+      'running'
+    const stage =
+      normalizeTaskEventStage(payload.stage) ||
+      EVENT_STAGE_MAP[type as keyof typeof EVENT_STAGE_MAP] ||
+      existing?.stage ||
+      'working'
+    const progress =
+      normalizeOptionalNumber(payload.progress) ??
+      (isTerminalTaskStatus(status) ? 100 : existing?.progress ?? 0)
+    const conversationId = normalizeString(payload.conversation_id) || existing?.conversation_id
+    const title = existing?.title || normalizeString(payload.query) || undefined
+    const eventMessage = normalizeString(payload.message)
+
+    const merged = upsertTaskSnapshot({
+      id: taskID,
+      kind: existing?.kind || (type.startsWith('deep_research.') ? 'research' : 'agent_task'),
+      conversation_id: conversationId,
+      title,
+      subtitle: existing?.subtitle,
+      status,
+      stage,
+      progress,
+      updated_at: normalizeString(payload.updated_at) || new Date().toISOString(),
+      result_preview: status === 'completed' ? eventMessage || existing?.result_preview : existing?.result_preview,
+      error_preview: status === 'failed' ? eventMessage || existing?.error_preview : existing?.error_preview,
+    })
+    if (!merged) return
+
+    if (
+      (!existing && isTerminalTaskStatus(status)) ||
+      (existing && isTaskActive(existing) && !isTaskActive(merged.task))
+    ) {
+      if (existing?.scope === 'background' || merged.task.scope === 'background') {
+        notifyTaskTerminalState(merged.task)
+      }
+      setRecentOutcome(merged.task)
+    }
+
+    syncPreviousTaskSnapshots()
+    syncPolling()
+
+    const shouldHydrate =
+      !existing ||
+      isTerminalTaskStatus(status) ||
+      type === 'task_created' ||
+      type === 'task_question' ||
+      type === 'task_question_answered' ||
+      type.startsWith('deep_research.')
+
+    if (shouldHydrate) {
+      scheduleTaskDetailHydration(taskID, conversationId)
+    }
+  }
+
+  function ensureSSEListeners() {
+    if (sseListening) return
+    for (const eventType of TASK_PROJECTION_EVENT_TYPES) {
+      const handler = (payload: unknown) => {
+        handleProjectionEvent(eventType, payload)
+      }
+      sseHandlers.set(eventType, handler)
+      onSSEEvent(eventType, handler)
+    }
+    sseListening = true
+  }
+
+  function stopSSEListeners() {
+    if (!sseListening) return
+    for (const [eventType, handler] of sseHandlers.entries()) {
+      offSSEEvent(eventType, handler)
+    }
+    sseHandlers.clear()
+    sseListening = false
   }
 
   async function fetchCurrentTasks(conversationId: string) {
@@ -364,6 +656,7 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
   }
 
   async function refreshNow() {
+    ensureSSEListeners()
     if (activeRefresh.value) {
       return activeRefresh.value
     }
@@ -384,6 +677,7 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
   }
 
   async function setConversation(conversationId: string) {
+    ensureSSEListeners()
     currentConversationId.value = normalizeString(conversationId)
     await refreshNow()
   }
@@ -447,7 +741,12 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
 
   function reset() {
     stopPolling()
+    stopSSEListeners()
     clearRecentOutcomeTimer()
+    for (const timer of detailHydrationTimers.values()) {
+      clearTimeout(timer)
+    }
+    detailHydrationTimers.clear()
     currentConversationId.value = ''
     currentTasks.value = []
     backgroundTasks.value = []
@@ -458,6 +757,8 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     previousBackgroundTasks = []
     previousConversationId = ''
   }
+
+  ensureSSEListeners()
 
   return {
     currentConversationId,

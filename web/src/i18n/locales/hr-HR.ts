@@ -1,5 +1,5 @@
 // Croatian (Hrvatski)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('hr-HR', {
   common: {
@@ -1848,7 +1848,12 @@ export default mergeHarnessLocale('hr-HR', {
       saveBeforeHealth: 'Spremite profil prije pokretanja provjere stanja.',
       duplicate: 'Duplikat',
       builtinHelp:
-        'Ugrađeni profili ostaju samo za čitanje tako da unosi Claude, Codex, Gemini i generički A2A ostaju stabilni.',
+        'Ugrađeni profili ostaju samo za čitanje. Duplicirajte jedan da biste stvorili prilagođenu kopiju.',
+      acpTemplateSummary: 'Duplicirajte za dodavanje izvršne ACP naredbe.',
+      acpTemplateHelp:
+        'Ugrađeni ACP unosi služe samo kao predlošci za postavljanje. Duplicirajte jedan, a zatim dodajte bilo koju izvršnu ACP naredbu.',
+      acpTemplateActionDisabled:
+        'Ugrađeni ACP predlošci ne mogu pokrenuti provjeru ni provjeru zdravlja. Najprije duplicirajte jedan i konfigurirajte naredbu.',
       command: 'Naredba i argumenti',
       credentialSource: 'Izvor vjerodajnice',
       authMethod: 'Način autentikacije',

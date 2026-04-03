@@ -480,7 +480,7 @@ func TestHandler_EvaluateSelectorGateReturnsStructuredGateReport(t *testing.T) {
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -495,7 +495,7 @@ func TestHandler_EvaluateSelectorGateReturnsStructuredGateReport(t *testing.T) {
 	}
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -596,7 +596,7 @@ func TestHandler_EvaluateSkillCutoverBudgetGateReturnsStructuredGateReport(t *te
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "budget-gate-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("analyze", true, "clarify"),
 		},
 	}, len(items))
@@ -611,7 +611,7 @@ func TestHandler_EvaluateSkillCutoverBudgetGateReturnsStructuredGateReport(t *te
 	}
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "budget-gate-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseWithTools("web_search", []string{"exec"}, false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseWithTools("web_query", []string{"exec"}, false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponseWithTools("exec", []string{"exec"}, true, "clarify"),
 		},
 	}, len(items))
@@ -659,7 +659,7 @@ func TestHandler_EvaluateSkillCutoverReadinessUsesScopedUser(t *testing.T) {
 
 	selectorBaselineReport := runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "selector-baseline", "", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -689,7 +689,7 @@ func TestHandler_EvaluateSkillCutoverReadinessUsesScopedUser(t *testing.T) {
 	candidateID := "rc-handler"
 	runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "selector-candidate", candidateID, selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -739,7 +739,7 @@ func TestHandler_GetComparisonReportRespectsScopedUser(t *testing.T) {
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "comparison-handler-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -754,7 +754,7 @@ func TestHandler_GetComparisonReportRespectsScopedUser(t *testing.T) {
 	}
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "comparison-handler-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))

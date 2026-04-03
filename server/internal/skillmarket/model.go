@@ -380,10 +380,11 @@ type SkillDetail struct {
 }
 
 type InstallRequest struct {
-	ID      string `json:"id,omitempty"`
-	Version string `json:"version,omitempty"`
-	GitHub  string `json:"github,omitempty"`
-	AckRisk bool   `json:"ack_risk,omitempty"`
+	ID           string `json:"id,omitempty"`
+	Version      string `json:"version,omitempty"`
+	GitHub       string `json:"github,omitempty"`
+	AckRisk      bool   `json:"ack_risk,omitempty"`
+	ForceInstall bool   `json:"force_install,omitempty"`
 }
 
 type InstallResult struct {

@@ -1,5 +1,5 @@
 // Romanian (Română)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('ro-RO', {
   common: {
@@ -1860,7 +1860,12 @@ export default mergeHarnessLocale('ro-RO', {
       saveBeforeHealth: 'Salvați profilul înainte de a efectua o verificare a stării de sănătate.',
       duplicate: 'Duplicat',
       builtinHelp:
-        'Profilurile încorporate rămân numai în citire, astfel încât intrările Claude, Codex, Gemini și generice A2A să rămână stabile.',
+        'Profilurile integrate rămân doar în citire. Duplicați unul pentru a crea o copie personalizată.',
+      acpTemplateSummary: 'Duplicați pentru a adăuga o comandă ACP executabilă.',
+      acpTemplateHelp:
+        'Intrările ACP integrate sunt doar șabloane de configurare. Duplicați una, apoi adăugați orice comandă ACP executabilă.',
+      acpTemplateActionDisabled:
+        'Șabloanele ACP integrate nu pot rula verificarea sau controlul de sănătate. Duplicați unul mai întâi și configurați o comandă.',
       command: 'Comanda și Args',
       credentialSource: 'Sursa acreditării',
       authMethod: 'Metoda de autentificare',

@@ -98,7 +98,21 @@ func (c *Controller) EvaluateSelectorGate(ctx context.Context, targetEvalRunID s
 		Passed:             selectorGateChecksPassed(checks),
 		CreatedAt:          timeutil.NowTime(),
 	}
+	c.emitOptimizationTrigger(ctx, OptimizationTrigger{
+		Reason:          selectorGateReason(report.Passed),
+		CandidateID:     evalRunCandidateID(targetReport.EvalRun),
+		EvalRunID:       targetReport.EvalRun.ID,
+		BaseEvalRunID:   comparison.BaseEvalRunID,
+		OptimizationRun: evalRunIsOptimizationChild(targetReport.EvalRun),
+	})
 	return report, nil
+}
+
+func selectorGateReason(passed bool) OptimizationReason {
+	if passed {
+		return OptimizationReasonSelectorGatePassed
+	}
+	return OptimizationReasonSelectorGateFailed
 }
 
 func (c *Controller) ensureSelectorCuratedDataset(ctx context.Context, ownerUserID string) (*Dataset, error) {

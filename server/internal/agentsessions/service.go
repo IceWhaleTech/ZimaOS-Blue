@@ -13,6 +13,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
+const templateOnlyACPProfileMessage = "ACP built-in profiles are setup templates only. Duplicate one and configure a runnable command before using it."
+
 type CreateSessionParams struct {
 	ProfileID      string                 `json:"profile_id"`
 	UserID         string                 `json:"user_id,omitempty"`
@@ -75,15 +77,37 @@ func (s *Service) SeedBuiltinProfiles() error {
 	if err != nil {
 		return err
 	}
-	seen := make(map[string]struct{}, len(existing))
+	existingByID := make(map[string]AgentProfile, len(existing))
+	migratedByBuiltinID := make(map[string]AgentProfile)
 	for _, profile := range existing {
-		seen[profile.ID] = struct{}{}
+		existingByID[profile.ID] = profile
+		if sourceBuiltinID := migratedFromBuiltinProfileID(profile); sourceBuiltinID != "" && !profile.Builtin {
+			migratedByBuiltinID[sourceBuiltinID] = profile
+		}
 	}
-	for _, profile := range builtinProfiles() {
-		if _, ok := seen[profile.ID]; ok {
+	for _, builtin := range builtinProfiles() {
+		existingProfile, ok := existingByID[builtin.ID]
+		if ok {
+			if needsLegacyBuiltinACPMigration(existingProfile, builtin) {
+				migratedProfile, migrated := migratedByBuiltinID[builtin.ID]
+				if !migrated {
+					migratedProfile = buildMigratedACPProfile(existingProfile)
+					if err := s.store.SaveProfile(&migratedProfile); err != nil {
+						return err
+					}
+					migratedByBuiltinID[builtin.ID] = migratedProfile
+				}
+				if err := s.rebindSessionsToProfile(existingProfile.ID, migratedProfile.ID); err != nil {
+					return err
+				}
+			}
+			normalized := normalizeBuiltinProfile(existingProfile, builtin)
+			if err := s.store.SaveProfile(&normalized); err != nil {
+				return err
+			}
 			continue
 		}
-		cp := profile
+		cp := builtin
 		if err := s.store.SaveProfile(&cp); err != nil {
 			return err
 		}
@@ -99,9 +123,9 @@ func builtinProfiles() []AgentProfile {
 			Protocol:             ProtocolACP,
 			Name:                 "claude",
 			Title:                "Claude Code ACP",
-			Description:          "ACP bridge for Claude Code compatible runtimes.",
+			Description:          "Setup template for Claude Code ACP runtimes.",
 			Builtin:              true,
-			Command:              []string{"npx", "-y", "@zed-industries/claude-agent-acp"},
+			TemplateOnly:         true,
 			CredentialProviderID: "anthropic",
 			Metadata: map[string]interface{}{
 				"reference": "openclaw/acpx",
@@ -114,9 +138,9 @@ func builtinProfiles() []AgentProfile {
 			Protocol:             ProtocolACP,
 			Name:                 "codex",
 			Title:                "Codex ACP",
-			Description:          "ACP bridge for Codex CLI compatible runtimes.",
+			Description:          "Setup template for Codex ACP runtimes.",
 			Builtin:              true,
-			Command:              []string{"npx", "@zed-industries/codex-acp"},
+			TemplateOnly:         true,
 			CredentialProviderID: "openai-codex",
 			Metadata: map[string]interface{}{
 				"reference": "openclaw/acpx",
@@ -129,9 +153,9 @@ func builtinProfiles() []AgentProfile {
 			Protocol:             ProtocolACP,
 			Name:                 "gemini",
 			Title:                "Gemini CLI ACP",
-			Description:          "ACP bridge for Gemini CLI compatible runtimes.",
+			Description:          "Setup template for Gemini CLI ACP runtimes.",
 			Builtin:              true,
-			Command:              []string{"gemini", "--acp"},
+			TemplateOnly:         true,
 			CredentialProviderID: "google-gemini-cli",
 			Metadata: map[string]interface{}{
 				"reference": "openclaw/acpx",
@@ -167,18 +191,26 @@ func (s *Service) SaveProfile(profile *AgentProfile) error {
 	if profile == nil {
 		return fmt.Errorf("profile is nil")
 	}
+	if existing, err := s.store.GetProfile(profile.ID); err == nil && existing.Builtin {
+		return fmt.Errorf("built-in profiles are read-only")
+	}
 	if profile.Protocol == "" {
 		return fmt.Errorf("profile protocol is required")
 	}
 	if strings.TrimSpace(profile.Name) == "" {
 		return fmt.Errorf("profile name is required")
 	}
+	profile.Builtin = false
+	profile.TemplateOnly = false
 	return s.store.SaveProfile(profile)
 }
 
 func (s *Service) VerifyProfile(ctx context.Context, id string, candidate *AgentProfile) (*ProfileVerifyResult, error) {
 	profile, err := s.resolveProfileForCheck(id, candidate)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateRunnableACPProfile(profile); err != nil {
 		return nil, err
 	}
 	runtime, err := s.runtimeFor(profile.Protocol)
@@ -199,6 +231,9 @@ func (s *Service) VerifyProfile(ctx context.Context, id string, candidate *Agent
 func (s *Service) HealthProfile(ctx context.Context, id string) (*ProfileHealthResult, error) {
 	profile, err := s.store.GetProfile(id)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateRunnableACPProfile(profile); err != nil {
 		return nil, err
 	}
 	runtime, err := s.runtimeFor(profile.Protocol)
@@ -252,6 +287,9 @@ func (s *Service) CreateSession(ctx context.Context, params CreateSessionParams)
 	if err != nil {
 		return nil, err
 	}
+	if err := validateRunnableACPProfile(profile); err != nil {
+		return nil, err
+	}
 	name := strings.TrimSpace(params.Name)
 	if name == "" {
 		name = profile.Title
@@ -289,6 +327,13 @@ func (s *Service) CreateSession(ctx context.Context, params CreateSessionParams)
 func (s *Service) SendMessage(ctx context.Context, params SendMessageParams) (*ExternalRun, error) {
 	session, err := s.store.GetSession(params.SessionID)
 	if err != nil {
+		return nil, err
+	}
+	profile, err := s.store.GetProfile(session.ProfileID)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateRunnableACPProfile(profile); err != nil {
 		return nil, err
 	}
 	if session.Status == SessionStatusClosed {
@@ -475,6 +520,9 @@ func (s *Service) processRun(ctx context.Context, sessionID, runID string) error
 	if err != nil {
 		return err
 	}
+	if err := validateRunnableACPProfile(profile); err != nil {
+		return s.failRun(session, run, err)
+	}
 
 	session.Status = SessionStatusRunning
 	run.Status = RunStatusRunning
@@ -650,6 +698,115 @@ func isCancelledError(err error) bool {
 	}
 	text := strings.ToLower(err.Error())
 	return strings.Contains(text, "cancel") || strings.Contains(text, "context canceled")
+}
+
+func validateRunnableACPProfile(profile *AgentProfile) error {
+	if profile == nil {
+		return nil
+	}
+	if profile.Protocol != ProtocolACP {
+		return nil
+	}
+	if !profile.TemplateOnly {
+		return nil
+	}
+	return fmt.Errorf(templateOnlyACPProfileMessage)
+}
+
+func migratedFromBuiltinProfileID(profile AgentProfile) string {
+	if len(profile.Metadata) == 0 {
+		return ""
+	}
+	source, _ := profile.Metadata["migrated_from_builtin_profile_id"].(string)
+	return strings.TrimSpace(source)
+}
+
+func needsLegacyBuiltinACPMigration(existing AgentProfile, builtin AgentProfile) bool {
+	if builtin.Protocol != ProtocolACP {
+		return false
+	}
+	if existing.Protocol != ProtocolACP {
+		return false
+	}
+	if existing.TemplateOnly {
+		return false
+	}
+	return len(existing.Command) > 0
+}
+
+func normalizeBuiltinProfile(existing AgentProfile, builtin AgentProfile) AgentProfile {
+	normalized := existing
+	normalized.Protocol = builtin.Protocol
+	normalized.Builtin = true
+	normalized.TemplateOnly = builtin.TemplateOnly
+	normalized.Command = append([]string(nil), builtin.Command...)
+	normalized.Env = nil
+	normalized.CWD = ""
+	normalized.CardURL = builtin.CardURL
+	normalized.EndpointURL = builtin.EndpointURL
+	normalized.Headers = nil
+	normalized.AuthMethodID = ""
+	if strings.TrimSpace(normalized.Name) == "" {
+		normalized.Name = builtin.Name
+	}
+	if strings.TrimSpace(normalized.Title) == "" {
+		normalized.Title = builtin.Title
+	}
+	if strings.TrimSpace(normalized.Description) == "" {
+		normalized.Description = builtin.Description
+	}
+	if strings.TrimSpace(normalized.CredentialProviderID) == "" {
+		normalized.CredentialProviderID = builtin.CredentialProviderID
+	}
+	if len(normalized.Metadata) == 0 {
+		normalized.Metadata = cloneMap(builtin.Metadata)
+	} else if normalized.Metadata["reference"] == nil && builtin.Metadata["reference"] != nil {
+		normalized.Metadata["reference"] = builtin.Metadata["reference"]
+	}
+	return normalized
+}
+
+func buildMigratedACPProfile(existing AgentProfile) AgentProfile {
+	migrated := existing
+	migrated.ID = ""
+	migrated.Builtin = false
+	migrated.TemplateOnly = false
+	migrated.HealthStatus = ""
+	migrated.HealthMessage = ""
+	migrated.LastVerifiedAt = time.Time{}
+	migrated.LastHealthAt = time.Time{}
+	if baseName := strings.TrimSpace(migrated.Name); baseName != "" {
+		migrated.Name = baseName + "-migrated"
+	} else {
+		migrated.Name = existing.ID + "-migrated"
+	}
+	if title := strings.TrimSpace(migrated.Title); title != "" {
+		migrated.Title = title + " (Migrated)"
+	}
+	migrated.Metadata = cloneMap(existing.Metadata)
+	if migrated.Metadata == nil {
+		migrated.Metadata = map[string]interface{}{}
+	}
+	migrated.Metadata["migrated_from_builtin_profile_id"] = existing.ID
+	return migrated
+}
+
+func (s *Service) rebindSessionsToProfile(fromProfileID, toProfileID string) error {
+	sessions, err := s.store.ListSessionsByProfileID(fromProfileID)
+	if err != nil {
+		return err
+	}
+	for i := range sessions {
+		session := sessions[i]
+		if session.ProfileID == toProfileID {
+			continue
+		}
+		session.ProfileID = toProfileID
+		if err := s.store.SaveSession(&session); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runtimeEventContributesToAssistantTranscript(event RuntimeEvent) bool {

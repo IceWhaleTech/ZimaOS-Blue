@@ -1,5 +1,5 @@
 // Greek (Ελληνικά)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('el-GR', {
   common: {
@@ -1866,7 +1866,12 @@ export default mergeHarnessLocale('el-GR', {
       saveBeforeHealth: 'Αποθηκεύστε το προφίλ πριν εκτελέσετε έλεγχο υγείας.',
       duplicate: 'Διπλότυπο',
       builtinHelp:
-        'Τα ενσωματωμένα προφίλ παραμένουν μόνο για ανάγνωση, ώστε οι καταχωρήσεις Claude, Codex, Gemini και οι γενικές A2A να παραμένουν σταθερές.',
+        'Τα ενσωματωμένα προφίλ παραμένουν μόνο για ανάγνωση. Αντιγράψτε ένα για να δημιουργήσετε ένα προσαρμοσμένο αντίγραφο.',
+      acpTemplateSummary: 'Αντιγράψτε για να προσθέσετε μια εκτελέσιμη εντολή ACP.',
+      acpTemplateHelp:
+        'Οι ενσωματωμένες καταχωρίσεις ACP είναι μόνο πρότυπα ρύθμισης. Αντιγράψτε μία και μετά προσθέστε οποιαδήποτε εκτελέσιμη εντολή ACP.',
+      acpTemplateActionDisabled:
+        'Τα ενσωματωμένα πρότυπα ACP δεν μπορούν να εκτελέσουν επαλήθευση ή έλεγχο υγείας. Αντιγράψτε πρώτα ένα και ρυθμίστε μια εντολή.',
       command: 'Εντολή και ορίσματα',
       credentialSource: 'Πηγή διαπιστευτηρίων',
       authMethod: 'Μέθοδος Auth',

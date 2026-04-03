@@ -404,6 +404,7 @@ export interface MarketplaceInstallRequest {
   version?: string
   github?: string
   ack_risk?: boolean
+  force_install?: boolean
 }
 
 export interface MarketplaceInstallResult {

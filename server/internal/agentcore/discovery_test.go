@@ -16,6 +16,9 @@ func TestResolveCanonicalSkill(t *testing.T) {
 		{"ask", CanonicalAsk, true},
 		{"browser", CanonicalBrowser, true},
 		{"analyze", CanonicalAnalyze, true},
+		{"reminder", CanonicalReminder, true},
+		{"ui_reviewer", CanonicalUIReviewer, true},
+		{"himalaya", CanonicalHimalaya, true},
 		{"deep_research", CanonicalDeepResearch, true},
 		{"mgmt", CanonicalMgmt, true},
 		{"research", CanonicalDeepResearch, true},
@@ -47,6 +50,15 @@ func TestIsCutoverEligibleCanonical(t *testing.T) {
 	if !IsCutoverEligibleCanonical(CanonicalDeepResearch) {
 		t.Error("deep_research should be cutover eligible")
 	}
+	if !IsCutoverEligibleCanonical(CanonicalReminder) {
+		t.Error("reminder should be cutover eligible")
+	}
+	if !IsCutoverEligibleCanonical(CanonicalUIReviewer) {
+		t.Error("ui_reviewer should be cutover eligible")
+	}
+	if !IsCutoverEligibleCanonical(CanonicalHimalaya) {
+		t.Error("himalaya should be cutover eligible")
+	}
 	if !IsCutoverEligibleCanonical(CanonicalMgmt) {
 		t.Error("mgmt should be cutover eligible")
 	}
@@ -68,6 +80,15 @@ func TestExecutionProfileForSkill(t *testing.T) {
 	if ExecutionProfileForSkill(CanonicalBrowser) != ExecutionProfileInline {
 		t.Error("browser should be inline")
 	}
+	if ExecutionProfileForSkill(CanonicalReminder) != ExecutionProfileInline {
+		t.Error("reminder should be inline")
+	}
+	if ExecutionProfileForSkill(CanonicalUIReviewer) != ExecutionProfileInline {
+		t.Error("ui_reviewer should be inline")
+	}
+	if ExecutionProfileForSkill(CanonicalHimalaya) != ExecutionProfileInline {
+		t.Error("himalaya should be inline")
+	}
 	if ExecutionProfileForSkill(CanonicalAsk) != ExecutionProfileInline {
 		t.Error("ask should be inline")
 	}
@@ -82,6 +103,15 @@ func TestNativeSurfaceModeForSkill(t *testing.T) {
 	}
 	if NativeSurfaceModeForSkill(CanonicalAsk) != NativeSurfaceModeSkillExec {
 		t.Error("ask should be skill_exec")
+	}
+	if NativeSurfaceModeForSkill(CanonicalReminder) != NativeSurfaceModeSkillExec {
+		t.Error("reminder should be skill_exec")
+	}
+	if NativeSurfaceModeForSkill(CanonicalUIReviewer) != NativeSurfaceModeSkillExec {
+		t.Error("ui_reviewer should be skill_exec")
+	}
+	if NativeSurfaceModeForSkill(CanonicalHimalaya) != NativeSurfaceModeSkillExec {
+		t.Error("himalaya should be skill_exec")
 	}
 	if NativeSurfaceModeForSkill(CanonicalMgmt) != NativeSurfaceModeSkillExec {
 		t.Error("mgmt should be skill_exec")
@@ -120,7 +150,31 @@ func TestBuildDiscoveryDecision_UsesCanonicalCutoverOnlyForEligibleDynamicRoutes
 		t.Fatalf("eligible NativeSurfaceMode = %q, want %q", eligible.NativeSurfaceMode, NativeSurfaceModeSkillExec)
 	}
 
-	ineligible := BuildDiscoveryDecision(Decision{SelectedSkill: "reminder"}, true)
+	reminder := BuildDiscoveryDecision(Decision{SelectedSkill: "reminder"}, true)
+	if reminder.CanonicalTarget != CanonicalReminder {
+		t.Fatalf("reminder CanonicalTarget = %q, want %q", reminder.CanonicalTarget, CanonicalReminder)
+	}
+	if reminder.NativeSurfaceMode != NativeSurfaceModeSkillExec {
+		t.Fatalf("reminder NativeSurfaceMode = %q, want %q", reminder.NativeSurfaceMode, NativeSurfaceModeSkillExec)
+	}
+
+	uiReviewer := BuildDiscoveryDecision(Decision{SelectedSkill: "ui_reviewer"}, true)
+	if uiReviewer.CanonicalTarget != CanonicalUIReviewer {
+		t.Fatalf("ui_reviewer CanonicalTarget = %q, want %q", uiReviewer.CanonicalTarget, CanonicalUIReviewer)
+	}
+	if uiReviewer.NativeSurfaceMode != NativeSurfaceModeSkillExec {
+		t.Fatalf("ui_reviewer NativeSurfaceMode = %q, want %q", uiReviewer.NativeSurfaceMode, NativeSurfaceModeSkillExec)
+	}
+
+	himalaya := BuildDiscoveryDecision(Decision{SelectedSkill: "himalaya"}, true)
+	if himalaya.CanonicalTarget != CanonicalHimalaya {
+		t.Fatalf("himalaya CanonicalTarget = %q, want %q", himalaya.CanonicalTarget, CanonicalHimalaya)
+	}
+	if himalaya.NativeSurfaceMode != NativeSurfaceModeSkillExec {
+		t.Fatalf("himalaya NativeSurfaceMode = %q, want %q", himalaya.NativeSurfaceMode, NativeSurfaceModeSkillExec)
+	}
+
+	ineligible := BuildDiscoveryDecision(Decision{SelectedSkill: "unknown_skill"}, true)
 	if ineligible.CanonicalTarget != CanonicalUnknown {
 		t.Fatalf("ineligible CanonicalTarget = %q, want %q", ineligible.CanonicalTarget, CanonicalUnknown)
 	}
@@ -137,7 +191,10 @@ func TestBuildDiscoveryDecision_CutoverCoversAskMgmtAndExecRoutes(t *testing.T) 
 		wantProfile ExecutionProfile
 	}{
 		{name: "ask", selected: "ask", wantTarget: CanonicalAsk, wantProfile: ExecutionProfileInline},
+		{name: "reminder", selected: "reminder", wantTarget: CanonicalReminder, wantProfile: ExecutionProfileInline},
 		{name: "mgmt", selected: "mgmt", wantTarget: CanonicalMgmt, wantProfile: ExecutionProfileInline},
+		{name: "ui_reviewer", selected: "ui_reviewer", wantTarget: CanonicalUIReviewer, wantProfile: ExecutionProfileInline},
+		{name: "himalaya", selected: "himalaya", wantTarget: CanonicalHimalaya, wantProfile: ExecutionProfileInline},
 		{name: "exec", selected: "exec", wantTarget: CanonicalExec, wantProfile: ExecutionProfileInline},
 	}
 

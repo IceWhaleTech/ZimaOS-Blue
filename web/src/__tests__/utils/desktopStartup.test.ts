@@ -4,6 +4,10 @@ import {
   DEFAULT_DESKTOP_STARTUP_PREVIEW_CHECK_TIMEOUT_MS,
   getOptimisticStartupPreviewCheckTimeout,
   STORED_SESSION_DESKTOP_STARTUP_PREVIEW_CHECK_TIMEOUT_MS,
+  shouldDeferAskUserQuestionDialogOnDesktopStartup,
+  shouldDeferBrowserMonitorOnDesktopStartup,
+  shouldDeferFormFillerWidgetOnDesktopStartup,
+  shouldDeferLocaleEnhancementsOnDesktopStartup,
   shouldPrefetchPreviewModeOnRouterInit,
 } from '@/utils/desktopStartup'
 
@@ -28,5 +32,37 @@ describe('desktopStartup', () => {
   it('keeps router-init preview prefetch for first-run desktop startup and non-desktop runs', () => {
     expect(shouldPrefetchPreviewModeOnRouterInit(true, false)).toBe(true)
     expect(shouldPrefetchPreviewModeOnRouterInit(false, true)).toBe(true)
+  })
+
+  it('defers locale enhancements for desktop chat startup routes', () => {
+    expect(shouldDeferLocaleEnhancementsOnDesktopStartup(true, true, '/')).toBe(true)
+    expect(shouldDeferLocaleEnhancementsOnDesktopStartup(true, false, '/')).toBe(true)
+    expect(shouldDeferLocaleEnhancementsOnDesktopStartup(true, true, '/chat')).toBe(true)
+  })
+
+  it('keeps locale enhancements eager outside the desktop hot-start path', () => {
+    expect(shouldDeferLocaleEnhancementsOnDesktopStartup(true, true, '/login')).toBe(false)
+    expect(shouldDeferLocaleEnhancementsOnDesktopStartup(false, true, '/chat')).toBe(false)
+  })
+
+  it('defers the browser monitor only for desktop chat startup routes', () => {
+    expect(shouldDeferBrowserMonitorOnDesktopStartup(true, '/')).toBe(true)
+    expect(shouldDeferBrowserMonitorOnDesktopStartup(true, '/chat')).toBe(true)
+    expect(shouldDeferBrowserMonitorOnDesktopStartup(true, '/profile')).toBe(false)
+    expect(shouldDeferBrowserMonitorOnDesktopStartup(false, '/chat')).toBe(false)
+  })
+
+  it('defers the ask-user-question dialog only for desktop chat startup routes', () => {
+    expect(shouldDeferAskUserQuestionDialogOnDesktopStartup(true, '/')).toBe(true)
+    expect(shouldDeferAskUserQuestionDialogOnDesktopStartup(true, '/chat')).toBe(true)
+    expect(shouldDeferAskUserQuestionDialogOnDesktopStartup(true, '/profile')).toBe(false)
+    expect(shouldDeferAskUserQuestionDialogOnDesktopStartup(false, '/chat')).toBe(false)
+  })
+
+  it('defers the form filler widget only for desktop chat startup routes', () => {
+    expect(shouldDeferFormFillerWidgetOnDesktopStartup(true, '/')).toBe(true)
+    expect(shouldDeferFormFillerWidgetOnDesktopStartup(true, '/chat')).toBe(true)
+    expect(shouldDeferFormFillerWidgetOnDesktopStartup(true, '/profile')).toBe(false)
+    expect(shouldDeferFormFillerWidgetOnDesktopStartup(false, '/chat')).toBe(false)
   })
 })

@@ -71,6 +71,7 @@ declare module 'vue' {
     CardWeather: typeof import('./components/typeless/CardWeather.vue')['default']
     CardWebFetch: typeof import('./components/typeless/CardWebFetch.vue')['default']
     ChannelCard: typeof import('./components/channels/ChannelCard.vue')['default']
+    ChannelDetailPanel: typeof import('./components/channels/ChannelDetailPanel.vue')['default']
     ChatActivityDock: typeof import('./components/ChatActivityDock.vue')['default']
     ChatInput: typeof import('./components/ChatInput.vue')['default']
     ChatMessage: typeof import('./components/ChatMessage.vue')['default']

@@ -415,6 +415,30 @@ func TestParseBingHTMLDecodesRedirectURLToGoogleFinance(t *testing.T) {
 	}
 }
 
+func TestParseBingHTMLDecodesRelativeRedirectURL(t *testing.T) {
+	results := parseBingHTML(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="/ck/a?!&&p=demo&u=a1aHR0cHM6Ly95YWhvby5jb20vZmluYW5jZS9xdW90ZS9BQVBMLw&ntb=1">Yahoo Finance Apple</a></h2>
+    <div class="b_caption"><p>Relative Bing wrapper.</p></div>
+  </li>
+</ol></body></html>`, 1)
+
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].URL != "https://yahoo.com/finance/quote/AAPL/" {
+		t.Fatalf("url = %q, want %q", results[0].URL, "https://yahoo.com/finance/quote/AAPL/")
+	}
+}
+
+func TestNormalizeBingResultURLDecodesLiveWrapperURL(t *testing.T) {
+	rawURL := "https://www.bing.com/ck/a?!&&p=0e92bb2e67bbcd73b5607c6326106addb4cbb361483f3c7e7ee60343acb8a216JmltdHM9MTc3NTA4ODAwMA&ptn=3&ver=2&hsh=4&fclid=2a446e3c-2657-69f3-391d-791327d768d6&u=a1aHR0cHM6Ly93d3cucmVzZWFyY2hnYXRlLm5ldC9zZWFyY2gvcHVibGljYXRpb25z&ntb=1"
+	if got := normalizeBingResultURL(rawURL); got != "https://www.researchgate.net/search/publications" {
+		t.Fatalf("normalizeBingResultURL(%q) = %q", rawURL, got)
+	}
+}
+
 func TestParseBingHTMLLeavesRedirectURLWhenDecodeFails(t *testing.T) {
 	rawURL := "https://www.bing.com/ck/a?!&&p=demo&u=a1not-valid-base64&ntb=1"
 	results := parseBingHTML(`

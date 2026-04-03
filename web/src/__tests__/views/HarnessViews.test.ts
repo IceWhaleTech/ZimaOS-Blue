@@ -8,6 +8,8 @@ const listDatasetVersionsMock = vi.fn()
 const listEvalSpecsMock = vi.fn()
 const listEvalRunsMock = vi.fn()
 const listBaselinesMock = vi.fn()
+const getEvalRunReportMock = vi.fn()
+const compareEvalRunMock = vi.fn()
 const getGroupReportMock = vi.fn()
 const getRunDetailMock = vi.fn()
 const cancelGroupMock = vi.fn()
@@ -33,6 +35,8 @@ vi.mock('@/api/harness', () => ({
     listEvalSpecs: listEvalSpecsMock,
     listEvalRuns: listEvalRunsMock,
     listBaselines: listBaselinesMock,
+    getEvalRunReport: getEvalRunReportMock,
+    compareEvalRun: compareEvalRunMock,
     getGroupReport: getGroupReportMock,
     getRunDetail: getRunDetailMock,
     cancelGroup: cancelGroupMock,
@@ -579,6 +583,152 @@ function createRunDetail(runID: string) {
   }
 }
 
+function createEvalRunReport(overrides: Record<string, unknown> = {}) {
+  const base = {
+    eval_run: {
+      id: 'eval-run-1',
+      eval_spec_id: 'eval-spec-1',
+      group_id: 'group-1',
+      dataset_version_id: 'dataset-version-1',
+      title: 'Nightly Eval Run',
+      owner_user_id: 'owner-1',
+      status: 'running',
+      trigger_kind: 'manual',
+      summary: {
+        pass_rate: 0.8,
+        overall_score: 0.61,
+      },
+      created_at: '2026-03-20T10:00:00Z',
+      updated_at: '2026-03-20T10:05:00Z',
+      started_at: '2026-03-20T10:00:00Z',
+      finished_at: null,
+    },
+    eval_spec: {
+      id: 'eval-spec-1',
+      name: 'Nightly Spec',
+      run_kind: 'agent_task',
+      profile: 'default',
+      scoring_config: {
+        mode: 'rule',
+        pass_threshold: 0.7,
+      },
+    },
+    dataset: {
+      id: 'dataset-1',
+      name: 'Nightly Dataset',
+      subject: 'Regression harness cases',
+      active_version_id: 'dataset-version-1',
+    },
+    dataset_version: {
+      id: 'dataset-version-1',
+      dataset_id: 'dataset-1',
+      version: 'v3',
+      item_count: 12,
+      created_at: '2026-03-20T09:00:00Z',
+      updated_at: '2026-03-20T09:05:00Z',
+    },
+    group_report: createGroupReport({
+      group: {
+        summary: {
+          counts: {
+            queued: 1,
+            running: 2,
+            passed: 8,
+            failed: 2,
+          },
+          contextpack_breakdown: {
+            items_with_snapshot: 2,
+            selected_skill_counts: {
+              web_query: 1,
+              analyze: 1,
+            },
+            source_trust_counts: {
+              official: 3,
+              community: 1,
+            },
+            entry_id_counts: {
+              'openai/docs/responses-api': 2,
+              'community/forum/contextpack-recipes': 1,
+            },
+          },
+        },
+      },
+    }),
+  }
+
+  return {
+    ...base,
+    ...overrides,
+    eval_run: {
+      ...base.eval_run,
+      ...((overrides.eval_run as Record<string, unknown>) || {}),
+    },
+    eval_spec: {
+      ...base.eval_spec,
+      ...((overrides.eval_spec as Record<string, unknown>) || {}),
+    },
+    dataset: {
+      ...base.dataset,
+      ...((overrides.dataset as Record<string, unknown>) || {}),
+    },
+    dataset_version: {
+      ...base.dataset_version,
+      ...((overrides.dataset_version as Record<string, unknown>) || {}),
+    },
+    group_report: createGroupReport(
+      (overrides.group_report as Record<string, unknown>) || (base.group_report as Record<string, unknown>)
+    ),
+  }
+}
+
+function createComparisonReport(overrides: Record<string, unknown> = {}) {
+  const base = {
+    id: 'comparison-1',
+    eval_spec_id: 'eval-spec-1',
+    base_eval_run_id: 'baseline-run-1',
+    target_eval_run_id: 'eval-run-1',
+    baseline_id: 'baseline-1',
+    created_at: '2026-03-20T10:06:00Z',
+    summary: {
+      comparison_kind: 'baseline',
+      baseline_name: 'Nightly Baseline',
+      overall_score_delta: -0.11,
+      pass_rate_delta: -0.2,
+      verification_pass_rate_delta: -0.25,
+      evidence_backed_pass_rate_delta: -0.3,
+      retry_recovered_delta: 0,
+      contextpack_items_with_snapshot_delta: 2,
+      contextpack_selected_skill_delta: {
+        web_query: 1,
+        analyze: 1,
+      },
+      contextpack_source_trust_delta: {
+        official: 2,
+        community: 1,
+      },
+      contextpack_entry_delta: {
+        'openai/docs/responses-api': 2,
+        'community/forum/contextpack-recipes': 1,
+      },
+      regression_count: 1,
+      improvement_count: 0,
+    },
+    regressions: [],
+    improvements: [],
+  }
+
+  return {
+    ...base,
+    ...overrides,
+    summary: {
+      ...base.summary,
+      ...((overrides.summary as Record<string, unknown>) || {}),
+    },
+    regressions: (overrides.regressions as unknown[]) || base.regressions,
+    improvements: (overrides.improvements as unknown[]) || base.improvements,
+  }
+}
+
 async function mountHarnessGroupDetail(width = 1280) {
   routeMock.path = '/automation/harness/group-1'
   routeMock.params = { id: 'group-1' }
@@ -591,6 +741,26 @@ async function mountHarnessGroupDetail(width = 1280) {
         RouterLink: {
           props: ['to'],
           template: '<a class="router-link-stub" :data-to="JSON.stringify(to)"><slot /></a>',
+        },
+      },
+    },
+  })
+  mountedWrappers.push(wrapper)
+  await flushPromises()
+  return wrapper
+}
+
+async function mountHarnessGroupsView() {
+  routeMock.path = '/automation/harness'
+  routeMock.params = { id: '' }
+  const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
+  const wrapper = mount(HarnessGroupsView, {
+    global: {
+      plugins: [createTestI18n()],
+      stubs: {
+        RouterLink: {
+          props: ['to'],
+          template: '<a class="group-card-link" :data-to="JSON.stringify(to)"><slot /></a>',
         },
       },
     },
@@ -617,6 +787,8 @@ describe('Harness views', () => {
     listEvalSpecsMock.mockResolvedValue({ data: [] })
     listEvalRunsMock.mockResolvedValue({ data: [] })
     listBaselinesMock.mockResolvedValue({ data: [] })
+    getEvalRunReportMock.mockResolvedValue({ data: null })
+    compareEvalRunMock.mockResolvedValue({ data: null })
     listConversationsMock.mockResolvedValue({ data: [] })
     listMessagesMock.mockResolvedValue({ data: [] })
     getGroupReportMock.mockResolvedValue({ data: createGroupReport() })
@@ -654,6 +826,9 @@ describe('Harness views', () => {
               running: 2,
               passed: 9,
               failed: 1,
+            },
+            contextpack_breakdown: {
+              items_with_snapshot: 3,
             },
           },
           created_at: '2026-03-20T10:00:00Z',
@@ -705,6 +880,7 @@ describe('Harness views', () => {
     expect(wrapper.text()).toContain('Eval runs')
     expect(wrapper.text()).toContain('Regression batch')
     expect(wrapper.text()).toContain('Nightly snapshot')
+    expect(wrapper.text()).toContain('Context Packs: 3')
     expect(wrapper.findAll('.group-card-link')).toHaveLength(2)
 
     await wrapper.get('input[type="search"]').setValue('nightly')
@@ -721,6 +897,186 @@ describe('Harness views', () => {
     await terminalButton!.trigger('click')
     expect(wrapper.findAll('.group-card-link')).toHaveLength(1)
     expect(wrapper.text()).toContain('Nightly snapshot')
+  })
+
+  it('renders context pack summary inside the selected eval run linked report', async () => {
+    listGroupsMock.mockResolvedValue({ data: [] })
+    listDatasetsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-1',
+          name: 'Nightly Dataset',
+          active_version_id: 'dataset-version-1',
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listDatasetVersionsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-version-1',
+          dataset_id: 'dataset-1',
+          version: 'v3',
+          item_count: 12,
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listEvalSpecsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-spec-1',
+          dataset_id: 'dataset-1',
+          dataset_version_id: 'dataset-version-1',
+          name: 'Nightly Spec',
+          run_kind: 'agent_task',
+          profile: 'default',
+          scoring_config: {
+            mode: 'rule',
+            pass_threshold: 0.7,
+          },
+          created_at: '2026-03-20T09:10:00Z',
+          updated_at: '2026-03-20T09:15:00Z',
+        },
+      ],
+    })
+    listEvalRunsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-run-1',
+          eval_spec_id: 'eval-spec-1',
+          group_id: 'group-1',
+          dataset_version_id: 'dataset-version-1',
+          title: 'Nightly Eval Run',
+          status: 'running',
+          trigger_kind: 'manual',
+          summary: {
+            pass_rate: 0.8,
+            overall_score: 0.61,
+          },
+          created_at: '2026-03-20T10:00:00Z',
+          updated_at: '2026-03-20T10:05:00Z',
+        },
+      ],
+    })
+    getEvalRunReportMock.mockResolvedValue({
+      data: createEvalRunReport(),
+    })
+
+    const wrapper = await mountHarnessGroupsView()
+
+    expect(wrapper.text()).toContain('Nightly Eval Run')
+
+    await wrapper.get('.eval-run-card').trigger('click')
+    await flushPromises()
+
+    expect(getEvalRunReportMock).toHaveBeenCalledWith('eval-run-1')
+    expect(wrapper.text()).toContain('Linked report')
+    expect(wrapper.text()).toContain('Context Packs')
+    expect(wrapper.text()).toContain('Items with packs')
+    expect(wrapper.text()).toContain('Selected skills')
+    expect(wrapper.text()).toContain('Sources')
+    expect(wrapper.text()).toContain('Entries')
+    expect(wrapper.text()).toContain('openai/docs/responses-api')
+    expect(wrapper.text()).toContain('community/forum/contextpack-recipes')
+    expect(wrapper.text()).toContain('official')
+    expect(wrapper.text()).toContain('web_query')
+  })
+
+  it('renders context pack deltas inside the comparison report', async () => {
+    listGroupsMock.mockResolvedValue({ data: [] })
+    listDatasetsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-1',
+          name: 'Nightly Dataset',
+          active_version_id: 'dataset-version-1',
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listDatasetVersionsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-version-1',
+          dataset_id: 'dataset-1',
+          version: 'v3',
+          item_count: 12,
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listEvalSpecsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-spec-1',
+          dataset_id: 'dataset-1',
+          dataset_version_id: 'dataset-version-1',
+          name: 'Nightly Spec',
+          run_kind: 'agent_task',
+          profile: 'default',
+          scoring_config: {
+            mode: 'rule',
+            pass_threshold: 0.7,
+          },
+          created_at: '2026-03-20T09:10:00Z',
+          updated_at: '2026-03-20T09:15:00Z',
+        },
+      ],
+    })
+    listEvalRunsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-run-1',
+          eval_spec_id: 'eval-spec-1',
+          group_id: 'group-1',
+          dataset_version_id: 'dataset-version-1',
+          title: 'Nightly Eval Run',
+          status: 'running',
+          trigger_kind: 'manual',
+          summary: {
+            pass_rate: 0.8,
+            overall_score: 0.61,
+          },
+          created_at: '2026-03-20T10:00:00Z',
+          updated_at: '2026-03-20T10:05:00Z',
+        },
+      ],
+    })
+    getEvalRunReportMock.mockResolvedValue({
+      data: createEvalRunReport(),
+    })
+    compareEvalRunMock.mockResolvedValue({
+      data: createComparisonReport(),
+    })
+
+    const wrapper = await mountHarnessGroupsView()
+
+    await wrapper.get('.eval-run-card').trigger('click')
+    await flushPromises()
+
+    const compareButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'Generate comparison')
+
+    expect(compareButton).toBeTruthy()
+
+    await compareButton!.trigger('click')
+    await flushPromises()
+
+    expect(compareEvalRunMock).toHaveBeenCalledWith('eval-run-1', {})
+    expect(wrapper.text()).toContain('Context pack delta')
+    expect(wrapper.text()).toContain('Skill delta')
+    expect(wrapper.text()).toContain('Source delta')
+    expect(wrapper.text()).toContain('Entry delta')
+    expect(wrapper.text()).toContain('openai/docs/responses-api +2')
+    expect(wrapper.text()).toContain('community/forum/contextpack-recipes +1')
+    expect(wrapper.text()).toContain('web_query +1')
+    expect(wrapper.text()).toContain('official +2')
   })
 
   it('renders the hybrid harness detail report with run graph and summary', async () => {
@@ -742,6 +1098,54 @@ describe('Harness views', () => {
     const backLink = wrapper.find('.back-link')
     expect(backLink.exists()).toBe(true)
     expect(backLink.attributes('data-to')).toBe(JSON.stringify({ name: 'HarnessGroups' }))
+  })
+
+  it('renders aggregated context pack breakdown in the group detail summary', async () => {
+    getGroupReportMock.mockResolvedValueOnce({
+      data: createGroupReport({
+        group: {
+          summary: {
+            counts: {
+              queued: 1,
+              running: 2,
+              passed: 8,
+              failed: 2,
+            },
+            failure_label_counts: {
+              missing_artifact: 2,
+            },
+            contextpack_breakdown: {
+              items_with_snapshot: 2,
+              selected_skill_counts: {
+                web_query: 1,
+                analyze: 1,
+              },
+              source_trust_counts: {
+                official: 3,
+                community: 1,
+              },
+              entry_id_counts: {
+                'openai/docs/responses-api': 2,
+                'community/forum/contextpack-recipes': 1,
+              },
+            },
+          },
+        },
+      }),
+    })
+
+    const wrapper = await mountHarnessGroupDetail()
+
+    expect(wrapper.text()).toContain('Context Packs')
+    expect(wrapper.text()).toContain('Items with packs')
+    expect(wrapper.text()).toContain('Selected skills')
+    expect(wrapper.text()).toContain('Sources')
+    expect(wrapper.text()).toContain('Entries')
+    expect(wrapper.text()).toContain('openai/docs/responses-api')
+    expect(wrapper.text()).toContain('community/forum/contextpack-recipes')
+    expect(wrapper.text()).toContain('official')
+    expect(wrapper.text()).toContain('web_query')
+    expect(wrapper.text()).toContain('analyze')
   })
 
   it('shows a worker batch summary and expands grouped workers on demand', async () => {

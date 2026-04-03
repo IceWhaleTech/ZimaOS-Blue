@@ -1,5 +1,5 @@
 // Portuguese - Portugal (Português de Portugal)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('pt-PT', {
   common: {
@@ -1954,7 +1954,12 @@ export default mergeHarnessLocale('pt-PT', {
       saveBeforeHealth: 'Guarde o perfil antes de executar uma verificação de integridade.',
       duplicate: 'Duplicar',
       builtinHelp:
-        'Os perfis integrados permanecem de leitura apenas para que as entradas Claude, Codex, Gemini e A2A genéricas permaneçam estáveis.',
+        'Os perfis integrados mantêm-se apenas de leitura. Duplique um para criar uma cópia personalizada.',
+      acpTemplateSummary: 'Duplique para adicionar um comando ACP executável.',
+      acpTemplateHelp:
+        'As entradas ACP integradas são apenas modelos de configuração. Duplique uma e depois adicione qualquer comando ACP executável.',
+      acpTemplateActionDisabled:
+        'Os modelos ACP integrados não podem executar verificação nem verificação de estado. Duplique um primeiro e configure um comando.',
       command: 'Comando e Args',
       credentialSource: 'Fonte da credencial',
       authMethod: 'Método de autenticação',

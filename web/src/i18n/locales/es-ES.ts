@@ -1,5 +1,5 @@
 // Spanish (Español)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('es-ES', {
   common: {
@@ -1958,7 +1958,12 @@ export default mergeHarnessLocale('es-ES', {
       saveBeforeHealth: 'Guarde el perfil antes de ejecutar una verificación de estado.',
       duplicate: 'Duplicar',
       builtinHelp:
-        'Los perfiles integrados permanecen como de solo lectura, por lo que las entradas inicializadas Claude, Codex, Gemini y genéricas A2A permanecen estables.',
+        'Los perfiles integrados siguen siendo de solo lectura. Duplica uno para crear una copia personalizada.',
+      acpTemplateSummary: 'Duplica para añadir un comando ACP ejecutable.',
+      acpTemplateHelp:
+        'Las entradas ACP integradas son solo plantillas de configuración. Duplica una y luego añade cualquier comando ACP ejecutable.',
+      acpTemplateActionDisabled:
+        'Las plantillas ACP integradas no pueden ejecutar verificaciones ni comprobaciones de estado. Duplica una y configura primero un comando.',
       command: 'Comando y argumentos',
       credentialSource: 'Fuente de credenciales',
       authMethod: 'Método de autenticación',

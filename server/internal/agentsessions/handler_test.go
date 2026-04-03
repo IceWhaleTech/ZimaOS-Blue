@@ -10,14 +10,15 @@ import (
 )
 
 func TestHandlerListSessionsFiltersByRuntime(t *testing.T) {
-	service, _ := newTestAgentSessionService(t, nil)
+	service, store := newTestAgentSessionService(t, nil)
+	saveRunnableACPProfile(t, store, "custom-codex")
 
 	if _, err := service.CreateSession(t.Context(), CreateSessionParams{
-		ProfileID: "codex",
+		ProfileID: "custom-codex",
 		Name:      "Codex Session",
 		UserID:    "user-a",
 	}); err != nil {
-		t.Fatalf("CreateSession(codex) error = %v", err)
+		t.Fatalf("CreateSession(custom-codex) error = %v", err)
 	}
 	if _, err := service.CreateSession(t.Context(), CreateSessionParams{
 		ProfileID: "generic-a2a",

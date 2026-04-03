@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -116,6 +117,35 @@ class CutoverReadinessRunnerTest(unittest.TestCase):
         self.assertFalse(report["ready"])
         self.assertEqual(report["cutover_readiness"]["candidate_id"], "candidate-1")
         self.assertEqual(client.requests[0]["candidate_id"], "candidate-1")
+
+    def test_harness_client_uses_configured_request_timeout(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"ready": false}'
+
+        captured = {}
+
+        def fake_urlopen(req, timeout=0):
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+        client = runner.HarnessClient(
+            "http://127.0.0.1:18080/api/v1",
+            bearer_token="token",
+            request_timeout_seconds=91.5,
+        )
+
+        with mock.patch.object(runner.request, "urlopen", side_effect=fake_urlopen):
+            response = client.evaluate_cutover_readiness({"candidate_id": "candidate-1"})
+
+        self.assertEqual(captured["timeout"], 91.5)
+        self.assertFalse(response["ready"])
 
     def test_build_markdown_report_includes_lane_summaries(self):
         markdown = runner.build_markdown_report(

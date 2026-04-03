@@ -41,7 +41,7 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		{Name: "plan_create", Description: "Create a checklist"},
 		{Name: "plan_update", Description: "Update checklist item states"},
 		{Name: "read", Description: "Read workspace files"},
-		{Name: "web_search", Description: "Search the web"},
+		{Name: "web_query", Description: "Search the web"},
 		{Name: "write", Description: "Write workspace files"},
 		{Name: "process", Description: "Inspect long-running processes"},
 	} {
@@ -96,7 +96,7 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 			"plan_create",
 			"plan_update",
 			"read",
-			"web_search",
+			"web_query",
 			"write",
 		} {
 			if _, ok := names[required]; !ok {
@@ -135,7 +135,7 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		for _, tool := range capture.LastRequest().Tools {
 			names[tool.Name] = struct{}{}
 		}
-		for _, forbidden := range []string{"deep_research", "web_search"} {
+		for _, forbidden := range []string{"deep_research", "web_query"} {
 			if _, ok := names[forbidden]; ok {
 				t.Fatalf("expected %q to be removed, got=%v", forbidden, capture.LastRequest().Tools)
 			}
@@ -179,7 +179,7 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		for _, tool := range capture.LastRequest().Tools {
 			names[tool.Name] = struct{}{}
 		}
-		for _, forbidden := range []string{"deep_research", "web_search"} {
+		for _, forbidden := range []string{"deep_research", "web_query"} {
 			if _, ok := names[forbidden]; ok {
 				t.Fatalf("expected %q to be removed by persisted command state, got=%v", forbidden, capture.LastRequest().Tools)
 			}
@@ -209,7 +209,7 @@ func TestChatToolExposureHTTPE2E_DiscoverFirstCutoverExecOnly(t *testing.T) {
 		{Name: "deep_research", Description: "Run deep research"},
 		{Name: "exec", Description: "Execute skill and shell commands"},
 		{Name: "read", Description: "Read workspace files"},
-		{Name: "web_search", Description: "Search the web"},
+		{Name: "web_query", Description: "Search the web"},
 		{Name: "write", Description: "Write workspace files"},
 	} {
 		toolRegistry.ExposeDefinition(def)
@@ -217,10 +217,6 @@ func TestChatToolExposureHTTPE2E_DiscoverFirstCutoverExecOnly(t *testing.T) {
 
 	handler := NewChatHandler(store, registry, toolRegistry)
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	smartSkill := true
-	dynamicExposure := true
-	settings.settings.SmartSkillSelection = &smartSkill
-	settings.settings.SkillDynamicExposure = &dynamicExposure
 	handler.SetSettingsHandler(settings)
 	handler.SetToolSelector(tools.DefaultToolSelector())
 	handler.SetToolRouter(tools.DefaultToolRouter())
@@ -302,8 +298,8 @@ func TestChatToolExposureHTTPE2E_DiscoverFirstCutoverExecOnly(t *testing.T) {
 		if len(capture.LastRequest().Tools) == 1 && capture.LastRequest().Tools[0].Name == "exec" {
 			t.Fatalf("expected legacy multi-tool surface after toggle block, got=%v", capture.LastRequest().Tools)
 		}
-		if _, ok := names["web_search"]; ok {
-			t.Fatalf("expected web_search to be filtered by toggle, got=%v", capture.LastRequest().Tools)
+		if _, ok := names["web_query"]; ok {
+			t.Fatalf("expected web_query to be filtered by toggle, got=%v", capture.LastRequest().Tools)
 		}
 	})
 

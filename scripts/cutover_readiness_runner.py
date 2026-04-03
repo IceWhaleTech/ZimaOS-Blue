@@ -13,6 +13,7 @@ import argparse
 import json
 import logging
 import os
+import socket
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,10 +29,11 @@ class HarnessAPIError(RuntimeError):
 
 
 class HarnessClient:
-    def __init__(self, blue_base_url: str, api_key: str = "", bearer_token: str = ""):
+    def __init__(self, blue_base_url: str, api_key: str = "", bearer_token: str = "", request_timeout_seconds: float = 90.0):
         self.base_url = normalize_harness_base_url(blue_base_url)
         self.api_key = api_key.strip()
         self.bearer_token = bearer_token.strip()
+        self.request_timeout_seconds = max(float(request_timeout_seconds), 1.0)
 
     def evaluate_cutover_readiness(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         return self._json_request("POST", "/cutover-readiness", payload)
@@ -49,11 +51,13 @@ class HarnessClient:
 
         req = request.Request(f"{self.base_url}{path}", data=body, method=method, headers=headers)
         try:
-            with request.urlopen(req, timeout=30.0) as resp:
+            with request.urlopen(req, timeout=self.request_timeout_seconds) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
         except error.HTTPError as exc:
             raw = exc.read().decode("utf-8", errors="replace")
             raise HarnessAPIError(f"{method} {path} failed: HTTP {exc.code}: {raw}") from exc
+        except (socket.timeout, TimeoutError) as exc:
+            raise HarnessAPIError(f"{method} {path} failed: timed out after {self.request_timeout_seconds:g}s") from exc
         except error.URLError as exc:
             raise HarnessAPIError(f"{method} {path} failed: {exc}") from exc
 
@@ -81,6 +85,12 @@ def parse_args() -> argparse.Namespace:
         "--bearer-token",
         default=os.environ.get("BLUE_BEARER_TOKEN", ""),
         help="Optional Bearer token used for preview-mode or JWT-authenticated local API access.",
+    )
+    parser.add_argument(
+        "--request-timeout-seconds",
+        type=float,
+        default=float(os.environ.get("BLUE_HARNESS_REQUEST_TIMEOUT_SECONDS", "90")),
+        help="HTTP timeout for harness API requests.",
     )
     parser.add_argument(
         "--owner",
@@ -322,7 +332,12 @@ def main() -> int:
     args = parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s")
 
-    client = HarnessClient(args.blue_base_url, api_key=args.api_key, bearer_token=args.bearer_token)
+    client = HarnessClient(
+        args.blue_base_url,
+        api_key=args.api_key,
+        bearer_token=args.bearer_token,
+        request_timeout_seconds=args.request_timeout_seconds,
+    )
     try:
         report = run_cutover_readiness_workflow(client, args)
     except Exception as exc:

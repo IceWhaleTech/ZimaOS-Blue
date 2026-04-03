@@ -1,5 +1,5 @@
 // Irish (Gaeilge)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('ga-IE', {
   common: {
@@ -1858,7 +1858,12 @@ export default mergeHarnessLocale('ga-IE', {
       saveBeforeHealth: 'Sábháil an phróifíl sula ndéanann tú seiceáil sláinte.',
       duplicate: 'Dúblach',
       builtinHelp:
-        'Fanann próifílí ionsuite inléite amháin agus mar sin fanann na hiontrálacha sílithe Claude, Codex, Gemini, agus iontrálacha cineálacha A2A seasmhach.',
+        'Fanann na próifílí ionsuite inléite amháin. Déan cóip de cheann chun leagan saincheaptha a chruthú.',
+      acpTemplateSummary: 'Déan cóip chun ordú ACP inrite a chur leis.',
+      acpTemplateHelp:
+        'Níl sna hiontrálacha ACP ionsuite ach teimpléid socraithe. Déan cóip de cheann, ansin cuir aon ordú ACP inrite leis.',
+      acpTemplateActionDisabled:
+        'Ní féidir le teimpléid ACP ionsuite fíorú ná seiceáil sláinte a rith. Déan cóip de cheann agus cumraigh ordú ar dtús.',
       command: 'Ordú agus Args',
       credentialSource: 'Foinse Creidiúnaithe',
       authMethod: 'Modh an Údair',

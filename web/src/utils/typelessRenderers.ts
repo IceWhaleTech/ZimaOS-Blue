@@ -15,6 +15,7 @@ import type {
   TypelessCardTerminal,
   ListItem,
 } from '@/types/typeless'
+import { openSerializedFullscreen } from '@/composables/useFullscreen'
 import { i18n } from '@/i18n'
 import { parseInline, highlightCode } from './markdown'
 
@@ -966,21 +967,13 @@ export function initTypelessCopyHandler(): void {
     }
   }
 
-  // Add global fullscreen handler for code/terminal cards
-  // This is called from the ondblclick handler in the rendered HTML
-  // The actual fullscreen state is managed by the useFullscreen composable
-  // which is imported by the FullscreenModal component
+  // Add global fullscreen handler for code/terminal cards.
+  // This is called from the ondblclick handler in the rendered HTML.
   ;(
     window as unknown as {
       __typelessOpenFullscreen?: (type: string, dataJson: string, isBase64?: boolean) => void
     }
   ).__typelessOpenFullscreen = (type: string, dataJson: string, isBase64?: boolean) => {
-    // Decode base64 if flagged (avoids HTML attribute escaping issues with JSON)
-    const json = isBase64 ? decodeURIComponent(escape(atob(dataJson))) : dataJson
-    // Dispatch a custom event that the FullscreenModal component listens to
-    const event = new CustomEvent('typeless-fullscreen', {
-      detail: { type, dataJson: json },
-    })
-    window.dispatchEvent(event)
+    openSerializedFullscreen(type, dataJson, isBase64)
   }
 }

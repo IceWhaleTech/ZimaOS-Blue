@@ -263,6 +263,8 @@ var rePseudoDirectiveCommandPlaceholder = regexp.MustCompile(`(?i)\{"command"\s*
 var rePseudoDirectivePayloadJSON = regexp.MustCompile(`(?i)^\s*\{"(?:command|parameters|tool_uses)"\s*:`)
 var rePseudoToolCallBlock = regexp.MustCompile(`(?is)<(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>[\s\S]*?</(?:[a-z0-9_.-]+:)?tool_call>`)
 var rePseudoToolCallTag = regexp.MustCompile(`(?is)</?(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>`)
+var rePseudoBracketedToolCallBlock = regexp.MustCompile(`(?is)\[(?:[a-z0-9_.-]+:)?tool_call\][\s\S]*?\[/(?:[a-z0-9_.-]+:)?tool_call\]`)
+var rePseudoBracketedToolCallTag = regexp.MustCompile(`(?is)\[/?(?:[a-z0-9_.-]+:)?tool_call\]`)
 var rePseudoInlineTokenFunctions = regexp.MustCompile(`(?i)to\s*=\s*functions\.[a-z0-9_.-]+`)
 var rePseudoInlineTokenParallel = regexp.MustCompile(`(?i)to\s*=\s*multi_tool_use\.parallel`)
 var rePseudoInlineTokenRecipient = regexp.MustCompile(`(?i)\brecipient_?name\b|\bwith\s+recipient\b`)
@@ -528,6 +530,29 @@ func hasExplicitHeavyResearchIntent(message string) bool {
 	return heavyResearchIntentCueMatcher.ContainsAnyFold(trimmed)
 }
 
+func isFinancialQuoteArtifactRequest(message string) bool {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" || extractRequestedArtifactPath(trimmed) == "" {
+		return false
+	}
+	if !financialQuoteArtifactCueMatcher.ContainsAnyFold(trimmed) {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	return strings.Contains(lower, "research") ||
+		strings.Contains(lower, "current") ||
+		strings.Contains(lower, "latest") ||
+		strings.Contains(lower, "today") ||
+		strings.Contains(lower, "price") ||
+		strings.Contains(lower, "market") ||
+		strings.Contains(trimmed, "研究") ||
+		strings.Contains(trimmed, "调研") ||
+		strings.Contains(trimmed, "当前") ||
+		strings.Contains(trimmed, "最新") ||
+		strings.Contains(trimmed, "今日") ||
+		strings.Contains(trimmed, "价格")
+}
+
 func shouldUseHeavyResearchWorkflow(message string) bool {
 	if !shouldPreferDeepSearchReport(message) {
 		return false
@@ -545,6 +570,9 @@ func shouldPreferPublicArtifactResearchWorkflow(message string) bool {
 	}
 	if isReminderIntentMessage(trimmed) || isCalendarIntentMessage(trimmed) || isEmailIntentMessage(trimmed) || isImageGenerationIntentMessage(trimmed) {
 		return false
+	}
+	if isFinancialQuoteArtifactRequest(trimmed) {
+		return true
 	}
 	if shouldPreferWorkspaceFileWorkflow(trimmed) {
 		return false
@@ -2237,11 +2265,12 @@ func shouldAutoContinueForActionPledge(currentContent string) bool {
 	return false
 }
 
-func pseudoDirectiveStartIndex(delta string) int {
+func pseudoDirectiveStartIndex(delta string, allowedTools []llm.Tool) int {
 	if strings.TrimSpace(delta) == "" {
 		return -1
 	}
-	lower := strings.ToLower(delta)
+	maskedDelta := maskPseudoRecoveryExcludedRanges(delta, allowedTools)
+	lower := strings.ToLower(maskedDelta)
 	minIndex := -1
 	mark := func(idx int) {
 		if idx < 0 {
@@ -2256,24 +2285,33 @@ func pseudoDirectiveStartIndex(delta string) int {
 	mark(strings.Index(lower, "to=multi_tool_use.parallel"))
 	mark(strings.Index(lower, "```tool"))
 	mark(strings.Index(lower, "<exec>"))
-	if loc := rePseudoDirectiveRecipientFunctions.FindStringIndex(delta); len(loc) == 2 {
+	if loc := rePseudoDirectiveRecipientFunctions.FindStringIndex(maskedDelta); len(loc) == 2 {
 		start := loc[0]
-		if start > 0 && delta[start-1] == '{' {
+		if start > 0 && maskedDelta[start-1] == '{' {
 			start--
 		}
 		mark(start)
 	}
-	if loc := rePseudoDirectiveCommandWorkdir.FindStringIndex(delta); len(loc) == 2 {
+	if loc := rePseudoDirectiveCommandWorkdir.FindStringIndex(maskedDelta); len(loc) == 2 {
 		mark(loc[0])
 	}
-	if loc := rePseudoDirectiveCommandPlaceholder.FindStringIndex(delta); len(loc) == 2 {
+	if loc := rePseudoDirectiveCommandPlaceholder.FindStringIndex(maskedDelta); len(loc) == 2 {
 		mark(loc[0])
 	}
-	if loc := rePseudoDirectivePayloadJSON.FindStringIndex(delta); len(loc) == 2 {
+	if loc := rePseudoDirectivePayloadJSON.FindStringIndex(maskedDelta); len(loc) == 2 {
 		mark(loc[0])
 	}
-	if loc := rePseudoToolCallTag.FindStringIndex(delta); len(loc) == 2 {
+	if loc := rePseudoToolCallTag.FindStringIndex(maskedDelta); len(loc) == 2 {
 		mark(loc[0])
+	}
+	if loc := rePseudoBracketedToolCallTag.FindStringIndex(maskedDelta); len(loc) == 2 {
+		mark(loc[0])
+	}
+	if idx := pseudoJSONToolCallStartIndex(maskedDelta, allowedTools); idx >= 0 {
+		mark(idx)
+	}
+	if idx := pseudoXMLToolTagStartIndex(maskedDelta, allowedTools); idx >= 0 {
+		mark(idx)
 	}
 	mark(strings.Index(lower, `{"tool_uses":`))
 	mark(strings.Index(lower, `{"tooluses":`))
@@ -2310,7 +2348,7 @@ func pseudoDirectiveStartIndex(delta string) int {
 			mark(taskIdx)
 		}
 	}
-	if looksLikeToolProtocolDeliberationLeak(delta) {
+	if looksLikeToolProtocolDeliberationLeak(maskedDelta) {
 		mark(0)
 	}
 	return minIndex
@@ -2346,21 +2384,48 @@ func looksLikeLeakedToolExecEnvelope(lower string) bool {
 }
 
 func looksLikeXMLToolCallLeak(s string) bool {
-	trimmed := strings.TrimSpace(s)
+	trimmed := strings.TrimSpace(maskPseudoRecoveryExcludedRanges(s, nil))
 	if trimmed == "" {
 		return false
+	}
+	if looksLikeBracketedToolCallLeak(trimmed) {
+		return true
 	}
 	if rePseudoToolCallBlock.MatchString(trimmed) {
 		return true
 	}
 	if !rePseudoToolCallTag.MatchString(trimmed) {
-		return false
+		return looksLikeDirectXMLPseudoToolCall(trimmed)
 	}
 	lower := strings.ToLower(trimmed)
 	return strings.Contains(lower, `"name"`) ||
 		strings.Contains(lower, `"arguments"`) ||
 		strings.Contains(lower, `<invoke `) ||
-		strings.Contains(lower, `<parameter `)
+		strings.Contains(lower, `<parameter `) ||
+		looksLikeDirectXMLPseudoToolCall(trimmed)
+}
+
+func looksLikeBracketedToolCallLeak(s string) bool {
+	trimmed := strings.TrimSpace(maskPseudoRecoveryExcludedRanges(s, nil))
+	if trimmed == "" {
+		return false
+	}
+	if rePseudoBracketedToolCallBlock.MatchString(trimmed) {
+		return true
+	}
+	if !rePseudoBracketedToolCallTag.MatchString(trimmed) {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	return strings.Contains(lower, `{tool =>`) ||
+		strings.Contains(lower, "args =>") ||
+		strings.Contains(lower, `"name"`) ||
+		strings.Contains(lower, `"arguments"`) ||
+		strings.Contains(lower, "--input ") ||
+		strings.Contains(lower, "--query ") ||
+		strings.Contains(lower, "web_query") ||
+		strings.Contains(lower, "web_search") ||
+		strings.Contains(lower, "functions.")
 }
 
 // looksLikeToolProtocolDeliberationLeak detects leaked internal "how to call tools"
@@ -2491,13 +2556,13 @@ func isPseudoDirectiveNoiseChunk(delta string) bool {
 	return false
 }
 
-func filterPseudoDirectiveDeltaForStreaming(delta string, suppressing *bool, suppressedChunks *int) string {
+func filterPseudoDirectiveDeltaForStreaming(delta string, allowedTools []llm.Tool, suppressing *bool, suppressedChunks *int) string {
 	if delta == "" {
 		return ""
 	}
 	visible := delta
 	hasStart := false
-	if start := pseudoDirectiveStartIndex(delta); start >= 0 {
+	if start := pseudoDirectiveStartIndex(delta, allowedTools); start >= 0 {
 		visible = delta[:start]
 		*suppressing = true
 		*suppressedChunks = 0
@@ -3816,6 +3881,8 @@ func stripPseudoDirectiveArtifactsWithProfile(s string, profile responseSanitize
 	cleaned := stripMarkedJSONObjectFragments(trimmed)
 	cleaned = rePseudoToolCallBlock.ReplaceAllString(cleaned, " ")
 	cleaned = rePseudoToolCallTag.ReplaceAllString(cleaned, " ")
+	cleaned = rePseudoBracketedToolCallBlock.ReplaceAllString(cleaned, " ")
+	cleaned = rePseudoBracketedToolCallTag.ReplaceAllString(cleaned, " ")
 	cleaned = rePseudoInlineTokenFunctions.ReplaceAllString(cleaned, " ")
 	cleaned = rePseudoInlineTokenParallel.ReplaceAllString(cleaned, " ")
 	cleaned = rePseudoInlineTokenRecipient.ReplaceAllString(cleaned, " ")
@@ -5856,6 +5923,14 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		NativeMode: chatNativeToolSurfaceModeLegacy,
 	}
 
+	// Public-information research tasks with an explicit saved deliverable need a
+	// mixed tool surface (web retrieval + file write). Skipping discover-first
+	// cutover here avoids clarify-only or exec-only surfaces that can block the
+	// end-to-end artifact workflow.
+	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+		return selection
+	}
+
 	decision, ok := h.resolveSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
 	if !ok {
 		return selection
@@ -6689,6 +6764,9 @@ func shouldPreferExplicitMemoryFileWorkflow(userMessage string) bool {
 	if lower == "" || strings.TrimSpace(extractRequestedArtifactPath(userMessage)) == "" {
 		return false
 	}
+	if isFinancialQuoteArtifactRequest(lower) {
+		return false
+	}
 	if shouldPreferFastResearchArtifactWorkflow(userMessage) || shouldUseHeavyResearchWorkflow(userMessage) {
 		return false
 	}
@@ -6715,6 +6793,9 @@ func shouldPreferWorkspaceFileWorkflow(userMessage string) bool {
 		return true
 	}
 	if lower == "" {
+		return false
+	}
+	if isFinancialQuoteArtifactRequest(lower) {
 		return false
 	}
 	if !tools.LooksLikeWorkspaceFileTask(lower) && !hasExplicitWorkspaceSourceCue(lower) {
@@ -7690,6 +7771,10 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 		RoutedDefs: routedDefs,
 		NativeDefs: routedDefs,
 		NativeMode: chatNativeToolSurfaceModeLegacy,
+	}
+
+	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+		return selection
 	}
 
 	decision, ok := h.previewSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
@@ -12099,6 +12184,16 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				}
 				resp.Message.ToolCalls = sanitizedCalls
 			}
+			if len(resp.Message.ToolCalls) == 0 {
+				if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, req.Tools); recovered {
+					resp.Message.ToolCalls = recoveredCalls
+					resp.Message.Content = ""
+					logger.Warn().
+						Int("round", imRound).
+						Int("tool_calls", len(recoveredCalls)).
+						Msg("[im] recovered pseudo tool-call text into assistant tool calls")
+				}
+			}
 
 			if imRound == 0 && len(resp.Message.ToolCalls) > 0 && resp.ProviderID != "" {
 				ctx = proxy.WithPinnedProvider(ctx, resp.ProviderID)
@@ -12351,6 +12446,11 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	if extraPrompt != "" || len(systemPromptMessages) == 0 {
 		var selection *contextpack.SelectionSet
 		systemPromptMessages, selection = h.buildSystemPromptMessages(promptCtx, extraPrompt)
+		if selection != nil {
+			turnHookCtx.ContextPackSelection = selection.Clone()
+		} else {
+			turnHookCtx.ContextPackSelection = nil
+		}
 		h.recordContextPackAudit(promptCtx, convID, selection)
 	}
 	messages = prependSystemMessages(messages, systemPromptMessages)
@@ -12600,6 +12700,16 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			if err != nil {
 				logger.Error().Err(err).Str("model", req.Model).Msg("LLM chat request failed")
 				return "", buildIMChatFailureError(lang, err)
+			}
+		}
+		if len(resp.Message.ToolCalls) == 0 {
+			if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, req.Tools); recovered {
+				resp.Message.ToolCalls = recoveredCalls
+				resp.Message.Content = ""
+				logger.Warn().
+					Int("round", imRound).
+					Int("tool_calls", len(recoveredCalls)).
+					Msg("[im] recovered pseudo tool-call text into assistant tool calls")
 			}
 		}
 
@@ -12902,7 +13012,7 @@ func shouldSkipPromptMemoryRecall(userMessage string) bool {
 	}
 	freshPublicSignals := []string{
 		"latest", "newest", "recent", "current", "today", "news", "release notes", "documentation", "docs",
-		"最新", "最近", "当前", "今天", "新闻", "更新", "文档", "文件",
+		"最新", "当前", "今天", "新闻", "更新", "文档", "文件",
 	}
 	return !allowWorkspaceMemory && containsAnyPromptMemorySignal(normalized, webSignals) && containsAnyPromptMemorySignal(normalized, freshPublicSignals)
 }
@@ -12919,7 +13029,6 @@ func containsAnyPromptMemorySignal(query string, signals []string) bool {
 func matchesPromptRetrospectiveWorklogIntent(normalized string) bool {
 	timeWindowSignals := []string{
 		"past week", "last week", "this week", "recently",
-		"过去一周", "最近一周", "上周", "这周", "最近",
 	}
 	summarySignals := []string{
 		"recap", "summarize", "summary", "review", "outline",
@@ -18847,7 +18956,8 @@ type SendMessageRequest struct {
 	MaxTokens   int                 `json:"max_tokens,omitempty"`
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
 	Regenerate  bool                `json:"regenerate,omitempty"`
-	// Nil means default behavior (enabled). False removes web_search from tool list.
+	// Nil means default behavior (enabled). False removes the public web tool family
+	// from the tool list, including canonical web_query and legacy compat aliases.
 	WebSearchEnabled    *bool `json:"web_search_enabled,omitempty"`
 	DeepResearchEnabled *bool `json:"deep_research_enabled,omitempty"`
 	ResearchModeEnabled *bool `json:"research_mode_enabled,omitempty"`
@@ -19288,7 +19398,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		buildDeepSearchExecutionHint(routingMessage),
 		buildArtifactWorkflowExecutionHint(routingMessage),
 	)
-	if systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, extraPrompt); len(systemPromptMessages) > 0 {
+	systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, extraPrompt)
+	if selection != nil {
+		turnHookCtx.ContextPackSelection = selection.Clone()
+	} else {
+		turnHookCtx.ContextPackSelection = nil
+	}
+	if len(systemPromptMessages) > 0 {
 		logger.Info().Int("system_blocks", len(systemPromptMessages)).Msg("[chat] SendMessage: injected structured system prompt")
 		compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
 		h.recordContextPackAudit(promptCtx, convID, selection)
@@ -19615,7 +19731,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 							)
 						}
 						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
-						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.listAvailableModelIDs()); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
+						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.recoveryAvailableModelIDs(llmCtx)); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
 							prevModel := chatReq.Model
 							chatReq.Model = fallbackModel
 							logger.Warn().Err(err).Int("round", round).
@@ -19724,6 +19840,16 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						Msg("[chat] dropped assistant tool calls outside the current allowed tool set")
 				}
 				resp.Message.ToolCalls = sanitizedCalls
+			}
+			if len(resp.Message.ToolCalls) == 0 {
+				if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, chatReq.Tools); recovered {
+					resp.Message.ToolCalls = recoveredCalls
+					resp.Message.Content = ""
+					logger.Warn().
+						Int("round", round).
+						Int("tool_calls", len(recoveredCalls)).
+						Msg("[chat] recovered pseudo tool-call text into assistant tool calls")
+				}
 			}
 			// Accumulate usage for intermediate tool rounds so trial quota (and
 			// metrics) reflects the full request cost, not just the final round.
@@ -19845,7 +19971,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 							)
 						}
 						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
-						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.listAvailableModelIDs()); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
+						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.recoveryAvailableModelIDs(llmCtx)); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
 							prevModel := chatReq.Model
 							chatReq.Model = fallbackModel
 							logger.Warn().
@@ -21171,6 +21297,56 @@ func (h *ChatHandler) listAvailableModelIDs() []string {
 	return out
 }
 
+func (h *ChatHandler) listAvailableModelIDsForProvider(providerID string) []string {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" || h == nil || h.providerPool == nil || h.providerPool.Discovery == nil {
+		return nil
+	}
+
+	models, err := h.providerPool.Discovery.GetFilteredModels(providerID)
+	if err != nil {
+		return nil
+	}
+
+	set := make(map[string]struct{}, len(models))
+	out := make([]string, 0, len(models))
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		modelID := strings.TrimSpace(model.ID)
+		if modelID == "" {
+			modelID = strings.TrimSpace(model.Name)
+		}
+		if modelID == "" {
+			continue
+		}
+		if _, exists := set[modelID]; exists {
+			continue
+		}
+		set[modelID] = struct{}{}
+		out = append(out, modelID)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (h *ChatHandler) recoveryAvailableModelIDs(ctx context.Context) []string {
+	if providerID := strings.TrimSpace(proxy.GetPinnedProvider(ctx)); providerID != "" {
+		if scoped := h.listAvailableModelIDsForProvider(providerID); len(scoped) > 0 {
+			return scoped
+		}
+	}
+	if resolved := proxy.GetResolvedRouteFromContext(ctx); resolved != nil {
+		if providerID := strings.TrimSpace(resolved.ProviderID); providerID != "" {
+			if scoped := h.listAvailableModelIDsForProvider(providerID); len(scoped) > 0 {
+				return scoped
+			}
+		}
+	}
+	return h.listAvailableModelIDs()
+}
+
 func (h *ChatHandler) storeUserAndAssistantLocal(ctx context.Context, convID, userMessage, assistantMessage, model string) (*memory.Message, error) {
 	if _, err := h.store.AddMessage(ctx, convID, memory.Message{
 		Role:    "user",
@@ -21526,6 +21702,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		buildArtifactWorkflowExecutionHint(routingMessage),
 	)
 	systemPromptMessages, contextSelection := h.buildSystemPromptMessages(promptCtx, extraPrompt)
+	if contextSelection != nil {
+		turnHookCtx.ContextPackSelection = contextSelection.Clone()
+	} else {
+		turnHookCtx.ContextPackSelection = nil
+	}
 	h.recordContextPackAudit(promptCtx, convID, contextSelection)
 	if len(systemPromptMessages) > 0 {
 		compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
@@ -22422,6 +22603,7 @@ STREAM_LOOP:
 					if len(streamToolCalls) == 0 {
 						visibleDelta = filterPseudoDirectiveDeltaForStreaming(
 							visibleDelta,
+							chatReq.Tools,
 							&suppressPseudoDirectiveDelta,
 							&suppressedPseudoDirectiveChunks,
 						)
@@ -23082,6 +23264,19 @@ STREAM_LOOP:
 					Msg("[chat] stream: dropped assistant tool calls outside the current allowed tool set")
 			}
 			streamToolCalls = sanitizedCalls
+		}
+		if len(streamToolCalls) == 0 {
+			if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(fullContent, chatReq.Tools); recovered {
+				streamToolCalls = recoveredCalls
+				fullContent = ""
+				logger.Warn().
+					Int("tool_round", toolRound).
+					Int("tool_calls", len(recoveredCalls)).
+					Msg("[chat] stream: recovered pseudo tool-call text into assistant tool calls")
+				if streamingMsgID != "" {
+					h.updateMessageBestEffort(streamingMsgID, convID, "assistant", "", "", "", nil)
+				}
+			}
 		}
 
 		// Mid-stream retry: if content was already streamed and error is not user-cancel,
@@ -23816,7 +24011,7 @@ STREAM_LOOP:
 							)
 						}
 						chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
-						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.listAvailableModelIDs()); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
+						if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.recoveryAvailableModelIDs(ctx)); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
 							prevModel := chatReq.Model
 							chatReq.Model = fallbackModel
 							logger.Warn().Err(err).Int("tool_round", toolRound).
@@ -23961,7 +24156,7 @@ STREAM_LOOP:
 					)
 				}
 				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
-				if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.listAvailableModelIDs()); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
+				if fallbackModel := selectResearchFailureWriteRecoveryModel(chatReq.Model, h.recoveryAvailableModelIDs(ctx)); fallbackModel != "" && !strings.EqualFold(fallbackModel, chatReq.Model) {
 					prevModel := chatReq.Model
 					chatReq.Model = fallbackModel
 					logger.Warn().
@@ -24536,7 +24731,13 @@ STREAM_LOOP:
 				}
 				skillPrompt, selectedSkill := h.resolveSkillSelectionForRequest(ctx, injectedMsg, req.DeepResearchEnabled)
 				promptCtx := h.buildContextPackRequestContext(ctx, convID, userID, string(streamLang), "web", injectedMsg, selectedSkill)
-				if systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, mergeExtraPrompt(skillPrompt, buildDeepSearchExecutionHint(injectedMsg), buildArtifactWorkflowExecutionHint(injectedMsg))); len(systemPromptMessages) > 0 {
+				systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, mergeExtraPrompt(skillPrompt, buildDeepSearchExecutionHint(injectedMsg), buildArtifactWorkflowExecutionHint(injectedMsg)))
+				if selection != nil {
+					turnHookCtx.ContextPackSelection = selection.Clone()
+				} else {
+					turnHookCtx.ContextPackSelection = nil
+				}
+				if len(systemPromptMessages) > 0 {
 					compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
 					h.recordContextPackAudit(promptCtx, convID, selection)
 				}

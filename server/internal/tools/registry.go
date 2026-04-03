@@ -20,7 +20,7 @@ var (
 
 // ForwardedResult wraps a tool result that was auto-forwarded from exec.
 // The ActualTool field indicates which tool actually executed the request,
-// allowing the UI to display the correct tool name (e.g. "web_search" instead of "exec").
+// allowing the UI to display the correct tool name (e.g. "web_query" instead of "exec").
 type ForwardedResult struct {
 	ActualTool string
 	Result     interface{}

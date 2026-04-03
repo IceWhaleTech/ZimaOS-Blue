@@ -4646,12 +4646,18 @@ func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
 	if !ph.routingEnabled.Load() {
 		return
 	}
+	if r != nil && DisableModelRoutingFromContext(r.Context()) {
+		return
+	}
 	isBackground := ph.modelRouter != nil && ph.modelRouter.IsBackgroundRequest(r)
 
 	// "auto"/"cloud"/"local" are normalized to empty model IDs before this point.
 	// Keep passthrough for normal requests, but allow background requests to route
 	// to a concrete small model via model-router tier downgrade.
 	if strings.TrimSpace(pr.model) == "" && !isBackground {
+		return
+	}
+	if ph.shouldPreservePinnedExplicitModel(r, pr) {
 		return
 	}
 
@@ -4728,6 +4734,42 @@ func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
 			}
 		}
 	}
+}
+
+func (ph *ProxyHandler) shouldPreservePinnedExplicitModel(r *http.Request, pr *parsedRequest) bool {
+	if ph == nil || r == nil || pr == nil || ph.providerPool == nil || ph.providerPool.Discovery == nil {
+		return false
+	}
+
+	providerID := strings.TrimSpace(GetPinnedProvider(r.Context()))
+	if providerID == "" {
+		return false
+	}
+
+	requestedModel := strings.TrimSpace(pr.requestedModel)
+	if requestedModel == "" {
+		requestedModel = strings.TrimSpace(pr.model)
+	}
+	if requestedModel == "" {
+		return false
+	}
+	if _, hint := normalizeModelRoutingHint(requestedModel); hint != "" {
+		return false
+	}
+
+	models, err := ph.providerPool.Discovery.GetFilteredModels(providerID)
+	if err != nil {
+		return false
+	}
+	for _, model := range models {
+		if model == nil || !model.Enabled {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(model.ID), requestedModel) || strings.EqualFold(strings.TrimSpace(model.Name), requestedModel) {
+			return true
+		}
+	}
+	return false
 }
 
 // modelKeyPattern is the byte pattern for locating the "model" JSON key.

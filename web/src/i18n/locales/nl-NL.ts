@@ -1,5 +1,5 @@
 // Dutch (Nederlands)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('nl-NL', {
   common: {
@@ -1861,7 +1861,12 @@ export default mergeHarnessLocale('nl-NL', {
       saveBeforeHealth: 'Sla het profiel op voordat u een statuscontrole uitvoert.',
       duplicate: 'Duplicaat',
       builtinHelp:
-        'Ingebouwde profielen blijven alleen-lezen, dus de geplaatste vermeldingen Claude, Codex, Gemini en generieke A2A blijven stabiel.',
+        'Ingebouwde profielen blijven alleen-lezen. Dupliceer er een om een aangepaste kopie te maken.',
+      acpTemplateSummary: 'Dupliceer om een uitvoerbare ACP-opdracht toe te voegen.',
+      acpTemplateHelp:
+        'Ingebouwde ACP-items zijn alleen instelsjablonen. Dupliceer er een en voeg daarna een uitvoerbare ACP-opdracht toe.',
+      acpTemplateActionDisabled:
+        'Ingebouwde ACP-sjablonen kunnen geen verificatie of gezondheidscontrole uitvoeren. Dupliceer er eerst een en configureer een opdracht.',
       command: 'Commando en argumenten',
       credentialSource: 'Referentiebron',
       authMethod: 'Verificatiemethode',

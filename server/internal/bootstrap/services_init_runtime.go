@@ -71,7 +71,7 @@ func initServicesRuntimeRegistries(
 			WorkspaceDir: ResolveWorkspaceDir(cfg.DataDir, appCfg),
 			Ripgrep:      appCfg.ToolCalling.Ripgrep,
 			SkillDynamicExposureEnabled: func() bool {
-				return appCfg.ToolCalling.SkillDynamicExposure
+				return true
 			},
 		},
 	)

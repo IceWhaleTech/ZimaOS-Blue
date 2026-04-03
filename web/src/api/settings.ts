@@ -15,7 +15,6 @@ export interface DirectoryWhitelistEntry {
 export interface Settings {
   locale?: string // User's preferred locale (e.g., "zh-CN", "en-US")
   timezone?: string // User's timezone
-  smart_skill_selection?: boolean // Progressive skill selector (default false)
   skill_selector_mode?: 'hybrid' | 'ir_only' | 'llm_only' // Skill selector strategy
   skill_rerank_enabled?: boolean // Enable stage-2 rerank (default false)
   skill_rerank_model?: string // Reranker model repo
@@ -58,6 +57,9 @@ export interface Settings {
   voice_wake_triggers?: string[] // default ["Hey Blue"]
   voice_wake_locale?: string // optional locale override
   voice_wake_target_conversation_id?: string // fixed background target conversation
+  experimental_agentcore_runner_enabled?: boolean
+  experimental_agentcore_runner_repo_url?: string
+  experimental_agentcore_runner_ref?: string
 }
 
 export interface SkillRerankerModelStatus {
@@ -142,6 +144,59 @@ export interface SmallModelStats {
   fallback_reasons: Record<string, number>
 }
 
+export interface AgentcoreRunnerStatus {
+  enabled: boolean
+  repo_url?: string
+  resolved_ref?: string
+  resolved_commit?: string
+  required_go_version?: string
+  installed_go_version?: string
+  toolchain_ready: boolean
+  binary_ready: boolean
+  binary_path?: string
+  binary_sha256?: string
+  last_prepare_at?: string
+  last_prepare_state?: string
+  last_error?: string
+  last_optimization_run_id?: string
+  last_optimization_at?: string
+  last_optimization_state?: string
+  last_optimization_summary?: string
+}
+
+export interface AgentcoreRunnerLastRunTranscriptEntry {
+  direction?: string
+  method?: string
+  id?: string
+  text?: string
+}
+
+export interface AgentcoreRunnerLastRun {
+  id?: string
+  created_at?: string
+  reason?: string
+  candidate_id?: string
+  eval_run_id?: string
+  base_eval_run_id?: string
+  optimization_surface?: string
+  repo_url?: string
+  ref?: string
+  runner_artifact_path?: string
+  runner_artifact_sha256?: string
+  runner_protocol?: string
+  runner_session_id?: string
+  runner_stop_reason?: string
+  runner_response_text?: string
+  runner_stderr?: string
+  runner_error?: string
+  runner_started_at?: string
+  runner_finished_at?: string
+  runner_duration_ms?: number
+  metadata?: Record<string, unknown>
+  runner_transcript?: AgentcoreRunnerLastRunTranscriptEntry[]
+  [key: string]: unknown
+}
+
 export interface PromptPolicyStatus {
   prompt_policy_version: string
   prompt_policy_profile: string
@@ -159,7 +214,6 @@ export interface PromptPolicyStatus {
 export interface SelectorDryRunResponse {
   query: string
   model: string
-  smart_skill_selection: boolean
   selected_tools: string[]
   skill_decision?: unknown
   skill_prompt_hint?: string
@@ -190,6 +244,9 @@ export const settingsApi = {
   downloadSmallModel: () =>
     api.post<{ success: boolean; message?: string }>('/settings/small-model/download'),
   cancelSmallModelDownload: () => api.post<{ success: boolean }>('/settings/small-model/cancel'),
+  getAgentcoreRunnerStatus: () => api.get<AgentcoreRunnerStatus>('/settings/agentcore-runner/status'),
+  getAgentcoreRunnerLastRun: () => api.get<AgentcoreRunnerLastRun | null>('/settings/agentcore-runner/last-run'),
+  prepareAgentcoreRunner: () => api.post<AgentcoreRunnerStatus>('/settings/agentcore-runner/prepare'),
   // Small-model observability counters
   getSmallModelStats: () => api.get<SmallModelStats>('/small-model/stats'),
   resetSmallModelStats: () => api.post<{ success: boolean }>('/small-model/stats/reset'),

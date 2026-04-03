@@ -35,7 +35,7 @@ type PolicyResolver struct {
 func NewPolicyResolver(cfg config.HarnessConfig, agents *config.AgentsConfig) *PolicyResolver {
 	return &PolicyResolver{
 		defaults: Defaults{
-			ArtifactRoot:  strings.TrimSpace(cfg.ArtifactRoot),
+			ArtifactRoot:  absoluteHarnessPath(cfg.ArtifactRoot),
 			StorePath:     resolveSharedStorePath(cfg),
 			ApprovalMode:  ApprovalMode(strings.TrimSpace(cfg.DefaultApprovalMode)),
 			SandboxMode:   strings.TrimSpace(cfg.DefaultSandboxMode),
@@ -51,12 +51,12 @@ func NewPolicyResolver(cfg config.HarnessConfig, agents *config.AgentsConfig) *P
 
 func resolveSharedStorePath(cfg config.HarnessConfig) string {
 	if artifactRoot := strings.TrimSpace(cfg.ArtifactRoot); artifactRoot != "" {
-		return filepath.Join(resolveDataRootFromArtifactRoot(artifactRoot), "blue.db")
+		return absoluteHarnessPath(filepath.Join(resolveDataRootFromArtifactRoot(artifactRoot), "blue.db"))
 	}
 	if storePath := strings.TrimSpace(cfg.StorePath); storePath != "" {
-		return filepath.Join(filepath.Dir(storePath), "blue.db")
+		return absoluteHarnessPath(filepath.Join(filepath.Dir(storePath), "blue.db"))
 	}
-	return filepath.Join(".", "data", "blue.db")
+	return absoluteHarnessPath(filepath.Join(".", "data", "blue.db"))
 }
 
 func resolveDataRootFromArtifactRoot(artifactRoot string) string {
@@ -72,6 +72,17 @@ func resolveDataRootFromArtifactRoot(artifactRoot string) string {
 		return parent
 	}
 	return filepath.Dir(clean)
+}
+
+func absoluteHarnessPath(path string) string {
+	clean := strings.TrimSpace(path)
+	if clean == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(clean); err == nil {
+		return abs
+	}
+	return filepath.Clean(clean)
 }
 
 func (r *PolicyResolver) Resolve(spec RunSpec) RunSpec {
@@ -211,31 +222,31 @@ func (r *PolicyResolver) ResolveChild(parent *Run, spec RunSpec) (RunSpec, error
 
 func (r *PolicyResolver) defaultWorkspaceRoot() string {
 	if r == nil {
-		return filepath.Join(".", "data", "workspace")
+		return absoluteHarnessPath(filepath.Join(".", "data", "workspace"))
 	}
 	if storePath := strings.TrimSpace(r.defaults.StorePath); storePath != "" {
-		return filepath.Join(filepath.Dir(storePath), "workspace")
+		return absoluteHarnessPath(filepath.Join(filepath.Dir(storePath), "workspace"))
 	}
 	if artifactRoot := strings.TrimSpace(r.defaults.ArtifactRoot); artifactRoot != "" {
 		clean := filepath.Clean(artifactRoot)
 		if strings.EqualFold(filepath.Base(clean), "artifacts") {
 			parent := filepath.Dir(clean)
 			if strings.EqualFold(filepath.Base(parent), "harness") {
-				return filepath.Join(filepath.Dir(parent), "workspace")
+				return absoluteHarnessPath(filepath.Join(filepath.Dir(parent), "workspace"))
 			}
-			return filepath.Join(parent, "workspace")
+			return absoluteHarnessPath(filepath.Join(parent, "workspace"))
 		}
-		return filepath.Join(filepath.Dir(clean), "workspace")
+		return absoluteHarnessPath(filepath.Join(filepath.Dir(clean), "workspace"))
 	}
-	return filepath.Join(".", "data", "workspace")
+	return absoluteHarnessPath(filepath.Join(".", "data", "workspace"))
 }
 
 func (r *PolicyResolver) ArtifactRoot(runID string) string {
 	root := strings.TrimSpace(r.defaults.ArtifactRoot)
 	if root == "" {
-		root = "./data/harness/artifacts"
+		root = absoluteHarnessPath("./data/harness/artifacts")
 	}
-	return filepath.Join(root, strings.TrimSpace(runID))
+	return absoluteHarnessPath(filepath.Join(root, strings.TrimSpace(runID)))
 }
 
 func (r *PolicyResolver) IsProtectedPath(path string, artifactRoot string) bool {

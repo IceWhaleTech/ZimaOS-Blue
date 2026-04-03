@@ -170,16 +170,20 @@ function summaryCount(key: string): number {
   return Number.isFinite(value) ? value : 0
 }
 
-function summaryNumberMap(key: string): Record<string, number> {
-  const summary = asRecord(report.value?.group?.summary)
-  const source = asRecord(summary?.[key])
+function numberMap(value: unknown): Record<string, number> {
+  const source = asRecord(value)
   if (!source) return {}
   const out: Record<string, number> = {}
   for (const [entryKey, raw] of Object.entries(source)) {
-    const value = Number(raw)
-    if (Number.isFinite(value) && value > 0) out[entryKey] = value
+    const numeric = Number(raw)
+    if (Number.isFinite(numeric) && numeric > 0) out[entryKey] = numeric
   }
   return out
+}
+
+function summaryNumberMap(key: string): Record<string, number> {
+  const summary = asRecord(report.value?.group?.summary)
+  return numberMap(summary?.[key])
 }
 
 function sortedEntries(values: Record<string, number>): NumberEntry[] {
@@ -315,6 +319,22 @@ const runEventPreviewMap = computed<Record<string, string>>(() => {
 })
 
 const failureLabelEntries = computed(() => sortedEntries(summaryNumberMap('failure_label_counts')))
+const contextPackBreakdown = computed(() =>
+  asRecord(asRecord(report.value?.group?.summary)?.contextpack_breakdown)
+)
+const contextPackItemsWithSnapshot = computed(() => {
+  const value = Number(contextPackBreakdown.value?.items_with_snapshot || 0)
+  return Number.isFinite(value) && value > 0 ? value : 0
+})
+const contextPackSelectedSkillEntries = computed(() =>
+  sortedEntries(numberMap(contextPackBreakdown.value?.selected_skill_counts))
+)
+const contextPackSourceTrustEntries = computed(() =>
+  sortedEntries(numberMap(contextPackBreakdown.value?.source_trust_counts))
+)
+const contextPackEntryEntries = computed(() =>
+  sortedEntries(numberMap(contextPackBreakdown.value?.entry_id_counts))
+)
 
 const failedItems = computed<FailedItemRow[]>(() =>
   (report.value?.failed_items || []).map((entry, index) => {
@@ -701,6 +721,62 @@ onUnmounted(() => {
         </p>
       </section>
 
+      <section v-if="contextPackBreakdown" class="panel">
+        <div class="panel-header">
+          <h2>{{ tr('harness.group.contextPacks', 'Context Packs') }}</h2>
+          <span class="panel-caption">
+            {{ contextPackItemsWithSnapshot }} / {{ items.length }}
+            {{ tr('harness.groups.itemCount', 'Items') }}
+          </span>
+        </div>
+
+        <div class="verdict-grid">
+          <div class="verdict-card">
+            <span>{{ tr('harness.group.contextPackItems', 'Items with packs') }}</span>
+            <strong>{{ contextPackItemsWithSnapshot }}</strong>
+          </div>
+          <div class="verdict-card">
+            <span>{{ tr('harness.group.contextPackSelectedSkills', 'Selected skills') }}</span>
+            <strong>{{ contextPackSelectedSkillEntries.length }}</strong>
+          </div>
+          <div class="verdict-card">
+            <span>{{ tr('harness.group.contextPackSources', 'Sources') }}</span>
+            <strong>{{ contextPackSourceTrustEntries.length }}</strong>
+          </div>
+          <div class="verdict-card">
+            <span>{{ tr('harness.group.contextPackEntries', 'Entries') }}</span>
+            <strong>{{ contextPackEntryEntries.length }}</strong>
+          </div>
+        </div>
+
+        <div v-if="contextPackSelectedSkillEntries.length" class="panel-subsection">
+          <h3>{{ tr('harness.group.contextPackSelectedSkills', 'Selected skills') }}</h3>
+          <div class="detail-pills">
+            <span v-for="entry in contextPackSelectedSkillEntries" :key="`cp-skill-${entry.key}`">
+              {{ entry.key }} · {{ entry.value }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="contextPackSourceTrustEntries.length" class="panel-subsection">
+          <h3>{{ tr('harness.group.contextPackSources', 'Sources') }}</h3>
+          <div class="detail-pills">
+            <span v-for="entry in contextPackSourceTrustEntries" :key="`cp-source-${entry.key}`">
+              {{ entry.key }} · {{ entry.value }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="contextPackEntryEntries.length" class="panel-subsection">
+          <h3>{{ tr('harness.group.contextPackEntries', 'Entries') }}</h3>
+          <div class="detail-pills">
+            <span v-for="entry in contextPackEntryEntries" :key="`cp-entry-${entry.key}`">
+              {{ entry.key }} · {{ entry.value }}
+            </span>
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-header">
           <h2>{{ tr('harness.group.failedItems', 'Failed items') }}</h2>
@@ -1046,6 +1122,18 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
+}
+
+.panel-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.panel-subsection h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: rgba(15, 23, 42, 0.78);
 }
 
 .panel-header {

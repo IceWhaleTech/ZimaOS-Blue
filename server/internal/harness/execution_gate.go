@@ -107,7 +107,7 @@ func (c *Controller) EvaluateExecutionEquivalence(ctx context.Context, targetEva
 	metrics := buildExecutionEquivalenceMetrics(baseReport, targetReport, comparison)
 	checks := evaluateExecutionEquivalenceChecks(metrics, thresholds)
 
-	return &ExecutionEquivalenceReport{
+	report := &ExecutionEquivalenceReport{
 		TargetEvalRunID:    targetReport.EvalRun.ID,
 		BaseEvalRunID:      comparison.BaseEvalRunID,
 		BaselineID:         comparison.BaselineID,
@@ -117,7 +117,22 @@ func (c *Controller) EvaluateExecutionEquivalence(ctx context.Context, targetEva
 		Checks:             checks,
 		Passed:             executionEquivalenceChecksPassed(checks),
 		CreatedAt:          timeutil.NowTime(),
-	}, nil
+	}
+	c.emitOptimizationTrigger(ctx, OptimizationTrigger{
+		Reason:          executionGateReason(report.Passed),
+		CandidateID:     evalRunCandidateID(targetReport.EvalRun),
+		EvalRunID:       targetReport.EvalRun.ID,
+		BaseEvalRunID:   comparison.BaseEvalRunID,
+		OptimizationRun: evalRunIsOptimizationChild(targetReport.EvalRun),
+	})
+	return report, nil
+}
+
+func executionGateReason(passed bool) OptimizationReason {
+	if passed {
+		return OptimizationReasonExecutionGatePassed
+	}
+	return OptimizationReasonExecutionGateFailed
 }
 
 func (c *Controller) ensureBatch1ExecutionDataset(ctx context.Context, ownerUserID string) (*Dataset, error) {
@@ -159,12 +174,102 @@ func (c *Controller) ensureBatch1ExecutionEvalSpec(ctx context.Context, dataset 
 	if err != nil {
 		return nil, err
 	}
+	var versionMatch *EvalSpec
+	var versionMatchWithHistory *EvalSpec
+	var lineage *EvalSpec
+	var lineageWithHistory *EvalSpec
 	for i := range specs {
+		if !batch1ExecutionEvalSpecLineageMatches(&specs[i]) {
+			continue
+		}
+		hasHistory, historyErr := c.batch1ExecutionEvalSpecHasHistory(ctx, &specs[i])
+		if historyErr != nil {
+			return nil, historyErr
+		}
 		if batch1ExecutionEvalSpecMatches(&specs[i], version.ID) {
-			return &specs[i], nil
+			candidate := specs[i]
+			if versionMatch == nil {
+				versionMatch = &candidate
+			}
+			if hasHistory && versionMatchWithHistory == nil {
+				versionMatchWithHistory = &candidate
+			}
+			continue
+		}
+		candidate := specs[i]
+		if lineage == nil {
+			lineage = &candidate
+		}
+		if hasHistory && lineageWithHistory == nil {
+			lineageWithHistory = &candidate
 		}
 	}
+	if lineageWithHistory != nil {
+		return c.updateBatch1ExecutionEvalSpec(ctx, lineageWithHistory, dataset, version, ownerUserID)
+	}
+	if versionMatchWithHistory != nil {
+		return versionMatchWithHistory, nil
+	}
+	if versionMatch != nil {
+		return versionMatch, nil
+	}
+	if lineage != nil {
+		return c.updateBatch1ExecutionEvalSpec(ctx, lineage, dataset, version, ownerUserID)
+	}
 	return c.CreateEvalSpec(ctx, Batch1ExecutionEvalSpecSpec(dataset.ID, version.ID, ownerUserID))
+}
+
+func (c *Controller) updateBatch1ExecutionEvalSpec(ctx context.Context, spec *EvalSpec, dataset *Dataset, version *DatasetVersion, ownerUserID string) (*EvalSpec, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	if spec == nil || dataset == nil || version == nil {
+		return nil, fmt.Errorf("spec, dataset, and version are required")
+	}
+	updated := Batch1ExecutionEvalSpecSpec(dataset.ID, version.ID, ownerUserID)
+	next := *spec
+	next.Name = updated.Name
+	next.OwnerUserID = updated.OwnerUserID
+	next.Subject = updated.Subject
+	next.RunKind = updated.RunKind
+	next.Profile = updated.Profile
+	next.DatasetID = strings.TrimSpace(dataset.ID)
+	next.DatasetVersionID = strings.TrimSpace(version.ID)
+	next.SchedulerConfig = updated.SchedulerConfig
+	next.ScoringConfig = updated.ScoringConfig
+	next.RuntimePolicy = cloneMetadataMap(updated.RuntimePolicy)
+	next.Metadata = cloneMetadataMap(updated.Metadata)
+	if err := c.store.UpdateEvalSpec(ctx, &next); err != nil {
+		return nil, err
+	}
+	return c.store.GetEvalSpec(ctx, next.ID)
+}
+
+func (c *Controller) batch1ExecutionEvalSpecHasHistory(ctx context.Context, spec *EvalSpec) (bool, error) {
+	if c == nil || c.store == nil {
+		return false, fmt.Errorf("harness controller is not configured")
+	}
+	if spec == nil {
+		return false, nil
+	}
+	baselines, err := c.store.ListBaselines(ctx, BaselineFilter{
+		EvalSpecID: strings.TrimSpace(spec.ID),
+		Limit:      1,
+	})
+	if err != nil {
+		return false, err
+	}
+	if len(baselines) > 0 {
+		return true, nil
+	}
+	evalRuns, err := c.store.ListEvalRuns(ctx, EvalRunFilter{
+		EvalSpecID: strings.TrimSpace(spec.ID),
+		Limit:      1,
+	})
+	if err != nil {
+		return false, err
+	}
+	return len(evalRuns) > 0, nil
 }
 
 func batch1ExecutionDatasetMatches(dataset *Dataset) bool {
@@ -180,10 +285,17 @@ func batch1ExecutionEvalSpecMatches(spec *EvalSpec, versionID string) bool {
 	if spec == nil {
 		return false
 	}
+	return batch1ExecutionEvalSpecLineageMatches(spec) &&
+		strings.TrimSpace(spec.DatasetVersionID) == strings.TrimSpace(versionID)
+}
+
+func batch1ExecutionEvalSpecLineageMatches(spec *EvalSpec) bool {
+	if spec == nil {
+		return false
+	}
 	return strings.TrimSpace(spec.Name) == Batch1ExecutionEvalName &&
 		strings.TrimSpace(spec.Subject) == Batch1ExecutionDatasetSubject &&
 		strings.TrimSpace(spec.Profile) == batch1ExecutionProfile &&
-		strings.TrimSpace(spec.DatasetVersionID) == strings.TrimSpace(versionID) &&
 		metadataString(spec.Metadata, "gate_type") == "execution_equivalence"
 }
 

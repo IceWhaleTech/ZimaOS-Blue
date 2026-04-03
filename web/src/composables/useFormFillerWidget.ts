@@ -3,10 +3,12 @@ import { templateApi, configApi, type FillTemplate, type FormFillerConfig } from
 import { parseClipboardData, parseClipboardFields } from '@/utils/clipboardParser'
 import { getStoredAccessToken } from '@/utils/authStorage'
 
+type FillableField = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+
 export interface FillHistoryEntry {
   timestamp: number
   fields: Array<{
-    element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    element: FillableField
     oldValue: string
     newValue: string
   }>
@@ -21,7 +23,7 @@ export interface WidgetState {
   isVisible: boolean
   isMinimized: boolean
   position: WidgetPosition
-  focusedElement: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null
+  focusedElement: FillableField | null
   selectedTemplate: FillTemplate | null
   templates: FillTemplate[]
   config: FormFillerConfig | null
@@ -65,6 +67,10 @@ export function setPasteAreaExpanded(expanded: boolean) {
   pasteAreaExpanded = expanded
 }
 
+const FORM_FILLER_SCOPE_ATTRIBUTE = 'data-form-filler-scope'
+const FORM_FILLER_SCOPE_SELECTOR = `[${FORM_FILLER_SCOPE_ATTRIBUTE}]`
+const allowedFormFillerScopes = new Set(['channel', 'provider'])
+
 // Routes where the form filler widget should be disabled
 const disabledRoutes = ['/chat']
 
@@ -72,6 +78,29 @@ const disabledRoutes = ['/chat']
 function isRouteDisabled(): boolean {
   const path = window.location.pathname
   return disabledRoutes.some((route) => path.startsWith(route))
+}
+
+function shouldIgnoreField(element: Element): boolean {
+  if (element.closest('.formfiller-widget')) return true
+  return Boolean(element.closest('[data-form-filler-ignore]'))
+}
+
+function getAllowedScopeContainer(element: Element | null): HTMLElement | null {
+  if (!element) return null
+
+  const scopeContainer = element.closest<HTMLElement>(FORM_FILLER_SCOPE_SELECTOR)
+  if (!scopeContainer) return null
+
+  const scopeName = scopeContainer.getAttribute(FORM_FILLER_SCOPE_ATTRIBUTE)
+  if (!scopeName || !allowedFormFillerScopes.has(scopeName)) {
+    return null
+  }
+
+  return scopeContainer
+}
+
+function isElementInAllowedScope(element: Element | null): boolean {
+  return !!getAllowedScopeContainer(element)
 }
 
 export function useFormFillerWidget() {
@@ -121,7 +150,23 @@ export function useFormFillerWidget() {
   // Check if element is a fillable form field
   function isFillableField(
     el: Element
-  ): el is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
+  ): el is FillableField {
+    if (shouldIgnoreField(el)) return false
+
+    if (
+      (el instanceof HTMLInputElement || el instanceof HTMLSelectElement) &&
+      el.disabled
+    ) {
+      return false
+    }
+
+    if (
+      (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) &&
+      (el.disabled || el.readOnly)
+    ) {
+      return false
+    }
+
     const tagName = el.tagName.toLowerCase()
     if (tagName === 'select' || tagName === 'textarea') return true
     if (tagName === 'input') {
@@ -218,14 +263,51 @@ export function useFormFillerWidget() {
     return null
   }
 
+  function getFillContextRoot(element: Element): Element | null {
+    const scopeContainer = getAllowedScopeContainer(element)
+    if (!scopeContainer) return null
+
+    const formContainer = findFormContainer(element)
+    if (formContainer && scopeContainer.contains(formContainer)) {
+      return formContainer
+    }
+
+    return scopeContainer
+  }
+
+  function getScopedFillableFields(element: Element): FillableField[] {
+    const root = getFillContextRoot(element)
+    if (!root) return []
+
+    const inputs = root.querySelectorAll('input, select, textarea')
+    return Array.from(inputs).filter((field): field is FillableField => isFillableField(field))
+  }
+
   // Check if the focused element is in a form-like context (2+ text input fields, not counting select)
   function isInFormContext(element: Element): boolean {
+    const scopeContainer = getAllowedScopeContainer(element)
+    if (!scopeContainer) return false
+
     const container = findFormContainer(element)
-    if (!container) return false
+    if (!container || !scopeContainer.contains(container)) return false
 
     const inputs = container.querySelectorAll('input, textarea')
     const textInputs = Array.from(inputs).filter((el) => isTextInputField(el))
     return textInputs.length >= 2
+  }
+
+  function showWidgetForElement(element: FillableField): boolean {
+    if (!isElementInAllowedScope(element)) return false
+
+    // Select elements can still be filled via "Fill All" but shouldn't trigger the widget
+    if (element.tagName.toLowerCase() === 'select') return false
+
+    if (!isInFormContext(element)) return false
+
+    globalState.focusedElement = element
+    globalState.position = calculatePosition(element)
+    globalState.isVisible = true
+    return true
   }
 
   // Handle focus on form fields
@@ -236,22 +318,7 @@ export function useFormFillerWidget() {
     // Don't show widget on disabled routes (e.g., chat page)
     if (isRouteDisabled()) return
 
-    // Don't show widget for elements inside the widget itself
-    if (target.closest('.formfiller-widget')) return
-
-    // Don't show widget for elements with data-form-filler-ignore attribute
-    if (target.hasAttribute('data-form-filler-ignore')) return
-
-    // Don't show widget when focusing on select/dropdown elements
-    // Select elements can still be filled via "Fill All" but shouldn't trigger the widget
-    if (target.tagName.toLowerCase() === 'select') return
-
-    // Only show widget if there are 2+ fillable fields in the same container
-    if (!isInFormContext(target)) return
-
-    globalState.focusedElement = target
-    globalState.position = calculatePosition(target)
-    globalState.isVisible = true
+    showWidgetForElement(target)
   }
 
   // Handle blur - hide widget after a delay (to allow clicking on widget)
@@ -262,7 +329,10 @@ export function useFormFillerWidget() {
       // Don't hide if focus moved to another form field or to the widget
       if (
         activeElement &&
-        (isFillableField(activeElement) || activeElement.closest('.formfiller-widget'))
+        (
+          (isFillableField(activeElement) && isElementInAllowedScope(activeElement)) ||
+          activeElement.closest('.formfiller-widget')
+        )
       ) {
         return
       }
@@ -555,11 +625,7 @@ export function useFormFillerWidget() {
 
     // Positional mode: use the field's DOM index to pick the corresponding line
     if (globalState.parsedClipboardTokens.length > 0) {
-      const inputs = document.querySelectorAll('input, select, textarea')
-      const fillableFields: Element[] = []
-      inputs.forEach((el) => {
-        if (isFillableField(el)) fillableFields.push(el)
-      })
+      const fillableFields = getScopedFillableFields(globalState.focusedElement)
       const idx = fillableFields.indexOf(globalState.focusedElement)
       if (idx >= 0 && idx < globalState.parsedClipboardTokens.length) {
         value = globalState.parsedClipboardTokens[idx]!
@@ -614,7 +680,11 @@ export function useFormFillerWidget() {
 
   // Fill all form fields on the page
   function fillAllFields() {
-    const inputs = document.querySelectorAll('input, select, textarea')
+    if (!globalState.focusedElement) return 0
+
+    const fillableFields = getScopedFillableFields(globalState.focusedElement)
+    if (fillableFields.length === 0) return 0
+
     const historyEntry: FillHistoryEntry = {
       timestamp: Date.now(),
       fields: [],
@@ -622,11 +692,6 @@ export function useFormFillerWidget() {
 
     // Positional mode: plain lines without keys → fill fields in DOM order
     if (globalState.parsedClipboardTokens.length > 0) {
-      const fillableFields: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[] = []
-      inputs.forEach((el) => {
-        if (isFillableField(el)) fillableFields.push(el)
-      })
-
       const lines = globalState.parsedClipboardTokens
       const count = Math.min(lines.length, fillableFields.length)
       for (let i = 0; i < count; i++) {
@@ -654,9 +719,7 @@ export function useFormFillerWidget() {
     // Track used clipboard keys to prevent duplicate fills
     const usedKeys = new Set<string>()
 
-    inputs.forEach((element) => {
-      if (!isFillableField(element)) return
-
+    fillableFields.forEach((element) => {
       const value = findValueForField(element, usedKeys)
       if (!value) return
 
@@ -708,7 +771,15 @@ export function useFormFillerWidget() {
 
   // Toggle widget visibility
   function toggleWidget() {
-    globalState.isVisible = !globalState.isVisible
+    if (globalState.isVisible) {
+      hideWidget()
+      return
+    }
+
+    const activeElement = document.activeElement
+    if (!activeElement || !isFillableField(activeElement)) return
+
+    showWidgetForElement(activeElement)
   }
 
   // Hide widget
@@ -736,14 +807,24 @@ export function useFormFillerWidget() {
     const keyRequired = keys.find((k) => !['ctrl', 'shift', 'alt'].includes(k))
 
     if (
-      event.ctrlKey === ctrlRequired &&
-      event.shiftKey === shiftRequired &&
-      event.altKey === altRequired &&
-      event.key.toLowerCase() === keyRequired
+      event.ctrlKey !== ctrlRequired ||
+      event.shiftKey !== shiftRequired ||
+      event.altKey !== altRequired ||
+      event.key.toLowerCase() !== keyRequired
     ) {
-      event.preventDefault()
-      toggleWidget()
+      return
     }
+
+    const activeElement = document.activeElement
+    if (
+      !(activeElement instanceof Element) ||
+      (!activeElement.closest('.formfiller-widget') && !isElementInAllowedScope(activeElement))
+    ) {
+      return
+    }
+
+    event.preventDefault()
+    toggleWidget()
   }
 
   // Setup focus/blur listeners

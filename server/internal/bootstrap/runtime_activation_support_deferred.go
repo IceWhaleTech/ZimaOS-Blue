@@ -12,6 +12,7 @@ func bindRuntimeActivationDeferred(
 	options runtimeActivationDeferredSupportOptions,
 	runner agentRuntimePolicyTarget,
 ) {
+	bindHarnessRuntimeOptimization(options.settings, options.harnessRuntime)
 	bindDeferredRuntimeWiring(ctx, runtimeDeferredWiring{
 		settings:               options.settings,
 		smallRuntime:           smallmodel.NewLlamaCppRuntime(options.smallModelManager),

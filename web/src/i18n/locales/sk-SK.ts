@@ -1,5 +1,5 @@
 // Slovak (Slovenčina)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('sk-SK', {
   common: {
@@ -1846,7 +1846,12 @@ export default mergeHarnessLocale('sk-SK', {
       saveBeforeHealth: 'Pred spustením kontroly stavu uložte profil.',
       duplicate: 'Duplicitné',
       builtinHelp:
-        'Vstavané profily zostávajú len na čítanie, takže nasadené Claude, Codex, Gemini a všeobecné A2A položky zostávajú stabilné.',
+        'Vstavané profily zostávajú iba na čítanie. Duplikujte jeden a vytvorte vlastnú kópiu.',
+      acpTemplateSummary: 'Duplikujte a pridajte spustiteľný príkaz ACP.',
+      acpTemplateHelp:
+        'Vstavané položky ACP sú len šablóny nastavenia. Duplikujte jednu a potom pridajte ľubovoľný spustiteľný príkaz ACP.',
+      acpTemplateActionDisabled:
+        'Vstavané šablóny ACP nemôžu spustiť overenie ani kontrolu stavu. Najprv jednu duplikujte a nastavte príkaz.',
       command: 'Command a Args',
       credentialSource: 'Zdroj poverení',
       authMethod: 'Spôsob autentifikácie',

@@ -11,6 +11,8 @@ import type {
   SmallModelStatus,
   SmallModelStats,
   SmallModelUnavailablePolicy,
+  AgentcoreRunnerStatus,
+  AgentcoreRunnerLastRun,
 } from '@/api/settings'
 import { sortItemsByModelPreference } from '@/utils/modelPreference'
 import { filterProvidersVisibleInUI } from '@/utils/providerVisibility'
@@ -193,6 +195,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const smallModelStats = ref<SmallModelStats | null>(null)
   const smallModelStatsLoading = ref(false)
   const smallModelStatsError = ref<string | null>(null)
+  const agentcoreRunnerStatus = ref<AgentcoreRunnerStatus | null>(null)
+  const agentcoreRunnerStatusLoading = ref(false)
+  const agentcoreRunnerStatusError = ref<string | null>(null)
+  const agentcoreRunnerLastRun = ref<AgentcoreRunnerLastRun | null>(null)
+  const agentcoreRunnerLastRunLoading = ref(false)
+  const agentcoreRunnerLastRunError = ref<string | null>(null)
 
   // Computed: All provider-model options for dropdown
   const providerModelOptions = computed<ProviderModelOption[]>(() => {
@@ -506,7 +514,6 @@ export const useSettingsStore = defineStore('settings', () => {
   const smallModelRerankEnabled = computed(
     () => backendSettings.value.small_model_rerank_enabled ?? false
   )
-  const smartSkillSelection = computed(() => backendSettings.value.smart_skill_selection ?? false)
   const skillSelectorMode = computed<'hybrid' | 'ir_only' | 'llm_only'>(() => {
     const mode = backendSettings.value.skill_selector_mode
     if (mode === 'ir_only' || mode === 'llm_only') return mode
@@ -583,6 +590,15 @@ export const useSettingsStore = defineStore('settings', () => {
       ? backendSettings.value.small_model_unavailable_policy
       : 'ir_first'
   })
+  const experimentalAgentcoreRunnerEnabled = computed(
+    () => backendSettings.value.experimental_agentcore_runner_enabled ?? false
+  )
+  const experimentalAgentcoreRunnerRepoURL = computed(
+    () => backendSettings.value.experimental_agentcore_runner_repo_url ?? ''
+  )
+  const experimentalAgentcoreRunnerRef = computed(
+    () => backendSettings.value.experimental_agentcore_runner_ref ?? ''
+  )
 
   async function setAgentMode(enabled: boolean) {
     await updateBackendSettings({ agent_mode: enabled })
@@ -634,10 +650,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setSmallModelRerankEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_rerank_enabled: enabled })
-  }
-
-  async function setSmartSkillSelection(enabled: boolean) {
-    await updateBackendSettings({ smart_skill_selection: enabled })
   }
 
   async function setSkillSelectorMode(mode: 'hybrid' | 'ir_only' | 'llm_only') {
@@ -725,6 +737,68 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateBackendSettings({ small_model_unavailable_policy: policy })
   }
 
+  async function setExperimentalAgentcoreRunnerEnabled(enabled: boolean) {
+    await updateBackendSettings({ experimental_agentcore_runner_enabled: enabled })
+  }
+
+  async function setExperimentalAgentcoreRunnerRepoURL(repoURL: string) {
+    await updateBackendSettings({ experimental_agentcore_runner_repo_url: repoURL })
+  }
+
+  async function setExperimentalAgentcoreRunnerRef(refValue: string) {
+    await updateBackendSettings({ experimental_agentcore_runner_ref: refValue })
+  }
+
+  async function fetchAgentcoreRunnerStatus() {
+    try {
+      agentcoreRunnerStatusLoading.value = true
+      agentcoreRunnerStatusError.value = null
+      const { settingsApi } = await loadSettingsApiModule()
+      const response = await settingsApi.getAgentcoreRunnerStatus()
+      agentcoreRunnerStatus.value = response.data
+      if (response.data.last_optimization_run_id) {
+        try {
+          await fetchAgentcoreRunnerLastRun()
+        } catch {
+          agentcoreRunnerLastRun.value = null
+        }
+      } else {
+        agentcoreRunnerLastRun.value = null
+      }
+      return response.data
+    } catch (e) {
+      agentcoreRunnerStatusError.value =
+        e instanceof Error ? e.message : 'Failed to fetch agentcore runner status'
+      throw e
+    } finally {
+      agentcoreRunnerStatusLoading.value = false
+    }
+  }
+
+  async function fetchAgentcoreRunnerLastRun() {
+    try {
+      agentcoreRunnerLastRunLoading.value = true
+      agentcoreRunnerLastRunError.value = null
+      const { settingsApi } = await loadSettingsApiModule()
+      const response = await settingsApi.getAgentcoreRunnerLastRun()
+      agentcoreRunnerLastRun.value = response.data
+      return response.data
+    } catch (e) {
+      agentcoreRunnerLastRunError.value =
+        e instanceof Error ? e.message : 'Failed to fetch agentcore runner last run'
+      throw e
+    } finally {
+      agentcoreRunnerLastRunLoading.value = false
+    }
+  }
+
+  async function prepareAgentcoreRunner() {
+    const { settingsApi } = await loadSettingsApiModule()
+    const response = await settingsApi.prepareAgentcoreRunner()
+    agentcoreRunnerStatus.value = response.data
+    return response.data
+  }
+
   async function fetchSmallModelStatus() {
     try {
       smallModelStatusLoading.value = true
@@ -796,6 +870,12 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelStats,
     smallModelStatsLoading,
     smallModelStatsError,
+    agentcoreRunnerStatus,
+    agentcoreRunnerStatusLoading,
+    agentcoreRunnerStatusError,
+    agentcoreRunnerLastRun,
+    agentcoreRunnerLastRunLoading,
+    agentcoreRunnerLastRunError,
     agentMode,
     agentAutoReflect,
     agentAutoConfirm,
@@ -811,7 +891,6 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelContextCompressEnabled,
     smallModelDocExtractEnabled,
     smallModelRerankEnabled,
-    smartSkillSelection,
     skillSelectorMode,
     skillSelectorConfidenceThreshold,
     promptPolicyVersion,
@@ -832,6 +911,9 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelRouteShortQAEnabled,
     noLLMDegradeMode,
     smallModelUnavailablePolicy,
+    experimentalAgentcoreRunnerEnabled,
+    experimentalAgentcoreRunnerRepoURL,
+    experimentalAgentcoreRunnerRef,
     showToolDetails,
 
     // Computed
@@ -870,7 +952,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setSmallModelContextCompressEnabled,
     setSmallModelDocExtractEnabled,
     setSmallModelRerankEnabled,
-    setSmartSkillSelection,
     setSkillSelectorMode,
     setSkillSelectorConfidenceThreshold,
     setPromptPolicyVersion,
@@ -891,10 +972,16 @@ export const useSettingsStore = defineStore('settings', () => {
     setSmallModelRouteShortQAEnabled,
     setNoLLMDegradeMode,
     setSmallModelUnavailablePolicy,
+    setExperimentalAgentcoreRunnerEnabled,
+    setExperimentalAgentcoreRunnerRepoURL,
+    setExperimentalAgentcoreRunnerRef,
     fetchSmallModelStatus,
     startSmallModelDownload,
     cancelSmallModelDownload,
     fetchSmallModelStats,
     resetSmallModelStats,
+    fetchAgentcoreRunnerStatus,
+    fetchAgentcoreRunnerLastRun,
+    prepareAgentcoreRunner,
   }
 })

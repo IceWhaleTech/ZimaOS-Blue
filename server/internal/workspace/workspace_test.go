@@ -714,6 +714,153 @@ func (a *testFSAdapter) Open(name string) (fs.File, error)          { return a.i
 func (a *testFSAdapter) ReadDir(name string) ([]fs.DirEntry, error) { return a.inner.ReadDir(name) }
 func (a *testFSAdapter) ReadFile(name string) ([]byte, error)       { return a.inner.ReadFile(name) }
 
+func legacyRemovedPlaceholderSkill(name string) string {
+	switch name {
+	case "search":
+		return `---
+name: search
+version: "0.1.0"
+description: "Disabled placeholder for the deprecated search skill name. ZimaOS Blue now uses web_query as the canonical public web skill."
+invocation: "blue search query=\"release notes\""
+examples:
+  - "blue search query=\"release notes\""
+capability_tags:
+  - search
+  - deprecated
+  - web
+interaction_mode: stateless
+card_support: none
+enabled: false
+category: internal
+tags:
+  - search
+  - deprecated
+  - web
+---
+
+# Search
+
+This skill is currently disabled.
+
+The old ` + "`search`" + ` name is deprecated and should not be treated as a live runtime
+skill in ZimaOS Blue.
+
+## Use Instead
+
+- Use ` + "`web_query`" + ` for public web discovery and public-page reads.
+- Use ` + "`browser`" + ` only when interaction, login, screenshots, or JS-heavy pages are required.
+
+## Notes
+
+- ` + "`web_search`" + ` may still appear as a compatibility alias in older prompts or traces, but ` + "`web_query`" + ` is the canonical route for new prompts, manifests, and harness cases.
+- If a dedicated ` + "`search`" + ` placeholder remains in prompts, treat it as documentation-only rather than an executable builtin contract.
+`
+	case "timer":
+		return `---
+name: timer
+version: "0.1.0"
+description: "Disabled placeholder for session-local countdown timers. ZimaOS Blue does not currently register a live builtin timer skill at runtime."
+invocation: "blue timer action=start duration=5m"
+examples:
+  - "blue timer action=start duration=5m"
+capability_tags:
+  - timer
+  - countdown
+interaction_mode: stateless
+card_support: none
+enabled: false
+category: internal
+tags:
+  - timer
+  - countdown
+---
+
+# Timer
+
+This skill is currently disabled.
+`
+	default:
+		return `---
+name: ` + name + `
+enabled: false
+description: "Disabled placeholder"
+---
+
+This skill is currently disabled.
+`
+	}
+}
+
+func legacyBundledWebQuerySkillFromWebSearchDir() string {
+	return `---
+name: web_query
+version: "1.0.0"
+description: "Unified web discovery and reading entry point. Use when the user asks to find references, official docs, latest links, or read a public page from either a query or URL."
+invocation: "blue web_query input=\"OpenAI Responses API docs\""
+examples:
+  - "blue web_query input=\"OpenAI Responses API docs\""
+  - "blue web_query input=\"ZimaOS Blue release notes\" max_results=8"
+capability_tags:
+  - search
+  - web
+  - docs
+interaction_mode: stateless
+card_support: none
+---
+
+# Web Search Skill
+
+## Setup
+
+No external dependencies required. Uses built-in web search capability.
+
+---
+
+## Task Routing
+
+| User Intent | Action |
+|-------------|--------|
+| Need relevant links/sources quickly and do not yet have the right URL | ` + "`blue web_query input=...`" + ` |
+| Need official docs/reference pages | ` + "`blue web_query`" + ` with precise query terms |
+| Already have a concrete public URL and only need page content | ` + "`blue web_query input=\"https://...\"`" + ` |
+| Need page interaction/login/JS rendering | Search first, then switch to ` + "`browser`" + ` |
+
+---
+
+## Command Usage
+
+` + "```bash" + `
+blue web_query input="ZimaOS Blue release notes"
+blue web_query input="OpenAI Responses API function calling" max_results=8
+blue web_query input="container sandbox security best practices" max_results=10
+blue web_query input="https://platform.openai.com/docs/api-reference/responses"
+` + "```" + `
+
+Parameters:
+- ` + "`input`" + ` (required; search query or public URL)
+- ` + "`max_results`" + ` (optional, default 10, max 20)
+- ` + "`max_chars`" + ` (optional, only for page reads)
+- ` + "`depth`" + ` (optional, ` + "`quick`" + `, ` + "`standard`" + `, ` + "`deep`" + `)
+
+---
+
+## Error Handling
+
+| Error | Resolution |
+|-------|------------|
+| ` + "`input is required`" + ` | Provide a non-empty search query or URL |
+| Public page requires login or interaction | Switch to ` + "`browser`" + ` |
+
+---
+
+## Notes
+
+- ` + "`web_query`" + ` is the canonical public web skill.
+- Legacy ` + "`web_search`" + `, ` + "`web_fetch`" + `, and ` + "`web_read`" + ` names are compatibility aliases and should not be used as the primary route in new prompts or harness cases.
+- If ` + "`web_query`" + ` reports login wall, challenge, or browser-required warnings, switch to ` + "`browser`" + `.
+`
+}
+
 func TestReleaseSkills_ContentChanged(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager(dir)
@@ -833,5 +980,150 @@ func TestReleaseSkills_PreserveEnabled(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
 	if !strings.Contains(string(data), "enabled: false") {
 		t.Errorf("should have preserved enabled: false, got: %s", string(data))
+	}
+}
+
+func TestReleaseSkills_PrunesRemovedPlaceholderSkill(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+
+	skillDir := filepath.Join(dir, ".claude", "skills", "search")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(legacyRemovedPlaceholderSkill("search")), 0o644); err != nil {
+		t.Fatalf("write placeholder skill: %v", err)
+	}
+
+	fsys := &testFSAdapter{makeTestFS(t, map[string]string{})}
+	if err := mgr.ReleaseSkills(fsys); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Fatalf("expected removed placeholder skill directory to be pruned, got err=%v", err)
+	}
+}
+
+func TestReleaseSkills_PreservesCustomSkillUsingRemovedName(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+
+	skillDir := filepath.Join(dir, ".claude", "skills", "search")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	customContent := "---\nname: search\nenabled: true\n---\n# My Search Skill\ncustom workflow"
+	mdPath := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(mdPath, []byte(customContent), 0o644); err != nil {
+		t.Fatalf("write custom skill: %v", err)
+	}
+
+	fsys := &testFSAdapter{makeTestFS(t, map[string]string{})}
+	if err := mgr.ReleaseSkills(fsys); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(mdPath)
+	if err != nil {
+		t.Fatalf("read custom skill: %v", err)
+	}
+	if string(data) != customContent {
+		t.Fatalf("expected custom skill to be preserved, got %q", string(data))
+	}
+}
+
+func TestReleaseSkills_PreservesRemovedPlaceholderSkillWithExtraFiles(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+
+	skillDir := filepath.Join(dir, ".claude", "skills", "search")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	mdPath := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(mdPath, []byte(legacyRemovedPlaceholderSkill("search")), 0o644); err != nil {
+		t.Fatalf("write placeholder skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "README.txt"), []byte("user notes"), 0o644); err != nil {
+		t.Fatalf("write extra file: %v", err)
+	}
+
+	fsys := &testFSAdapter{makeTestFS(t, map[string]string{})}
+	if err := mgr.ReleaseSkills(fsys); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(mdPath); err != nil {
+		t.Fatalf("expected placeholder skill to remain when directory has extra files: %v", err)
+	}
+}
+
+func TestReleaseSkills_MigratesLegacyWebSearchBuiltinToCanonicalWebQuery(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+
+	legacyDir := filepath.Join(dir, ".claude", "skills", "web_search")
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatalf("mkdir legacy dir: %v", err)
+	}
+	legacyContent := string(setFrontmatterField([]byte(legacyBundledWebQuerySkillFromWebSearchDir()), "enabled", "false"))
+	if err := os.WriteFile(filepath.Join(legacyDir, "SKILL.md"), []byte(legacyContent), 0o644); err != nil {
+		t.Fatalf("write legacy skill: %v", err)
+	}
+
+	fsys := &testFSAdapter{makeTestFS(t, map[string]string{
+		"web_query": legacyBundledWebQuerySkillFromWebSearchDir(),
+	})}
+	if err := mgr.ReleaseSkills(fsys); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy web_search dir to be removed after migration, err=%v", err)
+	}
+
+	canonicalPath := filepath.Join(dir, ".claude", "skills", "web_query", "SKILL.md")
+	data, err := os.ReadFile(canonicalPath)
+	if err != nil {
+		t.Fatalf("read canonical skill: %v", err)
+	}
+	if !strings.Contains(string(data), "enabled: false") {
+		t.Fatalf("expected migrated canonical skill to preserve enabled=false, got %q", string(data))
+	}
+}
+
+func TestReleaseSkills_PreservesCustomLegacyWebSearchDirWhileReleasingCanonicalWebQuery(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+
+	legacyDir := filepath.Join(dir, ".claude", "skills", "web_search")
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatalf("mkdir legacy dir: %v", err)
+	}
+	customContent := "---\nname: web_search\nenabled: true\n---\n# Custom Legacy Search\ncustom workflow"
+	legacyPath := filepath.Join(legacyDir, "SKILL.md")
+	if err := os.WriteFile(legacyPath, []byte(customContent), 0o644); err != nil {
+		t.Fatalf("write custom legacy skill: %v", err)
+	}
+
+	fsys := &testFSAdapter{makeTestFS(t, map[string]string{
+		"web_query": legacyBundledWebQuerySkillFromWebSearchDir(),
+	})}
+	if err := mgr.ReleaseSkills(fsys); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(legacyPath)
+	if err != nil {
+		t.Fatalf("read custom legacy skill: %v", err)
+	}
+	if string(data) != customContent {
+		t.Fatalf("expected custom legacy web_search skill to remain, got %q", string(data))
+	}
+
+	canonicalPath := filepath.Join(dir, ".claude", "skills", "web_query", "SKILL.md")
+	if _, err := os.Stat(canonicalPath); err != nil {
+		t.Fatalf("expected canonical web_query skill to be released alongside preserved custom legacy dir: %v", err)
 	}
 }

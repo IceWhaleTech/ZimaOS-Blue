@@ -826,6 +826,110 @@ func TestController_GetGroupReportAggregatesMetricsAndFailedItems(t *testing.T) 
 	}
 }
 
+func TestController_GetGroupReportIncludesContextPackBreakdown(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "contextpack breakdown",
+		OwnerUserID: "user-1",
+		Items: []RunGroupItemSpec{
+			{
+				RunKind: RunKindAgentTask,
+				Input:   map[string]interface{}{"goal": "use official docs"},
+				Metadata: map[string]interface{}{
+					"contextpack_snapshot": map[string]interface{}{
+						"selected_skill": "web_query",
+						"files": []interface{}{
+							map[string]interface{}{
+								"entry_id":     "openai/docs/responses-api",
+								"source_trust": "official",
+							},
+							map[string]interface{}{
+								"entry_id":     "openai/docs/context-packs",
+								"source_trust": "official",
+							},
+						},
+					},
+				},
+			},
+			{
+				RunKind: RunKindAgentTask,
+				Input:   map[string]interface{}{"goal": "mix docs and community notes"},
+				Metadata: map[string]interface{}{
+					"contextpack_snapshot": map[string]interface{}{
+						"selected_skill": "analyze",
+						"files": []interface{}{
+							map[string]interface{}{
+								"entry_id":     "openai/docs/responses-api",
+								"source_trust": "official",
+							},
+							map[string]interface{}{
+								"entry_id":     "community/forum/contextpack-recipes",
+								"source_trust": "community",
+							},
+						},
+					},
+				},
+			},
+			{
+				RunKind:  RunKindAgentTask,
+				Input:    map[string]interface{}{"goal": "no context pack"},
+				Metadata: map[string]interface{}{},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	report, err := controller.GetGroupReport(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroupReport failed: %v", err)
+	}
+
+	breakdown := nestedMetadataMap(report.Group.Summary, "contextpack_breakdown")
+	if len(breakdown) == 0 {
+		t.Fatalf("summary.contextpack_breakdown = %#v, want non-empty", report.Group.Summary["contextpack_breakdown"])
+	}
+	if got := intMetadata(breakdown["items_with_snapshot"]); got != 2 {
+		t.Fatalf("items_with_snapshot = %#v, want 2", breakdown["items_with_snapshot"])
+	}
+
+	selectedSkillCounts := nestedMetadataMap(breakdown, "selected_skill_counts")
+	if got := intMetadata(selectedSkillCounts["web_query"]); got != 1 {
+		t.Fatalf("selected_skill_counts.web_query = %#v, want 1", selectedSkillCounts["web_query"])
+	}
+	if got := intMetadata(selectedSkillCounts["analyze"]); got != 1 {
+		t.Fatalf("selected_skill_counts.analyze = %#v, want 1", selectedSkillCounts["analyze"])
+	}
+
+	entryIDCounts := nestedMetadataMap(breakdown, "entry_id_counts")
+	if got := intMetadata(entryIDCounts["openai/docs/responses-api"]); got != 2 {
+		t.Fatalf("entry_id_counts.responses-api = %#v, want 2", entryIDCounts["openai/docs/responses-api"])
+	}
+	if got := intMetadata(entryIDCounts["openai/docs/context-packs"]); got != 1 {
+		t.Fatalf("entry_id_counts.context-packs = %#v, want 1", entryIDCounts["openai/docs/context-packs"])
+	}
+	if got := intMetadata(entryIDCounts["community/forum/contextpack-recipes"]); got != 1 {
+		t.Fatalf("entry_id_counts.contextpack-recipes = %#v, want 1", entryIDCounts["community/forum/contextpack-recipes"])
+	}
+
+	sourceTrustCounts := nestedMetadataMap(breakdown, "source_trust_counts")
+	if got := intMetadata(sourceTrustCounts["official"]); got != 3 {
+		t.Fatalf("source_trust_counts.official = %#v, want 3", sourceTrustCounts["official"])
+	}
+	if got := intMetadata(sourceTrustCounts["community"]); got != 1 {
+		t.Fatalf("source_trust_counts.community = %#v, want 1", sourceTrustCounts["community"])
+	}
+
+	reportBreakdown := nestedMetadataMap(report.Breakdown, "contextpack_breakdown")
+	if got := intMetadata(reportBreakdown["items_with_snapshot"]); got != 2 {
+		t.Fatalf("report breakdown items_with_snapshot = %#v, want 2", reportBreakdown["items_with_snapshot"])
+	}
+}
+
 func TestController_GetGroupReportIncludesRuntimeEvidenceAndCheckpointArtifacts(t *testing.T) {
 	controller := newTestController(t)
 	driver := &runtimeEvidenceDriver{
@@ -953,5 +1057,152 @@ func TestController_LoadGroupReportContextRejectsNilGroup(t *testing.T) {
 	}
 	if err.Error() != "group is required" {
 		t.Fatalf("error = %v, want group is required", err)
+	}
+}
+
+func TestController_projectGroupSummary_AggregatesContextPackBreakdown(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "contextpack aggregation",
+		OwnerUserID: "user-1",
+		Items: []RunGroupItemSpec{
+			{RunKind: RunKindAgentTask, Input: map[string]interface{}{"goal": "first"}},
+			{RunKind: RunKindAgentTask, Input: map[string]interface{}{"goal": "second"}},
+			{RunKind: RunKindAgentTask, Input: map[string]interface{}{"goal": "third (no snapshot)"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	items, err := controller.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListGroupItems failed: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("items len = %d, want 3", len(items))
+	}
+
+	// Item 1: web_query with openai/docs entry
+	items[0].Metadata = map[string]interface{}{
+		"contextpack_snapshot": map[string]interface{}{
+			"selected_skill": "web_query",
+			"selected_count": 2,
+			"total_tokens":   1500,
+			"files": []map[string]interface{}{
+				{"entry_id": "openai/docs/responses-api", "source_trust": "official"},
+				{"entry_id": "openai/docs/quickstart", "source_trust": "official"},
+			},
+		},
+	}
+	items[0].Status = RunGroupItemStatusPassed
+	items[0].LatestRunID = "run-1"
+	if err := controller.store.UpdateGroupItem(ctx, &items[0]); err != nil {
+		t.Fatalf("UpdateGroupItem[0] failed: %v", err)
+	}
+
+	// Item 2: exec with community skill
+	items[1].Metadata = map[string]interface{}{
+		"contextpack_snapshot": map[string]interface{}{
+			"selected_skill": "exec",
+			"selected_count": 1,
+			"total_tokens":   800,
+			"files": []map[string]interface{}{
+				{"entry_id": "community/bash-helpers", "source_trust": "community"},
+			},
+		},
+	}
+	items[1].Status = RunGroupItemStatusFailed
+	items[1].LatestRunID = "run-2"
+	if err := controller.store.UpdateGroupItem(ctx, &items[1]); err != nil {
+		t.Fatalf("UpdateGroupItem[1] failed: %v", err)
+	}
+
+	// Item 3: no snapshot (nil)
+	items[2].Status = RunGroupItemStatusPassed
+	items[2].LatestRunID = "run-3"
+	if err := controller.store.UpdateGroupItem(ctx, &items[2]); err != nil {
+		t.Fatalf("UpdateGroupItem[2] failed: %v", err)
+	}
+
+	// Refresh summary
+	refreshed, err := controller.refreshGroupSummary(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("refreshGroupSummary failed: %v", err)
+	}
+
+	// Verify contextpack_breakdown exists and contains expected aggregations
+	cpBreakdownRaw, ok := refreshed.Summary["contextpack_breakdown"]
+	if !ok {
+		t.Fatalf("summary missing contextpack_breakdown")
+	}
+	cpBreakdown, ok := cpBreakdownRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("contextpack_breakdown type = %T, want map[string]interface{}", cpBreakdownRaw)
+	}
+
+	// Verify items_with_snapshot count
+	if got := intMetadata(cpBreakdown["items_with_snapshot"]); got != 2 {
+		t.Fatalf("items_with_snapshot = %d, want 2", got)
+	}
+
+	// Verify selected_skill breakdown
+	skillBreakdownRaw, ok := cpBreakdown["selected_skill_counts"]
+	if !ok {
+		t.Fatalf("contextpack_breakdown missing selected_skill_counts")
+	}
+	skillBreakdown, ok := skillBreakdownRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("selected_skill_counts type = %T, want map[string]interface{}", skillBreakdownRaw)
+	}
+	if got := intMetadata(skillBreakdown["web_query"]); got != 1 {
+		t.Fatalf("selected_skill_counts[web_query] = %d, want 1", got)
+	}
+	if got := intMetadata(skillBreakdown["exec"]); got != 1 {
+		t.Fatalf("selected_skill_counts[exec] = %d, want 1", got)
+	}
+
+	// Verify entry_id breakdown
+	entryBreakdownRaw, ok := cpBreakdown["entry_id_counts"]
+	if !ok {
+		t.Fatalf("contextpack_breakdown missing entry_id_counts")
+	}
+	entryBreakdown, ok := entryBreakdownRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("entry_id_counts type = %T, want map[string]interface{}", entryBreakdownRaw)
+	}
+	if got := intMetadata(entryBreakdown["openai/docs/responses-api"]); got != 1 {
+		t.Fatalf("entry_id_counts[openai/docs/responses-api] = %d, want 1", got)
+	}
+	if got := intMetadata(entryBreakdown["community/bash-helpers"]); got != 1 {
+		t.Fatalf("entry_id_counts[community/bash-helpers] = %d, want 1", got)
+	}
+
+	// Verify source_trust breakdown
+	trustBreakdownRaw, ok := cpBreakdown["source_trust_counts"]
+	if !ok {
+		t.Fatalf("contextpack_breakdown missing source_trust_counts")
+	}
+	trustBreakdown, ok := trustBreakdownRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("source_trust_counts type = %T, want map[string]interface{}", trustBreakdownRaw)
+	}
+	if got := intMetadata(trustBreakdown["official"]); got != 2 {
+		t.Fatalf("source_trust_counts[official] = %d, want 2", got)
+	}
+	if got := intMetadata(trustBreakdown["community"]); got != 1 {
+		t.Fatalf("source_trust_counts[community] = %d, want 1", got)
+	}
+
+	// Verify report breakdown also contains contextpack_breakdown
+	report, err := controller.GetGroupReport(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroupReport failed: %v", err)
+	}
+	if _, ok := report.Breakdown["contextpack_breakdown"]; !ok {
+		t.Fatalf("report.Breakdown missing contextpack_breakdown")
 	}
 }

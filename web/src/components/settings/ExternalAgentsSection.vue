@@ -44,6 +44,7 @@ const selectedProfile = computed(
   () => profiles.value.find((profile) => profile.id === selectedProfileID.value) ?? null
 )
 const isBuiltinSelection = computed(() => selectedProfile.value?.builtin === true)
+const isTemplateOnlySelection = computed(() => isTemplateOnlyACPProfile(selectedProfile.value))
 const currentSelectionLabel = computed(
   () => draft.value.title || draft.value.name || t('settings.externalAgents.newProfile')
 )
@@ -53,6 +54,11 @@ const currentSelectionMeta = computed(() => {
   }
   return protocolTitle(draft.value.protocol)
 })
+const lockedHelpText = computed(() =>
+  isTemplateOnlySelection.value
+    ? t('settings.externalAgents.acpTemplateHelp')
+    : t('settings.externalAgents.builtinHelp')
+)
 
 function createDraft(protocol: ProtocolKind): ProfileDraft {
   return {
@@ -78,6 +84,10 @@ function stringifyObject(value?: Record<string, unknown>): string {
     return ''
   }
   return JSON.stringify(value, null, 2)
+}
+
+function isTemplateOnlyACPProfile(profile?: AgentProfile | null): boolean {
+  return profile?.protocol === 'acp' && profile.template_only === true
 }
 
 function profileToDraft(profile: AgentProfile): ProfileDraft {
@@ -293,6 +303,9 @@ async function loadProfiles(preferredID = '') {
 }
 
 function summarizeProfile(profile: AgentProfile): string {
+  if (isTemplateOnlyACPProfile(profile)) {
+    return t('settings.externalAgents.acpTemplateSummary')
+  }
   if (profile.protocol === 'acp') {
     return (profile.command || []).join(' ') || t('settings.externalAgents.notAvailable')
   }
@@ -363,6 +376,10 @@ function profileStatusTone(profile: AgentProfile): 'neutral' | 'healthy' | 'warn
 }
 
 async function saveDraft() {
+  if (isTemplateOnlySelection.value) {
+    showNotice(t('settings.externalAgents.acpTemplateActionDisabled'), 'info')
+    return
+  }
   if (isBuiltinSelection.value) {
     showNotice(t('settings.externalAgents.builtinLocked'), 'info')
     return
@@ -399,6 +416,10 @@ function healthMessage(result: ProfileHealthResult): string {
 }
 
 async function verifyCurrent() {
+  if (isTemplateOnlySelection.value) {
+    showNotice(t('settings.externalAgents.acpTemplateActionDisabled'), 'info')
+    return
+  }
   verifying.value = true
   try {
     let result
@@ -420,6 +441,10 @@ async function verifyCurrent() {
 }
 
 async function checkCurrentHealth() {
+  if (isTemplateOnlySelection.value) {
+    showNotice(t('settings.externalAgents.acpTemplateActionDisabled'), 'info')
+    return
+  }
   if (!selectedProfile.value) {
     showNotice(t('settings.externalAgents.saveBeforeHealth'), 'info')
     return
@@ -545,6 +570,7 @@ onMounted(() => {
               v-if="selectedProfile && !isBuiltinSelection"
               type="button"
               class="external-agents__button external-agents__button--quiet"
+              data-testid="external-agents-duplicate-selection"
               @click="duplicateSelection"
             >
               {{ t('settings.externalAgents.duplicate') }}
@@ -553,7 +579,7 @@ onMounted(() => {
               type="button"
               class="external-agents__button external-agents__button--quiet"
               data-testid="external-agents-verify-current"
-              :disabled="verifying"
+              :disabled="verifying || isTemplateOnlySelection"
               @click="verifyCurrent"
             >
               {{ t('settings.externalAgents.verify') }}
@@ -562,7 +588,7 @@ onMounted(() => {
               type="button"
               class="external-agents__button external-agents__button--quiet"
               data-testid="external-agents-health-current"
-              :disabled="checkingHealth || !selectedProfile"
+              :disabled="checkingHealth || !selectedProfile || isTemplateOnlySelection"
               @click="checkCurrentHealth"
             >
               {{ t('settings.externalAgents.health') }}
@@ -582,11 +608,17 @@ onMounted(() => {
         <div v-if="isBuiltinSelection" class="external-agents__locked">
           <div>
             <strong>{{ t('settings.externalAgents.builtinTemplate') }}</strong>
-            <p>{{ t('settings.externalAgents.builtinHelp') }}</p>
+            <p>{{ lockedHelpText }}</p>
           </div>
           <button
             type="button"
-            class="external-agents__button external-agents__button--quiet"
+            class="external-agents__button"
+            :class="
+              isTemplateOnlySelection
+                ? 'external-agents__button--primary'
+                : 'external-agents__button--quiet'
+            "
+            data-testid="external-agents-duplicate-selection"
             @click="duplicateSelection"
           >
             {{ t('settings.externalAgents.duplicate') }}
@@ -635,7 +667,7 @@ onMounted(() => {
                 class="external-agents__textarea"
                 data-testid="external-agents-command"
                 :disabled="isBuiltinSelection"
-                placeholder="npx&#10;-y&#10;@zed-industries/codex-acp"
+                placeholder="/usr/local/bin/acp-runtime&#10;--stdio"
               />
             </label>
           </template>
@@ -726,7 +758,7 @@ onMounted(() => {
                   v-model="draft.envText"
                   class="external-agents__textarea"
                   :disabled="isBuiltinSelection"
-                  placeholder='{&#10;  "NODE_ENV": "development"&#10;}'
+                  placeholder='{&#10;  "LOG_LEVEL": "debug"&#10;}'
                 />
               </label>
             </template>

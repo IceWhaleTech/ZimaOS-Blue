@@ -164,6 +164,133 @@ func TestController_EnsureBatch1ExecutionAssets_ReusesBuiltins(t *testing.T) {
 	}
 }
 
+func TestController_EnsureBatch1ExecutionAssets_ReusesEvalSpecLineageAcrossVersionUpgrade(t *testing.T) {
+	controller := newTestController(t)
+
+	dataset, err := controller.CreateDataset(context.Background(), Batch1ExecutionDatasetSpec("user-1"))
+	if err != nil {
+		t.Fatalf("CreateDataset failed: %v", err)
+	}
+
+	oldVersionSpec, err := Batch1ExecutionDatasetVersionSpec("tester")
+	if err != nil {
+		t.Fatalf("Batch1ExecutionDatasetVersionSpec failed: %v", err)
+	}
+	oldVersionSpec.Version = "skill-exec-batch1-v5"
+	oldVersion, err := controller.CreateDatasetVersion(context.Background(), dataset.ID, oldVersionSpec)
+	if err != nil {
+		t.Fatalf("CreateDatasetVersion(old) failed: %v", err)
+	}
+	dataset.ActiveVersionID = oldVersion.ID
+	if err := controller.store.UpdateDataset(context.Background(), dataset); err != nil {
+		t.Fatalf("UpdateDataset failed: %v", err)
+	}
+
+	oldEvalSpecSpec := Batch1ExecutionEvalSpecSpec(dataset.ID, oldVersion.ID, "user-1")
+	oldEvalSpecSpec.RuntimePolicy["policy_model_hint"] = "claude-haiku-4-5-20251001"
+	oldEvalSpec, err := controller.CreateEvalSpec(context.Background(), oldEvalSpecSpec)
+	if err != nil {
+		t.Fatalf("CreateEvalSpec(old) failed: %v", err)
+	}
+
+	assets, err := controller.EnsureBatch1ExecutionAssets(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("EnsureBatch1ExecutionAssets failed: %v", err)
+	}
+	if assets.EvalSpec == nil {
+		t.Fatal("EvalSpec = nil, want reused spec")
+	}
+	if assets.DatasetVersion == nil {
+		t.Fatal("DatasetVersion = nil, want upgraded version")
+	}
+	if assets.EvalSpec.ID != oldEvalSpec.ID {
+		t.Fatalf("eval spec id = %q, want reused %q", assets.EvalSpec.ID, oldEvalSpec.ID)
+	}
+	if assets.EvalSpec.DatasetVersionID != assets.DatasetVersion.ID {
+		t.Fatalf("eval spec dataset_version_id = %q, want %q", assets.EvalSpec.DatasetVersionID, assets.DatasetVersion.ID)
+	}
+	if got := metadataString(assets.EvalSpec.RuntimePolicy, "policy_model_hint"); got != batch1ExecutionPolicyModelHint {
+		t.Fatalf("runtime_policy.policy_model_hint = %q, want %q", got, batch1ExecutionPolicyModelHint)
+	}
+
+	specs, err := controller.ListEvalSpecs(context.Background(), EvalSpecFilter{
+		OwnerUserID: "user-1",
+		DatasetID:   dataset.ID,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListEvalSpecs failed: %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("eval specs len = %d, want 1", len(specs))
+	}
+}
+
+func TestController_EnsureBatch1ExecutionAssets_PrefersHistoryBearingLineageWhenFreshVersionSpecAlreadyExists(t *testing.T) {
+	controller := newTestController(t)
+
+	dataset, err := controller.CreateDataset(context.Background(), Batch1ExecutionDatasetSpec("user-1"))
+	if err != nil {
+		t.Fatalf("CreateDataset failed: %v", err)
+	}
+
+	oldVersionSpec, err := Batch1ExecutionDatasetVersionSpec("tester")
+	if err != nil {
+		t.Fatalf("Batch1ExecutionDatasetVersionSpec failed: %v", err)
+	}
+	oldVersionSpec.Version = "skill-exec-batch1-v5"
+	oldVersion, err := controller.CreateDatasetVersion(context.Background(), dataset.ID, oldVersionSpec)
+	if err != nil {
+		t.Fatalf("CreateDatasetVersion(old) failed: %v", err)
+	}
+
+	oldEvalSpec, err := controller.CreateEvalSpec(context.Background(), Batch1ExecutionEvalSpecSpec(dataset.ID, oldVersion.ID, "user-1"))
+	if err != nil {
+		t.Fatalf("CreateEvalSpec(old) failed: %v", err)
+	}
+	if err := controller.store.CreateEvalRun(context.Background(), &EvalRun{
+		ID:               "old-history-run",
+		EvalSpecID:       oldEvalSpec.ID,
+		GroupID:          "old-history-group",
+		DatasetVersionID: oldVersion.ID,
+		OwnerUserID:      "user-1",
+		Status:           RunGroupStatusCompleted,
+		Title:            "old-history",
+	}); err != nil {
+		t.Fatalf("CreateEvalRun(history) failed: %v", err)
+	}
+
+	currentVersionSpec, err := Batch1ExecutionDatasetVersionSpec("tester")
+	if err != nil {
+		t.Fatalf("Batch1ExecutionDatasetVersionSpec(current) failed: %v", err)
+	}
+	currentVersion, err := controller.CreateDatasetVersion(context.Background(), dataset.ID, currentVersionSpec)
+	if err != nil {
+		t.Fatalf("CreateDatasetVersion(current) failed: %v", err)
+	}
+	if _, err := controller.CreateEvalSpec(context.Background(), Batch1ExecutionEvalSpecSpec(dataset.ID, currentVersion.ID, "user-1")); err != nil {
+		t.Fatalf("CreateEvalSpec(current) failed: %v", err)
+	}
+	dataset.ActiveVersionID = currentVersion.ID
+	if err := controller.store.UpdateDataset(context.Background(), dataset); err != nil {
+		t.Fatalf("UpdateDataset failed: %v", err)
+	}
+
+	assets, err := controller.EnsureBatch1ExecutionAssets(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("EnsureBatch1ExecutionAssets failed: %v", err)
+	}
+	if assets.EvalSpec == nil {
+		t.Fatal("EvalSpec = nil, want reused lineage spec")
+	}
+	if assets.EvalSpec.ID != oldEvalSpec.ID {
+		t.Fatalf("eval spec id = %q, want history-bearing %q", assets.EvalSpec.ID, oldEvalSpec.ID)
+	}
+	if assets.EvalSpec.DatasetVersionID != currentVersion.ID {
+		t.Fatalf("eval spec dataset_version_id = %q, want %q", assets.EvalSpec.DatasetVersionID, currentVersion.ID)
+	}
+}
+
 func TestController_EnsureBatch1ExecutionAssets_FailsClearlyWhenBuiltinVersionManifestDiffers(t *testing.T) {
 	controller := newTestController(t)
 

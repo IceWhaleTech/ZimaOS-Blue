@@ -6,6 +6,7 @@ type sessionIDKeyType struct{}
 type disableResponsesContinuationKeyType struct{}
 type localeKeyType struct{}
 type backgroundTaskKeyType struct{}
+type disableModelRoutingKeyType struct{}
 
 const BackgroundTaskHeader = "X-Background-Task"
 
@@ -53,5 +54,18 @@ func WithBackgroundTask(ctx context.Context) context.Context {
 // background/internal task.
 func BackgroundTaskFromContext(ctx context.Context) bool {
 	v, _ := ctx.Value(backgroundTaskKeyType{}).(bool)
+	return v
+}
+
+// WithDisableModelRouting marks a request context so proxy-side model routing
+// leaves an explicit model untouched for this request.
+func WithDisableModelRouting(ctx context.Context) context.Context {
+	return context.WithValue(ctx, disableModelRoutingKeyType{}, true)
+}
+
+// DisableModelRoutingFromContext reports whether proxy-side model routing
+// should be skipped for this request.
+func DisableModelRoutingFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(disableModelRoutingKeyType{}).(bool)
 	return v
 }

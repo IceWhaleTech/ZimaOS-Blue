@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 )
 
 func TestInferTaskKind(t *testing.T) {
@@ -203,6 +205,18 @@ func TestPreferredTaskModel_UsesGroupInputModel(t *testing.T) {
 	}
 }
 
+func TestPreferredTaskModel_FallsBackToPolicyModelHint(t *testing.T) {
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"policy_model_hint": "claude-sonnet-4-6",
+		},
+	}
+
+	if got := preferredTaskModel(task); got != "claude-sonnet-4-6" {
+		t.Fatalf("preferredTaskModel() = %q, want claude-sonnet-4-6", got)
+	}
+}
+
 func TestGeneratePlanForTask_UsesPreferredTaskModel(t *testing.T) {
 	llmStub := &captureRequestLLM{response: `{"goal":"test","subtasks":[{"description":"step one"}]}`}
 	runner := &Runner{llm: llmStub}
@@ -219,6 +233,23 @@ func TestGeneratePlanForTask_UsesPreferredTaskModel(t *testing.T) {
 	}
 	if llmStub.lastModel != "claude-haiku-4-5-20251001" {
 		t.Fatalf("planner model = %q, want claude-haiku-4-5-20251001", llmStub.lastModel)
+	}
+}
+
+func TestGeneratePlanForTask_UsesPolicyModelHintWhenExplicitModelMissing(t *testing.T) {
+	llmStub := &captureRequestLLM{response: `{"goal":"test","subtasks":[{"description":"step one"}]}`}
+	runner := &Runner{llm: llmStub}
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"policy_model_hint": "claude-sonnet-4-6",
+		},
+	}
+
+	if _, err := runner.generatePlanForTask(context.Background(), task, "test", ""); err != nil {
+		t.Fatalf("generatePlanForTask failed: %v", err)
+	}
+	if llmStub.lastModel != "claude-sonnet-4-6" {
+		t.Fatalf("planner model = %q, want claude-sonnet-4-6", llmStub.lastModel)
 	}
 }
 
@@ -290,6 +321,49 @@ func TestGroundedVerifierRespond_UsesDeterministicStructuredWebEvidenceWithoutLL
 		if !strings.Contains(decision.Output, want) {
 			t.Fatalf("expected output to contain %q, got %q", want, decision.Output)
 		}
+	}
+}
+
+func TestRunVerificationAndRecovery_DisableModelRoutingInContext(t *testing.T) {
+	llmStub := &routingDisableCaptureLLM{}
+	runner := &Runner{llm: llmStub}
+	task := &Task{
+		ID:   "verification-routing-opt-out",
+		Goal: "Search the latest docs and verify the result.",
+		Plan: []PlanStep{
+			{
+				Index:       0,
+				Description: "Run the web query",
+				Status:      StepStatusCompleted,
+				Output:      "Found the latest docs URL.",
+			},
+		},
+	}
+	verificationCtx := VerificationContext{
+		TaskKind:        TaskKindResearch,
+		Goal:            task.Goal,
+		SuccessCriteria: []string{"evidence is grounded"},
+		FallbackPlan:    []string{"retry with a narrower verification scope"},
+		PlannedSteps:    []string{"Run the web query"},
+	}
+
+	if _, _, err := runner.runVerification(context.Background(), task, verificationCtx); err != nil {
+		t.Fatalf("runVerification failed: %v", err)
+	}
+	if _, err := runner.runRecovery(context.Background(), task, verificationCtx, &VerificationResult{
+		Status:            "fail",
+		Summary:           "Need one narrower retry.",
+		CriteriaResults:   []CriterionResult{{Criterion: "evidence is grounded", Status: "fail", Evidence: "Need one narrower retry."}},
+		SuggestedRecovery: "retry with a narrower verification scope",
+		ExecutedChecks:    []string{"review task record"},
+	}); err != nil {
+		t.Fatalf("runRecovery failed: %v", err)
+	}
+	if !llmStub.verificationDisabled {
+		t.Fatal("expected verification loop to disable proxy model routing in context")
+	}
+	if !llmStub.recoveryDisabled {
+		t.Fatal("expected recovery loop to disable proxy model routing in context")
 	}
 }
 
@@ -436,6 +510,11 @@ type externalRecoveryFlowLLM struct {
 	verificationCalls int
 }
 
+type routingDisableCaptureLLM struct {
+	verificationDisabled bool
+	recoveryDisabled     bool
+}
+
 type captureRequestLLM struct {
 	response  string
 	lastModel string
@@ -467,6 +546,32 @@ func (m *externalRecoveryFlowLLM) Chat(_ context.Context, req llm.ChatRequest) (
 	case len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "deterministic task planner"):
 		return &llm.ChatResponse{
 			Message: llm.Message{Role: llm.RoleAssistant, Content: `{"goal":"stabilize parser","subtasks":[{"description":"apply parser fix"}],"success_criteria":["parser fix is complete"],"fallback_plan":["apply the narrower parser fix"]}`},
+		}, nil
+	default:
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: defaultResponseForRequest(req)},
+		}, nil
+	}
+}
+
+func (m *routingDisableCaptureLLM) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	switch {
+	case len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "bounded recovery engine"):
+		m.recoveryDisabled = proxy.DisableModelRoutingFromContext(ctx)
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "Applied one bounded recovery retry."},
+		}, nil
+	case isVerificationPrompt(req):
+		m.verificationDisabled = proxy.DisableModelRoutingFromContext(ctx)
+		result := VerificationResult{
+			Status:         "pass",
+			Summary:        "External verification passed.",
+			CriteriaResults: []CriterionResult{{Criterion: "evidence is grounded", Status: "pass", Evidence: "The task record includes grounded evidence."}},
+			ExecutedChecks: []string{"review task record"},
+		}
+		raw, _ := json.Marshal(result)
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: string(raw)},
 		}, nil
 	default:
 		return &llm.ChatResponse{

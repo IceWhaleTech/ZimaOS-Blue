@@ -133,7 +133,7 @@ func TestChatRecallMemories_LabelsLongTermMemorySource(t *testing.T) {
 	}
 }
 
-func TestChatRecallMemories_UsesSessionCompactionForRetrospectiveWeekPrompt(t *testing.T) {
+func TestChatRecallMemories_FiltersSessionCompactionForRetrospectiveWeekPromptWithoutTimeWindowSpecialCase(t *testing.T) {
 	layered, baseSvc := newLayeredMemoryServiceForTest(t)
 	backend := &stubPromptMemoryBackend{
 		results: []memory.SearchResult{{
@@ -149,16 +149,16 @@ func TestChatRecallMemories_UsesSessionCompactionForRetrospectiveWeekPrompt(t *t
 
 	got := handler.recallMemories(context.Background(), "梳理下我过去一周具体写了什么。", MemoryRecallModeBalanced)
 	if !backend.called {
-		t.Fatal("expected retrospective week prompt to trigger memory recall")
+		t.Fatal("expected recall path to run so session-compaction filtering is exercised")
 	}
-	if !strings.Contains(got, "<memory_context>") {
-		t.Fatalf("expected memory context wrapper, got %q", got)
+	if got != "" {
+		t.Fatalf("expected retrospective week prompt to stop using session-compaction special handling, got %q", got)
 	}
-	if !strings.Contains(got, "source=session_compaction") {
-		t.Fatalf("expected session-compaction source label, got %q", got)
-	}
-	if !strings.Contains(got, "上周主要在 server/internal/server/chat.go") {
-		t.Fatalf("expected recalled weekly worklog memory, got %q", got)
+}
+
+func TestShouldSkipPromptMemoryRecall_DoesNotTreatRecentAsFreshPublicSignalByItself(t *testing.T) {
+	if shouldSkipPromptMemoryRecall("网页最近发生了什么？") {
+		t.Fatal("expected 最近 to stop triggering fresh-public skip heuristics by itself")
 	}
 }
 

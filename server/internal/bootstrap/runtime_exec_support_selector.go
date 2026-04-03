@@ -14,9 +14,6 @@ func newRuntimeExecSkillSelector(source runtimeExecSkillSelectionSource) tools.S
 	}
 	return func(ctx context.Context, query string) tools.SkillSelectionDecision {
 		settings := source.GetSettingsHandler()
-		if settings != nil && !settings.GetSmartSkillSelection() {
-			return tools.SkillSelectionDecision{}
-		}
 		selector := source.GetSkillSelector()
 		if selector == nil {
 			return tools.SkillSelectionDecision{}

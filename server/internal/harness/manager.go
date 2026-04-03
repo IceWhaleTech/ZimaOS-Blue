@@ -20,6 +20,7 @@ type Controller struct {
 	judgeEvaluator JudgeEvaluator
 	reflector      ProposalReflector
 	runTrace       RunTraceProvider
+	optimization   OptimizationTriggerer
 
 	mu          sync.RWMutex
 	drivers     map[RunKind]Driver

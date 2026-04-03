@@ -35,13 +35,10 @@ func newDiscoverFirstSelectionHandler(t *testing.T, dynamicExposure bool) *ChatH
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "mgmt", Description: "Manage runtime settings and providers"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
 
 	handler := newChatToolSelectionTestHandler(registry)
-	smartSkill := true
-	handler.GetSettingsHandler().settings.SmartSkillSelection = &smartSkill
-	handler.GetSettingsHandler().settings.SkillDynamicExposure = &dynamicExposure
 
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -102,7 +99,7 @@ func TestSelectTools_FirstTurnExposesFullStaticAllowlist(t *testing.T) {
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_create", Description: "Create a checklist"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_update", Description: "Update checklist item states"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "process", Description: "Inspect long-running processes"})
 
@@ -126,7 +123,7 @@ func TestSelectTools_FirstTurnExposesFullStaticAllowlist(t *testing.T) {
 		"plan_create",
 		"plan_update",
 		"read",
-		"web_search",
+		"web_query",
 		"write",
 	} {
 		if _, ok := names[required]; !ok {
@@ -183,12 +180,43 @@ func TestSelectTools_WorkspaceWorkflowStillKeepsBashVisible(t *testing.T) {
 	}
 }
 
+func TestSelectTools_PublicStockArtifactKeepsWebQueryAndWrite(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run real shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Research current public web information"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "edit", Description: "Edit workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "grep", Description: "Search workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Search inbox messages"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	got := handler.selectTools("Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.", tools.ToolPolicyRequest{
+		Model:     "claude-sonnet-4-6",
+		RouteKind: tools.ToolRouteKindChat,
+	})
+
+	names := toolNameSet(got)
+	for _, required := range []string{"web_query", "write", "read"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q in public stock artifact tool set, got=%v", required, got)
+		}
+	}
+	if _, ok := names["email"]; ok {
+		t.Fatalf("expected unrelated productivity tool to stay hidden, got=%v", got)
+	}
+}
+
 func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_create", Description: "Create a checklist"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
 
 	handler := newChatToolSelectionTestHandler(registry)
 
@@ -206,7 +234,7 @@ func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testi
 	)
 
 	names := toolNameSet(got)
-	for _, forbidden := range []string{"deep_research", "web_search"} {
+	for _, forbidden := range []string{"deep_research", "web_query"} {
 		if _, ok := names[forbidden]; ok {
 			t.Fatalf("expected %q to be removed by explicit capability toggle, got=%v", forbidden, got)
 		}
@@ -222,12 +250,10 @@ func TestSelectChatToolsForRequest_SmartSkillSelectionCollapsesToExec(t *testing
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
 
 	handler := newChatToolSelectionTestHandler(registry)
-	smartSkill := true
-	handler.GetSettingsHandler().settings.SmartSkillSelection = &smartSkill
 
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -253,16 +279,50 @@ func TestSelectChatToolsForRequest_SmartSkillSelectionCollapsesToExec(t *testing
 	}
 }
 
+func TestSelectChatToolSurfacesForRequest_DefaultSettingsUseDiscoverFirstCutover(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs", "latest")
+	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
+
+	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+
+	selection := handler.selectChatToolSurfacesForRequest(context.Background(), "搜索最新 OpenAI Responses API 文档。", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+
+	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	}
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "exec" {
+		t.Fatalf("NativeDefs = %v, want [exec]", got)
+	}
+	if selection.DiscoveryDecision == nil {
+		t.Fatal("expected DiscoveryDecision")
+	}
+	if selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
+		t.Fatalf("CanonicalTarget = %q, want %q", selection.DiscoveryDecision.CanonicalTarget, agentcore.CanonicalWebQuery)
+	}
+}
+
 func TestSelectChatToolsForRequest_SmartSkillClarifyHidesNativeTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
 
 	handler := newChatToolSelectionTestHandler(registry)
-	smartSkill := true
-	handler.GetSettingsHandler().settings.SmartSkillSelection = &smartSkill
 
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -415,11 +475,39 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndToggleFallback(
 		t.Fatalf("toggle NativeDefs = %v, want legacy multi-tool surface instead of exec-only cutover", got)
 	}
 	names := toolNameSet(fallbackSelection.NativeDefs)
-	if _, ok := names["web_search"]; ok {
-		t.Fatalf("toggle NativeDefs = %v, want web_search filtered by preference", selectedToolNames(fallbackSelection.NativeDefs))
+	if _, ok := names["web_query"]; ok {
+		t.Fatalf("toggle NativeDefs = %v, want web_query filtered by preference", selectedToolNames(fallbackSelection.NativeDefs))
 	}
 	if fallbackSelection.DiscoveryDecision == nil || fallbackSelection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
 		t.Fatalf("toggle DiscoveryDecision = %#v, want canonical web_query", fallbackSelection.DiscoveryDecision)
+	}
+}
+
+func TestSelectChatToolSurfacesForRequest_DiscoverFirstStockArtifactStaysActionable(t *testing.T) {
+	handler := newDiscoverFirstSelectionHandler(t, true)
+
+	selection := handler.selectChatToolSurfacesForRequest(context.Background(), "Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.", tools.ToolPolicyRequest{
+		Model:     "claude-sonnet-4-6",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
+	}
+	if len(selection.NativeDefs) == 0 {
+		t.Fatalf("NativeDefs = %v, want actionable tool surface", selectedToolNames(selection.NativeDefs))
+	}
+	names := toolNameSet(selection.NativeDefs)
+	for _, required := range []string{"write", "read"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("NativeDefs = %v, want %q available for artifact workflow", selectedToolNames(selection.NativeDefs), required)
+		}
+	}
+	if _, ok := names["web_query"]; !ok {
+		t.Fatalf("NativeDefs = %v, want web retrieval tool for stock research", selectedToolNames(selection.NativeDefs))
+	}
+	if selection.DiscoveryDecision != nil && selection.DiscoveryDecision.NeedClarify {
+		t.Fatalf("DiscoveryDecision = %#v, want no clarify gate for actionable stock artifact request", selection.DiscoveryDecision)
 	}
 }
 
@@ -451,12 +539,10 @@ func TestSelectChatToolsForRequest_CutoverSkipsPromptCacheStickyUnion(t *testing
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
 
 	handler := newChatToolSelectionTestHandler(registry)
-	smartSkill := true
-	handler.GetSettingsHandler().settings.SmartSkillSelection = &smartSkill
 
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -609,11 +695,11 @@ func TestStabilizePromptCacheToolSurface_ToggleChangeResetsStickyTools(t *testin
 	}
 
 	first := handler.stabilizePromptCacheToolSurface("conv-1", "", state, nil, nil, []tools.ToolDefinition{
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "read"},
 	})
-	if got := selectedToolNames(first); len(got) != 2 || got[0] != "read" || got[1] != "web_search" {
-		t.Fatalf("first stabilize = %v, want [read web_search]", got)
+	if got := selectedToolNames(first); len(got) != 2 || got[0] != "read" || got[1] != "web_query" {
+		t.Fatalf("first stabilize = %v, want [read web_query]", got)
 	}
 
 	webSearchEnabled := false

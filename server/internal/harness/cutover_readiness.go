@@ -151,7 +151,21 @@ func (c *Controller) EvaluateSkillCutoverReadiness(ctx context.Context, req Skil
 	report.Ready = report.EvaluatedGatesReady &&
 		len(report.BlockingReasons) == 0 &&
 		len(report.UnverifiedRequirements) == 0
+	c.emitOptimizationTrigger(ctx, OptimizationTrigger{
+		Reason:      cutoverReadinessReason(report.Ready),
+		CandidateID: report.CandidateID,
+		Metadata: map[string]interface{}{
+			"blocking_reasons": append([]string(nil), report.BlockingReasons...),
+		},
+	})
 	return report, nil
+}
+
+func cutoverReadinessReason(ready bool) OptimizationReason {
+	if ready {
+		return OptimizationReasonBudgetGatePassed
+	}
+	return OptimizationReasonCutoverBlocking
 }
 
 func (c *Controller) resolveSkillCutoverEvalSpecIDs(ctx context.Context, ownerUserID string, req SkillCutoverReadinessRequest) (string, string, error) {
@@ -422,6 +436,9 @@ func sortSkillCutoverEvalRuns(evalRuns []EvalRun) []EvalRun {
 func skillCutoverEvalRunCandidateTime(evalRun *EvalRun) time.Time {
 	if evalRun == nil {
 		return time.Time{}
+	}
+	if !evalRun.CreatedAt.IsZero() {
+		return evalRun.CreatedAt
 	}
 	if evalRun.FinishedAt != nil && !evalRun.FinishedAt.IsZero() {
 		return *evalRun.FinishedAt

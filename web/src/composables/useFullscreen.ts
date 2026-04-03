@@ -16,19 +16,39 @@ export interface FullscreenContent {
 const isFullscreen = ref(false)
 const fullscreenContent = ref<FullscreenContent | null>(null)
 
+function setBodyOverflowHidden(hidden: boolean) {
+  document.body.style.overflow = hidden ? 'hidden' : ''
+}
+
+function applyFullscreenContent(content: FullscreenContent) {
+  fullscreenContent.value = content
+  isFullscreen.value = true
+  setBodyOverflowHidden(true)
+}
+
+export function openSerializedFullscreen(type: string, dataJson: string, isBase64 = false) {
+  try {
+    const json = isBase64 ? decodeURIComponent(escape(atob(dataJson))) : dataJson
+    const data = JSON.parse(json)
+
+    applyFullscreenContent({
+      type: type as FullscreenContent['type'],
+      ...data,
+    })
+  } catch (err) {
+    console.error('Failed to open fullscreen:', err)
+  }
+}
+
 export function useFullscreen() {
   function openFullscreen(content: FullscreenContent) {
-    fullscreenContent.value = content
-    isFullscreen.value = true
-    // Prevent body scroll
-    document.body.style.overflow = 'hidden'
+    applyFullscreenContent(content)
   }
 
   function closeFullscreen() {
     isFullscreen.value = false
     fullscreenContent.value = null
-    // Restore body scroll
-    document.body.style.overflow = ''
+    setBodyOverflowHidden(false)
   }
 
   return {

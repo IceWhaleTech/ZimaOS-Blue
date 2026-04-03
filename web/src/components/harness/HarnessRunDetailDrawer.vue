@@ -114,6 +114,37 @@ function statusTone(status?: string | null): string {
   }
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function metadataRecords(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => metadataRecord(item))
+    .filter((item): item is Record<string, unknown> => !!item)
+}
+
+function metadataText(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return ''
+}
+
+function metadataCount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function metadataFlag(value: unknown): boolean {
+  return value === true
+}
+
 const overviewRun = computed<HarnessRun | null>(() => {
   if (!props.run && !props.detail?.run) return null
   return {
@@ -136,6 +167,37 @@ const artifacts = computed(() => props.detail?.artifacts || [])
 const pendingApprovals = computed(() => props.detail?.pending_approvals || [])
 const pendingQuestions = computed(() => props.detail?.pending_questions || [])
 const pendingCount = computed(() => pendingApprovals.value.length + pendingQuestions.value.length)
+const contextPackSnapshot = computed<Record<string, unknown> | null>(() =>
+  metadataRecord(overviewRun.value?.metadata?.contextpack_snapshot)
+)
+const contextPackFiles = computed<Record<string, unknown>[]>(() =>
+  metadataRecords(contextPackSnapshot.value?.files)
+)
+const contextPackSelectionDigest = computed(() =>
+  metadataText(contextPackSnapshot.value?.selection_digest)
+)
+const contextPackSummaryPills = computed(() => {
+  const snapshot = contextPackSnapshot.value
+  if (!snapshot) return []
+
+  const pills: string[] = []
+  const selectedCount = metadataCount(snapshot.selected_count)
+  if (selectedCount != null) {
+    pills.push(`${tr('harness.group.contextPackSelectedCount', 'Selected')}: ${selectedCount}`)
+  }
+  const totalTokens = metadataCount(snapshot.total_tokens)
+  if (totalTokens != null) {
+    pills.push(`${tr('harness.group.contextPackTotalTokens', 'Tokens')}: ${totalTokens}`)
+  }
+  const selectedSkill = metadataText(snapshot.selected_skill)
+  if (selectedSkill) {
+    pills.push(`${tr('harness.group.contextPackSelectedSkill', 'Skill')}: ${selectedSkill}`)
+  }
+  if (metadataFlag(snapshot.truncated)) {
+    pills.push(tr('harness.group.contextPackTruncated', 'Truncated'))
+  }
+  return pills
+})
 const runTrace = computed<HarnessRunTrace | null>(() => props.detail?.run_trace || null)
 const traceStages = computed(() => runTrace.value?.stages || [])
 const traceEvents = computed(() => runTrace.value?.events || [])
@@ -285,6 +347,56 @@ function closeDrawer() {
                   <dd>{{ entry.value }}</dd>
                 </div>
               </dl>
+            </section>
+
+            <section v-if="contextPackSnapshot" class="detail-section">
+              <div class="section-header">
+                <h4>{{ tr('harness.group.contextPacks', 'Context Packs') }}</h4>
+                <span>{{ contextPackFiles.length }}</span>
+              </div>
+              <div v-if="contextPackSummaryPills.length" class="summary-pills">
+                <span v-for="pill in contextPackSummaryPills" :key="pill">{{ pill }}</span>
+              </div>
+              <p v-if="contextPackSelectionDigest" class="summary-preview">
+                {{ tr('harness.group.contextPackSelectionDigest', 'Selection digest') }}:
+                <code>{{ contextPackSelectionDigest }}</code>
+              </p>
+              <div v-if="contextPackFiles.length === 0" class="detail-state">
+                {{ tr('harness.group.noContextPacks', 'No context pack files were captured for this run.') }}
+              </div>
+              <div v-else class="artifact-list">
+                <article
+                  v-for="(file, index) in contextPackFiles"
+                  :key="`${metadataText(file.entry_id)}-${metadataText(file.file)}-${index}`"
+                  class="artifact-card"
+                >
+                  <div>
+                    <strong>{{ metadataText(file.entry_id) || tr('harness.group.contextPackEntryId', 'Entry') }}</strong>
+                    <p>
+                      {{ tr('harness.group.contextPackFile', 'File') }}:
+                      {{ metadataText(file.file) || tr('common.notAvailable', 'Not available') }}
+                    </p>
+                  </div>
+                  <div class="event-pills">
+                    <span v-if="metadataText(file.source_trust)">
+                      {{ tr('harness.group.contextPackSourceTrust', 'Trust') }}: {{ metadataText(file.source_trust) }}
+                    </span>
+                    <span v-if="metadataText(file.language)">
+                      {{ tr('harness.group.contextPackLanguage', 'Language') }}: {{ metadataText(file.language) }}
+                    </span>
+                    <span v-if="metadataText(file.version)">
+                      {{ tr('harness.group.contextPackVersion', 'Version') }}: {{ metadataText(file.version) }}
+                    </span>
+                    <span v-if="metadataFlag(file.annotated)">
+                      {{ tr('harness.group.contextPackAnnotated', 'Annotated') }}
+                    </span>
+                    <span v-if="metadataFlag(file.truncated)">
+                      {{ tr('harness.group.contextPackTruncated', 'Truncated') }}
+                    </span>
+                  </div>
+                  <code v-if="metadataText(file.sha256)">{{ metadataText(file.sha256) }}</code>
+                </article>
+              </div>
             </section>
 
             <section class="detail-section">
@@ -525,6 +637,56 @@ function closeDrawer() {
                 <dd>{{ entry.value }}</dd>
               </div>
             </dl>
+          </section>
+
+          <section v-if="contextPackSnapshot" class="detail-section">
+            <div class="section-header">
+              <h4>{{ tr('harness.group.contextPacks', 'Context Packs') }}</h4>
+              <span>{{ contextPackFiles.length }}</span>
+            </div>
+            <div v-if="contextPackSummaryPills.length" class="summary-pills">
+              <span v-for="pill in contextPackSummaryPills" :key="pill">{{ pill }}</span>
+            </div>
+            <p v-if="contextPackSelectionDigest" class="summary-preview">
+              {{ tr('harness.group.contextPackSelectionDigest', 'Selection digest') }}:
+              <code>{{ contextPackSelectionDigest }}</code>
+            </p>
+            <div v-if="contextPackFiles.length === 0" class="detail-state">
+              {{ tr('harness.group.noContextPacks', 'No context pack files were captured for this run.') }}
+            </div>
+            <div v-else class="artifact-list">
+              <article
+                v-for="(file, index) in contextPackFiles"
+                :key="`${metadataText(file.entry_id)}-${metadataText(file.file)}-${index}`"
+                class="artifact-card"
+              >
+                <div>
+                  <strong>{{ metadataText(file.entry_id) || tr('harness.group.contextPackEntryId', 'Entry') }}</strong>
+                  <p>
+                    {{ tr('harness.group.contextPackFile', 'File') }}:
+                    {{ metadataText(file.file) || tr('common.notAvailable', 'Not available') }}
+                  </p>
+                </div>
+                <div class="event-pills">
+                  <span v-if="metadataText(file.source_trust)">
+                    {{ tr('harness.group.contextPackSourceTrust', 'Trust') }}: {{ metadataText(file.source_trust) }}
+                  </span>
+                  <span v-if="metadataText(file.language)">
+                    {{ tr('harness.group.contextPackLanguage', 'Language') }}: {{ metadataText(file.language) }}
+                  </span>
+                  <span v-if="metadataText(file.version)">
+                    {{ tr('harness.group.contextPackVersion', 'Version') }}: {{ metadataText(file.version) }}
+                  </span>
+                  <span v-if="metadataFlag(file.annotated)">
+                    {{ tr('harness.group.contextPackAnnotated', 'Annotated') }}
+                  </span>
+                  <span v-if="metadataFlag(file.truncated)">
+                    {{ tr('harness.group.contextPackTruncated', 'Truncated') }}
+                  </span>
+                </div>
+                <code v-if="metadataText(file.sha256)">{{ metadataText(file.sha256) }}</code>
+              </article>
+            </div>
           </section>
 
           <section class="detail-section">

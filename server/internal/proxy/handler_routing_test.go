@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,8 +13,66 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func newRoutingTestProviderPool(t *testing.T, providerID string, modelIDs ...string) *providerpool.Pool {
+	t.Helper()
+
+	tmpDir, err := os.MkdirTemp("", "proxy-routing-pool-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
+
+	storage, err := providerpool.NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	provider := &providerpool.Provider{
+		ID:        providerID,
+		Name:      providerID,
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   "https://example.invalid",
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  1,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys:   []providerpool.APIKey{{ID: "k1", Key: "test-key", Enabled: true}},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("failed to register provider: %v", err)
+	}
+
+	models := make([]*providerpool.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		models = append(models, &providerpool.Model{
+			ID:           modelID,
+			Name:         modelID,
+			ProviderID:   providerID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, FunctionCall: true},
+		})
+	}
+	if err := storage.SaveModels(providerID, models); err != nil {
+		t.Fatalf("failed to save models: %v", err)
+	}
+	router.RebuildCandidates()
+
+	return &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+		Storage:   storage,
+	}
+}
+
 func TestApplyModelRouting_RuleEngineSwapsModel(t *testing.T) {
-	ph := NewProxyHandler(nil, nil, nil)
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{
 			Name:        "small-body-haiku",
@@ -45,7 +105,7 @@ func TestApplyModelRouting_RuleEngineSwapsModel(t *testing.T) {
 }
 
 func TestApplyModelRouting_NoMatchPassthrough(t *testing.T) {
-	ph := NewProxyHandler(nil, nil, nil)
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{
 			Name:        "tool-only",
@@ -82,7 +142,7 @@ func TestApplyModelRouting_ModelRouterBackgroundDowngrade(t *testing.T) {
 		},
 	})
 
-	ph := NewProxyHandler(nil, nil, nil)
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 	ph.SetModelRouter(mr)
 
 	body := []byte(`{"model":"claude-3-opus","messages":[]}`)
@@ -110,7 +170,7 @@ func TestApplyModelRouting_RuleEngineTakesPriority(t *testing.T) {
 		},
 	})
 
-	ph := NewProxyHandler(nil, nil, nil)
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 	ph.SetModelRouter(mr)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{
@@ -140,7 +200,7 @@ func TestApplyModelRouting_RuleEngineTakesPriority(t *testing.T) {
 }
 
 func TestApplyModelRouting_EmptyModel(t *testing.T) {
-	ph := NewProxyHandler(nil, nil, nil)
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{Name: "catch-all", Priority: 1, Condition: RouteCondition{MaxBodyBytes: 999999}, TargetModel: "haiku"},
 	}))
@@ -152,6 +212,39 @@ func TestApplyModelRouting_EmptyModel(t *testing.T) {
 
 	if pr.model != "" {
 		t.Errorf("expected empty model to be unchanged, got %q", pr.model)
+	}
+}
+
+func TestApplyModelRouting_DisabledInContextPreservesExplicitModel(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
+		{
+			Name:        "small-body-haiku",
+			Priority:    1,
+			Condition:   RouteCondition{MaxBodyBytes: 4096},
+			TargetModel: "claude-3-5-haiku",
+		},
+	}))
+
+	body := []byte(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"verify the task record"}]}`)
+	pr := &parsedRequest{
+		body:           body,
+		model:          "claude-sonnet-4-6",
+		requestedModel: "claude-sonnet-4-6",
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	r = r.WithContext(WithDisableModelRouting(context.Background()))
+
+	ph.applyModelRouting(r, pr)
+
+	if pr.model != "claude-sonnet-4-6" {
+		t.Fatalf("expected explicit model to stay unchanged, got %q", pr.model)
+	}
+	if pr.routed != nil {
+		t.Fatalf("expected no routed decision when model routing is disabled, got %#v", pr.routed)
+	}
+	if got := gjson.GetBytes(pr.body, "model").Str; got != "claude-sonnet-4-6" {
+		t.Fatalf("expected body model to stay claude-sonnet-4-6, got %q", got)
 	}
 }
 
@@ -178,7 +271,7 @@ func TestApplyModelRouting_EmptyModelBackgroundUsesTierSmall(t *testing.T) {
 	}
 	mr.SetTierResolver(tr)
 
-	ph := NewProxyHandler(nil, nil, nil)
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 	ph.SetModelRouter(mr)
 
 	body := []byte(`{"model":"auto","messages":[]}`)
@@ -216,6 +309,75 @@ func TestApplyModelRouting_LazyToolExtraction(t *testing.T) {
 
 	if pr.model != "gpt-4o-mini" {
 		t.Errorf("expected tool match to route to 'gpt-4o-mini', got %q", pr.model)
+	}
+}
+
+func TestApplyModelRouting_PinnedExplicitModelSkipsTierRewrite(t *testing.T) {
+	pool := newRoutingTestProviderPool(t, "relay-openai", "gpt-5.4", "claude-sonnet-4.6", "glm-5")
+	models, err := pool.Discovery.GetFilteredModels("relay-openai")
+	if err != nil {
+		t.Fatalf("failed to load models: %v", err)
+	}
+
+	tr := NewTierResolver()
+	tr.Resolve(models)
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.SetProviderPool(pool)
+	ph.SetRuleEngine(DefaultRoutingConfig().ToRuleEngine(tr))
+	ph.SetTierResolver(tr)
+
+	for _, requestedModel := range []string{"gpt-5.4", "claude-sonnet-4.6"} {
+		t.Run(requestedModel, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"grep"}}]}`, requestedModel))
+			pr := &parsedRequest{body: body, model: requestedModel, requestedModel: requestedModel}
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			req = req.WithContext(WithPinnedProvider(req.Context(), "relay-openai"))
+
+			ph.applyModelRouting(req, pr)
+
+			if pr.model != requestedModel {
+				t.Fatalf("expected pinned explicit model to be preserved, got %q", pr.model)
+			}
+			if got := gjson.GetBytes(pr.body, "model").Str; got != requestedModel {
+				t.Fatalf("expected body model %q, got %q", requestedModel, got)
+			}
+			if pr.routed != nil {
+				t.Fatalf("expected no routed decision when preserving pinned explicit model, got %+v", pr.routed)
+			}
+		})
+	}
+}
+
+func TestApplyModelRouting_UnpinnedExplicitModelStillAllowsTierRewrite(t *testing.T) {
+	pool := newRoutingTestProviderPool(t, "relay-openai", "gpt-5.4", "glm-5")
+	models, err := pool.Discovery.GetFilteredModels("relay-openai")
+	if err != nil {
+		t.Fatalf("failed to load models: %v", err)
+	}
+
+	tr := NewTierResolver()
+	tr.Resolve(models)
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.SetProviderPool(pool)
+	ph.SetRuleEngine(DefaultRoutingConfig().ToRuleEngine(tr))
+	ph.SetTierResolver(tr)
+
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"grep"}}]}`)
+	pr := &parsedRequest{body: body, model: "gpt-5.4", requestedModel: "gpt-5.4"}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	ph.applyModelRouting(req, pr)
+
+	if pr.model != "glm-5" {
+		t.Fatalf("expected unpinned request to still rewrite via tier rule, got %q", pr.model)
+	}
+	if got := gjson.GetBytes(pr.body, "model").Str; got != "glm-5" {
+		t.Fatalf("expected body model rewrite to glm-5, got %q", got)
+	}
+	if pr.routed == nil || pr.routed.Rule != "small-body-small" {
+		t.Fatalf("expected small-body-small route decision, got %+v", pr.routed)
 	}
 }
 

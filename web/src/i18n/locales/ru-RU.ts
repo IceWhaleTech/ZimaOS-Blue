@@ -1,5 +1,5 @@
 // Russian (Русский)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('ru-RU', {
   common: {
@@ -1956,7 +1956,12 @@ export default mergeHarnessLocale('ru-RU', {
       saveBeforeHealth: 'Сохраните профиль перед запуском проверки работоспособности.',
       duplicate: 'Дублировать',
       builtinHelp:
-        'Встроенные профили остаются доступными только для чтения, поэтому начальные записи Claude, Codex, Gemini и общие записи A2A остаются стабильными.',
+        'Встроенные профили остаются только для чтения. Дублируйте один, чтобы создать собственную копию.',
+      acpTemplateSummary: 'Дублируйте, чтобы добавить исполняемую команду ACP.',
+      acpTemplateHelp:
+        'Встроенные записи ACP являются только шаблонами настройки. Дублируйте одну, затем добавьте любую исполняемую команду ACP.',
+      acpTemplateActionDisabled:
+        'Во встроенных шаблонах ACP нельзя запускать проверку или проверку работоспособности. Сначала дублируйте один и настройте команду.',
       command: 'Команда и аргументы',
       credentialSource: 'Источник учетных данных',
       authMethod: 'Метод аутентификации',

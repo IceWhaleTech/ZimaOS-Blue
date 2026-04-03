@@ -250,12 +250,14 @@ func resolveCredentialProviderID(profile AgentProfile) string {
 	}
 
 	command := strings.ToLower(strings.Join(profile.Command, " "))
+	binary := normalizedCommandBinary(profile.Command)
 	switch {
-	case strings.Contains(command, "claude-agent-acp"):
+	case binary == "claude", binary == "claude-code", strings.Contains(command, "claude-agent-acp"):
 		return "anthropic"
-	case strings.Contains(command, "codex-acp"):
+	case binary == "codex", strings.Contains(command, "codex-acp"):
 		return "openai-codex"
-	case strings.Contains(command, "gemini") && strings.Contains(command, "--acp"):
+	case (binary == "gemini" && commandHasArg(profile.Command, "--acp")) ||
+		(strings.Contains(command, "gemini") && strings.Contains(command, "--acp")):
 		return "google-gemini-cli"
 	}
 
@@ -271,6 +273,30 @@ func resolveCredentialProviderID(profile AgentProfile) string {
 	}
 
 	return ""
+}
+
+func normalizedCommandBinary(command []string) string {
+	if len(command) == 0 {
+		return ""
+	}
+	binary := strings.TrimSpace(command[0])
+	if binary == "" {
+		return ""
+	}
+	return strings.TrimSuffix(strings.ToLower(filepath.Base(binary)), ".exe")
+}
+
+func commandHasArg(command []string, target string) bool {
+	needle := strings.TrimSpace(strings.ToLower(target))
+	if needle == "" {
+		return false
+	}
+	for _, part := range command {
+		if strings.TrimSpace(strings.ToLower(part)) == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func writeCredentialJSON(path string, payload interface{}) error {

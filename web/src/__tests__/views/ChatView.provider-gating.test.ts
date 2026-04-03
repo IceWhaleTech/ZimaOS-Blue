@@ -248,7 +248,7 @@ const chatInputStub = {
     streaming: { type: Boolean, default: false },
     canCancel: { type: Boolean, default: false },
   },
-  emits: ['send'],
+  emits: ['send', 'open-talk-mode'],
   methods: {
     setInput(value: string) {
       mocks.chatInputSetInput(value)
@@ -319,6 +319,8 @@ describe('ChatView provider gating', () => {
     localStorageMock.clear()
     i18n.global.locale.value = 'en-US'
     mocks.chatStore.currentConversationId = null
+    mocks.chatStore.pendingApproval = null
+    mocks.chatStore.pendingExecApproval = null
     mocks.chatStore.pendingModelAutoFallback = null
     mocks.providerPoolStore.providers = []
     mocks.providerPoolStore.enabledProviders = []
@@ -402,6 +404,39 @@ describe('ChatView provider gating', () => {
     await settleView()
     return wrapper
   }
+
+  it('hydrates task projection context immediately on mount', async () => {
+    const wrapper = await mountChatView()
+
+    expect(mocks.taskProjectionsStore.setConversation).toHaveBeenCalledWith('')
+    expect(mocks.onSSEEvent).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('lazy mounts approval dialogs only when approvals are pending', async () => {
+    const wrapper = await mountChatView()
+
+    expect(wrapper.find('.tool-approval-stub').exists()).toBe(false)
+    expect(wrapper.find('.exec-approval-stub').exists()).toBe(false)
+
+    mocks.chatStore.pendingApproval = {
+      tool_name: 'web_query',
+      arguments: { q: 'hello' },
+    } as Record<string, unknown>
+    await settleView()
+    expect(wrapper.find('.tool-approval-stub').exists()).toBe(true)
+
+    mocks.chatStore.pendingExecApproval = {
+      directory: '/tmp',
+      command: 'pwd',
+      expires_at: Date.now() + 10_000,
+    } as Record<string, unknown>
+    await settleView()
+    expect(wrapper.find('.exec-approval-stub').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
 
   it('allows send to continue when no provider is configured and keeps setup guidance inline', async () => {
     const wrapper = await mountChatView()
@@ -697,6 +732,8 @@ describe('ChatView provider gating', () => {
     mocks.chatStore.streaming = false
 
     const wrapper = await mountChatView()
+    wrapper.findComponent({ name: 'ChatInput' }).vm.$emit('open-talk-mode')
+    await settleView()
     wrapper.findComponent({ name: 'TalkMode' }).vm.$emit('transcript', 'hello from talk mode')
     await flushPromises()
 
@@ -713,6 +750,8 @@ describe('ChatView provider gating', () => {
     mocks.chatStore.streaming = true
 
     const wrapper = await mountChatView()
+    wrapper.findComponent({ name: 'ChatInput' }).vm.$emit('open-talk-mode')
+    await settleView()
     wrapper.findComponent({ name: 'TalkMode' }).vm.$emit('transcript', 'interrupt now')
     await flushPromises()
 

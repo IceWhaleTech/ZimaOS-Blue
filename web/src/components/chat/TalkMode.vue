@@ -5,7 +5,6 @@ import { ttsAudioManager, voiceApi } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
 import { EnergyVAD } from '@/utils/vad'
-import { markdownToText } from '@/utils/markdown'
 import {
   isTtsAutoPlayEnabled,
   isTtsSpeechMuted,
@@ -51,6 +50,8 @@ type TalkBubble = {
   text: string
 }
 
+type MarkdownModule = typeof import('@/utils/markdown')
+
 const conversationState = ref<ConversationState>('idle')
 const autoPlayTTS = ref(isTtsAutoPlayEnabled())
 const error = ref<string | null>(null)
@@ -72,6 +73,14 @@ let isSynthesizingTTS = false
 let ttsInterruptedByBargeIn = false
 let interruptionHintTimer: number | null = null
 let requestPhaseTimer: number | null = null
+let markdownModulePromise: Promise<MarkdownModule> | null = null
+
+function loadMarkdownModule(): Promise<MarkdownModule> {
+  if (!markdownModulePromise) {
+    markdownModulePromise = import('@/utils/markdown')
+  }
+  return markdownModulePromise
+}
 
 const recentProcessTrace = computed(() =>
   [...localProcessTrace.value, ...chatStore.processTrace]
@@ -829,6 +838,7 @@ watch(
       const messages = chatStore.messages
       const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined
       if (lastMsg?.role === 'assistant' && lastMsg.content) {
+        const { markdownToText } = await loadMarkdownModule()
         const plainText = markdownToText(lastMsg.content)
         if (lastSpokenAssistantMessageId.value === lastMsg.id) {
           resumeListening()

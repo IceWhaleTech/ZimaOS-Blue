@@ -1,5 +1,5 @@
 // Japanese (日本語)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('ja-JP', {
   common: {
@@ -1942,7 +1942,12 @@ export default mergeHarnessLocale('ja-JP', {
       saveBeforeHealth: 'ヘルスチェックを実行する前にプロファイルを保存します。',
       duplicate: '重複',
       builtinHelp:
-        '組み込みプロファイルは読み取り専用のままであるため、シードされた Claude、Codex、Gemini、および汎用の A2A エントリは安定したままになります。',
+        '組み込みプロファイルは読み取り専用のままです。複製してカスタムコピーを作成してください。',
+      acpTemplateSummary: '複製して実行可能な ACP コマンドを追加します。',
+      acpTemplateHelp:
+        '組み込みの ACP エントリはセットアップ用テンプレートです。複製してから、実行可能な ACP コマンドを追加してください。',
+      acpTemplateActionDisabled:
+        '組み込み ACP テンプレートでは検証やヘルスチェックを実行できません。先に複製してコマンドを設定してください。',
       command: 'コマンドと引数',
       credentialSource: '資格情報ソース',
       authMethod: '認証方法',

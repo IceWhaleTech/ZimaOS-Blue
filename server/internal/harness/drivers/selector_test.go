@@ -79,7 +79,6 @@ func TestSelectorDryRunDriver_SubmitUsesGroupInputQueryAndCompletesRun(t *testin
 			"skill_route_outcome":   "selected",
 			"decision_reason":       "ir_ranked",
 			"decision_stage":        "rerank",
-			"smart_skill_selection": true,
 		},
 	}
 	controller.RegisterDriver(NewSelectorDryRunDriver(source))

@@ -1895,11 +1895,11 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 			})
 		}
 		h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
-		return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
+		return c.JSON(http.StatusOK, attachSkillContract(attachWarnings(map[string]interface{}{
 			"success": true,
 			"message": fmt.Sprintf("skill %s installed from GitHub", rs.Name),
 			"skill":   rs,
-		}, manifestValidationWarnings(manifest)))
+		}, manifestValidationWarnings(manifest)), skillContractMetadataFromManifest(manifest)))
 	}
 
 	// Non-GitHub: download SKILL.md
@@ -1950,11 +1950,11 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 	}
 
 	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
-	return c.JSON(http.StatusOK, attachWarnings(map[string]interface{}{
+	return c.JSON(http.StatusOK, attachSkillContract(attachWarnings(map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("skill %s installed to %s", rs.Name, skillDir),
 		"skill":   rs,
-	}, manifestValidationWarnings(manifest)))
+	}, manifestValidationWarnings(manifest)), skillContractMetadataFromManifest(manifest)))
 }
 
 // UninstallSkill uninstalls a skill by removing its directory.

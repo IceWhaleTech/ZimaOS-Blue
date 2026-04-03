@@ -60,6 +60,26 @@ func TestResolveRuntimeSkillForExecution_ResolvesRegistryAliasCandidates(t *test
 	}
 }
 
+func TestResolveRuntimeSkillForExecution_ResolvesLegacyWebSearchToCanonicalWebQuery(t *testing.T) {
+	registry := &stubLookupSkillRegistry{
+		skills: map[string]skillpkg.Skill{
+			"web_query": &stubLookupSkill{
+				manifest: &skillpkg.Manifest{ID: "web_query", Name: "Web Query"},
+				result:   skillpkg.NewResult(map[string]any{"status": "ok"}),
+			},
+		},
+		enabled: map[string]bool{"web_query": true},
+	}
+
+	resolved, err := resolveRuntimeSkillForExecution(registry, "", "web_search")
+	if err != nil {
+		t.Fatalf("resolveRuntimeSkillForExecution error: %v", err)
+	}
+	if resolved.ID != "web_query" {
+		t.Fatalf("resolved.ID=%q, want web_query", resolved.ID)
+	}
+}
+
 func TestRuntimeSkillExecutionWorkspace_PrefersExplicitBlueWorkdir(t *testing.T) {
 	got := runtimeSkillExecutionWorkspace("/tmp/default", map[string]any{
 		"__blue_workdir": "/tmp/project",

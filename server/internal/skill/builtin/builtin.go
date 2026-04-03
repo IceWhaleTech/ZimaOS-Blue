@@ -21,7 +21,6 @@ func RegisterAll(registry *skill.Registry) error {
 		NewAnalyze(),
 		NewDeepResearch(),
 		NewWebQuery(),
-		NewWebSearch(),
 		NewUIReviewer(),
 		NewHumanizer(),
 	}
@@ -37,5 +36,5 @@ func RegisterAll(registry *skill.Registry) error {
 
 // GetSkillCount returns the number of built-in skills
 func GetSkillCount() int {
-	return 16
+	return 15
 }

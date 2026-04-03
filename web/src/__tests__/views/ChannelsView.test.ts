@@ -48,7 +48,16 @@ vi.mock('@/components/channels/ChannelCard.vue', () => ({
     name: 'ChannelCard',
     props: ['channel'],
     template:
-      '<div class="channel-card-stub" :data-id="channel.id" :data-last-field="channel.fields?.[channel.fields.length - 1]?.key" :data-last-value="channel.fields?.[channel.fields.length - 1]?.value">{{ channel.id }}<button class="channel-card-update-stub" @click="$emit(\'update-field\', channel.fields.length - 1, \'true\')">update</button><button class="channel-card-save-stub" @click="$emit(\'save\')">save</button></div>',
+      '<div class="channel-card-stub" :data-id="channel.id">{{ channel.id }}<button class="channel-card-select-stub" @click="$emit(\'toggle\')">select</button></div>',
+  },
+}))
+
+vi.mock('@/components/channels/ChannelDetailPanel.vue', () => ({
+  default: {
+    name: 'ChannelDetailPanel',
+    props: ['channel'],
+    template:
+      '<div class="channel-detail-stub" :data-id="channel.id" :data-last-field="channel.fields?.[channel.fields.length - 1]?.key" :data-last-value="channel.fields?.[channel.fields.length - 1]?.value">{{ channel.id }}<button class="channel-detail-update-stub" @click="$emit(\'update-field\', channel.fields.length - 1, \'true\')">update</button><button class="channel-detail-save-stub" @click="$emit(\'save\')">save</button></div>',
   },
 }))
 
@@ -95,6 +104,7 @@ function createTestI18n() {
         common: {
           loading: 'Loading',
           save: 'Save',
+          select: 'Select',
           configure: 'Configure',
           loadMore: 'Load More',
           optional: 'Optional',
@@ -166,10 +176,13 @@ describe('ChannelsView', () => {
     await flushPromises()
 
     expect(wrapper.find('.channels-page').exists()).toBe(true)
+    expect(wrapper.find('.channels-page').attributes('data-form-filler-scope')).toBe('channel')
     expect(wrapper.text()).toContain('Channels')
     expect(wrapper.text()).not.toContain('Loading')
     expect(wrapper.text()).toContain('Channels did not fully load')
     expect(wrapper.text()).toContain('401')
+    expect(wrapper.find('.channels-board__detail-empty').exists()).toBe(true)
+    expect(wrapper.find('.channel-detail-stub').exists()).toBe(false)
     expect(wrapper.findAll('channel-card-stub').length).toBeGreaterThan(0)
   })
 
@@ -193,6 +206,9 @@ describe('ChannelsView', () => {
     await wrapper.find('.channels-summary-button').trigger('click')
 
     expect(wrapper.find('.channels-group-modal').exists()).toBe(true)
+    expect(wrapper.find('.channels-group-modal').attributes('data-form-filler-scope')).toBe(
+      'channel'
+    )
     expect(wrapper.find('.channels-group-modal__title').text()).toBe('Group Access')
   })
 
@@ -251,17 +267,19 @@ describe('ChannelsView', () => {
 
     const feishuCard = wrapper.find('.channel-card-stub[data-id="feishu"]')
     expect(feishuCard.exists()).toBe(true)
-    expect(feishuCard.attributes('data-last-field')).toBe('session_mode')
-    expect(feishuCard.attributes('data-last-value')).toBe('false')
-
-    await feishuCard.find('.channel-card-update-stub').trigger('click')
+    expect(wrapper.find('.channel-detail-stub').exists()).toBe(false)
+    await feishuCard.find('.channel-card-select-stub').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('.channel-card-stub[data-id="feishu"]').attributes('data-last-value')).toBe(
-      'true'
-    )
+    const feishuDetail = wrapper.find('.channel-detail-stub[data-id="feishu"]')
+    expect(feishuDetail.exists()).toBe(true)
+    expect(feishuDetail.attributes('data-last-field')).toBe('session_mode')
+    expect(feishuDetail.attributes('data-last-value')).toBe('false')
 
-    await feishuCard.find('.channel-card-save-stub').trigger('click')
+    await feishuDetail.find('.channel-detail-update-stub').trigger('click')
+    await flushPromises()
+
+    await feishuDetail.find('.channel-detail-save-stub').trigger('click')
     await flushPromises()
 
     expect(savedBody).not.toBeNull()

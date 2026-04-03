@@ -1,5 +1,5 @@
 // German (Deutsch)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('de-DE', {
   common: {
@@ -1970,7 +1970,12 @@ export default mergeHarnessLocale('de-DE', {
       saveBeforeHealth: 'Speichern Sie das Profil, bevor Sie eine Gesundheitsprüfung durchführen.',
       duplicate: 'Duplizieren',
       builtinHelp:
-        'Integrierte Profile bleiben schreibgeschützt, sodass die gesetzten Einträge Claude, Codex, Gemini und generisch A2A stabil bleiben.',
+        'Integrierte Profile bleiben schreibgeschützt. Duplizieren Sie eines, um eine benutzerdefinierte Kopie zu erstellen.',
+      acpTemplateSummary: 'Duplizieren Sie, um einen ausführbaren ACP-Befehl hinzuzufügen.',
+      acpTemplateHelp:
+        'Integrierte ACP-Einträge sind nur Einrichtungsvorlagen. Duplizieren Sie einen Eintrag und fügen Sie dann einen beliebigen ausführbaren ACP-Befehl hinzu.',
+      acpTemplateActionDisabled:
+        'Integrierte ACP-Vorlagen können weder Überprüfung noch Gesundheitsprüfung ausführen. Duplizieren Sie zuerst eine Vorlage und konfigurieren Sie einen Befehl.',
       command: 'Befehl und Argumente',
       credentialSource: 'Anmeldeinformationsquelle',
       authMethod: 'Authentifizierungsmethode',

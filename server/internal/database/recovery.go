@@ -233,6 +233,10 @@ func OpenSQLiteWithRecoveryAndRecreate(dsn, dbPath string, configure func(*sql.D
 }
 
 func shouldQuickCheckSQLitePath(dbPath string) bool {
+	// Keep proactive startup integrity scans focused on the primary conversation
+	// store. Auxiliary SQLite files are either rebuildable or already validated
+	// on-demand, so scanning all of them after a dirty shutdown multiplies the
+	// startup I/O cost without improving first-boot availability enough.
 	return consumeStartupQuickCheckPath(dbPath)
 }
 

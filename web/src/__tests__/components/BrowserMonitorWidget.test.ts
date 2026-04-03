@@ -8,11 +8,13 @@ import {
   useBrowserMonitor,
 } from '@/composables/useBrowserMonitor'
 
-const { pushMock, listTasksMock, getSessionsMock, getSessionMonitorMock } = vi.hoisted(() => ({
+const { pushMock, listTasksMock, getSessionsMock, getSessionMonitorMock, onSSEEventMock, offSSEEventMock } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   listTasksMock: vi.fn(),
   getSessionsMock: vi.fn(),
   getSessionMonitorMock: vi.fn(),
+  onSSEEventMock: vi.fn(),
+  offSSEEventMock: vi.fn(),
 }))
 
 const localStorageMock = (() => {
@@ -71,6 +73,11 @@ vi.mock('@/api/tasks', () => ({
 vi.mock('@/api/browser', () => ({
   getSessions: getSessionsMock,
   getSessionMonitor: getSessionMonitorMock,
+}))
+
+vi.mock('@/composables/useEventStream', () => ({
+  onSSEEvent: (...args: unknown[]) => onSSEEventMock(...args),
+  offSSEEvent: (...args: unknown[]) => offSSEEventMock(...args),
 }))
 
 function createTestI18n() {
@@ -177,6 +184,8 @@ describe('BrowserMonitorWidget', () => {
     listTasksMock.mockReset()
     getSessionsMock.mockReset()
     getSessionMonitorMock.mockReset()
+    onSSEEventMock.mockReset()
+    offSSEEventMock.mockReset()
     localStorage.clear()
     setViewport(1440, 900)
     __resetBrowserMonitorStateForTests()
@@ -220,6 +229,38 @@ describe('BrowserMonitorWidget', () => {
       image: { screenshot: '', history: [] },
       error: '',
     })
+  })
+
+  it('refreshes the task overview immediately when task SSE events arrive', async () => {
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(onSSEEventMock).toHaveBeenCalledWith('task_progress', expect.any(Function))
+    const initialTaskFetches = listTasksMock.mock.calls.length
+    const initialSessionFetches = getSessionsMock.mock.calls.length
+
+    const taskProgressHandler = onSSEEventMock.mock.calls.find(
+      ([eventType]) => eventType === 'task_progress'
+    )?.[1] as ((payload: unknown) => void) | undefined
+
+    expect(taskProgressHandler).toBeTypeOf('function')
+
+    taskProgressHandler?.({ task_id: 'task-1' })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await flushPromises()
+
+    expect(listTasksMock.mock.calls.length).toBeGreaterThan(initialTaskFetches)
+    expect(getSessionsMock.mock.calls.length).toBeGreaterThan(initialSessionFetches)
+
+    wrapper.unmount()
   })
 
   it('renders localized task details and exposes the resizable task list structure', async () => {

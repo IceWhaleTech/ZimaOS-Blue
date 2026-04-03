@@ -61,6 +61,7 @@ declare global {
   const onUnmounted: typeof import('vue').onUnmounted
   const onUpdated: typeof import('vue').onUpdated
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
+  const openSerializedFullscreen: typeof import('./composables/useFullscreen').openSerializedFullscreen
   const parseToolResults: typeof import('./stores/chat').parseToolResults
   const provide: typeof import('vue').provide
   const reactive: typeof import('vue').reactive
@@ -248,6 +249,7 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly openSerializedFullscreen: UnwrapRef<typeof import('./composables/useFullscreen')['openSerializedFullscreen']>
     readonly parseToolResults: UnwrapRef<typeof import('./stores/chat')['parseToolResults']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly reactive: UnwrapRef<typeof import('vue')['reactive']>

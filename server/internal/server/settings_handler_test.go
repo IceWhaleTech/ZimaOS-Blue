@@ -68,7 +68,7 @@ func writeSettingsSelectorSkill(t *testing.T, workspaceDir, id, desc, invocation
 
 func writeSettingsSelectorCanonicalWebQuerySkill(t *testing.T, workspaceDir, desc, invocation string, capabilityTags ...string) {
 	t.Helper()
-	writeSettingsSelectorSkillAtRoot(t, workspaceDir, ".claude", "web_search", "web_query", desc, invocation, capabilityTags...)
+	writeSettingsSelectorSkillAtRoot(t, workspaceDir, ".claude", "web_query", "web_query", desc, invocation, capabilityTags...)
 }
 
 func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
@@ -76,14 +76,12 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
-	smartSkill := true
-	h.settings.SmartSkillSelection = &smartSkill
 
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask the user clarifying questions."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "mgmt", Description: "Manage providers, settings, and diagnostics."})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web for latest sources."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web for latest sources."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages."})
@@ -382,12 +380,10 @@ func TestGetSkillSelectorConfidenceThreshold_Default(t *testing.T) {
 func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
-	smartSkill := true
-	h.settings.SmartSkillSelection = &smartSkill
 
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web for latest sources."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web for latest sources."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
 
@@ -439,7 +435,7 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 		}
 		selectedNames[name] = true
 	}
-	for _, required := range []string{"read", "web_search", "write"} {
+	for _, required := range []string{"read", "web_query", "write"} {
 		if !selectedNames[required] {
 			t.Fatalf("expected %q in selected_tools, got=%v", required, body["selected_tools"])
 		}
@@ -515,8 +511,6 @@ func TestSelectorDryRunReturnsSelectedTools(t *testing.T) {
 func TestSelectorDryRunIncludesSkillAdvice(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
-	smartSkill := true
-	h.settings.SmartSkillSelection = &smartSkill
 
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
@@ -580,8 +574,6 @@ func TestSelectorDryRunIncludesSkillAdvice(t *testing.T) {
 
 func TestSelectorDryRunIncludesDiscoverFirstMetadata(t *testing.T) {
 	h := newSelectorDryRunTestHandler(t)
-	dynamicExposure := true
-	h.settings.SkillDynamicExposure = &dynamicExposure
 
 	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
 
@@ -639,28 +631,33 @@ func TestSelectorDryRunIncludesDiscoverFirstMetadata(t *testing.T) {
 	}
 }
 
-func TestSelectorDryRunIncludesLegacyCompatDiscoverReasonWhenDynamicExposureDisabled(t *testing.T) {
+func TestSelectorDryRunOmitsRemovedCutoverSwitchesAfterCutover(t *testing.T) {
 	h := newSelectorDryRunTestHandler(t)
-	dynamicExposure := false
-	h.settings.SkillDynamicExposure = &dynamicExposure
 
 	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
+
+	if _, exists := body["smart_skill_selection"]; exists {
+		t.Fatalf("expected smart_skill_selection to be removed from selector dry-run, got=%v", body["smart_skill_selection"])
+	}
+	if _, exists := body["skill_dynamic_exposure"]; exists {
+		t.Fatalf("expected skill_dynamic_exposure to be removed from selector dry-run, got=%v", body["skill_dynamic_exposure"])
+	}
 
 	if body["selected_native_surface_mode"] != "skill_exec" {
 		t.Fatalf("selected_native_surface_mode = %#v, want skill_exec", body["selected_native_surface_mode"])
 	}
-	if body["selected_native_surface_reason"] != "legacy_exec_collapse_compat" {
-		t.Fatalf("selected_native_surface_reason = %#v, want legacy_exec_collapse_compat", body["selected_native_surface_reason"])
+	if body["selected_native_surface_reason"] != "discover_first_cutover" {
+		t.Fatalf("selected_native_surface_reason = %#v, want discover_first_cutover", body["selected_native_surface_reason"])
 	}
 	discoveryRuntime, ok := body["discovery_runtime"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected discovery_runtime payload, got=%T", body["discovery_runtime"])
 	}
-	if discoveryRuntime["dynamic_exposure_enabled"] != false {
-		t.Fatalf("discovery_runtime.dynamic_exposure_enabled = %#v, want false", discoveryRuntime["dynamic_exposure_enabled"])
+	if _, exists := discoveryRuntime["dynamic_exposure_enabled"]; exists {
+		t.Fatalf("expected discovery_runtime.dynamic_exposure_enabled to be removed, got=%v", discoveryRuntime["dynamic_exposure_enabled"])
 	}
-	if discoveryRuntime["surface_reason"] != "legacy_exec_collapse_compat" {
-		t.Fatalf("discovery_runtime.surface_reason = %#v, want legacy_exec_collapse_compat", discoveryRuntime["surface_reason"])
+	if discoveryRuntime["surface_reason"] != "discover_first_cutover" {
+		t.Fatalf("discovery_runtime.surface_reason = %#v, want discover_first_cutover", discoveryRuntime["surface_reason"])
 	}
 }
 
@@ -744,8 +741,6 @@ func TestSelectorDryRun_CriticalPlanRoutes(t *testing.T) {
 
 func TestSelectorDryRun_DynamicExposureCollapsesAskMgmtAndWorkspaceToExec(t *testing.T) {
 	h := newSelectorDryRunTestHandler(t)
-	dynamicExposure := true
-	h.settings.SkillDynamicExposure = &dynamicExposure
 
 	tests := []struct {
 		name          string
@@ -772,6 +767,45 @@ func TestSelectorDryRun_DynamicExposureCollapsesAskMgmtAndWorkspaceToExec(t *tes
 			}
 			if body["selected_native_surface_mode"] != "skill_exec" {
 				t.Fatalf("selected_native_surface_mode = %#v, want skill_exec", body["selected_native_surface_mode"])
+			}
+			if body["skill_exec_cutover"] != true {
+				t.Fatalf("skill_exec_cutover = %#v, want true", body["skill_exec_cutover"])
+			}
+		})
+	}
+}
+
+func TestSelectorDryRun_DynamicExposureCollapsesReminderUIReviewerAndHimalayaToExec(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+
+	tests := []struct {
+		name          string
+		query         string
+		wantCanonical string
+	}{
+		{name: "reminder", query: "帮我明早 9 点提醒", wantCanonical: "reminder"},
+		{name: "ui_reviewer", query: "帮我 review 一下 https://example.com 的 UI", wantCanonical: "ui_reviewer"},
+		{name: "himalaya", query: "帮我回复最新那封邮件", wantCanonical: "himalaya"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := runSelectorDryRun(t, h, tc.query)
+			if body["canonical_skill_id"] != tc.wantCanonical {
+				t.Fatalf("canonical_skill_id = %#v, want %s", body["canonical_skill_id"], tc.wantCanonical)
+			}
+			selectedNativeTools, ok := body["selected_native_tools"].([]any)
+			if !ok {
+				t.Fatalf("expected selected_native_tools payload, got=%T", body["selected_native_tools"])
+			}
+			if len(selectedNativeTools) != 1 || selectedNativeTools[0] != "exec" {
+				t.Fatalf("selected_native_tools = %#v, want [exec]", selectedNativeTools)
+			}
+			if body["selected_native_surface_mode"] != "skill_exec" {
+				t.Fatalf("selected_native_surface_mode = %#v, want skill_exec", body["selected_native_surface_mode"])
+			}
+			if body["selected_native_surface_reason"] != "discover_first_cutover" {
+				t.Fatalf("selected_native_surface_reason = %#v, want discover_first_cutover", body["selected_native_surface_reason"])
 			}
 			if body["skill_exec_cutover"] != true {
 				t.Fatalf("skill_exec_cutover = %#v, want true", body["skill_exec_cutover"])
@@ -825,15 +859,13 @@ func TestSelectorDryRun_ClarifyMetadataForMixedIntent(t *testing.T) {
 	}
 }
 
-func TestSelectorDryRun_ForcesPreviewSkillSelectionWhenSettingDisabled(t *testing.T) {
+func TestSelectorDryRunStillCollapsesToExecAfterRemovedSmartSkillSwitch(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
-	smartSkill := false
-	h.settings.SmartSkillSelection = &smartSkill
 
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_search", Description: "Search the web for latest sources."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web for latest sources."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
 
@@ -854,8 +886,8 @@ func TestSelectorDryRun_ForcesPreviewSkillSelectionWhenSettingDisabled(t *testin
 	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
 	assertSelectorDryRunSelected(t, body, "web_query")
 
-	if body["smart_skill_selection"] != false {
-		t.Fatalf("expected explicit smart_skill_selection=false, got=%v", body["smart_skill_selection"])
+	if _, exists := body["smart_skill_selection"]; exists {
+		t.Fatalf("expected smart_skill_selection to be removed from selector dry-run, got=%v", body["smart_skill_selection"])
 	}
 	selectedNativeTools, ok := body["selected_native_tools"].([]any)
 	if !ok {
@@ -872,8 +904,6 @@ func TestSelectorDryRun_ForcesPreviewSkillSelectionWhenSettingDisabled(t *testin
 func TestSelectorDryRun_SurfacesCanonicalSkillConflict(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
-	smartSkill := true
-	h.settings.SmartSkillSelection = &smartSkill
 
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages."})
@@ -1168,7 +1198,7 @@ func TestPatchSmallModelContextPruneToolRules_Persisted(t *testing.T) {
 
 	body := `{
 		"small_model_context_prune_tool_allow":[" exec ","web_*","exec",""],
-		"small_model_context_prune_tool_deny":["web_search","web_search"," "]
+		"small_model_context_prune_tool_deny":["web_query","web_query"," "]
 	}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -1187,8 +1217,8 @@ func TestPatchSmallModelContextPruneToolRules_Persisted(t *testing.T) {
 	if len(allow) != 2 || allow[0] != "exec" || allow[1] != "web_*" {
 		t.Fatalf("allow = %v, want [exec web_*]", allow)
 	}
-	if len(deny) != 1 || deny[0] != "web_search" {
-		t.Fatalf("deny = %v, want [web_search]", deny)
+	if len(deny) != 1 || deny[0] != "web_query" {
+		t.Fatalf("deny = %v, want [web_query]", deny)
 	}
 
 	h2 := NewSettingsHandler(store)
@@ -1197,8 +1227,8 @@ func TestPatchSmallModelContextPruneToolRules_Persisted(t *testing.T) {
 	if len(allow2) != 2 || allow2[0] != "exec" || allow2[1] != "web_*" {
 		t.Fatalf("persisted allow = %v, want [exec web_*]", allow2)
 	}
-	if len(deny2) != 1 || deny2[0] != "web_search" {
-		t.Fatalf("persisted deny = %v, want [web_search]", deny2)
+	if len(deny2) != 1 || deny2[0] != "web_query" {
+		t.Fatalf("persisted deny = %v, want [web_query]", deny2)
 	}
 }
 
@@ -1445,6 +1475,16 @@ func TestPatchRejectsRemovedSettingsKeys(t *testing.T) {
 			body: `{"small_model_route_tool_dispatch_enabled":true,"locale":"en-US"}`,
 			key:  "small_model_route_tool_dispatch_enabled",
 		},
+		{
+			name: "smart skill selection",
+			body: `{"smart_skill_selection":false,"locale":"en-US"}`,
+			key:  "smart_skill_selection",
+		},
+		{
+			name: "skill dynamic exposure",
+			body: `{"skill_dynamic_exposure":false,"locale":"en-US"}`,
+			key:  "skill_dynamic_exposure",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(tc.body))
@@ -1473,22 +1513,46 @@ func TestUpdateRejectsRemovedSettingsKeys(t *testing.T) {
 	h := NewSettingsHandler(store)
 	e := echo.New()
 
-	req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"locale":"en-US","small_model_route_tool_dispatch_enabled":true}`))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+	for _, tc := range []struct {
+		name string
+		body string
+		key  string
+	}{
+		{
+			name: "small model tool dispatch",
+			body: `{"locale":"en-US","small_model_route_tool_dispatch_enabled":true}`,
+			key:  "small_model_route_tool_dispatch_enabled",
+		},
+		{
+			name: "smart skill selection",
+			body: `{"locale":"en-US","smart_skill_selection":false}`,
+			key:  "smart_skill_selection",
+		},
+		{
+			name: "skill dynamic exposure",
+			body: `{"locale":"en-US","skill_dynamic_exposure":false}`,
+			key:  "skill_dynamic_exposure",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(tc.body))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
 
-	if err := h.Update(c); err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 body=%s", rec.Code, rec.Body.String())
-	}
-	if h.settings.Locale != "" {
-		t.Fatalf("expected settings to remain unchanged, locale=%q", h.settings.Locale)
-	}
-	if !strings.Contains(rec.Body.String(), "small_model_route_tool_dispatch_enabled") {
-		t.Fatalf("expected error body to mention removed key, got=%s", rec.Body.String())
+			if err := h.Update(c); err != nil {
+				t.Fatalf("Update failed: %v", err)
+			}
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 body=%s", rec.Code, rec.Body.String())
+			}
+			if h.settings.Locale != "" {
+				t.Fatalf("expected settings to remain unchanged, locale=%q", h.settings.Locale)
+			}
+			if !strings.Contains(rec.Body.String(), tc.key) {
+				t.Fatalf("expected error body to mention removed key, got=%s", rec.Body.String())
+			}
+		})
 	}
 }
 

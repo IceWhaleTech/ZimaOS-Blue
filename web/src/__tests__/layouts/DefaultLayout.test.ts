@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
+import { fullscreenContent, isFullscreen } from '@/composables/useFullscreen'
 
 const {
   setupFormFillerWidget,
@@ -102,6 +103,7 @@ function createTestRouter() {
   return createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: '/', name: 'Root', component: { template: '<div>Root</div>' } },
       { path: '/home', name: 'Home', component: { template: '<div>Home</div>' } },
       { path: '/profile', name: 'Profile', component: { template: '<div>Profile</div>' } },
       { path: '/chat', name: 'Chat', component: { template: '<div>Chat</div>' } },
@@ -157,11 +159,15 @@ describe('DefaultLayout', () => {
     settingsStoreState.closeBehavior = 'minimize'
     tauriState.isTauri = false
     tauriState.platform = 'unknown'
+    isFullscreen.value = false
+    fullscreenContent.value = null
     setViewportWidth(1440)
     document.documentElement.removeAttribute('data-blue-window-resizing')
   })
 
   afterEach(() => {
+    isFullscreen.value = false
+    fullscreenContent.value = null
     vi.unstubAllGlobals()
   })
 
@@ -175,6 +181,73 @@ describe('DefaultLayout', () => {
     expect(wrapper.find('.layout-mobile-nav-button').exists()).toBe(false)
 
     wrapper.unmount()
+  })
+
+  it('lazy mounts the fullscreen modal only after fullscreen state is opened', async () => {
+    const wrapper = await mountLayout('/profile')
+
+    expect(wrapper.find('.fullscreen-modal-stub').exists()).toBe(false)
+
+    fullscreenContent.value = {
+      type: 'code',
+      content: 'const ready = true',
+    }
+    isFullscreen.value = true
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(wrapper.find('.fullscreen-modal-stub').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('defers the browser monitor widget during desktop chat startup until background startup work runs', async () => {
+    vi.useFakeTimers()
+    ;(window as any).__BLUE_DESKTOP__ = true
+
+    try {
+      const wrapper = await mountLayout('/chat')
+
+      expect(wrapper.find('.browser-monitor-widget-stub').exists()).toBe(false)
+
+      vi.advanceTimersByTime(600)
+      vi.runOnlyPendingTimers()
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(wrapper.find('.browser-monitor-widget-stub').exists()).toBe(true)
+
+      wrapper.unmount()
+    } finally {
+      delete (window as any).__BLUE_DESKTOP__
+      vi.useRealTimers()
+    }
+  })
+
+  it('defers the form filler widget during desktop root startup until background startup work runs', async () => {
+    vi.useFakeTimers()
+    ;(window as any).__BLUE_DESKTOP__ = true
+
+    try {
+      const wrapper = await mountLayout('/')
+
+      expect(wrapper.find('.form-filler-widget-stub').exists()).toBe(false)
+
+      vi.advanceTimersByTime(600)
+      vi.runOnlyPendingTimers()
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(wrapper.find('.form-filler-widget-stub').exists()).toBe(true)
+
+      wrapper.unmount()
+    } finally {
+      delete (window as any).__BLUE_DESKTOP__
+      vi.useRealTimers()
+    }
   })
 
   it('renders the nav button for desktop browsers when the window is too narrow to show the sidebar', async () => {

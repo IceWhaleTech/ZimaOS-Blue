@@ -409,6 +409,21 @@ func (s *SQLiteStore) CreateEvalSpec(ctx context.Context, spec *EvalSpec) error 
 	return err
 }
 
+func (s *SQLiteStore) UpdateEvalSpec(ctx context.Context, spec *EvalSpec) error {
+	if spec == nil {
+		return fmt.Errorf("eval spec is required")
+	}
+	spec.UpdatedAt = timeutil.NowTime()
+	_, err := s.execContext(ctx, `UPDATE harness_eval_specs SET
+		name=?, owner_user_id=?, subject=?, run_kind=?, profile=?, dataset_id=?, dataset_version_id=?, scheduler_json=?, scoring_json=?, runtime_policy_json=?, metadata_json=?, updated_at=?
+		WHERE id=?`,
+		spec.Name, spec.OwnerUserID, spec.Subject, string(spec.RunKind), spec.Profile, spec.DatasetID, spec.DatasetVersionID,
+		marshalInterface(spec.SchedulerConfig), marshalInterface(spec.ScoringConfig), marshalMetadata(spec.RuntimePolicy), marshalMetadata(spec.Metadata),
+		spec.UpdatedAt, spec.ID,
+	)
+	return err
+}
+
 func (s *SQLiteStore) GetEvalSpec(ctx context.Context, id string) (*EvalSpec, error) {
 	rows, err := s.selectEvalSpecRows(ctx, s.reader(), id)
 	if err != nil {

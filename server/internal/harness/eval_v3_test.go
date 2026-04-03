@@ -1227,6 +1227,18 @@ func TestBuildComparisonMetricBundleSeparatesViewMetricsAndStructuralDeltas(t *t
 					"verification_pass_rate":    1.0,
 					"evidence_backed_pass_rate": 0.75,
 					"retry_recovered_count":     2,
+					"contextpack_breakdown": map[string]interface{}{
+						"items_with_snapshot": 1,
+						"selected_skill_counts": map[string]interface{}{
+							"web_query": 1,
+						},
+						"source_trust_counts": map[string]interface{}{
+							"official": 1,
+						},
+						"entry_id_counts": map[string]interface{}{
+							"openai/docs/responses-api": 1,
+						},
+					},
 				},
 			},
 			OverallScore: 0.9,
@@ -1255,6 +1267,21 @@ func TestBuildComparisonMetricBundleSeparatesViewMetricsAndStructuralDeltas(t *t
 					"verification_pass_rate":    0.5,
 					"evidence_backed_pass_rate": 0.25,
 					"retry_recovered_count":     1,
+					"contextpack_breakdown": map[string]interface{}{
+						"items_with_snapshot": 3,
+						"selected_skill_counts": map[string]interface{}{
+							"web_query": 2,
+							"analyze":   1,
+						},
+						"source_trust_counts": map[string]interface{}{
+							"official":  2,
+							"community": 1,
+						},
+						"entry_id_counts": map[string]interface{}{
+							"openai/docs/responses-api":           2,
+							"community/forum/contextpack-recipes": 1,
+						},
+					},
 				},
 			},
 			OverallScore: 0.4,
@@ -1285,6 +1312,13 @@ func TestBuildComparisonMetricBundleSeparatesViewMetricsAndStructuralDeltas(t *t
 	if metrics.base.linkedRunCount != 1 || metrics.target.linkedRunCount != 2 {
 		t.Fatalf("linked run counts = (%d, %d), want (1, 2)", metrics.base.linkedRunCount, metrics.target.linkedRunCount)
 	}
+	if metrics.base.contextPackItemsWithSnapshot != 1 || metrics.target.contextPackItemsWithSnapshot != 3 {
+		t.Fatalf(
+			"contextpack item counts = (%d, %d), want (1, 3)",
+			metrics.base.contextPackItemsWithSnapshot,
+			metrics.target.contextPackItemsWithSnapshot,
+		)
+	}
 	if metrics.base.artifactCount != 1 || metrics.target.artifactCount != 0 {
 		t.Fatalf("artifact counts = (%d, %d), want (1, 0)", metrics.base.artifactCount, metrics.target.artifactCount)
 	}
@@ -1299,6 +1333,24 @@ func TestBuildComparisonMetricBundleSeparatesViewMetricsAndStructuralDeltas(t *t
 	}
 	if got := metrics.structural.verdictCountDelta["fail"]; got != 1 {
 		t.Fatalf("verdict_count_delta[fail] = %#v, want 1", got)
+	}
+	if got := metrics.structural.contextPackSelectedSkillDelta["web_query"]; got != 1 {
+		t.Fatalf("contextpack_selected_skill_delta[web_query] = %#v, want 1", got)
+	}
+	if got := metrics.structural.contextPackSelectedSkillDelta["analyze"]; got != 1 {
+		t.Fatalf("contextpack_selected_skill_delta[analyze] = %#v, want 1", got)
+	}
+	if got := metrics.structural.contextPackSourceTrustDelta["official"]; got != 1 {
+		t.Fatalf("contextpack_source_trust_delta[official] = %#v, want 1", got)
+	}
+	if got := metrics.structural.contextPackSourceTrustDelta["community"]; got != 1 {
+		t.Fatalf("contextpack_source_trust_delta[community] = %#v, want 1", got)
+	}
+	if got := metrics.structural.contextPackEntryDelta["openai/docs/responses-api"]; got != 1 {
+		t.Fatalf("contextpack_entry_delta[openai/docs/responses-api] = %#v, want 1", got)
+	}
+	if got := metrics.structural.contextPackEntryDelta["community/forum/contextpack-recipes"]; got != 1 {
+		t.Fatalf("contextpack_entry_delta[community/forum/contextpack-recipes] = %#v, want 1", got)
 	}
 	if metrics.structural.linkedRunCountDelta != 1 {
 		t.Fatalf("linked_run_count_delta = %d, want 1", metrics.structural.linkedRunCountDelta)
@@ -1365,6 +1417,40 @@ func TestBuildComparisonReportSectionsKeepSummaryBodyAndScorerAligned(t *testing
 	}
 	if got, want := sections.summary["failure_label_delta"], sections.scorerDelta["failure_label_delta"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("summary failure_label_delta = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildComparisonReportSectionsIncludeContextPackDeltas(t *testing.T) {
+	sections := buildComparisonReportSections(nil, &comparisonReportBundle{
+		metrics: comparisonMetricBundle{
+			base: comparisonViewMetricSnapshot{
+				contextPackItemsWithSnapshot: 1,
+			},
+			target: comparisonViewMetricSnapshot{
+				contextPackItemsWithSnapshot: 3,
+			},
+			structural: comparisonStructuralDelta{
+				contextPackSelectedSkillDelta: map[string]interface{}{"web_query": 1, "analyze": 1},
+				contextPackSourceTrustDelta:   map[string]interface{}{"official": 2, "community": 1},
+				contextPackEntryDelta: map[string]interface{}{
+					"openai/docs/responses-api":           2,
+					"community/forum/contextpack-recipes": 1,
+				},
+			},
+		},
+	})
+
+	if got := sections.summary["contextpack_items_with_snapshot_delta"]; got != 2 {
+		t.Fatalf("summary contextpack_items_with_snapshot_delta = %#v, want 2", got)
+	}
+	if got, want := sections.summary["contextpack_selected_skill_delta"], sections.scorerDelta["contextpack_selected_skill_delta"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("summary contextpack_selected_skill_delta = %#v, want %#v", got, want)
+	}
+	if got, want := sections.summary["contextpack_source_trust_delta"], sections.scorerDelta["contextpack_source_trust_delta"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("summary contextpack_source_trust_delta = %#v, want %#v", got, want)
+	}
+	if got, want := sections.summary["contextpack_entry_delta"], sections.scorerDelta["contextpack_entry_delta"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("summary contextpack_entry_delta = %#v, want %#v", got, want)
 	}
 }
 

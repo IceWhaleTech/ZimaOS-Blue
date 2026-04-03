@@ -52,7 +52,12 @@ const (
 	webQueryMediaItemAnalysisMaxChars = 900
 )
 
-var webQuerySiteHintPattern = regexp.MustCompile(`(?i)\bsite:([^\s]+)`)
+var (
+	webQuerySiteHintPattern    = regexp.MustCompile(`(?i)\bsite:([^\s]+)`)
+	webQueryFinanceHintPattern = regexp.MustCompile(`(?i)\b(stock(?:\s+price)?|share(?:\s+price)?|quote|ticker|market\s+summary)\b`)
+	webQueryTickerParenPattern = regexp.MustCompile(`\(([A-Z]{1,5})\)`)
+	webQueryTickerWordPattern  = regexp.MustCompile(`\b[A-Z]{1,5}\b`)
+)
 
 // WebTool provides a single public web-query surface with internal orchestration
 // plus compatibility routing for the legacy web_* tools.
@@ -144,6 +149,11 @@ type webQueryReadResult struct {
 	NeedsBrowser bool
 	Strong       bool
 	HasSuccess   bool
+}
+
+type webQueryReuseCoordinator struct {
+	mu                  sync.RWMutex
+	browserTargetByHost map[string]string
 }
 
 type webQueryCandidate struct {
@@ -365,7 +375,7 @@ func (t *WebTool) executeURLQuery(ctx context.Context, args map[string]interface
 	envelope.TargetURL = input
 	envelope.Diagnostics.Route = "url_read"
 
-	readResult, err := t.runReadPipeline(ctx, args, input, format, maxChars)
+	readResult, err := t.runReadPipeline(ctx, args, input, format, maxChars, nil)
 	envelope.Diagnostics.Attempts = append(envelope.Diagnostics.Attempts, readResult.Attempts...)
 	envelope.Diagnostics.Degraded = len(readResult.Attempts) > 1
 	if err != nil {
@@ -393,6 +403,26 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 	envelope.Query = query
 	envelope.Mode = "search"
 	envelope.Diagnostics.Route = "search_http"
+
+	if financeCandidate, ok := detectWebQueryFinanceFastPath(query); ok {
+		fastCandidates := buildWebQueryCandidates([]WebSearchResult{financeCandidate}, allowedHosts)
+		if len(fastCandidates) > 0 {
+			fastAttempts := t.resolveWebQueryCandidates(ctx, args, query, format, maxChars, fastCandidates, 1)
+			envelope.Diagnostics.Attempts = append(envelope.Diagnostics.Attempts, fastAttempts...)
+			envelope.Diagnostics.Degraded = len(fastAttempts) > 1
+			if fastCandidates[0].Resolved.HasSuccess && fastCandidates[0].Resolved.Strong {
+				selected := fastCandidates[0]
+				envelope.Mode = "search_read"
+				envelope.Diagnostics.Route = "search_finance_fast_path"
+				envelope.Diagnostics.CandidateCount = len(fastCandidates)
+				envelope.Diagnostics.SelectedSource = selected.Rank
+				envelope = applyResolvedReadToEnvelope(envelope, selected.Resolved, selected.Rank)
+				envelope.Sources = buildWebQuerySources(fastCandidates, strings.TrimSpace(selected.Search.URL))
+				t.enrichWebQueryEnvelopeWithMedia(ctx, args, &envelope)
+				return envelope
+			}
+		}
+	}
 
 	if t.search == nil {
 		addWebQueryWarning(&envelope.Warnings, "search_unavailable", "web search is not available")
@@ -817,7 +847,7 @@ func (t *WebTool) runBrowserSearchDiscovery(ctx context.Context, query string, m
 	for _, result := range payload.Results {
 		results = append(results, WebSearchResult{
 			Title:       strings.TrimSpace(result.Title),
-			URL:         strings.TrimSpace(result.URL),
+			URL:         normalizeWebQueryCandidateURL(strings.TrimSpace(result.URL)),
 			Description: strings.TrimSpace(result.Snippet),
 			Source:      "browser:" + engine,
 		})
@@ -944,6 +974,7 @@ func (t *WebTool) resolveWebQueryCandidates(ctx context.Context, args map[string
 
 	results := make(chan candidateOutcome, readLimit)
 	var wg sync.WaitGroup
+	reuse := newWebQueryReuseCoordinator()
 	for idx := 0; idx < readLimit; idx++ {
 		if hasResolvedWebQueryCandidate(candidates[idx]) {
 			continue
@@ -951,7 +982,7 @@ func (t *WebTool) resolveWebQueryCandidates(ctx context.Context, args map[string
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			readResult, _ := t.runReadPipeline(ctx, args, candidates[idx].Search.URL, format, maxChars)
+			readResult, _ := t.runReadPipeline(ctx, args, candidates[idx].Search.URL, format, maxChars, reuse)
 			results <- candidateOutcome{Index: idx, Read: readResult}
 		}(idx)
 	}
@@ -1084,7 +1115,7 @@ func (t *WebTool) expandWebQueryWithCrawl(ctx context.Context, args map[string]i
 	return best, attempts
 }
 
-func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface{}, targetURL, format string, maxChars int) (webQueryReadResult, error) {
+func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface{}, targetURL, format string, maxChars int, reuse *webQueryReuseCoordinator) (webQueryReadResult, error) {
 	result := webQueryReadResult{Attempts: []webQueryAttempt{}, Warnings: []webQueryWarning{}}
 	if t.read == nil {
 		return result, errors.New("web read is not available")
@@ -1127,6 +1158,9 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 			lastErrs = append(lastErrs, outcome.Err)
 			return false, false
 		}
+		if reuse != nil {
+			reuse.remember(targetURL, outcome.Resp)
+		}
 		result.HasSuccess = true
 		score := scoreWebQueryReadResponse(outcome.Resp)
 		if score > bestScore {
@@ -1134,9 +1168,12 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 			result.Response = outcome.Resp
 			result.Warnings = warningsFromLists(outcome.Resp.WarningCodes, outcome.Resp.Warnings)
 			result.NeedsBrowser, result.Strong = analyzeWebQueryReadResponse(outcome.Resp)
-			refinedResult, refined := t.maybeRefineLegacyReadableRead(ctx, args, targetURL, outcome.Lane, format, maxChars, result)
+			refinedResult, refined := t.maybeRefineLegacyReadableRead(ctx, args, targetURL, outcome.Lane, format, maxChars, result, reuse)
 			if refined {
 				result = refinedResult
+				if reuse != nil {
+					reuse.remember(targetURL, result.Response)
+				}
 				bestScore = scoreWebQueryReadResponse(result.Response)
 			}
 		}
@@ -1144,10 +1181,10 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 	}
 
 	if lane == webFetchStrategySession || lane == webAccessLaneHTTPNative || lane == webAccessLaneLightpandaShim {
-		resp, readErr := t.executeReadLane(ctx, args, targetURL, lane, format, maxChars)
+		resp, readErr := t.executeReadLane(ctx, args, targetURL, lane, format, maxChars, reuse)
 		needsBrowser, strong := applyOutcome(webQueryReadOutcome{Lane: lane, Resp: resp, Err: readErr})
 		if needsBrowser && allowedBrowser && lane != webAccessLaneBrowser {
-			browserResp, browserErr := t.executeReadLane(ctx, args, targetURL, webAccessLaneBrowser, format, maxChars)
+			browserResp, browserErr := t.executeReadLane(ctx, args, targetURL, webAccessLaneBrowser, format, maxChars, reuse)
 			_, _ = applyOutcome(webQueryReadOutcome{Lane: webAccessLaneBrowser, Resp: browserResp, Err: browserErr})
 		}
 		if strong || result.HasSuccess {
@@ -1157,7 +1194,7 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 	}
 
 	if lane == webAccessLaneBrowser {
-		resp, readErr := t.executeReadLane(ctx, args, targetURL, webAccessLaneBrowser, format, maxChars)
+		resp, readErr := t.executeReadLane(ctx, args, targetURL, webAccessLaneBrowser, format, maxChars, reuse)
 		_, _ = applyOutcome(webQueryReadOutcome{Lane: webAccessLaneBrowser, Resp: resp, Err: readErr})
 		if result.HasSuccess {
 			return result, nil
@@ -1166,13 +1203,13 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 	}
 
 	if lane == webAccessLaneProxyFetcher {
-		resp, readErr := t.executeReadLane(ctx, args, targetURL, webAccessLaneProxyFetcher, format, maxChars)
+		resp, readErr := t.executeReadLane(ctx, args, targetURL, webAccessLaneProxyFetcher, format, maxChars, reuse)
 		needsBrowser, strong := applyOutcome(webQueryReadOutcome{Lane: webAccessLaneProxyFetcher, Resp: resp, Err: readErr})
 		if strong {
 			return result, nil
 		}
 		if needsBrowser && allowedBrowser {
-			browserResp, browserErr := t.executeReadLane(ctx, args, targetURL, webAccessLaneBrowser, format, maxChars)
+			browserResp, browserErr := t.executeReadLane(ctx, args, targetURL, webAccessLaneBrowser, format, maxChars, reuse)
 			_, _ = applyOutcome(webQueryReadOutcome{Lane: webAccessLaneBrowser, Resp: browserResp, Err: browserErr})
 		}
 		if result.HasSuccess {
@@ -1203,7 +1240,7 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 					return
 				}
 			}
-			resp, readErr := t.executeReadLane(readCtx, args, targetURL, lane, format, maxChars)
+			resp, readErr := t.executeReadLane(readCtx, args, targetURL, lane, format, maxChars, reuse)
 			results <- webQueryReadOutcome{Lane: lane, Resp: resp, Err: readErr}
 		}()
 	}
@@ -1243,11 +1280,14 @@ func (t *WebTool) runReadPipeline(ctx context.Context, args map[string]interface
 	if !result.HasSuccess {
 		return result, firstNonNilErr(append(lastErrs, errors.New("web read failed"))...)
 	}
-	result = t.maybeRefineBrowserRedirectRead(ctx, args, targetURL, format, maxChars, result)
+	result = t.maybeRefineBrowserRedirectRead(ctx, args, targetURL, format, maxChars, result, reuse)
+	if reuse != nil {
+		reuse.remember(targetURL, result.Response)
+	}
 	return result, nil
 }
 
-func (t *WebTool) maybeRefineBrowserRedirectRead(ctx context.Context, args map[string]interface{}, targetURL, format string, maxChars int, result webQueryReadResult) webQueryReadResult {
+func (t *WebTool) maybeRefineBrowserRedirectRead(ctx context.Context, args map[string]interface{}, targetURL, format string, maxChars int, result webQueryReadResult, reuse *webQueryReuseCoordinator) webQueryReadResult {
 	if !result.HasSuccess {
 		return result
 	}
@@ -1261,7 +1301,7 @@ func (t *WebTool) maybeRefineBrowserRedirectRead(ctx context.Context, args map[s
 	}
 
 	for _, lane := range []string{webAccessLaneHTTP, webAccessLaneProxyFetcher} {
-		refinedResp, err := t.executeReadLane(ctx, args, finalURL, lane, format, maxChars)
+		refinedResp, err := t.executeReadLane(ctx, args, finalURL, lane, format, maxChars, reuse)
 		attempt := webQueryAttempt{
 			Stage:        "read_refine",
 			Mode:         webQueryReadAttemptMode(lane, refinedResp.Source),
@@ -1274,6 +1314,9 @@ func (t *WebTool) maybeRefineBrowserRedirectRead(ctx context.Context, args map[s
 		result.Attempts = append(result.Attempts, attempt)
 		if err != nil {
 			continue
+		}
+		if reuse != nil {
+			reuse.remember(finalURL, refinedResp)
 		}
 		needsBrowser, strong := analyzeWebQueryReadResponse(refinedResp)
 		if !strong || strings.EqualFold(strings.TrimSpace(refinedResp.Source), webAccessSourceBrowser) {
@@ -1288,7 +1331,7 @@ func (t *WebTool) maybeRefineBrowserRedirectRead(ctx context.Context, args map[s
 	return result
 }
 
-func (t *WebTool) maybeRefineLegacyReadableRead(ctx context.Context, args map[string]interface{}, targetURL, requestedLane, format string, maxChars int, result webQueryReadResult) (webQueryReadResult, bool) {
+func (t *WebTool) maybeRefineLegacyReadableRead(ctx context.Context, args map[string]interface{}, targetURL, requestedLane, format string, maxChars int, result webQueryReadResult, reuse *webQueryReuseCoordinator) (webQueryReadResult, bool) {
 	if !result.HasSuccess {
 		return result, false
 	}
@@ -1302,7 +1345,7 @@ func (t *WebTool) maybeRefineLegacyReadableRead(ctx context.Context, args map[st
 	if requestedLane == webAccessLaneBrowser {
 		requestedLane = webAccessLaneHTTP
 	}
-	refinedResp, err := t.executeReadLane(ctx, args, fallbackURL, requestedLane, format, maxChars)
+	refinedResp, err := t.executeReadLane(ctx, args, fallbackURL, requestedLane, format, maxChars, reuse)
 	attempt := webQueryAttempt{
 		Stage:        "read_refine",
 		Mode:         webQueryReadAttemptMode(requestedLane, refinedResp.Source),
@@ -1315,6 +1358,9 @@ func (t *WebTool) maybeRefineLegacyReadableRead(ctx context.Context, args map[st
 	result.Attempts = append(result.Attempts, attempt)
 	if err != nil {
 		return result, false
+	}
+	if reuse != nil {
+		reuse.remember(fallbackURL, refinedResp)
 	}
 	needsBrowser, strong := analyzeWebQueryReadResponse(refinedResp)
 	if !strong || strings.EqualFold(strings.TrimSpace(refinedResp.Source), webAccessSourceBrowser) {
@@ -1336,8 +1382,11 @@ func (t *WebTool) preferredReadLane(ctx context.Context, args map[string]interfa
 	return readTool.runtime.base.preferredReadLane(ctx, targetURL, browserTargetID)
 }
 
-func (t *WebTool) executeReadLane(ctx context.Context, args map[string]interface{}, targetURL, lane, format string, maxChars int) (webReadResponse, error) {
+func (t *WebTool) executeReadLane(ctx context.Context, args map[string]interface{}, targetURL, lane, format string, maxChars int, reuse *webQueryReuseCoordinator) (webReadResponse, error) {
 	readArgs := normalizeWebReadCompatArgs(args)
+	if reuseTargetID := reuse.browserTargetID(targetURL); reuseTargetID != "" && strings.TrimSpace(asString(readArgs["browser_target_id"])) == "" {
+		readArgs["browser_target_id"] = reuseTargetID
+	}
 	readArgs["url"] = targetURL
 	readArgs["lane"] = lane
 	readArgs["format"] = format
@@ -1716,6 +1765,9 @@ func canonicalWebQueryURL(query string) (string, bool) {
 	if !canonicalWebQuerySiteHintsAllowShortcut(query) {
 		return "", false
 	}
+	if looksLikeOpenAIChatCompletionsDocsQuery(query) {
+		return "https://developers.openai.com/api/reference/chat-completions/overview", true
+	}
 	if !looksLikeOpenAIResponsesDocsQuery(query) {
 		return "", false
 	}
@@ -1746,10 +1798,41 @@ func looksLikeOpenAIResponsesDocsQuery(query string) bool {
 		return true
 	}
 	lower := strings.ToLower(query)
-	if !strings.Contains(lower, "openai") || !strings.Contains(lower, "responses") || !strings.Contains(lower, "api") {
+	if !strings.Contains(lower, "openai") || !strings.Contains(lower, "api") {
+		return false
+	}
+	responseDocsIntent := strings.Contains(lower, "responses")
+	if !responseDocsIntent && strings.Contains(lower, "response") && strings.Contains(lower, "format") {
+		responseDocsIntent = true
+	}
+	if !responseDocsIntent {
 		return false
 	}
 	for _, marker := range []string{"doc", "documentation", "latest", "official", "reference"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeOpenAIChatCompletionsDocsQuery(query string) bool {
+	query = strings.TrimSpace(query)
+	if query == "" || looksLikeWebQueryURL(query) {
+		return false
+	}
+	lower := strings.ToLower(query)
+	if !strings.Contains(lower, "openai") || !strings.Contains(lower, "api") {
+		return false
+	}
+	if !strings.Contains(lower, "chat completion") {
+		return false
+	}
+	responseStructureIntent := strings.Contains(lower, "response") && (strings.Contains(lower, "object") || strings.Contains(lower, "structure") || strings.Contains(lower, "schema"))
+	if !responseStructureIntent {
+		return false
+	}
+	for _, marker := range []string{"doc", "documentation", "official", "reference"} {
 		if strings.Contains(lower, marker) {
 			return true
 		}
@@ -1788,7 +1871,7 @@ func buildWebQueryCandidates(results []WebSearchResult, allowedHosts []string) [
 	seen := make(map[string]struct{}, len(results))
 	out := make([]webQueryCandidate, 0, len(results))
 	for idx, result := range results {
-		targetURL := strings.TrimSpace(result.URL)
+		targetURL := normalizeWebQueryCandidateURL(strings.TrimSpace(result.URL))
 		if targetURL == "" {
 			continue
 		}
@@ -1803,12 +1886,71 @@ func buildWebQueryCandidates(results []WebSearchResult, allowedHosts []string) [
 			continue
 		}
 		seen[canonical] = struct{}{}
+		result.URL = targetURL
 		out = append(out, webQueryCandidate{
 			Rank:   idx + 1,
 			Search: result,
 		})
 	}
 	return out
+}
+
+func normalizeWebQueryCandidateURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if normalized := normalizeBingResultURL(raw); normalized != "" {
+		return normalized
+	}
+	return raw
+}
+
+func detectWebQueryFinanceFastPath(query string) (WebSearchResult, bool) {
+	ticker := extractWebQueryTicker(query)
+	if ticker == "" || !looksLikeWebQueryStockQuote(query) {
+		return WebSearchResult{}, false
+	}
+	return WebSearchResult{
+		Title:       ticker + " stock price",
+		URL:         "https://stockanalysis.com/stocks/" + strings.ToLower(ticker) + "/",
+		Description: ticker + " stock quote and market summary",
+		Source:      "finance_fast_path",
+	}, true
+}
+
+func looksLikeWebQueryStockQuote(query string) bool {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return false
+	}
+	if webQueryFinanceHintPattern.MatchString(query) {
+		return true
+	}
+	return strings.Contains(query, "股价") || strings.Contains(query, "股票") || strings.Contains(query, "行情")
+}
+
+func extractWebQueryTicker(query string) string {
+	if match := webQueryTickerParenPattern.FindStringSubmatch(query); len(match) == 2 {
+		return strings.ToUpper(strings.TrimSpace(match[1]))
+	}
+	for _, token := range webQueryTickerWordPattern.FindAllString(query, -1) {
+		token = strings.ToUpper(strings.TrimSpace(token))
+		if _, blocked := webQueryTickerStopwords[token]; blocked {
+			continue
+		}
+		return token
+	}
+	return ""
+}
+
+var webQueryTickerStopwords = map[string]struct{}{
+	"A":   {},
+	"AI":  {},
+	"CEO": {},
+	"I":   {},
+	"THE": {},
+	"USD": {},
 }
 
 func mergeWebQueryAllowedHosts(query string, allowedHosts []string) []string {
@@ -2581,6 +2723,9 @@ func analyzeWebQueryReadResponse(resp webReadResponse) (needsBrowser bool, stron
 		}
 	}
 	contentChars := len([]rune(strings.TrimSpace(resp.Content)))
+	if webQueryLooksLikeRedirectInterstitial(resp.Content) {
+		return needsBrowser, false
+	}
 	if strings.EqualFold(strings.TrimSpace(resp.Source), webAccessSourceBrowser) && contentChars > 0 {
 		return needsBrowser, true
 	}
@@ -2618,6 +2763,9 @@ func scoreWebQueryReadResponse(resp webReadResponse) float64 {
 	if resp.Truncated {
 		score -= 25
 	}
+	if webQueryLooksLikeRedirectInterstitial(resp.Content) {
+		score -= 240
+	}
 	return score
 }
 
@@ -2631,7 +2779,73 @@ func scoreWebQueryCandidate(query string, candidate webQueryCandidate) float64 {
 	score += 16 * webQueryTextOverlap(query, truncateRunes(content, 600))
 	score += math.Min(20, float64(len([]rune(content)))/180)
 	score -= float64(len(candidate.Resolved.Response.WarningCodes) * 6)
+	if webQueryLooksLikeRedirectInterstitial(content) {
+		score -= 42
+	}
 	return score
+}
+
+func newWebQueryReuseCoordinator() *webQueryReuseCoordinator {
+	return &webQueryReuseCoordinator{browserTargetByHost: make(map[string]string)}
+}
+
+func (c *webQueryReuseCoordinator) browserTargetID(targetURL string) string {
+	if c == nil {
+		return ""
+	}
+	host := webQueryReuseHost(targetURL)
+	if host == "" {
+		return ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return strings.TrimSpace(c.browserTargetByHost[host])
+}
+
+func (c *webQueryReuseCoordinator) remember(targetURL string, resp webReadResponse) {
+	if c == nil {
+		return
+	}
+	targetID := strings.TrimSpace(resp.BrowserTargetID)
+	if targetID == "" {
+		return
+	}
+	host := firstNonEmpty(webQueryReuseHost(resp.FinalURL), webQueryReuseHost(resp.URL), webQueryReuseHost(targetURL))
+	if host == "" {
+		return
+	}
+	c.mu.Lock()
+	c.browserTargetByHost[host] = targetID
+	c.mu.Unlock()
+}
+
+func webQueryReuseHost(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+}
+
+func webQueryLooksLikeRedirectInterstitial(content string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(content)), " "))
+	if normalized == "" {
+		return false
+	}
+	if strings.Contains(normalized, "please click here if the page does not redirect automatically") {
+		return true
+	}
+	if strings.Contains(normalized, "if the page does not redirect automatically") && strings.Contains(normalized, "click here") {
+		return true
+	}
+	if strings.Contains(normalized, "you are being redirected") && strings.Contains(normalized, "click here") {
+		return true
+	}
+	return false
 }
 
 func webQueryTextOverlap(query, text string) float64 {

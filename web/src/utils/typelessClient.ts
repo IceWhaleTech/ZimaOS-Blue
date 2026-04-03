@@ -1,3 +1,5 @@
+import { openSerializedFullscreen } from '@/composables/useFullscreen'
+
 export function initTypelessCopyHandler(): void {
   ;(window as unknown as { __typelessCopyCode?: (codeId: string) => void }).__typelessCopyCode =
     async (codeId: string) => {
@@ -84,10 +86,6 @@ export function initTypelessCopyHandler(): void {
       __typelessOpenFullscreen?: (type: string, dataJson: string, isBase64?: boolean) => void
     }
   ).__typelessOpenFullscreen = (type: string, dataJson: string, isBase64?: boolean) => {
-    const json = isBase64 ? decodeURIComponent(escape(atob(dataJson))) : dataJson
-    const event = new CustomEvent('typeless-fullscreen', {
-      detail: { type, dataJson: json },
-    })
-    window.dispatchEvent(event)
+    openSerializedFullscreen(type, dataJson, isBase64)
   }
 }

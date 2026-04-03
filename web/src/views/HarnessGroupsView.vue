@@ -338,6 +338,10 @@ function groupItemCount(group: HarnessRunGroup): number {
     .reduce((sum, [, value]) => sum + value, 0)
 }
 
+function contextPackItemsWithSnapshot(summary: unknown): number {
+  return summaryNumber(summaryNumberMap(summary, 'contextpack_breakdown'), 'items_with_snapshot')
+}
+
 function passRate(summary: unknown): number {
   return summaryNumber(summary, 'pass_rate')
 }
@@ -883,9 +887,50 @@ const selectedFailureLabelEntries = computed(() =>
   )
 )
 
+const selectedContextPackBreakdown = computed(() =>
+  asRecord(asRecord(selectedEvalRunReport.value?.group_report?.group?.summary)?.contextpack_breakdown)
+)
+
+const selectedContextPackItemsWithSnapshot = computed(() =>
+  summaryNumber(selectedContextPackBreakdown.value, 'items_with_snapshot')
+)
+
+const selectedContextPackSkillEntries = computed(() =>
+  sortedNumberEntries(summaryNumberMap(selectedContextPackBreakdown.value, 'selected_skill_counts'))
+)
+
+const selectedContextPackSourceEntries = computed(() =>
+  sortedNumberEntries(summaryNumberMap(selectedContextPackBreakdown.value, 'source_trust_counts'))
+)
+
+const selectedContextPackEntryEntries = computed(() =>
+  sortedNumberEntries(summaryNumberMap(selectedContextPackBreakdown.value, 'entry_id_counts'))
+)
+
 const selectedComparisonFailureLabelDeltaEntries = computed(() =>
   sortedNumberEntries(
     summaryNumberMap(selectedComparisonReport.value?.summary, 'failure_label_delta'),
+    { byAbsolute: true }
+  )
+)
+
+const selectedComparisonContextPackSkillDeltaEntries = computed(() =>
+  sortedNumberEntries(
+    summaryNumberMap(selectedComparisonReport.value?.summary, 'contextpack_selected_skill_delta'),
+    { byAbsolute: true }
+  )
+)
+
+const selectedComparisonContextPackSourceDeltaEntries = computed(() =>
+  sortedNumberEntries(
+    summaryNumberMap(selectedComparisonReport.value?.summary, 'contextpack_source_trust_delta'),
+    { byAbsolute: true }
+  )
+)
+
+const selectedComparisonContextPackEntryDeltaEntries = computed(() =>
+  sortedNumberEntries(
+    summaryNumberMap(selectedComparisonReport.value?.summary, 'contextpack_entry_delta'),
     { byAbsolute: true }
   )
 )
@@ -2808,6 +2853,10 @@ onUnmounted(() => {
                         }}
                       </strong>
                     </article>
+                    <article class="highlight-card">
+                      <span>{{ tr('harness.group.contextPacks', 'Context Packs') }}</span>
+                      <strong>{{ selectedContextPackItemsWithSnapshot }}</strong>
+                    </article>
                   </div>
 
                   <div class="report-grid">
@@ -2926,6 +2975,84 @@ onUnmounted(() => {
                           </dd>
                         </div>
                       </dl>
+                    </article>
+
+                    <article
+                      v-if="selectedContextPackBreakdown"
+                      class="detail-card detail-card-feature"
+                    >
+                      <h3>{{ tr('harness.group.contextPacks', 'Context Packs') }}</h3>
+                      <dl class="meta-grid compact">
+                        <div>
+                          <dt>{{ tr('harness.group.contextPackItems', 'Items with packs') }}</dt>
+                          <dd>{{ selectedContextPackItemsWithSnapshot }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{
+                            tr('harness.group.contextPackSelectedSkills', 'Selected skills')
+                          }}</dt>
+                          <dd>{{ selectedContextPackSkillEntries.length }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.group.contextPackSources', 'Sources') }}</dt>
+                          <dd>{{ selectedContextPackSourceEntries.length }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ tr('harness.group.contextPackEntries', 'Entries') }}</dt>
+                          <dd>{{ selectedContextPackEntryEntries.length }}</dd>
+                        </div>
+                      </dl>
+
+                      <div v-if="selectedContextPackSkillEntries.length" class="report-outcome-section">
+                        <p class="card-copy">
+                          {{ tr('harness.group.contextPackSelectedSkills', 'Selected skills') }}
+                        </p>
+                        <div class="version-list">
+                          <span
+                            v-for="entry in selectedContextPackSkillEntries"
+                            :key="`selected-context-skill-${entry.key}`"
+                            class="version-chip"
+                          >
+                            {{ entry.key }} · {{ entry.value }}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="selectedContextPackSourceEntries.length"
+                        class="report-outcome-section"
+                      >
+                        <p class="card-copy">
+                          {{ tr('harness.group.contextPackSources', 'Sources') }}
+                        </p>
+                        <div class="version-list">
+                          <span
+                            v-for="entry in selectedContextPackSourceEntries"
+                            :key="`selected-context-source-${entry.key}`"
+                            class="version-chip"
+                          >
+                            {{ entry.key }} · {{ entry.value }}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="selectedContextPackEntryEntries.length"
+                        class="report-outcome-section"
+                      >
+                        <p class="card-copy">
+                          {{ tr('harness.group.contextPackEntries', 'Entries') }}
+                        </p>
+                        <div class="version-list">
+                          <span
+                            v-for="entry in selectedContextPackEntryEntries"
+                            :key="`selected-context-entry-${entry.key}`"
+                            class="version-chip"
+                          >
+                            {{ entry.key }} · {{ entry.value }}
+                          </span>
+                        </div>
+                      </div>
                     </article>
 
                     <article class="detail-card detail-card-wide report-outcome-card">
@@ -3229,6 +3356,19 @@ onUnmounted(() => {
                               }}
                             </strong>
                           </article>
+                          <article class="highlight-card">
+                            <span>{{ tr('harness.compare.contextPackDelta', 'Context pack delta') }}</span>
+                            <strong>
+                              {{
+                                signedIntegerLabel(
+                                  summaryNumber(
+                                    selectedComparisonReport.summary,
+                                    'contextpack_items_with_snapshot_delta'
+                                  )
+                                )
+                              }}
+                            </strong>
+                          </article>
                         </div>
 
                         <dl class="meta-grid compact">
@@ -3313,6 +3453,51 @@ onUnmounted(() => {
                             )
                           }}
                         </p>
+
+                        <div v-if="selectedComparisonContextPackSkillDeltaEntries.length">
+                          <p class="card-copy">
+                            {{ tr('harness.compare.contextPackSkillDelta', 'Skill delta') }}
+                          </p>
+                          <div class="version-list">
+                            <span
+                              v-for="entry in selectedComparisonContextPackSkillDeltaEntries"
+                              :key="`contextpack-skill-delta-${entry.key}`"
+                              class="version-chip"
+                            >
+                              {{ entry.key }} {{ signedIntegerLabel(entry.value) }}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div v-if="selectedComparisonContextPackSourceDeltaEntries.length">
+                          <p class="card-copy">
+                            {{ tr('harness.compare.contextPackSourceDelta', 'Source delta') }}
+                          </p>
+                          <div class="version-list">
+                            <span
+                              v-for="entry in selectedComparisonContextPackSourceDeltaEntries"
+                              :key="`contextpack-source-delta-${entry.key}`"
+                              class="version-chip"
+                            >
+                              {{ entry.key }} {{ signedIntegerLabel(entry.value) }}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div v-if="selectedComparisonContextPackEntryDeltaEntries.length">
+                          <p class="card-copy">
+                            {{ tr('harness.compare.contextPackEntryDelta', 'Entry delta') }}
+                          </p>
+                          <div class="version-list">
+                            <span
+                              v-for="entry in selectedComparisonContextPackEntryDeltaEntries"
+                              :key="`contextpack-entry-delta-${entry.key}`"
+                              class="version-chip"
+                            >
+                              {{ entry.key }} {{ signedIntegerLabel(entry.value) }}
+                            </span>
+                          </div>
+                        </div>
 
                         <div class="comparison-columns">
                           <div class="comparison-column">
@@ -3604,6 +3789,10 @@ onUnmounted(() => {
                   <span
                     >{{ tr('harness.group.retryRecovered', 'Retry recovered') }}:
                     {{ summaryNumber(group.summary, 'retry_recovered_count') }}</span
+                  >
+                  <span
+                    >{{ tr('harness.group.contextPacks', 'Context Packs') }}:
+                    {{ contextPackItemsWithSnapshot(group.summary) }}</span
                   >
                 </div>
 

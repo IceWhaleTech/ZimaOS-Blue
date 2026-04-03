@@ -164,9 +164,9 @@
 ║  │                  Agent Runtime  ── chat / agent / MCP orchestration                               │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │    ║
-║  │  │ ChatHandler  │  │ Tool Gateway │  │ ContextPack  │  │ Agent / MCP  │  │ Session /    │         │    ║
-║  │  │ conv/store   │  │ approvals +  │  │ SOUL + skill │  │ deepresearch │  │ TODO state   │         │    ║
-║  │  │ stream loops │  │ call shaping │  │ bootstrap    │  │ task runner  │  │compact/budget│         │    ║
+║  │  │ ChatHandler  │  │ Tool Gateway │  │ ContextPack  │  │ Agent Runner │  │ Session /    │         │    ║
+║  │  │ conv/store   │  │ approvals +  │  │ SOUL + skill │  │ MCP / deep   │  │ TODO state   │         │    ║
+║  │  │ stream loops │  │ call shaping │  │ + planner mem│  │ task runner  │  │compact/budget│         │    ║
 ║  │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘         │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                           │    ║
@@ -174,6 +174,9 @@
 ║  │  │ proxy or llm │  │ system prompt│  │ short QA /   │  │ Cron hooks   │                           │    ║
 ║  │  │ fallback     │  │ + bootstrap  │  │ tool routing │  │ automation   │                           │    ║
 ║  │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘                           │    ║
+║  │                                                                                                   │    ║
+║  │  Agent Runner: context-pack grounding + planner-memory trace + isolated subagent delegation       │    ║
+║  │                + post-task self-reflect -> lessons / memory writes / review proposals             │    ║
 ║  │                                                                                                   │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                 ║
@@ -447,7 +450,7 @@ Clients and surfaces
 | Runtime assembly | `cmd/blue`, `internal/bootstrap`, `internal/server` | Startup, dependency wiring, Echo server, TLS, route registration |
 | Frontend and shell | `web`, `tauri-app`, `internal/web` | Vue SPA, desktop shell, localhost WebView binding, static asset serving |
 | Identity and security | `auth`, `permission`, `rbac`, `mfa`, `password`, `oidc`, `security`, `sandbox`, `promptguard`, `api` | JWT/API key auth, page permissions, approvals, security checks, sandbox integration |
-| Chat and agent runtime | `server`, `agent`, `deepresearch`, `claudecode`, `contextpack`, `session` | Conversation orchestration, system prompt building, agent execution, session compaction |
+| Chat and agent runtime | `server`, `agent`, `deepresearch`, `claudecode`, `contextpack`, `session` | Conversation orchestration, system prompt building, context-pack grounding, agent execution, isolated subagent delegation, post-task reflection, session compaction |
 | Tool and execution plane | `tools`, `browser`, `convert`, `mediagen`, `ppt`, `workflow`, `cron`, `push`, `harness`, `workspace` | Tool registry, browser and file tools, approvals, tracked runs, automation |
 | Inference routing | `proxy`, `proxybridge`, `providerpool`, `llm`, `pruner`, `gateway` | OpenAI/Anthropic-style proxying, request normalization, provider routing, failover, context pruning |
 | Memory and knowledge | `memory`, `embedding`, `skill`, `skillstore`, `plugin` | Conversation storage, markdown memory, vector search, skills, plugins, skill catalog |
@@ -467,6 +470,25 @@ Vue route (`/chat`) or desktop WebView
      or direct `llm.ProviderRegistry` fallback
   -> upstream provider
   -> streaming response + conversation persistence + metrics + audit + SSE updates
+```
+
+### Agent Runner
+
+```text
+Chat task / agent task / harness-backed agent execution
+  -> `agent.Runner`
+  -> system prompt bootstrap + context-pack resolution + planner-memory recall
+     - context packs and annotations are injected as grounded prompt context
+     - planner-memory traces emit used/skipped/filtered task events
+  -> tool execution through `tools.Registry` / `tools.Executor`
+  -> optional `subagents` tool
+     -> harness-backed child run
+     -> isolated worker-style execution with shared workspace and bounded policy
+  -> task completion or failure
+  -> optional `self_reflect`
+     -> summarize outcome from recorded plan + verification output
+     -> extract grounded lessons
+     -> optional memory writes and review-only proposals
 ```
 
 ### OpenAI-Compatible Proxy
@@ -506,6 +528,81 @@ Chat / agent / workflow issues a tool call
   -> `speech` / `tts` provider
   -> synthesized audio or transcript response
 ```
+
+## Harness Architecture
+
+Harness is the durable execution and evaluation control plane for tracked agent-style work in Blue. It is not just a diagnostics layer: the current implementation uses it to submit runs, persist execution trees, materialize reusable evaluations, score outcomes, compare candidates to baselines, and enforce release gates for tool-to-skill migration.
+
+### Harness Diagram
+
+```text
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Harness Control Plane (`server/internal/harness/` + `server/internal/bootstrap/`)                        ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                                          ║
+║  Entry Surfaces                                                                                          ║
+║  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                    ║
+║  │ Harness API  │ │ Agent Compat │ │ Research /   │ │ `blue` CLI   │ │ Web Harness  │                    ║
+║  │ `/api/v1/*`  │ │ `/tasks/*`   │ │ Workflow     │ │ `harness`    │ │ pages/report │                    ║
+║  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘                    ║
+║                                   │                                                                      ║
+║                                   ▼                                                                      ║
+║  Runtime Bundle  (`HarnessRuntimeBundle`)                                                                ║
+║  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                    ║
+║  │SQLiteStore   │ │Controller    │ │Group         │ │Observer /    │ │Subagent +    │                    ║
+║  │runs/groups/  │ │policy +      │ │Dispatcher    │ │RunTrace      │ │write/exec    │                    ║
+║  │evals/reports │ │driver mux    │ │lease worker  │ │collectors    │ │guards        │                    ║
+║  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘                    ║
+║                                   │                                                                      ║
+║          ┌────────────────────────┴─────────────────────────┐                                            ║
+║          ▼                                                  ▼                                            ║
+║  Single Run Path                                   Eval Materialization                                  ║
+║  `RunSpec` -> normalize -> policy ->              `Dataset` -> `DatasetVersion` -> `EvalSpec`            ║
+║  approval -> execute by `RunKind` -> finalize     -> `RunGroup` + `RunGroupItem` -> `EvalRun`            ║
+║  Kinds: agent_task / research / subagent /        Built-in datasets feed selector and execution lanes    ║
+║  workflow                                          and batch migration programs.                         ║
+║                                   │                                                                      ║
+║                                   ▼                                                                      ║
+║  Batch Execution + Scoring                                                                               ║
+║  claim leased item -> build per-item `RunSpec` -> `Submit()` -> wait terminal run -> verify ->           ║
+║  score (rule / ground-truth / judge) -> `Scorecard` + checkpoint artifact -> group/eval report           ║
+║                                   │                                                                      ║
+║                                   ▼                                                                      ║
+║  Comparison + Release Gates                                                                              ║
+║  compare target vs baseline/prior eval -> selector gate -> execution gate -> budget gate ->              ║
+║  cutover readiness (candidate id + consecutive passing runs)                                             ║
+║                                   │                                                                      ║
+║                                   ▼                                                                      ║
+║  SQLite Ledger                                                                                           ║
+║  `harness_runs` / events / artifacts / `harness_run_groups` / items / `harness_scorecards`               ║
+║  `harness_datasets` / versions / `harness_eval_specs` / `harness_eval_runs` / baselines / reports        ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### What Harness Owns
+
+- Single execution units. `Run` is the base execution primitive for agent tasks, research jobs, workflow runs, and subagent runs. Parent/child relationships are persisted so the run tree remains queryable after execution.
+- Guarded runtime submission. Before dispatch, the controller moves a run through normalized stages such as `normalize`, `policy`, `approval`, `execute`, and `finalize`, and records stage events for later inspection.
+- Batch and evaluation materialization. Reusable dataset manifests are frozen into `DatasetVersion`, bound into `EvalSpec`, and then expanded into concrete `RunGroupItem` attempts when an `EvalRun` is submitted.
+- Unified scoring and reporting. Terminal runs are verified, scored, and summarized into `Scorecard`, group reports, eval reports, artifacts, runtime evidence, and checkpoint payloads.
+- Release gating. The same stored eval reports feed selector, execution-equivalence, budget, and cutover-readiness checks, so migration decisions use persisted evidence instead of ad hoc spot checks.
+
+### End-to-End Process
+
+1. A caller enters through the harness API, an existing compatibility surface such as agent tasks or deep research, or the `blue harness` CLI.
+2. `bootstrap` assembles the runtime bundle, wiring the controller, store, dispatcher, observer, traces, and guard helpers into the protected server routes.
+3. For a single run, the controller validates the `RunSpec`, resolves policy defaults, picks the registered driver for the requested `RunKind`, creates the run row, and starts execution while appending lifecycle events and artifacts.
+4. For a reusable eval, the flow is `Dataset` -> `DatasetVersion` -> `EvalSpec`; submitting the eval materializes a concrete `RunGroup` and `RunGroupItem` set, then persists an `EvalRun` that points at that group. The group is the execution container, while the eval objects remain the reusable and auditable platform layer.
+5. The `GroupDispatcher` polls queued groups, claims runnable items with leases, builds a per-item `RunSpec`, submits it through the same controller path, waits for terminal status, then verifies and scores the result.
+6. Scoring can short-circuit on deterministic verification failure, otherwise it uses rule checks first, ground-truth checks where available, and judge scoring or heuristic fallback when deterministic evidence is insufficient.
+7. Persisted eval reports can then be compared against a baseline or a prior eval run. Blue uses that comparison data to run selector, execution-equivalence, and budget gates, and finally aggregates those lane results into a cutover-readiness decision that requires repeated passing candidate runs.
+
+### Built-In Harness Programs
+
+- Selector gate. Uses the built-in multilingual selector dataset to detect routing regressions, critical-case failures, route drift, and clarify-rate drift before selector changes are promoted.
+- Execution equivalence gate. Uses the batch-1 execution dataset to confirm that migrated skill flows still complete correctly relative to a baseline.
+- Budget gate. Measures native tool-surface shrinkage, schema-byte reduction, latency drift, and allowed final native tools during tool-to-skill cutover work.
+- Cutover readiness. Combines recent selector, execution, and budget assessments for a candidate and requires consecutive passing runs before a cutover is considered ready.
 
 ## Frontend and Desktop Composition
 
@@ -550,7 +647,7 @@ Chat / agent / workflow issues a tool call
 ### Tool and agent runtime
 
 - `server/internal/tools`: built-in tools, exec safety, approvals, browser adapters, tool gateway
-- `server/internal/agent`: agent runner and agent-facing APIs
+- `server/internal/agent`: agent runner, planner-memory grounding, isolated subagent delegation, agent-facing APIs, reflection hooks
 - `server/internal/harness`: tracked run controller, child-run policy, artifact and event persistence
 - `server/internal/cron`, `workflow`, `push`, `browser`, `convert`, `mediagen`, `ppt`: automation and execution integrations
 - `server/internal/skill`: Go skill registry and embedded skill assets
@@ -559,7 +656,7 @@ Chat / agent / workflow issues a tool call
 
 - `server/internal/memory`: SQLite conversation store, markdown backend, layered memory, vector store, hybrid search
 - `server/internal/session`: session isolation, compaction, persistence hooks
-- `server/internal/contextpack`: workspace context packs and resolver
+- `server/internal/contextpack`: workspace context packs, annotation-backed resolver, and prompt grounding inputs
 - `server/internal/workspace`: managed runtime workspace layout
 
 ### Security and governance

@@ -2,12 +2,16 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -226,6 +230,10 @@ func (h *AutoHarnessTurnHook) buildGroupSpec(ctx context.Context, turn TurnConte
 	if autoTurn.UserMessage != nil {
 		itemMetadata["user_message_id"] = strings.TrimSpace(autoTurn.UserMessage.ID)
 	}
+	contextPackSnapshot := autoHarnessContextPackSnapshot(turn.ContextPackSelection)
+	if len(contextPackSnapshot) > 0 {
+		itemMetadata["contextpack_snapshot"] = autoHarnessCloneMap(contextPackSnapshot)
+	}
 
 	contractMeta, successCriteria := autoHarnessContractMetadata(goal, autoTurn.ToolNames)
 	if len(contractMeta) > 0 {
@@ -264,6 +272,9 @@ func (h *AutoHarnessTurnHook) buildGroupSpec(ctx context.Context, turn TurnConte
 		"quick_eval_eval_name":    datasetName + " Eval",
 		"trigger_kind":            "auto_harness",
 		"trigger_reasons":         append([]string(nil), triggerReasons...),
+	}
+	if len(contextPackSnapshot) > 0 {
+		groupMetadata["contextpack_snapshot"] = autoHarnessCloneMap(contextPackSnapshot)
 	}
 
 	spec := &AutoHarnessQuickEvalSpec{
@@ -377,6 +388,87 @@ func autoHarnessToolNamesFromMessage(message memory.Message) []string {
 		}
 	}
 	return names
+}
+
+func autoHarnessContextPackSnapshot(selection *contextpack.SelectionSet) map[string]interface{} {
+	if selection == nil || len(selection.Files) == 0 {
+		return nil
+	}
+	snapshot := map[string]interface{}{
+		"selected_count": len(selection.Files),
+		"total_tokens":   selection.TotalTokens,
+		"truncated":      selection.Truncated,
+		"files":          selection.AuditMetadata(),
+	}
+	if selectedSkill := strings.TrimSpace(selection.SelectedSkill); selectedSkill != "" {
+		snapshot["selected_skill"] = selectedSkill
+	}
+	if digest := autoHarnessContextPackDigest(selection); digest != "" {
+		snapshot["selection_digest"] = digest
+	}
+	return snapshot
+}
+
+func autoHarnessCloneMap(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func autoHarnessContextPackDigest(selection *contextpack.SelectionSet) string {
+	if selection == nil || len(selection.Files) == 0 {
+		return ""
+	}
+	type digestFile struct {
+		EntryID         string `json:"entry_id"`
+		Type            string `json:"type"`
+		SourceTrust     string `json:"source_trust,omitempty"`
+		Language        string `json:"language,omitempty"`
+		Version         string `json:"version,omitempty"`
+		File            string `json:"file"`
+		SHA256          string `json:"sha256"`
+		Tokens          int    `json:"tokens,omitempty"`
+		Annotated       bool   `json:"annotated,omitempty"`
+		AnnotationCount int    `json:"annotation_count,omitempty"`
+		Truncated       bool   `json:"truncated,omitempty"`
+	}
+	payload := struct {
+		SelectedSkill string       `json:"selected_skill,omitempty"`
+		TotalTokens   int          `json:"total_tokens,omitempty"`
+		Truncated     bool         `json:"truncated,omitempty"`
+		Files         []digestFile `json:"files"`
+	}{
+		SelectedSkill: strings.TrimSpace(selection.SelectedSkill),
+		TotalTokens:   selection.TotalTokens,
+		Truncated:     selection.Truncated,
+		Files:         make([]digestFile, 0, len(selection.Files)),
+	}
+	for _, file := range selection.Files {
+		payload.Files = append(payload.Files, digestFile{
+			EntryID:         strings.TrimSpace(file.EntryID),
+			Type:            string(file.Type),
+			SourceTrust:     string(file.SourceTrust),
+			Language:        strings.TrimSpace(file.Language),
+			Version:         strings.TrimSpace(file.Version),
+			File:            strings.TrimSpace(file.File),
+			SHA256:          strings.TrimSpace(file.SHA256),
+			Tokens:          file.Tokens,
+			Annotated:       file.Annotated,
+			AnnotationCount: len(file.AnnotationIDs),
+			Truncated:       file.Truncated,
+		})
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
 }
 
 func autoHarnessTriggerReasons(goal, assistantContent string) []string {

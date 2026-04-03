@@ -167,7 +167,7 @@ const fallbackReasonLabels = {
   },
   'it-IT': {
     model_unready: 'Modello non pronto',
-    timeout: 'Timeout',
+    timeout: 'Tempo scaduto',
     circuit_open: 'Interruttore aperto',
     low_confidence: 'Bassa confidenza',
     schema_invalid: 'Schema non valido',

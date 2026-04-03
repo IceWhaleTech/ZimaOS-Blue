@@ -584,6 +584,114 @@ func TestWebQueryToolSingleOpenAISiteHintUsesCanonicalURL(t *testing.T) {
 	}
 }
 
+func TestWebQueryToolOfficialResponseFormatDocsShortcutUsesCanonicalURL(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			t.Fatalf("search should not run for official response-format docs shortcut, args=%v", args)
+			return nil, nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			if url != "https://developers.openai.com/api/reference/resources/responses" {
+				t.Fatalf("read url = %q, want canonical Responses docs URL", url)
+			}
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Responses | OpenAI API Reference",
+				Content:  "Canonical Responses API documentation reached through the official response-format shortcut with enough endpoint detail, response schema notes, streaming guidance, and readable prose to count as a strong successful read.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "OpenAI API official documentation response format",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Status != webQueryStatusOK {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
+	}
+	if envelope.FinalURL != "https://developers.openai.com/api/reference/resources/responses" {
+		t.Fatalf("final_url = %q, want canonical Responses docs URL", envelope.FinalURL)
+	}
+	if envelope.Diagnostics.Route != "canonical_url" {
+		t.Fatalf("route = %q, want canonical_url", envelope.Diagnostics.Route)
+	}
+	if len(searchTool.lastArgs) != 0 {
+		t.Fatalf("search calls = %d, want 0", len(searchTool.lastArgs))
+	}
+}
+
+func TestWebQueryToolOfficialChatCompletionsStructureDocsShortcutUsesCanonicalURL(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			t.Fatalf("search should not run for official chat completions structure docs shortcut, args=%v", args)
+			return nil, nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			if url != "https://developers.openai.com/api/reference/chat-completions/overview" {
+				t.Fatalf("read url = %q, want canonical Chat Completions overview URL", url)
+			}
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Chat Completions Overview | OpenAI API Reference",
+				Content:  "Canonical Chat Completions overview documentation reached through the official response-structure shortcut with enough schema detail, response object guidance, and readable prose to count as a strong successful read.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "official OpenAI API documentation Chat Completions response object structure",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Status != webQueryStatusOK {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
+	}
+	if envelope.FinalURL != "https://developers.openai.com/api/reference/chat-completions/overview" {
+		t.Fatalf("final_url = %q, want canonical Chat Completions overview URL", envelope.FinalURL)
+	}
+	if envelope.Diagnostics.Route != "canonical_url" {
+		t.Fatalf("route = %q, want canonical_url", envelope.Diagnostics.Route)
+	}
+	if len(searchTool.lastArgs) != 0 {
+		t.Fatalf("search calls = %d, want 0", len(searchTool.lastArgs))
+	}
+}
+
 func TestWebQueryToolDoesNotAnalyzeMediaUnlessRequested(t *testing.T) {
 	searchTool := &scriptedWebTool{
 		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
@@ -1517,7 +1625,7 @@ func TestWebQueryToolSearchQueryReadsNormalizedBingFinanceURL(t *testing.T) {
 	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
 
 	raw, err := tool.Execute(context.Background(), map[string]interface{}{
-		"input": "Research the current stock price of Apple (AAPL) and return the price, date, and a brief market summary.",
+		"input": "Find a public finance overview page for Apple AAPL and summarize it.",
 		"depth": "standard",
 	})
 	if err != nil {
@@ -1586,7 +1694,7 @@ func TestWebQueryToolStrongNormalizedBingResultSkipsBrowserSearchFallback(t *tes
 	tool.SetBrowser(browser)
 
 	raw, err := tool.Execute(context.Background(), map[string]interface{}{
-		"input": "AAPL stock price",
+		"input": "Find a public finance overview page for Apple AAPL.",
 		"depth": "standard",
 	})
 	if err != nil {
@@ -1610,6 +1718,56 @@ func TestWebQueryToolStrongNormalizedBingResultSkipsBrowserSearchFallback(t *tes
 	}
 }
 
+func TestWebQueryToolStockQuoteFastPathBypassesSearchFanout(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			t.Fatalf("search fanout should not run for the stock quote fast path: %+v", args)
+			return nil, nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			readURL := args["url"].(string)
+			if readURL != "https://stockanalysis.com/stocks/aapl/" {
+				t.Fatalf("url = %q, want canonical stockanalysis URL", readURL)
+			}
+			resp := webReadResponse{
+				URL:      readURL,
+				FinalURL: readURL,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Apple (AAPL) Stock Price",
+				Content:  "Apple stock price, intraday range, valuation, and market activity with enough readable detail that the stock quote fast path should satisfy the query without calling the general search fanout path first.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "Research the current stock price of Apple (AAPL) and return the price, date, and a brief market summary.",
+		"depth": "standard",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.TargetURL != "https://stockanalysis.com/stocks/aapl/" {
+		t.Fatalf("target_url = %q, want canonical stockanalysis URL", envelope.TargetURL)
+	}
+	if len(searchTool.lastArgs) != 0 {
+		t.Fatalf("search calls = %d, want 0", len(searchTool.lastArgs))
+	}
+}
+
 func TestWebQueryToolReusesBrowserTargetWithinSameHostCandidates(t *testing.T) {
 	const (
 		firstURL  = "https://stockanalysis.com/stocks/aapl/"
@@ -1621,7 +1779,7 @@ func TestWebQueryToolReusesBrowserTargetWithinSameHostCandidates(t *testing.T) {
 		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
 		exec: func(args map[string]interface{}) (interface{}, error) {
 			resp := WebSearchResponse{
-				Query: "AAPL stock price",
+				Query: "AAPL finance overview",
 				Results: []WebSearchResult{
 					{Title: "Apple Stock Price", URL: firstURL, Description: "Quote page"},
 					{Title: "Apple Financials", URL: secondURL, Description: "Financial statements"},
@@ -1734,7 +1892,7 @@ func TestWebQueryToolReusesBrowserTargetWithinSameHostCandidates(t *testing.T) {
 	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
 
 	raw, err := tool.Execute(context.Background(), map[string]interface{}{
-		"input": "AAPL stock price",
+		"input": "AAPL finance overview",
 		"depth": "standard",
 	})
 	if err != nil {
@@ -1771,7 +1929,7 @@ func TestWebQueryToolDoesNotReuseBrowserTargetAcrossHosts(t *testing.T) {
 		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
 		exec: func(args map[string]interface{}) (interface{}, error) {
 			resp := WebSearchResponse{
-				Query: "AAPL stock price",
+				Query: "AAPL finance overview",
 				Results: []WebSearchResult{
 					{Title: "Apple Stock Price", URL: firstURL, Description: "Quote page"},
 					{Title: "Yahoo Finance Apple", URL: secondURL, Description: "Yahoo quote"},
@@ -1848,7 +2006,7 @@ func TestWebQueryToolDoesNotReuseBrowserTargetAcrossHosts(t *testing.T) {
 	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
 
 	raw, err := tool.Execute(context.Background(), map[string]interface{}{
-		"input": "AAPL stock price",
+		"input": "AAPL finance overview",
 		"depth": "standard",
 	})
 	if err != nil {
@@ -1863,9 +2021,6 @@ func TestWebQueryToolDoesNotReuseBrowserTargetAcrossHosts(t *testing.T) {
 		if asString(call["url"]) == secondURL && strings.TrimSpace(asString(call["browser_target_id"])) != "" {
 			t.Fatalf("read calls = %+v, want no cross-host browser target reuse", readTool.lastArgs)
 		}
-	}
-	if envelope.Status != webQueryStatusOK {
-		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 )
 
 const startupIntegrityStateFileName = ".startup-integrity-state"
+const startupQuickCheckPrimaryDBFilename = "blue.db"
 
 var startupQuickCheckEnabled atomic.Bool
 var startupQuickCheckStateMu sync.Mutex
@@ -75,6 +76,9 @@ func consumeStartupQuickCheckPath(dbPath string) bool {
 	}
 
 	normalizedPath := filepath.Clean(dbPath)
+	if !strings.EqualFold(filepath.Base(normalizedPath), startupQuickCheckPrimaryDBFilename) {
+		return false
+	}
 
 	startupQuickCheckStateMu.Lock()
 	defer startupQuickCheckStateMu.Unlock()

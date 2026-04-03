@@ -3390,7 +3390,7 @@ func TestExecutorFactoryUnsupportedAliasesReturnStructuredResult(t *testing.T) {
 	RegisterFactoryToolDefinitions(registry)
 
 	executor := NewExecutor(registry)
-	for _, name := range []string{"agents_list", "subagents", "pdf"} {
+	for _, name := range []string{"pdf"} {
 		result, err := executor.Execute(context.Background(), name, map[string]interface{}{"input": "test"})
 		if err != nil {
 			t.Fatalf("execute %s failed: %v", name, err)
@@ -3464,7 +3464,7 @@ func TestExecutorFactoryCompatCoverage_NoErrToolNotFound(t *testing.T) {
 		if raw, ok := result.(string); ok && strings.HasPrefix(strings.TrimSpace(raw), "{") {
 			var payload map[string]interface{}
 			if json.Unmarshal([]byte(raw), &payload) == nil {
-				if payload["code"] == "tool_unavailable" && name != "agents_list" && name != "subagents" && name != "pdf" {
+				if payload["code"] == "tool_unavailable" && name != "pdf" {
 					t.Fatalf("tool %q returned unavailable payload: %s", name, raw)
 				}
 			}

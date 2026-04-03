@@ -44,12 +44,27 @@ func CandidateIDs(topic string) []string {
 
 	add(topic)
 	add(normalizeSkillID(topic))
+	for _, alias := range candidateCompatAliases(topic) {
+		add(alias)
+	}
 	if dot := strings.IndexByte(topic, '.'); dot > 0 {
 		base := strings.TrimSpace(topic[:dot])
 		add(base)
 		add(normalizeSkillID(base))
+		for _, alias := range candidateCompatAliases(base) {
+			add(alias)
+		}
 	}
 	return out
+}
+
+func candidateCompatAliases(topic string) []string {
+	switch normalizeSkillID(topic) {
+	case "web_search":
+		return []string{"web_query"}
+	default:
+		return nil
+	}
 }
 
 // FindByCandidates resolves the first matching skill using candidate priority

@@ -64,6 +64,7 @@ type webAccessDocument struct {
 	Format              string
 	Content             string
 	Source              string
+	BrowserTargetID     string
 	Warnings            []webAccessWarning
 	InteractiveRequired bool
 	StatusCode          int
@@ -111,6 +112,7 @@ type webReadResponse struct {
 	Format              string          `json:"format"`
 	Content             string          `json:"content,omitempty"`
 	Source              string          `json:"source"`
+	BrowserTargetID     string          `json:"browser_target_id,omitempty"`
 	Warnings            []string        `json:"warnings,omitempty"`
 	WarningCodes        []string        `json:"warning_codes,omitempty"`
 	InteractiveRequired bool            `json:"interactive_required,omitempty"`
@@ -410,6 +412,7 @@ func (t *WebReadTool) Execute(ctx context.Context, args map[string]interface{}) 
 		Format:              format,
 		Content:             doc.Content,
 		Source:              doc.Source,
+		BrowserTargetID:     doc.BrowserTargetID,
 		Warnings:            warningMessages(doc.Warnings),
 		WarningCodes:        warningCodes(doc.Warnings),
 		InteractiveRequired: doc.InteractiveRequired,
@@ -837,6 +840,7 @@ func (r *webAccessRuntime) fetch(ctx context.Context, rawURL string, opts webAcc
 				Format:          format,
 				Content:         content,
 				Source:          firstNonEmpty(result.Payload.Source, strategySourceForFetchResult(result)),
+				BrowserTargetID: result.BrowserTargetID,
 				StatusCode:      statusCodeForChallenge(result.ChallengeState),
 				Truncated:       truncated || result.Payload.BodyTruncated,
 				ContentType:     result.Payload.ContentType,
@@ -1015,10 +1019,11 @@ func (r *webAccessRuntime) fetchViaHTTPBackend(ctx context.Context, normalizedUR
 }
 
 func (r *webAccessRuntime) fetchViaBrowser(ctx context.Context, normalizedURL, format, targetID, reasonCode, reason string, maxChars int) (webAccessDocument, error) {
-	payload, err := r.base.fetchViaBrowserSession(ctx, normalizedURL, format, targetID, reasonCode, reason)
+	detailed, err := r.base.fetchViaBrowserSessionDetailed(ctx, normalizedURL, format, targetID, reasonCode, reason)
 	if err != nil {
 		return webAccessDocument{}, err
 	}
+	payload := detailed.Payload
 	content, truncated := truncateWebFetchContent(payload.Content, maxChars)
 	doc := webAccessDocument{
 		URL:             normalizedURL,
@@ -1027,6 +1032,7 @@ func (r *webAccessRuntime) fetchViaBrowser(ctx context.Context, normalizedURL, f
 		Format:          format,
 		Content:         content,
 		Source:          webAccessSourceBrowser,
+		BrowserTargetID: detailed.TargetID,
 		Truncated:       truncated,
 		ContentType:     payload.ContentType,
 		Extractor:       payload.Extractor,

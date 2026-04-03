@@ -21,30 +21,12 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
-// Handle custom event from functional cards
-function handleFullscreenEvent(e: Event) {
-  const customEvent = e as CustomEvent<{ type: string; dataJson: string }>
-  try {
-    const data = JSON.parse(customEvent.detail.dataJson)
-    fullscreenContent.value = {
-      type: customEvent.detail.type as 'code' | 'diff' | 'terminal',
-      ...data,
-    }
-    isFullscreen.value = true
-    document.body.style.overflow = 'hidden'
-  } catch (err) {
-    console.error('Failed to open fullscreen:', err)
-  }
-}
-
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
-  window.addEventListener('typeless-fullscreen', handleFullscreenEvent)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
-  window.removeEventListener('typeless-fullscreen', handleFullscreenEvent)
 })
 
 async function copyContent() {

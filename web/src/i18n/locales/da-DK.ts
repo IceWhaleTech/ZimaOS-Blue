@@ -1,5 +1,5 @@
 // Danish (Dansk)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('da-DK', {
   common: {
@@ -1849,7 +1849,12 @@ export default mergeHarnessLocale('da-DK', {
       saveBeforeHealth: 'Gem profilen, før du kører et sundhedstjek.',
       duplicate: 'Duplikat',
       builtinHelp:
-        'Indbyggede profiler forbliver skrivebeskyttede, så de seedede Claude, Codex, Gemini og generiske A2A-poster forbliver stabile.',
+        'Indbyggede profiler forbliver skrivebeskyttede. Dupliker en for at oprette en tilpasset kopi.',
+      acpTemplateSummary: 'Dupliker for at tilføje en kørbar ACP-kommando.',
+      acpTemplateHelp:
+        'Indbyggede ACP-poster er kun opsætningsskabeloner. Dupliker en, og tilføj derefter en vilkårlig kørbar ACP-kommando.',
+      acpTemplateActionDisabled:
+        'Indbyggede ACP-skabeloner kan ikke køre verifikation eller sundhedstjek. Dupliker en først, og konfigurer en kommando.',
       command: 'Kommando og Args',
       credentialSource: 'Legitimationskilde',
       authMethod: 'Auth metode',

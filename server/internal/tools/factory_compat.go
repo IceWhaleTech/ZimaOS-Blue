@@ -40,9 +40,7 @@ var factoryToolNames = []string{
 var factoryToolNameSet = buildFactoryToolNameSet(factoryToolNames)
 
 var unsupportedFactoryToolHints = map[string]string{
-	"agents_list": "agents_list is not enabled in this runtime yet.",
-	"subagents":   "subagents is not enabled in this runtime yet.",
-	"pdf":         "pdf is not enabled in this runtime yet.",
+	"pdf": "pdf is not enabled in this runtime yet.",
 }
 
 func buildFactoryToolNameSet(names []string) map[string]struct{} {
@@ -309,8 +307,8 @@ func resolveFactoryMemoryAliasCommand(name string, args map[string]interface{}) 
 		id := firstCompatString(args, "id", "path", "file", "memory_id", "memoryId", "key")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/path is required for memory_get")
-	}
-	return buildCompatHTTPCommand("GET", "/api/v1/memory/"+url.PathEscape(id)), true, ""
+		}
+		return buildCompatHTTPCommand("GET", "/api/v1/memory/"+url.PathEscape(id)), true, ""
 	case "memory_write":
 		content := firstCompatString(args, "content", "text", "input", "memory", "note", "message")
 		if content == "" {

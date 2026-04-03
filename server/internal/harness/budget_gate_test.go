@@ -24,7 +24,7 @@ func TestController_EvaluateSkillCutoverBudgetGate_PassesForExecOnlySurface(t *t
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "budget-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("analyze", true, "clarify"),
 		},
 	}, len(items))
@@ -40,7 +40,7 @@ func TestController_EvaluateSkillCutoverBudgetGate_PassesForExecOnlySurface(t *t
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "budget-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseWithTools("web_search", []string{"exec"}, false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseWithTools("web_query", []string{"exec"}, false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponseWithTools("exec", []string{"exec"}, true, "clarify"),
 		},
 	}, len(items))
@@ -94,7 +94,7 @@ func TestController_EvaluateSkillCutoverBudgetGate_FailsForNonExecSurface(t *tes
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "budget-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("analyze", true, "clarify"),
 		},
 	}, len(items))
@@ -110,7 +110,7 @@ func TestController_EvaluateSkillCutoverBudgetGate_FailsForNonExecSurface(t *tes
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "budget-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("analyze", true, "clarify"),
 		},
 	}, len(items))
@@ -140,7 +140,7 @@ func TestController_EvaluateSkillCutoverBudgetGate_PrefersSelectedNativeSurface(
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "budget-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -168,7 +168,6 @@ func TestController_EvaluateSkillCutoverBudgetGate_PrefersSelectedNativeSurface(
 				"skill_route_outcome":          "selected",
 				"decision_reason":              "curated_test",
 				"decision_stage":               "rerank",
-				"smart_skill_selection":        true,
 			},
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": {
 				"selected_tools":               []interface{}{"exec"},
@@ -182,7 +181,6 @@ func TestController_EvaluateSkillCutoverBudgetGate_PrefersSelectedNativeSurface(
 				"skill_route_outcome":          "clarify",
 				"decision_reason":              "curated_test",
 				"decision_stage":               "rerank",
-				"smart_skill_selection":        true,
 				"clarify_reason":               "The request mixes local-workspace and live-web intents.",
 			},
 		},
@@ -222,7 +220,6 @@ func TestController_EvaluateSkillCutoverBudgetGate_UsesLegacySurfaceForBaselineW
 				"skill_route_outcome":          "selected",
 				"decision_reason":              "curated_test",
 				"decision_stage":               "rerank",
-				"smart_skill_selection":        true,
 			},
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": {
 				"selected_tools":               []interface{}{"exec", "browser"},
@@ -236,7 +233,6 @@ func TestController_EvaluateSkillCutoverBudgetGate_UsesLegacySurfaceForBaselineW
 				"skill_route_outcome":          "clarify",
 				"decision_reason":              "curated_test",
 				"decision_stage":               "rerank",
-				"smart_skill_selection":        true,
 				"clarify_reason":               "The request mixes local-workspace and live-web intents.",
 			},
 		},
@@ -265,7 +261,6 @@ func TestController_EvaluateSkillCutoverBudgetGate_UsesLegacySurfaceForBaselineW
 				"skill_route_outcome":          "selected",
 				"decision_reason":              "curated_test",
 				"decision_stage":               "rerank",
-				"smart_skill_selection":        true,
 			},
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": {
 				"selected_tools":               []interface{}{"exec", "browser"},
@@ -279,7 +274,6 @@ func TestController_EvaluateSkillCutoverBudgetGate_UsesLegacySurfaceForBaselineW
 				"skill_route_outcome":          "clarify",
 				"decision_reason":              "curated_test",
 				"decision_stage":               "rerank",
-				"smart_skill_selection":        true,
 				"clarify_reason":               "The request mixes local-workspace and live-web intents.",
 			},
 		},

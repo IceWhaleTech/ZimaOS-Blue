@@ -2,6 +2,8 @@ package builtin
 
 import (
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 func TestRegisterAll(t *testing.T) {
@@ -20,7 +22,6 @@ func TestRegisterAll(t *testing.T) {
 		NewAnalyze(),
 		NewDeepResearch(),
 		NewWebQuery(),
-		NewWebSearch(),
 		NewUIReviewer(),
 		NewHumanizer(),
 	}
@@ -28,5 +29,19 @@ func TestRegisterAll(t *testing.T) {
 	expected := GetSkillCount()
 	if len(skills) != expected {
 		t.Errorf("expected %d built-in skills, got %d", expected, len(skills))
+	}
+}
+
+func TestRegisterAll_RegistersCanonicalWebQueryOnly(t *testing.T) {
+	registry := skill.NewRegistry()
+	if err := RegisterAll(registry); err != nil {
+		t.Fatalf("RegisterAll error: %v", err)
+	}
+
+	if registry.Get("web_query") == nil {
+		t.Fatal("expected web_query builtin skill to be registered")
+	}
+	if registry.Get("web_search") != nil {
+		t.Fatal("expected legacy web_search builtin skill to stay unregistered by default")
 	}
 }

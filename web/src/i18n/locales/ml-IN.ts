@@ -1,5 +1,5 @@
 // Malayalam (മലയാളം)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('ml-IN', {
   common: {
@@ -1859,7 +1859,12 @@ export default mergeHarnessLocale('ml-IN', {
       saveBeforeHealth: 'ആരോഗ്യ പരിശോധന നടത്തുന്നതിന് മുമ്പ് പ്രൊഫൈൽ സംരക്ഷിക്കുക.',
       duplicate: 'ഡ്യൂപ്ലിക്കേറ്റ്',
       builtinHelp:
-        'ബിൽറ്റ്-ഇൻ പ്രൊഫൈലുകൾ വായന-മാത്രമായി നിലനിൽക്കും, അതിനാൽ സീഡ് ചെയ്ത Claude, Codex, Gemini, ജനറിക് A2A എൻട്രികൾ സ്ഥിരമായി നിലനിൽക്കും.',
+        'ബിൽറ്റ്-ഇൻ പ്രൊഫൈലുകൾ വായനയ്ക്ക് മാത്രമായിരിക്കും. ഇഷ്ടാനുസൃത പകർപ്പ് ഉണ്ടാക്കാൻ ഒന്ന് പകർത്തുക.',
+      acpTemplateSummary: 'പ്രവർത്തിപ്പിക്കാവുന്ന ACP കമാൻഡ് ചേർക്കാൻ പകർത്തുക.',
+      acpTemplateHelp:
+        'ബിൽറ്റ്-ഇൻ ACP എൻട്രികൾ സെറ്റപ്പ് ടെംപ്ലേറ്റുകൾ മാത്രമാണ്. ഒന്ന് പകർത്തി ശേഷം പ്രവർത്തിപ്പിക്കാവുന്ന ACP കമാൻഡ് ചേർക്കുക.',
+      acpTemplateActionDisabled:
+        'ബിൽറ്റ്-ഇൻ ACP ടെംപ്ലേറ്റുകളിൽ verify അല്ലെങ്കിൽ health check പ്രവർത്തിപ്പിക്കാനാവില്ല. ആദ്യം ഒന്ന് പകർത്തി ഒരു കമാൻഡ് ക്രമീകരിക്കുക.',
       command: 'കമാൻഡും ആർഗ്സും',
       credentialSource: 'ക്രെഡൻഷ്യൽ ഉറവിടം',
       authMethod: 'ഓത്ത് രീതി',

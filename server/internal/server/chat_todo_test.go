@@ -27,7 +27,7 @@ func TestShouldAutoContinueForTodo(t *testing.T) {
 	})
 
 	t.Run("continues when todo exists and no user input is needed", func(t *testing.T) {
-		current := "- [ ] 调用 web_search 查询实时天气\n- [ ] 汇总结果并回答用户"
+		current := "- [ ] 调用 web_query 查询实时天气\n- [ ] 汇总结果并回答用户"
 		if !shouldAutoContinueForTodo(current, "") {
 			t.Fatalf("expected auto-continue for pending todo without clarification request")
 		}
@@ -260,6 +260,16 @@ func TestShouldPreferPublicArtifactResearchWorkflow_ForConferenceArtifact(t *tes
 	}
 	if shouldPreferWorkspaceFileWorkflow(prompt) {
 		t.Fatalf("expected conference artifact prompt not to be treated as workspace-only file workflow")
+	}
+}
+
+func TestShouldPreferPublicArtifactResearchWorkflow_ForStockArtifact(t *testing.T) {
+	prompt := "Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary."
+	if !shouldPreferPublicArtifactResearchWorkflow(prompt) {
+		t.Fatalf("expected stock artifact prompt to prefer public research workflow")
+	}
+	if shouldPreferWorkspaceFileWorkflow(prompt) {
+		t.Fatalf("expected stock artifact prompt not to be treated as workspace-only file workflow")
 	}
 }
 
@@ -656,6 +666,18 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 		}
 	})
 
+	t.Run("continues on bracketed tool_call leakage text", func(t *testing.T) {
+		current := `[TOOL_CALL]
+{tool => "web_query", args => {
+  --input "Apple AAPL stock price today April 2026"
+}}
+[/TOOL_CALL]`
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
 	t.Run("continues on protocol deliberation leakage text", func(t *testing.T) {
 		current := `{"format":"..."}
 No to field maybe automatically from functions.web_search?
@@ -706,6 +728,54 @@ Need include in assistant message header not possible in plaintext.
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if ok {
 			t.Fatalf("expected no auto-continue for benign single cmd json, got reason=%q", reason)
+		}
+	})
+
+	t.Run("does not treat xml tool example prose as pseudo tool-call", func(t *testing.T) {
+		current := "下面是 XML 工具调用示例：<web_query><input>Apple AAPL stock price today2026</input></web_query>，不要实际执行。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue for xml example prose, got reason=%q", reason)
+		}
+	})
+
+	t.Run("does not treat bracketed tool example prose as pseudo tool-call", func(t *testing.T) {
+		current := "下面是 bracketed 工具调用示例：[TOOL_CALL]{\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}[/TOOL_CALL]，不要实际执行。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue for bracketed example prose, got reason=%q", reason)
+		}
+	})
+
+	t.Run("does not treat format guidance json prose as pseudo tool-call", func(t *testing.T) {
+		current := "工具调用格式如下：{\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue for format guidance JSON prose, got reason=%q", reason)
+		}
+	})
+
+	t.Run("does not treat return guidance xml prose as pseudo tool-call", func(t *testing.T) {
+		current := "你可以返回以下 XML：<web_query><input>Apple AAPL stock price today2026</input></web_query>"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue for return guidance XML prose, got reason=%q", reason)
+		}
+	})
+
+	t.Run("does not treat blockquote guidance json prose as pseudo tool-call", func(t *testing.T) {
+		current := "文档说明：\n> {\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue for blockquote guidance JSON prose, got reason=%q", reason)
+		}
+	})
+
+	t.Run("does not treat list item guidance xml prose as pseudo tool-call", func(t *testing.T) {
+		current := "可选写法：\n- <web_query><input>Apple AAPL stock price today2026</input></web_query>"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue for list-item guidance XML prose, got reason=%q", reason)
 		}
 	})
 
@@ -802,7 +872,7 @@ func TestBuildReducedContinuationRecoveryRequest_AggressiveFallbackShrinksWhenNe
 		},
 		Tools: []llm.Tool{
 			{Name: "exec", Description: "execute command"},
-			{Name: "web_search", Description: "search web"},
+			{Name: "web_query", Description: "search web"},
 		},
 	}
 
@@ -1140,6 +1210,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		first := filterPseudoDirectiveDeltaForStreaming(
 			"先给结论：to=functions.exec {\"command\":\"blue help browser\"}",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1152,6 +1223,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		noise := filterPseudoDirectiveDeltaForStreaming(
 			"{\"command\":\"...\",\"workdir\":\"/tmp/workspace\"}",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1161,6 +1233,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		recovery := filterPseudoDirectiveDeltaForStreaming(
 			"这是最终答复。",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1177,6 +1250,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 		suppressedChunks := 0
 		visible := filterPseudoDirectiveDeltaForStreaming(
 			"{\"recipient_name\":\"functions.exec\",\"parameters\":{\"command\":\"blue help browser\"}}",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1193,6 +1267,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 		suppressedChunks := 0
 		visible := filterPseudoDirectiveDeltaForStreaming(
 			"{\"cmd\":\"ls -la\"}I’ll inspect now.{\"tool\":\"exec\",\"cmd\":\"ls -la\"}\n```tool\n{\"name\":\"exec\",\"arguments\":{\"cmd\":\"ls -la\"}}\n```\n<exec>{\"cmd\":\"ls -la\"}</exec>",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1210,6 +1285,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		first := filterPseudoDirectiveDeltaForStreaming(
 			"{\"tool_uses\":[...]}",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1223,6 +1299,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 		for i := 0; i < 120; i++ {
 			noise := filterPseudoDirectiveDeltaForStreaming(
 				"with recipient_name and parameters to multi_tool_use.parallel.",
+				nil,
 				&suppressing,
 				&suppressedChunks,
 			)
@@ -1236,6 +1313,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		recovery := filterPseudoDirectiveDeltaForStreaming(
 			"这是最终答复。",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1253,6 +1331,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		first := filterPseudoDirectiveDeltaForStreaming(
 			"{\"tool_uses\":[...]}",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1265,6 +1344,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		fence := filterPseudoDirectiveDeltaForStreaming(
 			"```",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1274,6 +1354,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		recipient := filterPseudoDirectiveDeltaForStreaming(
 			"with recipient multi_tool_use.parallel. We can do that again.",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1283,6 +1364,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		envelope := filterPseudoDirectiveDeltaForStreaming(
 			"{\"data\":{\"format\":\"xml\",\"result\":\"<web_search>...</web_search>\"},\"duration_ms\":5,\"exit_code\":0,\"host\":\"local\",\"session_id\":\"16b745a8\",\"status\":\"completed\",\"stdout\":\"format: xml\"}",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1292,6 +1374,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 
 		recovery := filterPseudoDirectiveDeltaForStreaming(
 			"这是最终答复。",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1308,6 +1391,7 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 		suppressedChunks := 0
 		visible := filterPseudoDirectiveDeltaForStreaming(
 			"{\"data\":{\"format\":\"xml\",\"result\":\"<web_search>...</web_search>\"},\"duration_ms\":5,\"exit_code\":0,\"host\":\"local\",\"session_id\":\"16b745a8\",\"status\":\"completed\",\"stdout\":\"format: xml\"}",
+			nil,
 			&suppressing,
 			&suppressedChunks,
 		)
@@ -1333,8 +1417,8 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "blue exec command='...'") || !strings.Contains(got, "instead of inventing commands like `blue summarize`") {
 		t.Fatalf("expected non-agent toolless nudge to steer external CLIs through blue exec, got=%q", got)
 	}
-	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "`timer`, `datetime`, `unit_converter`, and deprecated `search`") {
-		t.Fatalf("expected non-agent toolless nudge to mention disabled placeholder skills, got=%q", got)
+	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "Treat documentation-only examples and removed legacy helper names as docs") {
+		t.Fatalf("expected non-agent toolless nudge to mention removed legacy helper names, got=%q", got)
 	}
 	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "Prefer `web_query` as the unified public-web tool") || !strings.Contains(got, "`web_search`, `web_fetch`, and `web_read` are compatibility aliases") {
 		t.Fatalf("expected non-agent toolless nudge to mention unified web_query routing, got=%q", got)
@@ -1851,7 +1935,7 @@ func TestSelectPseudoToolCallFallbackModel(t *testing.T) {
 func TestChoosePseudoToolCallPrimaryToolIndex(t *testing.T) {
 	tools := []llm.Tool{
 		{Name: "ask"},
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "exec"},
 	}
 	if got := choosePseudoToolCallPrimaryToolIndex(tools, false); got != 2 {
@@ -1927,7 +2011,7 @@ func TestShouldPreferReminderToolForRetry(t *testing.T) {
 
 func TestApplyReminderToolPreference(t *testing.T) {
 	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "reminder"},
 		{Name: "notifications"},
 	}
@@ -1948,7 +2032,7 @@ func TestApplyReminderToolPreference(t *testing.T) {
 	}
 
 	noReminderDefs := []tools.ToolDefinition{
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "notifications"},
 	}
 	noFilter := applyReminderToolPreference(noReminderDefs, "提醒我十分钟后站起来")
@@ -1957,23 +2041,39 @@ func TestApplyReminderToolPreference(t *testing.T) {
 	}
 }
 
+func TestApplyWebSearchPreference_FiltersCanonicalWebQueryCompatFamily(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_query"},
+		{Name: "web_search"},
+		{Name: "web_fetch"},
+		{Name: "browser"},
+		{Name: "read"},
+	}
+
+	disabled := false
+	filtered := applyWebSearchPreference(defs, &disabled)
+	if got := toolNames(filtered); strings.Join(got, ",") != "browser,read" {
+		t.Fatalf("expected web tool family to be filtered when web search is disabled, got=%v", got)
+	}
+}
+
 func TestApplyResearchToolPreference(t *testing.T) {
 	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "research_run"},
 		{Name: "research_status"},
 		{Name: "browser"},
 	}
 
 	filtered := applyResearchToolPreference(defs, "请做一份最新 AI 模型的研究报告，并附来源引用")
-	if got := toolNames(filtered); strings.Join(got, ",") != "web_search,research_run,research_status,browser" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_query,research_run,research_status,browser" {
 		t.Fatalf("expected research tools + browser, got=%v", got)
 	}
 }
 
 func TestApplyResearchToolPreference_KeepsFileToolsForReportOutput(t *testing.T) {
 	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "research_run"},
 		{Name: "research_status"},
 		{Name: "browser"},
@@ -1984,14 +2084,14 @@ func TestApplyResearchToolPreference_KeepsFileToolsForReportOutput(t *testing.T)
 	}
 
 	filtered := applyResearchToolPreference(defs, "Create a competitive market report and save it to market_research.md with sources.")
-	if got := toolNames(filtered); strings.Join(got, ",") != "web_search,research_run,research_status,browser,read,write,ls,find" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_query,research_run,research_status,browser,read,write,ls,find" {
 		t.Fatalf("expected research tools plus file output tools, got=%v", got)
 	}
 }
 
 func TestApplyResearchToolPreference_UsesFastArtifactWorkflowForFileReport(t *testing.T) {
 	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "research_run"},
 		{Name: "research_status"},
 		{Name: "browser"},
@@ -2002,14 +2102,14 @@ func TestApplyResearchToolPreference_UsesFastArtifactWorkflowForFileReport(t *te
 	}
 
 	filtered := applyResearchToolPreference(defs, "Create a competitive market report and save it to market_research.md. Use web search if available to gather current information.")
-	if got := toolNames(filtered); strings.Join(got, ",") != "web_search,browser,read,write,ls,find" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_query,browser,read,write,ls,find" {
 		t.Fatalf("expected fast artifact workflow without research_run, got=%v", got)
 	}
 }
 
 func TestApplyWritingToolPreference(t *testing.T) {
 	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "research_run"},
 		{Name: "analyze"},
 		{Name: "email"},
@@ -2079,7 +2179,7 @@ func TestPreferWorkspaceFileWorkflowTools_UsesCompactWorkflowForExplicitMemoryFi
 		{Name: "edit"},
 		{Name: "ls"},
 		{Name: "find"},
-		{Name: "web_search"},
+		{Name: "web_query"},
 	}
 
 	filtered := preferWorkspaceFileWorkflowTools(
@@ -2164,7 +2264,7 @@ func TestBuildPostWriteCompletionNudge_SkipsAmbiguousMultiFilePrompt(t *testing.
 
 func TestApplyEmailAndCalendarToolPreference(t *testing.T) {
 	defs := []tools.ToolDefinition{
-		{Name: "web_search"},
+		{Name: "web_query"},
 		{Name: "email"},
 		{Name: "calendar"},
 	}
@@ -2832,6 +2932,54 @@ func TestSanitizeResponseContent_DoesNotStripBenignJSONExample(t *testing.T) {
 	got := sanitizeResponseContent(raw)
 	if got != raw {
 		t.Fatalf("expected benign single JSON example preserved, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContent_DoesNotStripXMLToolExampleProse(t *testing.T) {
+	raw := `下面是 XML 工具调用示例：<web_query><input>Apple AAPL stock price today2026</input></web_query>，不要实际执行。`
+	got := sanitizeResponseContent(raw)
+	if got != raw {
+		t.Fatalf("expected xml tool example preserved, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContent_DoesNotStripBracketedToolExampleProse(t *testing.T) {
+	raw := `下面是 bracketed 工具调用示例：[TOOL_CALL]{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}[/TOOL_CALL]，不要实际执行。`
+	got := sanitizeResponseContent(raw)
+	if got != raw {
+		t.Fatalf("expected bracketed tool example preserved, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContent_DoesNotStripFormatGuidanceJSONProse(t *testing.T) {
+	raw := `工具调用格式如下：{"name":"tzkz0_web_search","arguments":"{\"query\":\"小米 官网 手机\",\"max_results\":10}"}`
+	got := sanitizeResponseContent(raw)
+	if got != raw {
+		t.Fatalf("expected format guidance JSON preserved, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContent_DoesNotStripReturnGuidanceXMLProse(t *testing.T) {
+	raw := `你可以返回以下 XML：<web_query><input>Apple AAPL stock price today2026</input></web_query>`
+	got := sanitizeResponseContent(raw)
+	if got != raw {
+		t.Fatalf("expected return guidance XML preserved, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContent_DoesNotStripBlockquoteGuidanceJSONProse(t *testing.T) {
+	raw := "文档说明：\n> {\"name\":\"tzkz0_web_search\",\"arguments\":\"{\\\"query\\\":\\\"小米 官网 手机\\\",\\\"max_results\\\":10}\"}"
+	got := sanitizeResponseContent(raw)
+	if got != raw {
+		t.Fatalf("expected blockquote guidance JSON preserved, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContent_DoesNotStripListItemGuidanceXMLProse(t *testing.T) {
+	raw := "可选写法：\n- <web_query><input>Apple AAPL stock price today2026</input></web_query>"
+	got := sanitizeResponseContent(raw)
+	if got != raw {
+		t.Fatalf("expected list-item guidance XML preserved, got=%q", got)
 	}
 }
 

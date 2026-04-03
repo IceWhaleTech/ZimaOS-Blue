@@ -103,7 +103,6 @@ func TestBindExperienceRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 	cfg.Harness.StorePath = filepath.Join(tmp, "blue.db")
 	cfg.Harness.ArtifactRoot = filepath.Join(tmp, "artifacts")
 	cfg.ToolCalling.SmartSelectionMaxTools = 5
-	cfg.ToolCalling.SmartSkillSelection = true
 
 	contract := newRuntimeContractBinding(
 		db,

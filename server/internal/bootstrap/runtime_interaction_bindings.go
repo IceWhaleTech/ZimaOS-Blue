@@ -89,18 +89,9 @@ func bindRuntimeToolSelection(
 	// should not require a process restart just to materialize the selector.
 	baseSelector := agentcore.NewSkillSelector(workspaceDir, nil)
 	baseSelector.SetDynamicExposureEnabledFunc(func() bool {
-		if settings := chat.GetSettingsHandler(); settings != nil {
-			if enabled, ok := settings.GetSkillDynamicExposureExplicit(); ok {
-				return enabled
-			}
-		}
-		return cfg.ToolCalling.SkillDynamicExposure
+		return true
 	})
 	chat.SetSkillSelector(baseSelector)
-
-	if !cfg.ToolCalling.SmartSkillSelection {
-		return nil
-	}
 
 	reranker := agentcore.NewAutoSkillReranker(dataDir, cfg.ToolCalling.SkillRerankModel, agentcore.AutoSkillRerankerOptions{
 		ONNXEnabled:  cfg.ToolCalling.SkillRerankEnabled && cfg.ToolCalling.SkillRerankONNXEnabled,
@@ -108,12 +99,7 @@ func bindRuntimeToolSelection(
 	})
 	rerankSelector := agentcore.NewSkillSelector(workspaceDir, reranker)
 	rerankSelector.SetDynamicExposureEnabledFunc(func() bool {
-		if settings := chat.GetSettingsHandler(); settings != nil {
-			if enabled, ok := settings.GetSkillDynamicExposureExplicit(); ok {
-				return enabled
-			}
-		}
-		return cfg.ToolCalling.SkillDynamicExposure
+		return true
 	})
 	chat.SetSkillSelector(rerankSelector)
 	return reranker

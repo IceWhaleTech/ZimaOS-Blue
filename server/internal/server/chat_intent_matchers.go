@@ -53,6 +53,23 @@ var (
 		"行业",
 	})
 
+	financialQuoteArtifactCueMatcher = newUnicodeAhoMatcher([]string{
+		"stock price",
+		"share price",
+		"quote",
+		"ticker",
+		"market summary",
+		"market overview",
+		"stock",
+		"share",
+		"equity",
+		"股价",
+		"股票",
+		"行情",
+		"市场概况",
+		"市场摘要",
+	})
+
 	heavyResearchIntentCueMatcher = newUnicodeAhoMatcher([]string{
 		"deep research",
 		"comprehensive research",

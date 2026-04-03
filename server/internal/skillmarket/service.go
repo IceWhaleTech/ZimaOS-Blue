@@ -536,7 +536,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 	}
 
 	if req.GitHub != "" {
-		return s.installFromGitHub(ctx, req.GitHub, req.AckRisk)
+		return s.installFromGitHub(ctx, req.GitHub, req.AckRisk, req.ForceInstall)
 	}
 
 	detail, err := s.store.GetSkill(ctx, req.ID)
@@ -564,7 +564,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 	if err != nil {
 		return nil, err
 	}
-	if err := enforceInstallSecurityPolicy(catalogReport, req.AckRisk); err != nil {
+	if err := enforceInstallSecurityPolicy(catalogReport, req.AckRisk, req.ForceInstall); err != nil {
 		return nil, err
 	}
 	report := catalogReport
@@ -624,7 +624,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 			return nil, err
 		}
 	}
-	warnings := installWarningsForReport(catalogReport, report)
+	warnings := installWarningsForReport(catalogReport, report, req.ForceInstall)
 	if len(archiveWarnings) > 0 {
 		warnings = append(warnings, archiveWarnings...)
 	}
@@ -650,11 +650,11 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*InstallResu
 	}, nil
 }
 
-func enforceInstallSecurityPolicy(report *SecurityReport, ackRisk bool) error {
+func enforceInstallSecurityPolicy(report *SecurityReport, ackRisk bool, forceInstall bool) error {
 	if report == nil {
 		return nil
 	}
-	if isInstallBlockedBySecurityPolicy(report) {
+	if isInstallBlockedBySecurityPolicy(report) && !forceInstall {
 		return fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
 	}
 	if requiresInstallRiskAcknowledgement(report) && !ackRisk {
@@ -671,34 +671,42 @@ func requiresInstallRiskAcknowledgement(report *SecurityReport) bool {
 	return report != nil && report.SecurityBadge == BadgeYellow
 }
 
-func installWarningsForReport(catalogReport, installedReport *SecurityReport) []string {
+func installWarningsForReport(catalogReport, installedReport *SecurityReport, forceInstall bool) []string {
 	if installedReport == nil {
 		return nil
+	}
+	warnings := []string{}
+	if forceInstall && isInstallBlockedBySecurityPolicy(installedReport) {
+		warnings = append(warnings, "Installed after explicitly overriding a blocked high-risk skill. Review the security report before using this skill.")
 	}
 	switch {
 	case isInstallBlockedBySecurityPolicy(installedReport):
 		if installPolicyRank(installedReport) > installPolicyRank(catalogReport) {
-			return []string{fmt.Sprintf(
+			warnings = append(warnings, fmt.Sprintf(
 				"Installed payload scan escalated this skill from %s to %s. Review the security report before using this skill.",
 				installPolicyLabel(catalogReport),
 				installPolicyLabel(installedReport),
-			)}
+			))
+			return warnings
 		}
-		return []string{fmt.Sprintf(
+		warnings = append(warnings, fmt.Sprintf(
 			"Installed payload scan flagged this skill as %s. Review the security report before using this skill.",
 			installPolicyLabel(installedReport),
-		)}
+		))
+		return warnings
 	case requiresInstallRiskAcknowledgement(installedReport):
 		if installPolicyRank(installedReport) > installPolicyRank(catalogReport) {
-			return []string{fmt.Sprintf(
+			warnings = append(warnings, fmt.Sprintf(
 				"Installed payload scan escalated this skill from %s to %s. Review the security report before enabling auto-update.",
 				installPolicyLabel(catalogReport),
 				installPolicyLabel(installedReport),
-			)}
+			))
+			return warnings
 		}
-		return []string{"Skill requires medium-risk permissions. Review the security report before enabling auto-update."}
+		warnings = append(warnings, "Skill requires medium-risk permissions. Review the security report before enabling auto-update.")
+		return warnings
 	default:
-		return nil
+		return warnings
 	}
 }
 
@@ -3279,7 +3287,7 @@ func (s *Service) registerInstalledSkill(ctx context.Context, doc SkillDocument,
 	})
 }
 
-func (s *Service) installFromGitHub(ctx context.Context, repo string, ackRisk bool) (*InstallResult, error) {
+func (s *Service) installFromGitHub(ctx context.Context, repo string, ackRisk bool, forceInstall bool) (*InstallResult, error) {
 	repo = strings.TrimPrefix(repo, "github:")
 	repo = strings.TrimSpace(repo)
 	parts := strings.Split(repo, "/")
@@ -3346,7 +3354,11 @@ func (s *Service) installFromGitHub(ctx context.Context, repo string, ackRisk bo
 	if err != nil || detail == nil {
 		return nil, fmt.Errorf("github skill import failed")
 	}
-	return s.Install(ctx, InstallRequest{ID: detail.Skill.ID, AckRisk: ackRisk})
+	return s.Install(ctx, InstallRequest{
+		ID:           detail.Skill.ID,
+		AckRisk:      ackRisk,
+		ForceInstall: forceInstall,
+	})
 }
 
 type gitHubRepoSkill struct {

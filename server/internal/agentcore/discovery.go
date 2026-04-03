@@ -12,6 +12,9 @@ const (
 	CanonicalAsk          CanonicalSkillID = "ask"
 	CanonicalBrowser      CanonicalSkillID = "browser"
 	CanonicalAnalyze      CanonicalSkillID = "analyze"
+	CanonicalReminder     CanonicalSkillID = "reminder"
+	CanonicalUIReviewer   CanonicalSkillID = "ui_reviewer"
+	CanonicalHimalaya     CanonicalSkillID = "himalaya"
 	CanonicalDeepResearch CanonicalSkillID = "deep_research"
 	CanonicalMgmt         CanonicalSkillID = "mgmt"
 	CanonicalExec         CanonicalSkillID = "exec"
@@ -122,6 +125,39 @@ func init() {
 			CutoverEligible:   true,
 			Description:       "Synthesized analysis on topics",
 		},
+		CanonicalReminder: {
+			CanonicalID:       CanonicalReminder,
+			Kind:              "skill",
+			Aliases:           []string{"push-notification"},
+			SearchHints:       []string{"remind", "reminder", "notify", "time", "schedule"},
+			CapabilityTags:    []string{"reminder", "notification", "productivity"},
+			ExecutionProfile:  ExecutionProfileInline,
+			NativeSurfaceMode: NativeSurfaceModeSkillExec,
+			CutoverEligible:   true,
+			Description:       "Schedule reminders and notifications",
+		},
+		CanonicalUIReviewer: {
+			CanonicalID:       CanonicalUIReviewer,
+			Kind:              "skill",
+			Aliases:           []string{},
+			SearchHints:       []string{"ui", "ux", "review", "audit", "screenshot", "design"},
+			CapabilityTags:    []string{"ui", "review", "screenshot"},
+			ExecutionProfile:  ExecutionProfileInline,
+			NativeSurfaceMode: NativeSurfaceModeSkillExec,
+			CutoverEligible:   true,
+			Description:       "Review UI screenshots and pages for quality issues",
+		},
+		CanonicalHimalaya: {
+			CanonicalID:       CanonicalHimalaya,
+			Kind:              "skill",
+			Aliases:           []string{"email", "mail"},
+			SearchHints:       []string{"email", "mail", "inbox", "reply", "forward", "attachment"},
+			CapabilityTags:    []string{"email", "mail", "productivity"},
+			ExecutionProfile:  ExecutionProfileInline,
+			NativeSurfaceMode: NativeSurfaceModeSkillExec,
+			CutoverEligible:   true,
+			Description:       "Manage email workflows via Himalaya-compatible flows",
+		},
 		CanonicalDeepResearch: {
 			CanonicalID:       CanonicalDeepResearch,
 			Kind:              "skill",
@@ -231,7 +267,8 @@ func BuildDiscoveryDecision(d Decision, skillDynamicExposure bool) CapabilityDis
 		case skillDynamicExposure && IsCutoverEligibleCanonical(canonical):
 			nativeMode = NativeSurfaceModeForSkill(canonical)
 		case !skillDynamicExposure:
-			// Preserve the legacy selector behavior until discover-first cutover is enabled.
+			// Even when dynamic exposure is disabled, keep the exec-only compatibility
+			// collapse rather than widening back out to the old multi-tool surface.
 			nativeMode = NativeSurfaceModeSkillExec
 		}
 	}

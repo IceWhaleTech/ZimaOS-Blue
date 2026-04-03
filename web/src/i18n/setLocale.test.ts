@@ -52,6 +52,7 @@ describe('locale loading', () => {
   afterEach(() => {
     vi.doUnmock('./locales/en-US')
     vi.doUnmock('./locales/zh-CN')
+    vi.doUnmock('./harnessLocaleAdditions')
     vi.unstubAllGlobals()
   })
 
@@ -206,6 +207,232 @@ describe('locale loading', () => {
     await vi.waitFor(() => {
       expect(zhCNImportSpy).toHaveBeenCalledTimes(1)
       expect(i18n.global.t('common.loading')).toBe('中文完整包')
+    })
+  })
+
+  it('delays cached desktop chat locale refresh before loading heavy enhancements', async () => {
+    storageState.set('zimaos-blue-locale', 'zh-CN')
+    storageState.set(
+      'zimaos-blue-locale-cache:v1:zh-CN',
+      JSON.stringify({
+        common: {
+          loading: '缓存中文',
+        },
+      })
+    )
+
+    const scheduledCallbacks: Array<() => void> = []
+    const idleCallbacks: Array<(deadline: { didTimeout: boolean; timeRemaining: () => number }) => void> =
+      []
+    const requestIdleCallbackSpy = vi.fn(
+      (
+        callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void
+      ) => {
+        idleCallbacks.push(callback)
+        return idleCallbacks.length
+      }
+    )
+    const setTimeoutSpy = vi.fn((callback: () => void) => {
+      scheduledCallbacks.push(callback)
+      return scheduledCallbacks.length
+    })
+
+    if (typeof window !== 'undefined') {
+      Object.defineProperty(window, '__BLUE_DESKTOP__', {
+        value: true,
+        configurable: true,
+        writable: true,
+      })
+      Object.defineProperty(window, 'requestIdleCallback', {
+        value: requestIdleCallbackSpy,
+        configurable: true,
+      })
+      Object.defineProperty(window, 'setTimeout', {
+        value: setTimeoutSpy,
+        configurable: true,
+      })
+      window.history.replaceState({}, '', '/chat')
+    }
+
+    const zhCNImportSpy = vi.fn()
+    vi.doMock('./locales/zh-CN', () => {
+      zhCNImportSpy()
+      return {
+        default: {
+          common: {
+            loading: '中文完整包',
+          },
+        },
+      }
+    })
+
+    const enhancementSpy = vi.fn((locale: string, messages: Record<string, unknown>) => ({
+      ...messages,
+      harness: {
+        groups: {
+          status: `${locale}-enhanced`,
+        },
+      },
+    }))
+    vi.doMock('./harnessLocaleAdditions', () => ({
+      mergeHarnessLocale: enhancementSpy,
+    }))
+
+    const { getLocale, i18n, initLocale } = await loadI18nModule()
+
+    await initLocale()
+
+    expect(getLocale()).toBe('zh-CN')
+    expect(i18n.global.t('common.loading')).toBe('缓存中文')
+    expect(zhCNImportSpy).not.toHaveBeenCalled()
+    expect(enhancementSpy).not.toHaveBeenCalled()
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1)
+    expect(requestIdleCallbackSpy).not.toHaveBeenCalled()
+
+    const delayedRefresh = scheduledCallbacks.shift()
+    if (!delayedRefresh) {
+      throw new Error('expected delayed refresh scheduling for cached desktop locale')
+    }
+    delayedRefresh()
+
+    expect(requestIdleCallbackSpy).toHaveBeenCalledTimes(1)
+
+    const refreshIdle = idleCallbacks.shift()
+    if (!refreshIdle) {
+      throw new Error('expected idle refresh callback after delayed desktop locale refresh')
+    }
+    refreshIdle({
+      didTimeout: false,
+      timeRemaining: () => 50,
+    })
+
+    await vi.waitFor(() => {
+      expect(zhCNImportSpy).toHaveBeenCalledTimes(1)
+      expect(i18n.global.t('common.loading')).toBe('中文完整包')
+    })
+
+    expect(enhancementSpy).not.toHaveBeenCalled()
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(2)
+
+    const delayedEnhancement = scheduledCallbacks.shift()
+    if (!delayedEnhancement) {
+      throw new Error('expected delayed enhancement scheduling after cached locale refresh')
+    }
+    delayedEnhancement()
+
+    expect(requestIdleCallbackSpy).toHaveBeenCalledTimes(2)
+
+    const enhancementIdle = idleCallbacks.shift()
+    if (!enhancementIdle) {
+      throw new Error('expected idle enhancement callback after delayed enhancement scheduling')
+    }
+    enhancementIdle({
+      didTimeout: false,
+      timeRemaining: () => 50,
+    })
+
+    await vi.waitFor(() => {
+      expect(enhancementSpy).toHaveBeenCalledTimes(1)
+      expect(i18n.global.t('harness.groups.status')).toBe('zh-CN-enhanced')
+    })
+  })
+
+  it('defers heavy locale enhancements for desktop chat startup even without a stored session hint', async () => {
+    storageState.set('zimaos-blue-locale', 'zh-CN')
+
+    const delayedEnhancement = {
+      callback: null as null | (() => void),
+    }
+    const idleRefresh = {
+      callback: null as null | ((
+        deadline: { didTimeout: boolean; timeRemaining: () => number }
+      ) => void),
+    }
+    const requestIdleCallbackSpy = vi.fn(
+      (
+        callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void
+      ) => {
+        idleRefresh.callback = callback
+        return 1
+      }
+    )
+    const setTimeoutSpy = vi.fn((callback: () => void) => {
+      delayedEnhancement.callback = callback
+      return 1
+    })
+
+    if (typeof window !== 'undefined') {
+      Object.defineProperty(window, '__BLUE_DESKTOP__', {
+        value: true,
+        configurable: true,
+        writable: true,
+      })
+      Object.defineProperty(window, 'requestIdleCallback', {
+        value: requestIdleCallbackSpy,
+        configurable: true,
+      })
+      Object.defineProperty(window, 'setTimeout', {
+        value: setTimeoutSpy,
+        configurable: true,
+      })
+      window.history.replaceState({}, '', '/chat')
+    }
+
+    const zhCNImportSpy = vi.fn()
+    vi.doMock('./locales/zh-CN', () => {
+      zhCNImportSpy()
+      return {
+        default: {
+          common: {
+            loading: '中文完整包',
+          },
+        },
+      }
+    })
+
+    const enhancementSpy = vi.fn((locale: string, messages: Record<string, unknown>) => ({
+      ...messages,
+      harness: {
+        groups: {
+          status: `${locale}-enhanced`,
+        },
+      },
+    }))
+    vi.doMock('./harnessLocaleAdditions', () => ({
+      mergeHarnessLocale: enhancementSpy,
+    }))
+
+    const { getLocale, i18n, initLocale } = await loadI18nModule()
+
+    await initLocale()
+
+    expect(getLocale()).toBe('zh-CN')
+    expect(zhCNImportSpy).toHaveBeenCalledTimes(1)
+    expect(enhancementSpy).not.toHaveBeenCalled()
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1)
+    expect(requestIdleCallbackSpy).not.toHaveBeenCalled()
+    expect(i18n.global.t('common.loading')).toBe('中文完整包')
+
+    if (!delayedEnhancement.callback) {
+      throw new Error('expected delayed enhancement scheduling before idle callback')
+    }
+
+    delayedEnhancement.callback()
+
+    expect(requestIdleCallbackSpy).toHaveBeenCalledTimes(1)
+
+    if (!idleRefresh.callback) {
+      throw new Error('expected requestIdleCallback to schedule locale enhancements')
+    }
+
+    idleRefresh.callback({
+      didTimeout: false,
+      timeRemaining: () => 50,
+    })
+
+    await vi.waitFor(() => {
+      expect(enhancementSpy).toHaveBeenCalledTimes(1)
+      expect(i18n.global.t('harness.groups.status')).toBe('zh-CN-enhanced')
     })
   })
 

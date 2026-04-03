@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -1117,6 +1118,7 @@ func extractBingResult(node *xhtml.Node) (WebSearchResult, bool) {
 
 	title := webSearchHTMLNodeText(link)
 	resultURL := strings.TrimSpace(webSearchHTMLAttr(link, "href"))
+	resultURL = normalizeBingResultURL(resultURL)
 	if title == "" || resultURL == "" {
 		return WebSearchResult{}, false
 	}
@@ -1133,6 +1135,105 @@ func extractBingResult(node *xhtml.Node) (WebSearchResult, bool) {
 		URL:         resultURL,
 		Description: description,
 	}, true
+}
+
+func normalizeBingResultURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	path := strings.ToLower(strings.TrimSpace(parsed.EscapedPath()))
+	if host == "" {
+		if !strings.HasPrefix(path, "/ck/a") {
+			return raw
+		}
+	} else if !strings.HasSuffix(host, "bing.com") {
+		return raw
+	}
+	if !strings.HasPrefix(path, "/ck/a") {
+		return raw
+	}
+
+	for _, key := range []string{"u", "url", "target", "redirect"} {
+		token := strings.TrimSpace(parsed.Query().Get(key))
+		if token == "" {
+			continue
+		}
+		if decoded, ok := decodeBingRedirectURL(token); ok {
+			return decoded
+		}
+	}
+	return raw
+}
+
+func decodeBingRedirectURL(token string) (string, bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", false
+	}
+	if decoded, err := url.QueryUnescape(token); err == nil {
+		token = strings.TrimSpace(decoded)
+	}
+	if looksLikeHTTPURL(token) {
+		normalized, err := normalizeWebFetchURL(token)
+		if err == nil {
+			return normalized, true
+		}
+		return token, true
+	}
+
+	candidates := []string{token}
+	if len(token) > 2 && (token[0] == 'a' || token[0] == 'A') && token[1] >= '0' && token[1] <= '9' {
+		candidates = append(candidates, token[2:])
+	}
+	for _, candidate := range candidates {
+		decoded, ok := decodeBingRedirectBase64(candidate)
+		if !ok {
+			continue
+		}
+		normalized, err := normalizeWebFetchURL(decoded)
+		if err == nil {
+			return normalized, true
+		}
+		if looksLikeHTTPURL(decoded) {
+			return decoded, true
+		}
+	}
+	return "", false
+}
+
+func decodeBingRedirectBase64(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+	for _, encoding := range []*base64.Encoding{
+		base64.RawURLEncoding,
+		base64.URLEncoding,
+		base64.RawStdEncoding,
+		base64.StdEncoding,
+	} {
+		decoded, err := encoding.DecodeString(raw)
+		if err != nil {
+			continue
+		}
+		value := strings.TrimSpace(string(decoded))
+		if looksLikeHTTPURL(value) {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func looksLikeHTTPURL(raw string) bool {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	return strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://")
 }
 
 func firstWebSearchHTMLDescendant(node *xhtml.Node, predicate func(*xhtml.Node) bool) *xhtml.Node {

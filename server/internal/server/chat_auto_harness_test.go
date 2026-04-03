@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -140,6 +141,115 @@ func TestAutoHarnessTurnHook_SubmitsConversationQuickEvalForToolBackedCompletedT
 	}
 	if got := item.Expected["status"]; got != "completed" {
 		t.Fatalf("item expected status = %#v, want completed", got)
+	}
+}
+
+func TestAutoHarnessTurnHook_CapturesContextPackSnapshotInQuickEvalMetadata(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Responses docs fix", "user-1")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "user",
+		Content: "Finish and verify the Responses API fix",
+	}); err != nil {
+		t.Fatalf("AddMessage(user): %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:     "tool",
+		ToolName: "file_write",
+		Content:  `{"path":"result.txt","ok":true}`,
+	}); err != nil {
+		t.Fatalf("AddMessage(tool): %v", err)
+	}
+	assistantMsg, err := store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:     "assistant",
+		Content:  "Implemented and verified the Responses API fix.",
+		Provider: "openai",
+		Model:    "gpt-5.4-mini",
+	})
+	if err != nil {
+		t.Fatalf("AddMessage(assistant): %v", err)
+	}
+
+	handler := NewChatHandler(store, nil, tools.NewRegistry())
+	defer handler.Close()
+	submitter := &autoHarnessSubmitterSpy{}
+	hook := NewAutoHarnessTurnHook(handler, submitter)
+
+	selection := &contextpack.SelectionSet{
+		SelectedSkill: "web_query",
+		TotalTokens:   420,
+		Files: []contextpack.SelectedFile{{
+			EntryID:     "openai/docs/responses-api",
+			Type:        contextpack.EntryTypeDoc,
+			SourceTrust: contextpack.SourceTrustOfficial,
+			Language:    "en-US",
+			Version:     "latest",
+			File:        "references/tools.md",
+			SHA256:      "abc123",
+			Tokens:      420,
+			Annotated:   true,
+		}},
+	}
+
+	if err := hook.AfterAssistantPersisted(context.Background(), TurnContext{
+		ConversationID:       conv.ID,
+		UserMessage:          "Finish and verify the Responses API fix",
+		Model:                "gpt-5.4-mini",
+		ContextPackSelection: selection,
+	}, assistantMsg); err != nil {
+		t.Fatalf("AfterAssistantPersisted: %v", err)
+	}
+
+	if len(submitter.specs) != 1 {
+		t.Fatalf("submitted spec count = %d, want 1", len(submitter.specs))
+	}
+	spec := submitter.specs[0]
+	groupSnapshot, ok := spec.Metadata["contextpack_snapshot"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("group contextpack_snapshot type = %T, want map[string]interface{}", spec.Metadata["contextpack_snapshot"])
+	}
+	if got := groupSnapshot["selected_count"]; got != float64(1) && got != 1 {
+		t.Fatalf("group selected_count = %#v, want 1", got)
+	}
+	if got := groupSnapshot["selected_skill"]; got != "web_query" {
+		t.Fatalf("group selected_skill = %#v, want web_query", got)
+	}
+	if got := groupSnapshot["selection_digest"]; got == "" || got == nil {
+		t.Fatalf("group selection_digest = %#v, want non-empty", got)
+	}
+
+	itemSnapshot, ok := spec.Items[0].Metadata["contextpack_snapshot"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("item contextpack_snapshot type = %T, want map[string]interface{}", spec.Items[0].Metadata["contextpack_snapshot"])
+	}
+	files, ok := itemSnapshot["files"].([]map[string]interface{})
+	if ok {
+		if len(files) != 1 {
+			t.Fatalf("item snapshot files len = %d, want 1", len(files))
+		}
+	} else {
+		rawFiles, ok := itemSnapshot["files"].([]interface{})
+		if !ok || len(rawFiles) != 1 {
+			t.Fatalf("item snapshot files = %#v, want single file", itemSnapshot["files"])
+		}
+		file, ok := rawFiles[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("item snapshot file[0] type = %T, want map[string]interface{}", rawFiles[0])
+		}
+		if got := file["entry_id"]; got != "openai/docs/responses-api" {
+			t.Fatalf("item snapshot file entry_id = %#v, want openai/docs/responses-api", got)
+		}
+		if got := file["source_trust"]; got != "official" {
+			t.Fatalf("item snapshot file source_trust = %#v, want official", got)
+		}
 	}
 }
 

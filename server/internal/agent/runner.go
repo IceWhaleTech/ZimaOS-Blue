@@ -17,6 +17,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
@@ -2425,6 +2426,7 @@ func buildVerificationUserPrompt(task *Task, verificationCtx VerificationContext
 }
 
 func (r *Runner) runVerification(ctx context.Context, task *Task, verificationCtx VerificationContext) (*VerificationResult, string, error) {
+	ctx = proxy.WithDisableModelRouting(ctx)
 	cachedTools := r.llmTools()
 	rawOutput, loopErr := r.executeLoopWithTools(
 		ctx,
@@ -2557,6 +2559,7 @@ func buildRecoveryUserPrompt(task *Task, verificationCtx VerificationContext, ve
 }
 
 func (r *Runner) runRecovery(ctx context.Context, task *Task, verificationCtx VerificationContext, verificationResult *VerificationResult) (string, error) {
+	ctx = proxy.WithDisableModelRouting(ctx)
 	cachedTools := r.llmTools()
 	return r.executeLoopWithTools(
 		ctx,
@@ -3416,7 +3419,7 @@ func shouldSkipPlannerMemory(query string) bool {
 	}
 	freshPublicSignals := []string{
 		"latest", "newest", "recent", "current", "today", "news", "release notes", "documentation", "docs",
-		"最新", "最近", "当前", "今天", "新闻", "更新", "文档", "文件",
+		"最新", "当前", "今天", "新闻", "更新", "文档", "文件",
 	}
 	return !allowWorkspaceMemory && containsAnyPlannerSignal(normalized, webSignals) && containsAnyPlannerSignal(normalized, freshPublicSignals)
 }
@@ -3442,7 +3445,7 @@ func plannerMemorySkipReason(query string) string {
 	}
 	freshPublicSignals := []string{
 		"latest", "newest", "recent", "current", "today", "news", "release notes", "documentation", "docs",
-		"最新", "最近", "当前", "今天", "新闻", "更新", "文档", "文件",
+		"最新", "当前", "今天", "新闻", "更新", "文档", "文件",
 	}
 	if !allowWorkspaceMemory && containsAnyPlannerSignal(normalized, webSignals) && containsAnyPlannerSignal(normalized, freshPublicSignals) {
 		return "public_web"
@@ -3462,7 +3465,6 @@ func containsAnyPlannerSignal(query string, signals []string) bool {
 func matchesPlannerRetrospectiveWorklogIntent(normalized string) bool {
 	timeWindowSignals := []string{
 		"past week", "last week", "this week", "recently",
-		"过去一周", "最近一周", "上周", "这周", "最近",
 	}
 	summarySignals := []string{
 		"recap", "summarize", "summary", "review", "outline",

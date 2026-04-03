@@ -58,31 +58,35 @@ type comparisonCaseRollup struct {
 }
 
 type comparisonViewMetricSnapshot struct {
-	overallScore           float64
-	passRate               float64
-	verificationPassRate   float64
-	evidenceBackedPassRate float64
-	retryRecoveredCount    int
-	linkedRunCount         int
-	artifactCount          int
+	overallScore                 float64
+	passRate                     float64
+	verificationPassRate         float64
+	evidenceBackedPassRate       float64
+	retryRecoveredCount          int
+	contextPackItemsWithSnapshot int
+	linkedRunCount               int
+	artifactCount                int
 }
 
 type comparisonStructuralDelta struct {
-	failureLabelDelta       map[string]interface{}
-	verdictCountDelta       map[string]interface{}
-	linkedRunCountDelta     int
-	artifactCountDelta      int
-	routeCaseCount          int
-	routeAgreementCount     int
-	routeCompatibleCount    int
-	routeImprovementCount   int
-	routeDisagreementCount  int
-	criticalRouteCaseCount  int
-	criticalRegressionCount int
-	baseClarifyCount        int
-	targetClarifyCount      int
-	localeBreakdown         map[string]SelectorGateSegmentMetrics
-	primaryRouteBreakdown   map[string]SelectorGateSegmentMetrics
+	failureLabelDelta             map[string]interface{}
+	verdictCountDelta             map[string]interface{}
+	contextPackSelectedSkillDelta map[string]interface{}
+	contextPackSourceTrustDelta   map[string]interface{}
+	contextPackEntryDelta         map[string]interface{}
+	linkedRunCountDelta           int
+	artifactCountDelta            int
+	routeCaseCount                int
+	routeAgreementCount           int
+	routeCompatibleCount          int
+	routeImprovementCount         int
+	routeDisagreementCount        int
+	criticalRouteCaseCount        int
+	criticalRegressionCount       int
+	baseClarifyCount              int
+	targetClarifyCount            int
+	localeBreakdown               map[string]SelectorGateSegmentMetrics
+	primaryRouteBreakdown         map[string]SelectorGateSegmentMetrics
 }
 
 type comparisonMetricBundle struct {
@@ -122,11 +126,15 @@ type comparisonReportBundle struct {
 }
 
 type comparisonViewDerivedMetrics struct {
-	verificationPassRate float64
-	evidenceBackedRate   float64
-	retryRecoveredCount  int
-	verdictCounts        map[string]int
-	failureLabelCounts   map[string]int
+	verificationPassRate           float64
+	evidenceBackedRate             float64
+	retryRecoveredCount            int
+	contextPackItemsWithSnapshot   int
+	verdictCounts                  map[string]int
+	failureLabelCounts             map[string]int
+	contextPackSelectedSkillCounts map[string]int
+	contextPackSourceTrustCounts   map[string]int
+	contextPackEntryCounts         map[string]int
 }
 
 type comparisonCaseAssessment struct {
@@ -152,11 +160,12 @@ type comparisonRouteDelta struct {
 }
 
 type comparisonMetricDeltaSet struct {
-	overallScoreDelta       float64
-	passRateDelta           float64
-	verificationRateDelta   float64
-	evidenceBackedRateDelta float64
-	retryRecoveredDelta     int
+	overallScoreDelta                 float64
+	passRateDelta                     float64
+	verificationRateDelta             float64
+	evidenceBackedRateDelta           float64
+	retryRecoveredDelta               int
+	contextPackItemsWithSnapshotDelta int
 }
 
 type comparisonSummaryIdentity struct {
@@ -178,39 +187,45 @@ type comparisonSummaryRollup struct {
 }
 
 type comparisonScorerDeltaContext struct {
-	baseOverallScore             float64
-	targetOverallScore           float64
-	overallScoreDelta            float64
-	basePassRate                 float64
-	targetPassRate               float64
-	passRateDelta                float64
-	baseVerificationPassRate     float64
-	targetVerificationPassRate   float64
-	verificationRateDelta        float64
-	baseEvidenceBackedPassRate   float64
-	targetEvidenceBackedPassRate float64
-	evidenceBackedRateDelta      float64
-	baseRetryRecoveredCount      int
-	targetRetryRecoveredCount    int
-	retryRecoveredDelta          int
-	failureLabelDelta            map[string]interface{}
-	verdictCountDelta            map[string]interface{}
-	linkedRunCountDelta          int
-	artifactCountDelta           int
-	routeCaseCount               int
-	routeAgreementCount          int
-	routeAgreementRate           float64
-	routeCompatibleCount         int
-	routeCompatibleRate          float64
-	routeImprovementCount        int
-	routeDisagreementCount       int
-	criticalRouteCaseCount       int
-	criticalRegressionCount      int
-	baseClarifyRate              float64
-	targetClarifyRate            float64
-	clarifyRateDelta             float64
-	localeBreakdown              map[string]SelectorGateSegmentMetrics
-	primaryRouteBreakdown        map[string]SelectorGateSegmentMetrics
+	baseOverallScore                   float64
+	targetOverallScore                 float64
+	overallScoreDelta                  float64
+	basePassRate                       float64
+	targetPassRate                     float64
+	passRateDelta                      float64
+	baseVerificationPassRate           float64
+	targetVerificationPassRate         float64
+	verificationRateDelta              float64
+	baseEvidenceBackedPassRate         float64
+	targetEvidenceBackedPassRate       float64
+	evidenceBackedRateDelta            float64
+	baseRetryRecoveredCount            int
+	targetRetryRecoveredCount          int
+	retryRecoveredDelta                int
+	baseContextPackItemsWithSnapshot   int
+	targetContextPackItemsWithSnapshot int
+	contextPackItemsWithSnapshotDelta  int
+	failureLabelDelta                  map[string]interface{}
+	verdictCountDelta                  map[string]interface{}
+	contextPackSelectedSkillDelta      map[string]interface{}
+	contextPackSourceTrustDelta        map[string]interface{}
+	contextPackEntryDelta              map[string]interface{}
+	linkedRunCountDelta                int
+	artifactCountDelta                 int
+	routeCaseCount                     int
+	routeAgreementCount                int
+	routeAgreementRate                 float64
+	routeCompatibleCount               int
+	routeCompatibleRate                float64
+	routeImprovementCount              int
+	routeDisagreementCount             int
+	criticalRouteCaseCount             int
+	criticalRegressionCount            int
+	baseClarifyRate                    float64
+	targetClarifyRate                  float64
+	clarifyRateDelta                   float64
+	localeBreakdown                    map[string]SelectorGateSegmentMetrics
+	primaryRouteBreakdown              map[string]SelectorGateSegmentMetrics
 }
 
 type comparisonRouteBreakdown struct {
@@ -573,26 +588,36 @@ func buildComparisonSummary(baseline *Baseline, bundle *comparisonReportBundle) 
 
 func buildComparisonSummaryFromContext(context comparisonPresentationContext) map[string]interface{} {
 	summary := map[string]interface{}{
-		"comparison_kind":                 context.identity.comparisonKind,
-		"baseline_name":                   context.identity.baselineName,
-		"base_title":                      context.identity.baseTitle,
-		"target_title":                    context.identity.targetTitle,
-		"base_group_id":                   context.identity.baseGroupID,
-		"target_group_id":                 context.identity.targetGroupID,
-		"overall_score_delta":             context.metricDelta.overallScoreDelta,
-		"pass_rate_delta":                 context.metricDelta.passRateDelta,
-		"verification_pass_rate_delta":    context.metricDelta.verificationRateDelta,
-		"evidence_backed_pass_rate_delta": context.metricDelta.evidenceBackedRateDelta,
-		"retry_recovered_delta":           context.metricDelta.retryRecoveredDelta,
-		"changed_case_count":              context.rollup.changedCaseCount,
-		"regression_count":                context.rollup.regressionCount,
-		"improvement_count":               context.rollup.improvementCount,
-		"unstable_case_count":             context.rollup.unstableCaseCount,
-		"new_failure_count":               context.rollup.newFailureCount,
-		"resolved_failure_count":          context.rollup.resolvedFailureCount,
+		"comparison_kind":                       context.identity.comparisonKind,
+		"baseline_name":                         context.identity.baselineName,
+		"base_title":                            context.identity.baseTitle,
+		"target_title":                          context.identity.targetTitle,
+		"base_group_id":                         context.identity.baseGroupID,
+		"target_group_id":                       context.identity.targetGroupID,
+		"overall_score_delta":                   context.metricDelta.overallScoreDelta,
+		"pass_rate_delta":                       context.metricDelta.passRateDelta,
+		"verification_pass_rate_delta":          context.metricDelta.verificationRateDelta,
+		"evidence_backed_pass_rate_delta":       context.metricDelta.evidenceBackedRateDelta,
+		"retry_recovered_delta":                 context.metricDelta.retryRecoveredDelta,
+		"contextpack_items_with_snapshot_delta": context.metricDelta.contextPackItemsWithSnapshotDelta,
+		"changed_case_count":                    context.rollup.changedCaseCount,
+		"regression_count":                      context.rollup.regressionCount,
+		"improvement_count":                     context.rollup.improvementCount,
+		"unstable_case_count":                   context.rollup.unstableCaseCount,
+		"new_failure_count":                     context.rollup.newFailureCount,
+		"resolved_failure_count":                context.rollup.resolvedFailureCount,
 	}
 	if len(context.scorer.failureLabelDelta) > 0 {
 		summary["failure_label_delta"] = context.scorer.failureLabelDelta
+	}
+	if len(context.scorer.contextPackSelectedSkillDelta) > 0 {
+		summary["contextpack_selected_skill_delta"] = context.scorer.contextPackSelectedSkillDelta
+	}
+	if len(context.scorer.contextPackSourceTrustDelta) > 0 {
+		summary["contextpack_source_trust_delta"] = context.scorer.contextPackSourceTrustDelta
+	}
+	if len(context.scorer.contextPackEntryDelta) > 0 {
+		summary["contextpack_entry_delta"] = context.scorer.contextPackEntryDelta
 	}
 	if context.scorer.routeCaseCount > 0 {
 		summary["route_case_count"] = context.scorer.routeCaseCount
@@ -623,25 +648,31 @@ func buildComparisonScorerDelta(bundle *comparisonReportBundle) map[string]inter
 
 func buildComparisonScorerDeltaFromContext(scorerContext comparisonPresentationContext) map[string]interface{} {
 	delta := map[string]interface{}{
-		"base_overall_score":               scorerContext.scorer.baseOverallScore,
-		"target_overall_score":             scorerContext.scorer.targetOverallScore,
-		"overall_score_delta":              scorerContext.scorer.overallScoreDelta,
-		"base_pass_rate":                   scorerContext.scorer.basePassRate,
-		"target_pass_rate":                 scorerContext.scorer.targetPassRate,
-		"pass_rate_delta":                  scorerContext.scorer.passRateDelta,
-		"base_verification_pass_rate":      scorerContext.scorer.baseVerificationPassRate,
-		"target_verification_pass_rate":    scorerContext.scorer.targetVerificationPassRate,
-		"verification_pass_rate_delta":     scorerContext.scorer.verificationRateDelta,
-		"base_evidence_backed_pass_rate":   scorerContext.scorer.baseEvidenceBackedPassRate,
-		"target_evidence_backed_pass_rate": scorerContext.scorer.targetEvidenceBackedPassRate,
-		"evidence_backed_pass_rate_delta":  scorerContext.scorer.evidenceBackedRateDelta,
-		"base_retry_recovered_count":       scorerContext.scorer.baseRetryRecoveredCount,
-		"target_retry_recovered_count":     scorerContext.scorer.targetRetryRecoveredCount,
-		"retry_recovered_delta":            scorerContext.scorer.retryRecoveredDelta,
-		"failure_label_delta":              scorerContext.scorer.failureLabelDelta,
-		"verdict_count_delta":              scorerContext.scorer.verdictCountDelta,
-		"linked_run_count_delta":           scorerContext.scorer.linkedRunCountDelta,
-		"artifact_count_delta":             scorerContext.scorer.artifactCountDelta,
+		"base_overall_score":                     scorerContext.scorer.baseOverallScore,
+		"target_overall_score":                   scorerContext.scorer.targetOverallScore,
+		"overall_score_delta":                    scorerContext.scorer.overallScoreDelta,
+		"base_pass_rate":                         scorerContext.scorer.basePassRate,
+		"target_pass_rate":                       scorerContext.scorer.targetPassRate,
+		"pass_rate_delta":                        scorerContext.scorer.passRateDelta,
+		"base_verification_pass_rate":            scorerContext.scorer.baseVerificationPassRate,
+		"target_verification_pass_rate":          scorerContext.scorer.targetVerificationPassRate,
+		"verification_pass_rate_delta":           scorerContext.scorer.verificationRateDelta,
+		"base_evidence_backed_pass_rate":         scorerContext.scorer.baseEvidenceBackedPassRate,
+		"target_evidence_backed_pass_rate":       scorerContext.scorer.targetEvidenceBackedPassRate,
+		"evidence_backed_pass_rate_delta":        scorerContext.scorer.evidenceBackedRateDelta,
+		"base_retry_recovered_count":             scorerContext.scorer.baseRetryRecoveredCount,
+		"target_retry_recovered_count":           scorerContext.scorer.targetRetryRecoveredCount,
+		"retry_recovered_delta":                  scorerContext.scorer.retryRecoveredDelta,
+		"base_contextpack_items_with_snapshot":   scorerContext.scorer.baseContextPackItemsWithSnapshot,
+		"target_contextpack_items_with_snapshot": scorerContext.scorer.targetContextPackItemsWithSnapshot,
+		"contextpack_items_with_snapshot_delta":  scorerContext.scorer.contextPackItemsWithSnapshotDelta,
+		"failure_label_delta":                    scorerContext.scorer.failureLabelDelta,
+		"verdict_count_delta":                    scorerContext.scorer.verdictCountDelta,
+		"contextpack_selected_skill_delta":       scorerContext.scorer.contextPackSelectedSkillDelta,
+		"contextpack_source_trust_delta":         scorerContext.scorer.contextPackSourceTrustDelta,
+		"contextpack_entry_delta":                scorerContext.scorer.contextPackEntryDelta,
+		"linked_run_count_delta":                 scorerContext.scorer.linkedRunCountDelta,
+		"artifact_count_delta":                   scorerContext.scorer.artifactCountDelta,
 	}
 	if scorerContext.scorer.routeCaseCount > 0 {
 		delta["route_case_count"] = scorerContext.scorer.routeCaseCount
@@ -730,82 +761,93 @@ func buildComparisonScorerDeltaContext(metrics comparisonMetricBundle) compariso
 	baseClarifyRate := safeComparisonRate(metrics.structural.baseClarifyCount, metrics.structural.routeCaseCount)
 	targetClarifyRate := safeComparisonRate(metrics.structural.targetClarifyCount, metrics.structural.routeCaseCount)
 	return comparisonScorerDeltaContext{
-		baseOverallScore:             metrics.base.overallScore,
-		targetOverallScore:           metrics.target.overallScore,
-		overallScoreDelta:            metricDeltas.overallScoreDelta,
-		basePassRate:                 metrics.base.passRate,
-		targetPassRate:               metrics.target.passRate,
-		passRateDelta:                metricDeltas.passRateDelta,
-		baseVerificationPassRate:     metrics.base.verificationPassRate,
-		targetVerificationPassRate:   metrics.target.verificationPassRate,
-		verificationRateDelta:        metricDeltas.verificationRateDelta,
-		baseEvidenceBackedPassRate:   metrics.base.evidenceBackedPassRate,
-		targetEvidenceBackedPassRate: metrics.target.evidenceBackedPassRate,
-		evidenceBackedRateDelta:      metricDeltas.evidenceBackedRateDelta,
-		baseRetryRecoveredCount:      metrics.base.retryRecoveredCount,
-		targetRetryRecoveredCount:    metrics.target.retryRecoveredCount,
-		retryRecoveredDelta:          metricDeltas.retryRecoveredDelta,
-		failureLabelDelta:            metrics.structural.failureLabelDelta,
-		verdictCountDelta:            metrics.structural.verdictCountDelta,
-		linkedRunCountDelta:          metrics.structural.linkedRunCountDelta,
-		artifactCountDelta:           metrics.structural.artifactCountDelta,
-		routeCaseCount:               metrics.structural.routeCaseCount,
-		routeAgreementCount:          metrics.structural.routeAgreementCount,
-		routeAgreementRate:           routeAgreementRate,
-		routeCompatibleCount:         metrics.structural.routeCompatibleCount,
-		routeCompatibleRate:          routeCompatibleRate,
-		routeImprovementCount:        metrics.structural.routeImprovementCount,
-		routeDisagreementCount:       metrics.structural.routeDisagreementCount,
-		criticalRouteCaseCount:       metrics.structural.criticalRouteCaseCount,
-		criticalRegressionCount:      metrics.structural.criticalRegressionCount,
-		baseClarifyRate:              baseClarifyRate,
-		targetClarifyRate:            targetClarifyRate,
-		clarifyRateDelta:             targetClarifyRate - baseClarifyRate,
-		localeBreakdown:              cloneSelectorGateSegmentMetricsMap(metrics.structural.localeBreakdown),
-		primaryRouteBreakdown:        cloneSelectorGateSegmentMetricsMap(metrics.structural.primaryRouteBreakdown),
+		baseOverallScore:                   metrics.base.overallScore,
+		targetOverallScore:                 metrics.target.overallScore,
+		overallScoreDelta:                  metricDeltas.overallScoreDelta,
+		basePassRate:                       metrics.base.passRate,
+		targetPassRate:                     metrics.target.passRate,
+		passRateDelta:                      metricDeltas.passRateDelta,
+		baseVerificationPassRate:           metrics.base.verificationPassRate,
+		targetVerificationPassRate:         metrics.target.verificationPassRate,
+		verificationRateDelta:              metricDeltas.verificationRateDelta,
+		baseEvidenceBackedPassRate:         metrics.base.evidenceBackedPassRate,
+		targetEvidenceBackedPassRate:       metrics.target.evidenceBackedPassRate,
+		evidenceBackedRateDelta:            metricDeltas.evidenceBackedRateDelta,
+		baseRetryRecoveredCount:            metrics.base.retryRecoveredCount,
+		targetRetryRecoveredCount:          metrics.target.retryRecoveredCount,
+		retryRecoveredDelta:                metricDeltas.retryRecoveredDelta,
+		baseContextPackItemsWithSnapshot:   metrics.base.contextPackItemsWithSnapshot,
+		targetContextPackItemsWithSnapshot: metrics.target.contextPackItemsWithSnapshot,
+		contextPackItemsWithSnapshotDelta:  metricDeltas.contextPackItemsWithSnapshotDelta,
+		failureLabelDelta:                  metrics.structural.failureLabelDelta,
+		verdictCountDelta:                  metrics.structural.verdictCountDelta,
+		contextPackSelectedSkillDelta:      metrics.structural.contextPackSelectedSkillDelta,
+		contextPackSourceTrustDelta:        metrics.structural.contextPackSourceTrustDelta,
+		contextPackEntryDelta:              metrics.structural.contextPackEntryDelta,
+		linkedRunCountDelta:                metrics.structural.linkedRunCountDelta,
+		artifactCountDelta:                 metrics.structural.artifactCountDelta,
+		routeCaseCount:                     metrics.structural.routeCaseCount,
+		routeAgreementCount:                metrics.structural.routeAgreementCount,
+		routeAgreementRate:                 routeAgreementRate,
+		routeCompatibleCount:               metrics.structural.routeCompatibleCount,
+		routeCompatibleRate:                routeCompatibleRate,
+		routeImprovementCount:              metrics.structural.routeImprovementCount,
+		routeDisagreementCount:             metrics.structural.routeDisagreementCount,
+		criticalRouteCaseCount:             metrics.structural.criticalRouteCaseCount,
+		criticalRegressionCount:            metrics.structural.criticalRegressionCount,
+		baseClarifyRate:                    baseClarifyRate,
+		targetClarifyRate:                  targetClarifyRate,
+		clarifyRateDelta:                   targetClarifyRate - baseClarifyRate,
+		localeBreakdown:                    cloneSelectorGateSegmentMetricsMap(metrics.structural.localeBreakdown),
+		primaryRouteBreakdown:              cloneSelectorGateSegmentMetricsMap(metrics.structural.primaryRouteBreakdown),
 	}
 }
 
 func buildComparisonMetricDeltaSet(metrics comparisonMetricBundle) comparisonMetricDeltaSet {
 	return comparisonMetricDeltaSet{
-		overallScoreDelta:       metrics.target.overallScore - metrics.base.overallScore,
-		passRateDelta:           metrics.target.passRate - metrics.base.passRate,
-		verificationRateDelta:   metrics.target.verificationPassRate - metrics.base.verificationPassRate,
-		evidenceBackedRateDelta: metrics.target.evidenceBackedPassRate - metrics.base.evidenceBackedPassRate,
-		retryRecoveredDelta:     metrics.target.retryRecoveredCount - metrics.base.retryRecoveredCount,
+		overallScoreDelta:                 metrics.target.overallScore - metrics.base.overallScore,
+		passRateDelta:                     metrics.target.passRate - metrics.base.passRate,
+		verificationRateDelta:             metrics.target.verificationPassRate - metrics.base.verificationPassRate,
+		evidenceBackedRateDelta:           metrics.target.evidenceBackedPassRate - metrics.base.evidenceBackedPassRate,
+		retryRecoveredDelta:               metrics.target.retryRecoveredCount - metrics.base.retryRecoveredCount,
+		contextPackItemsWithSnapshotDelta: metrics.target.contextPackItemsWithSnapshot - metrics.base.contextPackItemsWithSnapshot,
 	}
 }
 
 func buildComparisonViewMetricSnapshot(view *comparisonReportView) comparisonViewMetricSnapshot {
 	return comparisonViewMetricSnapshot{
-		overallScore:           view.overallScore(),
-		passRate:               view.passRate(),
-		verificationPassRate:   view.verificationPassRate(),
-		evidenceBackedPassRate: view.evidenceBackedPassRate(),
-		retryRecoveredCount:    view.retryRecoveredCount(),
-		linkedRunCount:         view.linkedRunCount(),
-		artifactCount:          view.artifactCount(),
+		overallScore:                 view.overallScore(),
+		passRate:                     view.passRate(),
+		verificationPassRate:         view.verificationPassRate(),
+		evidenceBackedPassRate:       view.evidenceBackedPassRate(),
+		retryRecoveredCount:          view.retryRecoveredCount(),
+		contextPackItemsWithSnapshot: view.contextPackItemsWithSnapshot(),
+		linkedRunCount:               view.linkedRunCount(),
+		artifactCount:                view.artifactCount(),
 	}
 }
 
 func buildComparisonStructuralDelta(baseView *comparisonReportView, targetView *comparisonReportView, baseMetrics comparisonViewMetricSnapshot, targetMetrics comparisonViewMetricSnapshot) comparisonStructuralDelta {
 	routeDelta := buildComparisonRouteDelta(baseView, targetView)
 	return comparisonStructuralDelta{
-		failureLabelDelta:       failureLabelDeltaViews(baseView, targetView),
-		verdictCountDelta:       verdictCountDeltaViews(baseView, targetView),
-		linkedRunCountDelta:     targetMetrics.linkedRunCount - baseMetrics.linkedRunCount,
-		artifactCountDelta:      targetMetrics.artifactCount - baseMetrics.artifactCount,
-		routeCaseCount:          routeDelta.routeCaseCount,
-		routeAgreementCount:     routeDelta.routeAgreementCount,
-		routeCompatibleCount:    routeDelta.routeCompatibleCount,
-		routeImprovementCount:   routeDelta.routeImprovementCount,
-		routeDisagreementCount:  routeDelta.routeDisagreementCount,
-		criticalRouteCaseCount:  routeDelta.criticalRouteCaseCount,
-		criticalRegressionCount: routeDelta.criticalRegressionCount,
-		baseClarifyCount:        routeDelta.baseClarifyCount,
-		targetClarifyCount:      routeDelta.targetClarifyCount,
-		localeBreakdown:         finalizeComparisonRouteBreakdownMap(routeDelta.localeBreakdown),
-		primaryRouteBreakdown:   finalizeComparisonRouteBreakdownMap(routeDelta.primaryRouteBreakdown),
+		failureLabelDelta:             failureLabelDeltaViews(baseView, targetView),
+		verdictCountDelta:             verdictCountDeltaViews(baseView, targetView),
+		contextPackSelectedSkillDelta: contextPackSelectedSkillDeltaViews(baseView, targetView),
+		contextPackSourceTrustDelta:   contextPackSourceTrustDeltaViews(baseView, targetView),
+		contextPackEntryDelta:         contextPackEntryDeltaViews(baseView, targetView),
+		linkedRunCountDelta:           targetMetrics.linkedRunCount - baseMetrics.linkedRunCount,
+		artifactCountDelta:            targetMetrics.artifactCount - baseMetrics.artifactCount,
+		routeCaseCount:                routeDelta.routeCaseCount,
+		routeAgreementCount:           routeDelta.routeAgreementCount,
+		routeCompatibleCount:          routeDelta.routeCompatibleCount,
+		routeImprovementCount:         routeDelta.routeImprovementCount,
+		routeDisagreementCount:        routeDelta.routeDisagreementCount,
+		criticalRouteCaseCount:        routeDelta.criticalRouteCaseCount,
+		criticalRegressionCount:       routeDelta.criticalRegressionCount,
+		baseClarifyCount:              routeDelta.baseClarifyCount,
+		targetClarifyCount:            routeDelta.targetClarifyCount,
+		localeBreakdown:               finalizeComparisonRouteBreakdownMap(routeDelta.localeBreakdown),
+		primaryRouteBreakdown:         finalizeComparisonRouteBreakdownMap(routeDelta.primaryRouteBreakdown),
 	}
 }
 
@@ -1327,8 +1369,26 @@ func comparisonReason(card *Scorecard, run Run) string {
 }
 
 func failureLabelDeltaViews(baseView *comparisonReportView, targetView *comparisonReportView) map[string]interface{} {
-	baseCounts := baseView.failureLabelCounts()
-	targetCounts := targetView.failureLabelCounts()
+	return comparisonIntMapDelta(baseView.failureLabelCounts(), targetView.failureLabelCounts())
+}
+
+func verdictCountDeltaViews(baseView *comparisonReportView, targetView *comparisonReportView) map[string]interface{} {
+	return comparisonIntMapDelta(baseView.verdictCounts(), targetView.verdictCounts())
+}
+
+func contextPackSelectedSkillDeltaViews(baseView *comparisonReportView, targetView *comparisonReportView) map[string]interface{} {
+	return comparisonIntMapDelta(baseView.contextPackSelectedSkillCounts(), targetView.contextPackSelectedSkillCounts())
+}
+
+func contextPackSourceTrustDeltaViews(baseView *comparisonReportView, targetView *comparisonReportView) map[string]interface{} {
+	return comparisonIntMapDelta(baseView.contextPackSourceTrustCounts(), targetView.contextPackSourceTrustCounts())
+}
+
+func contextPackEntryDeltaViews(baseView *comparisonReportView, targetView *comparisonReportView) map[string]interface{} {
+	return comparisonIntMapDelta(baseView.contextPackEntryCounts(), targetView.contextPackEntryCounts())
+}
+
+func comparisonIntMapDelta(baseCounts map[string]int, targetCounts map[string]int) map[string]interface{} {
 	keys := make(map[string]struct{}, len(baseCounts)+len(targetCounts))
 	for key := range baseCounts {
 		keys[key] = struct{}{}
@@ -1343,19 +1403,14 @@ func failureLabelDeltaViews(baseView *comparisonReportView, targetView *comparis
 	return out
 }
 
-func verdictCountDeltaViews(baseView *comparisonReportView, targetView *comparisonReportView) map[string]interface{} {
-	keys := make(map[string]struct{})
-	out := make(map[string]interface{})
-	for key := range baseView.verdictCounts() {
-		keys[key] = struct{}{}
+func comparisonIntMapValue(raw interface{}) map[string]int {
+	typed := metadataMapValue(raw)
+	if len(typed) == 0 {
+		return map[string]int{}
 	}
-	for key := range targetView.verdictCounts() {
-		keys[key] = struct{}{}
-	}
-	for key := range keys {
-		baseCount := baseView.verdictCounts()[key]
-		targetCount := targetView.verdictCounts()[key]
-		out[key] = targetCount - baseCount
+	out := make(map[string]int, len(typed))
+	for label, value := range typed {
+		out[label] = int(comparisonNumericValue(value))
 	}
 	return out
 }
@@ -1493,6 +1548,10 @@ func (v *comparisonReportView) retryRecoveredCount() int {
 	return v.derivedViewMetrics().retryRecoveredCount
 }
 
+func (v *comparisonReportView) contextPackItemsWithSnapshot() int {
+	return v.derivedViewMetrics().contextPackItemsWithSnapshot
+}
+
 func (v *comparisonReportView) groupID() string {
 	if v == nil || v.report == nil || v.report.GroupReport == nil || v.report.GroupReport.Group == nil {
 		return ""
@@ -1529,19 +1588,37 @@ func (v *comparisonReportView) failureLabelCounts() map[string]int {
 	return v.derivedViewMetrics().failureLabelCounts
 }
 
+func (v *comparisonReportView) contextPackSelectedSkillCounts() map[string]int {
+	return v.derivedViewMetrics().contextPackSelectedSkillCounts
+}
+
+func (v *comparisonReportView) contextPackSourceTrustCounts() map[string]int {
+	return v.derivedViewMetrics().contextPackSourceTrustCounts
+}
+
+func (v *comparisonReportView) contextPackEntryCounts() map[string]int {
+	return v.derivedViewMetrics().contextPackEntryCounts
+}
+
 func (v *comparisonReportView) derivedViewMetrics() *comparisonViewDerivedMetrics {
 	if v == nil {
 		return &comparisonViewDerivedMetrics{
-			verdictCounts:      map[string]int{},
-			failureLabelCounts: map[string]int{},
+			verdictCounts:                  map[string]int{},
+			failureLabelCounts:             map[string]int{},
+			contextPackSelectedSkillCounts: map[string]int{},
+			contextPackSourceTrustCounts:   map[string]int{},
+			contextPackEntryCounts:         map[string]int{},
 		}
 	}
 	if v.derivedMetrics != nil {
 		return v.derivedMetrics
 	}
 	metrics := &comparisonViewDerivedMetrics{
-		verdictCounts:      map[string]int{},
-		failureLabelCounts: map[string]int{},
+		verdictCounts:                  map[string]int{},
+		failureLabelCounts:             map[string]int{},
+		contextPackSelectedSkillCounts: map[string]int{},
+		contextPackSourceTrustCounts:   map[string]int{},
+		contextPackEntryCounts:         map[string]int{},
 	}
 	if v.report == nil || v.report.GroupReport == nil {
 		v.derivedMetrics = metrics
@@ -1570,6 +1647,16 @@ func (v *comparisonReportView) derivedViewMetrics() *comparisonViewDerivedMetric
 	} else {
 		metrics.failureLabelCounts = computeComparisonFailureLabelCounts(v.report.GroupReport.Items, v.latestCards)
 	}
+	contextPackBreakdown := metadataMapValue(v.summary[contextPackBreakdownSummaryKey])
+	if len(contextPackBreakdown) == 0 {
+		contextPackBreakdown = buildContextPackBreakdown(v.report.GroupReport.Items)
+	}
+	if len(contextPackBreakdown) > 0 {
+		metrics.contextPackItemsWithSnapshot = intMetadata(contextPackBreakdown["items_with_snapshot"])
+		metrics.contextPackSelectedSkillCounts = comparisonIntMapValue(contextPackBreakdown["selected_skill_counts"])
+		metrics.contextPackSourceTrustCounts = comparisonIntMapValue(contextPackBreakdown["source_trust_counts"])
+		metrics.contextPackEntryCounts = comparisonIntMapValue(contextPackBreakdown["entry_id_counts"])
+	}
 	v.derivedMetrics = metrics
 	return metrics
 }
@@ -1595,15 +1682,11 @@ func (v *comparisonReportView) summaryIntMap(key string) (map[string]int, bool) 
 	if !ok {
 		return nil, false
 	}
-	typed, ok := raw.(map[string]interface{})
-	if !ok {
+	typed := comparisonIntMapValue(raw)
+	if len(typed) == 0 {
 		return nil, false
 	}
-	out := make(map[string]int, len(typed))
-	for label, value := range typed {
-		out[label] = int(comparisonNumericValue(value))
-	}
-	return out, true
+	return typed, true
 }
 
 func (v *comparisonReportView) summaryValue(key string) (interface{}, bool) {

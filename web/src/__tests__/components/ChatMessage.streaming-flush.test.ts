@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import { i18n } from '@/i18n'
+import { hasTypelessCards, parseTypelessContentIncremental } from '@/utils/typeless'
 
 const chatStore = reactive({
   messages: [] as Array<Record<string, unknown>>,
@@ -126,6 +127,55 @@ describe('ChatMessage streaming flush', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('treats streaming function_calls blocks as typeless hints instead of raw text only', async () => {
+    vi.mocked(hasTypelessCards).mockReturnValue(true)
+    vi.mocked(parseTypelessContentIncremental).mockReturnValue({
+      text: '[[TYPELESS_CARD:fc-0]]',
+      cards: [
+        {
+          type: 'steps',
+          id: 'fc-0',
+          title: 'Tool Calls (1)',
+          steps: [{ title: 'Deep Research', icon: '🔍', status: 'completed' }],
+          variant: 'vertical',
+        },
+      ],
+    } as any)
+
+    mount(ChatMessage, {
+      props: {
+        message: makeMessage(
+          [
+            '<function_calls>',
+            '<invoke name="$blue">',
+            '<parameter name="command">deep_research</parameter>',
+            '<parameter name="args">',
+            '<parameter name="query">Apple AAPL stock price today April 2026</parameter>',
+            '</parameter>',
+            '</invoke>',
+            '</function_calls>',
+          ].join('\n')
+        ),
+        isStreaming: true,
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(parseTypelessContentIncremental).toHaveBeenCalled()
   })
 
   it('renders the first streamed token immediately', async () => {

@@ -91,7 +91,7 @@ func TestController_SubmitEvalRunSelectorCuratedDataset_PassesStructuredRoutingC
 	controller := newTestController(t)
 	controller.RegisterDriver(selectorEvalDriver{source: selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}})
@@ -207,7 +207,7 @@ func TestController_CompareEvalRunSelectorCuratedDatasetTracksRouteAgreementAndC
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -224,8 +224,8 @@ func TestController_CompareEvalRunSelectorCuratedDatasetTracksRouteAgreementAndC
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
-			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_query", false, "selected"),
 		},
 	}, len(items))
 
@@ -313,8 +313,8 @@ func TestController_CompareEvalRunSelectorCuratedDatasetTracksRouteCompatibility
 
 	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-baseline", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
-			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("web_query", false, "selected"),
 		},
 	}, len(items))
 	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
@@ -329,7 +329,7 @@ func TestController_CompareEvalRunSelectorCuratedDatasetTracksRouteCompatibility
 
 	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-candidate", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(items))
@@ -446,7 +446,6 @@ func selectorEvalResponseWithTools(skill string, selectedTools []string, clarify
 		"skill_route_outcome":   outcome,
 		"decision_reason":       "curated_test",
 		"decision_stage":        "rerank",
-		"smart_skill_selection": true,
 	}
 	if clarify {
 		response["clarify_reason"] = "The request mixes local-workspace and live-web intents."

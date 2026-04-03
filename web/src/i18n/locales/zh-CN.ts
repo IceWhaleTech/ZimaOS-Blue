@@ -1,5 +1,5 @@
 // Simplified Chinese (简体中文)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('zh-CN', {
   common: {
@@ -1416,7 +1416,10 @@ export default mergeHarnessLocale('zh-CN', {
       healthRequestFailed: '检查外部智能体健康状态失败。',
       saveBeforeHealth: '请先保存配置，再运行健康检查。',
       duplicate: '复制',
-      builtinHelp: '内置配置保持只读，以确保预置的 Claude、Codex、Gemini 和通用 A2A 条目稳定可用。',
+      builtinHelp: '内置配置保持只读。如需自定义，请先复制一份。',
+      acpTemplateSummary: '复制后填写可执行命令以启用 ACP 运行时。',
+      acpTemplateHelp: '内置 ACP 条目现在只提供设置模板。请先复制，再填写可运行的 ACP 命令。',
+      acpTemplateActionDisabled: '内置 ACP 模板不能直接验证或健康检查。请先复制并配置命令。',
       command: '命令与参数',
       credentialSource: '凭据来源',
       authMethod: '认证方式',

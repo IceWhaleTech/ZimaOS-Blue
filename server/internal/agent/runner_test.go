@@ -1689,7 +1689,7 @@ func TestRunner_GeneratePlanForTask_FiltersHarnessSeededSessionCompactionMemory(
 	}
 }
 
-func TestRunner_GeneratePlanForTask_UsesHarnessSeededSessionCompactionMemoryForWeeklyRetrospective(t *testing.T) {
+func TestRunner_GeneratePlanForTask_FiltersHarnessSeededSessionCompactionMemoryForWeeklyRetrospectiveWithoutTimeWindowSpecialCase(t *testing.T) {
 	goal := "梳理下我过去一周具体写了什么。"
 	observer := &captureTaskEventObserver{}
 	llmCapture := &capturingPlannerLLM{planJSON: plannerTestJSON(goal)}
@@ -1718,11 +1718,11 @@ func TestRunner_GeneratePlanForTask_UsesHarnessSeededSessionCompactionMemoryForW
 	if plan == nil || len(plan.Steps) == 0 {
 		t.Fatalf("plan = %#v, want non-empty plan", plan)
 	}
-	if taskEventSeen(observer.events, "task_planner_memory_filtered_session_compaction") {
-		t.Fatalf("expected retrospective weekly prompt to keep session-compaction memory, got %+v", observer.events)
+	if !taskEventSeen(observer.events, "task_planner_memory_filtered_session_compaction") {
+		t.Fatalf("expected retrospective weekly prompt to stop keeping session-compaction memory, got %+v", observer.events)
 	}
-	if !taskEventSeen(observer.events, "task_planner_memory_used") {
-		t.Fatalf("expected planner memory used event, got %+v", observer.events)
+	if taskEventSeen(observer.events, "task_planner_memory_used") {
+		t.Fatalf("expected no planner memory used event, got %+v", observer.events)
 	}
 
 	userPrompt := ""
@@ -1732,14 +1732,14 @@ func TestRunner_GeneratePlanForTask_UsesHarnessSeededSessionCompactionMemoryForW
 			break
 		}
 	}
-	if !strings.Contains(userPrompt, "<planner_memory>") {
-		t.Fatalf("expected planner prompt to include planner memory, got %q", userPrompt)
+	if strings.Contains(userPrompt, "<planner_memory>") {
+		t.Fatalf("expected planner prompt to omit session-compaction memory, got %q", userPrompt)
 	}
-	if !strings.Contains(userPrompt, "source=session_compaction") {
-		t.Fatalf("expected planner prompt to include session-compaction source, got %q", userPrompt)
-	}
-	if !strings.Contains(userPrompt, "上周主要写了 chat.go") {
-		t.Fatalf("expected planner prompt to include seeded weekly worklog memory, got %q", userPrompt)
+}
+
+func TestPlannerMemorySkipReason_DoesNotTreatRecentAsFreshPublicSignalByItself(t *testing.T) {
+	if got := plannerMemorySkipReason("网页最近发生了什么？"); got != "" {
+		t.Fatalf("plannerMemorySkipReason = %q, want empty", got)
 	}
 }
 

@@ -1,5 +1,5 @@
 // Korean (한국어)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('ko-KR', {
   common: {
@@ -1928,7 +1928,12 @@ export default mergeHarnessLocale('ko-KR', {
       saveBeforeHealth: '상태 확인을 실행하기 전에 프로필을 저장하십시오.',
       duplicate: '중복',
       builtinHelp:
-        '기본 제공 프로필은 읽기 전용으로 유지되므로 시드된 Claude, Codex, Gemini 및 일반 A2A 항목이 안정적으로 유지됩니다.',
+        '내장 프로필은 읽기 전용으로 유지됩니다. 하나를 복제해 사용자 지정 사본을 만드세요.',
+      acpTemplateSummary: '복제하여 실행 가능한 ACP 명령을 추가하세요.',
+      acpTemplateHelp:
+        '내장 ACP 항목은 설정 템플릿일 뿐입니다. 하나를 복제한 다음 실행 가능한 ACP 명령을 추가하세요.',
+      acpTemplateActionDisabled:
+        '내장 ACP 템플릿에서는 검증이나 상태 확인을 실행할 수 없습니다. 먼저 복제하고 명령을 구성하세요.',
       command: '명령 및 인수',
       credentialSource: '자격 증명 소스',
       authMethod: '인증 방법',

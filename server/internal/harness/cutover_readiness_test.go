@@ -23,6 +23,46 @@ func TestResolveSkillCutoverCandidateIDPrefersLatestSharedCandidate(t *testing.T
 	}
 }
 
+func TestSortSkillCutoverEvalRunsPrefersStableAttemptCreationTime(t *testing.T) {
+	now := time.Now()
+	olderCreated := now.Add(-2 * time.Hour)
+	newerCreated := now.Add(-1 * time.Hour)
+
+	runs := []EvalRun{
+		{
+			ID:        "older-failed-budget",
+			CreatedAt: olderCreated,
+			UpdatedAt: now,
+			FinishedAt: func() *time.Time {
+				ts := now
+				return &ts
+			}(),
+			Metadata: map[string]interface{}{"candidate_id": "rc-sort"},
+		},
+		{
+			ID:        "newer-passing-budget",
+			CreatedAt: newerCreated,
+			UpdatedAt: now.Add(-5 * time.Minute),
+			FinishedAt: func() *time.Time {
+				ts := newerCreated.Add(30 * time.Second)
+				return &ts
+			}(),
+			Metadata: map[string]interface{}{"candidate_id": "rc-sort"},
+		},
+	}
+
+	sorted := sortSkillCutoverEvalRuns(runs)
+	if len(sorted) != 2 {
+		t.Fatalf("len(sorted) = %d, want 2", len(sorted))
+	}
+	if sorted[0].ID != "newer-passing-budget" {
+		t.Fatalf("sorted[0].ID = %q, want newer-passing-budget", sorted[0].ID)
+	}
+	if sorted[1].ID != "older-failed-budget" {
+		t.Fatalf("sorted[1].ID = %q, want older-failed-budget", sorted[1].ID)
+	}
+}
+
 func TestController_EvaluateSkillCutoverReadiness_ComputesCandidateStreaks(t *testing.T) {
 	controller := newTestController(t)
 
@@ -33,7 +73,7 @@ func TestController_EvaluateSkillCutoverReadiness_ComputesCandidateStreaks(t *te
 
 	selectorBaselineReport := runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "selector-baseline", "", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -64,7 +104,7 @@ func TestController_EvaluateSkillCutoverReadiness_ComputesCandidateStreaks(t *te
 	candidateID := "rc-2026-03-28"
 	runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "selector-candidate-1", candidateID, selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -74,7 +114,7 @@ func TestController_EvaluateSkillCutoverReadiness_ComputesCandidateStreaks(t *te
 	}, len(executionItems))
 	runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "selector-candidate-2", candidateID, selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -146,7 +186,7 @@ func TestController_EvaluateSkillCutoverReadiness_FailsWhenLatestLaneRunRegresse
 
 	selectorBaselineReport := runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "selector-baseline", "", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -177,7 +217,7 @@ func TestController_EvaluateSkillCutoverReadiness_FailsWhenLatestLaneRunRegresse
 	candidateID := "rc-regression"
 	runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "selector-candidate-pass", candidateID, selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -240,7 +280,7 @@ func TestController_EvaluateSkillCutoverReadiness_PassesWhenBudgetLaneIsExecOnly
 
 	selectorBaselineReport := runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "selector-baseline", "", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -270,7 +310,7 @@ func TestController_EvaluateSkillCutoverReadiness_PassesWhenBudgetLaneIsExecOnly
 
 	budgetBaselineReport := runSelectorEvalReportForCandidate(t, controller, selectorEvalSpec, "budget-baseline", "", selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_search", false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("analyze", true, "clarify"),
 		},
 	}, len(selectorItems))
@@ -287,7 +327,7 @@ func TestController_EvaluateSkillCutoverReadiness_PassesWhenBudgetLaneIsExecOnly
 	candidateID := "rc-exec-only"
 	execOnlySource := selectorEvalSource{
 		responses: map[string]map[string]interface{}{
-			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseWithTools("web_search", []string{"exec"}, false, "selected"),
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseWithTools("web_query", []string{"exec"}, false, "selected"),
 			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponseWithTools("exec", []string{"exec"}, true, "clarify"),
 		},
 	}

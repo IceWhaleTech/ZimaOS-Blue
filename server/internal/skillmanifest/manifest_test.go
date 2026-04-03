@@ -440,7 +440,7 @@ func TestPinnedBuiltinSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 	pinned := []string{
 		"ask",
 		"browser",
-		"web_search",
+		"web_query",
 		"deep_research",
 		"analyze",
 		"ui_reviewer",
@@ -607,7 +607,7 @@ func TestSupplementalSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 	}
 }
 
-func TestDisabledPlaceholderSkills_AreDisabledAndEmbeddedSynced(t *testing.T) {
+func TestRemovedPlaceholderSkills_AreNotBundled(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
@@ -617,50 +617,11 @@ func TestDisabledPlaceholderSkills_AreDisabledAndEmbeddedSynced(t *testing.T) {
 	for _, id := range []string{"timer", "datetime", "unit_converter", "search"} {
 		t.Run(id, func(t *testing.T) {
 			assetPath := filepath.Join(repoRoot, "assets", "skills", id, "SKILL.md")
-			assetData, err := os.ReadFile(assetPath)
-			if err != nil {
-				t.Fatalf("read asset skill: %v", err)
+			if _, err := os.Stat(assetPath); !os.IsNotExist(err) {
+				t.Fatalf("expected removed placeholder asset %q to stay absent, err=%v", id, err)
 			}
-
-			strictAssetDoc, err := ParseEntry(id, assetPath, assetData, Options{RequireContract: true})
-			if err != nil {
-				t.Fatalf("ParseEntry asset strict contract error: %v", err)
-			}
-			if strictAssetDoc.Manifest == nil {
-				t.Fatal("expected strict asset manifest")
-			}
-			if strictAssetDoc.Enabled {
-				t.Fatalf("expected %s strict asset skill to be disabled", id)
-			}
-
-			assetDoc, err := ParseEntry(id, assetPath, assetData, Options{})
-			if err != nil {
-				t.Fatalf("ParseEntry asset error: %v", err)
-			}
-			if assetDoc.Enabled {
-				t.Fatalf("expected %s asset skill to be disabled", id)
-			}
-
-			embeddedDoc, embeddedData, err := ReadEmbedded(id, Options{})
-			if err != nil {
-				t.Fatalf("ReadEmbedded error: %v", err)
-			}
-			if embeddedDoc.Enabled {
-				t.Fatalf("expected %s embedded skill to be disabled", id)
-			}
-
-			strictEmbeddedDoc, _, err := ReadEmbedded(id, Options{RequireContract: true})
-			if err != nil {
-				t.Fatalf("ReadEmbedded strict contract error: %v", err)
-			}
-			if strictEmbeddedDoc.Manifest == nil {
-				t.Fatal("expected strict embedded manifest")
-			}
-			if strictEmbeddedDoc.Enabled {
-				t.Fatalf("expected %s strict embedded skill to be disabled", id)
-			}
-			if string(assetData) != string(embeddedData) {
-				t.Fatalf("embedded %s skill copy is stale; run `make copy-skills`", id)
+			if _, _, err := ReadEmbedded(id, Options{}); err == nil {
+				t.Fatalf("expected removed placeholder embedded skill %q to stay absent", id)
 			}
 		})
 	}
@@ -676,6 +637,39 @@ func TestCandidateIDs_NormalizesAndFallsBackToBaseSkill(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("got[%d]=%q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestCandidateIDs_IncludesCanonicalWebQueryForLegacyWebSearch(t *testing.T) {
+	got := CandidateIDs("web_search")
+	wantContains := []string{"web_search", "web_query"}
+	for _, want := range wantContains {
+		found := false
+		for _, candidate := range got {
+			if candidate == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("CandidateIDs(web_search)=%v, want to contain %q", got, want)
+		}
+	}
+}
+
+func TestFindByCandidates_LegacyWebSearchFallsBackToEmbeddedWebQuery(t *testing.T) {
+	resolved, ok := FindByCandidates(CandidateIDs("web_search"), ResolveRoots(""), Options{RequireContract: true})
+	if !ok {
+		t.Fatal("expected embedded web_query skill to resolve for legacy web_search lookup")
+	}
+	if resolved.Document.ID != "web_query" {
+		t.Fatalf("resolved.Document.ID=%q, want web_query", resolved.Document.ID)
+	}
+	if !resolved.Embedded {
+		t.Fatal("expected embedded builtin resolution")
+	}
+	if !strings.Contains(resolved.Source, "embedded:skills/web_query/SKILL.md") {
+		t.Fatalf("resolved.Source=%q, want embedded web_query path", resolved.Source)
 	}
 }
 

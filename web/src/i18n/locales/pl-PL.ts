@@ -1,5 +1,5 @@
 // Polish (Polski)
-import { mergeHarnessLocale } from '../harnessLocaleAdditions'
+import { mergeHarnessLocale } from '../localeBaseMessages'
 
 export default mergeHarnessLocale('pl-PL', {
   common: {
@@ -1854,7 +1854,12 @@ export default mergeHarnessLocale('pl-PL', {
       saveBeforeHealth: 'Zapisz profil przed sprawdzeniem stanu.',
       duplicate: 'Duplikat',
       builtinHelp:
-        'Wbudowane profile pozostają tylko do odczytu, więc początkowe wpisy Claude, Codex, Gemini i ogólne A2A pozostają stabilne.',
+        'Wbudowane profile pozostają tylko do odczytu. Zduplikuj jeden, aby utworzyć własną kopię.',
+      acpTemplateSummary: 'Zduplikuj, aby dodać wykonywalne polecenie ACP.',
+      acpTemplateHelp:
+        'Wbudowane wpisy ACP są tylko szablonami konfiguracji. Zduplikuj jeden, a następnie dodaj dowolne wykonywalne polecenie ACP.',
+      acpTemplateActionDisabled:
+        'Wbudowane szablony ACP nie mogą uruchamiać weryfikacji ani kontroli stanu. Najpierw zduplikuj jeden i skonfiguruj polecenie.',
       command: 'Polecenie i argumenty',
       credentialSource: 'Źródło danych uwierzytelniających',
       authMethod: 'Metoda autoryzacji',
