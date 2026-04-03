@@ -99,11 +99,13 @@ func (c *Controller) EvaluateSelectorGate(ctx context.Context, targetEvalRunID s
 		CreatedAt:          timeutil.NowTime(),
 	}
 	c.emitOptimizationTrigger(ctx, OptimizationTrigger{
-		Reason:          selectorGateReason(report.Passed),
-		CandidateID:     evalRunCandidateID(targetReport.EvalRun),
-		EvalRunID:       targetReport.EvalRun.ID,
-		BaseEvalRunID:   comparison.BaseEvalRunID,
-		OptimizationRun: evalRunIsOptimizationChild(targetReport.EvalRun),
+		Reason:              selectorGateReason(report.Passed),
+		CandidateID:         evalRunCandidateID(targetReport.EvalRun),
+		EvalRunID:           targetReport.EvalRun.ID,
+		BaseEvalRunID:       comparison.BaseEvalRunID,
+		OptimizationRun:     evalRunIsOptimizationChild(targetReport.EvalRun),
+		OptimizationSurface: evalRunOptimizationSurface(targetReport.EvalRun),
+		Metadata:            evalRunOptimizationMetadata(targetReport.EvalRun),
 	})
 	return report, nil
 }

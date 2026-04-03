@@ -42,7 +42,7 @@ func buildSecurityScannerConfig(cfg *config.Config, sandboxAvailable bool) *secu
 	scannerCfg.SandboxCPULimitCores = cfg.Security.Sandbox.CPULimit
 	scannerCfg.SandboxTimeoutSeconds = scannerDurationSeconds(cfg.Security.Sandbox.DefaultTimeout)
 	scannerCfg.SandboxNetworkEnabled = cfg.Security.Sandbox.NetworkEnabled
-	scannerCfg.DebugMode = isSecurityScannerDebugLogLevel(cfg.Log.Level)
+	scannerCfg.DebugMode = inferSecurityScannerDebugMode()
 	scannerCfg.JWTSecretLength = len(strings.TrimSpace(cfg.Security.JWT.Secret))
 	scannerCfg.JWTExpirySecs = scannerDurationSeconds(cfg.Security.JWT.Expiration)
 
@@ -123,6 +123,20 @@ func isSecurityScannerLoopbackHost(host string) bool {
 	default:
 		return false
 	}
+}
+
+func inferSecurityScannerDebugMode() bool {
+	if isSecurityScannerTruthyEnv("BLUE_DEV") {
+		return true
+	}
+
+	for _, key := range securityScannerEnvironmentVars {
+		if normalizeSecurityScannerEnvironment(os.Getenv(key)) == "development" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func isSecurityScannerDebugLogLevel(level string) bool {

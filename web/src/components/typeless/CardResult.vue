@@ -1310,6 +1310,13 @@ const visibleDetails = computed(() => {
       }
     })
 })
+const emptyStateMessage = computed(() => t('resultCard.messages.no_result_data', 'No result data'))
+const showEmptyState = computed(() => {
+  if (translatedMessage.value || warningText.value || warningCodeLabel.value) return false
+  if (hasRenderedImages.value || textSearchResults.value || directoryListing.value) return false
+  if (visibleDetails.value.length > 0) return false
+  return !props.card.actions || props.card.actions.length === 0
+})
 </script>
 
 <template>
@@ -1411,6 +1418,14 @@ const visibleDetails = computed(() => {
         :class="hasRenderedImages ? 'mt-3' : ''"
       >
         {{ translatedMessage }}
+      </p>
+
+      <p
+        v-else-if="showEmptyState"
+        class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+        :class="hasRenderedImages ? 'mt-3' : ''"
+      >
+        {{ emptyStateMessage }}
       </p>
 
       <div

@@ -68,6 +68,32 @@ func TestSettingsHandlerPatchStoresAgentcoreRunnerSettings(t *testing.T) {
 	}
 }
 
+func TestSettingsHandlerGetDefaultsAgentcoreRunnerRepoURLWhenUnset(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+
+	if err := handler.Get(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body Settings
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got := handler.GetExperimentalAgentcoreRunnerRepoURL(); got != "https://github.com/IceWhaleTech/ZimaOS-Blue" {
+		t.Fatalf("default getter repo url = %q", got)
+	}
+	if got := strings.TrimSpace(body.ExperimentalAgentcoreRunnerRepoURL); got != "https://github.com/IceWhaleTech/ZimaOS-Blue" {
+		t.Fatalf("default response repo url = %q", got)
+	}
+}
+
 func TestSettingsHandlerAgentcoreRunnerStatusEndpoint(t *testing.T) {
 	handler := NewSettingsHandler(kvstore.NewMemoryStore())
 	prepareAt := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
@@ -131,5 +157,28 @@ func TestSettingsHandlerAgentcoreRunnerPrepareEndpointUsesStoredSettings(t *test
 	}
 	if manager.lastPrepareRepo != "https://github.com/IceWhaleTech/ZimaOS-Blue" || manager.lastPrepareRef != "main" {
 		t.Fatalf("prepare request = repo %q ref %q", manager.lastPrepareRepo, manager.lastPrepareRef)
+	}
+}
+
+func TestSettingsHandlerAgentcoreRunnerPrepareEndpointUsesDefaultRepoWhenUnset(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+	manager := &stubAgentcoreRunnerManager{}
+	handler.SetAgentcoreRunnerManager(manager)
+	handler.settings.ExperimentalAgentcoreRunnerRef = "main"
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/agentcore-runner/prepare", nil)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	if err := handler.PrepareAgentcoreRunner(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("PrepareAgentcoreRunner returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if manager.prepareCalls != 1 {
+		t.Fatalf("prepareCalls = %d, want 1", manager.prepareCalls)
+	}
+	if manager.lastPrepareRepo != "https://github.com/IceWhaleTech/ZimaOS-Blue" {
+		t.Fatalf("prepare request repo = %q", manager.lastPrepareRepo)
 	}
 }

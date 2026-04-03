@@ -579,6 +579,76 @@ func TestServiceHealthProfileRejectsTemplateOnlyACPProfile(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteProfileDeletesMigratedCustomACPProfile(t *testing.T) {
+	service, store := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+		ProtocolACP: &stubProtocolRuntime{},
+		ProtocolA2A: &stubProtocolRuntime{},
+	})
+	saveTestProfile(t, store, &AgentProfile{
+		ID:          "codex-migrated",
+		Protocol:    ProtocolACP,
+		Name:        "codex-migrated",
+		Title:       "Codex ACP (Migrated)",
+		Description: "Legacy runnable ACP profile migrated from built-in Codex.",
+		Command:     []string{"npx", "@zed-industries/codex-acp"},
+		Metadata: map[string]interface{}{
+			"migrated_from_builtin_profile_id": "codex",
+		},
+	})
+
+	if err := service.DeleteProfile("codex-migrated"); err != nil {
+		t.Fatalf("DeleteProfile(codex-migrated) error = %v", err)
+	}
+	if _, err := store.GetProfile("codex-migrated"); err != ErrProfileNotFound {
+		t.Fatalf("GetProfile(codex-migrated) err = %v, want %v", err, ErrProfileNotFound)
+	}
+}
+
+func TestServiceDeleteProfileRejectsBuiltinProfile(t *testing.T) {
+	service, _ := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+		ProtocolACP: &stubProtocolRuntime{},
+		ProtocolA2A: &stubProtocolRuntime{},
+	})
+
+	err := service.DeleteProfile("codex")
+	if err == nil || !strings.Contains(err.Error(), "built-in profiles cannot be deleted") {
+		t.Fatalf("DeleteProfile(codex) err = %v, want built-in delete error", err)
+	}
+}
+
+func TestServiceDeleteProfileRejectsProfileInUse(t *testing.T) {
+	service, store := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+		ProtocolACP: &stubProtocolRuntime{},
+		ProtocolA2A: &stubProtocolRuntime{},
+	})
+	saveTestProfile(t, store, &AgentProfile{
+		ID:          "codex-migrated-in-use",
+		Protocol:    ProtocolACP,
+		Name:        "codex-migrated-in-use",
+		Title:       "Codex ACP (Migrated)",
+		Description: "Legacy runnable ACP profile still referenced by a session.",
+		Command:     []string{"npx", "@zed-industries/codex-acp"},
+		Metadata: map[string]interface{}{
+			"migrated_from_builtin_profile_id": "codex",
+		},
+	})
+	saveSessionForTest(t, store, &ExternalSession{
+		ID:        "sess-migrated-codex",
+		ProfileID: "codex-migrated-in-use",
+		Protocol:  ProtocolACP,
+		Name:      "Migrated Codex Session",
+		Status:    SessionStatusIdle,
+	})
+
+	err := service.DeleteProfile("codex-migrated-in-use")
+	if err == nil || !strings.Contains(err.Error(), "still used by 1 session") {
+		t.Fatalf("DeleteProfile(codex-migrated-in-use) err = %v, want in-use error", err)
+	}
+	if _, err := store.GetProfile("codex-migrated-in-use"); err != nil {
+		t.Fatalf("GetProfile(codex-migrated-in-use) error = %v, want profile preserved", err)
+	}
+}
+
 func TestServiceCreateSessionRejectsTemplateOnlyACPProfile(t *testing.T) {
 	service, _ := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
 		ProtocolACP: &stubProtocolRuntime{},

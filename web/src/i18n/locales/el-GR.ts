@@ -1863,6 +1863,10 @@ export default mergeHarnessLocale('el-GR', {
       healthOk: 'Ο έλεγχος υγείας πέτυχε.',
       healthFailed: 'Ο υγειονομικός έλεγχος απέτυχε.',
       healthRequestFailed: 'Απέτυχε ο έλεγχος της υγείας του εξωτερικού παράγοντα.',
+      deleted: 'Το προφίλ εξωτερικού πράκτορα διαγράφηκε.',
+      deleteFailed: 'Η διαγραφή του προφίλ εξωτερικού πράκτορα απέτυχε.',
+      deleteConfirm:
+        'Να διαγραφεί το προφίλ εξωτερικού πράκτορα "{name}"; Τα προφίλ που εξακολουθούν να χρησιμοποιούνται από συνεδρίες πρέπει πρώτα να καθαριστούν.',
       saveBeforeHealth: 'Αποθηκεύστε το προφίλ πριν εκτελέσετε έλεγχο υγείας.',
       duplicate: 'Διπλότυπο',
       builtinHelp:
@@ -7064,6 +7068,7 @@ export default mergeHarnessLocale('el-GR', {
   search: {
     summaryTitle: 'Αναζητηση στον ιστο',
     resultCount: '{count} αποτελέσματα',
+    moreResults: '+{count} ακόμη',
   },
   cardActions: {
     use_browser: 'Χρήση προγράμματος περιήγησης',

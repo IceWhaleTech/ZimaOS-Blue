@@ -1939,6 +1939,10 @@ export default mergeHarnessLocale('ja-JP', {
       healthOk: 'ヘルスチェックに成功しました。',
       healthFailed: 'ヘルスチェックに失敗しました。',
       healthRequestFailed: '外部エージェントの健全性をチェックできませんでした。',
+      deleted: '外部エージェントプロファイルを削除しました。',
+      deleteFailed: '外部エージェントプロファイルの削除に失敗しました。',
+      deleteConfirm:
+        '外部エージェントプロファイル "{name}" を削除しますか？ まだセッションから参照されているプロファイルは先に整理する必要があります。',
       saveBeforeHealth: 'ヘルスチェックを実行する前にプロファイルを保存します。',
       duplicate: '重複',
       builtinHelp:
@@ -7301,6 +7305,7 @@ export default mergeHarnessLocale('ja-JP', {
   search: {
     summaryTitle: 'Web search',
     resultCount: '{count} 件の結果',
+    moreResults: 'さらに {count} 件',
   },
   cardActions: {
     use_browser: 'ブラウザを使う',

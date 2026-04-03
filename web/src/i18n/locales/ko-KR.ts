@@ -1925,6 +1925,10 @@ export default mergeHarnessLocale('ko-KR', {
       healthOk: '건강검진에 성공했습니다.',
       healthFailed: '상태 확인에 실패했습니다.',
       healthRequestFailed: '외부 에이전트 상태를 확인하지 못했습니다.',
+      deleted: '외부 에이전트 프로필을 삭제했습니다.',
+      deleteFailed: '외부 에이전트 프로필 삭제에 실패했습니다.',
+      deleteConfirm:
+        '외부 에이전트 프로필 "{name}" 삭제하시겠습니까? 아직 세션에서 참조 중인 프로필은 먼저 정리해야 합니다.',
       saveBeforeHealth: '상태 확인을 실행하기 전에 프로필을 저장하십시오.',
       duplicate: '중복',
       builtinHelp:
@@ -7242,6 +7246,7 @@ export default mergeHarnessLocale('ko-KR', {
   search: {
     summaryTitle: 'Web search',
     resultCount: '{count}개 결과',
+    moreResults: '+{count}개 더',
   },
   cardActions: {
     use_browser: '브라우저 사용',

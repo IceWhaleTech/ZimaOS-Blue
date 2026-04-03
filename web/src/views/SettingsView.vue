@@ -164,6 +164,7 @@ const proxyTabInitialized = ref(false)
 const agentcoreRunnerSaving = ref(false)
 const agentcoreRunnerPreparing = ref(false)
 const agentcoreRunnerRefreshing = ref(false)
+const agentcoreRunnerStatusExpanded = ref(false)
 const agentcoreRunnerRepoURL = ref('')
 const agentcoreRunnerRef = ref('')
 const agentcoreRunnerStatus = computed(() => settingsStore.agentcoreRunnerStatus)
@@ -1235,18 +1236,23 @@ onUnmounted(() => {
 
           <section class="settings-module" data-testid="agentcore-runner-card">
             <div class="settings-module__header">
-              <div>
-                <span class="settings-module__eyebrow">{{
-                  t('settings.agentcoreRunner.eyebrow', 'Optimization (Beta)')
+              <div class="space-y-1.5">
+                <span class="settings-module__eyebrow inline-flex w-fit">{{
+                  t('settings.agentcoreRunner.eyebrow', 'Harness · Beta')
                 }}</span>
                 <h2 class="settings-module__title">
-                  {{ t('settings.agentcoreRunner.title', 'Agentcore Runner') }}
+                  {{
+                    t(
+                      'settings.agentcoreRunner.title',
+                      'Harness Self-Iterating Agentcore Runner'
+                    )
+                  }}
                 </h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
                   {{
                     t(
                       'settings.agentcoreRunner.description',
-                      'Prepare a standalone runner from a public GitHub repo so Beta optimization can build and evaluate it locally.'
+                      'Use Harness to iterate on an Agentcore runner by preparing a standalone runner from a public GitHub repo for local build, evaluation, and optimisation.'
                     )
                   }}
                 </p>
@@ -1263,7 +1269,7 @@ onUnmounted(() => {
                     {{
                       t(
                         'settings.agentcoreRunner.enabledHint',
-                        'Allow Optimization (Beta) to prepare and reuse a locally managed runner.'
+                        'Allow Harness beta flows to prepare and reuse a managed local runner for self-iteration.'
                       )
                     }}
                   </p>
@@ -1360,10 +1366,26 @@ onUnmounted(() => {
               </div>
 
               <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-slate-900/60">
-                <div class="mb-3 text-sm font-medium text-gray-800 dark:text-gray-100">
-                  {{ t('settings.agentcoreRunner.status', 'Status') }}
-                </div>
-                <div class="grid gap-2 sm:grid-cols-2">
+                <button
+                  data-testid="agentcore-runner-status-toggle"
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 text-left"
+                  @click="agentcoreRunnerStatusExpanded = !agentcoreRunnerStatusExpanded"
+                >
+                  <div class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                    {{ t('settings.agentcoreRunner.status', 'Status') }}
+                  </div>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                    agentcoreRunnerStatusExpanded
+                      ? t('settings.smallModel.collapse', 'Collapse')
+                      : t('settings.smallModel.expand', 'Expand')
+                  }}</span>
+                </button>
+                <div
+                  v-if="agentcoreRunnerStatusExpanded"
+                  data-testid="agentcore-runner-status-content"
+                  class="mt-3 grid gap-2 sm:grid-cols-2"
+                >
                   <div class="text-sm">
                     <span class="text-gray-500 dark:text-gray-400">{{
                       t('settings.agentcoreRunner.resolvedCommit', 'Resolved commit')

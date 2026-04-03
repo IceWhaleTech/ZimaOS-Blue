@@ -1845,6 +1845,10 @@ export default mergeHarnessLocale('cs-CZ', {
       healthOk: 'Kontrola stavu proběhla úspěšně.',
       healthFailed: 'Kontrola stavu se nezdařila.',
       healthRequestFailed: 'Nepodařilo se zkontrolovat stav externího agenta.',
+      deleted: 'Profil externího agenta byl odstraněn.',
+      deleteFailed: 'Nepodařilo se odstranit profil externího agenta.',
+      deleteConfirm:
+        'Odstranit profil externího agenta "{name}"? Profily, na které stále odkazují relace, je nutné nejprve vyčistit.',
       saveBeforeHealth: 'Před spuštěním kontroly stavu uložte profil.',
       duplicate: 'Duplicitní',
       builtinHelp:
@@ -7087,6 +7091,7 @@ export default mergeHarnessLocale('cs-CZ', {
   search: {
     summaryTitle: 'Vyhledavani na webu',
     resultCount: '{count} výsledků',
+    moreResults: '+{count} dalších',
   },
   cardActions: {
     use_browser: 'Použít prohlížeč',

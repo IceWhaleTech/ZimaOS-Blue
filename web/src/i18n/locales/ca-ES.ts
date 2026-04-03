@@ -1866,6 +1866,10 @@ export default mergeHarnessLocale('ca-ES', {
       healthOk: 'El control de salut ha estat reeixit.',
       healthFailed: 'La revisió de salut ha fallat.',
       healthRequestFailed: "No s'ha pogut comprovar l'estat de l'agent extern.",
+      deleted: "S'ha suprimit el perfil de l'agent extern.",
+      deleteFailed: "No s'ha pogut suprimir el perfil de l'agent extern.",
+      deleteConfirm:
+        "Voleu suprimir el perfil de l'agent extern \"{name}\"? Els perfils que encara fan servir les sessions s'han de netejar abans.",
       saveBeforeHealth: "Deseu el perfil abans d'executar una comprovació de salut.",
       duplicate: 'Duplicat',
       builtinHelp:
@@ -7225,6 +7229,7 @@ export default mergeHarnessLocale('ca-ES', {
   search: {
     summaryTitle: 'Cerca web',
     resultCount: '{count} resultats',
+    moreResults: '+{count} més',
   },
   cardActions: {
     use_browser: 'Utilitza el navegador',

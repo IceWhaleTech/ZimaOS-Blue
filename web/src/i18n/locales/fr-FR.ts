@@ -1968,6 +1968,10 @@ export default mergeHarnessLocale('fr-FR', {
       healthOk: 'Le contrôle de santé a réussi.',
       healthFailed: "La vérification de l'état a échoué.",
       healthRequestFailed: 'Échec de la vérification de l’état de l’agent externe.',
+      deleted: "Le profil d'agent externe a été supprimé.",
+      deleteFailed: "Échec de la suppression du profil d'agent externe.",
+      deleteConfirm:
+        "Supprimer le profil d'agent externe \"{name}\" ? Les profils encore référencés par des sessions doivent d'abord être nettoyés.",
       saveBeforeHealth: 'Enregistrez le profil avant d’exécuter une vérification de l’état.',
       duplicate: 'Dupliquer',
       builtinHelp:
@@ -7404,6 +7408,7 @@ export default mergeHarnessLocale('fr-FR', {
   search: {
     summaryTitle: 'Recherche web',
     resultCount: '{count} résultats',
+    moreResults: '+{count} de plus',
   },
   cardActions: {
     use_browser: 'Utiliser le navigateur',

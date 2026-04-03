@@ -139,11 +139,13 @@ func (c *Controller) EvaluateSkillCutoverBudgetGate(ctx context.Context, targetE
 		CreatedAt: timeutil.NowTime(),
 	}
 	c.emitOptimizationTrigger(ctx, OptimizationTrigger{
-		Reason:          budgetGateReason(report.Passed),
-		CandidateID:     evalRunCandidateID(targetReport.EvalRun),
-		EvalRunID:       targetReport.EvalRun.ID,
-		BaseEvalRunID:   strings.TrimSpace(baseEvalRun.ID),
-		OptimizationRun: evalRunIsOptimizationChild(targetReport.EvalRun),
+		Reason:              budgetGateReason(report.Passed),
+		CandidateID:         evalRunCandidateID(targetReport.EvalRun),
+		EvalRunID:           targetReport.EvalRun.ID,
+		BaseEvalRunID:       strings.TrimSpace(baseEvalRun.ID),
+		OptimizationRun:     evalRunIsOptimizationChild(targetReport.EvalRun),
+		OptimizationSurface: evalRunOptimizationSurface(targetReport.EvalRun),
+		Metadata:            evalRunOptimizationMetadata(targetReport.EvalRun),
 	})
 	return report, nil
 }

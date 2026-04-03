@@ -1845,6 +1845,10 @@ export default mergeHarnessLocale('hr-HR', {
       healthOk: 'Provjera zdravlja uspjela.',
       healthFailed: 'Provjera zdravlja nije uspjela.',
       healthRequestFailed: 'Provjera ispravnosti vanjskog agenta nije uspjela.',
+      deleted: 'Profil vanjskog agenta je izbrisan.',
+      deleteFailed: 'Brisanje profila vanjskog agenta nije uspjelo.',
+      deleteConfirm:
+        'Izbrisati profil vanjskog agenta "{name}"? Profili na koje se sesije još uvijek pozivaju prvo se moraju očistiti.',
       saveBeforeHealth: 'Spremite profil prije pokretanja provjere stanja.',
       duplicate: 'Duplikat',
       builtinHelp:
@@ -6995,6 +6999,7 @@ export default mergeHarnessLocale('hr-HR', {
   search: {
     summaryTitle: 'Web pretraga',
     resultCount: '{count} rezultata',
+    moreResults: '+{count} više',
   },
   cardActions: {
     use_browser: 'Koristi preglednik',

@@ -10,6 +10,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/optimization"
 )
 
+const defaultAgentcoreRunnerRepoURL = "https://github.com/IceWhaleTech/ZimaOS-Blue"
+
 type AgentcoreRunnerStatus = optimization.Status
 type AgentcoreRunnerPrepareRequest = optimization.PrepareRequest
 
@@ -22,6 +24,10 @@ type agentcoreRunnerLastRunReader interface {
 	GetLastOptimizationRun(ctx context.Context) (optimization.OptimizationRunRecord, error)
 }
 
+type agentcoreRunnerOptimizationManagerProvider interface {
+	OptimizationManager() *optimization.Manager
+}
+
 func (h *SettingsHandler) SetAgentcoreRunnerManager(manager agentcoreRunnerManager) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -31,6 +37,9 @@ func (h *SettingsHandler) SetAgentcoreRunnerManager(manager agentcoreRunnerManag
 func (h *SettingsHandler) AgentcoreRunnerOptimizationManager() *optimization.Manager {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	if provider, ok := h.agentcoreRunnerManager.(agentcoreRunnerOptimizationManagerProvider); ok {
+		return provider.OptimizationManager()
+	}
 	manager, _ := h.agentcoreRunnerManager.(*optimization.Manager)
 	return manager
 }
@@ -44,7 +53,7 @@ func (h *SettingsHandler) GetExperimentalAgentcoreRunnerEnabled() bool {
 func (h *SettingsHandler) GetExperimentalAgentcoreRunnerRepoURL() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return strings.TrimSpace(h.settings.ExperimentalAgentcoreRunnerRepoURL)
+	return normalizeAgentcoreRunnerRepoURL(h.settings.ExperimentalAgentcoreRunnerRepoURL)
 }
 
 func (h *SettingsHandler) GetExperimentalAgentcoreRunnerRef() string {
@@ -79,7 +88,7 @@ func (h *SettingsHandler) GetAgentcoreRunnerLastRun(c echo.Context) error {
 func (h *SettingsHandler) PrepareAgentcoreRunner(c echo.Context) error {
 	h.mu.RLock()
 	manager := h.agentcoreRunnerManager
-	repoURL := strings.TrimSpace(h.settings.ExperimentalAgentcoreRunnerRepoURL)
+	repoURL := normalizeAgentcoreRunnerRepoURL(h.settings.ExperimentalAgentcoreRunnerRepoURL)
 	ref := strings.TrimSpace(h.settings.ExperimentalAgentcoreRunnerRef)
 	h.mu.RUnlock()
 	if manager == nil {
@@ -106,7 +115,7 @@ func (h *SettingsHandler) agentcoreRunnerStatus(ctx context.Context) (optimizati
 	h.mu.RLock()
 	manager := h.agentcoreRunnerManager
 	enabled := h.settings.ExperimentalAgentcoreRunnerEnabled != nil && *h.settings.ExperimentalAgentcoreRunnerEnabled
-	repoURL := strings.TrimSpace(h.settings.ExperimentalAgentcoreRunnerRepoURL)
+	repoURL := normalizeAgentcoreRunnerRepoURL(h.settings.ExperimentalAgentcoreRunnerRepoURL)
 	ref := strings.TrimSpace(h.settings.ExperimentalAgentcoreRunnerRef)
 	h.mu.RUnlock()
 
@@ -127,4 +136,12 @@ func (h *SettingsHandler) agentcoreRunnerStatus(ctx context.Context) (optimizati
 		current.ResolvedRef = ref
 	}
 	return current, nil
+}
+
+func normalizeAgentcoreRunnerRepoURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultAgentcoreRunnerRepoURL
+	}
+	return value
 }

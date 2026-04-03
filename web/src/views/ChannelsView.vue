@@ -12,13 +12,10 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { channelsApi } from '@/api/channels'
-import {
-  getChannelIconOrDefault,
-  getChannelIconStyleVars,
-  getTunnelProviderIcon,
-} from '@/utils/channelIcons'
+import { getChannelIconOrDefault, getChannelIconStyleVars } from '@/utils/channelIcons'
 import ChannelCard from '@/components/channels/ChannelCard.vue'
 import ChannelDetailPanel from '@/components/channels/ChannelDetailPanel.vue'
+import RemoteAccessDetailPanel from '@/components/remote-access/RemoteAccessDetailPanel.vue'
 import {
   getRemoteAccessStatus,
   startRemoteAccess,
@@ -29,7 +26,6 @@ import {
   type TunnelStatus as TunnelStatusType,
   type TunnelProvider,
 } from '@/api/remote-access'
-import TunnelStatus from '@/components/remote-access/TunnelStatus.vue'
 
 const { t, te, locale: i18nLocale } = useI18n()
 const settingsStore = useSettingsStore()
@@ -66,6 +62,9 @@ interface ChannelDef {
 
 type GroupAccessPolicy = 'open' | 'allowlist' | 'disabled'
 type GroupMentionPolicy = 'mentioned' | 'always'
+type RemoteAccessState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'
+
+const REMOTE_ACCESS_PANEL_ID = '__remote_access__'
 
 interface ChannelSettingsResponse {
   group_access?: {
@@ -277,12 +276,9 @@ const primaryChannelIds = computed(() => {
   return ordered
 })
 
-// Remote Access state
-type RemoteAccessState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'
 const remoteAccessState = ref<RemoteAccessState>('loading')
 const tunnelStatus = ref<TunnelStatusType | null>(null)
 const remoteAccessError = ref<string | null>(null)
-const remoteAccessExpanded = ref(false)
 const tunnelProviders = ref<TunnelProvider[]>([])
 const selectedProvider = ref<string>('localhost_run')
 const ngrokAuthtoken = ref<string>('')
@@ -1094,6 +1090,7 @@ const channelMap = computed(() => {
 })
 
 const expandedChannel = ref<string | null>(null)
+const isRemoteAccessSelected = computed(() => expandedChannel.value === REMOTE_ACCESS_PANEL_ID)
 const selectedChannel = computed(() => {
   return expandedChannel.value ? channelMap.value.get(expandedChannel.value) || null : null
 })
@@ -1116,7 +1113,20 @@ const selectedChannelRenderKey = computed(() => {
     saving.value === channel.id ? 'saving' : 'idle',
     testingConnection.value === channel.id ? 'testing' : 'idle',
     testState,
-    ...channel.fields.map((field) => `${field.key}:${field.value}`),
+  ].join('|')
+})
+const remoteAccessRenderKey = computed(() => {
+  return [
+    remoteAccessState.value,
+    remoteAccessError.value || '',
+    selectedProvider.value,
+    currentProviderToken.value,
+    ngrokDomain.value,
+    tunnelProviders.value.map((provider) => provider.id).join(','),
+    tunnelStatus.value?.active ? 'active' : 'inactive',
+    tunnelStatus.value?.connecting ? 'connecting' : 'idle',
+    tunnelStatus.value?.provider || '',
+    tunnelStatus.value?.url || '',
   ].join('|')
 })
 
@@ -1128,7 +1138,11 @@ watch(
       return
     }
 
-    if (expandedChannel.value && !channels.some((channel) => channel.id === expandedChannel.value)) {
+    if (
+      expandedChannel.value &&
+      expandedChannel.value !== REMOTE_ACCESS_PANEL_ID &&
+      !channels.some((channel) => channel.id === expandedChannel.value)
+    ) {
       expandedChannel.value = null
     }
   },
@@ -1726,7 +1740,8 @@ function stopRemoteAccessPolling() {
 }
 
 function toggleRemoteAccessExpanded() {
-  remoteAccessExpanded.value = !remoteAccessExpanded.value
+  expandedChannel.value =
+    expandedChannel.value === REMOTE_ACCESS_PANEL_ID ? null : REMOTE_ACCESS_PANEL_ID
 }
 
 function handleGroupAccessDialogKeydown(event: KeyboardEvent) {
@@ -1736,11 +1751,23 @@ function handleGroupAccessDialogKeydown(event: KeyboardEvent) {
 }
 
 function updateChannelField(channelId: string, fieldIndex: number, value: string) {
-  const channel = channelMap.value.get(channelId)
-  if (channel && channel.fields[fieldIndex]) {
-    channel.fields[fieldIndex].value = value
-    triggerRef(channelDefs)
+  const channelIndex = channelDefs.value.findIndex((channel) => channel.id === channelId)
+  if (channelIndex < 0) return
+
+  const channel = channelDefs.value[channelIndex]
+  if (!channel?.fields[fieldIndex]) return
+
+  const nextFields = channel.fields.map((field, index) =>
+    index === fieldIndex ? { ...field, value } : field
+  )
+
+  const nextChannels = [...channelDefs.value]
+  nextChannels[channelIndex] = {
+    ...channel,
+    fields: nextFields,
   }
+
+  channelDefs.value = nextChannels
 }
 
 onMounted(() => {
@@ -1939,7 +1966,10 @@ onErrorCaptured((error, _instance, info) => {
               <div class="channels-board__stack">
                 <div
                   class="channels-remote-card"
-                  :class="{ 'channels-remote-card--expanded': remoteAccessExpanded }"
+                  :class="[
+                    `channels-remote-card--${remoteAccessState}`,
+                    { 'channels-remote-card--expanded': isRemoteAccessSelected },
+                  ]"
                 >
                   <div class="channels-remote-card__header" @click="toggleRemoteAccessExpanded">
                     <div class="channels-remote-card__identity">
@@ -1998,8 +2028,8 @@ onErrorCaptured((error, _instance, info) => {
                       </label>
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        class="channels-remote-card__chevron text-gray-400 transition-transform"
-                        :class="{ 'rotate-180': remoteAccessExpanded }"
+                        class="channels-remote-card__chevron"
+                        :class="{ 'channels-remote-card__chevron--active': isRemoteAccessSelected }"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -2008,269 +2038,9 @@ onErrorCaptured((error, _instance, info) => {
                           stroke-linecap="round"
                           stroke-linejoin="round"
                           stroke-width="2"
-                          d="M19 9l-7 7-7-7"
+                          d="M9 5l7 7-7 7"
                         />
                       </svg>
-                    </div>
-                  </div>
-
-                  <div v-if="remoteAccessExpanded" class="channels-remote-card__body">
-                    <div
-                      v-if="remoteAccessState === 'loading'"
-                      class="flex items-center justify-center py-8"
-                    >
-                      <svg
-                        class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          class="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          stroke-width="4"
-                        />
-                        <path
-                          class="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        />
-                      </svg>
-                    </div>
-
-                    <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
-                      <div class="space-y-3">
-                        <label
-                          class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
-                        >
-                          {{ t('remoteAccess.selectProvider') }}
-                        </label>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <button
-                            v-for="provider in tunnelProviders"
-                            :key="provider.id"
-                            class="channels-remote-card__provider-option p-3 rounded-lg border text-start transition-colors flex items-center gap-3"
-                            :class="
-                              selectedProvider === provider.id
-                                ? 'border-gray-600 dark:border-slate-500 bg-gray-100 dark:bg-slate-800/70'
-                                : 'border-gray-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/25 hover:border-gray-300 dark:hover:border-slate-500 hover:bg-white dark:hover:bg-slate-800/45'
-                            "
-                            @click="selectedProvider = provider.id"
-                          >
-                            <img
-                              v-if="getTunnelProviderIcon(provider.id)"
-                              :src="getTunnelProviderIcon(provider.id)"
-                              :alt="provider.name"
-                              class="w-6 h-6 shrink-0 rounded object-contain"
-                            />
-                            <div
-                              v-else
-                              class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-slate-800 rounded flex items-center justify-center"
-                            >
-                              <svg
-                                class="w-4 h-4 text-gray-400"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  stroke-width="2"
-                                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-                                />
-                              </svg>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                              <div
-                                class="channels-remote-card__provider-name font-medium text-gray-900 dark:text-white text-sm"
-                              >
-                                {{ provider.name }}
-                              </div>
-                              <div
-                                class="channels-remote-card__provider-meta text-xs text-gray-500 dark:text-slate-400 mt-0.5"
-                              >
-                                {{
-                                  provider.requires_key
-                                    ? t('remoteAccess.requiresKey')
-                                    : t('remoteAccess.noKeyRequired')
-                                }}
-                              </div>
-                            </div>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div v-if="selectedProviderInfo?.requires_key" class="space-y-2">
-                        <label
-                          class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
-                        >
-                          {{ selectedProviderInfo.key_label || 'Auth Token' }}
-                        </label>
-                        <input
-                          v-model="currentProviderToken"
-                          type="password"
-                          class="channels-remote-card__input w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                          :placeholder="selectedProviderInfo.key_hint || ''"
-                        />
-                        <a
-                          v-if="selectedProviderInfo.doc_url"
-                          :href="selectedProviderInfo.doc_url"
-                          target="_blank"
-                          class="channels-remote-card__helper-link inline-flex items-center gap-1 text-xs text-gray-900 dark:text-slate-100 hover:underline"
-                        >
-                          <svg
-                            class="h-3 w-3"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                            />
-                          </svg>
-                          {{ t('remoteAccess.getToken') }}
-                        </a>
-                      </div>
-
-                      <div v-if="selectedProvider === 'ngrok'" class="space-y-2">
-                        <label
-                          class="channels-remote-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
-                        >
-                          {{ t('remoteAccess.ngrokDomain') }}
-                          <span
-                            class="channels-remote-card__optional-note text-gray-400 dark:text-slate-500 text-xs"
-                          >
-                            ({{ t('common.optional') }})
-                          </span>
-                        </label>
-                        <input
-                          v-model="ngrokDomain"
-                          type="text"
-                          class="channels-remote-card__input w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-                          :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
-                        />
-                        <p class="channels-remote-card__note text-xs text-gray-500 dark:text-slate-300">
-                          {{ t('remoteAccess.ngrokDomainHint') }}
-                          <a
-                            href="https://dashboard.ngrok.com/domains"
-                            target="_blank"
-                            class="channels-remote-card__helper-link text-gray-900 dark:text-slate-100 hover:underline"
-                          >
-                            {{ t('remoteAccess.ngrokClaimDomain') }}
-                          </a>
-                        </p>
-                      </div>
-
-                      <button
-                        class="channels-remote-card__primary-action w-full px-4 py-3 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                        :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
-                        :class="{
-                          'opacity-50 cursor-not-allowed':
-                            selectedProviderInfo?.requires_key && !currentProviderToken,
-                        }"
-                        @click="handleRemoteAccessStart"
-                      >
-                        <svg
-                          class="h-5 w-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M13 10V3L4 14h7v7l9-11h-7z"
-                          />
-                        </svg>
-                        {{ t('remoteAccess.enable') }}
-                      </button>
-                      <div
-                        class="channels-remote-card__note text-xs text-gray-500 dark:text-slate-300 text-center"
-                      >
-                        {{ t('remoteAccess.securityWarning') }}
-                      </div>
-                    </div>
-
-                    <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
-                      <div class="flex items-center justify-center py-4">
-                        <div class="text-center">
-                          <svg
-                            class="animate-spin h-8 w-8 text-gray-900 dark:text-white mx-auto mb-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              class="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              stroke-width="4"
-                            />
-                            <path
-                              class="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            />
-                          </svg>
-                          <p class="text-gray-600 dark:text-slate-300">
-                            {{ t('remoteAccess.connecting') }}
-                          </p>
-                        </div>
-                      </div>
-                      <TunnelStatus
-                        :status="tunnelStatus || { active: false, connecting: true }"
-                        @disconnect="handleRemoteAccessStop"
-                      />
-                    </div>
-
-                    <div
-                      v-else-if="remoteAccessState === 'connected' && tunnelStatus"
-                      class="space-y-4"
-                    >
-                      <TunnelStatus :status="tunnelStatus" @disconnect="handleRemoteAccessStop" />
-                    </div>
-
-                    <div v-else-if="remoteAccessState === 'error'" class="space-y-4">
-                      <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                          <svg
-                            class="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                          <div>
-                            <p class="text-sm text-red-800 dark:text-red-200">
-                              {{ remoteAccessError }}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        class="channels-remote-card__secondary-action w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
-                        @click="loadRemoteAccessStatus"
-                      >
-                        {{ t('common.retry') }}
-                      </button>
-                      <TunnelStatus
-                        :status="tunnelStatus || { active: false }"
-                        @disconnect="handleRemoteAccessStop"
-                      />
                     </div>
                   </div>
                 </div>
@@ -2335,8 +2105,26 @@ onErrorCaptured((error, _instance, info) => {
             </div>
 
             <aside class="channels-board__detail">
+              <RemoteAccessDetailPanel
+                v-if="isRemoteAccessSelected"
+                :key="remoteAccessRenderKey"
+                :state="remoteAccessState"
+                :error-message="remoteAccessError"
+                :tunnel-status="tunnelStatus"
+                :tunnel-providers="tunnelProviders"
+                :selected-provider="selectedProvider"
+                :selected-provider-info="selectedProviderInfo || null"
+                :current-provider-token="currentProviderToken"
+                :ngrok-domain="ngrokDomain"
+                @select-provider="selectedProvider = $event"
+                @update-provider-token="currentProviderToken = $event"
+                @update-ngrok-domain="ngrokDomain = $event"
+                @start="handleRemoteAccessStart"
+                @stop="handleRemoteAccessStop"
+                @retry="loadRemoteAccessStatus"
+              />
               <ChannelDetailPanel
-                v-if="selectedChannel"
+                v-else-if="selectedChannel"
                 :key="selectedChannelRenderKey"
                 :channel="selectedChannel"
                 :toggling="toggling === selectedChannelId"
@@ -3213,11 +3001,49 @@ onErrorCaptured((error, _instance, info) => {
 }
 
 .channels-remote-card {
+  position: relative;
   overflow: hidden;
   border-radius: 1.25rem;
   border: 1px solid rgba(226, 232, 240, 0.96);
   background: #ffffff;
   box-shadow: none;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.channels-remote-card:hover {
+  transform: translateY(-1px);
+}
+
+.channels-remote-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  opacity: 1;
+}
+
+.channels-remote-card--expanded {
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 18px 38px -30px rgba(15, 23, 42, 0.4);
+}
+
+.channels-remote-card::before {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+.channels-remote-card--connected::before {
+  background: rgba(22, 163, 74, 0.9);
+}
+
+.channels-remote-card--connecting::before {
+  background: rgba(245, 158, 11, 0.92);
+}
+
+.channels-remote-card--error::before {
+  background: rgba(239, 68, 68, 0.92);
 }
 
 .channels-remote-card__header {
@@ -3327,6 +3153,15 @@ onErrorCaptured((error, _instance, info) => {
 .channels-remote-card__chevron {
   width: 0.8rem;
   height: 0.8rem;
+  color: #94a3b8;
+  transition:
+    transform 160ms ease,
+    color 160ms ease;
+}
+
+.channels-remote-card__chevron--active {
+  color: #0f172a;
+  transform: translateX(2px);
 }
 
 .channels-remote-card__label {

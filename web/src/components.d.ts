@@ -144,6 +144,7 @@ declare module 'vue' {
     ProviderPoolSection: typeof import('./components/ProviderPoolSection.vue')['default']
     ProviderSelector: typeof import('./components/tts/ProviderSelector.vue')['default']
     QuickActions: typeof import('./components/QuickActions.vue')['default']
+    RemoteAccessDetailPanel: typeof import('./components/remote-access/RemoteAccessDetailPanel.vue')['default']
     ReplayControls: typeof import('./components/companion/ReplayControls.vue')['default']
     ResourceChart: typeof import('./components/ResourceChart.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

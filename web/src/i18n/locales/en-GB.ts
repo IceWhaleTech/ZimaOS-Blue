@@ -1834,6 +1834,10 @@ export default mergeHarnessLocale('en-GB', {
       healthOk: 'Health check succeeded.',
       healthFailed: 'Health check failed.',
       healthRequestFailed: 'Failed to check external agent health.',
+      deleted: 'External agent profile deleted.',
+      deleteFailed: 'Failed to delete external agent profile.',
+      deleteConfirm:
+        'Delete external agent profile "{name}"? Profiles still referenced by sessions must be cleaned up first.',
       saveBeforeHealth: 'Save the profile before running a health check.',
       duplicate: 'Duplicate',
       builtinHelp:
@@ -6920,6 +6924,7 @@ export default mergeHarnessLocale('en-GB', {
   search: {
     summaryTitle: 'Web search',
     resultCount: '{count} results',
+    moreResults: '+{count} more',
   },
   cardActions: {
     use_browser: 'Use browser',

@@ -139,6 +139,9 @@ function createTestI18n() {
           refreshing: '刷新中',
           overviewError: '刷新失败',
           screenshotError: '预览不可用',
+          sessionKindRead: '读取会话',
+          sessionKindBrowserLite: '轻量浏览会话',
+          sessionKindFullBrowser: '完整浏览器会话',
           stageRunning: '运行中',
           eyebrow: '浏览器执行',
           showTooltip: '显示执行监控',
@@ -421,6 +424,125 @@ describe('BrowserMonitorWidget', () => {
     expect(wrapper.text()).toContain('第 2/2 帧')
   })
 
+  it('keeps session page metadata focused in the preview when only one session is active', async () => {
+    listTasksMock.mockResolvedValue({ data: [] })
+    getSessionsMock.mockResolvedValue([
+      {
+        id: 'tab-1',
+        status: 'active',
+        current_url: 'https://live.example.com',
+        page_title: 'Live Session',
+        created_at: '2026-03-23T00:00:00.000Z',
+        last_activity: '2026-03-23T00:00:00.000Z',
+        engine: 'chromium_managed',
+        monitor_kind: 'image',
+      },
+    ])
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'image',
+      image: {
+        screenshot: 'live-base64',
+        history: [
+          {
+            data: 'live-base64',
+            captured_at: '2026-03-23T00:00:00.000Z',
+            title: 'Live Session',
+            url: 'https://live.example.com',
+            scope: 'viewport',
+          },
+        ],
+      },
+      error: '',
+    })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('.browser-monitor__subtitle').text()).toBe(
+      '在这里跟踪最新的任务和标签页状态。'
+    )
+    expect(wrapper.get('.browser-monitor__preview-title').text()).toContain('Live Session')
+    expect(wrapper.get('.browser-monitor__preview-url').text()).toContain('https://live.example.com')
+    expect(wrapper.findAll('.browser-monitor__capability-detail')[1].text()).toContain(
+      '完整浏览器会话'
+    )
+    expect(wrapper.findAll('.browser-monitor__capability-detail')[1].text()).not.toContain(
+      'Live Session'
+    )
+    expect(wrapper.find('.browser-monitor__tabs').exists()).toBe(false)
+  })
+
+  it('shows session tabs without repeating raw urls', async () => {
+    listTasksMock.mockResolvedValue({ data: [] })
+    getSessionsMock.mockResolvedValue([
+      {
+        id: 'tab-1',
+        status: 'active',
+        current_url: 'https://first.example.com',
+        page_title: 'First Session',
+        created_at: '2026-03-23T00:00:00.000Z',
+        last_activity: '2026-03-23T00:00:00.000Z',
+        engine: 'chromium_managed',
+        monitor_kind: 'image',
+      },
+      {
+        id: 'tab-2',
+        status: 'idle',
+        current_url: 'https://second.example.com',
+        page_title: 'Second Session',
+        created_at: '2026-03-23T00:00:00.000Z',
+        last_activity: '2026-03-23T00:00:00.000Z',
+        engine: 'chromium_managed',
+        monitor_kind: 'image',
+      },
+    ])
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'image',
+      image: {
+        screenshot: 'session-base64',
+        history: [
+          {
+            data: 'session-base64',
+            captured_at: '2026-03-23T00:00:00.000Z',
+            title: 'First Session',
+            url: 'https://first.example.com',
+            scope: 'viewport',
+          },
+        ],
+      },
+      error: '',
+    })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.browser-monitor__tabs').exists()).toBe(true)
+    expect(wrapper.findAll('.browser-monitor__tab')).toHaveLength(2)
+    expect(wrapper.get('.browser-monitor__preview-url').text()).toContain(
+      'https://first.example.com'
+    )
+    expect(wrapper.find('.browser-monitor__tab-kind').exists()).toBe(false)
+    expect(
+      wrapper.findAll('.browser-monitor__tab-meta').every((node) => !node.text().includes('https://'))
+    ).toBe(true)
+  })
+
   it('renders text monitor sessions without requiring screenshot data', async () => {
     getSessionsMock.mockResolvedValue([
       {
@@ -467,7 +589,7 @@ describe('BrowserMonitorWidget', () => {
     expect(wrapper.text()).toContain('树预览')
     expect(wrapper.text()).toContain('[heading1] "Hybrid routing"')
     expect(wrapper.text()).toContain('3 个交互元素')
-    expect(wrapper.text()).toContain('Read session')
+    expect(wrapper.text()).toContain('读取会话')
     expect(wrapper.find('.browser-monitor__image').exists()).toBe(false)
   })
 

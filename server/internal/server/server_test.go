@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,5 +215,64 @@ func TestRequestGracefulShutdown(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected shutdown endpoint to be called")
+	}
+}
+
+func TestStartInvokesStartupURLHandlerWithActualPort(t *testing.T) {
+	cfg := &config.ServerConfig{
+		Host:         "127.0.0.1",
+		Port:         0,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+		IdleTimeout:  5 * time.Second,
+	}
+	s := New(cfg)
+	s.RegisterHealthRoutes()
+
+	urlCh := make(chan string, 1)
+	SetStartupURLHandler(func(rawURL string) {
+		urlCh <- rawURL
+	})
+	defer SetStartupURLHandler(nil)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.Start()
+	}()
+
+	var gotURL string
+	select {
+	case gotURL = <-urlCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for startup URL handler")
+	}
+
+	parsed, err := url.Parse(gotURL)
+	if err != nil {
+		t.Fatalf("parse startup URL %q: %v", gotURL, err)
+	}
+	if parsed.Scheme != "http" {
+		t.Fatalf("startup URL scheme = %q, want %q", parsed.Scheme, "http")
+	}
+	if parsed.Hostname() != "127.0.0.1" {
+		t.Fatalf("startup URL hostname = %q, want %q", parsed.Hostname(), "127.0.0.1")
+	}
+	if parsed.Port() == "" || parsed.Port() == "0" {
+		t.Fatalf("startup URL port = %q, want actual listening port", parsed.Port())
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.Shutdown(shutdownCtx); err != nil {
+		t.Fatalf("shutdown server: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil && !strings.Contains(err.Error(), "Server closed") {
+			t.Fatalf("server start returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server goroutine to exit")
 	}
 }

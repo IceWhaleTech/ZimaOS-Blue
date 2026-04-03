@@ -3,6 +3,7 @@ package agentsessions
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,6 +15,11 @@ import (
 )
 
 const templateOnlyACPProfileMessage = "ACP built-in profiles are setup templates only. Duplicate one and configure a runnable command before using it."
+
+var (
+	ErrBuiltinProfileDeleteDenied = errors.New("built-in profiles cannot be deleted")
+	ErrProfileInUse               = errors.New("agent profile is still used by one or more sessions")
+)
 
 type CreateSessionParams struct {
 	ProfileID      string                 `json:"profile_id"`
@@ -203,6 +209,28 @@ func (s *Service) SaveProfile(profile *AgentProfile) error {
 	profile.Builtin = false
 	profile.TemplateOnly = false
 	return s.store.SaveProfile(profile)
+}
+
+func (s *Service) DeleteProfile(id string) error {
+	profile, err := s.store.GetProfile(id)
+	if err != nil {
+		return err
+	}
+	if profile.Builtin {
+		return ErrBuiltinProfileDeleteDenied
+	}
+	sessions, err := s.store.ListSessionsByProfileID(profile.ID)
+	if err != nil {
+		return err
+	}
+	if count := len(sessions); count > 0 {
+		suffix := "s"
+		if count == 1 {
+			suffix = ""
+		}
+		return fmt.Errorf("%w: still used by %d session%s", ErrProfileInUse, count, suffix)
+	}
+	return s.store.DeleteProfile(profile.ID)
 }
 
 func (s *Service) VerifyProfile(ctx context.Context, id string, candidate *AgentProfile) (*ProfileVerifyResult, error) {

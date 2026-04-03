@@ -68,6 +68,13 @@ vi.mock('@/components/remote-access/TunnelStatus.vue', () => ({
   },
 }))
 
+vi.mock('@/components/remote-access/RemoteAccessDetailPanel.vue', () => ({
+  default: {
+    name: 'RemoteAccessDetailPanel',
+    template: '<div class="remote-access-detail-stub">remote-access-detail</div>',
+  },
+}))
+
 function createTestI18n() {
   return createI18n({
     legacy: false,
@@ -212,7 +219,31 @@ describe('ChannelsView', () => {
     expect(wrapper.find('.channels-group-modal__title').text()).toBe('Group Access')
   })
 
-  it('saves Feishu session mode through the channel config API', async () => {
+  it('shows remote access details in the right detail panel when selected', async () => {
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+
+    const wrapper = mount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.remote-access-detail-stub').exists()).toBe(false)
+    expect(wrapper.find('.channels-board__detail-empty').exists()).toBe(true)
+
+    await wrapper.find('.channels-remote-card__header').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.channels-board__detail-empty').exists()).toBe(false)
+    expect(wrapper.find('.remote-access-detail-stub').exists()).toBe(true)
+  })
+
+  it('updates Feishu session mode locally before saving through the channel config API', async () => {
     let savedBody: Record<string, unknown> | null = null
     listChannelsMock.mockResolvedValue({
       status: 200,
@@ -278,6 +309,10 @@ describe('ChannelsView', () => {
 
     await feishuDetail.find('.channel-detail-update-stub').trigger('click')
     await flushPromises()
+
+    expect(
+      wrapper.find('.channel-detail-stub[data-id="feishu"]').attributes('data-last-value')
+    ).toBe('true')
 
     await feishuDetail.find('.channel-detail-save-stub').trigger('click')
     await flushPromises()

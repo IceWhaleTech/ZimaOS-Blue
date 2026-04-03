@@ -58,6 +58,7 @@ func newHarnessRuntimeBundleWithReadDB(writeDB, readDB *sql.DB, cfg *config.Conf
 		controller.SetRunTraceProvider(runTracer)
 		controller.UseExecutionMiddleware(runTracer.Middleware())
 	}
+	controller.UseExecutionMiddleware(harness.NewSkillCandidateMiddleware())
 
 	return &HarnessRuntimeBundle{
 		Controller:       controller,

@@ -189,7 +189,7 @@ describe('ChatActivityDock', () => {
     expect(header.text()).not.toContain('Background sync')
   })
 
-  it('shows a single stop button plus retry when interrupted and emits dock actions', async () => {
+  it('shows a single icon-only stop button plus retry when interrupted and emits dock actions', async () => {
     const wrapper = mount(ChatActivityDock, {
       props: {
         streamState: makeStreamState({
@@ -209,10 +209,21 @@ describe('ChatActivityDock', () => {
       },
     })
 
+    const stopButton = wrapper.get('[data-testid="chat-activity-dock-stop"]')
+
     expect(wrapper.findAll('[data-testid="chat-activity-dock-stop"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="chat-activity-dock-retry"]').exists()).toBe(true)
+    expect(stopButton.attributes('aria-label')).toBe('Stop generating')
+    expect(stopButton.text()).toBe('')
+    expect(stopButton.classes()).toContain('chat-activity-dock__action--stop')
+    const stopGlyph = stopButton.get('rect')
+    expect(stopGlyph.attributes('x')).toBe('6')
+    expect(stopGlyph.attributes('y')).toBe('6')
+    expect(stopGlyph.attributes('width')).toBe('12')
+    expect(stopGlyph.attributes('height')).toBe('12')
+    expect(wrapper.get('.chat-activity-dock__header').classes()).toContain('is-compact')
 
-    await wrapper.get('[data-testid="chat-activity-dock-stop"]').trigger('click')
+    await stopButton.trigger('click')
     await wrapper.get('[data-testid="chat-activity-dock-retry"]').trigger('click')
 
     expect(wrapper.emitted('cancel')).toHaveLength(1)

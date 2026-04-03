@@ -32,7 +32,7 @@ integrates with various automation and productivity services.`,
 	// Run the server by default if no subcommand is provided
 	Run: func(cmd *cobra.Command, args []string) {
 		// If no subcommand, run the server
-		runServer()
+		runForegroundServer()
 	},
 }
 

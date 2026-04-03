@@ -1842,6 +1842,10 @@ export default mergeHarnessLocale('nb-NO', {
       healthOk: 'Helsesjekken var vellykket.',
       healthFailed: 'Helsesjekk mislyktes.',
       healthRequestFailed: 'Kunne ikke sjekke ekstern agents helse.',
+      deleted: 'Profilen for ekstern agent ble slettet.',
+      deleteFailed: 'Kunne ikke slette profilen for ekstern agent.',
+      deleteConfirm:
+        'Slette profilen for ekstern agent "{name}"? Profiler som fortsatt brukes av økter må ryddes opp i først.',
       saveBeforeHealth: 'Lagre profilen før du kjører en helsesjekk.',
       duplicate: 'Duplikat',
       builtinHelp:
@@ -6980,6 +6984,7 @@ export default mergeHarnessLocale('nb-NO', {
   search: {
     summaryTitle: 'Nettsok',
     resultCount: '{count} resultater',
+    moreResults: '+{count} flere',
   },
   cardActions: {
     use_browser: 'Bruk nettleser',

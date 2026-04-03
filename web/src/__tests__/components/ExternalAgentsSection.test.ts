@@ -11,6 +11,7 @@ vi.mock('@/api/agentSessions', () => ({
     saveProfile: vi.fn(),
     verifyProfile: vi.fn(),
     healthProfile: vi.fn(),
+    deleteProfile: vi.fn(),
   },
 }))
 
@@ -77,6 +78,7 @@ describe('ExternalAgentsSection', () => {
     expect(wrapper.get('[data-testid="external-agents-save"]').attributes()).toHaveProperty(
       'disabled'
     )
+    expect(wrapper.find('[data-testid="external-agents-delete-current"]').exists()).toBe(false)
 
     await wrapper.get('[data-testid="external-agents-verify-current"]').trigger('click')
     await wrapper.get('[data-testid="external-agents-health-current"]').trigger('click')
@@ -86,6 +88,53 @@ describe('ExternalAgentsSection', () => {
     expect(agentSessionsApi.healthProfile).not.toHaveBeenCalled()
 
     wrapper.unmount()
+  })
+
+  it('deletes a migrated custom ACP profile from the list', async () => {
+    const confirmMock = vi.fn(() => true)
+    vi.stubGlobal('confirm', confirmMock)
+
+    const migratedProfile: AgentProfile = {
+      id: 'codex-migrated',
+      protocol: 'acp',
+      name: 'codex-migrated',
+      title: 'Codex ACP (Migrated)',
+      command: ['npx', '@zed-industries/codex-acp'],
+      metadata: {
+        migrated_from_builtin_profile_id: 'codex',
+      },
+    }
+    vi.mocked(agentSessionsApi.listProfiles)
+      .mockResolvedValueOnce({
+        data: { profiles: [migratedProfile, ...seededProfiles] },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { profiles: seededProfiles },
+      } as never)
+    vi.mocked(agentSessionsApi.deleteProfile).mockResolvedValue({
+      data: { deleted: true },
+    } as never)
+
+    const wrapper = mount(ExternalAgentsSection, {
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Codex ACP (Migrated)')
+    expect(wrapper.get('[data-testid="external-agents-delete-current"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="external-agents-delete-current"]').trigger('click')
+    await flushPromises()
+
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    expect(agentSessionsApi.deleteProfile).toHaveBeenCalledWith('codex-migrated')
+    expect(wrapper.text()).not.toContain('Codex ACP (Migrated)')
+
+    wrapper.unmount()
+    vi.unstubAllGlobals()
   })
 
   it('keeps built-in A2A verify and health actions available', async () => {

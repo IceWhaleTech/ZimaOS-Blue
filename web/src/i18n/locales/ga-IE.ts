@@ -1855,6 +1855,10 @@ export default mergeHarnessLocale('ga-IE', {
       healthOk: "D'éirigh le seiceáil sláinte.",
       healthFailed: 'Theip ar sheiceáil sláinte.',
       healthRequestFailed: 'Theip ar shláinte an ghníomhaire sheachtraigh a sheiceáil.',
+      deleted: 'Scriosadh próifíl an ghníomhaire sheachtraigh.',
+      deleteFailed: 'Theip ar scriosadh phróifíl an ghníomhaire sheachtraigh.',
+      deleteConfirm:
+        'An scriosfar próifíl an ghníomhaire sheachtraigh "{name}"? Ní mór próifílí a bhfuil seisiúin fós ag tagairt dóibh a ghlanadh ar dtús.',
       saveBeforeHealth: 'Sábháil an phróifíl sula ndéanann tú seiceáil sláinte.',
       duplicate: 'Dúblach',
       builtinHelp:
@@ -7028,6 +7032,7 @@ export default mergeHarnessLocale('ga-IE', {
   search: {
     summaryTitle: 'Cuardach gréasáin',
     resultCount: '{count} toradh',
+    moreResults: '+{count} eile',
   },
   cardActions: {
     use_browser: 'Úsáid an brabhsálaí',

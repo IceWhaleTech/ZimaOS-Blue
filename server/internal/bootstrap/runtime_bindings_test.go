@@ -3162,6 +3162,9 @@ func TestBindRuntimeAgentSessions_RegistersRoutesAndTools(t *testing.T) {
 	if !routeExists(e, http.MethodGet, "/profile/agent-sessions/profiles") {
 		t.Fatalf("expected profile routes to be registered, routes=%v", e.Routes())
 	}
+	if !routeExists(e, http.MethodDelete, "/profile/agent-sessions/profiles/:id") {
+		t.Fatalf("expected profile delete route to be registered, routes=%v", e.Routes())
+	}
 	if !routeExists(e, http.MethodGet, "/chat/agent-sessions/sessions") {
 		t.Fatalf("expected session routes to be registered, routes=%v", e.Routes())
 	}

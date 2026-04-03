@@ -1843,6 +1843,10 @@ export default mergeHarnessLocale('sv-SE', {
       healthOk: 'Hälsokontrollen lyckades.',
       healthFailed: 'Hälsokontrollen misslyckades.',
       healthRequestFailed: 'Det gick inte att kontrollera extern agents hälsa.',
+      deleted: 'Profil för extern agent borttagen.',
+      deleteFailed: 'Det gick inte att ta bort profilen för extern agent.',
+      deleteConfirm:
+        'Ta bort profilen för extern agent "{name}"? Profiler som fortfarande refereras av sessioner måste rensas upp först.',
       saveBeforeHealth: 'Spara profilen innan du kör en hälsokontroll.',
       duplicate: 'Duplicera',
       builtinHelp:
@@ -7093,6 +7097,7 @@ export default mergeHarnessLocale('sv-SE', {
   search: {
     summaryTitle: 'Webbsokning',
     resultCount: '{count} resultat',
+    moreResults: '+{count} till',
   },
   cardActions: {
     use_browser: 'Använd webbläsare',

@@ -1952,6 +1952,10 @@ export default mergeHarnessLocale('it-IT', {
       healthOk: 'Il controllo dello stato è riuscito.',
       healthFailed: 'Il controllo dello stato non è riuscito.',
       healthRequestFailed: "Impossibile verificare l'integrità dell'agente esterno.",
+      deleted: 'Profilo agente esterno eliminato.',
+      deleteFailed: 'Impossibile eliminare il profilo agente esterno.',
+      deleteConfirm:
+        'Eliminare il profilo agente esterno "{name}"? I profili ancora referenziati dalle sessioni devono essere ripuliti prima.',
       saveBeforeHealth: 'Salvare il profilo prima di eseguire un controllo dello stato.',
       duplicate: 'Duplicato',
       builtinHelp:
@@ -7331,6 +7335,7 @@ export default mergeHarnessLocale('it-IT', {
   search: {
     summaryTitle: 'Ricerca web',
     resultCount: '{count} risultati',
+    moreResults: '+{count} altri',
   },
   cardActions: {
     use_browser: 'Usa il browser',

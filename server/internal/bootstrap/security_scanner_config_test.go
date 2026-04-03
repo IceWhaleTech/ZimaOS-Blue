@@ -141,8 +141,46 @@ func TestBuildSecurityScannerConfig(t *testing.T) {
 	if scannerCfg.JWTExpirySecs != 7200 {
 		t.Fatalf("JWTExpirySecs = %d, want %d", scannerCfg.JWTExpirySecs, 7200)
 	}
+	if scannerCfg.DebugMode {
+		t.Fatalf("DebugMode = %v, want false when only debug logging is enabled", scannerCfg.DebugMode)
+	}
+}
+
+func TestBuildSecurityScannerConfig_DoesNotTreatDebugLogLevelAsDebugMode(t *testing.T) {
+	t.Setenv("BLUE_ENV", "")
+	t.Setenv("BLUE_DEV", "")
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "0.0.0.0",
+		},
+		Log: config.LogConfig{
+			Level: "debug",
+		},
+	}
+
+	scannerCfg := buildSecurityScannerConfig(cfg, true)
+	if scannerCfg.DebugMode {
+		t.Fatalf("DebugMode = %v, want false when only debug log level is enabled", scannerCfg.DebugMode)
+	}
+}
+
+func TestBuildSecurityScannerConfig_UsesBlueDevFlagForDebugMode(t *testing.T) {
+	t.Setenv("BLUE_ENV", "")
+	t.Setenv("BLUE_DEV", "1")
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "0.0.0.0",
+		},
+		Log: config.LogConfig{
+			Level: "info",
+		},
+	}
+
+	scannerCfg := buildSecurityScannerConfig(cfg, true)
 	if !scannerCfg.DebugMode {
-		t.Fatalf("DebugMode = %v, want true", scannerCfg.DebugMode)
+		t.Fatalf("DebugMode = %v, want true when BLUE_DEV is enabled", scannerCfg.DebugMode)
 	}
 }
 

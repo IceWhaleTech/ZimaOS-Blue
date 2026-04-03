@@ -1856,6 +1856,10 @@ export default mergeHarnessLocale('ml-IN', {
       healthOk: 'ആരോഗ്യ പരിശോധന വിജയിച്ചു.',
       healthFailed: 'ആരോഗ്യ പരിശോധന പരാജയപ്പെട്ടു.',
       healthRequestFailed: 'ബാഹ്യ ഏജൻ്റിൻ്റെ ആരോഗ്യം പരിശോധിക്കുന്നതിൽ പരാജയപ്പെട്ടു.',
+      deleted: 'ബാഹ്യ ഏജന്റ് പ്രൊഫൈൽ ഇല്ലാതാക്കി.',
+      deleteFailed: 'ബാഹ്യ ഏജന്റ് പ്രൊഫൈൽ ഇല്ലാതാക്കാനായില്ല.',
+      deleteConfirm:
+        'ബാഹ്യ ഏജന്റ് പ്രൊഫൈൽ "{name}" ഇല്ലാതാക്കണോ? സെഷനുകൾ ഇപ്പോഴും പരാമർശിക്കുന്ന പ്രൊഫൈലുകൾ ആദ്യം വൃത്തിയാക്കണം.',
       saveBeforeHealth: 'ആരോഗ്യ പരിശോധന നടത്തുന്നതിന് മുമ്പ് പ്രൊഫൈൽ സംരക്ഷിക്കുക.',
       duplicate: 'ഡ്യൂപ്ലിക്കേറ്റ്',
       builtinHelp:
@@ -7058,6 +7062,7 @@ export default mergeHarnessLocale('ml-IN', {
   search: {
     summaryTitle: 'വെബ് തിരച്ചില്',
     resultCount: '{count} ഫലങ്ങൾ',
+    moreResults: '+{count} എണ്ണം കൂടി',
   },
   cardActions: {
     use_browser: 'ബ്രൗസർ ഉപയോഗിക്കുക',

@@ -2,6 +2,7 @@ package agentsessions
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -37,6 +38,7 @@ func (h *Handler) RegisterProfileRoutes(g *echo.Group) {
 	g.POST("/agent-sessions/profiles", h.SaveProfile)
 	g.POST("/agent-sessions/profiles/verify", h.VerifyProfile)
 	g.POST("/agent-sessions/profiles/:id/health", h.HealthProfile)
+	g.DELETE("/agent-sessions/profiles/:id", h.DeleteProfile)
 }
 
 func (h *Handler) RegisterSessionRoutes(g *echo.Group) {
@@ -97,6 +99,21 @@ func (h *Handler) HealthProfile(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) DeleteProfile(c echo.Context) error {
+	err := h.service.DeleteProfile(c.Param("id"))
+	if err != nil {
+		status := http.StatusBadRequest
+		switch {
+		case errors.Is(err, ErrProfileNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, ErrBuiltinProfileDeleteDenied), errors.Is(err, ErrProfileInUse):
+			status = http.StatusConflict
+		}
+		return c.JSON(status, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]bool{"deleted": true})
 }
 
 func (h *Handler) ListSessions(c echo.Context) error {

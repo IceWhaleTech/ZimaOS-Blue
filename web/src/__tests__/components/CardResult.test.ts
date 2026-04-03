@@ -795,4 +795,22 @@ describe('CardResult', () => {
     expect(link.attributes('href')).toBe('/api/v1/media/analyze/r1.html')
     expect(wrapper.text()).not.toContain('Open location')
   })
+
+  it('renders a localized empty-state message instead of a blank body', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'web_query',
+          status: 'info',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('网页')
+    expect(wrapper.text()).toContain('没有结果数据')
+  })
 })

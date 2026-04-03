@@ -25,6 +25,18 @@ const searchingLabel = computed(() =>
 )
 const summaryLabel = computed(() => query.value || searchingLabel.value)
 const summaryCount = computed(() => props.card.totalCount ?? results.value.length)
+const collapsedPreviewResults = computed(() => results.value.slice(0, 2))
+const collapsedRemainingCount = computed(() =>
+  Math.max(summaryCount.value - collapsedPreviewResults.value.length, 0)
+)
+const collapsedRemainingCountLabel = computed(() => {
+  if (collapsedRemainingCount.value <= 0) return ''
+  if (te('search.moreResults')) {
+    return String(t('search.moreResults', { count: collapsedRemainingCount.value }))
+  }
+  return `+${collapsedRemainingCount.value} more`
+})
+const showCollapsedPreview = computed(() => !expanded.value && collapsedPreviewResults.value.length > 0)
 const resultCountLabel = computed(() => {
   if (summaryCount.value <= 0) return ''
   if (te('search.resultCount')) {
@@ -32,6 +44,21 @@ const resultCountLabel = computed(() => {
   }
   return summaryCount.value === 1 ? '1 result' : `${summaryCount.value} results`
 })
+
+function getCollapsedPreviewTitle(result: SearchResultItem): string {
+  return (result.title || '').trim() || getDomain(result.url)
+}
+
+function getCollapsedPreviewDomain(result: SearchResultItem): string {
+  const domain = getDomain(result.url)
+  return domain === getCollapsedPreviewTitle(result) ? '' : domain
+}
+
+function getCollapsedPreviewDescription(result: SearchResultItem): string {
+  const description = (result.description || '').trim()
+  if (description) return description
+  return getCollapsedPreviewDomain(result)
+}
 
 function validResult(r: unknown): r is SearchResultItem {
   if (!r || typeof r !== 'object') return false
@@ -173,6 +200,70 @@ const currentPreview = computed(() => {
         >
         <span class="block truncate text-sm font-medium text-gray-800 dark:text-gray-100">
           {{ summaryLabel }}
+        </span>
+        <span
+          v-if="showCollapsedPreview"
+          class="search-card__summary-preview mt-2 block rounded-lg border border-sky-100 bg-sky-50/80 px-2.5 py-2 dark:border-sky-900/40 dark:bg-sky-950/30"
+        >
+          <span class="block space-y-2">
+            <span
+              v-for="(result, index) in collapsedPreviewResults"
+              :key="`${result.url}-${index}`"
+              class="flex items-start gap-2"
+            >
+              <span
+                class="search-card__summary-preview-icon relative mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-white text-sky-600 shadow-sm dark:bg-slate-900 dark:text-sky-300"
+              >
+                <svg
+                  aria-hidden="true"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                  />
+                </svg>
+                <img
+                  :src="getFaviconUrl(result.url)"
+                  :alt="getCollapsedPreviewDomain(result) || getCollapsedPreviewTitle(result)"
+                  class="absolute inset-0 m-auto h-4 w-4 rounded-sm"
+                  loading="lazy"
+                  @error="($event.target as HTMLImageElement).style.display = 'none'"
+                />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span
+                  class="block line-clamp-1 text-xs font-semibold leading-snug text-sky-950 dark:text-sky-100"
+                >
+                  {{ getCollapsedPreviewTitle(result) }}
+                </span>
+                <span
+                  v-if="getCollapsedPreviewDomain(result)"
+                  class="mt-0.5 block truncate text-[11px] text-sky-700 dark:text-sky-300/80"
+                >
+                  {{ getCollapsedPreviewDomain(result) }}
+                </span>
+                <span
+                  v-if="getCollapsedPreviewDescription(result)"
+                  class="mt-1 block line-clamp-2 text-xs leading-relaxed text-gray-600 dark:text-gray-300"
+                >
+                  {{ getCollapsedPreviewDescription(result) }}
+                </span>
+              </span>
+            </span>
+            <span
+              v-if="collapsedRemainingCount > 0"
+              class="inline-flex w-fit rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-medium text-sky-700 shadow-sm dark:bg-slate-900/70 dark:text-sky-200"
+            >
+              {{ collapsedRemainingCountLabel }}
+            </span>
+          </span>
         </span>
       </span>
       <span class="flex flex-shrink-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

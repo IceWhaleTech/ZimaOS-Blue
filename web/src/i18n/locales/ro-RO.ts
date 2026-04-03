@@ -1857,6 +1857,10 @@ export default mergeHarnessLocale('ro-RO', {
       healthOk: 'Controlul de sănătate a reușit.',
       healthFailed: 'Verificarea de sănătate a eșuat.',
       healthRequestFailed: 'Nu s-a putut verifica starea agentului extern.',
+      deleted: 'Profilul agentului extern a fost șters.',
+      deleteFailed: 'Ștergerea profilului agentului extern a eșuat.',
+      deleteConfirm:
+        'Ștergeți profilul agentului extern "{name}"? Profilurile la care fac încă referire sesiunile trebuie curățate mai întâi.',
       saveBeforeHealth: 'Salvați profilul înainte de a efectua o verificare a stării de sănătate.',
       duplicate: 'Duplicat',
       builtinHelp:
@@ -7046,6 +7050,7 @@ export default mergeHarnessLocale('ro-RO', {
   search: {
     summaryTitle: 'Cautare pe web',
     resultCount: '{count} rezultate',
+    moreResults: '+{count} în plus',
   },
   cardActions: {
     use_browser: 'Folosește browserul',

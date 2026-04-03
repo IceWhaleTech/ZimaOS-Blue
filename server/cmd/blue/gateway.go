@@ -33,7 +33,7 @@ var gatewayRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the service in foreground",
 	Run: func(cmd *cobra.Command, args []string) {
-		runServer()
+		runForegroundServer()
 	},
 }
 

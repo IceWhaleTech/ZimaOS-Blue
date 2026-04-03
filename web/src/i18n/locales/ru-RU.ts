@@ -1953,6 +1953,10 @@ export default mergeHarnessLocale('ru-RU', {
       healthOk: 'Проверка работоспособности прошла успешно.',
       healthFailed: 'Проверка работоспособности не удалась.',
       healthRequestFailed: 'Не удалось проверить работоспособность внешнего агента.',
+      deleted: 'Профиль внешнего агента удалён.',
+      deleteFailed: 'Не удалось удалить профиль внешнего агента.',
+      deleteConfirm:
+        'Удалить профиль внешнего агента "{name}"? Профили, на которые всё ещё ссылаются сеансы, нужно сначала очистить.',
       saveBeforeHealth: 'Сохраните профиль перед запуском проверки работоспособности.',
       duplicate: 'Дублировать',
       builtinHelp:
@@ -7291,6 +7295,7 @@ export default mergeHarnessLocale('ru-RU', {
   search: {
     summaryTitle: 'Поиск в интернете',
     resultCount: '{count} результатов',
+    moreResults: '+{count} ещё',
   },
   cardActions: {
     use_browser: 'Открыть в браузере',

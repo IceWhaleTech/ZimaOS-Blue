@@ -1846,6 +1846,10 @@ export default mergeHarnessLocale('da-DK', {
       healthOk: 'Sundhedstjekket lykkedes.',
       healthFailed: 'Sundhedstjekket mislykkedes.',
       healthRequestFailed: 'Kunne ikke kontrollere ekstern agents helbred.',
+      deleted: 'Profilen for den eksterne agent blev slettet.',
+      deleteFailed: 'Det lykkedes ikke at slette profilen for den eksterne agent.',
+      deleteConfirm:
+        'Slet profilen for den eksterne agent "{name}"? Profiler, der stadig bruges af sessioner, skal ryddes op først.',
       saveBeforeHealth: 'Gem profilen, før du kører et sundhedstjek.',
       duplicate: 'Duplikat',
       builtinHelp:
@@ -7089,6 +7093,7 @@ export default mergeHarnessLocale('da-DK', {
   search: {
     summaryTitle: 'Websogning',
     resultCount: '{count} resultater',
+    moreResults: '+{count} flere',
   },
   cardActions: {
     use_browser: 'Brug browser',

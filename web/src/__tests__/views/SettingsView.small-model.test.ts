@@ -688,7 +688,23 @@ describe('SettingsView small-model controls', () => {
     await settleSettingsAsyncTabComponents()
 
     expect(settingsApi.getAgentcoreRunnerStatus).toHaveBeenCalledTimes(1)
-    expect(wrapper.get('[data-testid="agentcore-runner-card"]').text()).toContain('Agentcore Runner')
+    const runnerCard = wrapper.get('[data-testid="agentcore-runner-card"]')
+    expect(runnerCard.text()).toContain('Agentcore Runner')
+    expect(
+      Array.from(runnerCard.get('.space-y-1\\.5').element.children).map((node) => node.tagName)
+    ).toEqual(['SPAN', 'H2', 'P'])
+    expect(runnerCard.get('.settings-module__eyebrow').text()).toContain('Harness')
+    expect(
+      (wrapper.get('[data-testid="agentcore-runner-repo-input"]').element as HTMLInputElement).value
+    ).toBe('https://github.com/IceWhaleTech/ZimaOS-Blue')
+    expect(wrapper.find('[data-testid="agentcore-runner-status-content"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="agentcore-runner-status-toggle"]').text()).toContain('Expand')
+
+    await wrapper.get('[data-testid="agentcore-runner-status-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="agentcore-runner-status-content"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="agentcore-runner-status-toggle"]').text()).toContain('Collapse')
     expect(wrapper.get('[data-testid="agentcore-runner-resolved-commit"]').text()).toContain('abc123')
     expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-state"]').text()).toContain(
       'failed'
@@ -820,6 +836,10 @@ describe('SettingsView small-model controls', () => {
     })
     await settleSettingsAsyncTabComponents()
 
+    expect(wrapper.find('[data-testid="agentcore-runner-status-content"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="agentcore-runner-status-toggle"]').trigger('click')
+    await flushPromises()
+
     const prepareButton = wrapper.get('[data-testid="agentcore-runner-prepare"]')
     expect(prepareButton.text()).toContain('Prepare Runner')
     expect(wrapper.get('[data-testid="agentcore-runner-resolved-commit"]').text()).toContain(
@@ -937,6 +957,10 @@ describe('SettingsView small-model controls', () => {
       },
     })
     await settleSettingsAsyncTabComponents()
+
+    expect(wrapper.find('[data-testid="agentcore-runner-status-content"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="agentcore-runner-status-toggle"]').trigger('click')
+    await flushPromises()
 
     expect(wrapper.get('[data-testid="agentcore-runner-resolved-commit"]').text()).toContain('abc123')
     expect(wrapper.get('[data-testid="agentcore-runner-last-optimization-summary"]').text()).toContain(

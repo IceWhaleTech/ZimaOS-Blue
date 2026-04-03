@@ -3812,6 +3812,7 @@ onUnmounted(() => {
 <style scoped>
 .harness-groups-page {
   --dashboard-page-accent: 37, 99, 235;
+  --harness-title-color: rgb(var(--dashboard-page-accent, 37, 99, 235));
   --harness-surface-radius: 0.78rem;
   --harness-control-radius: 0.62rem;
   --harness-chip-radius: 999px;
@@ -3904,7 +3905,7 @@ onUnmounted(() => {
   letter-spacing: 0.14em;
   font-size: 0.62rem;
   font-weight: 700;
-  color: #0f766e;
+  color: var(--harness-title-color);
 }
 
 .section-description {
@@ -4038,7 +4039,7 @@ onUnmounted(() => {
 
 .section-header h2 {
   margin: 0.12rem 0 0.24rem;
-  color: #0f172a;
+  color: var(--harness-title-color);
   font-size: 0.98rem;
   line-height: 1.2;
 }
@@ -4073,7 +4074,7 @@ onUnmounted(() => {
 
 .state-card h2 {
   margin: 0 0 0.35rem;
-  color: #0f172a;
+  color: var(--harness-title-color);
 }
 
 .state-card p {
@@ -4146,7 +4147,7 @@ onUnmounted(() => {
 
 .action-card-header h3 {
   margin: 0 0 0.14rem;
-  color: #0f172a;
+  color: var(--harness-title-color);
   font-size: 0.9rem;
   line-height: 1.2;
 }
@@ -4268,7 +4269,7 @@ onUnmounted(() => {
 .entity-header h3,
 .detail-card h3 {
   margin: 0 0 0.25rem;
-  color: #0f172a;
+  color: var(--harness-title-color);
   font-size: 0.86rem;
   line-height: 1.18;
 }
@@ -4516,7 +4517,7 @@ onUnmounted(() => {
 
 .report-hero-copy h2 {
   margin: 0.12rem 0 0.3rem;
-  color: #0f172a;
+  color: var(--harness-title-color);
   font-size: 1.28rem;
   line-height: 1.08;
 }
@@ -4614,7 +4615,7 @@ onUnmounted(() => {
 }
 
 .report-subtitle {
-  color: #0f172a;
+  color: var(--harness-title-color);
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.2;
@@ -4648,7 +4649,7 @@ onUnmounted(() => {
 
 .comparison-column h4 {
   margin: 0;
-  color: #0f172a;
+  color: var(--harness-title-color);
   font-size: 0.84rem;
   line-height: 1.2;
 }
@@ -4765,7 +4766,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 0.88rem;
   line-height: 1.18;
-  color: #0f172a;
+  color: var(--harness-title-color);
 }
 
 .group-subject {

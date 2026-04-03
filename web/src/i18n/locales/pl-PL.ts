@@ -1851,6 +1851,10 @@ export default mergeHarnessLocale('pl-PL', {
       healthOk: 'Kontrola stanu powiodła się.',
       healthFailed: 'Kontrola stanu nie powiodła się.',
       healthRequestFailed: 'Nie udało się sprawdzić stanu agenta zewnętrznego.',
+      deleted: 'Profil zewnętrznego agenta został usunięty.',
+      deleteFailed: 'Nie udało się usunąć profilu zewnętrznego agenta.',
+      deleteConfirm:
+        'Usunąć profil zewnętrznego agenta "{name}"? Profile, do których sesje nadal się odwołują, należy najpierw oczyścić.',
       saveBeforeHealth: 'Zapisz profil przed sprawdzeniem stanu.',
       duplicate: 'Duplikat',
       builtinHelp:
@@ -7112,6 +7116,7 @@ export default mergeHarnessLocale('pl-PL', {
   search: {
     summaryTitle: 'Wyszukiwanie w sieci',
     resultCount: '{count} wyników',
+    moreResults: '+{count} więcej',
   },
   cardActions: {
     use_browser: 'Użyj przeglądarki',

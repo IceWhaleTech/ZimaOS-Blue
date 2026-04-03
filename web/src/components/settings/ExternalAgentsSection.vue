@@ -32,6 +32,7 @@ const { t } = useI18n()
 
 const loading = ref(false)
 const saving = ref(false)
+const deleting = ref(false)
 const verifying = ref(false)
 const checkingHealth = ref(false)
 const profiles = ref<AgentProfile[]>([])
@@ -397,6 +398,31 @@ async function saveDraft() {
   }
 }
 
+async function deleteCurrent() {
+  if (!selectedProfile.value) {
+    return
+  }
+  if (isBuiltinSelection.value) {
+    showNotice(t('settings.externalAgents.builtinLocked'), 'info')
+    return
+  }
+  const profileLabel =
+    selectedProfile.value.title?.trim() || selectedProfile.value.name?.trim() || selectedProfile.value.id
+  if (!window.confirm(t('settings.externalAgents.deleteConfirm', { name: profileLabel }))) {
+    return
+  }
+  deleting.value = true
+  try {
+    await agentSessionsApi.deleteProfile(selectedProfile.value.id)
+    await loadProfiles()
+    showNotice(t('settings.externalAgents.deleted'), 'success')
+  } catch (error) {
+    showNotice(extractErrorMessage(error, t('settings.externalAgents.deleteFailed')), 'error')
+  } finally {
+    deleting.value = false
+  }
+}
+
 function verifyMessage(result: ProfileVerifyResult): string {
   if (result.message) {
     return result.message
@@ -574,6 +600,16 @@ onMounted(() => {
               @click="duplicateSelection"
             >
               {{ t('settings.externalAgents.duplicate') }}
+            </button>
+            <button
+              v-if="selectedProfile && !isBuiltinSelection"
+              type="button"
+              class="external-agents__button external-agents__button--quiet"
+              data-testid="external-agents-delete-current"
+              :disabled="deleting"
+              @click="deleteCurrent"
+            >
+              {{ t('common.delete', 'Delete') }}
             </button>
             <button
               type="button"

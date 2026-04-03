@@ -157,11 +157,13 @@ const baseHarnessPatch: HarnessLocalePatch = {
 }
 
 const agentcoreRunnerSettingsBase: LocaleNode = {
-  eyebrow: 'Optimization (Beta)',
-  title: 'Agentcore Runner',
-  description: 'Prepare a standalone runner from a public GitHub repo for local beta optimisation.',
+  eyebrow: 'Harness · Beta',
+  title: 'Harness Self-Iterating Agentcore Runner',
+  description:
+    'Use Harness to iterate on an Agentcore runner by preparing a standalone runner from a public GitHub repo for local build, evaluation, and optimisation.',
   enabled: 'Enable Agentcore Runner',
-  enabledHint: 'Allow Optimization (Beta) to prepare and reuse a managed local runner.',
+  enabledHint:
+    'Allow Harness beta flows to prepare and reuse a managed local runner for self-iteration.',
   repoUrl: 'GitHub Repo URL',
   repoPlaceholder: 'https://github.com/owner/repo or owner/repo',
   ref: 'Ref',
@@ -189,12 +191,13 @@ const agentcoreRunnerSettingsBase: LocaleNode = {
 
 const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
   'en-GB': {
-    eyebrow: 'Optimisation (Beta)',
-    title: 'Agentcore Runner',
+    eyebrow: 'Harness · Beta',
+    title: 'Harness Self-Iterating Agentcore Runner',
     description:
-      'Prepare a standalone runner from a public GitHub repository for local beta optimisation.',
+      'Use Harness to iterate on an Agentcore runner by preparing a standalone runner from a public GitHub repository for local build, evaluation, and optimisation.',
     enabled: 'Enable Agentcore Runner',
-    enabledHint: 'Allow Optimisation (Beta) to prepare and reuse a managed local runner.',
+    enabledHint:
+      'Allow Harness beta flows to prepare and reuse a managed local runner for self-iteration.',
     repoUrl: 'GitHub Repository URL',
     repoPlaceholder: 'https://github.com/owner/repo or owner/repo',
     ref: 'Ref',
@@ -220,11 +223,12 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Not available',
   },
   'zh-CN': {
-    eyebrow: '优化（Beta）',
-    title: 'Agentcore 运行器',
-    description: '从公开 GitHub 仓库准备独立 runner，供本地 Beta 优化流程构建与评估。',
+    eyebrow: 'Harness 驱动（Beta）',
+    title: 'Harness 自我迭代 Agentcore Runner',
+    description:
+      '用 Harness 驱动 Agentcore Runner 的自我迭代：从公开 GitHub 仓库准备独立 runner，在本地完成构建、评测与优化。',
     enabled: '启用 Agentcore Runner',
-    enabledHint: '允许优化（Beta）准备并复用受管的本地 runner。',
+    enabledHint: '允许 Harness Beta 流程准备并复用受管本地 runner，用于 Agentcore Runner 自我迭代。',
     repoUrl: 'GitHub 仓库 URL',
     repoPlaceholder: 'https://github.com/owner/repo 或 owner/repo',
     ref: '版本引用',
@@ -249,11 +253,12 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: '暂无',
   },
   'zh-TW': {
-    eyebrow: '最佳化（Beta）',
-    title: 'Agentcore 執行器',
-    description: '從公開 GitHub 儲存庫準備獨立 runner，供本機 Beta 最佳化流程建置與評估。',
+    eyebrow: 'Harness 驅動（Beta）',
+    title: 'Harness 自我迭代 Agentcore Runner',
+    description:
+      '用 Harness 驅動 Agentcore Runner 的自我迭代：從公開 GitHub 儲存庫準備獨立 runner，在本機完成建置、評測與最佳化。',
     enabled: '啟用 Agentcore Runner',
-    enabledHint: '允許最佳化（Beta）準備並重用受管的本機 runner。',
+    enabledHint: '允許 Harness Beta 流程準備並重用受管本機 runner，用於 Agentcore Runner 自我迭代。',
     repoUrl: 'GitHub 儲存庫 URL',
     repoPlaceholder: 'https://github.com/owner/repo 或 owner/repo',
     ref: '版本參照',
@@ -278,11 +283,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: '暫無',
   },
   'ca-ES': {
-    eyebrow: 'Optimització (Beta)',
-    title: 'Executor d\'Agentcore',
-    description: 'Prepara un runner autònom des d’un repositori públic de GitHub per a l’optimització beta local.',
+    eyebrow: 'Amb Harness (Beta)',
+    title: 'Agentcore Runner d’autoiteració amb Harness',
+    description:
+      'Fes servir Harness per iterar un Agentcore Runner preparant un runner autònom des d’un repositori públic de GitHub per a la compilació, l’avaluació i l’optimització locals.',
     enabled: 'Activa Agentcore Runner',
-    enabledHint: 'Permet que l’optimització (Beta) prepari i reutilitzi un runner local gestionat.',
+    enabledHint:
+      'Permet que els fluxos beta de Harness preparin i reutilitzin un runner local gestionat per a l’autoiteració.',
     repoUrl: 'URL del repositori GitHub',
     repoPlaceholder: 'https://github.com/owner/repo o owner/repo',
     ref: 'Referència',
@@ -307,11 +314,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'No disponible',
   },
   'cs-CZ': {
-    eyebrow: 'Optimalizace (Beta)',
-    title: 'Spouštěč Agentcore',
-    description: 'Připravte samostatný runner z veřejného repozitáře GitHub pro místní beta optimalizaci.',
+    eyebrow: 'S podporou Harness (Beta)',
+    title: 'Samoiterující Agentcore Runner v Harness',
+    description:
+      'Pomocí Harness iterujte na Agentcore Runneru: připravte samostatný runner z veřejného repozitáře GitHub pro místní sestavení, vyhodnocení a optimalizaci.',
     enabled: 'Povolit Agentcore Runner',
-    enabledHint: 'Umožní funkci Optimalizace (Beta) připravit a znovu použít spravovaný místní runner.',
+    enabledHint:
+      'Umožní beta tokům Harness připravit a znovu použít spravovaný místní runner pro samoiteraci.',
     repoUrl: 'URL repozitáře GitHub',
     repoPlaceholder: 'https://github.com/owner/repo nebo owner/repo',
     ref: 'Revize',
@@ -336,11 +345,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Není k dispozici',
   },
   'da-DK': {
-    eyebrow: 'Optimering (Beta)',
-    title: 'Agentcore-kører',
-    description: 'Forbered en selvstændig runner fra et offentligt GitHub-repositorium til lokal betaoptimering.',
+    eyebrow: 'Harness-drevet (Beta)',
+    title: 'Harness-selvitererende Agentcore Runner',
+    description:
+      'Brug Harness til at iterere på en Agentcore Runner ved at forberede en selvstændig runner fra et offentligt GitHub-repositorium til lokal build, evaluering og optimering.',
     enabled: 'Aktivér Agentcore Runner',
-    enabledHint: 'Tillad, at Optimering (Beta) forbereder og genbruger en administreret lokal runner.',
+    enabledHint:
+      'Tillad, at Harness-betaforløb forbereder og genbruger en administreret lokal runner til selviterering.',
     repoUrl: 'GitHub-repo-URL',
     repoPlaceholder: 'https://github.com/owner/repo eller owner/repo',
     ref: 'Reference',
@@ -365,11 +376,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Ikke tilgængelig',
   },
   'de-DE': {
-    eyebrow: 'Optimierung (Beta)',
-    title: 'Agentcore-Ausführer',
-    description: 'Bereiten Sie einen eigenständigen Runner aus einem öffentlichen GitHub-Repository für lokale Beta-Optimierung vor.',
+    eyebrow: 'Harness-gesteuert (Beta)',
+    title: 'Harness-selbstiterierender Agentcore Runner',
+    description:
+      'Nutzen Sie Harness, um einen Agentcore Runner weiterzuentwickeln, indem Sie einen eigenständigen Runner aus einem öffentlichen GitHub-Repository für lokalen Build, Bewertung und Optimierung vorbereiten.',
     enabled: 'Agentcore Runner aktivieren',
-    enabledHint: 'Erlaubt Optimierung (Beta), einen verwalteten lokalen Runner vorzubereiten und wiederzuverwenden.',
+    enabledHint:
+      'Erlaubt Harness-Beta-Abläufen, einen verwalteten lokalen Runner für die Selbstiteration vorzubereiten und wiederzuverwenden.',
     repoUrl: 'GitHub-Repo-URL',
     repoPlaceholder: 'https://github.com/owner/repo oder owner/repo',
     ref: 'Referenz',
@@ -394,11 +407,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Nicht verfügbar',
   },
   'el-GR': {
-    eyebrow: 'Βελτιστοποίηση (Beta)',
-    title: 'Εκτελεστής Agentcore',
-    description: 'Προετοιμάστε έναν ανεξάρτητο runner από δημόσιο αποθετήριο GitHub για τοπική beta βελτιστοποίηση.',
+    eyebrow: 'Με Harness (Beta)',
+    title: 'Agentcore Runner αυτοεπανάληψης με Harness',
+    description:
+      'Χρησιμοποιήστε το Harness για να επαναλαμβάνετε βελτιώσεις σε έναν Agentcore Runner, προετοιμάζοντας έναν ανεξάρτητο runner από δημόσιο αποθετήριο GitHub για τοπικό build, αξιολόγηση και βελτιστοποίηση.',
     enabled: 'Ενεργοποίηση Agentcore Runner',
-    enabledHint: 'Επιτρέπει στη Βελτιστοποίηση (Beta) να προετοιμάζει και να επαναχρησιμοποιεί έναν διαχειριζόμενο τοπικό runner.',
+    enabledHint:
+      'Επιτρέπει στις beta ροές του Harness να προετοιμάζουν και να επαναχρησιμοποιούν έναν διαχειριζόμενο τοπικό runner για αυτοεπανάληψη.',
     repoUrl: 'URL αποθετηρίου GitHub',
     repoPlaceholder: 'https://github.com/owner/repo ή owner/repo',
     ref: 'Αναφορά',
@@ -423,11 +438,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Μη διαθέσιμο',
   },
   'es-ES': {
-    eyebrow: 'Optimización (Beta)',
-    title: 'Ejecutor Agentcore',
-    description: 'Prepara un runner independiente desde un repositorio público de GitHub para la optimización beta local.',
+    eyebrow: 'Con Harness (Beta)',
+    title: 'Agentcore Runner autoiterativo con Harness',
+    description:
+      'Usa Harness para iterar sobre un Agentcore Runner preparando un runner independiente desde un repositorio público de GitHub para compilación, evaluación y optimización locales.',
     enabled: 'Activar Agentcore Runner',
-    enabledHint: 'Permite que Optimización (Beta) prepare y reutilice un runner local gestionado.',
+    enabledHint:
+      'Permite que los flujos beta de Harness preparen y reutilicen un runner local gestionado para la autoiteración.',
     repoUrl: 'URL del repositorio GitHub',
     repoPlaceholder: 'https://github.com/owner/repo o owner/repo',
     ref: 'Referencia',
@@ -452,11 +469,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'No disponible',
   },
   'fr-FR': {
-    eyebrow: 'Optimisation (Beta)',
-    title: 'Exécuteur Agentcore',
-    description: 'Préparez un runner autonome depuis un dépôt GitHub public pour l’optimisation bêta locale.',
+    eyebrow: 'Avec Harness (Beta)',
+    title: 'Agentcore Runner auto-itératif avec Harness',
+    description:
+      'Utilisez Harness pour faire évoluer un Agentcore Runner en préparant un runner autonome depuis un dépôt GitHub public pour la compilation, l’évaluation et l’optimisation locales.',
     enabled: 'Activer Agentcore Runner',
-    enabledHint: 'Permet à Optimisation (Beta) de préparer et de réutiliser un runner local géré.',
+    enabledHint:
+      'Permet aux flux bêta de Harness de préparer et de réutiliser un runner local géré pour l’auto-itération.',
     repoUrl: 'URL du dépôt GitHub',
     repoPlaceholder: 'https://github.com/owner/repo ou owner/repo',
     ref: 'Référence',
@@ -482,11 +501,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Indisponible',
   },
   'ga-IE': {
-    eyebrow: 'Barrfheabhsú (Beta)',
-    title: 'Rithire Agentcore',
-    description: 'Ullmhaigh runner neamhspleách ó stór poiblí GitHub don bharrfheabhsú béite áitiúil.',
+    eyebrow: 'Tiomáinte ag Harness (Beta)',
+    title: 'Agentcore Runner féin-atriall le Harness',
+    description:
+      'Úsáid Harness chun Agentcore Runner a atriallú trí runner neamhspleách a ullmhú ó stór poiblí GitHub le haghaidh tógála, meastóireachta agus barrfheabhsaithe áitiúil.',
     enabled: 'Cumasaigh Agentcore Runner',
-    enabledHint: 'Ligeann sé do Bharrfheabhsú (Beta) runner áitiúil bainistithe a ullmhú agus a athúsáid.',
+    enabledHint:
+      'Ligeann sé do shreafaí béite Harness runner áitiúil bainistithe a ullmhú agus a athúsáid le haghaidh féin-atriallach.',
     repoUrl: 'URL stór GitHub',
     repoPlaceholder: 'https://github.com/owner/repo nó owner/repo',
     ref: 'Tagairt',
@@ -511,11 +532,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Níl ar fáil',
   },
   'hr-HR': {
-    eyebrow: 'Optimizacija (Beta)',
-    title: 'Agentcore izvršitelj',
-    description: 'Pripremite samostalni runner iz javnog GitHub repozitorija za lokalnu beta optimizaciju.',
+    eyebrow: 'Pokreće Harness (Beta)',
+    title: 'Harness samoiterirajući Agentcore Runner',
+    description:
+      'Koristite Harness za samoiteraciju Agentcore Runnera tako da pripremite samostalni runner iz javnog GitHub repozitorija za lokalnu izgradnju, evaluaciju i optimizaciju.',
     enabled: 'Omogući Agentcore Runner',
-    enabledHint: 'Omogućuje da Optimizacija (Beta) pripremi i ponovno koristi upravljani lokalni runner.',
+    enabledHint:
+      'Omogućuje da beta tokovi Harnessa pripreme i ponovno koriste upravljani lokalni runner za samoiteraciju.',
     repoUrl: 'GitHub URL repozitorija',
     repoPlaceholder: 'https://github.com/owner/repo ili owner/repo',
     ref: 'Referenca',
@@ -540,11 +563,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Nije dostupno',
   },
   'hu-HU': {
-    eyebrow: 'Optimalizálás (Beta)',
-    title: 'Agentcore futtató',
-    description: 'Készítsen önálló runnert nyilvános GitHub tárolóból a helyi béta optimalizáláshoz.',
+    eyebrow: 'Harness-vezérelt (Beta)',
+    title: 'Harness öniteráló Agentcore Runner',
+    description:
+      'A Harness segítségével iterálhat egy Agentcore Runneren úgy, hogy önálló runnert készít elő egy nyilvános GitHub-tárolóból helyi buildhez, kiértékeléshez és optimalizáláshoz.',
     enabled: 'Agentcore Runner engedélyezése',
-    enabledHint: 'Lehetővé teszi, hogy az Optimalizálás (Beta) előkészítsen és újrahasználjon egy felügyelt helyi runnert.',
+    enabledHint:
+      'Lehetővé teszi, hogy a Harness béta folyamatai felügyelt helyi runnert készítsenek elő és használjanak újra öniterációhoz.',
     repoUrl: 'GitHub tároló URL',
     repoPlaceholder: 'https://github.com/owner/repo vagy owner/repo',
     ref: 'Hivatkozás',
@@ -569,11 +594,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Nem érhető el',
   },
   'it-IT': {
-    eyebrow: 'Ottimizzazione (Beta)',
-    title: 'Esecutore Agentcore',
-    description: 'Prepara un runner autonomo da un repository GitHub pubblico per l’ottimizzazione beta locale.',
+    eyebrow: 'Con Harness (Beta)',
+    title: 'Agentcore Runner auto-iterativo con Harness',
+    description:
+      'Usa Harness per iterare su un Agentcore Runner preparando un runner autonomo da un repository GitHub pubblico per build, valutazione e ottimizzazione locali.',
     enabled: 'Abilita Agentcore Runner',
-    enabledHint: 'Consente a Ottimizzazione (Beta) di preparare e riutilizzare un runner locale gestito.',
+    enabledHint:
+      'Consente ai flussi beta di Harness di preparare e riutilizzare un runner locale gestito per l’auto-iterazione.',
     repoUrl: 'URL repository GitHub',
     repoPlaceholder: 'https://github.com/owner/repo oppure owner/repo',
     ref: 'Riferimento',
@@ -598,11 +625,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Non disponibile',
   },
   'ja-JP': {
-    eyebrow: '最適化 (Beta)',
-    title: 'Agentcore ランナー',
-    description: '公開 GitHub リポジトリから独立 runner を準備し、ローカルの Beta 最適化でビルドと評価を行います。',
+    eyebrow: 'Harness 駆動 (Beta)',
+    title: 'Harness 自己反復型 Agentcore Runner',
+    description:
+      'Harness を使って Agentcore Runner を自己反復させるため、公開 GitHub リポジトリから独立 runner を準備し、ローカルでビルド・評価・最適化を行います。',
     enabled: 'Agentcore Runner を有効化',
-    enabledHint: '最適化 (Beta) が管理対象のローカル runner を準備して再利用できるようにします。',
+    enabledHint:
+      'Harness の Beta フローが、自己反復用に管理されたローカル runner を準備して再利用できるようにします。',
     repoUrl: 'GitHub リポジトリ URL',
     repoPlaceholder: 'https://github.com/owner/repo または owner/repo',
     ref: '参照',
@@ -627,11 +656,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: '利用不可',
   },
   'ko-KR': {
-    eyebrow: '최적화 (Beta)',
-    title: 'Agentcore 실행기',
-    description: '공개 GitHub 저장소에서 독립 runner를 준비해 로컬 Beta 최적화에서 빌드와 평가에 사용합니다.',
+    eyebrow: 'Harness 기반 (Beta)',
+    title: 'Harness 자기 반복 Agentcore Runner',
+    description:
+      'Harness를 사용해 Agentcore Runner를 자기 반복할 수 있도록 공개 GitHub 저장소에서 독립 runner를 준비하고 로컬에서 빌드, 평가, 최적화를 수행합니다.',
     enabled: 'Agentcore Runner 사용',
-    enabledHint: '최적화 (Beta)가 관리형 로컬 runner를 준비하고 재사용할 수 있게 합니다.',
+    enabledHint:
+      'Harness 베타 흐름이 자기 반복용 관리형 로컬 runner를 준비하고 재사용할 수 있게 합니다.',
     repoUrl: 'GitHub 저장소 URL',
     repoPlaceholder: 'https://github.com/owner/repo 또는 owner/repo',
     ref: '참조',
@@ -656,11 +687,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: '사용 불가',
   },
   'ml-IN': {
-    eyebrow: 'ഓപ്റ്റിമൈസേഷൻ (Beta)',
-    title: 'Agentcore റണ്ണർ',
-    description: 'പ്രാദേശിക ബീറ്റ ഓപ്റ്റിമൈസേഷനായി ഒരു പൊതുഗമ്യ GitHub repoയില്‍നിന്ന് സ്വതന്ത്ര runner തയ്യാറാക്കുക.',
+    eyebrow: 'Harness അധിഷ്ഠിതം (Beta)',
+    title: 'Harness സ്വയം-ആവർത്തന Agentcore Runner',
+    description:
+      'Harness ഉപയോഗിച്ച് Agentcore Runner നെ സ്വയം ആവർത്തിച്ച് മെച്ചപ്പെടുത്താൻ, പൊതുഗമ്യ GitHub repoയിൽ നിന്ന് സ്വതന്ത്ര runner തയ്യാറാക്കി പ്രാദേശിക build, മൂല്യനിർണ്ണയം, optimization എന്നിവ നടത്തുക.',
     enabled: 'Agentcore Runner പ്രവർത്തനക്ഷമമാക്കുക',
-    enabledHint: 'ഓപ്റ്റിമൈസേഷൻ (Beta) നിയന്ത്രിത പ്രാദേശിക runner തയ്യാറാക്കി വീണ്ടും ഉപയോഗിക്കാൻ അനുവദിക്കുന്നു.',
+    enabledHint:
+      'സ്വയം ആവർത്തനത്തിനായി മാനേജ്ഡ് പ്രാദേശിക runner തയ്യാറാക്കി വീണ്ടും ഉപയോഗിക്കാൻ Harness ബീറ്റ ഫ്ലോകൾക്ക് അനുവദിക്കുന്നു.',
     repoUrl: 'GitHub repo URL',
     repoPlaceholder: 'https://github.com/owner/repo അല്ലെങ്കിൽ owner/repo',
     ref: 'റഫറൻസ്',
@@ -685,11 +718,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'ലഭ്യമല്ല',
   },
   'nb-NO': {
-    eyebrow: 'Optimalisering (Beta)',
-    title: 'Agentcore-kjører',
-    description: 'Forbered en frittstående runner fra et offentlig GitHub-repositorium for lokal betaoptimalisering.',
+    eyebrow: 'Harness-drevet (Beta)',
+    title: 'Harness-selvitererende Agentcore Runner',
+    description:
+      'Bruk Harness til å iterere på en Agentcore Runner ved å forberede en frittstående runner fra et offentlig GitHub-repositorium for lokal bygging, evaluering og optimalisering.',
     enabled: 'Aktiver Agentcore Runner',
-    enabledHint: 'Lar Optimalisering (Beta) forberede og gjenbruke en administrert lokal runner.',
+    enabledHint:
+      'Lar Harness-betaflyter forberede og gjenbruke en administrert lokal runner for selviterasjon.',
     repoUrl: 'GitHub-repo-URL',
     repoPlaceholder: 'https://github.com/owner/repo eller owner/repo',
     ref: 'Referanse',
@@ -714,11 +749,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Ikke tilgjengelig',
   },
   'nl-NL': {
-    eyebrow: 'Optimalisatie (Beta)',
-    title: 'Agentcore-uitvoerder',
-    description: 'Bereid een zelfstandige runner uit een openbare GitHub-repository voor lokale bèta-optimalisatie.',
+    eyebrow: 'Met Harness (Beta)',
+    title: 'Harness zelf-itererende Agentcore Runner',
+    description:
+      'Gebruik Harness om een Agentcore Runner iteratief te verbeteren door een zelfstandige runner uit een openbare GitHub-repository voor lokale build, evaluatie en optimalisatie voor te bereiden.',
     enabled: 'Agentcore Runner inschakelen',
-    enabledHint: 'Laat Optimalisatie (Beta) een beheerde lokale runner voorbereiden en hergebruiken.',
+    enabledHint:
+      'Laat Harness-bètaflows een beheerde lokale runner voorbereiden en hergebruiken voor zelf-iteratie.',
     repoUrl: 'GitHub-repository-URL',
     repoPlaceholder: 'https://github.com/owner/repo of owner/repo',
     ref: 'Referentie',
@@ -743,11 +780,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Niet beschikbaar',
   },
   'pl-PL': {
-    eyebrow: 'Optymalizacja (Beta)',
-    title: 'Agentcore uruchamiacz',
-    description: 'Przygotuj niezależny runner z publicznego repozytorium GitHub do lokalnej optymalizacji beta.',
+    eyebrow: 'Z Harness (Beta)',
+    title: 'Samoiterujący Agentcore Runner w Harness',
+    description:
+      'Użyj Harness do iterowania nad Agentcore Runnerem, przygotowując niezależny runner z publicznego repozytorium GitHub do lokalnego budowania, oceny i optymalizacji.',
     enabled: 'Włącz Agentcore Runner',
-    enabledHint: 'Pozwala funkcji Optymalizacja (Beta) przygotować i ponownie użyć zarządzanego lokalnego runnera.',
+    enabledHint:
+      'Pozwala przepływom beta Harness przygotować i ponownie użyć zarządzanego lokalnego runnera do samoiteracji.',
     repoUrl: 'URL repozytorium GitHub',
     repoPlaceholder: 'https://github.com/owner/repo lub owner/repo',
     ref: 'Odniesienie',
@@ -772,11 +811,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Niedostępne',
   },
   'pt-BR': {
-    eyebrow: 'Otimização (Beta)',
-    title: 'Executor Agentcore',
-    description: 'Prepare um runner independente a partir de um repositório público do GitHub para a otimização beta local.',
+    eyebrow: 'Com Harness (Beta)',
+    title: 'Agentcore Runner autoiterativo com Harness',
+    description:
+      'Use o Harness para iterar sobre um Agentcore Runner preparando um runner independente a partir de um repositório público do GitHub para build, avaliação e otimização locais.',
     enabled: 'Ativar Agentcore Runner',
-    enabledHint: 'Permite que Otimização (Beta) prepare e reutilize um runner local gerenciado.',
+    enabledHint:
+      'Permite que os fluxos beta do Harness preparem e reutilizem um runner local gerenciado para autoiteração.',
     repoUrl: 'URL do repositório GitHub',
     repoPlaceholder: 'https://github.com/owner/repo ou owner/repo',
     ref: 'Referência',
@@ -801,11 +842,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Indisponível',
   },
   'pt-PT': {
-    eyebrow: 'Otimização (Beta)',
-    title: 'Executor Agentcore',
-    description: 'Prepare um runner autónomo a partir de um repositório público do GitHub para otimização beta local.',
+    eyebrow: 'Com Harness (Beta)',
+    title: 'Agentcore Runner autoiterativo com Harness',
+    description:
+      'Use o Harness para iterar sobre um Agentcore Runner, preparando um runner autónomo a partir de um repositório público do GitHub para build, avaliação e otimização locais.',
     enabled: 'Ativar Agentcore Runner',
-    enabledHint: 'Permite que a Otimização (Beta) prepare e reutilize um runner local gerido.',
+    enabledHint:
+      'Permite que os fluxos beta do Harness preparem e reutilizem um runner local gerido para autoiteração.',
     repoUrl: 'URL do repositório GitHub',
     repoPlaceholder: 'https://github.com/owner/repo ou owner/repo',
     ref: 'Referência',
@@ -830,11 +873,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Indisponível',
   },
   'ro-RO': {
-    eyebrow: 'Optimizare (Beta)',
-    title: 'Executor Agentcore',
-    description: 'Pregătește un runner independent dintr-un depozit GitHub public pentru optimizare beta locală.',
+    eyebrow: 'Cu Harness (Beta)',
+    title: 'Agentcore Runner auto-iterativ cu Harness',
+    description:
+      'Folosește Harness pentru a itera asupra unui Agentcore Runner pregătind un runner independent dintr-un depozit GitHub public pentru build, evaluare și optimizare locale.',
     enabled: 'Activează Agentcore Runner',
-    enabledHint: 'Permite funcției Optimizare (Beta) să pregătească și să refolosească un runner local administrat.',
+    enabledHint:
+      'Permite fluxurilor beta Harness să pregătească și să refolosească un runner local administrat pentru auto-iterare.',
     repoUrl: 'URL depozit GitHub',
     repoPlaceholder: 'https://github.com/owner/repo sau owner/repo',
     ref: 'Referință',
@@ -859,11 +904,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Indisponibil',
   },
   'ru-RU': {
-    eyebrow: 'Оптимизация (Beta)',
-    title: 'Исполнитель Agentcore',
-    description: 'Подготовьте отдельный runner из публичного репозитория GitHub для локальной бета-оптимизации.',
+    eyebrow: 'На базе Harness (Beta)',
+    title: 'Самоитерационный Agentcore Runner в Harness',
+    description:
+      'Используйте Harness для самоитерации Agentcore Runner: подготовьте отдельный runner из публичного репозитория GitHub для локальной сборки, оценки и оптимизации.',
     enabled: 'Включить Agentcore Runner',
-    enabledHint: 'Разрешает функции «Оптимизация (Beta)» подготавливать и повторно использовать управляемый локальный runner.',
+    enabledHint:
+      'Разрешает бета-процессам Harness подготавливать и повторно использовать управляемый локальный runner для самоитерации.',
     repoUrl: 'URL репозитория GitHub',
     repoPlaceholder: 'https://github.com/owner/repo или owner/repo',
     ref: 'Ссылка',
@@ -888,11 +935,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Недоступно',
   },
   'sk-SK': {
-    eyebrow: 'Optimalizácia (Beta)',
-    title: 'Spúšťač Agentcore',
-    description: 'Pripravte samostatný runner z verejného GitHub repozitára pre lokálnu beta optimalizáciu.',
+    eyebrow: 'S podporou Harness (Beta)',
+    title: 'Samoiterujúci Agentcore Runner v Harness',
+    description:
+      'Použite Harness na iterovanie Agentcore Runnera tak, že pripravíte samostatný runner z verejného GitHub repozitára pre lokálny build, vyhodnotenie a optimalizáciu.',
     enabled: 'Povoliť Agentcore Runner',
-    enabledHint: 'Umožní funkcii Optimalizácia (Beta) pripraviť a znovu použiť spravovaný lokálny runner.',
+    enabledHint:
+      'Umožní beta tokom Harness pripraviť a znovu použiť spravovaný lokálny runner na samoiteráciu.',
     repoUrl: 'URL GitHub repozitára',
     repoPlaceholder: 'https://github.com/owner/repo alebo owner/repo',
     ref: 'Referencia',
@@ -917,11 +966,13 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     empty: 'Nedostupné',
   },
   'sv-SE': {
-    eyebrow: 'Optimering (Beta)',
-    title: 'Agentcore-körare',
-    description: 'Förbered en fristående runner från ett publikt GitHub-repository för lokal betaoptimering.',
+    eyebrow: 'Harness-driven (Beta)',
+    title: 'Harness-självitererande Agentcore Runner',
+    description:
+      'Använd Harness för att iterera på en Agentcore Runner genom att förbereda en fristående runner från ett publikt GitHub-repository för lokal build, utvärdering och optimering.',
     enabled: 'Aktivera Agentcore Runner',
-    enabledHint: 'Tillåt att Optimering (Beta) förbereder och återanvänder en hanterad lokal runner.',
+    enabledHint:
+      'Låter Harness beta-flöden förbereda och återanvända en hanterad lokal runner för själviterering.',
     repoUrl: 'GitHub-repo-URL',
     repoPlaceholder: 'https://github.com/owner/repo eller owner/repo',
     ref: 'Referens',

@@ -119,11 +119,13 @@ func (c *Controller) EvaluateExecutionEquivalence(ctx context.Context, targetEva
 		CreatedAt:          timeutil.NowTime(),
 	}
 	c.emitOptimizationTrigger(ctx, OptimizationTrigger{
-		Reason:          executionGateReason(report.Passed),
-		CandidateID:     evalRunCandidateID(targetReport.EvalRun),
-		EvalRunID:       targetReport.EvalRun.ID,
-		BaseEvalRunID:   comparison.BaseEvalRunID,
-		OptimizationRun: evalRunIsOptimizationChild(targetReport.EvalRun),
+		Reason:              executionGateReason(report.Passed),
+		CandidateID:         evalRunCandidateID(targetReport.EvalRun),
+		EvalRunID:           targetReport.EvalRun.ID,
+		BaseEvalRunID:       comparison.BaseEvalRunID,
+		OptimizationRun:     evalRunIsOptimizationChild(targetReport.EvalRun),
+		OptimizationSurface: evalRunOptimizationSurface(targetReport.EvalRun),
+		Metadata:            evalRunOptimizationMetadata(targetReport.EvalRun),
 	})
 	return report, nil
 }

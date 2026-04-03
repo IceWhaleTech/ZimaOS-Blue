@@ -1130,9 +1130,7 @@ const capabilityCards = computed(() => {
       priority: selectedSession.value ? 'P1' : 'P3',
       label: tr('browserMonitor.capabilityBrowser', 'Browser continuity'),
       detail: selectedSession.value
-        ? selectedSession.value.page_title ||
-          selectedSession.value.current_url ||
-          tr('browserMonitor.untitledTab', 'Untitled tab')
+        ? sessionLayerLabel(selectedSession.value)
         : tr('browserMonitor.capabilityBrowserIdle', 'No active browser tab'),
       tone: selectedSession.value ? 'is-strong' : 'is-muted',
     },
@@ -1402,13 +1400,7 @@ onUnmounted(() => {
             {{ tr('browserMonitor.title', 'Live monitor') }}
           </h3>
           <p class="browser-monitor__subtitle">
-            {{
-              taskTitle(leadTask) ||
-              selectedSession?.page_title ||
-              activeTextMonitor?.title ||
-              activeScreenshotFrame?.title ||
-              tr('browserMonitor.subtitle', 'Track the latest task and tab state here.')
-            }}
+            {{ tr('browserMonitor.subtitle', 'Track the latest task and tab state here.') }}
           </p>
         </div>
 
@@ -1654,7 +1646,7 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <div class="browser-monitor__tabs">
+          <div v-if="sessions.length > 1" class="browser-monitor__tabs">
             <button
               v-for="session in sessions"
               :key="session.id"
@@ -1671,10 +1663,7 @@ onUnmounted(() => {
                 <strong>{{
                   session.page_title || tr('browserMonitor.untitledTab', 'Untitled tab')
                 }}</strong>
-                <span class="browser-monitor__tab-meta">{{
-                  session.current_url || session.id
-                }}</span>
-                <span class="browser-monitor__tab-kind">{{ sessionLayerLabel(session) }}</span>
+                <span class="browser-monitor__tab-meta">{{ sessionLayerLabel(session) }}</span>
               </span>
             </button>
           </div>

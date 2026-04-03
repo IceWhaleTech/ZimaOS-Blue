@@ -1858,6 +1858,10 @@ export default mergeHarnessLocale('nl-NL', {
       healthOk: 'Gezondheidscontrole geslaagd.',
       healthFailed: 'Gezondheidscontrole mislukt.',
       healthRequestFailed: 'Kan de status van de externe agent niet controleren.',
+      deleted: 'Profiel van externe agent verwijderd.',
+      deleteFailed: 'Kan profiel van externe agent niet verwijderen.',
+      deleteConfirm:
+        'Profiel van externe agent "{name}" verwijderen? Profielen waar sessies nog naar verwijzen moeten eerst worden opgeschoond.',
       saveBeforeHealth: 'Sla het profiel op voordat u een statuscontrole uitvoert.',
       duplicate: 'Duplicaat',
       builtinHelp:
@@ -7129,6 +7133,7 @@ export default mergeHarnessLocale('nl-NL', {
   search: {
     summaryTitle: 'Zoeken op het web',
     resultCount: '{count} resultaten',
+    moreResults: '+{count} meer',
   },
   cardActions: {
     use_browser: 'Browser gebruiken',

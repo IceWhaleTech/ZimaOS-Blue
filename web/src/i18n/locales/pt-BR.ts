@@ -1945,6 +1945,10 @@ export default mergeHarnessLocale('pt-BR', {
       healthOk: 'A verificação de integridade foi bem-sucedida.',
       healthFailed: 'A verificação de integridade falhou.',
       healthRequestFailed: 'Falha ao verificar a integridade do agente externo.',
+      deleted: 'Perfil do agente externo excluído.',
+      deleteFailed: 'Falha ao excluir o perfil do agente externo.',
+      deleteConfirm:
+        'Excluir o perfil do agente externo "{name}"? Os perfis ainda referenciados por sessões precisam ser limpos primeiro.',
       saveBeforeHealth: 'Salve o perfil antes de executar uma verificação de integridade.',
       duplicate: 'Duplicar',
       builtinHelp:
@@ -7288,6 +7292,7 @@ export default mergeHarnessLocale('pt-BR', {
   search: {
     summaryTitle: 'Pesquisa na web',
     resultCount: '{count} resultados',
+    moreResults: '+{count} a mais',
   },
   cardActions: {
     use_browser: 'Usar navegador',

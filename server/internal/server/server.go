@@ -13,15 +13,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"github.com/rs/zerolog"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
-	"golang.org/x/net/netutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog"
+	"golang.org/x/net/netutil"
 )
 
 // actualPort stores the actual port the server is listening on
@@ -67,7 +67,7 @@ type Server struct {
 	httpServer     *http.Server
 	shutdownMu     sync.Mutex
 	isShuttingDown bool
-	tlsStarted    atomic.Bool
+	tlsStarted     atomic.Bool
 }
 
 func New(cfg *config.ServerConfig) *Server {
@@ -242,8 +242,11 @@ func (s *Server) Start() error {
 		Int("configured_port", s.config.Port).
 		Msg("Server listening")
 
+	startupURL := buildStartupURL(s.config.Host, tcpAddr.Port)
+	handleStartupURL(s.config.Host, tcpAddr.Port)
+
 	logger.Info().
-		Str("url", fmt.Sprintf("http://localhost:%d", tcpAddr.Port)).
+		Str("url", startupURL).
 		Msg("Open in browser to access the web interface")
 
 	// Limit concurrent connections to prevent resource exhaustion

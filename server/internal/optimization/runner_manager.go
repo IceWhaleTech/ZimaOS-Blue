@@ -1093,6 +1093,12 @@ func parseOptimizationRecordTime(value interface{}) *time.Time {
 }
 
 func summarizeOptimizationState(record map[string]interface{}) string {
+	if decision := optimizationRecordString(record["followup_decision"]); decision != "" {
+		return decision
+	}
+	if state := optimizationRecordString(record["followup_state"]); state != "" {
+		return state
+	}
 	if runnerError := optimizationRecordString(record["runner_error"]); runnerError != "" {
 		return "failed"
 	}
@@ -1107,6 +1113,10 @@ func summarizeOptimizationState(record map[string]interface{}) string {
 
 func summarizeOptimizationText(record map[string]interface{}) string {
 	candidates := []string{
+		optimizationRecordString(record["followup_summary"]),
+		optimizationRecordString(record["followup_message"]),
+		optimizationRecordString(record["followup_decision"]),
+		optimizationRecordString(record["followup_state"]),
 		optimizationRecordString(record["runner_error"]),
 		optimizationRecordString(record["runner_response_text"]),
 		optimizationRecordString(record["runner_stop_reason"]),

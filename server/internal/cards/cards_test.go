@@ -125,6 +125,32 @@ func TestWebQueryCardIncludesMediaSummaryAndPreview(t *testing.T) {
 	}
 }
 
+func TestWebQueryCard_SearchOnlyEnvelopeBecomesSearchCard(t *testing.T) {
+	card := ToCard("web_query", `{"status":"ok","mode":"search","query":"OpenAI latest updates","sources":[{"title":"OpenAI blog","url":"https://openai.com/blog","snippet":"Latest announcements and product updates.","selected":true},{"title":"OpenAI docs","url":"https://platform.openai.com/docs","snippet":"API and platform documentation"}],"next_action":"none"}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "search" {
+		t.Fatalf("type=%v, want search", got)
+	}
+	if got := card["query"]; got != "OpenAI latest updates" {
+		t.Fatalf("query=%v, want OpenAI latest updates", got)
+	}
+	results, ok := card["results"].([]map[string]interface{})
+	if !ok || len(results) != 2 {
+		t.Fatalf("results=%T %#v, want 2 mapped search results", card["results"], card["results"])
+	}
+	if results[0]["title"] != "OpenAI blog" {
+		t.Fatalf("first result title=%v, want OpenAI blog", results[0]["title"])
+	}
+	if results[0]["description"] != "Latest announcements and product updates." {
+		t.Fatalf("first result description=%v, want snippet", results[0]["description"])
+	}
+	if results[1]["url"] != "https://platform.openai.com/docs" {
+		t.Fatalf("second result url=%v, want docs url", results[1]["url"])
+	}
+}
+
 func TestImageCard_MapsProcessingToGenerating(t *testing.T) {
 	card := ToCard("image_generate", `{"status":"processing","task_id":"task-42","message":"still generating"}`)
 	if card == nil {

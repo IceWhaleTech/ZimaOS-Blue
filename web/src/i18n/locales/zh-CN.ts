@@ -1414,6 +1414,9 @@ export default mergeHarnessLocale('zh-CN', {
       healthOk: '健康检查成功。',
       healthFailed: '健康检查未通过。',
       healthRequestFailed: '检查外部智能体健康状态失败。',
+      deleted: '外部智能体配置已删除。',
+      deleteFailed: '删除外部智能体配置失败。',
+      deleteConfirm: '确定删除外部智能体配置“{name}”吗？仍被会话引用的配置需要先清理相关会话。',
       saveBeforeHealth: '请先保存配置，再运行健康检查。',
       duplicate: '复制',
       builtinHelp: '内置配置保持只读。如需自定义，请先复制一份。',
@@ -6726,6 +6729,7 @@ export default mergeHarnessLocale('zh-CN', {
   search: {
     summaryTitle: '网页搜索',
     resultCount: '{count} 条结果',
+    moreResults: '另有 {count} 条',
   },
   cardActions: {
     use_browser: '使用浏览器',

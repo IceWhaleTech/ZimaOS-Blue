@@ -1847,6 +1847,10 @@ export default mergeHarnessLocale('hu-HU', {
       healthOk: 'Az állapotfelmérés sikerült.',
       healthFailed: 'Az állapotfelmérés sikertelen.',
       healthRequestFailed: 'Nem sikerült ellenőrizni a külső ügynök állapotát.',
+      deleted: 'Külső ügynökprofil törölve.',
+      deleteFailed: 'Nem sikerült törölni a külső ügynökprofilt.',
+      deleteConfirm:
+        'Törli a "{name}" külső ügynökprofilt? Azokat a profilokat, amelyekre a munkamenetek még hivatkoznak, előbb meg kell tisztítani.',
       saveBeforeHealth: 'Mentse el a profilt az állapotfelmérés futtatása előtt.',
       duplicate: 'Megkettőzés',
       builtinHelp:
@@ -7036,6 +7040,7 @@ export default mergeHarnessLocale('hu-HU', {
   search: {
     summaryTitle: 'Webes kereses',
     resultCount: '{count} találat',
+    moreResults: '+{count} további',
   },
   cardActions: {
     use_browser: 'Böngésző használata',

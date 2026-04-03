@@ -630,6 +630,8 @@ func webQueryCard(content string) map[string]interface{} {
 	var data struct {
 		Status     string `json:"status"`
 		Mode       string `json:"mode"`
+		Input      string `json:"input"`
+		Query      string `json:"query"`
 		TargetURL  string `json:"target_url"`
 		FinalURL   string `json:"final_url"`
 		Title      string `json:"title"`
@@ -665,6 +667,8 @@ func webQueryCard(content string) map[string]interface{} {
 			Title    string `json:"title"`
 			URL      string `json:"url"`
 			FinalURL string `json:"final_url"`
+			Snippet  string `json:"snippet"`
+			Source   string `json:"source"`
 			Selected bool   `json:"selected"`
 		} `json:"sources"`
 		Warnings []struct {
@@ -674,6 +678,58 @@ func webQueryCard(content string) map[string]interface{} {
 	}
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return GenericCard("web_query", content)
+	}
+
+	bodyText := firstCardNonEmpty(
+		strings.TrimSpace(data.Content),
+		strings.TrimSpace(data.Transcript.Text),
+		strings.TrimSpace(data.Page.Content),
+	)
+	if bodyText == "" && len(data.Sources) > 0 && len(data.Warnings) == 0 && data.NextAction != "retry_browser" {
+		results := make([]map[string]interface{}, 0, len(data.Sources))
+		for _, source := range data.Sources {
+			target := strings.TrimSpace(source.FinalURL)
+			if target == "" {
+				target = strings.TrimSpace(source.URL)
+			}
+			if target == "" {
+				continue
+			}
+
+			title := strings.TrimSpace(source.Title)
+			if title == "" {
+				title = target
+			}
+
+			result := map[string]interface{}{
+				"title": escapeBackticks(RedactSensitiveText(title)),
+				"url":   escapeBackticks(RedactSensitiveText(target)),
+			}
+			if description := firstCardNonEmpty(strings.TrimSpace(source.Snippet), strings.TrimSpace(source.Source)); description != "" {
+				result["description"] = escapeBackticks(RedactSensitiveText(description))
+			}
+			results = append(results, result)
+		}
+
+		if len(results) > 0 {
+			query := firstCardNonEmpty(
+				strings.TrimSpace(data.Query),
+				strings.TrimSpace(data.Input),
+				strings.TrimSpace(data.Title),
+				strings.TrimSpace(data.TargetURL),
+			)
+
+			card := map[string]interface{}{
+				"type":        "search",
+				"query":       escapeBackticks(RedactSensitiveText(query)),
+				"total_count": len(results),
+				"results":     results,
+			}
+			if query != "" {
+				card["id"] = "web-query-search-" + url.QueryEscape(query)
+			}
+			return card
+		}
 	}
 
 	title := strings.TrimSpace(data.Title)
@@ -694,7 +750,7 @@ func webQueryCard(content string) map[string]interface{} {
 		"type":    "result",
 		"title":   escapeBackticks(RedactSensitiveText(title)),
 		"status":  status,
-		"message": escapeBackticks(RedactSensitiveText(firstCardNonEmpty(strings.TrimSpace(data.Content), strings.TrimSpace(data.Transcript.Text), strings.TrimSpace(data.Page.Content)))),
+		"message": escapeBackticks(RedactSensitiveText(bodyText)),
 	}
 	cardURL := strings.TrimSpace(data.FinalURL)
 	if cardURL == "" {

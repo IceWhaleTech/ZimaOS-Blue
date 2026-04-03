@@ -52,6 +52,7 @@ const MAX_TOKENS_MIGRATION_KEY_V2 = 'zimaos-blue-max-tokens-migrated-v2'
 const LEGACY_DEFAULT_MAX_TOKENS = 2048
 const PREVIOUS_DEFAULT_MAX_TOKENS = 8192
 const DEFAULT_MAX_TOKENS = 16384
+const DEFAULT_AGENTCORE_RUNNER_REPO_URL = 'https://github.com/IceWhaleTech/ZimaOS-Blue'
 
 // Provider info for Chat page (simplified view of Provider Pool data)
 export interface ChatModelInfo {
@@ -594,7 +595,9 @@ export const useSettingsStore = defineStore('settings', () => {
     () => backendSettings.value.experimental_agentcore_runner_enabled ?? false
   )
   const experimentalAgentcoreRunnerRepoURL = computed(
-    () => backendSettings.value.experimental_agentcore_runner_repo_url ?? ''
+    () =>
+      backendSettings.value.experimental_agentcore_runner_repo_url ??
+      DEFAULT_AGENTCORE_RUNNER_REPO_URL
   )
   const experimentalAgentcoreRunnerRef = computed(
     () => backendSettings.value.experimental_agentcore_runner_ref ?? ''

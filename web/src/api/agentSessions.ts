@@ -44,6 +44,8 @@ export const agentSessionsApi = {
   listProfiles: () => api.get<{ profiles: AgentProfile[] }>('/agent-sessions/profiles'),
   saveProfile: (profile: AgentProfile) =>
     api.post<AgentProfile>('/agent-sessions/profiles', profile),
+  deleteProfile: (id: string) =>
+    api.delete<{ deleted: boolean }>(`/agent-sessions/profiles/${encodeURIComponent(id)}`),
   verifyProfile: (payload: { id?: string; profile?: Partial<AgentProfile> }) =>
     api.post<ProfileVerifyResult>('/agent-sessions/profiles/verify', payload),
   healthProfile: (id: string) =>

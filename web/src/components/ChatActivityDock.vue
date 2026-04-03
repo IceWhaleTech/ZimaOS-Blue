@@ -292,6 +292,7 @@ const recentOutcomeLinks = computed(() =>
 const showOutcomeOpen = computed(
   () => !!props.recentOutcome && canOpenTaskConversation(props.recentOutcome)
 )
+const isCompactHeader = computed(() => !headerState.value.subtitle && !headerState.value.meta)
 </script>
 
 <template>
@@ -300,18 +301,22 @@ const showOutcomeOpen = computed(
     data-testid="chat-activity-dock"
     class="chat-activity-dock rounded-[1.45rem] border border-slate-200/85 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/92"
   >
-    <div class="chat-activity-dock__header" :class="headerState.tone">
+    <div
+      class="chat-activity-dock__header"
+      :class="[headerState.tone, { 'is-compact': isCompactHeader }]"
+    >
       <button
         type="button"
         data-testid="chat-activity-dock-toggle"
         class="chat-activity-dock__summary"
+        :class="{ 'is-compact': isCompactHeader }"
         :aria-expanded="props.expanded ? 'true' : 'false'"
         @click="toggleExpanded"
       >
         <span class="chat-activity-dock__badge" :class="headerState.tone">{{
           headerState.badge
         }}</span>
-        <span class="chat-activity-dock__copy">
+        <span class="chat-activity-dock__copy" :class="{ 'is-compact': isCompactHeader }">
           <span class="chat-activity-dock__title">{{ headerState.title }}</span>
           <span v-if="headerState.subtitle" class="chat-activity-dock__subtitle">
             {{ headerState.subtitle }}
@@ -336,10 +341,19 @@ const showOutcomeOpen = computed(
           v-if="props.canStop"
           type="button"
           data-testid="chat-activity-dock-stop"
-          class="chat-activity-dock__action is-danger"
+          class="chat-activity-dock__action chat-activity-dock__action--stop is-danger is-icon-only"
+          :aria-label="tr('chat.stopGenerating', 'Stop generating')"
+          :title="tr('chat.stopGenerating', 'Stop generating')"
           @click="emit('cancel')"
         >
-          {{ tr('chat.stopGenerating', 'Stop generating') }}
+          <svg
+            class="chat-activity-dock__action-icon"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <rect x="6" y="6" width="12" height="12" rx="2.75" fill="currentColor" />
+          </svg>
         </button>
         <button
           v-if="hasDetails"
@@ -550,6 +564,10 @@ const showOutcomeOpen = computed(
   padding: 0.95rem 1rem;
 }
 
+.chat-activity-dock__header.is-compact {
+  align-items: center;
+}
+
 .chat-activity-dock__summary {
   min-width: 0;
   display: flex;
@@ -557,6 +575,10 @@ const showOutcomeOpen = computed(
   gap: 0.75rem;
   flex: 1 1 auto;
   text-align: left;
+}
+
+.chat-activity-dock__summary.is-compact {
+  align-items: center;
 }
 
 .chat-activity-dock__badge {
@@ -604,11 +626,23 @@ const showOutcomeOpen = computed(
   gap: 0.18rem;
 }
 
+.chat-activity-dock__copy.is-compact {
+  min-height: 2rem;
+  justify-content: center;
+  gap: 0;
+}
+
 .chat-activity-dock__title {
   color: rgb(15, 23, 42);
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.25rem;
+}
+
+.chat-activity-dock__copy.is-compact .chat-activity-dock__title {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
 }
 
 .chat-activity-dock__subtitle,
@@ -659,9 +693,37 @@ const showOutcomeOpen = computed(
   border-color: rgba(248, 113, 113, 0.62);
 }
 
+.chat-activity-dock__action.is-icon-only {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+}
+
+.chat-activity-dock__action--stop {
+  border-color: rgba(252, 165, 165, 0.46);
+  background: rgba(255, 248, 248, 0.98);
+  color: rgb(239, 68, 68);
+}
+
+.chat-activity-dock__action--stop:hover {
+  background: rgba(254, 242, 242, 1);
+  border-color: rgba(248, 113, 113, 0.58);
+  color: rgb(220, 38, 38);
+}
+
+.chat-activity-dock__action--stop .chat-activity-dock__action-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
 .chat-activity-dock__action.is-icon {
   min-width: 2rem;
   padding-inline: 0.55rem;
+}
+
+.chat-activity-dock__action-icon {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .chat-activity-dock__body {
@@ -824,6 +886,20 @@ const showOutcomeOpen = computed(
 [data-theme='dark'] .chat-activity-dock__action.is-danger {
   border-color: rgba(127, 29, 29, 0.96);
   background: rgba(69, 10, 10, 0.75);
+  color: rgb(254, 202, 202);
+}
+
+:root.dark .chat-activity-dock__action--stop,
+[data-theme='dark'] .chat-activity-dock__action--stop {
+  border-color: rgba(248, 113, 113, 0.34);
+  background: rgba(127, 29, 29, 0.26);
+  color: rgb(252, 165, 165);
+}
+
+:root.dark .chat-activity-dock__action--stop:hover,
+[data-theme='dark'] .chat-activity-dock__action--stop:hover {
+  border-color: rgba(248, 113, 113, 0.48);
+  background: rgba(127, 29, 29, 0.36);
   color: rgb(254, 202, 202);
 }
 

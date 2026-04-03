@@ -186,9 +186,7 @@ func (h *SettingsHandler) SetVoiceWakeManager(manager *voicewake.Manager) {
 
 // Get handles GET /api/settings
 func (h *SettingsHandler) Get(c echo.Context) error {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return c.JSON(http.StatusOK, h.settings)
+	return c.JSON(http.StatusOK, h.normalizedSettingsSnapshot())
 }
 
 func decodeSettingsRequestBody(c echo.Context, target interface{}) (map[string]json.RawMessage, error) {
@@ -745,7 +743,7 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 		_ = voiceWakeManager.Refresh(c.Request().Context())
 	}
 
-	return c.JSON(http.StatusOK, h.settings)
+	return c.JSON(http.StatusOK, h.normalizedSettingsSnapshot())
 }
 
 // Patch handles PATCH /api/settings (partial update)
@@ -1049,7 +1047,7 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 		_ = voiceWakeManager.Refresh(c.Request().Context())
 	}
 
-	return c.JSON(http.StatusOK, h.settings)
+	return c.JSON(http.StatusOK, h.normalizedSettingsSnapshot())
 }
 
 // GetLocale returns the current locale setting, falling back to OS-detected locale.
@@ -1960,6 +1958,16 @@ func (h *SettingsHandler) load() {
 		h.settings = &Settings{}
 	}
 	applyDefaultDirectoryWhitelist(h.settings)
+}
+
+func (h *SettingsHandler) normalizedSettingsSnapshot() Settings {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	snapshot := *h.settings
+	snapshot.ExperimentalAgentcoreRunnerRepoURL = normalizeAgentcoreRunnerRepoURL(
+		snapshot.ExperimentalAgentcoreRunnerRepoURL,
+	)
+	return snapshot
 }
 
 // save writes settings to kvstore

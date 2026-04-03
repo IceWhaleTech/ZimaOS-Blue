@@ -1482,6 +1482,9 @@ export default mergeHarnessLocale('zh-TW', {
       healthOk: '健康檢查成功。',
       healthFailed: '健康檢查未通過。',
       healthRequestFailed: '檢查外部智慧代理健康狀態失敗。',
+      deleted: '外部智慧代理設定檔已刪除。',
+      deleteFailed: '刪除外部智慧代理設定檔失敗。',
+      deleteConfirm: '確定刪除外部智慧代理設定檔「{name}」嗎？仍被工作階段引用的設定檔需要先清理相關工作階段。',
       saveBeforeHealth: '執行健康檢查前請先儲存設定檔。',
       duplicate: '複製',
       builtinHelp:
@@ -7123,6 +7126,7 @@ export default mergeHarnessLocale('zh-TW', {
   search: {
     summaryTitle: 'Web search',
     resultCount: '{count} 筆結果',
+    moreResults: '另有 {count} 筆',
   },
   cardActions: {
     use_browser: '使用瀏覽器',

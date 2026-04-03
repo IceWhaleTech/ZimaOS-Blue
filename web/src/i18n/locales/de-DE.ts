@@ -1967,6 +1967,10 @@ export default mergeHarnessLocale('de-DE', {
       healthOk: 'Gesundheitsprüfung erfolgreich.',
       healthFailed: 'Die Gesundheitsprüfung ist fehlgeschlagen.',
       healthRequestFailed: 'Der Zustand des externen Agenten konnte nicht überprüft werden.',
+      deleted: 'Profil des externen Agenten wurde gelöscht.',
+      deleteFailed: 'Profil des externen Agenten konnte nicht gelöscht werden.',
+      deleteConfirm:
+        'Profil des externen Agenten "{name}" löschen? Profile, auf die Sitzungen noch verweisen, müssen zuerst bereinigt werden.',
       saveBeforeHealth: 'Speichern Sie das Profil, bevor Sie eine Gesundheitsprüfung durchführen.',
       duplicate: 'Duplizieren',
       builtinHelp:
@@ -7436,6 +7440,7 @@ export default mergeHarnessLocale('de-DE', {
   search: {
     summaryTitle: 'Websuche',
     resultCount: '{count} Ergebnisse',
+    moreResults: '+{count} weitere',
   },
   cardActions: {
     use_browser: 'Im Browser öffnen',
