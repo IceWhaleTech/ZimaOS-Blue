@@ -4617,20 +4617,11 @@ export default mergeHarnessLocale('ml-IN', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'SKILL.md, CLAUDE.md, AGENT.md ഫയലുകൾക്കായുള്ള GitHub റീപോസിറ്ററി തിരയൽ ഉറവിടങ്ങൾ.',
+          description: 'SKILL.md ഫയലുകൾക്കായുള്ള GitHub റീപോസിറ്ററി തിരയൽ ഉറവിടങ്ങൾ.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'SKILL.md പ്രസിദ്ധീകരിക്കുന്ന റീപോസിറ്ററികൾക്കായുള്ള GitHub കോഡ് തിരയൽ.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'CLAUDE.md പ്രസിദ്ധീകരിക്കുന്ന റീപോസിറ്ററികൾക്കായുള്ള GitHub കോഡ് തിരയൽ.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'AGENT.md പ്രസിദ്ധീകരിക്കുന്ന റീപോസിറ്ററികൾക്കായുള്ള GitHub കോഡ് തിരയൽ.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5407,6 +5398,7 @@ export default mergeHarnessLocale('ml-IN', {
     addFailed: 'ദാതാവിനെ ചേർക്കാനായില്ല',
     retry: 'വീണ്ടും ശ്രമിക്കുക',
     errorCleared: 'പിശക് നീക്കി — വീണ്ടും ശ്രമിക്കാം',
+    advancedOptions: 'വിപുലമായ ഓപ്ഷനുകൾ',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

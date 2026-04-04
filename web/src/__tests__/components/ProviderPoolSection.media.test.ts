@@ -74,9 +74,12 @@ function createTestI18n() {
           edit: '编辑',
           save: '保存',
           cancel: '取消',
+          expand: '展开',
+          collapse: '收起',
         },
         providerPool: {
           description: 'LLM 配置',
+          advancedOptions: '高级选项',
           location: '位置',
           locationCloud: '云端',
           locationLocal: '本地',
@@ -504,6 +507,42 @@ describe('ProviderPoolSection media verification gating', () => {
 
     expect(wrapper.text()).toContain('Official OpenAI API')
     expect(wrapper.text()).not.toContain('https://api.openai.com/v1')
+  })
+
+  it('keeps format and location collapsed by default in the add custom provider form', async () => {
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+    setupState.openAddProviderModal()
+    setupState.openCustomProviderForm()
+    await flushPromises()
+
+    const advancedToggle = wrapper.find('[data-testid="new-provider-advanced-toggle"]')
+    expect(advancedToggle.exists()).toBe(true)
+    expect(advancedToggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="new-provider-advanced-content"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="new-provider-format-select"]').exists()).toBe(false)
+  })
+
+  it('reveals format and location when the add custom provider advanced section is expanded', async () => {
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+    setupState.openAddProviderModal()
+    setupState.openCustomProviderForm()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="new-provider-advanced-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="new-provider-advanced-toggle"]').attributes('aria-expanded')).toBe(
+      'true'
+    )
+    expect(wrapper.find('[data-testid="new-provider-advanced-content"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="new-provider-format-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="new-provider-location-options"]').exists()).toBe(true)
   })
 
   it('fetches provider account status for supported API-key providers', async () => {

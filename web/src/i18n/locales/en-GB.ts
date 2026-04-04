@@ -4530,20 +4530,11 @@ export default mergeHarnessLocale('en-GB', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
+          description: 'GitHub repository search sources for SKILL.md files.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'GitHub code search for repositories that publish SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'GitHub code search for repositories that publish CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'GitHub code search for repositories that publish AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5302,6 +5293,7 @@ export default mergeHarnessLocale('en-GB', {
     addFailed: 'Failed to add provider',
     retry: 'Retry',
     errorCleared: 'Error cleared — you can try again',
+    advancedOptions: 'Advanced options',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

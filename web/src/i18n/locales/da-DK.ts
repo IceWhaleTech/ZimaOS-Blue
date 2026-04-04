@@ -4569,20 +4569,11 @@ export default mergeHarnessLocale('da-DK', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'GitHub-kilder til repositoriesøgning efter filer som SKILL.md, CLAUDE.md og AGENT.md.',
+          description: 'GitHub-kilder til repositoriesøgning efter filer som SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'GitHub-kodesøgning efter repositories, der udgiver SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'GitHub-kodesøgning efter repositories, der udgiver CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'GitHub-kodesøgning efter repositories, der udgiver AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5353,6 +5344,7 @@ export default mergeHarnessLocale('da-DK', {
     addFailed: 'Kunne ikke tilføje udbyder',
     retry: 'Prøv igen',
     errorCleared: 'Fejlen er ryddet — du kan prøve igen',
+    advancedOptions: 'Avancerede muligheder',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

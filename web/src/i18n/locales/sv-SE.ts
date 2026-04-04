@@ -4566,20 +4566,11 @@ export default mergeHarnessLocale('sv-SE', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'GitHub-källor för repositoriesökning efter filer som SKILL.md, CLAUDE.md och AGENT.md.',
+          description: 'GitHub-källor för repositoriesökning efter filer som SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'GitHub-kodsökning för repositories som publicerar SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'GitHub-kodsökning för repositories som publicerar CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'GitHub-kodsökning för repositories som publicerar AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5353,6 +5344,7 @@ export default mergeHarnessLocale('sv-SE', {
     addFailed: 'Det gick inte att lägga till leverantören',
     retry: 'Försök igen',
     errorCleared: 'Felet rensades — du kan försöka igen',
+    advancedOptions: 'Avancerade alternativ',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

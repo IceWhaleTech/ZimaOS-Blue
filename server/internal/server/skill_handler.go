@@ -173,8 +173,6 @@ func firstString(values ...string) string {
 var protectedSkillStoreSourceIDs = map[string]struct{}{
 	"tencent-skillhub": {},
 	"github-skill-md":  {},
-	"github-claude-md": {},
-	"github-agent-md":  {},
 	"clawhub":          {},
 	"skillhub-club":    {},
 	"skillstack":       {},

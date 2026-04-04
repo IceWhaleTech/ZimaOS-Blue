@@ -3349,6 +3349,38 @@ func TestNormalizeCommand(t *testing.T) {
 
 // --- Command length limit ---
 
+func TestExecDefaultCommandLengthLimit(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 10 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	withinDefaultLimit := "printf '' #" + strings.Repeat("a", 15_000)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": withinDefaultLimit,
+	})
+	if err != nil {
+		t.Fatalf("expected default limit to allow 15k command, got %v", err)
+	}
+	var res execResult
+	json.Unmarshal([]byte(result.(string)), &res)
+	if res.Status != "completed" {
+		t.Errorf("expected completed, got %s", res.Status)
+	}
+
+	overDefaultLimit := "printf '' #" + strings.Repeat("a", 20_001)
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"command": overDefaultLimit,
+	})
+	if err == nil || !strings.Contains(err.Error(), "exceeds maximum 20000") {
+		t.Errorf("expected 20k command length error, got %v", err)
+	}
+}
+
 func TestExecCommandLengthLimit(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()

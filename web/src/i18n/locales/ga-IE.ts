@@ -4595,20 +4595,11 @@ export default mergeHarnessLocale('ga-IE', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'Foinsí cuardaigh stórtha GitHub do chomhaid SKILL.md, CLAUDE.md agus AGENT.md.',
+          description: 'Foinsí cuardaigh stórtha GitHub do chomhaid SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'Cuardach cóid GitHub do stórtha a fhoilsíonn SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'Cuardach cóid GitHub do stórtha a fhoilsíonn CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'Cuardach cóid GitHub do stórtha a fhoilsíonn AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5383,6 +5374,7 @@ export default mergeHarnessLocale('ga-IE', {
     addFailed: 'Níorbh fhéidir an soláthraí a chur leis',
     retry: 'Bain triail eile as',
     errorCleared: 'Glanadh an earráid — is féidir leat triail eile a bhaint anois',
+    advancedOptions: 'Ardroghanna',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

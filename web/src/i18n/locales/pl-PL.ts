@@ -4584,20 +4584,11 @@ export default mergeHarnessLocale('pl-PL', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'Źródła wyszukiwania repozytoriów GitHub dla plików SKILL.md, CLAUDE.md i AGENT.md.',
+          description: 'Źródła wyszukiwania repozytoriów GitHub dla plików SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'Wyszukiwanie kodu GitHub dla repozytoriów publikujących SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'Wyszukiwanie kodu GitHub dla repozytoriów publikujących CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'Wyszukiwanie kodu GitHub dla repozytoriów publikujących AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5376,6 +5367,7 @@ export default mergeHarnessLocale('pl-PL', {
     addFailed: 'Nie udało się dodać dostawcy',
     retry: 'Spróbuj ponownie',
     errorCleared: 'Błąd został wyczyszczony — możesz spróbować ponownie',
+    advancedOptions: 'Zaawansowane opcje',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

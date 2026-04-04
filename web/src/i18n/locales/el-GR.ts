@@ -4618,20 +4618,11 @@ export default mergeHarnessLocale('el-GR', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'Πηγές αναζήτησης αποθετηρίων GitHub για αρχεία SKILL.md, CLAUDE.md και AGENT.md.',
+          description: 'Πηγές αναζήτησης αποθετηρίων GitHub για αρχεία SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'Αναζήτηση κώδικα GitHub για αποθετήρια που δημοσιεύουν SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'Αναζήτηση κώδικα GitHub για αποθετήρια που δημοσιεύουν CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'Αναζήτηση κώδικα GitHub για αποθετήρια που δημοσιεύουν AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5410,6 +5401,7 @@ export default mergeHarnessLocale('el-GR', {
     addFailed: 'Αποτυχία προσθήκης παρόχου',
     retry: 'Δοκιμάστε ξανά',
     errorCleared: 'Το σφάλμα καθαρίστηκε — μπορείτε να δοκιμάσετε ξανά',
+    advancedOptions: 'Προηγμένες επιλογές',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

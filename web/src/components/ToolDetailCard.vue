@@ -17,6 +17,53 @@ function toggle() {
   expanded.value = !expanded.value
 }
 
+function parseArgs(args?: string): Record<string, unknown> | null {
+  if (!args) return null
+  try {
+    const parsed = JSON.parse(args) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
+function firstNonEmptyString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed) return trimmed
+  }
+  return ''
+}
+
+const parsedArgs = computed(() => parseArgs(props.item.args))
+const commandDisplay = computed(() => {
+  const args = parsedArgs.value
+  const fallbackValue = props.item.command || ''
+
+  if (props.item.name === 'tool_search') {
+    return {
+      label: t('tools.params.query', 'Query'),
+      value: firstNonEmptyString(args?.query, args?.q, args?.input, fallbackValue),
+    }
+  }
+
+  const commandValue = firstNonEmptyString(args?.cmd, args?.command, fallbackValue)
+  if (commandValue && (props.item.name === 'exec' || props.item.name === 'bash')) {
+    return {
+      label: '$',
+      value: commandValue,
+    }
+  }
+
+  return {
+    label: '$',
+    value: fallbackValue,
+  }
+})
+
 // Truncated output for preview (max 2 lines, 120 chars)
 const previewOutput = computed(() => {
   if (!props.item.output) return ''
@@ -52,9 +99,9 @@ const statusToneClass = computed(() => {
     @click="hasOutput && !isShortOutput ? toggle() : undefined"
   >
     <!-- Command/Input (above) -->
-    <div v-if="item.command" class="tool-detail-card__command">
-      <span class="tool-detail-card__command-label">$</span>
-      <span class="tool-detail-card__command-text">{{ item.command }}</span>
+    <div v-if="commandDisplay.value" class="tool-detail-card__command">
+      <span class="tool-detail-card__command-label">{{ commandDisplay.label }}</span>
+      <span class="tool-detail-card__command-text">{{ commandDisplay.value }}</span>
     </div>
 
     <div v-if="hasWarningCode" class="tool-detail-card__warning-row">

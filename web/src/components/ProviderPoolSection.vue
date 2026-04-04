@@ -115,8 +115,18 @@ const newProvider = ref({
   format: 'auto' as EditableCustomProviderFormat,
 })
 const showNewProviderApiKey = ref(false)
+const showNewProviderAdvanced = ref(false)
 const addingProvider = ref(false)
 const addingStep = ref('') // '', 'adding', 'probing', 'done'
+
+const newProviderAdvancedSummary = computed(() => {
+  const formatLabel = t(`providerPool.apiFormatOptions.${newProvider.value.format}`)
+  const locationLabel =
+    newProvider.value.location === 'local'
+      ? t('providerPool.locationLocal')
+      : t('providerPool.locationCloud')
+  return `${formatLabel} · ${locationLabel}`
+})
 
 function openAddProviderModal() {
   showNewProviderApiKey.value = false
@@ -985,6 +995,7 @@ async function addCustomProvider() {
 
 function resetNewProviderForm() {
   showNewProviderApiKey.value = false
+  showNewProviderAdvanced.value = false
   newProvider.value = {
     name: '',
     base_url: '',
@@ -996,6 +1007,7 @@ function resetNewProviderForm() {
 }
 
 function openCustomProviderForm() {
+  showNewProviderAdvanced.value = false
   addProviderMode.value = 'custom'
 }
 
@@ -3570,28 +3582,6 @@ onMounted(() => {
                     </div>
                     <div>
                       <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
-                        t('providerPool.apiFormatLabel')
-                      }}</label>
-                      <select
-                        v-model="newProvider.format"
-                        data-testid="new-provider-format-select"
-                        :disabled="addingProvider"
-                        class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-                      >
-                        <option
-                          v-for="option in editableCustomProviderFormatOptions"
-                          :key="option.value"
-                          :value="option.value"
-                        >
-                          {{ t(`providerPool.apiFormatOptions.${option.value}`) }}
-                        </option>
-                      </select>
-                      <p class="mt-1 text-xs text-gray-400">
-                        {{ t('providerPool.apiFormatHint') }}
-                      </p>
-                    </div>
-                    <div>
-                      <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
                         t('providerPool.apiKeyOptional')
                       }}</label>
                       <div class="relative">
@@ -3649,55 +3639,140 @@ onMounted(() => {
                       </div>
                       <p class="mt-1 text-xs text-gray-400">{{ t('providerPool.apiKeyHint') }}</p>
                     </div>
-                    <div>
-                      <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
-                        t('providerPool.location')
-                      }}</label>
-                      <div class="flex gap-2">
-                        <button
-                          type="button"
-                          :disabled="addingProvider"
-                          :class="[
-                            'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
-                            newProvider.location === 'cloud'
-                              ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
-                              : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500',
-                          ]"
-                          @click="newProvider.location = 'cloud'"
-                        >
-                          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+
+                    <div class="rounded-xl border border-gray-200 bg-gray-50/80 dark:border-slate-700 dark:bg-slate-800/70">
+                      <button
+                        type="button"
+                        data-testid="new-provider-advanced-toggle"
+                        class="flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-gray-100/80 dark:hover:bg-slate-700/60"
+                        :aria-expanded="showNewProviderAdvanced ? 'true' : 'false'"
+                        @click="showNewProviderAdvanced = !showNewProviderAdvanced"
+                      >
+                        <div class="min-w-0">
+                          <p class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                            {{ tr('providerPool.advancedOptions', 'Advanced options') }}
+                          </p>
+                          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {{ newProviderAdvancedSummary }}
+                          </p>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span>
+                            {{
+                              showNewProviderAdvanced
+                                ? tr('common.collapse', 'Collapse')
+                                : tr('common.expand', 'Expand')
+                            }}
+                          </span>
+                          <svg
+                            class="h-4 w-4 transition-transform"
+                            :class="{ 'rotate-180': showNewProviderAdvanced }"
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            aria-hidden="true"
+                          >
                             <path
                               stroke-linecap="round"
                               stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                              d="M5 7.5 10 12.5 15 7.5"
                             />
                           </svg>
-                          {{ t('providerPool.locationCloud') }}
-                        </button>
-                        <button
-                          type="button"
-                          :disabled="addingProvider"
-                          :class="[
-                            'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
-                            newProvider.location === 'local'
-                              ? 'bg-green-500/20 border-green-500 text-green-500'
-                              : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500',
-                          ]"
-                          @click="newProvider.location = 'local'"
-                        >
-                          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                            />
-                          </svg>
-                          {{ t('providerPool.locationLocal') }}
-                        </button>
+                        </div>
+                      </button>
+
+                      <div
+                        v-if="showNewProviderAdvanced"
+                        data-testid="new-provider-advanced-content"
+                        class="space-y-4 border-t border-gray-200 px-4 pb-4 pt-3 dark:border-slate-700"
+                      >
+                        <div>
+                          <label class="mb-1 block text-sm text-gray-500 dark:text-gray-400">{{
+                            t('providerPool.apiFormatLabel')
+                          }}</label>
+                          <select
+                            v-model="newProvider.format"
+                            data-testid="new-provider-format-select"
+                            :disabled="addingProvider"
+                            class="w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                          >
+                            <option
+                              v-for="option in editableCustomProviderFormatOptions"
+                              :key="option.value"
+                              :value="option.value"
+                            >
+                              {{ t(`providerPool.apiFormatOptions.${option.value}`) }}
+                            </option>
+                          </select>
+                          <p class="mt-1 text-xs text-gray-400">
+                            {{ t('providerPool.apiFormatHint') }}
+                          </p>
+                        </div>
+
+                        <div data-testid="new-provider-location-options">
+                          <label class="mb-1 block text-sm text-gray-500 dark:text-gray-400">{{
+                            t('providerPool.location')
+                          }}</label>
+                          <div class="flex gap-2">
+                            <button
+                              type="button"
+                              :disabled="addingProvider"
+                              :class="[
+                                'flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 transition-colors',
+                                newProvider.location === 'cloud'
+                                  ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                  : 'border-gray-200 bg-gray-100 text-gray-600 hover:border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-400 dark:hover:border-slate-500',
+                              ]"
+                              @click="newProvider.location = 'cloud'"
+                            >
+                              <svg
+                                class="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                                />
+                              </svg>
+                              {{ t('providerPool.locationCloud') }}
+                            </button>
+                            <button
+                              type="button"
+                              :disabled="addingProvider"
+                              :class="[
+                                'flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 transition-colors',
+                                newProvider.location === 'local'
+                                  ? 'border-green-500 bg-green-500/20 text-green-500'
+                                  : 'border-gray-200 bg-gray-100 text-gray-600 hover:border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-400 dark:hover:border-slate-500',
+                              ]"
+                              @click="newProvider.location = 'local'"
+                            >
+                              <svg
+                                class="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                />
+                              </svg>
+                              {{ t('providerPool.locationLocal') }}
+                            </button>
+                          </div>
+                          <p class="mt-1 text-xs text-gray-400">
+                            {{ t('providerPool.locationHint') }}
+                          </p>
+                        </div>
                       </div>
-                      <p class="mt-1 text-xs text-gray-400">{{ t('providerPool.locationHint') }}</p>
                     </div>
 
                     <div

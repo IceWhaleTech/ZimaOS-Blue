@@ -1484,7 +1484,6 @@ export default mergeHarnessLocale('en-US', {
     advancedCodingTools: 'Advanced coding tools',
     requestFlow: 'Request flow',
     proxyRouting: 'Proxy routing',
-    assistiveRouting: 'Assistive routing',
     localAcceleration: 'Local acceleration',
     voicePipeline: 'Voice pipeline',
     portability: 'Portability',
@@ -1667,19 +1666,6 @@ export default mergeHarnessLocale('en-US', {
       userGuideItem2:
         'Automatically falls back to the main model when the lightweight model is unavailable.',
       userGuideItem3: 'Download the model before first use.',
-      irTitle: 'Assistant Capabilities',
-      irDesc: 'User-facing helpers for context control and tool filtering.',
-      irMasterTitle: 'Master Switch',
-      irMasterDesc: 'Toggle all helper features below at once.',
-      irContextPruneTitle: 'Chat Context Compaction',
-      irContextPruneDesc: 'Controls how Blue compacts chat history when context pressure rises.',
-      irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
-      irOfflineFallbackTitle: 'Offline Local Fallback',
-      irOfflineFallbackDesc:
-        'When model fallback is needed, answer from local context recall first.',
-      irFeatureHintTitle: 'Feature Hint Detection',
-      irFeatureHintDesc:
-        'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
       advancedTitle: 'Advanced Parameters (Usually no change needed)',
       advancedHint: 'Adjust only for troubleshooting or controlled rollout validation.',
       expand: 'Expand',
@@ -1708,7 +1694,6 @@ export default mergeHarnessLocale('en-US', {
       contextCompressionModeOff: 'Off',
       docExtract: 'Document Extraction Acceleration',
       imageQA: 'Image Recognition Acceleration',
-      mediaIntent: 'Media Generation Scenario Recognition',
       shortQA: 'Short QA Acceleration',
       shadowOnly: 'Phase 1: background validation only',
       statsTitle: 'Runtime Stats (Troubleshooting)',
@@ -4574,8 +4559,7 @@ export default mergeHarnessLocale('en-US', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
+          description: 'GitHub repository search sources for SKILL.md files.',
         },
         githubAwesomeSkills: {
           label: 'GitHub Awesome Skills',
@@ -4584,14 +4568,6 @@ export default mergeHarnessLocale('en-US', {
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'GitHub code search for repositories that publish SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'GitHub code search for repositories that publish CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'GitHub code search for repositories that publish AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5350,6 +5326,7 @@ export default mergeHarnessLocale('en-US', {
     addFailed: 'Failed to add provider',
     retry: 'Retry',
     errorCleared: 'Error cleared — you can try again',
+    advancedOptions: 'Advanced options',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

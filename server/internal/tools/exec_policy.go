@@ -32,7 +32,7 @@ func DefaultExecPolicy() ExecPolicy {
 		MaxRiskThreshold: 80, // block Critical (90+), allow High (60-89) in full mode
 		MaxRetries:       3,
 		RetryWindow:      5 * time.Minute,
-		MaxCommandLen:    10_000,
+		MaxCommandLen:    20_000,
 	}
 }
 

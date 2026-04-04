@@ -4719,20 +4719,11 @@ export default mergeHarnessLocale('ko-KR', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'GitHub의 SKILL.md, CLAUDE.md, AGENT.md 파일을 찾기 위한 저장소 검색 소스입니다.',
+          description: 'GitHub의 SKILL.md 파일을 찾기 위한 저장소 검색 소스입니다.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'SKILL.md를 게시한 저장소를 찾는 GitHub 코드 검색입니다.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'CLAUDE.md를 게시한 저장소를 찾는 GitHub 코드 검색입니다.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'AGENT.md를 게시한 저장소를 찾는 GitHub 코드 검색입니다.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5508,6 +5499,7 @@ export default mergeHarnessLocale('ko-KR', {
     addFailed: '공급자를 추가하지 못했습니다',
     retry: '다시 시도',
     errorCleared: '오류가 해제되었습니다. 다시 시도할 수 있습니다',
+    advancedOptions: '고급 옵션',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

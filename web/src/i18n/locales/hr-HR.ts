@@ -4576,20 +4576,11 @@ export default mergeHarnessLocale('hr-HR', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'Izvori pretraživanja GitHub repozitorija za datoteke SKILL.md, CLAUDE.md i AGENT.md.',
+          description: 'Izvori pretraživanja GitHub repozitorija za datoteke SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'GitHub pretraživanje koda za repozitorije koji objavljuju SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'GitHub pretraživanje koda za repozitorije koji objavljuju CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'GitHub pretraživanje koda za repozitorije koji objavljuju AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5365,6 +5356,7 @@ export default mergeHarnessLocale('hr-HR', {
     addFailed: 'Dodavanje pružatelja nije uspjelo',
     retry: 'Pokušaj ponovno',
     errorCleared: 'Pogreška je uklonjena — možete pokušati ponovno',
+    advancedOptions: 'Napredne opcije',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

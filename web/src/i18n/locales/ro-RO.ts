@@ -4606,20 +4606,11 @@ export default mergeHarnessLocale('ro-RO', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'Surse de căutare în depozite GitHub pentru fișiere SKILL.md, CLAUDE.md și AGENT.md.',
+          description: 'Surse de căutare în depozite GitHub pentru fișiere SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'Căutare de cod GitHub pentru depozite care publică SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'Căutare de cod GitHub pentru depozite care publică CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'Căutare de cod GitHub pentru depozite care publică AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5396,6 +5387,7 @@ export default mergeHarnessLocale('ro-RO', {
     addFailed: 'Adăugarea furnizorului a eșuat',
     retry: 'Încearcă din nou',
     errorCleared: 'Eroarea a fost ștearsă — puteți încerca din nou',
+    advancedOptions: 'Opțiuni avansate',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

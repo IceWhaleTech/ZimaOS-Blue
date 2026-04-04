@@ -25,6 +25,7 @@ import {
   type HarnessScoringMode,
 } from '@/api/harness'
 import AutomationTabs from '@/components/automation/AutomationTabs.vue'
+import AgentcoreRunnerPanel from '@/components/harness/AgentcoreRunnerPanel.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { getErrorMessage } from '@/utils/error'
 import { harnessFailureLabelHint } from '@/utils/harnessFailureHints'
@@ -424,6 +425,17 @@ function formatDate(value?: string | null): string {
 
 function percentLabel(value: number): string {
   return `${Math.round(value * 100)}%`
+}
+
+function handleAgentcoreRunnerStatusChange(payload: {
+  message: string
+  tone: 'success' | 'error'
+}) {
+  if (payload.tone === 'error') {
+    notification.error(payload.message)
+    return
+  }
+  notification.success(payload.message)
 }
 
 function fixedScore(value: number): string {
@@ -1698,6 +1710,12 @@ onUnmounted(() => {
 
       <AutomationTabs class="automation-tab-strip" />
 
+      <AgentcoreRunnerPanel
+        class="harness-runner-stage"
+        :show-refresh-button="false"
+        @status-change="handleAgentcoreRunnerStatusChange"
+      />
+
       <div class="stats-toolbar">
         <section class="stats-grid">
           <article class="stat-card">
@@ -1737,17 +1755,6 @@ onUnmounted(() => {
             <strong class="stat-value">{{ defaultBaselines }}</strong>
           </article>
         </section>
-
-        <div class="stats-toolbar-actions">
-          <button
-            class="refresh-button"
-            type="button"
-            :disabled="loading || refreshing"
-            @click="loadConsole({ silent: true })"
-          >
-            {{ refreshing ? tr('common.loading', 'Loading') : tr('common.refresh', 'Refresh') }}
-          </button>
-        </div>
       </div>
 
       <div v-if="error" class="state-card is-error">
@@ -3988,14 +3995,8 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.stats-toolbar-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex: 0 0 auto;
-}
-
-.stats-toolbar-actions .refresh-button {
-  white-space: nowrap;
+.harness-runner-stage {
+  margin-bottom: 0.85rem;
 }
 
 .stat-card,
@@ -4930,10 +4931,6 @@ onUnmounted(() => {
 @media (max-width: 1200px) {
   .stats-toolbar {
     flex-direction: column;
-  }
-
-  .stats-toolbar-actions {
-    width: 100%;
   }
 
   .console-layout {

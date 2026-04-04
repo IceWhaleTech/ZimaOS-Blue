@@ -4754,20 +4754,11 @@ export default mergeHarnessLocale('ru-RU', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'Источники поиска репозиториев GitHub для файлов SKILL.md, CLAUDE.md и AGENT.md.',
+          description: 'Источники поиска репозиториев GitHub для файлов SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'Поиск кода GitHub по репозиториям, публикующим SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'Поиск кода GitHub по репозиториям, публикующим CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'Поиск кода GitHub по репозиториям, публикующим AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5546,6 +5537,7 @@ export default mergeHarnessLocale('ru-RU', {
     addFailed: 'Не удалось добавить провайдера',
     retry: 'Повторить',
     errorCleared: 'Ошибка очищена — можно попробовать снова',
+    advancedOptions: 'Расширенные параметры',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

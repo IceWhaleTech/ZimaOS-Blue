@@ -4567,20 +4567,11 @@ export default mergeHarnessLocale('cs-CZ', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'Zdroje vyhledávání repozitářů na GitHubu pro soubory SKILL.md, CLAUDE.md a AGENT.md.',
+          description: 'Zdroje vyhledávání repozitářů na GitHubu pro soubory SKILL.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'Vyhledávání kódu na GitHubu pro repozitáře, které publikují SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'Vyhledávání kódu na GitHubu pro repozitáře, které publikují CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'Vyhledávání kódu na GitHubu pro repozitáře, které publikují AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5354,6 +5345,7 @@ export default mergeHarnessLocale('cs-CZ', {
     addFailed: 'Nepodařilo se přidat poskytovatele',
     retry: 'Zkusit znovu',
     errorCleared: 'Chyba byla vymazána — můžete to zkusit znovu',
+    advancedOptions: 'Pokročilé možnosti',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

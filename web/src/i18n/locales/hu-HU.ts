@@ -4604,20 +4604,11 @@ export default mergeHarnessLocale('hu-HU', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'GitHub repositorykereső források a SKILL.md, CLAUDE.md és AGENT.md fájlokhoz.',
+          description: 'GitHub repositorykereső források a SKILL.md fájlokhoz.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'GitHub kódkereés olyan repositorykhoz, amelyek SKILL.md-t publikálnak.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'GitHub kódkereés olyan repositorykhoz, amelyek CLAUDE.md-t publikálnak.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'GitHub kódkereés olyan repositorykhoz, amelyek AGENT.md-t publikálnak.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5393,6 +5384,7 @@ export default mergeHarnessLocale('hu-HU', {
     addFailed: 'Nem sikerült hozzáadni a szolgáltatót',
     retry: 'Próbálja újra',
     errorCleared: 'A hiba törölve — újra próbálkozhat',
+    advancedOptions: 'Speciális beállítások',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

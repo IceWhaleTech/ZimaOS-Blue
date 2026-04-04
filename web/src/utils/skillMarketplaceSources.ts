@@ -44,8 +44,7 @@ const sourceLocaleCatalog = {
   },
   github: {
     label: 'GitHub',
-    description:
-      'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
+    description: 'GitHub repository search sources for SKILL.md files.',
     iconUrl: 'https://github.githubassets.com/favicons/favicon.svg',
   },
   githubAwesomeSkills: {
@@ -63,16 +62,6 @@ const sourceLocaleCatalog = {
   githubSkillMd: {
     label: 'GitHub SKILL.md',
     description: 'GitHub code search for repositories that publish SKILL.md.',
-    iconUrl: 'https://github.githubassets.com/favicons/favicon.svg',
-  },
-  githubClaudeMd: {
-    label: 'GitHub CLAUDE.md',
-    description: 'GitHub code search for repositories that publish CLAUDE.md.',
-    iconUrl: 'https://github.githubassets.com/favicons/favicon.svg',
-  },
-  githubAgentMd: {
-    label: 'GitHub AGENT.md',
-    description: 'GitHub code search for repositories that publish AGENT.md.',
     iconUrl: 'https://github.githubassets.com/favicons/favicon.svg',
   },
   clawhub: {
@@ -158,10 +147,6 @@ const sourceLocaleAliases: Record<string, MarketplaceSourceKey> = {
   'vercel-labs/skills': 'vercel',
   'github-skill-md': 'githubSkillMd',
   'github skill.md': 'githubSkillMd',
-  'github-claude-md': 'githubClaudeMd',
-  'github claude.md': 'githubClaudeMd',
-  'github-agent-md': 'githubAgentMd',
-  'github agent.md': 'githubAgentMd',
   clawhub: 'clawhub',
   'clawhub-mirror': 'clawhubMirror',
   'clawhub mirror': 'clawhubMirror',
@@ -201,9 +186,7 @@ function resolveMarketplaceSourceLocale(
   if (!trimmed) return null
   const normalized = trimmed.toLowerCase()
 
-  const seedMatch = normalized.match(
-    /^(?:seed|discovery(?:[- ]+(?:page|source))?)(?:[- ]+)?(\d+)$/
-  )
+  const seedMatch = normalized.match(/^(?:seed|discovery(?:[- ]+(?:page|source))?)(?:[- ]+)?(\d+)$/)
   if (seedMatch) {
     return {
       key: 'seedInstance',
@@ -266,7 +249,11 @@ export function localizeMarketplaceSourceOptionDescription(
   option: MarketplaceSourceOptionLike | null | undefined,
   translate: MarketplaceSourceTranslate
 ): string {
-  return localizeMarketplaceSourceFromCandidates([option?.value, option?.label], 'description', translate)
+  return localizeMarketplaceSourceFromCandidates(
+    [option?.value, option?.label],
+    'description',
+    translate
+  )
 }
 
 export function resolveMarketplaceSourceBrand(

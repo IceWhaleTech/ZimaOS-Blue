@@ -39,6 +39,11 @@ const maxArchiveDownloadBytes = 128 << 20
 const maxSemanticCandidates = 200
 const vercelSkillsSourceURL = "https://github.com/vercel-labs/skills/tree/main/skills"
 
+var deprecatedDefaultGitHubCodeSearchSources = []Source{
+	{ID: "github-claude-md", Type: "github_code_search", BaseURL: "filename:CLAUDE.md"},
+	{ID: "github-agent-md", Type: "github_code_search", BaseURL: "filename:AGENT.md"},
+}
+
 type Options struct {
 	Config                   Config
 	Logger                   *zap.Logger
@@ -1044,8 +1049,6 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 	defaults := []Source{
 		{ID: "tencent-skillhub", Type: "lightmake_api", BaseURL: strings.TrimRight(s.cfg.TencentSkillHubAPIBaseURL, "/"), DisplayName: "Tencent SkillHub", SourceGroup: "skillhub", AuthMode: "none", Enabled: true, RateLimitPerMinute: 120, Priority: 5},
 		{ID: "vercel", Type: "seed_page", BaseURL: vercelSkillsSourceURL, DisplayName: "Vercel", SourceGroup: "vercel", AuthMode: "none", Enabled: true, RateLimitPerMinute: 10, Priority: 29},
-		{ID: "github-claude-md", Type: "github_code_search", BaseURL: "filename:CLAUDE.md", DisplayName: "GitHub CLAUDE.md", SourceGroup: "github", AuthMode: "optional_token", Enabled: true, RateLimitPerMinute: 30, Priority: 31},
-		{ID: "github-agent-md", Type: "github_code_search", BaseURL: "filename:AGENT.md", DisplayName: "GitHub AGENT.md", SourceGroup: "github", AuthMode: "optional_token", Enabled: true, RateLimitPerMinute: 30, Priority: 32},
 		{ID: "clawhub", Type: "clawhub", BaseURL: strings.TrimRight(s.cfg.ClawHubBaseURL, "/"), DisplayName: "ClawHub", SourceGroup: "clawhub", AuthMode: "none", Enabled: true, RateLimitPerMinute: 60, Priority: 10},
 		{ID: "skillhub-club", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.SkillHubBaseURL, "/"), DisplayName: "SkillHub Club", SourceGroup: "skillhub", AuthMode: "optional_api_key", Enabled: true, RateLimitPerMinute: 20, Priority: 40},
 		{ID: "skillstack", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.SkillStackBaseURL, "/"), DisplayName: "SkillStack", SourceGroup: "skillstack", AuthMode: "none", Enabled: true, RateLimitPerMinute: 20, Priority: 41},
@@ -1096,6 +1099,15 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 	}
 	for _, source := range defaults {
 		if err := s.store.UpsertSource(ctx, source); err != nil {
+			return err
+		}
+	}
+	return s.disableDeprecatedDefaultSources(ctx)
+}
+
+func (s *Service) disableDeprecatedDefaultSources(ctx context.Context) error {
+	for _, source := range deprecatedDefaultGitHubCodeSearchSources {
+		if err := s.store.SetSourceEnabledByIdentity(ctx, source.ID, source.Type, source.BaseURL, false); err != nil {
 			return err
 		}
 	}

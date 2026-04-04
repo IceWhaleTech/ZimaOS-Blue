@@ -2348,8 +2348,6 @@ func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 		"tencent-skillhub",
 		"clawhub",
 		"vercel",
-		"github-claude-md",
-		"github-agent-md",
 		"skillhub-club",
 		"skillstack",
 		"llmskills",
@@ -2366,6 +2364,85 @@ func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 		}
 		if i > 0 && sources[i-1].Priority > sources[i].Priority {
 			t.Fatalf("priority order is not ascending: %+v", sources)
+		}
+	}
+}
+
+func TestEnsureDefaultSourcesDisablesDeprecatedGitHubCodeSearchSources(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	legacySources := []Source{
+		{
+			ID:                 "github-claude-md",
+			Type:               "github_code_search",
+			BaseURL:            "filename:CLAUDE.md",
+			DisplayName:        "GitHub CLAUDE.md",
+			SourceGroup:        "github",
+			AuthMode:           "optional_token",
+			Enabled:            true,
+			RateLimitPerMinute: 30,
+			Priority:           31,
+		},
+		{
+			ID:                 "github-agent-md",
+			Type:               "github_code_search",
+			BaseURL:            "filename:AGENT.md",
+			DisplayName:        "GitHub AGENT.md",
+			SourceGroup:        "github",
+			AuthMode:           "optional_token",
+			Enabled:            true,
+			RateLimitPerMinute: 30,
+			Priority:           32,
+		},
+	}
+	for _, source := range legacySources {
+		if err := store.UpsertSource(context.Background(), source); err != nil {
+			t.Fatalf("UpsertSource(%s) error = %v", source.ID, err)
+		}
+	}
+
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := DefaultConfig(t.TempDir(), activeDir)
+	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
+	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	sources, err := svc.store.ListSources(context.Background())
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+	for _, source := range sources {
+		if source.ID == "github-claude-md" || source.ID == "github-agent-md" {
+			t.Fatalf("expected deprecated github code search source to be disabled, got %+v", source)
+		}
+	}
+
+	for _, legacyID := range []string{"github-claude-md", "github-agent-md"} {
+		var enabled int
+		if err := db.QueryRow(`SELECT enabled FROM skill_sources WHERE id = ?`, legacyID).Scan(&enabled); err != nil {
+			t.Fatalf("lookup %s enabled flag: %v", legacyID, err)
+		}
+		if enabled != 0 {
+			t.Fatalf("%s enabled = %d, want 0", legacyID, enabled)
 		}
 	}
 }

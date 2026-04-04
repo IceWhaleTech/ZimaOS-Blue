@@ -738,6 +738,9 @@ async function mountHarnessGroupDetail(width = 1280) {
     global: {
       plugins: [createTestI18n()],
       stubs: {
+        AgentcoreRunnerPanel: {
+          template: '<div data-testid="agentcore-runner-card" class="agentcore-runner-panel-stub" />',
+        },
         RouterLink: {
           props: ['to'],
           template: '<a class="router-link-stub" :data-to="JSON.stringify(to)"><slot /></a>',
@@ -758,6 +761,9 @@ async function mountHarnessGroupsView() {
     global: {
       plugins: [createTestI18n()],
       stubs: {
+        AgentcoreRunnerPanel: {
+          template: '<div data-testid="agentcore-runner-card" class="agentcore-runner-panel-stub" />',
+        },
         RouterLink: {
           props: ['to'],
           template: '<a class="group-card-link" :data-to="JSON.stringify(to)"><slot /></a>',
@@ -860,6 +866,10 @@ describe('Harness views', () => {
       global: {
         plugins: [createTestI18n()],
         stubs: {
+          AgentcoreRunnerPanel: {
+            template:
+              '<div data-testid="agentcore-runner-card" class="agentcore-runner-panel-stub" />',
+          },
           RouterLink: {
             props: ['to'],
             template: '<a class="group-card-link" :data-to="JSON.stringify(to)"><slot /></a>',
@@ -878,6 +888,8 @@ describe('Harness views', () => {
     expect(wrapper.text()).toContain('Quick Eval')
     expect(wrapper.text()).toContain('Datasets & versions')
     expect(wrapper.text()).toContain('Eval runs')
+    expect(wrapper.find('[data-testid="agentcore-runner-card"]').exists()).toBe(true)
+    expect(wrapper.find('.stats-toolbar .refresh-button').exists()).toBe(false)
     expect(wrapper.text()).toContain('Regression batch')
     expect(wrapper.text()).toContain('Nightly snapshot')
     expect(wrapper.text()).toContain('Context Packs: 3')

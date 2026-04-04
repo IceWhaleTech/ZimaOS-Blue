@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import SkillStoreTab from '@/components/extensions/SkillStoreTab.vue'
-import { i18n } from '@/i18n'
+import { i18n, setLocale } from '@/i18n'
 import { skillApi } from '@/api/skill'
 import { useNotificationStore } from '@/stores/notification'
 
@@ -534,6 +534,48 @@ describe('SkillStoreTab', () => {
     expect(wrapper.find('[data-testid="source-import-panel"]').exists()).toBe(false)
   })
 
+  it('localizes source import copy and type labels in zh-CN', async () => {
+    const previousLocalStorage = globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: vi.fn(() => null),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+    })
+
+    await setLocale('zh-CN')
+
+    const wrapper = await mountSkillStore()
+
+    try {
+      await wrapper.get('[data-testid="source-import-toggle"]').trigger('click')
+      await wrapper
+        .get('[data-testid="source-import-input"]')
+        .setValue('https://catalog.example.com/skills')
+
+      expect(wrapper.get('[data-testid="source-import-panel"]').text()).toContain(
+        '从 URL 导入技能市场来源'
+      )
+      expect(wrapper.get('[data-testid="source-import-preview"]').text()).toContain('分析来源')
+
+      await wrapper.get('[data-testid="source-import-preview"]').trigger('click')
+      await flushPromises()
+
+      const preview = wrapper.get('[data-testid="source-import-preview-result"]').text()
+      expect(wrapper.get('[data-testid="source-import-confirm"]').text()).toContain('添加来源')
+      expect(preview).toContain('HTML 目录')
+      expect(preview).toContain('这个 URL 可以保存为可复用的技能市场来源。')
+    } finally {
+      await setLocale('en-US')
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        value: previousLocalStorage,
+      })
+    }
+  })
+
   it('shows configured sources in the import panel and lets users remove custom ones', async () => {
     vi.mocked(skillApi.listSources)
       .mockResolvedValueOnce({
@@ -673,7 +715,7 @@ describe('SkillStoreTab', () => {
       'demo/skills-repo'
     )
     expect(wrapper.get('[data-testid="source-import-install-seed"]').text()).toContain(
-      'Install seed'
+      'From URL'
     )
 
     await wrapper.get('[data-testid="source-import-install-seed"]').trigger('click')

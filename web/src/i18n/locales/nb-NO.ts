@@ -4563,20 +4563,11 @@ export default mergeHarnessLocale('nb-NO', {
         },
         github: {
           label: 'GitHub',
-          description:
-            'GitHub-kilder for repositoriesøk etter SKILL.md-, CLAUDE.md- og AGENT.md-filer.',
+          description: 'GitHub-kilder for repositoriesøk etter SKILL.md-filer.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'GitHub-kodesøk for repositories som publiserer SKILL.md.',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'GitHub-kodesøk for repositories som publiserer CLAUDE.md.',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'GitHub-kodesøk for repositories som publiserer AGENT.md.',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5349,6 +5340,7 @@ export default mergeHarnessLocale('nb-NO', {
     addFailed: 'Kunne ikke legge til leverandør',
     retry: 'Prøv igjen',
     errorCleared: 'Feilen er fjernet — du kan prøve igjen',
+    advancedOptions: 'Avanserte alternativer',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

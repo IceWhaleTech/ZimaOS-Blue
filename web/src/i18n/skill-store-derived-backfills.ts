@@ -1,5 +1,6 @@
 import type { LocaleKey } from './locale-catalog'
 import skillStoreFollowupLabels from './skill-store-followup-labels'
+import skillStoreSourceImportBackfills from './skill-store-source-import-backfills'
 import skillStoreTailLabels from './skill-store-tail-labels'
 
 type LocaleLeaf = string | number | boolean | null
@@ -259,6 +260,7 @@ export function buildSkillStoreDerivedBackfill(
 ): LocaleNode {
   const labels = skillStoreLabelBackfills[localeKey]
   const followup = skillStoreFollowupLabels[localeKey]
+  const sourceImport = skillStoreSourceImportBackfills[localeKey]
   const tail = skillStoreTailLabels[localeKey]
   const statsPatch: LocaleNode = {}
   const tabsPatch: LocaleNode = {}
@@ -298,7 +300,11 @@ export function buildSkillStoreDerivedBackfill(
     [searchPatch, 'resultsCount', followup.resultsCount],
     [searchPatch, 'sortRelevance', getString(messages, 'chat.deepResearchRelevance')],
     [searchPatch, 'sortDownloads', getString(messages, 'skillStore.downloads')],
-    [searchPatch, 'sortStars', getString(messages, 'skillStore.sort.stars') ?? getString(messages, 'skillStore.stars')],
+    [
+      searchPatch,
+      'sortStars',
+      getString(messages, 'skillStore.sort.stars') ?? getString(messages, 'skillStore.stars'),
+    ],
     [searchPatch, 'sortRecent', getString(messages, 'skillStore.sort.updated')],
     [searchPatch, 'sortName', getString(messages, 'common.name')],
     [actionsPatch, 'addSource', getString(messages, 'extensions.actions.addSource')],
@@ -306,7 +312,9 @@ export function buildSkillStoreDerivedBackfill(
     [
       actionsPatch,
       'details',
-      tail?.details ?? getString(messages, 'extensions.actions.details') ?? getString(messages, 'common.details'),
+      tail?.details ??
+        getString(messages, 'extensions.actions.details') ??
+        getString(messages, 'common.details'),
     ],
     [actionsPatch, 'enable', getString(messages, 'extensions.actions.enable')],
     [actionsPatch, 'install', getString(messages, 'extensions.actions.install')],
@@ -336,10 +344,22 @@ export function buildSkillStoreDerivedBackfill(
     [emptyPatch, 'suggestions', tail?.emptySuggestions ?? null],
     [statusPatch, 'builtin', getString(messages, 'extensions.status.builtin')],
     [statusPatch, 'featured', followup.featured],
-    [statusPatch, 'initializing', getString(messages, 'skillStore.marketplace.progress.phaseInitializing')],
+    [
+      statusPatch,
+      'initializing',
+      getString(messages, 'skillStore.marketplace.progress.phaseInitializing'),
+    ],
     [statusPatch, 'initializingDesc', getString(messages, 'extensions.empty.loadingStore')],
-    [statusPatch, 'initializingProgress', getString(messages, 'skillStore.marketplace.progress.sourcesProgress')],
-    [statusPatch, 'initializingSource', getString(messages, 'skillStore.marketplace.progress.processingSource')],
+    [
+      statusPatch,
+      'initializingProgress',
+      getString(messages, 'skillStore.marketplace.progress.sourcesProgress'),
+    ],
+    [
+      statusPatch,
+      'initializingSource',
+      getString(messages, 'skillStore.marketplace.progress.processingSource'),
+    ],
     [statusPatch, 'installed', getString(messages, 'extensions.status.installed')],
     [statusPatch, 'local', followup.local],
     [statusPatch, 'ready', followup.ready],
@@ -350,19 +370,46 @@ export function buildSkillStoreDerivedBackfill(
     [
       detailSectionsPatch,
       'details',
-      tail?.details ?? getString(messages, 'extensions.actions.details') ?? getString(messages, 'common.details'),
+      tail?.details ??
+        getString(messages, 'extensions.actions.details') ??
+        getString(messages, 'common.details'),
     ],
     [detailMetaPatch, 'author', getString(messages, 'skills.detail.labels.author')],
-    [detailMetaPatch, 'version', getString(messages, 'skills.detail.labels.version') ?? getString(messages, 'system.version')],
+    [
+      detailMetaPatch,
+      'version',
+      getString(messages, 'skills.detail.labels.version') ?? getString(messages, 'system.version'),
+    ],
     [detailMetaPatch, 'updated', getString(messages, 'skillStore.sort.updated')],
     [detailMetaPatch, 'downloads', getString(messages, 'skillStore.downloads')],
     [detailMetaPatch, 'stars', getString(messages, 'skillStore.stars')],
     [detailMetaPatch, 'rating', getString(messages, 'skillStore.rating')],
-    [modalPatch, 'add', getString(messages, 'extensions.modal.add') ?? getString(messages, 'common.add')],
-    [modalPatch, 'addSourceTitle', getString(messages, 'extensions.modal.addSourceTitle') ?? getString(messages, 'extensions.modal.addPluginSourceTitle')],
-    [modalPatch, 'cancel', getString(messages, 'extensions.modal.cancel') ?? getString(messages, 'common.cancel')],
-    [modalPatch, 'descriptionOptional', getString(messages, 'extensions.modal.descriptionOptional')],
-    [modalPatch, 'descriptionPlaceholder', getString(messages, 'extensions.modal.descriptionPlaceholder')],
+    [
+      modalPatch,
+      'add',
+      getString(messages, 'extensions.modal.add') ?? getString(messages, 'common.add'),
+    ],
+    [
+      modalPatch,
+      'addSourceTitle',
+      getString(messages, 'extensions.modal.addSourceTitle') ??
+        getString(messages, 'extensions.modal.addPluginSourceTitle'),
+    ],
+    [
+      modalPatch,
+      'cancel',
+      getString(messages, 'extensions.modal.cancel') ?? getString(messages, 'common.cancel'),
+    ],
+    [
+      modalPatch,
+      'descriptionOptional',
+      getString(messages, 'extensions.modal.descriptionOptional'),
+    ],
+    [
+      modalPatch,
+      'descriptionPlaceholder',
+      getString(messages, 'extensions.modal.descriptionPlaceholder'),
+    ],
     [modalPatch, 'confirmUninstallTitle', getString(messages, 'extensions.actions.uninstall')],
     [modalPatch, 'install', getString(messages, 'extensions.actions.install')],
     [modalPatch, 'installFromURLTitle', getString(messages, 'plugins.installFromUrl')],
@@ -401,7 +448,11 @@ export function buildSkillStoreDerivedBackfill(
       getString(messages, 'security.scan.items.ai_prompt_injection.name'),
     ],
     [marketplaceResultsPatch, 'installable', followup.installable],
-    [marketplaceResultsPatch, 'sourcesLabel', getString(messages, 'skillStore.marketplace.progress.sourcesLabel')],
+    [
+      marketplaceResultsPatch,
+      'sourcesLabel',
+      getString(messages, 'skillStore.marketplace.progress.sourcesLabel'),
+    ],
     [marketplaceSortPatch, 'featured', followup.featured],
     [paginationPatch, 'showing', followup.paginationShowing],
     [tabsPatch, 'featured', followup.featured],
@@ -424,6 +475,9 @@ export function buildSkillStoreDerivedBackfill(
   marketplaceQuickPatch.categories =
     getString(messages, 'skills.detail.labels.categories') ?? getString(messages, 'common.category')
   marketplaceQuickPatch.focus = labels.focus
+  if (sourceImport) {
+    marketplacePatch.sourceImport = { ...sourceImport }
+  }
 
   const skillStorePatch: LocaleNode = {}
   skillStorePatch.confirmUninstall = followup.confirmUninstall

@@ -95,12 +95,12 @@ type Settings struct {
 	SmallModelContextCompressEnabled    *bool                     `json:"small_model_context_compress_enabled,omitempty"`      // default false
 	SmallModelDocExtractEnabled         *bool                     `json:"small_model_doc_extract_enabled,omitempty"`           // default false
 	SmallModelRerankEnabled             *bool                     `json:"small_model_rerank_enabled,omitempty"`                // default false
-	SmallModelContextPruneEnabled       *bool                     `json:"small_model_context_prune_enabled,omitempty"`         // default false
+	SmallModelContextPruneEnabled       *bool                     `json:"small_model_context_prune_enabled,omitempty"`         // default true
 	SmallModelContextPruneToolAllow     []string                  `json:"small_model_context_prune_tool_allow,omitempty"`      // glob allow list for prunable tools
 	SmallModelContextPruneToolDeny      []string                  `json:"small_model_context_prune_tool_deny,omitempty"`       // glob deny list for prunable tools
-	SmallModelMediaIntentEnabled        *bool                     `json:"small_model_media_intent_enabled,omitempty"`          // default false
-	OfflineIRFallbackEnabled            *bool                     `json:"offline_ir_fallback_enabled,omitempty"`               // default false
-	FeatureIntentIREnabled              *bool                     `json:"feature_intent_ir_enabled,omitempty"`                 // default false
+	SmallModelMediaIntentEnabled        *bool                     `json:"small_model_media_intent_enabled,omitempty"`          // default true
+	OfflineIRFallbackEnabled            *bool                     `json:"offline_ir_fallback_enabled,omitempty"`               // default true
+	FeatureIntentIREnabled              *bool                     `json:"feature_intent_ir_enabled,omitempty"`                 // default true
 	DeepResearchV2Enabled               *bool                     `json:"deep_research_v2_enabled,omitempty"`                  // default false
 	SmallModelRouteImageQAEnabled       *bool                     `json:"small_model_route_image_qa_enabled,omitempty"`        // default inherits short-qa
 	SmallModelRouteShortQAEnabled       *bool                     `json:"small_model_route_short_qa_enabled,omitempty"`        // default false
@@ -1554,7 +1554,7 @@ func (h *SettingsHandler) GetSmallModelContextPruneEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelContextPruneEnabled == nil {
-		return false
+		return true
 	}
 	return *h.settings.SmallModelContextPruneEnabled
 }
@@ -1587,7 +1587,7 @@ func (h *SettingsHandler) GetSmallModelMediaIntentEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelMediaIntentEnabled == nil {
-		return false
+		return true
 	}
 	return *h.settings.SmallModelMediaIntentEnabled
 }
@@ -1596,7 +1596,7 @@ func (h *SettingsHandler) GetOfflineIRFallbackEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.OfflineIRFallbackEnabled == nil {
-		return false
+		return true
 	}
 	return *h.settings.OfflineIRFallbackEnabled
 }
@@ -1605,7 +1605,7 @@ func (h *SettingsHandler) GetFeatureIntentIREnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.FeatureIntentIREnabled == nil {
-		return false
+		return true
 	}
 	return *h.settings.FeatureIntentIREnabled
 }
@@ -1975,6 +1975,22 @@ func (h *SettingsHandler) normalizedSettingsSnapshot() Settings {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	snapshot := *h.settings
+	if snapshot.SmallModelContextPruneEnabled == nil {
+		enabled := true
+		snapshot.SmallModelContextPruneEnabled = &enabled
+	}
+	if snapshot.SmallModelMediaIntentEnabled == nil {
+		enabled := true
+		snapshot.SmallModelMediaIntentEnabled = &enabled
+	}
+	if snapshot.OfflineIRFallbackEnabled == nil {
+		enabled := true
+		snapshot.OfflineIRFallbackEnabled = &enabled
+	}
+	if snapshot.FeatureIntentIREnabled == nil {
+		enabled := true
+		snapshot.FeatureIntentIREnabled = &enabled
+	}
 	snapshot.ExperimentalAgentcoreRunnerRepoURL = normalizeAgentcoreRunnerRepoURL(
 		snapshot.ExperimentalAgentcoreRunnerRepoURL,
 	)

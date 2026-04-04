@@ -48,34 +48,8 @@ interface SaveStatusToast {
   action?: SaveStatusAction
 }
 
-const AGENTCORE_RUNNER_EVOLVABLE_PART_ORDER = [
-  'constraints',
-  'skill_definition',
-  'prompt_template',
-  'context_assembly',
-  'coordinator_policy',
-  'orchestrator_policy',
-  'tool_exposure',
-  'verification_policy',
-  'runner_code',
-  'build_recipe',
-] as const
-
-const AGENTCORE_RUNNER_EVOLVABLE_PART_LABELS: Record<string, string> = {
-  constraints: '约束层',
-  skill_definition: 'Skill定义',
-  prompt_template: '提示词',
-  context_assembly: '上下文工程',
-  coordinator_policy: 'Coordinator',
-  orchestrator_policy: 'Orchestrator',
-  tool_exposure: '工具暴露',
-  verification_policy: '验证策略',
-  runner_code: 'Runner代码',
-  build_recipe: '构建配方',
-}
-
-const AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP = '该层在当前候选中已优化'
-const AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP = '该层可纳入自我进化，当前版本未调整'
+const DEFAULT_AGENTCORE_RUNNER_REPO_URL = 'https://github.com/IceWhaleTech/ZimaOS-Blue'
+const DEFAULT_AGENTCORE_RUNNER_REF = 'main'
 
 const saveStatus = ref<SaveStatusToast | null>(null)
 let saveStatusTimer: ReturnType<typeof setTimeout> | null = null
@@ -191,20 +165,10 @@ const backupDeleting = ref<string | null>(null)
 const generalTabInitialized = ref(false)
 const proxyTabInitialized = ref(false)
 const agentcoreRunnerSaving = ref(false)
-const agentcoreRunnerPreparing = ref(false)
-const agentcoreRunnerRefreshing = ref(false)
-const agentcoreRunnerStatusExpanded = ref(false)
 const agentcoreRunnerRepoURL = ref('')
 const agentcoreRunnerRef = ref('')
 const agentcoreRunnerTags = ref<AgentcoreRunnerTagList | null>(null)
-const agentcoreRunnerTagsLoading = ref(false)
-const agentcoreRunnerStatus = computed(() => settingsStore.agentcoreRunnerStatus)
-const agentcoreRunnerLastRun = computed(() => settingsStore.agentcoreRunnerLastRun)
 const agentcoreRunnerEnabled = computed(() => settingsStore.experimentalAgentcoreRunnerEnabled)
-const agentcoreRunnerLastError = computed(() =>
-  normalizeAgentcoreRunnerStatusError(agentcoreRunnerStatus.value?.last_error)
-)
-const agentcoreRunnerHasLastError = computed(() => agentcoreRunnerLastError.value !== '')
 const agentcoreRunnerRefOptions = computed(() => {
   const options: string[] = []
   const seen = new Set<string>()
@@ -221,101 +185,7 @@ const agentcoreRunnerRefOptions = computed(() => {
   }
   return options
 })
-const agentcoreRunnerBusy = computed(
-  () =>
-    agentcoreRunnerSaving.value ||
-    agentcoreRunnerPreparing.value ||
-    agentcoreRunnerRefreshing.value
-)
-const agentcoreRunnerTranscriptExpanded = ref(false)
-const agentcoreRunnerTranscriptPreviewCount = 2
-const agentcoreRunnerLastRunMeta = computed(() => {
-  const run = agentcoreRunnerLastRun.value
-  if (run == null) return [] as string[]
-  return [
-    normalizeEvidenceText(run.reason),
-    normalizeEvidenceText(run.candidate_id),
-    normalizeEvidenceText(run.eval_run_id),
-    typeof run.runner_protocol === 'string' ? run.runner_protocol.trim() : '',
-    typeof run.runner_stop_reason === 'string' ? run.runner_stop_reason.trim() : '',
-    typeof run.optimization_surface === 'string' ? run.optimization_surface.trim() : '',
-    formatDurationMs(run.runner_duration_ms),
-  ].filter(Boolean)
-})
-const agentcoreRunnerLastRunTranscriptEntries = computed(() => {
-  const entries = agentcoreRunnerLastRun.value?.runner_transcript ?? []
-  const suppressed = new Set(
-    [
-      normalizeEvidenceText(agentcoreRunnerLastRun.value?.runner_response_text),
-      normalizeEvidenceText(agentcoreRunnerLastRun.value?.runner_error),
-    ].filter(Boolean)
-  )
-  const seen = new Set<string>()
-  return entries.filter((entry) => {
-    const text = normalizeEvidenceText(entry.text)
-    if (!text) return false
-    if (suppressed.has(text)) return false
-    const fingerprint = [
-      normalizeEvidenceText(entry.direction),
-      normalizeEvidenceText(entry.method),
-      text,
-    ].join('::')
-    if (seen.has(fingerprint)) return false
-    seen.add(fingerprint)
-    return true
-  })
-})
-const agentcoreRunnerVisibleTranscriptEntries = computed(() => {
-  if (agentcoreRunnerTranscriptExpanded.value) {
-    return agentcoreRunnerLastRunTranscriptEntries.value
-  }
-  return agentcoreRunnerLastRunTranscriptEntries.value.slice(0, agentcoreRunnerTranscriptPreviewCount)
-})
-const agentcoreRunnerHiddenTranscriptCount = computed(() =>
-  Math.max(
-    agentcoreRunnerLastRunTranscriptEntries.value.length - agentcoreRunnerTranscriptPreviewCount,
-    0
-  )
-)
-const agentcoreRunnerSupportedParts = computed(() => {
-  const configured = new Set(
-    (agentcoreRunnerStatus.value?.supported_parts ?? [])
-      .map((part) => normalizeEvidenceText(part))
-      .filter(Boolean)
-  )
-  if (configured.size === 0) {
-    return [...AGENTCORE_RUNNER_EVOLVABLE_PART_ORDER]
-  }
-  return AGENTCORE_RUNNER_EVOLVABLE_PART_ORDER.filter((part) => configured.has(part))
-})
-const agentcoreRunnerOptimizedParts = computed(() => {
-  const parts = (agentcoreRunnerStatus.value?.optimized_parts ?? [])
-    .map((part) => normalizeEvidenceText(part))
-    .filter(Boolean)
-  return new Set(parts)
-})
-const agentcoreRunnerOptimizedPartList = computed(() =>
-  agentcoreRunnerSupportedParts.value.filter((part) => agentcoreRunnerOptimizedParts.value.has(part))
-)
-const agentcoreRunnerOptimizedSummary = computed(() =>
-  agentcoreRunnerOptimizedPartList.value.join(', ')
-)
-const agentcoreRunnerPrimaryPart = computed(() =>
-  normalizeEvidenceText(agentcoreRunnerStatus.value?.primary_part)
-)
-const agentcoreRunnerSourceOptimizationRunID = computed(() =>
-  normalizeEvidenceText(agentcoreRunnerStatus.value?.source_optimization_run_id)
-)
-const agentcoreRunnerEvolvablePartBadges = computed(() =>
-  agentcoreRunnerSupportedParts.value.map((part) => ({
-    part,
-    label: AGENTCORE_RUNNER_EVOLVABLE_PART_LABELS[part] ?? part,
-    active: agentcoreRunnerOptimizedParts.value.has(part),
-    tooltip: agentcoreRunnerOptimizedParts.value.has(part)
-      ? AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP
-      : AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP,
-  }))
-)
+const agentcoreRunnerBusy = computed(() => agentcoreRunnerSaving.value)
 
 watch(
   [
@@ -327,13 +197,6 @@ watch(
     agentcoreRunnerRef.value = normalizeAgentcoreRunnerRefValue(refValue)
   },
   { immediate: true }
-)
-
-watch(
-  () => agentcoreRunnerLastRun.value?.id,
-  () => {
-    agentcoreRunnerTranscriptExpanded.value = false
-  }
 )
 
 function clearSaveStatus() {
@@ -435,12 +298,6 @@ const smallModelRecommendedRuntimeBytes = 2 * 1024 * 1024 * 1024
 const globalPrunerConfig = ref<PrunerConfig | null>(null)
 const globalPrunerSaving = ref(false)
 const globalPrunerEnabled = computed(() => globalPrunerConfig.value?.enabled === true)
-const assistantCapabilitiesEnabled = computed(
-  () => settingsStore.smallModelIRFeaturesEnabled && (globalPrunerConfig.value?.enabled ?? true)
-)
-const assistantCapabilitiesSaving = computed(
-  () => smallModelSaving.value || globalPrunerSaving.value
-)
 const shortQASuccessRate = computed(() => {
   const stats = settingsStore.smallModelStats
   if (!stats || stats.short_qa_route_attempts <= 0) return 0
@@ -581,48 +438,9 @@ async function handleContextCompressionModeChange(mode: ContextCompressionMode) 
   await withSmallModelSave(() => settingsStore.setContextCompressionMode(mode))
 }
 
-async function handleSmallModelContextPruneEnabledChange(next: boolean) {
-  await withSmallModelSave(() => settingsStore.setSmallModelContextPruneEnabled(next))
-}
-
-async function handleSmallModelMediaIntentEnabledChange(next: boolean) {
-  await withSmallModelSave(() => settingsStore.setSmallModelMediaIntentEnabled(next))
-}
-
-async function handleOfflineIRFallbackEnabledChange(next: boolean) {
-  await withSmallModelSave(() => settingsStore.setOfflineIRFallbackEnabled(next))
-}
-
-async function handleFeatureIntentIREnabledChange(next: boolean) {
-  await withSmallModelSave(() => settingsStore.setFeatureIntentIREnabled(next))
-}
-
 async function saveGlobalPrunerEnabled(next: boolean) {
   const res = await proxyCacheApi.updatePrunerConfig({ enabled: next })
   globalPrunerConfig.value = res.data.config
-}
-
-async function handleAssistantCapabilitiesEnabledChange(next: boolean) {
-  if (assistantCapabilitiesSaving.value) return
-  try {
-    smallModelSaving.value = true
-    globalPrunerSaving.value = globalPrunerConfig.value != null
-
-    const writes: Promise<unknown>[] = [settingsStore.setSmallModelIRFeaturesEnabled(next)]
-    if (globalPrunerConfig.value && globalPrunerEnabled.value !== next) {
-      writes.push(saveGlobalPrunerEnabled(next))
-    }
-    const results = await Promise.allSettled(writes)
-    if (results.some((result) => result.status === 'rejected')) {
-      await Promise.allSettled([settingsStore.fetchBackendSettings(), fetchGlobalPrunerState()])
-      showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
-      return
-    }
-    showSaveStatus(t('settings.saved', 'Saved'))
-  } finally {
-    globalPrunerSaving.value = false
-    smallModelSaving.value = false
-  }
 }
 
 async function handleSmallModelRouteShortQAEnabledChange(next: boolean) {
@@ -631,6 +449,77 @@ async function handleSmallModelRouteShortQAEnabledChange(next: boolean) {
 
 async function handleSmallModelRouteImageQAEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelRouteImageQAEnabled(next))
+}
+
+function normalizeAgentcoreRunnerRepoURLValue(value: unknown) {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  }
+  return DEFAULT_AGENTCORE_RUNNER_REPO_URL
+}
+
+function normalizeAgentcoreRunnerRefValue(value: unknown) {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  }
+  return DEFAULT_AGENTCORE_RUNNER_REF
+}
+
+async function fetchAgentcoreRunnerStatus() {
+  try {
+    await settingsStore.fetchAgentcoreRunnerStatus()
+  } catch {
+    // ignore
+  }
+}
+
+async function fetchAgentcoreRunnerTags(repoURL = agentcoreRunnerRepoURL.value) {
+  const resolvedRepoURL = normalizeAgentcoreRunnerRepoURLValue(repoURL)
+  try {
+    const response = await settingsApi.getAgentcoreRunnerTags(resolvedRepoURL)
+    agentcoreRunnerTags.value = response.data
+  } catch {
+    agentcoreRunnerTags.value = {
+      repo_url: resolvedRepoURL,
+      default_ref: DEFAULT_AGENTCORE_RUNNER_REF,
+      tags: [],
+    }
+  }
+}
+
+async function saveAgentcoreRunnerConfig() {
+  if (agentcoreRunnerSaving.value) return
+  const repoURL = normalizeAgentcoreRunnerRepoURLValue(agentcoreRunnerRepoURL.value)
+  const refValue = normalizeAgentcoreRunnerRefValue(agentcoreRunnerRef.value)
+  agentcoreRunnerRepoURL.value = repoURL
+  agentcoreRunnerRef.value = refValue
+  try {
+    agentcoreRunnerSaving.value = true
+    await settingsStore.updateBackendSettings({
+      experimental_agentcore_runner_repo_url: repoURL,
+      experimental_agentcore_runner_ref: refValue,
+    })
+    showSaveStatus(t('settings.saved', 'Saved'))
+    await Promise.allSettled([fetchAgentcoreRunnerStatus(), fetchAgentcoreRunnerTags(repoURL)])
+  } catch {
+    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
+  } finally {
+    agentcoreRunnerSaving.value = false
+  }
+}
+
+async function handleAgentcoreRunnerEnabledChange(next: boolean) {
+  if (agentcoreRunnerSaving.value) return
+  try {
+    agentcoreRunnerSaving.value = true
+    await settingsStore.setExperimentalAgentcoreRunnerEnabled(next)
+    showSaveStatus(t('settings.saved', 'Saved'))
+    await fetchAgentcoreRunnerStatus()
+  } catch {
+    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
+  } finally {
+    agentcoreRunnerSaving.value = false
+  }
 }
 
 function formatFallbackReason(reason: string): string {
@@ -712,158 +601,13 @@ async function ensureProxyTabDataLoaded() {
   }
   if (settingsStore.agentcoreRunnerStatus == null) {
     tasks.push(fetchAgentcoreRunnerStatus())
-  } else if (
-    settingsStore.agentcoreRunnerStatus.last_optimization_run_id &&
-    settingsStore.agentcoreRunnerLastRun == null
-  ) {
-    tasks.push(fetchAgentcoreRunnerLastRun())
   }
-  tasks.push(fetchAgentcoreRunnerTags())
+  if (agentcoreRunnerTags.value == null) {
+    tasks.push(fetchAgentcoreRunnerTags())
+  }
 
   if (tasks.length > 0) {
     await Promise.allSettled(tasks)
-  }
-}
-
-function formatStatusTime(value?: string) {
-  if (!value) return t('settings.agentcoreRunner.empty', 'Not available')
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
-}
-
-function formatDurationMs(value?: number) {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return ''
-  if (value < 1000) return `${Math.round(value)}ms`
-  return `${(value / 1000).toFixed(1)}s`
-}
-
-function normalizeEvidenceText(value: unknown) {
-  if (typeof value !== 'string') return ''
-  return value.trim()
-}
-
-function normalizeAgentcoreRunnerStatusError(value: unknown) {
-  const text = normalizeEvidenceText(value)
-  if (text.toLowerCase() === 'repo url is required') {
-    return ''
-  }
-  return text
-}
-
-function normalizeAgentcoreRunnerRepoURLValue(value: unknown) {
-  const text = normalizeEvidenceText(value)
-  if (text) return text
-  return 'https://github.com/IceWhaleTech/ZimaOS-Blue'
-}
-
-function normalizeAgentcoreRunnerRefValue(value: unknown) {
-  const text = normalizeEvidenceText(value)
-  if (text) return text
-  return 'main'
-}
-
-async function fetchAgentcoreRunnerStatus() {
-  try {
-    await settingsStore.fetchAgentcoreRunnerStatus()
-  } catch {
-    // ignore
-  }
-}
-
-async function fetchAgentcoreRunnerLastRun() {
-  try {
-    await settingsStore.fetchAgentcoreRunnerLastRun()
-  } catch {
-    // ignore
-  }
-}
-
-async function fetchAgentcoreRunnerTags(repoURL = agentcoreRunnerRepoURL.value) {
-  const resolvedRepoURL = normalizeAgentcoreRunnerRepoURLValue(repoURL)
-  try {
-    agentcoreRunnerTagsLoading.value = true
-    const response = await settingsApi.getAgentcoreRunnerTags(resolvedRepoURL)
-    agentcoreRunnerTags.value = response.data
-  } catch {
-    agentcoreRunnerTags.value = {
-      repo_url: resolvedRepoURL,
-      default_ref: 'main',
-      tags: [],
-    }
-  } finally {
-    agentcoreRunnerTagsLoading.value = false
-  }
-}
-
-async function refreshAgentcoreRunnerStatus() {
-  if (agentcoreRunnerRefreshing.value) return
-  try {
-    agentcoreRunnerRefreshing.value = true
-    await Promise.allSettled([fetchAgentcoreRunnerStatus(), fetchAgentcoreRunnerTags()])
-  } finally {
-    agentcoreRunnerRefreshing.value = false
-  }
-}
-
-async function saveAgentcoreRunnerConfig() {
-  if (agentcoreRunnerSaving.value) return
-  const repoURL = normalizeAgentcoreRunnerRepoURLValue(agentcoreRunnerRepoURL.value)
-  const refValue = normalizeAgentcoreRunnerRefValue(agentcoreRunnerRef.value)
-  agentcoreRunnerRepoURL.value = repoURL
-  agentcoreRunnerRef.value = refValue
-  try {
-    agentcoreRunnerSaving.value = true
-    await settingsStore.updateBackendSettings({
-      experimental_agentcore_runner_repo_url: repoURL,
-      experimental_agentcore_runner_ref: refValue,
-    })
-    showSaveStatus(t('settings.saved', 'Saved'))
-    await Promise.allSettled([fetchAgentcoreRunnerStatus(), fetchAgentcoreRunnerTags(repoURL)])
-  } catch {
-    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
-  } finally {
-    agentcoreRunnerSaving.value = false
-  }
-}
-
-async function handleAgentcoreRunnerEnabledChange(next: boolean) {
-  if (agentcoreRunnerSaving.value) return
-  try {
-    agentcoreRunnerSaving.value = true
-    await settingsStore.setExperimentalAgentcoreRunnerEnabled(next)
-    showSaveStatus(t('settings.saved', 'Saved'))
-    await fetchAgentcoreRunnerStatus()
-  } catch {
-    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
-  } finally {
-    agentcoreRunnerSaving.value = false
-  }
-}
-
-async function prepareAgentcoreRunner() {
-  if (agentcoreRunnerPreparing.value) return
-  const repoURL = normalizeAgentcoreRunnerRepoURLValue(agentcoreRunnerRepoURL.value)
-  const refValue = normalizeAgentcoreRunnerRefValue(agentcoreRunnerRef.value)
-  agentcoreRunnerRepoURL.value = repoURL
-  agentcoreRunnerRef.value = refValue
-  try {
-    agentcoreRunnerPreparing.value = true
-    await settingsStore.updateBackendSettings({
-      experimental_agentcore_runner_repo_url: repoURL,
-      experimental_agentcore_runner_ref: refValue,
-    })
-    await settingsStore.prepareAgentcoreRunner()
-    await Promise.allSettled([fetchAgentcoreRunnerStatus(), fetchAgentcoreRunnerTags(repoURL)])
-    showSaveStatus(
-      t('settings.agentcoreRunner.prepareSuccess', 'Agentcore Runner prepared successfully')
-    )
-  } catch {
-    showSaveStatus(
-      t('settings.agentcoreRunner.prepareFailed', 'Failed to prepare Agentcore Runner')
-    )
-  } finally {
-    agentcoreRunnerPreparing.value = false
   }
 }
 
@@ -1462,629 +1206,58 @@ onUnmounted(() => {
                     :disabled="agentcoreRunnerSaving"
                     @change="saveAgentcoreRunnerConfig"
                   >
-                    <option v-for="option in agentcoreRunnerRefOptions" :key="option" :value="option">
+                    <option
+                      v-for="option in agentcoreRunnerRefOptions"
+                      :key="option"
+                      :value="option"
+                    >
                       {{ option }}
                     </option>
                   </select>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{
-                      agentcoreRunnerTagsLoading
-                        ? t('settings.agentcoreRunner.refLoading', 'Loading tags...')
-                        : t('settings.agentcoreRunner.refHint', 'Defaults to main and lists tags from the selected repo.')
-                    }}
-                  </p>
                 </label>
-              </div>
-
-              <div class="flex items-center justify-between gap-3">
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {{
-                    t(
-                      'settings.agentcoreRunner.prepareHint',
-                      'Prepare downloads the repo, installs the required Go toolchain, and builds ./cmd/agentcore-runner in the managed cache.'
-                    )
-                  }}
-                </p>
-                <div class="flex items-center gap-2">
-                  <button
-                    data-testid="agentcore-runner-refresh"
-                    type="button"
-                    class="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-slate-800"
-                    :disabled="agentcoreRunnerBusy"
-                    @click="refreshAgentcoreRunnerStatus"
-                  >
-                    {{ t('common.refresh', 'Refresh') }}
-                  </button>
-                  <button
-                    data-testid="agentcore-runner-prepare"
-                    type="button"
-                    class="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="agentcoreRunnerBusy"
-                    @click="prepareAgentcoreRunner"
-                  >
-                    {{
-                      agentcoreRunnerPreparing
-                        ? t('settings.agentcoreRunner.preparing', 'Preparing...')
-                        : t('settings.agentcoreRunner.prepare', 'Prepare Runner')
-                    }}
-                  </button>
-                </div>
-              </div>
-
-              <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-slate-900/60">
-                <button
-                  data-testid="agentcore-runner-status-toggle"
-                  type="button"
-                  class="flex w-full items-center justify-between gap-3 text-left"
-                  @click="agentcoreRunnerStatusExpanded = !agentcoreRunnerStatusExpanded"
-                >
-                  <div class="text-sm font-medium text-gray-800 dark:text-gray-100">
-                    {{ t('settings.agentcoreRunner.status', 'Status') }}
-                  </div>
-                  <span class="text-xs text-gray-500 dark:text-gray-400">{{
-                    agentcoreRunnerStatusExpanded
-                      ? t('settings.smallModel.collapse', 'Collapse')
-                      : t('settings.smallModel.expand', 'Expand')
-                  }}</span>
-                </button>
-                <div
-                  v-if="agentcoreRunnerStatusExpanded"
-                  data-testid="agentcore-runner-status-content"
-                  class="mt-3 grid gap-2 sm:grid-cols-2"
-                >
-                  <div class="text-sm">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.resolvedCommit', 'Resolved commit')
-                    }}</span>
-                    <div
-                      data-testid="agentcore-runner-resolved-commit"
-                      class="text-gray-900 dark:text-gray-100 break-all"
-                    >
-                      {{
-                        agentcoreRunnerStatus?.resolved_commit ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                  </div>
-                  <div class="text-sm">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.requiredGoVersion', 'Required Go version')
-                    }}</span>
-                    <div data-testid="agentcore-runner-required-go" class="text-gray-900 dark:text-gray-100">
-                      {{
-                        agentcoreRunnerStatus?.required_go_version ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                  </div>
-                  <div class="text-sm">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.installedGoVersion', 'Installed Go version')
-                    }}</span>
-                    <div
-                      data-testid="agentcore-runner-installed-go"
-                      class="text-gray-900 dark:text-gray-100"
-                    >
-                      {{
-                        agentcoreRunnerStatus?.installed_go_version ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                  </div>
-                  <div class="text-sm">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.toolchainReady', 'Toolchain ready')
-                    }}</span>
-                    <div data-testid="agentcore-runner-toolchain-ready" class="text-gray-900 dark:text-gray-100">
-                      {{
-                        agentcoreRunnerStatus?.toolchain_ready
-                          ? t('common.yes', 'Yes')
-                          : t('common.no', 'No')
-                      }}
-                    </div>
-                  </div>
-                  <div class="text-sm">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.binaryReady', 'Binary ready')
-                    }}</span>
-                    <div data-testid="agentcore-runner-binary-ready" class="text-gray-900 dark:text-gray-100">
-                      {{
-                        agentcoreRunnerStatus?.binary_ready
-                          ? t('common.yes', 'Yes')
-                          : t('common.no', 'No')
-                      }}
-                    </div>
-                  </div>
-                  <div class="text-sm">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.lastPrepareState', 'Last prepare state')
-                    }}</span>
-                    <div
-                      data-testid="agentcore-runner-last-prepare-state"
-                      class="text-gray-900 dark:text-gray-100"
-                    >
-                      {{
-                        agentcoreRunnerStatus?.last_prepare_state ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                  </div>
-                  <div class="text-sm sm:col-span-2">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.binaryPath', 'Binary path')
-                    }}</span>
-                    <div
-                      data-testid="agentcore-runner-binary-path"
-                      class="text-gray-900 dark:text-gray-100 break-all"
-                    >
-                      {{
-                        agentcoreRunnerStatus?.binary_path ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                  </div>
-                  <div class="text-sm sm:col-span-2">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.binaryChecksum', 'Binary checksum')
-                    }}</span>
-                    <div
-                      data-testid="agentcore-runner-binary-checksum"
-                      class="text-gray-900 dark:text-gray-100 break-all"
-                    >
-                      {{
-                        agentcoreRunnerStatus?.binary_sha256 ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                  </div>
-                  <div class="text-sm">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.lastPrepareAt', 'Last prepare time')
-                    }}</span>
-                    <div class="text-gray-900 dark:text-gray-100">
-                      {{ formatStatusTime(agentcoreRunnerStatus?.last_prepare_at) }}
-                    </div>
-                  </div>
-                  <div class="text-sm sm:col-span-2">
-                    <span class="text-gray-500 dark:text-gray-400">可进化面</span>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                      <span
-                        v-for="badge in agentcoreRunnerEvolvablePartBadges"
-                        :key="badge.part"
-                        data-testid="agentcore-runner-evolvable-part"
-                        :data-part="badge.part"
-                        :data-active="badge.active ? 'true' : 'false'"
-                        :title="badge.tooltip"
-                        class="rounded-full border px-2.5 py-1 text-[11px] font-medium transition"
-                        :class="
-                          badge.active
-                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
-                            : 'border-gray-200 bg-gray-100 text-gray-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-400'
-                        "
-                      >
-                        {{ badge.label }}
-                      </span>
-                    </div>
-                    <div
-                      v-if="agentcoreRunnerOptimizedSummary"
-                      data-testid="agentcore-runner-optimized-summary"
-                      class="mt-2 text-xs text-gray-700 dark:text-gray-200"
-                    >
-                      {{ agentcoreRunnerOptimizedSummary }}
-                    </div>
-                  </div>
-                  <div class="text-sm">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.lastOptimizationRunId', 'Last optimization run ID')
-                    }}</span>
-                    <div
-                      data-testid="agentcore-runner-last-optimization-run-id"
-                      class="text-gray-900 dark:text-gray-100 break-all"
-                    >
-                      {{
-                        agentcoreRunnerStatus?.last_optimization_run_id ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                    <div
-                      data-testid="agentcore-runner-last-optimization-state"
-                      class="mt-1 text-xs text-gray-600 dark:text-gray-300"
-                    >
-                      {{
-                        agentcoreRunnerStatus?.last_optimization_state ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                    <div
-                      data-testid="agentcore-runner-last-optimization-time"
-                      class="text-xs text-gray-500 dark:text-gray-400"
-                    >
-                      {{ formatStatusTime(agentcoreRunnerStatus?.last_optimization_at) }}
-                    </div>
-                    <div
-                      data-testid="agentcore-runner-last-optimization-summary"
-                      class="mt-1 text-xs text-gray-700 dark:text-gray-200 break-words"
-                    >
-                      {{
-                        agentcoreRunnerStatus?.last_optimization_summary ||
-                        t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                    <div
-                      v-if="agentcoreRunnerPrimaryPart"
-                      data-testid="agentcore-runner-primary-part"
-                      class="mt-1 text-xs text-gray-600 dark:text-gray-300"
-                    >
-                      {{ `Primary: ${agentcoreRunnerPrimaryPart}` }}
-                    </div>
-                    <div
-                      v-if="agentcoreRunnerSourceOptimizationRunID"
-                      data-testid="agentcore-runner-source-optimization-run-id"
-                      class="text-xs text-gray-500 dark:text-gray-400"
-                    >
-                      {{ `Source optimization: ${agentcoreRunnerSourceOptimizationRunID}` }}
-                    </div>
-                    <div
-                      v-if="agentcoreRunnerLastRun"
-                      data-testid="agentcore-runner-last-run-detail"
-                      class="mt-2 space-y-2 rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-slate-950/50"
-                    >
-                      <div
-                        v-if="agentcoreRunnerLastRunMeta.length > 0"
-                        data-testid="agentcore-runner-last-run-meta"
-                        class="flex flex-wrap gap-1.5"
-                      >
-                        <span
-                          v-for="item in agentcoreRunnerLastRunMeta"
-                          :key="item"
-                          class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:bg-slate-800 dark:text-gray-200"
-                        >
-                          {{ item }}
-                        </span>
-                      </div>
-                      <div
-                        v-if="agentcoreRunnerLastRun?.runner_error"
-                        data-testid="agentcore-runner-last-run-error"
-                        class="rounded-lg bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-700 whitespace-pre-wrap dark:bg-red-950/30 dark:text-red-300"
-                      >
-                        {{ agentcoreRunnerLastRun.runner_error }}
-                      </div>
-                      <div
-                        v-if="agentcoreRunnerLastRun?.runner_response_text"
-                        data-testid="agentcore-runner-last-run-response"
-                        class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] leading-5 text-gray-700 whitespace-pre-wrap dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200"
-                      >
-                        {{ agentcoreRunnerLastRun.runner_response_text }}
-                      </div>
-                      <div
-                        v-if="agentcoreRunnerLastRunTranscriptEntries.length > 0"
-                        data-testid="agentcore-runner-last-run-transcript"
-                        class="max-h-48 space-y-2 overflow-auto"
-                      >
-                        <div
-                          v-for="(entry, index) in agentcoreRunnerVisibleTranscriptEntries"
-                          :key="`${entry.direction || 'run'}-${entry.method || 'message'}-${index}`"
-                          class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-slate-900/70"
-                        >
-                          <div class="flex flex-wrap gap-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            <span>{{ entry.direction || 'run' }}</span>
-                            <span v-if="entry.method">{{ entry.method }}</span>
-                          </div>
-                          <div class="mt-1 text-[11px] leading-5 text-gray-700 whitespace-pre-wrap dark:text-gray-200">
-                            {{ entry.text }}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        v-if="agentcoreRunnerHiddenTranscriptCount > 0"
-                        data-testid="agentcore-runner-transcript-toggle"
-                        type="button"
-                        class="text-xs font-medium text-gray-500 transition hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                        :aria-expanded="agentcoreRunnerTranscriptExpanded ? 'true' : 'false'"
-                        @click="agentcoreRunnerTranscriptExpanded = !agentcoreRunnerTranscriptExpanded"
-                      >
-                        {{
-                          agentcoreRunnerTranscriptExpanded
-                            ? t('settings.smallModel.collapse', 'Collapse')
-                            : t('settings.smallModel.expand', 'Expand')
-                        }}
-                      </button>
-                    </div>
-                  </div>
-                  <div class="text-sm sm:col-span-2">
-                    <span class="text-gray-500 dark:text-gray-400">{{
-                      t('settings.agentcoreRunner.lastError', 'Last error')
-                    }}</span>
-                    <div
-                      data-testid="agentcore-runner-last-error"
-                      class="break-all"
-                      :class="
-                        agentcoreRunnerHasLastError
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-gray-500 dark:text-gray-400'
-                      "
-                    >
-                      {{
-                        agentcoreRunnerLastError || t('settings.agentcoreRunner.empty', 'Not available')
-                      }}
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </section>
 
-          <section class="settings-module">
-            <div class="settings-module__header">
-              <div>
-                <span class="settings-module__eyebrow">{{
-                  t('settings.assistiveRouting', '辅助策略')
-                }}</span>
-                <h2 class="settings-module__title">
-                  {{ t('settings.smallModel.irTitle', '辅助功能') }}
-                </h2>
-              </div>
-            </div>
-
+          <section v-if="globalPrunerConfig" class="settings-module">
             <div class="dashboard-card-subsurface settings-feature-card p-4">
               <div
-                data-testid="small-model-ir-section-header"
-                class="mb-4 flex items-start justify-between gap-3"
+                data-testid="proxy-pruner-card"
+                class="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-slate-800/50"
               >
-                <div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                <div class="min-w-0 flex-1">
+                  <div class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ t('apiProxy.prunerTitle', 'Global Context Pruner') }}
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {{
                       t(
-                        'settings.smallModel.irDesc',
-                        'User-facing helpers for context control and tool filtering.'
+                        'apiProxy.prunerDesc',
+                        'Controls the API proxy pruner for proxied /v1 requests. Blue chat may still skip pruning per request when context pressure is low.'
                       )
                     }}
                   </p>
                 </div>
                 <button
-                  data-testid="small-model-ir-master-switch"
+                  data-testid="proxy-pruner-switch"
                   type="button"
                   role="switch"
-                  :aria-checked="assistantCapabilitiesEnabled"
-                  :aria-label="t('settings.smallModel.irMasterTitle', 'Master Switch')"
-                  :disabled="assistantCapabilitiesSaving"
+                  :aria-checked="globalPrunerEnabled"
+                  :aria-label="t('apiProxy.prunerTitle', 'Global Context Pruner')"
+                  :disabled="globalPrunerSaving"
                   class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
                   :class="
-                    assistantCapabilitiesEnabled
+                    globalPrunerEnabled
                       ? 'bg-green-600 dark:bg-green-500'
                       : 'bg-gray-300 dark:bg-gray-600'
                   "
-                  @click="handleAssistantCapabilitiesEnabledChange(!assistantCapabilitiesEnabled)"
+                  @click="handleGlobalPrunerEnabledChange(!globalPrunerEnabled)"
                 >
                   <span
                     class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                    :class="assistantCapabilitiesEnabled ? 'translate-x-5' : 'translate-x-0'"
+                    :class="globalPrunerEnabled ? 'translate-x-5' : 'translate-x-0'"
                   />
                 </button>
-              </div>
-
-              <div
-                data-testid="small-model-ir-grid"
-                class="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 px-3 py-2.5 dark:bg-gray-700/30 sm:grid-cols-2"
-              >
-                <div
-                  class="flex h-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-slate-800/50"
-                >
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm text-gray-800 dark:text-gray-100">
-                      {{ t('settings.smallModel.irContextPruneTitle', 'Chat Context Compaction') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{
-                        t(
-                          'settings.smallModel.irContextPruneDesc',
-                          'Controls how Blue reduces chat history when context pressure rises.'
-                        )
-                      }}
-                    </div>
-                  </div>
-                  <button
-                    data-testid="small-model-context-prune-switch"
-                    type="button"
-                    role="switch"
-                    :aria-checked="settingsStore.smallModelContextPruneEnabled"
-                    :disabled="smallModelSaving"
-                    class="relative mt-0.5 inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                    :class="
-                      settingsStore.smallModelContextPruneEnabled
-                        ? 'bg-green-600 dark:bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="
-                      handleSmallModelContextPruneEnabledChange(
-                        !settingsStore.smallModelContextPruneEnabled
-                      )
-                    "
-                  >
-                    <span
-                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="
-                        settingsStore.smallModelContextPruneEnabled
-                          ? 'translate-x-5'
-                          : 'translate-x-0'
-                      "
-                    />
-                  </button>
-                </div>
-
-                <div
-                  v-if="globalPrunerConfig"
-                  class="flex h-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-slate-800/50"
-                >
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm text-gray-800 dark:text-gray-100">
-                      {{ t('apiProxy.prunerTitle', 'Global Context Pruner') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{
-                        t(
-                          'apiProxy.prunerDesc',
-                          'Controls the API proxy pruner for proxied /v1 requests. Blue chat may still skip pruning per request when context pressure is low.'
-                        )
-                      }}
-                    </div>
-                  </div>
-                  <button
-                    data-testid="proxy-pruner-switch"
-                    type="button"
-                    role="switch"
-                    :aria-checked="globalPrunerEnabled"
-                    :disabled="globalPrunerSaving"
-                    class="relative mt-0.5 inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                    :class="
-                      globalPrunerEnabled
-                        ? 'bg-green-600 dark:bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="handleGlobalPrunerEnabledChange(!globalPrunerEnabled)"
-                  >
-                    <span
-                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="globalPrunerEnabled ? 'translate-x-5' : 'translate-x-0'"
-                    />
-                  </button>
-                </div>
-
-                <div
-                  class="flex h-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-slate-800/50"
-                >
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm text-gray-800 dark:text-gray-100">
-                      {{
-                        t(
-                          'settings.smallModel.mediaIntent',
-                          'Media Generation Scenario Recognition'
-                        )
-                      }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{
-                        t(
-                          'settings.smallModel.irMediaIntentDesc',
-                          'Detects media-generation intent to route requests more accurately.'
-                        )
-                      }}
-                    </div>
-                  </div>
-                  <button
-                    data-testid="small-model-media-intent-switch"
-                    type="button"
-                    role="switch"
-                    :aria-checked="settingsStore.smallModelMediaIntentEnabled"
-                    :disabled="smallModelSaving"
-                    class="relative mt-0.5 inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                    :class="
-                      settingsStore.smallModelMediaIntentEnabled
-                        ? 'bg-green-600 dark:bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="
-                      handleSmallModelMediaIntentEnabledChange(
-                        !settingsStore.smallModelMediaIntentEnabled
-                      )
-                    "
-                  >
-                    <span
-                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="
-                        settingsStore.smallModelMediaIntentEnabled
-                          ? 'translate-x-5'
-                          : 'translate-x-0'
-                      "
-                    />
-                  </button>
-                </div>
-
-                <div
-                  class="flex h-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-slate-800/50"
-                >
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm text-gray-800 dark:text-gray-100">
-                      {{
-                        t('settings.smallModel.irOfflineFallbackTitle', 'Offline Local Fallback')
-                      }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{
-                        t(
-                          'settings.smallModel.irOfflineFallbackDesc',
-                          'When model fallback is needed, answer from local context recall first.'
-                        )
-                      }}
-                    </div>
-                  </div>
-                  <button
-                    data-testid="offline-ir-fallback-switch"
-                    type="button"
-                    role="switch"
-                    :aria-checked="settingsStore.offlineIRFallbackEnabled"
-                    :disabled="smallModelSaving"
-                    class="relative mt-0.5 inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                    :class="
-                      settingsStore.offlineIRFallbackEnabled
-                        ? 'bg-green-600 dark:bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="
-                      handleOfflineIRFallbackEnabledChange(!settingsStore.offlineIRFallbackEnabled)
-                    "
-                  >
-                    <span
-                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="
-                        settingsStore.offlineIRFallbackEnabled ? 'translate-x-5' : 'translate-x-0'
-                      "
-                    />
-                  </button>
-                </div>
-
-                <div
-                  class="flex h-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-slate-800/50"
-                >
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm text-gray-800 dark:text-gray-100">
-                      {{ t('settings.smallModel.irFeatureHintTitle', 'Feature Hint Detection') }}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{
-                        t('settings.smallModel.irFeatureHintDesc', {
-                          deepResearch: te('ui.deepResearchTitle')
-                            ? t('ui.deepResearchTitle')
-                            : 'Deep Research',
-                          agentMode: t('chat.taskLoop'),
-                        })
-                      }}
-                    </div>
-                  </div>
-                  <button
-                    data-testid="feature-intent-ir-switch"
-                    type="button"
-                    role="switch"
-                    :aria-checked="settingsStore.featureIntentIREnabled"
-                    :disabled="smallModelSaving"
-                    class="relative mt-0.5 inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                    :class="
-                      settingsStore.featureIntentIREnabled
-                        ? 'bg-green-600 dark:bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="
-                      handleFeatureIntentIREnabledChange(!settingsStore.featureIntentIREnabled)
-                    "
-                  >
-                    <span
-                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="
-                        settingsStore.featureIntentIREnabled ? 'translate-x-5' : 'translate-x-0'
-                      "
-                    />
-                  </button>
-                </div>
               </div>
             </div>
           </section>

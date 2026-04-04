@@ -122,8 +122,6 @@ type SummaryTone = 'safe' | 'warn' | 'danger' | 'neutral'
 const protectedSkillStoreSourceIDs = new Set([
   'tencent-skillhub',
   'github-skill-md',
-  'github-claude-md',
-  'github-agent-md',
   'clawhub',
   'skillhub-club',
   'skillstack',
@@ -250,7 +248,7 @@ const sourceImportInstallSkillName = computed(() => {
   return (
     result.skill?.name?.trim() ||
     result.skill?.id?.trim() ||
-    marketplaceText('sourceImport.installResultTitle', 'Install result')
+    marketplaceText('sourceImport.installResultHeading', 'Install result')
   )
 })
 const sourceImportInstallMessage = computed(() => {
@@ -267,6 +265,37 @@ const sourceImportInstallMessage = computed(() => {
 const sourceImportInstallWarnings = computed(() =>
   (sourceImportInstallResult.value?.warnings ?? []).map(localizeInstallWarning)
 )
+const sourceImportPreviewTypeLabel = computed(() => {
+  const preview = sourceImportPreview.value
+  if (!preview) return marketplaceText('sourceImport.sourceType', 'Source')
+  if (preview.kind === 'source') {
+    return sourceImportTypeLabel(sourceImportSuggestedSource.value?.type)
+  }
+  if (preview.kind === 'seed') {
+    return sourceImportTypeLabel(preview.seed_type)
+  }
+  return marketplaceText('sourceImport.sourceType', 'Source')
+})
+const sourceImportPreviewMessage = computed(() => {
+  const preview = sourceImportPreview.value
+  if (!preview) return ''
+  if (preview.kind === 'source') {
+    return marketplaceText(
+      'sourceImport.sourcePreviewMessage',
+      'This URL can be saved as a reusable marketplace source.'
+    )
+  }
+  if (preview.kind === 'seed') {
+    return marketplaceText(
+      'sourceImport.seedPreviewMessage',
+      'This looks like a one-off import candidate rather than a long-lived source.'
+    )
+  }
+  return marketplaceText(
+    'sourceImport.unsupportedPreviewMessage',
+    'We could not classify this input as a supported marketplace source.'
+  )
+})
 const catalogCount = computed(() => totalSkills.value || skills.value.length)
 const isInitialCatalogLoad = computed(
   () =>
@@ -779,6 +808,28 @@ function sourceOptionBrand(
   option?: { value?: string; label?: string } | null
 ): MarketplaceSourceBrand | null {
   return resolveMarketplaceSourceBrandFromCandidates([option?.value, option?.label])
+}
+
+function sourceImportTypeLabel(value?: string | null): string {
+  const normalized = trimMarketplaceSourceToken(value).toLowerCase()
+  switch (normalized) {
+    case 'lightmake_api':
+      return marketplaceText('sourceImport.typeApiCatalog', 'API catalog')
+    case 'html_catalog':
+      return marketplaceText('sourceImport.typeHtmlCatalog', 'HTML catalog')
+    case 'seed_page':
+      return marketplaceText('sourceImport.typeDiscoveryPage', 'Discovery page')
+    case 'github_code_search':
+      return marketplaceText('sourceImport.typeGithubSearch', 'GitHub search')
+    case 'github_repo':
+      return marketplaceText('sourceImport.typeGithubRepo', 'GitHub repository')
+    case 'skill_url':
+      return marketplaceText('sourceImport.typeSkillUrl', 'Direct skill URL')
+    default:
+      return (
+        trimMarketplaceSourceToken(value) || marketplaceText('sourceImport.sourceType', 'Source')
+      )
+  }
 }
 
 function sourceBrandAssetUrl(brand?: MarketplaceSourceBrand | null): string {
@@ -2745,8 +2796,8 @@ onBeforeUnmount(() => {
           >
             {{
               showSourceImport
-                ? marketplaceText('actions.closeSourceImport', 'Close source import')
-                : marketplaceText('actions.addSource', 'Add source')
+                ? commonText('close', 'Close')
+                : skillStoreText('actions.addSource', 'Add source')
             }}
           </button>
         </div>
@@ -2846,14 +2897,14 @@ onBeforeUnmount(() => {
               </div>
               <div class="configured-source-card__actions">
                 <span class="meta-chip meta-chip-soft">
-                  {{ source.type || marketplaceText('sourceImport.sourceType', 'source') }}
+                  {{ sourceImportTypeLabel(source.type) }}
                 </span>
                 <span
                   v-if="isProtectedSkillStoreSource(source.id)"
                   :data-testid="`source-protected-${source.id}`"
                   class="meta-chip meta-chip-soft"
                 >
-                  {{ marketplaceText('sourceImport.builtin', 'Built-in') }}
+                  {{ skillStoreText('status.builtin', 'Built-in') }}
                 </span>
                 <button
                   v-else
@@ -2865,7 +2916,7 @@ onBeforeUnmount(() => {
                 >
                   {{
                     sourceRemovingId === source.id
-                      ? marketplaceText('sourceImport.removing', 'Removing...')
+                      ? commonText('loading', 'Loading')
                       : commonText('remove', 'Remove')
                   }}
                 </button>
@@ -2880,12 +2931,7 @@ onBeforeUnmount(() => {
             type="url"
             class="source-import-input"
             data-testid="source-import-input"
-            :placeholder="
-              marketplaceText(
-                'sourceImport.placeholder',
-                'https://catalog.example.com/skills or https://github.com/topics/claude-code'
-              )
-            "
+            placeholder="https://github.com/owner/repo  |  https://example.com/catalog"
           />
           <div class="source-import-panel__actions">
             <button
@@ -2911,8 +2957,8 @@ onBeforeUnmount(() => {
             >
               {{
                 sourceImportSaving
-                  ? marketplaceText('sourceImport.adding', 'Adding...')
-                  : marketplaceText('sourceImport.confirm', 'Add source')
+                  ? commonText('loading', 'Loading')
+                  : skillStoreText('actions.addSource', 'Add source')
               }}
             </button>
             <button
@@ -2925,8 +2971,8 @@ onBeforeUnmount(() => {
             >
               {{
                 sourceImportInstalling
-                  ? marketplaceText('sourceImport.installingSeed', 'Installing...')
-                  : marketplaceText('sourceImport.installSeed', 'Install seed')
+                  ? commonText('loading', 'Loading')
+                  : skillStoreText('actions.installFromURL', 'Install from URL')
               }}
             </button>
           </div>
@@ -2943,18 +2989,12 @@ onBeforeUnmount(() => {
         >
           <div class="source-import-preview__headline">
             <strong>{{ sourceImportSummaryLabel }}</strong>
-            <span class="meta-chip meta-chip-soft">
-              {{
-                sourceImportPreview.kind === 'source'
-                  ? sourceImportSuggestedSource?.type || 'source'
-                  : sourceImportPreview.seed_type || sourceImportPreview.kind
-              }}
-            </span>
+            <span class="meta-chip meta-chip-soft">{{ sourceImportPreviewTypeLabel }}</span>
           </div>
           <p v-if="sourceImportStatusMessage" class="source-import-preview__status">
             {{ sourceImportStatusMessage }}
           </p>
-          <p>{{ sourceImportPreview.message }}</p>
+          <p>{{ sourceImportPreviewMessage }}</p>
           <p
             v-if="sourceImportPreview.kind === 'seed' && sourceImportPreview.seed_value"
             class="source-import-preview__seed"
@@ -2964,7 +3004,9 @@ onBeforeUnmount(() => {
                 'sourceImport.seedHint',
                 'This looks like a one-off seed ({type}: {value}) and should not be saved as a long-lived source.',
                 {
-                  type: sourceImportPreview.seed_type || 'seed',
+                  type: sourceImportTypeLabel(
+                    sourceImportPreview.seed_type || sourceImportPreview.kind
+                  ),
                   value: sourceImportPreview.seed_value,
                 }
               )
@@ -4316,6 +4358,15 @@ onBeforeUnmount(() => {
       color-mix(in srgb, var(--panel-bg-strong) 92%, white 2%) 0%,
       var(--panel-bg) 100%
     );
+}
+
+[data-testid='source-import-toggle'],
+[data-testid='source-import-toggle']:hover:not(:disabled),
+.source-import-panel .btn-primary,
+.source-import-panel .btn-primary:hover:not(:disabled),
+.source-import-panel .btn-ghost,
+.source-import-panel .btn-ghost:hover:not(:disabled) {
+  box-shadow: none;
 }
 
 .source-import-panel__copy,

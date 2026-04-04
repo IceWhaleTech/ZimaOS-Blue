@@ -308,6 +308,18 @@ func TestGet_DefaultDirectoryWhitelistIncludedInResponse(t *testing.T) {
 	if len(settings.DirectoryWhitelist) != 1 || settings.DirectoryWhitelist[0].Path != defaultDirectoryWhitelistPath {
 		t.Fatalf("directory_whitelist = %v, want [%s]", settings.DirectoryWhitelist, defaultDirectoryWhitelistPath)
 	}
+	if settings.SmallModelContextPruneEnabled == nil || !*settings.SmallModelContextPruneEnabled {
+		t.Fatalf("small_model_context_prune_enabled = %v, want true", settings.SmallModelContextPruneEnabled)
+	}
+	if settings.SmallModelMediaIntentEnabled == nil || !*settings.SmallModelMediaIntentEnabled {
+		t.Fatalf("small_model_media_intent_enabled = %v, want true", settings.SmallModelMediaIntentEnabled)
+	}
+	if settings.OfflineIRFallbackEnabled == nil || !*settings.OfflineIRFallbackEnabled {
+		t.Fatalf("offline_ir_fallback_enabled = %v, want true", settings.OfflineIRFallbackEnabled)
+	}
+	if settings.FeatureIntentIREnabled == nil || !*settings.FeatureIntentIREnabled {
+		t.Fatalf("feature_intent_ir_enabled = %v, want true", settings.FeatureIntentIREnabled)
+	}
 }
 
 func TestGetEffectiveSkillRerankEnabled(t *testing.T) {
@@ -1061,20 +1073,23 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	if got := h.GetContextCompressionMode(); got != "auto" {
 		t.Fatalf("GetContextCompressionMode() = %q, want %q", got, "auto")
 	}
-	if h.GetSmallModelSummaryEnabled() || h.GetSmallModelContextCompressEnabled() || h.GetSmallModelDocExtractEnabled() || h.GetSmallModelRerankEnabled() || h.GetSmallModelContextPruneEnabled() {
+	if h.GetSmallModelSummaryEnabled() || h.GetSmallModelContextCompressEnabled() || h.GetSmallModelDocExtractEnabled() || h.GetSmallModelRerankEnabled() {
 		t.Fatal("expected phase1 enhancement switches default false")
 	}
-	if h.GetSmallModelMediaIntentEnabled() {
-		t.Fatal("expected media intent switch default false")
+	if !h.GetSmallModelContextPruneEnabled() {
+		t.Fatal("expected context prune switch default true")
+	}
+	if !h.GetSmallModelMediaIntentEnabled() {
+		t.Fatal("expected media intent switch default true")
 	}
 	if h.GetSmallModelRouteImageQAEnabled() || h.GetSmallModelRouteShortQAEnabled() {
 		t.Fatal("expected image-qa/short-qa route switches default false")
 	}
-	if h.GetOfflineIRFallbackEnabled() {
-		t.Fatal("expected offline IR fallback switch default false")
+	if !h.GetOfflineIRFallbackEnabled() {
+		t.Fatal("expected offline IR fallback switch default true")
 	}
-	if h.GetFeatureIntentIREnabled() {
-		t.Fatal("expected feature intent IR switch default false")
+	if !h.GetFeatureIntentIREnabled() {
+		t.Fatal("expected feature intent IR switch default true")
 	}
 	if h.GetDeepResearchV2Enabled() {
 		t.Fatal("expected deep research v2 switch default false")

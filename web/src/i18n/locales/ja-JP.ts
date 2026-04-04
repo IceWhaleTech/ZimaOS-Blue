@@ -4762,19 +4762,11 @@ export default mergeHarnessLocale('ja-JP', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub 上の SKILL.md、CLAUDE.md、AGENT.md を検索するリポジトリソースです。',
+          description: 'GitHub 上の SKILL.md を検索するリポジトリソースです。',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'SKILL.md を公開しているリポジトリ向けの GitHub コード検索です。',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: 'CLAUDE.md を公開しているリポジトリ向けの GitHub コード検索です。',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: 'AGENT.md を公開しているリポジトリ向けの GitHub コード検索です。',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5553,6 +5545,7 @@ export default mergeHarnessLocale('ja-JP', {
     addFailed: 'プロバイダーの追加に失敗しました',
     retry: '再試行',
     errorCleared: 'エラーがクリアされました。もう一度お試しください',
+    advancedOptions: '詳細オプション',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

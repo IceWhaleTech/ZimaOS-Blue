@@ -78,8 +78,10 @@ describe('settings store - small model integration', () => {
     expect(store.smallModelRouteShortQAEnabled).toBe(false)
     expect(store.noLLMDegradeMode).toBe('deepresearch')
     expect(store.smallModelUnavailablePolicy).toBe('ir_first')
-    expect(store.offlineIRFallbackEnabled).toBe(false)
-    expect(store.featureIntentIREnabled).toBe(false)
+    expect(store.smallModelContextPruneEnabled).toBe(true)
+    expect(store.smallModelMediaIntentEnabled).toBe(true)
+    expect(store.offlineIRFallbackEnabled).toBe(true)
+    expect(store.featureIntentIREnabled).toBe(true)
   })
 
   it('migrates legacy maxTokens 2048 to 16384 once', () => {

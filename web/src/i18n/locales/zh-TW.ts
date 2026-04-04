@@ -4599,19 +4599,11 @@ export default mergeHarnessLocale('zh-TW', {
         },
         github: {
           label: 'GitHub',
-          description: '用於搜尋 GitHub 上 SKILL.md、CLAUDE.md 與 AGENT.md 檔案的儲存庫來源。',
+          description: '用於搜尋 GitHub 上 SKILL.md 檔案的儲存庫來源。',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: '搜尋發佈 SKILL.md 的 GitHub 儲存庫。',
-        },
-        githubClaudeMd: {
-          label: 'GitHub CLAUDE.md',
-          description: '搜尋發佈 CLAUDE.md 的 GitHub 儲存庫。',
-        },
-        githubAgentMd: {
-          label: 'GitHub AGENT.md',
-          description: '搜尋發佈 AGENT.md 的 GitHub 儲存庫。',
         },
         clawhub: {
           label: 'ClawHub',
@@ -5398,6 +5390,7 @@ export default mergeHarnessLocale('zh-TW', {
     addFailed: '新增提供商失敗',
     retry: '重試',
     errorCleared: '錯誤已清除，您可以再試一次',
+    advancedOptions: '進階選項',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

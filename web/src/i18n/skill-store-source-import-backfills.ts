@@ -1,0 +1,849 @@
+import type { LocaleKey } from './locale-catalog'
+
+export type SkillStoreSourceImportTerms = {
+  title: string
+  description: string
+  configuredTitle: string
+  configuredHint: string
+  preview: string
+  analyzing: string
+  seedDetected: string
+  unsupportedDetected: string
+  installResultHeading: string
+  installResultDismiss: string
+  sourceType: string
+  sourcePreviewMessage: string
+  seedPreviewMessage: string
+  unsupportedPreviewMessage: string
+  seedHint: string
+  alreadyConfigured: string
+  builtinManaged: string
+  typeApiCatalog: string
+  typeHtmlCatalog: string
+  typeDiscoveryPage: string
+  typeGithubSearch: string
+  typeGithubRepo: string
+  typeSkillUrl: string
+}
+
+const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportTerms> = {
+  'ca-ES': {
+    title: "Importa una font del mercat des d'una URL",
+    description:
+      "Enganxa l'URL d'una botiga o catàleg. Inferirem si s'ha de desar com a font reutilitzable o tractar com una llavor puntual.",
+    configuredTitle: 'Fonts configurades',
+    configuredHint:
+      'Les fonts integrades continuen protegides. Aquí pots eliminar les fonts personalitzades.',
+    preview: 'Analitza la font',
+    analyzing: 'Analitzant...',
+    seedDetected: 'S’ha detectat una llavor puntual',
+    unsupportedDetected: 'No s’ha pogut classificar la font',
+    installResultHeading: "Resultat de la instal·lació",
+    installResultDismiss: 'Tanca el resultat de la instal·lació',
+    sourceType: 'Font',
+    sourcePreviewMessage: 'Aquesta URL es pot desar com una font reutilitzable del mercat.',
+    seedPreviewMessage:
+      'Això sembla un candidat d’importació puntual i no una font permanent.',
+    unsupportedPreviewMessage:
+      'No hem pogut classificar aquesta entrada com una font de mercat compatible.',
+    seedHint:
+      'Això sembla una llavor puntual ({type}: {value}) i no s’hauria de desar com una font permanent.',
+    alreadyConfigured: 'Ja configurada: {name}',
+    builtinManaged: 'La font integrada ja està gestionada: {name}',
+    typeApiCatalog: 'Catàleg API',
+    typeHtmlCatalog: 'Catàleg HTML',
+    typeDiscoveryPage: 'Pàgina de descoberta',
+    typeGithubSearch: 'Cerca de GitHub',
+    typeGithubRepo: 'Repositori de GitHub',
+    typeSkillUrl: 'URL directa de skill',
+  },
+  'cs-CZ': {
+    title: 'Import zdroje tržiště z URL',
+    description:
+      'Vložte URL obchodu nebo katalogu. Určíme, zda ji uložit jako znovupoužitelný zdroj, nebo ji brát jako jednorázový seed.',
+    configuredTitle: 'Nakonfigurované zdroje',
+    configuredHint:
+      'Vestavěné zdroje zůstávají chráněné. Vlastní zdroje zde můžete odebrat.',
+    preview: 'Analyzovat zdroj',
+    analyzing: 'Analyzuji...',
+    seedDetected: 'Byl zjištěn jednorázový seed',
+    unsupportedDetected: 'Zdroj se nepodařilo klasifikovat',
+    installResultHeading: 'Výsledek instalace',
+    installResultDismiss: 'Zavřít výsledek instalace',
+    sourceType: 'Zdroj',
+    sourcePreviewMessage: 'Tuto URL lze uložit jako znovupoužitelný zdroj tržiště.',
+    seedPreviewMessage: 'Vypadá to jako jednorázový import, ne jako dlouhodobý zdroj.',
+    unsupportedPreviewMessage:
+      'Tento vstup se nepodařilo klasifikovat jako podporovaný zdroj tržiště.',
+    seedHint:
+      'Vypadá to jako jednorázový seed ({type}: {value}) a neměl by být ukládán jako dlouhodobý zdroj.',
+    alreadyConfigured: 'Již nakonfigurováno: {name}',
+    builtinManaged: 'Vestavěný zdroj je již spravován: {name}',
+    typeApiCatalog: 'API katalog',
+    typeHtmlCatalog: 'HTML katalog',
+    typeDiscoveryPage: 'Objevovací stránka',
+    typeGithubSearch: 'Vyhledávání na GitHubu',
+    typeGithubRepo: 'Repozitář GitHub',
+    typeSkillUrl: 'Přímá URL skillu',
+  },
+  'da-DK': {
+    title: 'Importer en markedskilde fra URL',
+    description:
+      'Indsæt en butiks- eller katalog-URL. Vi vurderer, om den skal gemmes som en genanvendelig kilde eller behandles som et engangs-seed.',
+    configuredTitle: 'Konfigurerede kilder',
+    configuredHint:
+      'Indbyggede kilder forbliver beskyttede. Du kan fjerne brugerdefinerede kilder her.',
+    preview: 'Analyser kilde',
+    analyzing: 'Analyserer...',
+    seedDetected: 'Engangs-seed fundet',
+    unsupportedDetected: 'Kunne ikke klassificere kilden',
+    installResultHeading: 'Installationsresultat',
+    installResultDismiss: 'Luk installationsresultat',
+    sourceType: 'Kilde',
+    sourcePreviewMessage: 'Denne URL kan gemmes som en genanvendelig markedskilde.',
+    seedPreviewMessage: 'Dette ligner et engangsimportemne snarere end en permanent kilde.',
+    unsupportedPreviewMessage:
+      'Vi kunne ikke klassificere dette input som en understøttet markedskilde.',
+    seedHint:
+      'Dette ligner et engangs-seed ({type}: {value}) og bør ikke gemmes som en permanent kilde.',
+    alreadyConfigured: 'Allerede konfigureret: {name}',
+    builtinManaged: 'Indbygget kilde administreres allerede: {name}',
+    typeApiCatalog: 'API-katalog',
+    typeHtmlCatalog: 'HTML-katalog',
+    typeDiscoveryPage: 'Opdagelsesside',
+    typeGithubSearch: 'GitHub-søgning',
+    typeGithubRepo: 'GitHub-repositorium',
+    typeSkillUrl: 'Direkte skill-URL',
+  },
+  'de-DE': {
+    title: 'Marktplatzquelle per URL importieren',
+    description:
+      'Füge eine Shop- oder Katalog-URL ein. Wir erkennen, ob sie als wiederverwendbare Quelle gespeichert oder als einmaliger Seed behandelt werden sollte.',
+    configuredTitle: 'Konfigurierte Quellen',
+    configuredHint:
+      'Integrierte Quellen bleiben geschützt. Eigene Quellen kannst du hier entfernen.',
+    preview: 'Quelle analysieren',
+    analyzing: 'Analysiere...',
+    seedDetected: 'Einmaliger Seed erkannt',
+    unsupportedDetected: 'Quelle konnte nicht eingeordnet werden',
+    installResultHeading: 'Installationsergebnis',
+    installResultDismiss: 'Installationsergebnis schließen',
+    sourceType: 'Quelle',
+    sourcePreviewMessage: 'Diese URL kann als wiederverwendbare Marktplatzquelle gespeichert werden.',
+    seedPreviewMessage:
+      'Das sieht nach einem einmaligen Importkandidaten aus und nicht nach einer dauerhaften Quelle.',
+    unsupportedPreviewMessage:
+      'Diese Eingabe konnte nicht als unterstützte Marktplatzquelle eingeordnet werden.',
+    seedHint:
+      'Das sieht nach einem einmaligen Seed ({type}: {value}) aus und sollte nicht als dauerhafte Quelle gespeichert werden.',
+    alreadyConfigured: 'Bereits konfiguriert: {name}',
+    builtinManaged: 'Integrierte Quelle wird bereits verwaltet: {name}',
+    typeApiCatalog: 'API-Katalog',
+    typeHtmlCatalog: 'HTML-Katalog',
+    typeDiscoveryPage: 'Entdeckungsseite',
+    typeGithubSearch: 'GitHub-Suche',
+    typeGithubRepo: 'GitHub-Repository',
+    typeSkillUrl: 'Direkte Skill-URL',
+  },
+  'el-GR': {
+    title: 'Εισαγωγή πηγής αγοράς από URL',
+    description:
+      'Επικολλήστε ένα URL καταστήματος ή καταλόγου. Θα εκτιμήσουμε αν πρέπει να αποθηκευτεί ως επαναχρησιμοποιήσιμη πηγή ή να αντιμετωπιστεί ως seed μίας χρήσης.',
+    configuredTitle: 'Διαμορφωμένες πηγές',
+    configuredHint:
+      'Οι ενσωματωμένες πηγές παραμένουν προστατευμένες. Μπορείτε να αφαιρέσετε εδώ τις προσαρμοσμένες πηγές.',
+    preview: 'Ανάλυση πηγής',
+    analyzing: 'Ανάλυση...',
+    seedDetected: 'Εντοπίστηκε seed μίας χρήσης',
+    unsupportedDetected: 'Δεν ήταν δυνατή η ταξινόμηση της πηγής',
+    installResultHeading: 'Αποτέλεσμα εγκατάστασης',
+    installResultDismiss: 'Κλείσιμο αποτελέσματος εγκατάστασης',
+    sourceType: 'Πηγή',
+    sourcePreviewMessage:
+      'Αυτό το URL μπορεί να αποθηκευτεί ως επαναχρησιμοποιήσιμη πηγή αγοράς.',
+    seedPreviewMessage:
+      'Αυτό μοιάζει με υποψήφια εφάπαξ εισαγωγή και όχι με μόνιμη πηγή.',
+    unsupportedPreviewMessage:
+      'Δεν μπορέσαμε να ταξινομήσουμε αυτή την είσοδο ως υποστηριζόμενη πηγή αγοράς.',
+    seedHint:
+      'Αυτό μοιάζει με seed μίας χρήσης ({type}: {value}) και δεν πρέπει να αποθηκευτεί ως μόνιμη πηγή.',
+    alreadyConfigured: 'Έχει ήδη ρυθμιστεί: {name}',
+    builtinManaged: 'Η ενσωματωμένη πηγή ήδη διαχειρίζεται: {name}',
+    typeApiCatalog: 'Κατάλογος API',
+    typeHtmlCatalog: 'Κατάλογος HTML',
+    typeDiscoveryPage: 'Σελίδα ανακάλυψης',
+    typeGithubSearch: 'Αναζήτηση GitHub',
+    typeGithubRepo: 'Αποθετήριο GitHub',
+    typeSkillUrl: 'Άμεσο URL skill',
+  },
+  'en-GB': {
+    title: 'Import a marketplace source from URL',
+    description:
+      'Paste a store or catalogue URL. We will infer whether it should be saved as a reusable source or treated as a one-off seed.',
+    configuredTitle: 'Configured sources',
+    configuredHint:
+      'Built-in sources stay protected. You can remove custom sources here.',
+    preview: 'Analyse source',
+    analyzing: 'Analysing...',
+    seedDetected: 'Detected one-off seed',
+    unsupportedDetected: 'Unable to classify source',
+    installResultHeading: 'Install result',
+    installResultDismiss: 'Dismiss install result',
+    sourceType: 'Source',
+    sourcePreviewMessage: 'This URL can be saved as a reusable marketplace source.',
+    seedPreviewMessage:
+      'This looks like a one-off import candidate rather than a long-lived source.',
+    unsupportedPreviewMessage:
+      'We could not classify this input as a supported marketplace source.',
+    seedHint:
+      'This looks like a one-off seed ({type}: {value}) and should not be saved as a long-lived source.',
+    alreadyConfigured: 'Already configured: {name}',
+    builtinManaged: 'Built-in source already managed: {name}',
+    typeApiCatalog: 'API catalogue',
+    typeHtmlCatalog: 'HTML catalogue',
+    typeDiscoveryPage: 'Discovery page',
+    typeGithubSearch: 'GitHub search',
+    typeGithubRepo: 'GitHub repository',
+    typeSkillUrl: 'Direct skill URL',
+  },
+  'en-US': {
+    title: 'Import a marketplace source from URL',
+    description:
+      'Paste a store or catalog URL. We will infer whether it should be saved as a reusable source or treated as a one-off seed.',
+    configuredTitle: 'Configured sources',
+    configuredHint:
+      'Built-in sources stay protected. You can remove custom sources here.',
+    preview: 'Analyze source',
+    analyzing: 'Analyzing...',
+    seedDetected: 'Detected one-off seed',
+    unsupportedDetected: 'Unable to classify source',
+    installResultHeading: 'Install result',
+    installResultDismiss: 'Dismiss install result',
+    sourceType: 'Source',
+    sourcePreviewMessage: 'This URL can be saved as a reusable marketplace source.',
+    seedPreviewMessage:
+      'This looks like a one-off import candidate rather than a long-lived source.',
+    unsupportedPreviewMessage:
+      'We could not classify this input as a supported marketplace source.',
+    seedHint:
+      'This looks like a one-off seed ({type}: {value}) and should not be saved as a long-lived source.',
+    alreadyConfigured: 'Already configured: {name}',
+    builtinManaged: 'Built-in source already managed: {name}',
+    typeApiCatalog: 'API catalog',
+    typeHtmlCatalog: 'HTML catalog',
+    typeDiscoveryPage: 'Discovery page',
+    typeGithubSearch: 'GitHub search',
+    typeGithubRepo: 'GitHub repository',
+    typeSkillUrl: 'Direct skill URL',
+  },
+  'es-ES': {
+    title: 'Importar una fuente del marketplace desde una URL',
+    description:
+      'Pega una URL de tienda o catálogo. Inferiremos si debe guardarse como una fuente reutilizable o tratarse como una semilla puntual.',
+    configuredTitle: 'Fuentes configuradas',
+    configuredHint:
+      'Las fuentes integradas siguen protegidas. Aquí puedes eliminar las fuentes personalizadas.',
+    preview: 'Analizar fuente',
+    analyzing: 'Analizando...',
+    seedDetected: 'Se detectó una semilla puntual',
+    unsupportedDetected: 'No se pudo clasificar la fuente',
+    installResultHeading: 'Resultado de la instalación',
+    installResultDismiss: 'Cerrar resultado de la instalación',
+    sourceType: 'Fuente',
+    sourcePreviewMessage:
+      'Esta URL puede guardarse como una fuente reutilizable del marketplace.',
+    seedPreviewMessage:
+      'Esto parece un candidato de importación puntual y no una fuente permanente.',
+    unsupportedPreviewMessage:
+      'No pudimos clasificar esta entrada como una fuente de marketplace compatible.',
+    seedHint:
+      'Esto parece una semilla puntual ({type}: {value}) y no debería guardarse como una fuente permanente.',
+    alreadyConfigured: 'Ya configurada: {name}',
+    builtinManaged: 'La fuente integrada ya está gestionada: {name}',
+    typeApiCatalog: 'Catálogo API',
+    typeHtmlCatalog: 'Catálogo HTML',
+    typeDiscoveryPage: 'Página de descubrimiento',
+    typeGithubSearch: 'Búsqueda de GitHub',
+    typeGithubRepo: 'Repositorio de GitHub',
+    typeSkillUrl: 'URL directa de skill',
+  },
+  'fr-FR': {
+    title: 'Importer une source du marché depuis une URL',
+    description:
+      "Collez l'URL d'une boutique ou d'un catalogue. Nous déterminerons si elle doit être enregistrée comme source réutilisable ou traitée comme une graine ponctuelle.",
+    configuredTitle: 'Sources configurées',
+    configuredHint:
+      'Les sources intégrées restent protégées. Vous pouvez supprimer ici les sources personnalisées.',
+    preview: 'Analyser la source',
+    analyzing: 'Analyse...',
+    seedDetected: 'Graine ponctuelle détectée',
+    unsupportedDetected: 'Impossible de classer la source',
+    installResultHeading: "Résultat de l'installation",
+    installResultDismiss: "Fermer le résultat de l'installation",
+    sourceType: 'Source',
+    sourcePreviewMessage:
+      'Cette URL peut être enregistrée comme source de marché réutilisable.',
+    seedPreviewMessage:
+      'Cela ressemble à un import ponctuel plutôt qu’à une source durable.',
+    unsupportedPreviewMessage:
+      'Nous n’avons pas pu classer cette entrée comme source de marché prise en charge.',
+    seedHint:
+      'Cela ressemble à une graine ponctuelle ({type}: {value}) et ne doit pas être enregistrée comme source durable.',
+    alreadyConfigured: 'Déjà configurée : {name}',
+    builtinManaged: 'La source intégrée est déjà gérée : {name}',
+    typeApiCatalog: 'Catalogue API',
+    typeHtmlCatalog: 'Catalogue HTML',
+    typeDiscoveryPage: 'Page de découverte',
+    typeGithubSearch: 'Recherche GitHub',
+    typeGithubRepo: 'Dépôt GitHub',
+    typeSkillUrl: 'URL directe du skill',
+  },
+  'ga-IE': {
+    title: 'Iompórtáil foinse mhargaidh ó URL',
+    description:
+      'Greamaigh URL siopa nó catalóige. Aithneoimid ar cheart í a shábháil mar fhoinse in-athúsáidte nó a láimhseáil mar shíol aonuaire.',
+    configuredTitle: 'Foinsí cumraithe',
+    configuredHint:
+      'Fanann foinsí ionsuite cosanta. Is féidir leat foinsí saincheaptha a bhaint anseo.',
+    preview: 'Déan anailís ar an bhfoinse',
+    analyzing: 'Ag déanamh anailíse...',
+    seedDetected: 'Braitear síol aonuaire',
+    unsupportedDetected: 'Níorbh fhéidir an fhoinse a rangú',
+    installResultHeading: 'Toradh na suiteála',
+    installResultDismiss: 'Dún toradh na suiteála',
+    sourceType: 'Foinse',
+    sourcePreviewMessage:
+      'Is féidir an URL seo a shábháil mar fhoinse mhargaidh in-athúsáidte.',
+    seedPreviewMessage:
+      'Is cosúil gur iarrthóir iompórtála aonuaire é seo seachas foinse bhuan.',
+    unsupportedPreviewMessage:
+      'Níorbh fhéidir linn an t-ionchur seo a rangú mar fhoinse mhargaidh thacaithe.',
+    seedHint:
+      'Is cosúil gur síol aonuaire é seo ({type}: {value}) agus níor cheart é a shábháil mar fhoinse bhuan.',
+    alreadyConfigured: 'Cumraithe cheana: {name}',
+    builtinManaged: 'Tá an fhoinse ionsuite á bainistiú cheana: {name}',
+    typeApiCatalog: 'Catalóg API',
+    typeHtmlCatalog: 'Catalóg HTML',
+    typeDiscoveryPage: 'Leathanach aimsithe',
+    typeGithubSearch: 'Cuardach GitHub',
+    typeGithubRepo: 'Stór GitHub',
+    typeSkillUrl: 'URL scile díreach',
+  },
+  'hr-HR': {
+    title: 'Uvezi izvor trgovine iz URL-a',
+    description:
+      'Zalijepite URL trgovine ili kataloga. Procijenit ćemo treba li ga spremiti kao višekratni izvor ili tretirati kao jednokratni seed.',
+    configuredTitle: 'Konfigurirani izvori',
+    configuredHint:
+      'Ugrađeni izvori ostaju zaštićeni. Ovdje možete ukloniti prilagođene izvore.',
+    preview: 'Analiziraj izvor',
+    analyzing: 'Analiziram...',
+    seedDetected: 'Otkriven je jednokratni seed',
+    unsupportedDetected: 'Nije moguće klasificirati izvor',
+    installResultHeading: 'Rezultat instalacije',
+    installResultDismiss: 'Zatvori rezultat instalacije',
+    sourceType: 'Izvor',
+    sourcePreviewMessage: 'Ovaj URL može se spremiti kao višekratni izvor trgovine.',
+    seedPreviewMessage:
+      'Ovo izgleda kao kandidat za jednokratni uvoz, a ne kao trajni izvor.',
+    unsupportedPreviewMessage:
+      'Nismo mogli klasificirati ovaj unos kao podržani izvor trgovine.',
+    seedHint:
+      'Ovo izgleda kao jednokratni seed ({type}: {value}) i ne bi se smjelo spremati kao trajni izvor.',
+    alreadyConfigured: 'Već konfigurirano: {name}',
+    builtinManaged: 'Ugrađeni izvor je već pod upravljanjem: {name}',
+    typeApiCatalog: 'API katalog',
+    typeHtmlCatalog: 'HTML katalog',
+    typeDiscoveryPage: 'Stranica za otkrivanje',
+    typeGithubSearch: 'GitHub pretraga',
+    typeGithubRepo: 'GitHub repozitorij',
+    typeSkillUrl: 'Izravni URL skilla',
+  },
+  'hu-HU': {
+    title: 'Piactérforrás importálása URL-ből',
+    description:
+      'Illessz be egy bolt- vagy katalógus-URL-t. Megállapítjuk, hogy újrahasználható forrásként kell-e menteni, vagy egyszeri seedként kezelni.',
+    configuredTitle: 'Beállított források',
+    configuredHint:
+      'A beépített források védettek maradnak. Az egyéni forrásokat itt távolíthatod el.',
+    preview: 'Forrás elemzése',
+    analyzing: 'Elemzés...',
+    seedDetected: 'Egyszeri seed észlelve',
+    unsupportedDetected: 'A forrás nem sorolható be',
+    installResultHeading: 'Telepítési eredmény',
+    installResultDismiss: 'Telepítési eredmény bezárása',
+    sourceType: 'Forrás',
+    sourcePreviewMessage:
+      'Ez az URL újrahasználható piactérforrásként menthető.',
+    seedPreviewMessage:
+      'Ez inkább egyszeri importjelöltnek tűnik, nem hosszú távú forrásnak.',
+    unsupportedPreviewMessage:
+      'Ezt a bemenetet nem tudtuk támogatott piactérforrásként besorolni.',
+    seedHint:
+      'Ez egyszeri seednek tűnik ({type}: {value}), és nem szabad tartós forrásként menteni.',
+    alreadyConfigured: 'Már beállítva: {name}',
+    builtinManaged: 'A beépített forrás már kezelt: {name}',
+    typeApiCatalog: 'API-katalógus',
+    typeHtmlCatalog: 'HTML-katalógus',
+    typeDiscoveryPage: 'Felfedezőoldal',
+    typeGithubSearch: 'GitHub keresés',
+    typeGithubRepo: 'GitHub-tárhely',
+    typeSkillUrl: 'Közvetlen skill URL',
+  },
+  'it-IT': {
+    title: 'Importa una fonte del marketplace da URL',
+    description:
+      'Incolla un URL di store o catalogo. Capiremo se salvarlo come fonte riutilizzabile o trattarlo come seed una tantum.',
+    configuredTitle: 'Fonti configurate',
+    configuredHint:
+      'Le fonti integrate restano protette. Qui puoi rimuovere le fonti personalizzate.',
+    preview: 'Analizza fonte',
+    analyzing: 'Analisi in corso...',
+    seedDetected: 'Seed una tantum rilevato',
+    unsupportedDetected: 'Impossibile classificare la fonte',
+    installResultHeading: 'Risultato installazione',
+    installResultDismiss: 'Chiudi risultato installazione',
+    sourceType: 'Fonte',
+    sourcePreviewMessage:
+      'Questo URL può essere salvato come fonte marketplace riutilizzabile.',
+    seedPreviewMessage:
+      'Sembra un candidato di importazione una tantum, non una fonte permanente.',
+    unsupportedPreviewMessage:
+      'Non siamo riusciti a classificare questo input come fonte marketplace supportata.',
+    seedHint:
+      'Sembra un seed una tantum ({type}: {value}) e non dovrebbe essere salvato come fonte permanente.',
+    alreadyConfigured: 'Già configurata: {name}',
+    builtinManaged: 'La fonte integrata è già gestita: {name}',
+    typeApiCatalog: 'Catalogo API',
+    typeHtmlCatalog: 'Catalogo HTML',
+    typeDiscoveryPage: 'Pagina di scoperta',
+    typeGithubSearch: 'Ricerca GitHub',
+    typeGithubRepo: 'Repository GitHub',
+    typeSkillUrl: 'URL diretto della skill',
+  },
+  'ja-JP': {
+    title: 'URL からマーケットプレイスソースを取り込む',
+    description:
+      'ストアまたはカタログの URL を貼り付けてください。再利用可能なソースとして保存するか、一度きりのシードとして扱うかを判定します。',
+    configuredTitle: '設定済みソース',
+    configuredHint:
+      '組み込みソースは保護されたままです。ここではカスタムソースのみ削除できます。',
+    preview: 'ソースを解析',
+    analyzing: '解析中...',
+    seedDetected: '単発シードを検出',
+    unsupportedDetected: 'ソースを分類できません',
+    installResultHeading: 'インストール結果',
+    installResultDismiss: 'インストール結果を閉じる',
+    sourceType: 'ソース',
+    sourcePreviewMessage:
+      'この URL は再利用可能なマーケットプレイスソースとして保存できます。',
+    seedPreviewMessage:
+      'これは長期的なソースではなく、一度きりの取り込み候補のようです。',
+    unsupportedPreviewMessage:
+      'この入力を対応するマーケットプレイスソースとして分類できませんでした。',
+    seedHint:
+      'これは単発シード ({type}: {value}) のようであり、長期的なソースとして保存すべきではありません。',
+    alreadyConfigured: '設定済み: {name}',
+    builtinManaged: '組み込みソースはすでに管理されています: {name}',
+    typeApiCatalog: 'API カタログ',
+    typeHtmlCatalog: 'HTML カタログ',
+    typeDiscoveryPage: '発見ページ',
+    typeGithubSearch: 'GitHub 検索',
+    typeGithubRepo: 'GitHub リポジトリ',
+    typeSkillUrl: '直接 skill URL',
+  },
+  'ko-KR': {
+    title: 'URL에서 마켓플레이스 소스 가져오기',
+    description:
+      '스토어 또는 카탈로그 URL을 붙여넣으세요. 재사용 가능한 소스로 저장할지, 일회성 시드로 처리할지 판별합니다.',
+    configuredTitle: '구성된 소스',
+    configuredHint:
+      '내장 소스는 계속 보호됩니다. 여기서 사용자 지정 소스를 제거할 수 있습니다.',
+    preview: '소스 분석',
+    analyzing: '분석 중...',
+    seedDetected: '일회성 시드 감지',
+    unsupportedDetected: '소스를 분류할 수 없습니다',
+    installResultHeading: '설치 결과',
+    installResultDismiss: '설치 결과 닫기',
+    sourceType: '소스',
+    sourcePreviewMessage:
+      '이 URL은 재사용 가능한 마켓플레이스 소스로 저장할 수 있습니다.',
+    seedPreviewMessage:
+      '이 항목은 장기 소스라기보다 일회성 가져오기 후보로 보입니다.',
+    unsupportedPreviewMessage:
+      '이 입력을 지원되는 마켓플레이스 소스로 분류할 수 없습니다.',
+    seedHint:
+      '이 항목은 일회성 시드로 보이며 ({type}: {value}) 장기 소스로 저장하면 안 됩니다.',
+    alreadyConfigured: '이미 구성됨: {name}',
+    builtinManaged: '내장 소스가 이미 관리되고 있습니다: {name}',
+    typeApiCatalog: 'API 카탈로그',
+    typeHtmlCatalog: 'HTML 카탈로그',
+    typeDiscoveryPage: '탐색 페이지',
+    typeGithubSearch: 'GitHub 검색',
+    typeGithubRepo: 'GitHub 저장소',
+    typeSkillUrl: '직접 skill URL',
+  },
+  'ml-IN': {
+    title: 'URL-ൽ നിന്ന് മാർക്കറ്റ്പ്ലേസ് ഉറവിടം ഇറക്കുമതി ചെയ്യുക',
+    description:
+      'ഒരു സ്റ്റോർ അല്ലെങ്കിൽ കാറ്റലോഗ് URL ഒട്ടിക്കുക. അത് വീണ്ടും ഉപയോഗിക്കാവുന്ന ഉറവിടമായി സൂക്ഷിക്കണോ, ഒറ്റത്തവണ seed ആയി കൈകാര്യം ചെയ്യണോ എന്ന് നാം തിരിച്ചറിയും.',
+    configuredTitle: 'ക്രമീകരിച്ച ഉറവിടങ്ങൾ',
+    configuredHint:
+      'അകത്ത് തന്നെയുള്ള ഉറവിടങ്ങൾ സംരക്ഷിക്കപ്പെടും. ഇഷ്ടാനുസൃത ഉറവിടങ്ങൾ ഇവിടെ നീക്കം ചെയ്യാം.',
+    preview: 'ഉറവിടം വിശകലനം ചെയ്യുക',
+    analyzing: 'വിശകലനം ചെയ്യുന്നു...',
+    seedDetected: 'ഒറ്റത്തവണ seed കണ്ടെത്തി',
+    unsupportedDetected: 'ഉറവിടം വർഗീകരിക്കാനായില്ല',
+    installResultHeading: 'ഇൻസ്റ്റാൾ ഫലം',
+    installResultDismiss: 'ഇൻസ്റ്റാൾ ഫലം അടയ്ക്കുക',
+    sourceType: 'ഉറവിടം',
+    sourcePreviewMessage:
+      'ഈ URL വീണ്ടും ഉപയോഗിക്കാവുന്ന മാർക്കറ്റ്പ്ലേസ് ഉറവിടമായി സംരക്ഷിക്കാം.',
+    seedPreviewMessage:
+      'ഇത് ദീർഘകാല ഉറവിടത്തേക്കാൾ ഒറ്റത്തവണ ഇറക്കുമതി സ്ഥാനാർത്ഥിയെന്ന പോലെ തോന്നുന്നു.',
+    unsupportedPreviewMessage:
+      'ഈ ഇൻപുട്ട് പിന്തുണയ്ക്കുന്ന മാർക്കറ്റ്പ്ലേസ് ഉറവിടമായി വർഗീകരിക്കാനായില്ല.',
+    seedHint:
+      'ഇത് ഒറ്റത്തവണ seed ({type}: {value}) പോലെ തോന്നുന്നു; ദീർഘകാല ഉറവിടമായി സൂക്ഷിക്കരുത്.',
+    alreadyConfigured: 'ഇതിനകം ക്രമീകരിച്ചിരിക്കുന്നു: {name}',
+    builtinManaged: 'ബിൽറ്റ്-ഇൻ ഉറവിടം ഇതിനകം നിയന്ത്രിക്കപ്പെടുന്നു: {name}',
+    typeApiCatalog: 'API കാറ്റലോഗ്',
+    typeHtmlCatalog: 'HTML കാറ്റലോഗ്',
+    typeDiscoveryPage: 'ഡിസ്‌കവറി പേജ്',
+    typeGithubSearch: 'GitHub തിരയൽ',
+    typeGithubRepo: 'GitHub ശേഖരം',
+    typeSkillUrl: 'നേരിട്ടുള്ള skill URL',
+  },
+  'nb-NO': {
+    title: 'Importer en markedskilde fra URL',
+    description:
+      'Lim inn en butikk- eller katalog-URL. Vi finner ut om den skal lagres som en gjenbrukbar kilde eller behandles som et engangs-seed.',
+    configuredTitle: 'Konfigurerte kilder',
+    configuredHint:
+      'Innebygde kilder forblir beskyttet. Du kan fjerne egendefinerte kilder her.',
+    preview: 'Analyser kilde',
+    analyzing: 'Analyserer...',
+    seedDetected: 'Engangs-seed oppdaget',
+    unsupportedDetected: 'Kunne ikke klassifisere kilden',
+    installResultHeading: 'Installeringsresultat',
+    installResultDismiss: 'Lukk installeringsresultat',
+    sourceType: 'Kilde',
+    sourcePreviewMessage: 'Denne URL-en kan lagres som en gjenbrukbar markedskilde.',
+    seedPreviewMessage:
+      'Dette ser ut som en engangsimport i stedet for en varig kilde.',
+    unsupportedPreviewMessage:
+      'Vi kunne ikke klassifisere denne inndataen som en støttet markedskilde.',
+    seedHint:
+      'Dette ser ut som et engangs-seed ({type}: {value}) og bør ikke lagres som en varig kilde.',
+    alreadyConfigured: 'Allerede konfigurert: {name}',
+    builtinManaged: 'Innebygd kilde er allerede administrert: {name}',
+    typeApiCatalog: 'API-katalog',
+    typeHtmlCatalog: 'HTML-katalog',
+    typeDiscoveryPage: 'Oppdagelsesside',
+    typeGithubSearch: 'GitHub-søk',
+    typeGithubRepo: 'GitHub-repositorium',
+    typeSkillUrl: 'Direkte skill-URL',
+  },
+  'nl-NL': {
+    title: 'Een marktplaatsbron importeren via URL',
+    description:
+      'Plak een winkel- of catalogus-URL. We bepalen of deze als herbruikbare bron moet worden opgeslagen of als eenmalige seed moet worden behandeld.',
+    configuredTitle: 'Geconfigureerde bronnen',
+    configuredHint:
+      'Ingebouwde bronnen blijven beschermd. Je kunt hier aangepaste bronnen verwijderen.',
+    preview: 'Bron analyseren',
+    analyzing: 'Analyseren...',
+    seedDetected: 'Eenmalige seed gedetecteerd',
+    unsupportedDetected: 'Bron kon niet worden geclassificeerd',
+    installResultHeading: 'Installatieresultaat',
+    installResultDismiss: 'Installatieresultaat sluiten',
+    sourceType: 'Bron',
+    sourcePreviewMessage:
+      'Deze URL kan worden opgeslagen als een herbruikbare marktplaatsbron.',
+    seedPreviewMessage:
+      'Dit lijkt op een eenmalige importkandidaat in plaats van op een blijvende bron.',
+    unsupportedPreviewMessage:
+      'We konden deze invoer niet classificeren als een ondersteunde marktplaatsbron.',
+    seedHint:
+      'Dit lijkt op een eenmalige seed ({type}: {value}) en moet niet als blijvende bron worden opgeslagen.',
+    alreadyConfigured: 'Al geconfigureerd: {name}',
+    builtinManaged: 'Ingebouwde bron wordt al beheerd: {name}',
+    typeApiCatalog: 'API-catalogus',
+    typeHtmlCatalog: 'HTML-catalogus',
+    typeDiscoveryPage: 'Ontdekkingspagina',
+    typeGithubSearch: 'GitHub-zoekopdracht',
+    typeGithubRepo: 'GitHub-repository',
+    typeSkillUrl: 'Directe skill-URL',
+  },
+  'pl-PL': {
+    title: 'Importuj źródło sklepu z adresu URL',
+    description:
+      'Wklej adres URL sklepu lub katalogu. Określimy, czy należy go zapisać jako źródło wielokrotnego użytku, czy potraktować jako jednorazowy seed.',
+    configuredTitle: 'Skonfigurowane źródła',
+    configuredHint:
+      'Wbudowane źródła pozostają chronione. Tutaj możesz usunąć własne źródła.',
+    preview: 'Analizuj źródło',
+    analyzing: 'Analizowanie...',
+    seedDetected: 'Wykryto jednorazowy seed',
+    unsupportedDetected: 'Nie udało się sklasyfikować źródła',
+    installResultHeading: 'Wynik instalacji',
+    installResultDismiss: 'Zamknij wynik instalacji',
+    sourceType: 'Źródło',
+    sourcePreviewMessage:
+      'Ten adres URL można zapisać jako źródło marketplace do wielokrotnego użycia.',
+    seedPreviewMessage:
+      'Wygląda to na jednorazowy import, a nie na długoterminowe źródło.',
+    unsupportedPreviewMessage:
+      'Nie udało się sklasyfikować tego wejścia jako obsługiwanego źródła marketplace.',
+    seedHint:
+      'Wygląda to na jednorazowy seed ({type}: {value}) i nie powinno być zapisywane jako długoterminowe źródło.',
+    alreadyConfigured: 'Już skonfigurowano: {name}',
+    builtinManaged: 'Wbudowane źródło jest już zarządzane: {name}',
+    typeApiCatalog: 'Katalog API',
+    typeHtmlCatalog: 'Katalog HTML',
+    typeDiscoveryPage: 'Strona odkryć',
+    typeGithubSearch: 'Wyszukiwanie GitHub',
+    typeGithubRepo: 'Repozytorium GitHub',
+    typeSkillUrl: 'Bezpośredni URL skillu',
+  },
+  'pt-BR': {
+    title: 'Importar uma fonte do marketplace por URL',
+    description:
+      'Cole uma URL de loja ou catálogo. Vamos inferir se ela deve ser salva como uma fonte reutilizável ou tratada como um seed único.',
+    configuredTitle: 'Fontes configuradas',
+    configuredHint:
+      'As fontes integradas continuam protegidas. Você pode remover fontes personalizadas aqui.',
+    preview: 'Analisar fonte',
+    analyzing: 'Analisando...',
+    seedDetected: 'Seed único detectado',
+    unsupportedDetected: 'Não foi possível classificar a fonte',
+    installResultHeading: 'Resultado da instalação',
+    installResultDismiss: 'Fechar resultado da instalação',
+    sourceType: 'Fonte',
+    sourcePreviewMessage:
+      'Esta URL pode ser salva como uma fonte reutilizável do marketplace.',
+    seedPreviewMessage:
+      'Isso parece um candidato de importação única, e não uma fonte duradoura.',
+    unsupportedPreviewMessage:
+      'Não conseguimos classificar esta entrada como uma fonte de marketplace compatível.',
+    seedHint:
+      'Isso parece um seed único ({type}: {value}) e não deve ser salvo como uma fonte duradoura.',
+    alreadyConfigured: 'Já configurada: {name}',
+    builtinManaged: 'A fonte integrada já está sendo gerenciada: {name}',
+    typeApiCatalog: 'Catálogo API',
+    typeHtmlCatalog: 'Catálogo HTML',
+    typeDiscoveryPage: 'Página de descoberta',
+    typeGithubSearch: 'Busca no GitHub',
+    typeGithubRepo: 'Repositório GitHub',
+    typeSkillUrl: 'URL direta de skill',
+  },
+  'pt-PT': {
+    title: 'Importar uma fonte do marketplace por URL',
+    description:
+      'Cole um URL de loja ou catálogo. Vamos inferir se deve ser guardado como uma fonte reutilizável ou tratado como um seed único.',
+    configuredTitle: 'Fontes configuradas',
+    configuredHint:
+      'As fontes integradas mantêm-se protegidas. Pode remover aqui as fontes personalizadas.',
+    preview: 'Analisar fonte',
+    analyzing: 'A analisar...',
+    seedDetected: 'Seed único detetado',
+    unsupportedDetected: 'Não foi possível classificar a fonte',
+    installResultHeading: 'Resultado da instalação',
+    installResultDismiss: 'Fechar resultado da instalação',
+    sourceType: 'Fonte',
+    sourcePreviewMessage:
+      'Este URL pode ser guardado como uma fonte reutilizável do marketplace.',
+    seedPreviewMessage:
+      'Isto parece um candidato de importação única, não uma fonte duradoura.',
+    unsupportedPreviewMessage:
+      'Não conseguimos classificar esta entrada como uma fonte de marketplace suportada.',
+    seedHint:
+      'Isto parece um seed único ({type}: {value}) e não deve ser guardado como uma fonte duradoura.',
+    alreadyConfigured: 'Já configurada: {name}',
+    builtinManaged: 'A fonte integrada já está a ser gerida: {name}',
+    typeApiCatalog: 'Catálogo API',
+    typeHtmlCatalog: 'Catálogo HTML',
+    typeDiscoveryPage: 'Página de descoberta',
+    typeGithubSearch: 'Pesquisa GitHub',
+    typeGithubRepo: 'Repositório GitHub',
+    typeSkillUrl: 'URL direta de skill',
+  },
+  'ro-RO': {
+    title: 'Importă o sursă din marketplace din URL',
+    description:
+      'Lipește un URL de magazin sau catalog. Vom stabili dacă trebuie salvat ca sursă reutilizabilă sau tratat ca seed unic.',
+    configuredTitle: 'Surse configurate',
+    configuredHint:
+      'Sursele integrate rămân protejate. Poți elimina aici sursele personalizate.',
+    preview: 'Analizează sursa',
+    analyzing: 'Se analizează...',
+    seedDetected: 'Seed unic detectat',
+    unsupportedDetected: 'Sursa nu a putut fi clasificată',
+    installResultHeading: 'Rezultatul instalării',
+    installResultDismiss: 'Închide rezultatul instalării',
+    sourceType: 'Sursă',
+    sourcePreviewMessage:
+      'Acest URL poate fi salvat ca sursă marketplace reutilizabilă.',
+    seedPreviewMessage:
+      'Acesta pare un candidat de import unic, nu o sursă de lungă durată.',
+    unsupportedPreviewMessage:
+      'Nu am putut clasifica această intrare ca sursă marketplace acceptată.',
+    seedHint:
+      'Acesta pare un seed unic ({type}: {value}) și nu ar trebui salvat ca sursă de lungă durată.',
+    alreadyConfigured: 'Deja configurată: {name}',
+    builtinManaged: 'Sursa integrată este deja gestionată: {name}',
+    typeApiCatalog: 'Catalog API',
+    typeHtmlCatalog: 'Catalog HTML',
+    typeDiscoveryPage: 'Pagină de descoperire',
+    typeGithubSearch: 'Căutare GitHub',
+    typeGithubRepo: 'Repository GitHub',
+    typeSkillUrl: 'URL direct skill',
+  },
+  'ru-RU': {
+    title: 'Импортировать источник маркетплейса по URL',
+    description:
+      'Вставьте URL магазина или каталога. Мы определим, нужно ли сохранить его как переиспользуемый источник или считать одноразовым seed.',
+    configuredTitle: 'Настроенные источники',
+    configuredHint:
+      'Встроенные источники остаются защищёнными. Здесь можно удалить пользовательские источники.',
+    preview: 'Анализировать источник',
+    analyzing: 'Анализ...',
+    seedDetected: 'Обнаружен одноразовый seed',
+    unsupportedDetected: 'Не удалось классифицировать источник',
+    installResultHeading: 'Результат установки',
+    installResultDismiss: 'Закрыть результат установки',
+    sourceType: 'Источник',
+    sourcePreviewMessage:
+      'Этот URL можно сохранить как переиспользуемый источник маркетплейса.',
+    seedPreviewMessage:
+      'Это похоже на одноразовый импорт, а не на долговременный источник.',
+    unsupportedPreviewMessage:
+      'Мы не смогли классифицировать этот ввод как поддерживаемый источник маркетплейса.',
+    seedHint:
+      'Это похоже на одноразовый seed ({type}: {value}), и его не следует сохранять как долговременный источник.',
+    alreadyConfigured: 'Уже настроено: {name}',
+    builtinManaged: 'Встроенный источник уже управляется: {name}',
+    typeApiCatalog: 'API-каталог',
+    typeHtmlCatalog: 'HTML-каталог',
+    typeDiscoveryPage: 'Страница обнаружения',
+    typeGithubSearch: 'Поиск GitHub',
+    typeGithubRepo: 'Репозиторий GitHub',
+    typeSkillUrl: 'Прямой URL skill',
+  },
+  'sk-SK': {
+    title: 'Importovať zdroj marketplace z URL',
+    description:
+      'Vložte URL obchodu alebo katalógu. Určíme, či ho uložiť ako opakovane použiteľný zdroj, alebo ho brať ako jednorazový seed.',
+    configuredTitle: 'Nakonfigurované zdroje',
+    configuredHint:
+      'Vstavané zdroje zostávajú chránené. Vlastné zdroje tu môžete odstrániť.',
+    preview: 'Analyzovať zdroj',
+    analyzing: 'Analyzujem...',
+    seedDetected: 'Zistený jednorazový seed',
+    unsupportedDetected: 'Zdroj sa nepodarilo klasifikovať',
+    installResultHeading: 'Výsledok inštalácie',
+    installResultDismiss: 'Zavrieť výsledok inštalácie',
+    sourceType: 'Zdroj',
+    sourcePreviewMessage:
+      'Túto URL možno uložiť ako opakovane použiteľný zdroj marketplace.',
+    seedPreviewMessage:
+      'Vyzerá to ako jednorazový import, nie ako dlhodobý zdroj.',
+    unsupportedPreviewMessage:
+      'Tento vstup sme nedokázali klasifikovať ako podporovaný zdroj marketplace.',
+    seedHint:
+      'Vyzerá to ako jednorazový seed ({type}: {value}) a nemal by sa ukladať ako dlhodobý zdroj.',
+    alreadyConfigured: 'Už nakonfigurované: {name}',
+    builtinManaged: 'Vstavaný zdroj je už spravovaný: {name}',
+    typeApiCatalog: 'API katalóg',
+    typeHtmlCatalog: 'HTML katalóg',
+    typeDiscoveryPage: 'Objavovacia stránka',
+    typeGithubSearch: 'Vyhľadávanie GitHub',
+    typeGithubRepo: 'Repozitár GitHub',
+    typeSkillUrl: 'Priama URL skillu',
+  },
+  'sv-SE': {
+    title: 'Importera en marknadskälla från URL',
+    description:
+      'Klistra in en butiks- eller katalog-URL. Vi avgör om den ska sparas som en återanvändbar källa eller behandlas som ett engångs-seed.',
+    configuredTitle: 'Konfigurerade källor',
+    configuredHint:
+      'Inbyggda källor förblir skyddade. Här kan du ta bort egna källor.',
+    preview: 'Analysera källa',
+    analyzing: 'Analyserar...',
+    seedDetected: 'Engångs-seed upptäckt',
+    unsupportedDetected: 'Källan kunde inte klassificeras',
+    installResultHeading: 'Installationsresultat',
+    installResultDismiss: 'Stäng installationsresultat',
+    sourceType: 'Källa',
+    sourcePreviewMessage:
+      'Den här URL:en kan sparas som en återanvändbar marknadskälla.',
+    seedPreviewMessage:
+      'Det här ser ut som en engångsimport snarare än en långlivad källa.',
+    unsupportedPreviewMessage:
+      'Vi kunde inte klassificera den här inmatningen som en stödd marknadskälla.',
+    seedHint:
+      'Det här ser ut som ett engångs-seed ({type}: {value}) och bör inte sparas som en långlivad källa.',
+    alreadyConfigured: 'Redan konfigurerad: {name}',
+    builtinManaged: 'Inbyggd källa hanteras redan: {name}',
+    typeApiCatalog: 'API-katalog',
+    typeHtmlCatalog: 'HTML-katalog',
+    typeDiscoveryPage: 'Upptäcktssida',
+    typeGithubSearch: 'GitHub-sökning',
+    typeGithubRepo: 'GitHub-repository',
+    typeSkillUrl: 'Direkt skill-URL',
+  },
+  'zh-CN': {
+    title: '从 URL 导入技能市场来源',
+    description:
+      '粘贴商店或目录 URL。系统会判断它应该保存为可复用来源，还是作为一次性种子处理。',
+    configuredTitle: '已配置来源',
+    configuredHint: '内建来源会保持受保护状态。你可以在这里移除自定义来源。',
+    preview: '分析来源',
+    analyzing: '分析中...',
+    seedDetected: '已识别为一次性种子',
+    unsupportedDetected: '无法识别该来源',
+    installResultHeading: '安装结果',
+    installResultDismiss: '关闭安装结果',
+    sourceType: '来源',
+    sourcePreviewMessage: '这个 URL 可以保存为可复用的技能市场来源。',
+    seedPreviewMessage: '这更像一次性导入候选，而不是长期来源。',
+    unsupportedPreviewMessage: '无法将该输入识别为受支持的技能市场来源。',
+    seedHint: '这看起来像一次性种子（{type}: {value}），不应保存为长期来源。',
+    alreadyConfigured: '已配置：{name}',
+    builtinManaged: '内建来源已受管理：{name}',
+    typeApiCatalog: 'API 目录',
+    typeHtmlCatalog: 'HTML 目录',
+    typeDiscoveryPage: '发现页',
+    typeGithubSearch: 'GitHub 搜索',
+    typeGithubRepo: 'GitHub 仓库',
+    typeSkillUrl: '直接技能 URL',
+  },
+  'zh-TW': {
+    title: '從 URL 匯入技能市場來源',
+    description:
+      '貼上商店或目錄 URL。系統會判斷它應該儲存為可重複使用的來源，還是作為一次性種子處理。',
+    configuredTitle: '已設定來源',
+    configuredHint: '內建來源會保持受保護狀態。你可以在這裡移除自訂來源。',
+    preview: '分析來源',
+    analyzing: '分析中...',
+    seedDetected: '已識別為一次性種子',
+    unsupportedDetected: '無法識別該來源',
+    installResultHeading: '安裝結果',
+    installResultDismiss: '關閉安裝結果',
+    sourceType: '來源',
+    sourcePreviewMessage: '這個 URL 可以儲存為可重複使用的技能市場來源。',
+    seedPreviewMessage: '這看起來比較像一次性匯入候選，而不是長期來源。',
+    unsupportedPreviewMessage: '無法將此輸入識別為受支援的技能市場來源。',
+    seedHint: '這看起來像一次性種子（{type}: {value}），不應儲存為長期來源。',
+    alreadyConfigured: '已設定：{name}',
+    builtinManaged: '內建來源已受管理：{name}',
+    typeApiCatalog: 'API 目錄',
+    typeHtmlCatalog: 'HTML 目錄',
+    typeDiscoveryPage: '探索頁',
+    typeGithubSearch: 'GitHub 搜尋',
+    typeGithubRepo: 'GitHub 儲存庫',
+    typeSkillUrl: '直接技能 URL',
+  },
+}
+
+export default skillStoreSourceImportBackfills

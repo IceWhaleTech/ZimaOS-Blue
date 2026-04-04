@@ -555,23 +555,16 @@ export const useSettingsStore = defineStore('settings', () => {
     return 'auto'
   })
   const smallModelContextPruneEnabled = computed(
-    () => backendSettings.value.small_model_context_prune_enabled ?? false
+    () => backendSettings.value.small_model_context_prune_enabled ?? true
   )
   const smallModelMediaIntentEnabled = computed(
-    () => backendSettings.value.small_model_media_intent_enabled ?? false
+    () => backendSettings.value.small_model_media_intent_enabled ?? true
   )
   const offlineIRFallbackEnabled = computed(
-    () => backendSettings.value.offline_ir_fallback_enabled ?? false
+    () => backendSettings.value.offline_ir_fallback_enabled ?? true
   )
   const featureIntentIREnabled = computed(
-    () => backendSettings.value.feature_intent_ir_enabled ?? false
-  )
-  const smallModelIRFeaturesEnabled = computed(
-    () =>
-      smallModelContextPruneEnabled.value &&
-      smallModelMediaIntentEnabled.value &&
-      offlineIRFallbackEnabled.value &&
-      featureIntentIREnabled.value
+    () => backendSettings.value.feature_intent_ir_enabled ?? true
   )
   const smallModelRouteImageQAEnabled = computed(
     () =>
@@ -698,31 +691,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setContextCompressionMode(mode: ContextCompressionMode) {
     await updateBackendSettings({ context_compression_mode: mode })
-  }
-
-  async function setSmallModelContextPruneEnabled(enabled: boolean) {
-    await updateBackendSettings({ small_model_context_prune_enabled: enabled })
-  }
-
-  async function setSmallModelMediaIntentEnabled(enabled: boolean) {
-    await updateBackendSettings({ small_model_media_intent_enabled: enabled })
-  }
-
-  async function setOfflineIRFallbackEnabled(enabled: boolean) {
-    await updateBackendSettings({ offline_ir_fallback_enabled: enabled })
-  }
-
-  async function setFeatureIntentIREnabled(enabled: boolean) {
-    await updateBackendSettings({ feature_intent_ir_enabled: enabled })
-  }
-
-  async function setSmallModelIRFeaturesEnabled(enabled: boolean) {
-    await updateBackendSettings({
-      small_model_context_prune_enabled: enabled,
-      small_model_media_intent_enabled: enabled,
-      offline_ir_fallback_enabled: enabled,
-      feature_intent_ir_enabled: enabled,
-    })
   }
 
   async function setSmallModelRouteShortQAEnabled(enabled: boolean) {
@@ -910,7 +878,6 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelMediaIntentEnabled,
     offlineIRFallbackEnabled,
     featureIntentIREnabled,
-    smallModelIRFeaturesEnabled,
     smallModelRouteImageQAEnabled,
     smallModelRouteShortQAEnabled,
     noLLMDegradeMode,
@@ -967,11 +934,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setAgentLoopPolicyMissingTodoBudget,
     setAgentLoopPolicyPendingTodoBudget,
     setContextCompressionMode,
-    setSmallModelContextPruneEnabled,
-    setSmallModelMediaIntentEnabled,
-    setOfflineIRFallbackEnabled,
-    setFeatureIntentIREnabled,
-    setSmallModelIRFeaturesEnabled,
     setSmallModelRouteImageQAEnabled,
     setSmallModelRouteShortQAEnabled,
     setNoLLMDegradeMode,

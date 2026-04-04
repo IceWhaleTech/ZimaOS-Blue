@@ -153,6 +153,9 @@ describe('locale integrity', () => {
       'skillStore.marketplace.sources.githubAwesomeSkills.description',
       'skillStore.marketplace.sources.external.description',
       'skillStore.marketplace.sources.seed.description',
+      'skillStore.marketplace.sourceImport.title',
+      'skillStore.marketplace.sourceImport.description',
+      'skillStore.marketplace.sourceImport.typeGithubRepo',
       'skillStore.marketplace.detail.meta.upstream',
       'skillStore.marketplace.modal.highRiskWarning',
       'skillStore.marketplace.modal.highRiskInstallTitle',
@@ -207,9 +210,10 @@ describe('locale integrity', () => {
       const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
 
       for (const path of protectedPaths) {
-        expect(getPathValue(runtimeMessages, path), `${locale} should translate ${path}`).not.toEqual(
-          getPathValue(referenceMessages, path)
-        )
+        expect(
+          getPathValue(runtimeMessages, path),
+          `${locale} should translate ${path}`
+        ).not.toEqual(getPathValue(referenceMessages, path))
       }
     }
   })
