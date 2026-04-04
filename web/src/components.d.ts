@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ActiveConnections: typeof import('./components/ActiveConnections.vue')['default']
+    AgentcoreRunnerPanel: typeof import('./components/harness/AgentcoreRunnerPanel.vue')['default']
     AgentTaskPanel: typeof import('./components/AgentTaskPanel.vue')['default']
     AlertItem: typeof import('./components/companion/AlertItem.vue')['default']
     AlertNotification: typeof import('./components/companion/AlertNotification.vue')['default']

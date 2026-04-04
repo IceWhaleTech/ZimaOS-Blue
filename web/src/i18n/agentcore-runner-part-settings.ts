@@ -1,0 +1,154 @@
+import type { LocaleKey } from './locale-catalog'
+
+type AgentcoreRunnerPartSettings = Record<string, unknown>
+
+export const agentcoreRunnerPartSettingsBase: AgentcoreRunnerPartSettings = {
+  evolvableParts: 'Evolvable parts',
+  primaryPart: 'Primary',
+  sourceOptimization: 'Source optimization',
+  activePartTooltip: 'This part was optimized in the current candidate',
+  inactivePartTooltip:
+    'This part can participate in self-evolution, but the current version did not change it',
+  parts: {
+    constraints: 'Constraints',
+    skill_definition: 'Skill definition',
+    prompt_template: 'Prompt template',
+    context_assembly: 'Context assembly',
+    coordinator_policy: 'Coordinator',
+    orchestrator_policy: 'Orchestrator',
+    tool_exposure: 'Tool exposure',
+    verification_policy: 'Verification policy',
+    runner_code: 'Runner code',
+    build_recipe: 'Build recipe',
+  },
+}
+
+export const agentcoreRunnerPartSettingsOverrides: Partial<
+  Record<LocaleKey, AgentcoreRunnerPartSettings>
+> = {
+  'ca-ES': {
+    evolvableParts: 'Parts evolutives', primaryPart: 'Part principal', sourceOptimization: 'Optimització d’origen',
+    activePartTooltip: 'Aquesta part s’ha optimitzat en el candidat actual', inactivePartTooltip: "Aquesta part pot participar en l'autoevolució, però la versió actual no l'ha modificat",
+    parts: { constraints: 'Restriccions', skill_definition: 'Definició de l’habilitat', prompt_template: 'Plantilla del prompt', context_assembly: 'Muntatge del context', coordinator_policy: 'Coordinador', orchestrator_policy: 'Orquestrador', tool_exposure: 'Exposició d’eines', verification_policy: 'Política de verificació', runner_code: "Codi de l'executor", build_recipe: 'Recepta de compilació' },
+  },
+  'cs-CZ': {
+    evolvableParts: 'Evolvovatelné části', primaryPart: 'Hlavní část', sourceOptimization: 'Zdrojová optimalizace',
+    activePartTooltip: 'Tato část byla v aktuálním kandidátovi optimalizována', inactivePartTooltip: 'Tato část se může zapojit do sebevývoje, ale aktuální verze ji neměnila',
+    parts: { constraints: 'Omezení', skill_definition: 'Definice dovednosti', prompt_template: 'Šablona promptu', context_assembly: 'Sestavení kontextu', coordinator_policy: 'Koordinátor', orchestrator_policy: 'Orchestrátor', tool_exposure: 'Zpřístupnění nástrojů', verification_policy: 'Ověřovací zásady', runner_code: 'Kód vykonavatele', build_recipe: 'Recept pro sestavení' },
+  },
+  'da-DK': {
+    evolvableParts: 'Udviklbare dele', primaryPart: 'Primær del', sourceOptimization: 'Kildeoptimering',
+    activePartTooltip: 'Denne del blev optimeret i den aktuelle kandidat', inactivePartTooltip: 'Denne del kan indgå i selvudviklingen, men den aktuelle version ændrede den ikke',
+    parts: { constraints: 'Begrænsninger', skill_definition: 'Færdighedsdefinition', prompt_template: 'Promptskabelon', context_assembly: 'Kontekstsammensætning', coordinator_policy: 'Koordinator', orchestrator_policy: 'Orkestrator', tool_exposure: 'Værktøjseksponering', verification_policy: 'Verifikationspolitik', runner_code: 'Udførerkode', build_recipe: 'Byggeopskrift' },
+  },
+  'de-DE': {
+    evolvableParts: 'Entwickelbare Teile', primaryPart: 'Primärer Teil', sourceOptimization: 'Ursprungsoptimierung',
+    activePartTooltip: 'Dieser Teil wurde im aktuellen Kandidaten optimiert', inactivePartTooltip: 'Dieser Teil kann an der Selbstentwicklung teilnehmen, wurde in der aktuellen Version aber nicht geändert',
+    parts: { constraints: 'Einschränkungen', skill_definition: 'Skill-Definition', prompt_template: 'Prompt-Vorlage', context_assembly: 'Kontextaufbau', coordinator_policy: 'Koordinator', orchestrator_policy: 'Orchestrator', tool_exposure: 'Werkzeugfreigabe', verification_policy: 'Verifizierungsrichtlinie', runner_code: 'Ausführercode', build_recipe: 'Build-Rezept' },
+  },
+  'el-GR': {
+    evolvableParts: 'Εξελίξιμα μέρη', primaryPart: 'Κύριο μέρος', sourceOptimization: 'Βελτιστοποίηση προέλευσης',
+    activePartTooltip: 'Αυτό το μέρος βελτιστοποιήθηκε στον τρέχοντα υποψήφιο', inactivePartTooltip: 'Αυτό το μέρος μπορεί να συμμετέχει στην αυτοεξέλιξη, αλλά η τρέχουσα έκδοση δεν το άλλαξε',
+    parts: { constraints: 'Περιορισμοί', skill_definition: 'Ορισμός δεξιότητας', prompt_template: 'Πρότυπο prompt', context_assembly: 'Σύνθεση συμφραζομένων', coordinator_policy: 'Συντονιστής', orchestrator_policy: 'Ενορχηστρωτής', tool_exposure: 'Έκθεση εργαλείων', verification_policy: 'Πολιτική επαλήθευσης', runner_code: 'Κώδικας εκτελεστή', build_recipe: 'Συνταγή build' },
+  },
+  'es-ES': {
+    evolvableParts: 'Partes evolutivas', primaryPart: 'Parte principal', sourceOptimization: 'Optimización de origen',
+    activePartTooltip: 'Esta parte se optimizó en el candidato actual', inactivePartTooltip: 'Esta parte puede participar en la autoevolución, pero la versión actual no la modificó',
+    parts: { constraints: 'Restricciones', skill_definition: 'Definición de habilidad', prompt_template: 'Plantilla de prompt', context_assembly: 'Ensamblaje de contexto', coordinator_policy: 'Coordinador', orchestrator_policy: 'Orquestador', tool_exposure: 'Exposición de herramientas', verification_policy: 'Política de verificación', runner_code: 'Código del ejecutor', build_recipe: 'Receta de compilación' },
+  },
+  'fr-FR': {
+    evolvableParts: 'Parties évolutives', primaryPart: 'Partie principale', sourceOptimization: 'Optimisation source',
+    activePartTooltip: 'Cette partie a été optimisée dans le candidat actuel', inactivePartTooltip: 'Cette partie peut participer à l’auto-évolution, mais la version actuelle ne l’a pas modifiée',
+    parts: { constraints: 'Contraintes', skill_definition: 'Définition de compétence', prompt_template: 'Modèle de prompt', context_assembly: 'Assemblage du contexte', coordinator_policy: 'Coordinateur', orchestrator_policy: 'Orchestrateur', tool_exposure: 'Exposition des outils', verification_policy: 'Politique de vérification', runner_code: 'Code de l’exécuteur', build_recipe: 'Recette de build' },
+  },
+  'ga-IE': {
+    evolvableParts: 'Páirteanna inoiriúnaithe', primaryPart: 'Príomhchuid', sourceOptimization: 'Barrfheabhsú foinse',
+    activePartTooltip: 'Rinneadh barrfheabhsú ar an gcuid seo san iarrthóir reatha', inactivePartTooltip: 'Is féidir leis an gcuid seo páirt a ghlacadh san fhéin-éabhlóid, ach níor athraigh an leagan reatha í',
+    parts: { constraints: 'Srianta', skill_definition: 'Sainmhíniú scile', prompt_template: 'Teimpléad promta', context_assembly: 'Tionól comhthéacs', coordinator_policy: 'Comhordaitheoir', orchestrator_policy: 'Ceolfhoirneoir', tool_exposure: 'Nochtadh uirlisí', verification_policy: 'Beartas fíoraithe', runner_code: 'Cód an fheidhmeora', build_recipe: 'Oideas tógála' },
+  },
+  'hr-HR': {
+    evolvableParts: 'Evolutivni dijelovi', primaryPart: 'Primarni dio', sourceOptimization: 'Izvorna optimizacija',
+    activePartTooltip: 'Ovaj je dio optimiziran u trenutnom kandidatu', inactivePartTooltip: 'Ovaj dio može sudjelovati u samoevoluciji, ali ga trenutačna verzija nije mijenjala',
+    parts: { constraints: 'Ograničenja', skill_definition: 'Definicija vještine', prompt_template: 'Predložak prompta', context_assembly: 'Sastavljanje konteksta', coordinator_policy: 'Koordinator', orchestrator_policy: 'Orkestrator', tool_exposure: 'Izloženost alata', verification_policy: 'Pravila verifikacije', runner_code: 'Kod izvršitelja', build_recipe: 'Recept za izgradnju' },
+  },
+  'hu-HU': {
+    evolvableParts: 'Fejleszthető részek', primaryPart: 'Elsődleges rész', sourceOptimization: 'Forrásoptimalizálás',
+    activePartTooltip: 'Ezt a részt az aktuális jelöltben optimalizálták', inactivePartTooltip: 'Ez a rész részt vehet az önfejlődésben, de az aktuális verzió nem módosította',
+    parts: { constraints: 'Korlátok', skill_definition: 'Skill-definíció', prompt_template: 'Promptsablon', context_assembly: 'Kontextus-összeállítás', coordinator_policy: 'Koordinátor', orchestrator_policy: 'Orkesztrátor', tool_exposure: 'Eszköz-hozzáférés', verification_policy: 'Ellenőrzési szabályzat', runner_code: 'Végrehajtókód', build_recipe: 'Build-recept' },
+  },
+  'it-IT': {
+    evolvableParts: 'Parti evolvibili', primaryPart: 'Parte primaria', sourceOptimization: 'Ottimizzazione di origine',
+    activePartTooltip: 'Questa parte è stata ottimizzata nel candidato corrente', inactivePartTooltip: 'Questa parte può partecipare all’auto-evoluzione, ma la versione corrente non l’ha modificata',
+    parts: { constraints: 'Vincoli', skill_definition: 'Definizione della skill', prompt_template: 'Template del prompt', context_assembly: 'Assemblaggio del contesto', coordinator_policy: 'Coordinatore', orchestrator_policy: 'Orchestratore', tool_exposure: 'Esposizione degli strumenti', verification_policy: 'Politica di verifica', runner_code: 'Codice dell’esecutore', build_recipe: 'Ricetta di build' },
+  },
+  'ja-JP': {
+    evolvableParts: '進化対象', primaryPart: '主対象', sourceOptimization: '元の最適化',
+    activePartTooltip: 'この項目は現在の候補で最適化されました', inactivePartTooltip: 'この項目は自己進化の対象ですが、現在のバージョンでは変更されていません',
+    parts: { constraints: '制約', skill_definition: 'スキル定義', prompt_template: 'プロンプトテンプレート', context_assembly: 'コンテキスト構成', coordinator_policy: '調整役', orchestrator_policy: 'オーケストレーター', tool_exposure: 'ツール公開', verification_policy: '検証ポリシー', runner_code: '実行部コード', build_recipe: 'ビルドレシピ' },
+  },
+  'ko-KR': {
+    evolvableParts: '진화 가능 항목', primaryPart: '주요 항목', sourceOptimization: '원본 최적화',
+    activePartTooltip: '이 항목은 현재 후보에서 최적화되었습니다', inactivePartTooltip: '이 항목은 자기 진화에 참여할 수 있지만 현재 버전에서는 변경되지 않았습니다',
+    parts: { constraints: '제약', skill_definition: '스킬 정의', prompt_template: '프롬프트 템플릿', context_assembly: '컨텍스트 구성', coordinator_policy: '조정자', orchestrator_policy: '오케스트레이터', tool_exposure: '도구 노출', verification_policy: '검증 정책', runner_code: '실행기 코드', build_recipe: '빌드 레시피' },
+  },
+  'ml-IN': {
+    evolvableParts: 'പരിണമിക്കാവുന്ന ഭാഗങ്ങൾ', primaryPart: 'പ്രാഥമിക ഭാഗം', sourceOptimization: 'ഉറവിട ഓപ്റ്റിമൈസേഷൻ',
+    activePartTooltip: 'ഈ ഭാഗം നിലവിലെ സ്ഥാനാർഥിയിൽ മെച്ചപ്പെടുത്തി', inactivePartTooltip: 'ഈ ഭാഗം സ്വയംവികസനത്തിൽ പങ്കെടുക്കാം, പക്ഷേ നിലവിലെ പതിപ്പ് ഇത് മാറ്റിയിട്ടില്ല',
+    parts: { constraints: 'നിയന്ത്രണങ്ങൾ', skill_definition: 'സ്കിൽ നിർവചനം', prompt_template: 'പ്രോംപ്റ്റ് ടെംപ്ലേറ്റ്', context_assembly: 'സന്ദർഭ ഘടന', coordinator_policy: 'സമന്വയകൻ', orchestrator_policy: 'ഓർക്കെസ്ട്രേറ്റർ', tool_exposure: 'ഉപകരണ വെളിപ്പെടുത്തൽ', verification_policy: 'പരിശോധന നയം', runner_code: 'നിർവാഹക കോഡ്', build_recipe: 'ബിൽഡ് റെസിപ്പി' },
+  },
+  'nb-NO': {
+    evolvableParts: 'Utviklbare deler', primaryPart: 'Primær del', sourceOptimization: 'Kildeoptimalisering',
+    activePartTooltip: 'Denne delen ble optimalisert i den gjeldende kandidaten', inactivePartTooltip: 'Denne delen kan delta i selvutvikling, men den gjeldende versjonen endret den ikke',
+    parts: { constraints: 'Begrensninger', skill_definition: 'Ferdighetsdefinisjon', prompt_template: 'Promptmal', context_assembly: 'Kontekstsammensetting', coordinator_policy: 'Koordinator', orchestrator_policy: 'Orkestrator', tool_exposure: 'Verktøyeksponering', verification_policy: 'Verifiseringspolicy', runner_code: 'Utførerkode', build_recipe: 'Byggeoppskrift' },
+  },
+  'nl-NL': {
+    evolvableParts: 'Ontwikkelbare onderdelen', primaryPart: 'Primair onderdeel', sourceOptimization: 'Bronoptimalisatie',
+    activePartTooltip: 'Dit onderdeel is geoptimaliseerd in de huidige kandidaat', inactivePartTooltip: 'Dit onderdeel kan deelnemen aan zelfevolutie, maar de huidige versie heeft het niet gewijzigd',
+    parts: { constraints: 'Beperkingen', skill_definition: 'Skilldefinitie', prompt_template: 'Promptsjabloon', context_assembly: 'Contextopbouw', coordinator_policy: 'Coördinator', orchestrator_policy: 'Orchestrator', tool_exposure: 'Tooltoegang', verification_policy: 'Verificatiebeleid', runner_code: 'Uitvoerdercode', build_recipe: 'Buildrecept' },
+  },
+  'pl-PL': {
+    evolvableParts: 'Elementy ewolucyjne', primaryPart: 'Główny element', sourceOptimization: 'Optymalizacja źródłowa',
+    activePartTooltip: 'Ten element został zoptymalizowany w bieżącym kandydacie', inactivePartTooltip: 'Ten element może uczestniczyć w samoewolucji, ale bieżąca wersja go nie zmieniła',
+    parts: { constraints: 'Ograniczenia', skill_definition: 'Definicja umiejętności', prompt_template: 'Szablon promptu', context_assembly: 'Składanie kontekstu', coordinator_policy: 'Koordynator', orchestrator_policy: 'Orkiestrator', tool_exposure: 'Ekspozycja narzędzi', verification_policy: 'Polityka weryfikacji', runner_code: 'Kod wykonawcy', build_recipe: 'Receptura budowania' },
+  },
+  'pt-BR': {
+    evolvableParts: 'Partes evolutivas', primaryPart: 'Parte principal', sourceOptimization: 'Otimização de origem',
+    activePartTooltip: 'Esta parte foi otimizada no candidato atual', inactivePartTooltip: 'Esta parte pode participar da autoevolução, mas a versão atual não a alterou',
+    parts: { constraints: 'Restrições', skill_definition: 'Definição de skill', prompt_template: 'Modelo de prompt', context_assembly: 'Montagem de contexto', coordinator_policy: 'Coordenador', orchestrator_policy: 'Orquestrador', tool_exposure: 'Exposição de ferramentas', verification_policy: 'Política de verificação', runner_code: 'Código do executor', build_recipe: 'Receita de build' },
+  },
+  'pt-PT': {
+    evolvableParts: 'Partes evolutivas', primaryPart: 'Parte principal', sourceOptimization: 'Otimização de origem',
+    activePartTooltip: 'Esta parte foi optimizada no candidato atual', inactivePartTooltip: 'Esta parte pode participar na autoevolução, mas a versão atual não a alterou',
+    parts: { constraints: 'Restrições', skill_definition: 'Definição da skill', prompt_template: 'Modelo de prompt', context_assembly: 'Montagem de contexto', coordinator_policy: 'Coordenador', orchestrator_policy: 'Orquestrador', tool_exposure: 'Exposição de ferramentas', verification_policy: 'Política de verificação', runner_code: 'Código do executor', build_recipe: 'Receita de build' },
+  },
+  'ro-RO': {
+    evolvableParts: 'Părți evolvabile', primaryPart: 'Parte principală', sourceOptimization: 'Optimizare sursă',
+    activePartTooltip: 'Această parte a fost optimizată în candidatul curent', inactivePartTooltip: 'Această parte poate participa la autoevoluție, dar versiunea curentă nu a modificat-o',
+    parts: { constraints: 'Constrângeri', skill_definition: 'Definirea skill-ului', prompt_template: 'Șablon de prompt', context_assembly: 'Asamblarea contextului', coordinator_policy: 'Coordonator', orchestrator_policy: 'Orchestrator', tool_exposure: 'Expunerea uneltelor', verification_policy: 'Politică de verificare', runner_code: 'Codul executorului', build_recipe: 'Rețetă de build' },
+  },
+  'ru-RU': {
+    evolvableParts: 'Эволюционируемые части', primaryPart: 'Основная часть', sourceOptimization: 'Исходная оптимизация',
+    activePartTooltip: 'Эта часть была оптимизирована в текущем кандидате', inactivePartTooltip: 'Эта часть может участвовать в самоэволюции, но текущая версия её не меняла',
+    parts: { constraints: 'Ограничения', skill_definition: 'Определение навыка', prompt_template: 'Шаблон запроса', context_assembly: 'Сборка контекста', coordinator_policy: 'Координатор', orchestrator_policy: 'Оркестратор', tool_exposure: 'Доступ к инструментам', verification_policy: 'Политика проверки', runner_code: 'Код исполнителя', build_recipe: 'Рецепт сборки' },
+  },
+  'sk-SK': {
+    evolvableParts: 'Evolvovateľné časti', primaryPart: 'Hlavná časť', sourceOptimization: 'Zdrojová optimalizácia',
+    activePartTooltip: 'Táto časť bola optimalizovaná v aktuálnom kandidátovi', inactivePartTooltip: 'Táto časť sa môže zúčastniť samoevolúcie, no aktuálna verzia ju nezmenila',
+    parts: { constraints: 'Obmedzenia', skill_definition: 'Definícia zručnosti', prompt_template: 'Šablóna promptu', context_assembly: 'Zostavenie kontextu', coordinator_policy: 'Koordinátor', orchestrator_policy: 'Orchestrátor', tool_exposure: 'Sprístupnenie nástrojov', verification_policy: 'Politika overenia', runner_code: 'Kód vykonávača', build_recipe: 'Recept na zostavenie' },
+  },
+  'sv-SE': {
+    evolvableParts: 'Utvecklingsbara delar', primaryPart: 'Primär del', sourceOptimization: 'Källoptimering',
+    activePartTooltip: 'Den här delen optimerades i den aktuella kandidaten', inactivePartTooltip: 'Den här delen kan delta i självutvecklingen, men den aktuella versionen ändrade den inte',
+    parts: { constraints: 'Begränsningar', skill_definition: 'Färdighetsdefinition', prompt_template: 'Promptmall', context_assembly: 'Kontextsammanställning', coordinator_policy: 'Koordinator', orchestrator_policy: 'Orkestrerare', tool_exposure: 'Verktygsexponering', verification_policy: 'Verifieringspolicy', runner_code: 'Utförarkod', build_recipe: 'Buildrecept' },
+  },
+  'zh-CN': {
+    evolvableParts: '可进化面', primaryPart: '主优化面', sourceOptimization: '来源优化',
+    activePartTooltip: '该层在当前候选中已优化', inactivePartTooltip: '该层可纳入自我进化，当前版本未调整',
+    parts: { constraints: '约束层', skill_definition: '技能定义', prompt_template: '提示词模板', context_assembly: '上下文构建', coordinator_policy: '协调器', orchestrator_policy: '编排器', tool_exposure: '工具暴露', verification_policy: '验证策略', runner_code: '执行器代码', build_recipe: '构建配方' },
+  },
+  'zh-TW': {
+    evolvableParts: '可進化面', primaryPart: '主要優化面', sourceOptimization: '來源最佳化',
+    activePartTooltip: '該層在目前候選中已最佳化', inactivePartTooltip: '該層可納入自我演進，目前版本未調整',
+    parts: { constraints: '約束層', skill_definition: '技能定義', prompt_template: '提示詞範本', context_assembly: '上下文建構', coordinator_policy: '協調器', orchestrator_policy: '編排器', tool_exposure: '工具開放', verification_policy: '驗證策略', runner_code: '執行器程式碼', build_recipe: '建置配方' },
+  },
+}

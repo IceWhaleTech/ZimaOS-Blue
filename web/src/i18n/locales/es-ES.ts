@@ -1502,7 +1502,6 @@ export default mergeHarnessLocale('es-ES', {
     advancedCodingTools: 'Herramientas avanzadas de código',
     requestFlow: 'Flujo de solicitudes',
     proxyRouting: 'Enrutamiento del proxy',
-    assistiveRouting: 'Enrutamiento asistido',
     localAcceleration: 'Aceleración local',
     voicePipeline: 'Canal de voz',
     portability: 'Portabilidad',
@@ -1694,22 +1693,6 @@ export default mergeHarnessLocale('es-ES', {
       userGuideItem2:
         'Cambia automáticamente al modelo principal cuando el modelo ligero no está disponible.',
       userGuideItem3: 'Descarga el modelo antes del primer uso.',
-      irTitle: 'Capacidades del asistente',
-      irDesc:
-        'Ayudas visibles para el usuario para el control de contexto y el filtrado de herramientas.',
-      irMasterTitle: 'Interruptor principal',
-      irMasterDesc: 'Activa o desactiva de una vez todas las funciones auxiliares de abajo.',
-      irContextPruneTitle: 'Compactación del contexto del chat',
-      irContextPruneDesc:
-        'Controla cómo Blue compacta el historial del chat cuando aumenta la presión de contexto.',
-      irMediaIntentDesc:
-        'Detecta la intención de generación de medios para enrutar las solicitudes con mayor precisión.',
-      irOfflineFallbackTitle: 'Fallback local sin conexión',
-      irOfflineFallbackDesc:
-        'Cuando se necesite fallback del modelo, responde primero desde la recuperación de contexto local.',
-      irFeatureHintTitle: 'Detección de pistas de funciones',
-      irFeatureHintDesc:
-        'En los mensajes del canal, detecta pistas y activa automáticamente {deepResearch} / {agentMode}.',
       advancedTitle: 'Parametros avanzados (normalmente no es necesario cambiarlos)',
       advancedHint: 'Ajústalo solo para resolver problemas o validar despliegues controlados.',
       expand: 'Expandir',
@@ -1739,7 +1722,6 @@ export default mergeHarnessLocale('es-ES', {
       contextCompressionModeOff: 'Desactivado',
       docExtract: 'Aceleración de extracción de documentos',
       imageQA: 'Aceleración de reconocimiento de imágenes',
-      mediaIntent: 'Reconocimiento de escenarios de generacion multimedia',
       shortQA: 'Aceleración de preguntas breves',
       shadowOnly: 'Fase 1: solo validación en segundo plano',
       statsTitle: 'Estadísticas de ejecución (depuración)',

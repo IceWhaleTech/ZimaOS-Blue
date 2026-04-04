@@ -997,6 +997,12 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 			if _, exists := seen[canonicalID]; exists {
 				continue
 			}
+			builtin := false
+			if info := h.registry.GetInfo(ls.ID); info != nil {
+				builtin = info.Builtin
+			} else if info := h.registry.GetInfo(canonicalID); info != nil {
+				builtin = info.Builtin
+			}
 			item := SkillResponse{
 				ID:               canonicalID,
 				Name:             canonicalName,
@@ -1006,6 +1012,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 				Category:         ls.Category,
 				Tags:             ls.Tags,
 				Enabled:          true,
+				Builtin:          builtin,
 				Paths:            append([]string(nil), meta.Paths...),
 				UserInvocable:    meta.UserInvocable,
 				ModelInvocable:   meta.ModelInvocable,

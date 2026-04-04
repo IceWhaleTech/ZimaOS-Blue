@@ -541,6 +541,79 @@ func TestBuildUpstreamRequestWithFormat_ForcesIdentityAcceptEncoding(t *testing.
 	}
 }
 
+func TestBuildUpstreamRequestWithFormat_CustomRelayChatCompletionsKeepsLegacyMaxTokens(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "custom-minimax-relay",
+			Type:      providerpool.ProviderTypeCustom,
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "minimax-m2.7"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	body := []byte(`{"model":"minimax-m2.7","max_tokens":500,"messages":[{"role":"user","content":"hi"}]}`)
+
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatOpenAI)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	if upstreamReq.URL.Path != "/v1/chat/completions" {
+		t.Fatalf("upstream path = %q, want %q", upstreamReq.URL.Path, "/v1/chat/completions")
+	}
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "max_tokens").Int(); got != 500 {
+		t.Fatalf("max_tokens = %d, want %d; body=%s", got, 500, string(convertedBody))
+	}
+	if gjson.GetBytes(convertedBody, "max_completion_tokens").Exists() {
+		t.Fatalf("max_completion_tokens should not be injected for custom relay chat completions: %s", string(convertedBody))
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_OpenAIGPT54UsesMaxCompletionTokens(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "openai",
+			BaseURL:   "https://api.openai.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.4"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	body := []byte(`{"model":"gpt-5.4","max_tokens":256,"messages":[{"role":"user","content":"hi"}]}`)
+
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatOpenAI)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "max_completion_tokens").Int(); got != 256 {
+		t.Fatalf("max_completion_tokens = %d, want %d; body=%s", got, 256, string(convertedBody))
+	}
+	if gjson.GetBytes(convertedBody, "max_tokens").Exists() {
+		t.Fatalf("max_tokens should be removed for gpt-5.4 chat completions: %s", string(convertedBody))
+	}
+}
+
 func TestBuildUpstreamRequestWithFormat_AnthropicEndpointConvertsBody(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 

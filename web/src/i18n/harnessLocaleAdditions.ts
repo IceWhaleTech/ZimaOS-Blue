@@ -1,3 +1,11 @@
+import {
+  agentcoreRunnerPartDescriptionBase,
+  agentcoreRunnerPartDescriptionOverrides,
+} from './agentcore-runner-part-descriptions'
+import {
+  agentcoreRunnerPartSettingsBase,
+  agentcoreRunnerPartSettingsOverrides,
+} from './agentcore-runner-part-settings'
 import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
 import extensionsBrowseBackfills from './extensions-browse-backfills'
 import harnessGroupBackfills from './harness-group-backfills'
@@ -7737,8 +7745,17 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
   ) as LocaleNode
   const mergedWithPostMerge = mergeLocaleNodes(mergedWithSkillStore, postMergePatch)
   const settingsPatch = mergeLocaleNodes(
-    agentcoreRunnerSettingsBase,
-    (agentcoreRunnerSettingsOverrides[localeKey] ?? {}) as LocaleNode
+    mergeLocaleNodes(
+      mergeLocaleNodes(agentcoreRunnerSettingsBase, agentcoreRunnerPartSettingsBase as LocaleNode),
+      agentcoreRunnerPartDescriptionBase as LocaleNode
+    ),
+    mergeLocaleNodes(
+      mergeLocaleNodes(
+        (agentcoreRunnerSettingsOverrides[localeKey] ?? {}) as LocaleNode,
+        (agentcoreRunnerPartSettingsOverrides[localeKey] ?? {}) as LocaleNode
+      ),
+      (agentcoreRunnerPartDescriptionOverrides[localeKey] ?? {}) as LocaleNode
+    )
   )
   const currentHarness = (mergedWithPostMerge.harness ?? {}) as LocaleNode
   const currentSettings = (mergedWithPostMerge.settings ?? {}) as LocaleNode

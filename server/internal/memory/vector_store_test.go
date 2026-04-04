@@ -126,6 +126,50 @@ func TestVectorStoreDeleteRemovesRowsBySourceID(t *testing.T) {
 	}
 }
 
+func TestVectorStoreStoreRepairsStaleVecPrimaryKeyCollision(t *testing.T) {
+	store, err := NewVectorStore(VectorStoreConfig{
+		DBPath:       filepath.Join(t.TempDir(), "vector-stale-vec.db"),
+		EmbeddingDim: 4,
+		MaxChunks:    10,
+		EnableFTS:    false,
+	})
+	if err != nil {
+		t.Fatalf("NewVectorStore: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	emb := []float32{0.1, -0.2, 0.3, -0.4}
+	serialized := serializeFloat32(emb)
+
+	if _, err := store.db.Exec(
+		`INSERT INTO memory_vec (rowid, embedding) VALUES (?, vec_quantize_int8(?, 'unit'))`,
+		1,
+		serialized,
+	); err != nil {
+		t.Fatalf("seed stale vec row: %v", err)
+	}
+
+	chunk, err := store.Store(ctx, "repair stale vec row", emb, map[string]string{"source_id": "daily/2026-03-08.md"})
+	if err != nil {
+		t.Fatalf("Store should recover from stale vec row collision: %v", err)
+	}
+	if chunk == nil {
+		t.Fatal("expected stored chunk")
+	}
+
+	results, err := store.SearchVector(ctx, emb, 5, 0)
+	if err != nil {
+		t.Fatalf("SearchVector after repair: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected vector search results after repair")
+	}
+	if results[0].Chunk.Content != "repair stale vec row" {
+		t.Fatalf("unexpected top vector result: %+v", results[0])
+	}
+}
+
 func TestVectorStoreUsesReaderDBForReads(t *testing.T) {
 	store, err := NewVectorStore(VectorStoreConfig{
 		DBPath:       filepath.Join(t.TempDir(), "vector-reader.db"),

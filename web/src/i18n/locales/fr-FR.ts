@@ -1513,7 +1513,6 @@ export default mergeHarnessLocale('fr-FR', {
     advancedCodingTools: 'Outils de code avancés',
     requestFlow: 'Flux des requetes',
     proxyRouting: 'Routage proxy',
-    assistiveRouting: 'Routage assiste',
     localAcceleration: 'Acceleration locale',
     voicePipeline: 'Pipeline vocal',
     portability: 'Portabilite',
@@ -1704,22 +1703,6 @@ export default mergeHarnessLocale('fr-FR', {
       userGuideItem2:
         "Bascule automatiquement vers le modèle principal lorsque le modèle léger n'est pas disponible.",
       userGuideItem3: 'Téléchargez le modèle avant la première utilisation.',
-      irTitle: "Capacités de l'assistant",
-      irDesc:
-        "Assistants visibles par l'utilisateur pour le contrôle du contexte et le filtrage des outils.",
-      irMasterTitle: 'Interrupteur maître',
-      irMasterDesc: "Activez ou désactivez d'un coup toutes les fonctions d'assistance ci-dessous.",
-      irContextPruneTitle: 'Compactage du contexte du chat',
-      irContextPruneDesc:
-        "Contrôle la manière dont Blue compacte l'historique du chat lorsque la pression de contexte augmente.",
-      irMediaIntentDesc:
-        "Détecte l'intention de génération de médias afin d'acheminer les requêtes plus précisément.",
-      irOfflineFallbackTitle: 'Repli local hors ligne',
-      irOfflineFallbackDesc:
-        "Lorsqu'un repli du modèle est nécessaire, répond d'abord à partir du rappel de contexte local.",
-      irFeatureHintTitle: "Détection d'indices de fonctionnalité",
-      irFeatureHintDesc:
-        'Pour les messages de canal, détecte les indices et active automatiquement {deepResearch} / {agentMode}.',
       advancedTitle: 'Parametres avances (aucune modification necessaire en general)',
       advancedHint:
         "À ajuster uniquement pour le dépannage ou la validation d'un déploiement contrôlé.",
@@ -1750,7 +1733,6 @@ export default mergeHarnessLocale('fr-FR', {
       contextCompressionModeOff: 'Désactivé',
       docExtract: "Accélération de l'extraction de documents",
       imageQA: "Accélération de reconnaissance d'images",
-      mediaIntent: 'Reconnaissance des scenarios de generation media',
       shortQA: 'Accélération des Q&R courtes',
       shadowOnly: 'Phase 1 : validation en arrière-plan uniquement',
       statsTitle: "Statistiques d'exécution (dépannage)",

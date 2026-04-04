@@ -1439,7 +1439,6 @@ export default mergeHarnessLocale('ga-IE', {
     advancedCodingTools: 'Uirlisí códaithe ardleibhéil',
     requestFlow: 'Sreabhadh iarratais',
     proxyRouting: 'Ródú seachfhreastalaí',
-    assistiveRouting: 'Ródú cúnta',
     localAcceleration: 'Luasghéarú áitiúil',
     voicePipeline: 'Píblíne gutha',
     portability: 'Inaistritheacht',
@@ -1630,20 +1629,6 @@ export default mergeHarnessLocale('ga-IE', {
       userGuideItem2:
         'Titeann sé ar ais go huathoibríoch chuig an bpríomhsamhail nuair nach bhfuil an tsamhail éadrom ar fáil.',
       userGuideItem3: 'Íoslódáil an tsamhail roimh an gcéad úsáid.',
-      irTitle: 'Cumais an chúntóra',
-      irDesc: 'Cabhair atá dírithe ar an úsáideoir chun comhthéacs a rialú agus uirlisí a scagadh.',
-      irMasterTitle: 'Príomh-lasc',
-      irMasterDesc: 'Cumasaigh nó díchumasaigh na feidhmeanna cúnta go léir thíos le lasc amháin.',
-      irContextPruneTitle: 'Comhbhrú comhthéacs an chomhrá',
-      irContextPruneDesc:
-        'Rialaíonn sé conas a laghdaíonn Blue stair an chomhrá nuair a ardaíonn brú an chomhthéacs.',
-      irMediaIntentDesc: 'Braithíonn sé rún giniúna meán chun iarratais a threorú níos cruinne.',
-      irOfflineFallbackTitle: 'Aistriú áitiúil as líne',
-      irOfflineFallbackDesc:
-        'Nuair is gá aistriú samhail, freagraíonn sé ar dtús ó athghlaoch comhthéacs áitiúil.',
-      irFeatureHintTitle: 'Braite leideanna gné',
-      irFeatureHintDesc:
-        'I gcás teachtaireachtaí cainéil, braithtear leideanna agus cumasaítear {deepResearch} / {agentMode} go huathoibríoch.',
       advancedTitle: 'Paraimedair ardleibhil (de ghnath ni ga iad a athru)',
       advancedHint:
         'Ná coigeartaigh é ach le haghaidh fabhtcheartaithe nó bailíochtaithe ar rolladh amach rialaithe.',
@@ -1674,7 +1659,6 @@ export default mergeHarnessLocale('ga-IE', {
       contextCompressionModeOff: 'Múchta',
       docExtract: 'Luasú eastóscadh doiciméad',
       imageQA: 'Luasghéarú aitheantais íomhá',
-      mediaIntent: 'Aithint cAsanna gineala meAn',
       shortQA: 'Luasú gearr-Q&A',
       shadowOnly: 'Céim 1: bailíochtú sa chúlra amháin',
       statsTitle: 'Staitisticí ama rite (fabhtcheartú)',

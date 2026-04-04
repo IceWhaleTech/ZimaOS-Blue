@@ -1439,7 +1439,6 @@ export default mergeHarnessLocale('nl-NL', {
     advancedCodingTools: 'Geavanceerde codehulpmiddelen',
     requestFlow: 'Verzoekstroom',
     proxyRouting: 'Proxy-routering',
-    assistiveRouting: 'Ondersteunende routering',
     localAcceleration: 'Lokale versnelling',
     voicePipeline: 'Spraakpipeline',
     portability: 'Portabiliteit',
@@ -1630,21 +1629,6 @@ export default mergeHarnessLocale('nl-NL', {
       userGuideItem2:
         'Valt automatisch terug op het hoofdmodel wanneer het lichte model niet beschikbaar is.',
       userGuideItem3: 'Download het model vóór het eerste gebruik.',
-      irTitle: 'Assistentmogelijkheden',
-      irDesc: 'Gebruikersgerichte hulpen voor contextbeheer en het filteren van hulpmiddelen.',
-      irMasterTitle: 'Hoofdschakelaar',
-      irMasterDesc: 'Schakel alle hulpfuncties hieronder in één keer in of uit.',
-      irContextPruneTitle: 'Chatcontext-compactie',
-      irContextPruneDesc:
-        'Bepaalt hoe Blue de chatgeschiedenis compacteert wanneer de contextdruk oploopt.',
-      irMediaIntentDesc:
-        'Detecteert intentie voor mediageneratie om verzoeken nauwkeuriger te routeren.',
-      irOfflineFallbackTitle: 'Lokale offline-terugval',
-      irOfflineFallbackDesc:
-        'Wanneer modelterugval nodig is, antwoordt het eerst vanuit lokale contextoproep.',
-      irFeatureHintTitle: 'Detectie van functiehints',
-      irFeatureHintDesc:
-        'Detecteert bij kanaalberichten hints en schakelt {deepResearch} / {agentMode} automatisch in.',
       advancedTitle: 'Geavanceerde parameters (meestal geen wijziging nodig)',
       advancedHint:
         'Alleen aanpassen voor probleemoplossing of validatie van een gecontroleerde uitrol.',
@@ -1675,7 +1659,6 @@ export default mergeHarnessLocale('nl-NL', {
       contextCompressionModeOff: 'Uit',
       docExtract: 'Versnelling van documentextractie',
       imageQA: 'Versnelling van beeldherkenning',
-      mediaIntent: "Herkenning van mediascenario's",
       shortQA: 'Versnelling van korte Q&A',
       shadowOnly: 'Fase 1: alleen achtergrondvalidatie',
       statsTitle: 'Runtime-statistieken (probleemoplossing)',

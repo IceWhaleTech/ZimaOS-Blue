@@ -1,6 +1,7 @@
 import { createI18n } from 'vue-i18n'
 import { hasStoredSessionHint } from '@/utils/authStorage'
 import { shouldDeferLocaleEnhancementsOnDesktopStartup } from '@/utils/desktopStartup'
+import buildBuiltinSkillBackfill from './builtin-skill-backfills'
 import builtinToolBackfills from './builtin-tool-backfills'
 import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
 import { localeKeys, localeOptions, type LocaleKey } from './locale-catalog'
@@ -481,10 +482,14 @@ async function loadLocaleMessages(
         loadLocaleOverrides(),
       ])
       const mergedMessages = deepMergeMessages(module.default, localeOverrides[locale] || {})
+      const messagesWithBuiltinSkills = deepMergeMessages(
+        mergedMessages,
+        buildBuiltinSkillBackfill(locale, mergedMessages)
+      )
       const deferEnhancements = options.deferEnhancements ?? false
       const { messages, enhanced } = await buildLocaleMessages(
         locale,
-        mergedMessages,
+        messagesWithBuiltinSkills,
         !deferEnhancements && requireEnhancements
       )
 

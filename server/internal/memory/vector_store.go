@@ -603,6 +603,35 @@ func (s *VectorStore) reader() *sql.DB {
 	return s.db
 }
 
+func isMemoryVecPrimaryKeyConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") && strings.Contains(msg, "memory_vec")
+}
+
+func insertVectorEmbedding(ctx context.Context, tx *sql.Tx, rowID int64, serialized []byte) error {
+	const insertVecSQL = `INSERT INTO memory_vec (rowid, embedding) VALUES (?, vec_quantize_int8(?, 'unit'))`
+
+	if _, err := tx.ExecContext(ctx, insertVecSQL, rowID, serialized); err != nil {
+		if !isMemoryVecPrimaryKeyConflict(err) {
+			return fmt.Errorf("insert vec: %w", err)
+		}
+
+		// Self-heal stale vec rows left behind by prior drift/rebuilds where
+		// memory_chunks rowids restarted but memory_vec still had the old row.
+		if _, delErr := z.TableContext(ctx, tx, "memory_vec").Delete(z.Where(z.Eq("rowid", rowID))); delErr != nil {
+			return fmt.Errorf("repair stale vec row %d: %w", rowID, delErr)
+		}
+		if _, retryErr := tx.ExecContext(ctx, insertVecSQL, rowID, serialized); retryErr != nil {
+			return fmt.Errorf("insert vec after repair: %w", retryErr)
+		}
+	}
+
+	return nil
+}
+
 // Store stores a memory chunk with its embedding.
 func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, metadata map[string]string) (*MemoryChunk, error) {
 	s.mu.Lock()
@@ -640,11 +669,8 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 	// Insert into memory_vec (must be manual, vec0 doesn't support triggers)
 	if len(emb) == s.embeddingDim {
 		serialized := serializeFloat32(emb)
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO memory_vec (rowid, embedding) VALUES (?, vec_quantize_int8(?, 'unit'))`,
-			int64(rowID), serialized,
-		); err != nil {
-			return nil, fmt.Errorf("insert vec: %w", err)
+		if err := insertVectorEmbedding(ctx, tx, int64(rowID), serialized); err != nil {
+			return nil, err
 		}
 	}
 

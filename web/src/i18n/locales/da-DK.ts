@@ -1434,7 +1434,6 @@ export default mergeHarnessLocale('da-DK', {
     advancedCodingTools: 'Avancerede kodningsværktøjer',
     requestFlow: 'Anmodningsflow',
     proxyRouting: 'Proxy-routing',
-    assistiveRouting: 'Assisteret routing',
     localAcceleration: 'Lokal acceleration',
     voicePipeline: 'Stemmepipeline',
     portability: 'Portabilitet',
@@ -1622,21 +1621,6 @@ export default mergeHarnessLocale('da-DK', {
       userGuideItem2:
         'Falder automatisk tilbage til hovedmodellen, når den lette model ikke er tilgængelig.',
       userGuideItem3: 'Download modellen før første brug.',
-      irTitle: 'Assistentfunktioner',
-      irDesc: 'Brugervendte hjælpere til kontekststyring og værktøjsfiltrering.',
-      irMasterTitle: 'Hovedkontakt',
-      irMasterDesc: 'Slå alle hjælpefunktionerne nedenfor til eller fra på én gang.',
-      irContextPruneTitle: 'Komprimering af chatkontekst',
-      irContextPruneDesc:
-        'Styrer, hvordan Blue reducerer chathistorikken, når kontekstpresset stiger.',
-      irMediaIntentDesc:
-        'Registrerer hensigt om mediegenerering for at route forespørgsler mere præcist.',
-      irOfflineFallbackTitle: 'Lokal offline-fallback',
-      irOfflineFallbackDesc:
-        'Når modelfallback er nødvendig, svares der først ud fra lokal konteksthentning.',
-      irFeatureHintTitle: 'Registrering af funktionshint',
-      irFeatureHintDesc:
-        'For kanalbeskeder registreres hints, og {deepResearch} / {agentMode} aktiveres automatisk.',
       advancedTitle: 'Avancerede parametre (normalt ingen aendring nodvendig)',
       advancedHint: 'Juster kun til fejlfinding eller validering af kontrolleret udrulning.',
       expand: 'Fold ud',
@@ -1666,7 +1650,6 @@ export default mergeHarnessLocale('da-DK', {
       contextCompressionModeOff: 'Fra',
       docExtract: 'Acceleration af dokumentudtræk',
       imageQA: 'Acceleration af billedgenkendelse',
-      mediaIntent: 'Genkendelse af mediegenereringsscenarie',
       shortQA: 'Acceleration af korte Q&A',
       shadowOnly: 'Fase 1: kun baggrundsvalidering',
       statsTitle: 'Runtime-statistik (fejlfinding)',

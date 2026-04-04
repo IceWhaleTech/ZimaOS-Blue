@@ -1441,7 +1441,6 @@ export default mergeHarnessLocale('ca-ES', {
     advancedCodingTools: 'Eines avançades de codi',
     requestFlow: 'Flux de sol·licituds',
     proxyRouting: 'Encaminament del proxy',
-    assistiveRouting: 'Encaminament assistit',
     localAcceleration: 'Acceleració local',
     voicePipeline: 'Cadena de veu',
     portability: 'Portabilitat',
@@ -1634,21 +1633,6 @@ export default mergeHarnessLocale('ca-ES', {
       userGuideItem2:
         'Fa fallback automàticament al model principal quan el model lleuger no està disponible.',
       userGuideItem3: 'Descarrega el model abans del primer ús.',
-      irTitle: "Capacitats de l'assistent",
-      irDesc: "Ajudes visibles per a l'usuari per al control del context i el filtratge d'eines.",
-      irMasterTitle: 'Interruptor mestre',
-      irMasterDesc: 'Activa o desactiva de cop totes les funcions auxiliars de sota.',
-      irContextPruneTitle: 'Compactació del context del xat',
-      irContextPruneDesc:
-        "Controla com Blue redueix l'historial del xat quan augmenta la pressió de context.",
-      irMediaIntentDesc:
-        'Detecta la intenció de generar contingut multimèdia per encaminar les sol·licituds amb més precisió.',
-      irOfflineFallbackTitle: 'Fallback local fora de línia',
-      irOfflineFallbackDesc:
-        'Quan cal fer fallback del model, respon primer des del record del context local.',
-      irFeatureHintTitle: "Detecció d'indicis de funcions",
-      irFeatureHintDesc:
-        'Per als missatges del canal, detecta indicis i activa automàticament {deepResearch} / {agentMode}.',
       advancedTitle: 'Parametres avancats (normalment no cal canviar-los)',
       advancedHint:
         "Ajusta-ho només per a resolució de problemes o validació d'un desplegament controlat.",
@@ -1679,7 +1663,6 @@ export default mergeHarnessLocale('ca-ES', {
       contextCompressionModeOff: 'Desactivat',
       docExtract: "Acceleració d'extracció de documents",
       imageQA: "Acceleració del reconeixement d'imatges",
-      mediaIntent: "Reconeixement d'escenaris de generacio multimedia",
       shortQA: 'Acceleració de preguntes breus',
       shadowOnly: 'Fase 1: només validació en segon pla',
       statsTitle: "Estadístiques d'execució (resolució de problemes)",

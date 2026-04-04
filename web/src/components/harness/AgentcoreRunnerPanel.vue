@@ -39,21 +39,42 @@ const AGENTCORE_RUNNER_EVOLVABLE_PART_ORDER = [
   'build_recipe',
 ] as const
 
-const AGENTCORE_RUNNER_EVOLVABLE_PART_LABELS: Record<string, string> = {
-  constraints: '约束层',
-  skill_definition: 'Skill定义',
-  prompt_template: '提示词',
-  context_assembly: '上下文工程',
+const AGENTCORE_RUNNER_EVOLVABLE_PART_FALLBACK_LABELS: Record<string, string> = {
+  constraints: 'Constraints',
+  skill_definition: 'Skill definition',
+  prompt_template: 'Prompt template',
+  context_assembly: 'Context assembly',
   coordinator_policy: 'Coordinator',
   orchestrator_policy: 'Orchestrator',
-  tool_exposure: '工具暴露',
-  verification_policy: '验证策略',
-  runner_code: 'Runner代码',
-  build_recipe: '构建配方',
+  tool_exposure: 'Tool exposure',
+  verification_policy: 'Verification policy',
+  runner_code: 'Runner code',
+  build_recipe: 'Build recipe',
 }
 
-const AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP = '该层在当前候选中已优化'
-const AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP = '该层可纳入自我进化，当前版本未调整'
+const AGENTCORE_RUNNER_EVOLVABLE_PART_FALLBACK_DESCRIPTIONS: Record<string, string> = {
+  constraints: 'Defines the hard limits and guardrails the runner must follow.',
+  skill_definition: 'Describes the skill contract, responsibilities, and expected capabilities.',
+  prompt_template:
+    'Shapes the reusable instructions and response structure sent to the model.',
+  context_assembly:
+    'Controls how evidence, state, and workspace context are gathered before each run.',
+  coordinator_policy:
+    'Decides how top-level tasks are broken down, sequenced, and handed off.',
+  orchestrator_policy:
+    'Governs multi-step flow control, retries, and cross-stage coordination.',
+  tool_exposure:
+    'Chooses which tools are available to the runner and how they are presented.',
+  verification_policy:
+    'Defines how outputs are checked before they are accepted or persisted.',
+  runner_code: 'Implements the runtime logic that executes the agent loop and integrations.',
+  build_recipe: 'Specifies how the runner is prepared, built, and packaged for execution.',
+}
+
+const AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP_FALLBACK =
+  'This part was optimized in the current candidate'
+const AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP_FALLBACK =
+  'This part can participate in self-evolution, but the current version did not change it'
 
 const agentcoreRunnerSaving = ref(false)
 const agentcoreRunnerPreparing = ref(false)
@@ -162,10 +183,13 @@ const agentcoreRunnerOptimizedPartList = computed(() =>
   agentcoreRunnerSupportedParts.value.filter((part) => agentcoreRunnerOptimizedParts.value.has(part))
 )
 const agentcoreRunnerOptimizedSummary = computed(() =>
-  agentcoreRunnerOptimizedPartList.value.join(', ')
+  agentcoreRunnerOptimizedPartList.value.map((part) => translateAgentcoreRunnerPart(part)).join(', ')
 )
 const agentcoreRunnerPrimaryPart = computed(() =>
   normalizeEvidenceText(agentcoreRunnerStatus.value?.primary_part)
+)
+const agentcoreRunnerPrimaryPartLabel = computed(() =>
+  agentcoreRunnerPrimaryPart.value ? translateAgentcoreRunnerPart(agentcoreRunnerPrimaryPart.value) : ''
 )
 const agentcoreRunnerSourceOptimizationRunID = computed(() =>
   normalizeEvidenceText(agentcoreRunnerStatus.value?.source_optimization_run_id)
@@ -173,11 +197,9 @@ const agentcoreRunnerSourceOptimizationRunID = computed(() =>
 const agentcoreRunnerEvolvablePartBadges = computed(() =>
   agentcoreRunnerSupportedParts.value.map((part) => ({
     part,
-    label: AGENTCORE_RUNNER_EVOLVABLE_PART_LABELS[part] ?? part,
+    label: translateAgentcoreRunnerPart(part),
     active: agentcoreRunnerOptimizedParts.value.has(part),
-    tooltip: agentcoreRunnerOptimizedParts.value.has(part)
-      ? AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP
-      : AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP,
+    tooltip: buildAgentcoreRunnerPartTooltip(part, agentcoreRunnerOptimizedParts.value.has(part)),
   }))
 )
 
@@ -232,6 +254,40 @@ function normalizeAgentcoreRunnerStatusError(value: unknown) {
     return ''
   }
   return text
+}
+
+function translateAgentcoreRunnerPart(part: string) {
+  return t(
+    `settings.agentcoreRunner.parts.${part}`,
+    AGENTCORE_RUNNER_EVOLVABLE_PART_FALLBACK_LABELS[part] ?? part
+  )
+}
+
+function translateAgentcoreRunnerPartDescription(part: string) {
+  return t(
+    `settings.agentcoreRunner.partDescriptions.${part}`,
+    AGENTCORE_RUNNER_EVOLVABLE_PART_FALLBACK_DESCRIPTIONS[part] ?? ''
+  )
+}
+
+function buildAgentcoreRunnerPartTooltip(part: string, active: boolean) {
+  const statusText = active
+    ? t(
+        'settings.agentcoreRunner.activePartTooltip',
+        AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP_FALLBACK
+      )
+    : t(
+        'settings.agentcoreRunner.inactivePartTooltip',
+        AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP_FALLBACK
+      )
+
+  return [
+    translateAgentcoreRunnerPart(part),
+    translateAgentcoreRunnerPartDescription(part),
+    statusText,
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 function normalizeAgentcoreRunnerRepoURLValue(value: unknown) {
@@ -636,7 +692,9 @@ async function prepareAgentcoreRunner() {
             </div>
           </div>
           <div class="text-sm sm:col-span-2">
-            <span class="text-gray-500 dark:text-gray-400">可进化面</span>
+            <span class="text-gray-500 dark:text-gray-400">{{
+              t('settings.agentcoreRunner.evolvableParts', 'Evolvable parts')
+            }}</span>
             <div class="mt-2 flex flex-wrap gap-2">
               <span
                 v-for="badge in agentcoreRunnerEvolvablePartBadges"
@@ -701,18 +759,22 @@ async function prepareAgentcoreRunner() {
               }}
             </div>
             <div
-              v-if="agentcoreRunnerPrimaryPart"
+              v-if="agentcoreRunnerPrimaryPartLabel"
               data-testid="agentcore-runner-primary-part"
               class="mt-1 text-xs text-gray-600 dark:text-gray-300"
             >
-              {{ `Primary: ${agentcoreRunnerPrimaryPart}` }}
+              {{
+                `${t('settings.agentcoreRunner.primaryPart', 'Primary')}: ${agentcoreRunnerPrimaryPartLabel}`
+              }}
             </div>
             <div
               v-if="agentcoreRunnerSourceOptimizationRunID"
               data-testid="agentcore-runner-source-optimization-run-id"
               class="text-xs text-gray-500 dark:text-gray-400"
             >
-              {{ `Source optimization: ${agentcoreRunnerSourceOptimizationRunID}` }}
+              {{
+                `${t('settings.agentcoreRunner.sourceOptimization', 'Source optimization')}: ${agentcoreRunnerSourceOptimizationRunID}`
+              }}
             </div>
             <div
               v-if="agentcoreRunnerLastRun"

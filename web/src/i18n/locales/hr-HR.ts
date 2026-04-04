@@ -1435,7 +1435,6 @@ export default mergeHarnessLocale('hr-HR', {
     advancedCodingTools: 'Napredni alati za kodiranje',
     requestFlow: 'Tok zahtjeva',
     proxyRouting: 'Proxy usmjeravanje',
-    assistiveRouting: 'Pomoćno usmjeravanje',
     localAcceleration: 'Lokalno ubrzanje',
     voicePipeline: 'Glasovni tijek',
     portability: 'Prenosivost',
@@ -1620,20 +1619,6 @@ export default mergeHarnessLocale('hr-HR', {
       userGuideItem1: 'Daje prioritet kratkim pitanjima i nekim odlukama alata za brze odgovore.',
       userGuideItem2: 'Automatski se vraća na glavni model kada lagani model nije dostupan.',
       userGuideItem3: 'Preuzmite model prije prve upotrebe.',
-      irTitle: 'Mogućnosti asistenta',
-      irDesc: 'Pomoćnici usmjereni na korisnika za upravljanje kontekstom i filtriranje alata.',
-      irMasterTitle: 'Glavni prekidač',
-      irMasterDesc: 'Jednim potezom uključite ili isključite sve pomoćne funkcije ispod.',
-      irContextPruneTitle: 'Sažimanje konteksta chata',
-      irContextPruneDesc:
-        'Određuje kako Blue sažima povijest chata kada poraste pritisak konteksta.',
-      irMediaIntentDesc: 'Otkriva namjeru generiranja medija za preciznije usmjeravanje zahtjeva.',
-      irOfflineFallbackTitle: 'Lokalni izvanmrežni fallback',
-      irOfflineFallbackDesc:
-        'Kada je potreban fallback modela, prvo odgovara iz lokalnog prisjećanja konteksta.',
-      irFeatureHintTitle: 'Otkrivanje naznaka značajki',
-      irFeatureHintDesc:
-        'Za poruke u kanalu otkriva naznake i automatski uključuje {deepResearch} / {agentMode}.',
       advancedTitle: 'Napredni parametri (obicno nije potrebno mijenjati)',
       advancedHint:
         'Prilagođavajte samo za otklanjanje poteškoća ili provjeru kontroliranog uvođenja.',
@@ -1664,7 +1649,6 @@ export default mergeHarnessLocale('hr-HR', {
       contextCompressionModeOff: 'Isključeno',
       docExtract: 'Akceleracija izdvajanja dokumenata',
       imageQA: 'Ubrzanje prepoznavanja slika',
-      mediaIntent: 'Prepoznavanje scenarija generiranja medija',
       shortQA: 'Akceleracija kratkih Q&A',
       shadowOnly: 'Faza 1: samo pozadinska provjera',
       statsTitle: 'Statistika izvođenja (otklanjanje poteškoća)',

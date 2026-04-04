@@ -341,6 +341,70 @@ version: 1.0.0
 	}
 }
 
+func TestSkillVisibility_ListSkillsPreservesBuiltinFlagForScannerShadowingRegistry(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	if err := registry.Register(NewRemoteSkillAdapter(&skill.Manifest{
+		ID:          "ask",
+		Name:        "Ask",
+		Version:     "1.0.0",
+		Description: "Ask the user follow-up questions needed to continue the task",
+	}), true); err != nil {
+		t.Fatalf("register builtin skill: %v", err)
+	}
+
+	skillDir := filepath.Join(handler.skillsDir, "ask")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: ask
+description: Ask the user follow-up questions needed to continue the task
+version: 1.0.0
+---
+
+# Ask
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	scanner := skillstore.NewLocalSkillScanner(handler.skillsDir)
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("scan skills: %v", err)
+	}
+	handler.SetLocalScanner(scanner)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListSkills(c); err != nil {
+		t.Fatalf("ListSkills failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var skills []map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &skills); err != nil {
+		t.Fatalf("failed to unmarshal skills: %v", err)
+	}
+
+	for _, entry := range skills {
+		if entry["id"] != "ask" {
+			continue
+		}
+		if builtin, ok := entry["builtin"].(bool); !ok || !builtin {
+			t.Fatalf("expected scanner-shadowed builtin skill to keep builtin=true, got %#v", entry["builtin"])
+		}
+		return
+	}
+
+	t.Fatal("expected ask skill in skills list")
+}
+
 func TestSkillVisibility_GetSkillResolvesPeerAgentsRootWhenManagedDirIsClaude(t *testing.T) {
 	registry := skill.NewRegistry()
 	handler := newTestSkillHandler(t, registry)

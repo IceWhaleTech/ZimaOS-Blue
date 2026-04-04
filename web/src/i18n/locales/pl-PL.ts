@@ -1437,7 +1437,6 @@ export default mergeHarnessLocale('pl-PL', {
     advancedCodingTools: 'Zaawansowane narzędzia programistyczne',
     requestFlow: 'Przepływ żądań',
     proxyRouting: 'Routing proxy',
-    assistiveRouting: 'Routing wspomagający',
     localAcceleration: 'Lokalne przyspieszenie',
     voicePipeline: 'Pipeline głosowy',
     portability: 'Przenośność',
@@ -1627,20 +1626,6 @@ export default mergeHarnessLocale('pl-PL', {
       userGuideItem2:
         'Automatycznie przełącza się na model główny, gdy lekki model jest niedostępny.',
       userGuideItem3: 'Pobierz model przed pierwszym użyciem.',
-      irTitle: 'Możliwości asystenta',
-      irDesc: 'Widoczne dla użytkownika pomocniki do kontroli kontekstu i filtrowania narzędzi.',
-      irMasterTitle: 'Główny przełącznik',
-      irMasterDesc: 'Włącz lub wyłącz wszystkie funkcje pomocnicze poniżej jednym przełącznikiem.',
-      irContextPruneTitle: 'Kompresja kontekstu czatu',
-      irContextPruneDesc:
-        'Określa, jak Blue ogranicza historię czatu, gdy rośnie presja kontekstu.',
-      irMediaIntentDesc: 'Wykrywa zamiar generowania multimediów, aby dokładniej kierować żądania.',
-      irOfflineFallbackTitle: 'Lokalny fallback offline',
-      irOfflineFallbackDesc:
-        'Gdy potrzebny jest fallback modelu, najpierw odpowiada z lokalnego przywołania kontekstu.',
-      irFeatureHintTitle: 'Wykrywanie podpowiedzi funkcji',
-      irFeatureHintDesc:
-        'W wiadomościach kanału wykrywa wskazówki i automatycznie włącza {deepResearch} / {agentMode}.',
       advancedTitle: 'Parametry zaawansowane (zwykle nie wymagaja zmian)',
       advancedHint:
         'Dostosowuj tylko do rozwiązywania problemów lub walidacji kontrolowanego wdrożenia.',
@@ -1671,7 +1656,6 @@ export default mergeHarnessLocale('pl-PL', {
       contextCompressionModeOff: 'Wyłączone',
       docExtract: 'Przyspieszenie ekstrakcji dokumentów',
       imageQA: 'Przyspieszenie rozpoznawania obrazów',
-      mediaIntent: 'Rozpoznawanie scenariusza generowania mediow',
       shortQA: 'Przyspieszenie krótkich Q&A',
       shadowOnly: 'Faza 1: tylko walidacja w tle',
       statsTitle: 'Statystyki działania (rozwiązywanie problemów)',

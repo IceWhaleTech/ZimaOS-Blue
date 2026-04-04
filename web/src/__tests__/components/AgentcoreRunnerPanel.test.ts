@@ -59,6 +59,10 @@ describe('AgentcoreRunnerPanel', () => {
         last_optimization_at: '2026-04-03T12:05:00Z',
         last_optimization_state: 'completed',
         last_optimization_summary: 'agentcore runner summary',
+        supported_parts: ['coordinator_policy', 'orchestrator_policy', 'runner_code'],
+        optimized_parts: ['orchestrator_policy'],
+        primary_part: 'runner_code',
+        source_optimization_run_id: 'opt-source-1',
       },
     } as never)
     vi.mocked(settingsApi.getAgentcoreRunnerLastRun).mockResolvedValue({
@@ -101,11 +105,29 @@ describe('AgentcoreRunnerPanel', () => {
     })
 
     await flushPromises()
+    await wrapper.get('[data-testid="agentcore-runner-status-toggle"]').trigger('click')
+    await flushPromises()
 
     expect(wrapper.get('[data-testid="agentcore-runner-card"]').text()).toContain('Agentcore Runner')
     expect(wrapper.find('[data-testid="agentcore-runner-refresh"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="agentcore-runner-prepare"]').text()).toContain(
       'Prepare Runner'
     )
+    expect(wrapper.text()).toContain('Coordinator')
+    expect(wrapper.text()).toContain('Orchestrator')
+    expect(wrapper.text()).toContain('Runner code')
+    expect(wrapper.get('[data-testid="agentcore-runner-primary-part"]').text()).toContain(
+      'Primary: Runner code'
+    )
+    expect(
+      wrapper
+        .get('[data-testid="agentcore-runner-evolvable-part"][data-part="orchestrator_policy"]')
+        .attributes('title')
+    ).toContain('Governs multi-step flow control, retries, and cross-stage coordination.')
+    expect(
+      wrapper
+        .get('[data-testid="agentcore-runner-evolvable-part"][data-part="orchestrator_policy"]')
+        .attributes('title')
+    ).toContain('This part was optimized in the current candidate')
   })
 })

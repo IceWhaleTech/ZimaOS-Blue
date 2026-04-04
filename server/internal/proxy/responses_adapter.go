@@ -333,16 +333,21 @@ func clampResponsesMaxOutputTokens(body []byte, maxAllowed int) []byte {
 
 // clampChatCompletionsMaxTokens caps chat-completions output token fields when
 // a model-level limit is known. Unknown model limits remain passthrough.
-// It also ensures max_completion_tokens is set from max_tokens so that both
-// legacy models (which use max_tokens) and newer models (which require
-// max_completion_tokens) are served correctly.
+// Only models that explicitly require max_completion_tokens are rewritten away
+// from max_tokens; generic OpenAI-compatible relays should keep legacy
+// max_tokens for best compatibility.
 func clampChatCompletionsMaxTokens(body []byte, maxAllowed int) []byte {
-	// Ensure max_completion_tokens is populated from max_tokens for
-	// forward compatibility with OpenAI models that reject max_tokens.
-	body = ensureMaxCompletionTokens(body)
+	if chatCompletionsRequiresMaxCompletionTokens(body) {
+		body = ensureMaxCompletionTokens(body)
+	}
 	body = clampPositiveIntJSONField(body, "max_tokens", maxAllowed)
 	body = clampPositiveIntJSONField(body, "max_completion_tokens", maxAllowed)
 	return body
+}
+
+func chatCompletionsRequiresMaxCompletionTokens(body []byte) bool {
+	model := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "model").String()))
+	return model == "gpt-5.4" || strings.HasPrefix(model, "gpt-5.4-")
 }
 
 // ensureMaxCompletionTokens converts max_tokens to max_completion_tokens.

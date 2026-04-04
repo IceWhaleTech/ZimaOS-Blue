@@ -1443,7 +1443,6 @@ export default mergeHarnessLocale('el-GR', {
     advancedCodingTools: 'Προηγμένα εργαλεία κώδικα',
     requestFlow: 'Ροή αιτημάτων',
     proxyRouting: 'Δρομολόγηση μέσω proxy',
-    assistiveRouting: 'Υποστηρικτική δρομολόγηση',
     localAcceleration: 'Τοπική επιτάχυνση',
     voicePipeline: 'Αλυσίδα φωνής',
     portability: 'Φορητότητα',
@@ -1636,22 +1635,6 @@ export default mergeHarnessLocale('el-GR', {
       userGuideItem2:
         'Κάνει αυτόματα εφεδρεία στο κύριο μοντέλο όταν το ελαφρύ μοντέλο δεν είναι διαθέσιμο.',
       userGuideItem3: 'Κατεβάστε το μοντέλο πριν από την πρώτη χρήση.',
-      irTitle: 'Δυνατότητες βοηθού',
-      irDesc: 'Βοηθήματα ορατά στον χρήστη για έλεγχο συμφραζομένων και φιλτράρισμα εργαλείων.',
-      irMasterTitle: 'Κύριος διακόπτης',
-      irMasterDesc:
-        'Ενεργοποιήστε ή απενεργοποιήστε όλες τις βοηθητικές λειτουργίες παρακάτω με μία κίνηση.',
-      irContextPruneTitle: 'Συμπίεση συμφραζομένων συνομιλίας',
-      irContextPruneDesc:
-        'Ελέγχει πώς το Blue συμπιέζει το ιστορικό συνομιλίας όταν αυξάνεται η πίεση συμφραζομένων.',
-      irMediaIntentDesc:
-        'Ανιχνεύει πρόθεση δημιουργίας μέσων για ακριβέστερη δρομολόγηση αιτημάτων.',
-      irOfflineFallbackTitle: 'Τοπική εφεδρεία εκτός σύνδεσης',
-      irOfflineFallbackDesc:
-        'Όταν απαιτείται εφεδρεία μοντέλου, απαντά πρώτα από την τοπική ανάκληση συμφραζομένων.',
-      irFeatureHintTitle: 'Ανίχνευση υποδείξεων δυνατοτήτων',
-      irFeatureHintDesc:
-        'Για τα μηνύματα καναλιού, ανιχνεύει υποδείξεις και ενεργοποιεί αυτόματα το {deepResearch} / {agentMode}.',
       advancedTitle: 'Proigmenes parametroi (sinithos den xreiazetai allagi)',
       advancedHint:
         'Ρυθμίστε το μόνο για αντιμετώπιση προβλημάτων ή επικύρωση ελεγχόμενης διάθεσης.',
@@ -1682,7 +1665,6 @@ export default mergeHarnessLocale('el-GR', {
       contextCompressionModeOff: 'Απενεργοποιημένο',
       docExtract: 'Επιτάχυνση εξαγωγής εγγράφων',
       imageQA: 'Επιτάχυνση αναγνώρισης εικόνας',
-      mediaIntent: 'Anagnorisi senariou dimiourgias meson',
       shortQA: 'Επιτάχυνση σύντομων Q&A',
       shadowOnly: 'Φάση 1: μόνο επικύρωση στο παρασκήνιο',
       statsTitle: 'Στατιστικά εκτέλεσης (αντιμετώπιση προβλημάτων)',

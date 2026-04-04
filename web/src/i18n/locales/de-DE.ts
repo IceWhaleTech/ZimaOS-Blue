@@ -1514,7 +1514,6 @@ export default mergeHarnessLocale('de-DE', {
     advancedCodingTools: 'Erweiterte Coding-Tools',
     requestFlow: 'Anfragefluss',
     proxyRouting: 'Proxy-Routing',
-    assistiveRouting: 'Unterstützendes Routing',
     localAcceleration: 'Lokale Beschleunigung',
     voicePipeline: 'Sprachpipeline',
     portability: 'Portabilität',
@@ -1705,21 +1704,6 @@ export default mergeHarnessLocale('de-DE', {
       userGuideItem2:
         'Fällt automatisch auf das Hauptmodell zurück, wenn das leichte Modell nicht verfügbar ist.',
       userGuideItem3: 'Lade das Modell vor der ersten Verwendung herunter.',
-      irTitle: 'Assistent-Fähigkeiten',
-      irDesc: 'Nutzerseitige Hilfen für Kontextsteuerung und Werkzeugfilterung.',
-      irMasterTitle: 'Hauptschalter',
-      irMasterDesc: 'Schaltet alle Hilfsfunktionen unten auf einmal ein oder aus.',
-      irContextPruneTitle: 'Chat-Kontextkomprimierung',
-      irContextPruneDesc:
-        'Legt fest, wie Blue den Chatverlauf komprimiert, wenn der Kontextdruck steigt.',
-      irMediaIntentDesc:
-        'Erkennt die Absicht zur Medienerzeugung, um Anfragen präziser weiterzuleiten.',
-      irOfflineFallbackTitle: 'Lokaler Offline-Fallback',
-      irOfflineFallbackDesc:
-        'Wenn ein Modell-Fallback nötig ist, antworte zuerst aus lokalem Kontextrückruf.',
-      irFeatureHintTitle: 'Erkennung von Funktionshinweisen',
-      irFeatureHintDesc:
-        'Erkennt in Kanalnachrichten Hinweise und aktiviert automatisch {deepResearch} / {agentMode}.',
       advancedTitle: 'Erweiterte Parameter (normalerweise keine Anderung notig)',
       advancedHint:
         'Nur für Fehlersuche oder die Validierung eines kontrollierten Rollouts anpassen.',
@@ -1750,7 +1734,6 @@ export default mergeHarnessLocale('de-DE', {
       contextCompressionModeOff: 'Aus',
       docExtract: 'Beschleunigung der Dokumentextraktion',
       imageQA: 'Beschleunigung der Bilderkennung',
-      mediaIntent: 'Erkennung von Mediengenerierungs-Szenarien',
       shortQA: 'Beschleunigung kurzer Q&A',
       shadowOnly: 'Phase 1: nur Hintergrundvalidierung',
       statsTitle: 'Laufzeitstatistiken (Fehlersuche)',

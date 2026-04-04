@@ -1499,7 +1499,6 @@ export default mergeHarnessLocale('ru-RU', {
     advancedCodingTools: 'Продвинутые инструменты для кода',
     requestFlow: 'Поток запросов',
     proxyRouting: 'Прокси-маршрутизация',
-    assistiveRouting: 'Вспомогательная маршрутизация',
     localAcceleration: 'Локальное ускорение',
     voicePipeline: 'Голосовой конвейер',
     portability: 'Переносимость',
@@ -1691,22 +1690,6 @@ export default mergeHarnessLocale('ru-RU', {
       userGuideItem2:
         'Автоматически переключается на основную модель, когда лёгкая модель недоступна.',
       userGuideItem3: 'Загрузите модель перед первым использованием.',
-      irTitle: 'Возможности помощника',
-      irDesc: 'Пользовательские помощники для управления контекстом и фильтрации инструментов.',
-      irMasterTitle: 'Главный переключатель',
-      irMasterDesc:
-        'Одним переключателем включайте или отключайте все вспомогательные функции ниже.',
-      irContextPruneTitle: 'Сжатие контекста чата',
-      irContextPruneDesc:
-        'Определяет, как Blue сжимает историю чата, когда растет давление на контекстное окно.',
-      irMediaIntentDesc:
-        'Определяет намерение генерации медиа, чтобы точнее маршрутизировать запросы.',
-      irOfflineFallbackTitle: 'Локальный офлайн-фолбэк',
-      irOfflineFallbackDesc:
-        'Когда нужен фолбэк модели, сначала отвечает из локального вызова контекста.',
-      irFeatureHintTitle: 'Обнаружение подсказок функций',
-      irFeatureHintDesc:
-        'Для сообщений канала обнаруживает подсказки и автоматически включает {deepResearch} / {agentMode}.',
       advancedTitle: 'Rasshirennye parametry (obychno menyat ne nuzhno)',
       advancedHint: 'Меняйте только для отладки или проверки контролируемого развёртывания.',
       expand: 'Развернуть',
@@ -1736,7 +1719,6 @@ export default mergeHarnessLocale('ru-RU', {
       contextCompressionModeOff: 'Выключено',
       docExtract: 'Ускорение извлечения документов',
       imageQA: 'Ускорение распознавания изображений',
-      mediaIntent: 'Распознавание сценариев генерации медиа',
       shortQA: 'Ускорение коротких Q&A',
       shadowOnly: 'Этап 1: только фоновая проверка',
       statsTitle: 'Статистика выполнения (отладка)',

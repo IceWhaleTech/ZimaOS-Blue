@@ -1440,7 +1440,6 @@ export default mergeHarnessLocale('ro-RO', {
     advancedCodingTools: 'Instrumente avansate de codare',
     requestFlow: 'Fluxul cererilor',
     proxyRouting: 'Rutare proxy',
-    assistiveRouting: 'Rutare asistată',
     localAcceleration: 'Accelerare locală',
     voicePipeline: 'Pipeline vocal',
     portability: 'Portabilitate',
@@ -1630,23 +1629,6 @@ export default mergeHarnessLocale('ro-RO', {
         'Prioritizeaza intrebarile scurte si unele decizii de instrumente pentru raspunsuri mai rapide.',
       userGuideItem2: 'Revine automat la modelul principal când modelul ușor nu este disponibil.',
       userGuideItem3: 'Descărcați modelul înainte de prima utilizare.',
-      irTitle: 'Capacitățile asistentului',
-      irDesc:
-        'Ajutoare orientate către utilizator pentru controlul contextului și filtrarea instrumentelor.',
-      irMasterTitle: 'Comutator principal',
-      irMasterDesc:
-        'Activați sau dezactivați dintr-o singură acțiune toate funcțiile auxiliare de mai jos.',
-      irContextPruneTitle: 'Compactarea contextului chatului',
-      irContextPruneDesc:
-        'Controlează cum compactează Blue istoricul chatului când presiunea contextului crește.',
-      irMediaIntentDesc:
-        'Detectează intenția de generare media pentru a direcționa cererile mai precis.',
-      irOfflineFallbackTitle: 'Fallback local offline',
-      irOfflineFallbackDesc:
-        'Când este necesar fallback-ul modelului, răspunde mai întâi din rechemarea contextului local.',
-      irFeatureHintTitle: 'Detectarea indiciilor de funcții',
-      irFeatureHintDesc:
-        'Pentru mesajele canalului, detectează indicii și activează automat {deepResearch} / {agentMode}.',
       advancedTitle: 'Parametri avansati (de obicei nu necesita modificari)',
       advancedHint: 'Ajustați doar pentru depanare sau validarea unei lansări controlate.',
       expand: 'Extinde',
@@ -1675,7 +1657,6 @@ export default mergeHarnessLocale('ro-RO', {
       contextCompressionModeOff: 'Dezactivat',
       docExtract: 'Accelerarea extragerii documentelor',
       imageQA: 'Accelerare pentru recunoașterea imaginilor',
-      mediaIntent: 'Recunoașterea scenariilor de generare media',
       shortQA: 'Accelerarea întrebărilor scurte',
       shadowOnly: 'Faza 1: doar validare în fundal',
       statsTitle: 'Statistici de execuție (depanare)',

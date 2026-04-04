@@ -1497,7 +1497,6 @@ export default mergeHarnessLocale('pt-BR', {
     advancedCodingTools: 'Ferramentas avançadas de codificação',
     requestFlow: 'Fluxo de solicitações',
     proxyRouting: 'Roteamento de proxy',
-    assistiveRouting: 'Roteamento assistido',
     localAcceleration: 'Aceleração local',
     voicePipeline: 'Pipeline de voz',
     portability: 'Portabilidade',
@@ -1685,21 +1684,6 @@ export default mergeHarnessLocale('pt-BR', {
       userGuideItem2:
         'Recorre automaticamente ao modelo principal quando o modelo leve não estiver disponível.',
       userGuideItem3: 'Baixe o modelo antes do primeiro uso.',
-      irTitle: 'Capacidades do assistente',
-      irDesc: 'Ajudas voltadas ao usuário para controle de contexto e filtragem de ferramentas.',
-      irMasterTitle: 'Interruptor principal',
-      irMasterDesc: 'Ative ou desative de uma vez todos os recursos auxiliares abaixo.',
-      irContextPruneTitle: 'Compactação do contexto do chat',
-      irContextPruneDesc:
-        'Controla como o Blue compacta o histórico do chat quando a pressão de contexto aumenta.',
-      irMediaIntentDesc:
-        'Detecta intenção de geração de mídia para rotear as solicitações com mais precisão.',
-      irOfflineFallbackTitle: 'Fallback local offline',
-      irOfflineFallbackDesc:
-        'Quando for necessário fallback do modelo, responde primeiro a partir da recuperação de contexto local.',
-      irFeatureHintTitle: 'Detecção de pistas de recurso',
-      irFeatureHintDesc:
-        'Em mensagens de canal, detecta pistas e ativa automaticamente {deepResearch} / {agentMode}.',
       advancedTitle: 'Parametros avancados (normalmente nao e necessario alterar)',
       advancedHint: 'Ajuste apenas para solução de problemas ou validação de rollout controlado.',
       expand: 'Expandir',
@@ -1729,7 +1713,6 @@ export default mergeHarnessLocale('pt-BR', {
       contextCompressionModeOff: 'Desligado',
       docExtract: 'Aceleração de extração de documentos',
       imageQA: 'Aceleração de reconhecimento de imagens',
-      mediaIntent: 'Reconhecimento de cenario de geracao de midia',
       shortQA: 'Aceleração de Q&A curto',
       shadowOnly: 'Fase 1: somente validação em segundo plano',
       statsTitle: 'Estatísticas de execução (solução de problemas)',

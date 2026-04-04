@@ -1495,7 +1495,6 @@ export default mergeHarnessLocale('ja-JP', {
     advancedCodingTools: '高度なコーディングツール',
     requestFlow: 'リクエストフロー',
     proxyRouting: 'プロキシルーティング',
-    assistiveRouting: '補助ルーティング',
     localAcceleration: 'ローカル高速化',
     voicePipeline: '音声パイプライン',
     portability: 'ポータビリティ',
@@ -1680,20 +1679,6 @@ export default mergeHarnessLocale('ja-JP', {
       userGuideItem2:
         '軽量モデルが利用できない場合は、自動的にメインモデルへフォールバックします。',
       userGuideItem3: '初回利用前にモデルをダウンロードしてください。',
-      irTitle: 'アシスタント機能',
-      irDesc: 'コンテキスト制御とツールフィルタリングのためのユーザー向けヘルパーです。',
-      irMasterTitle: 'マスター切り替え',
-      irMasterDesc: '下の補助機能を一括でオン/オフします。',
-      irContextPruneTitle: 'チャットコンテキスト圧縮',
-      irContextPruneDesc:
-        'コンテキスト圧力が高まったときに、Blue がチャット履歴をどのように圧縮するかを制御します。',
-      irMediaIntentDesc: 'メディア生成の意図を検出し、リクエストをより正確に振り分けます。',
-      irOfflineFallbackTitle: 'オフラインローカルフォールバック',
-      irOfflineFallbackDesc:
-        'モデルのフォールバックが必要な場合は、まずローカルのコンテキスト想起から回答します。',
-      irFeatureHintTitle: '機能ヒント検出',
-      irFeatureHintDesc:
-        'チャンネルメッセージでヒントを検出し、{deepResearch} / {agentMode} を自動で有効にします。',
       advancedTitle: '詳細パラメータ（通常は変更不要）',
       advancedHint: 'トラブルシューティングや制御されたロールアウト検証時のみ調整してください。',
       expand: '展開',
@@ -1723,7 +1708,6 @@ export default mergeHarnessLocale('ja-JP', {
       contextCompressionModeOff: 'オフ',
       docExtract: '文書抽出アクセラレーション',
       imageQA: '画像認識の高速化',
-      mediaIntent: 'メディア生成シナリオ認識',
       shortQA: '短文 Q&A アクセラレーション',
       shadowOnly: 'フェーズ1: バックグラウンド検証のみ',
       statsTitle: 'ランタイム統計（トラブルシューティング）',
