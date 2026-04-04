@@ -28,6 +28,7 @@ vi.mock('@/api/skill', () => ({
     listSources: vi.fn(),
     previewSourceImport: vi.fn(),
     addSource: vi.fn(),
+    installFromURL: vi.fn(),
     removeSource: vi.fn(),
   },
 }))
@@ -252,6 +253,15 @@ describe('SkillStoreTab', () => {
       data: {
         success: true,
         message: 'source added',
+      },
+    } as never)
+    vi.mocked(skillApi.installFromURL).mockResolvedValue({
+      data: {
+        success: true,
+        skill: {
+          id: 'url-seed-skill',
+          name: 'URL Seed Skill',
+        },
       },
     } as never)
     vi.mocked(skillApi.removeSource).mockResolvedValue({
@@ -621,6 +631,109 @@ describe('SkillStoreTab', () => {
       'Built-in source'
     )
     expect(wrapper.find('[data-testid="source-import-confirm"]').exists()).toBe(false)
+  })
+
+  it('installs a previewed seed directly from the import panel', async () => {
+    vi.mocked(skillApi.previewSourceImport).mockResolvedValue({
+      data: {
+        url: 'https://github.com/demo/skills-repo',
+        normalized_url: 'https://github.com/demo/skills-repo',
+        kind: 'seed',
+        confidence: 'high',
+        seed_type: 'github_repo',
+        seed_value: 'demo/skills-repo',
+        message: 'Looks like a GitHub repository seed rather than a long-lived store source.',
+      },
+    } as never)
+    vi.mocked(skillApi.installFromURL).mockResolvedValue({
+      data: {
+        success: true,
+        entry_file: 'CLAUDE.md',
+        warnings: ['legacy manifest compatibility fallback applied while parsing imported skill'],
+        contract_status: 'legacy_fallback',
+        contract_source: 'legacy_frontmatter_fallback',
+        skill: {
+          id: 'url-seed-skill',
+          name: 'URL Seed Skill',
+        },
+      },
+    } as never)
+
+    const { wrapper, pinia } = await mountSkillStoreWithPinia()
+    const notification = useNotificationStore(pinia)
+
+    await wrapper.get('[data-testid="source-import-toggle"]').trigger('click')
+    await wrapper
+      .get('[data-testid="source-import-input"]')
+      .setValue('https://github.com/demo/skills-repo')
+    await wrapper.get('[data-testid="source-import-preview"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="source-import-preview-result"]').text()).toContain(
+      'demo/skills-repo'
+    )
+    expect(wrapper.get('[data-testid="source-import-install-seed"]').text()).toContain(
+      'Install seed'
+    )
+
+    await wrapper.get('[data-testid="source-import-install-seed"]').trigger('click')
+    await flushPromises()
+
+    expect(skillApi.installFromURL).toHaveBeenCalledWith({
+      url: 'https://github.com/demo/skills-repo',
+    })
+    expect(notification.notifications[0]?.type).toBe('success')
+    expect(wrapper.get('[data-testid="source-import-panel"]').exists()).toBe(true)
+    const installResult = wrapper.get('[data-testid="source-import-install-result"]')
+    expect(installResult.text()).toContain('URL Seed Skill')
+    expect(installResult.text()).toContain('Entry file: CLAUDE.md')
+    expect(installResult.text()).toContain(
+      'Legacy skill format detected; compatibility defaults were applied.'
+    )
+  })
+
+  it('allows dismissing the inline seed install result without closing the import panel', async () => {
+    vi.mocked(skillApi.previewSourceImport).mockResolvedValue({
+      data: {
+        url: 'https://github.com/demo/skills-repo',
+        normalized_url: 'https://github.com/demo/skills-repo',
+        kind: 'seed',
+        confidence: 'high',
+        seed_type: 'github_repo',
+        seed_value: 'demo/skills-repo',
+        message: 'Looks like a GitHub repository seed rather than a long-lived store source.',
+      },
+    } as never)
+    vi.mocked(skillApi.installFromURL).mockResolvedValue({
+      data: {
+        success: true,
+        entry_file: 'CLAUDE.md',
+        skill: {
+          id: 'url-seed-skill',
+          name: 'URL Seed Skill',
+        },
+      },
+    } as never)
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('[data-testid="source-import-toggle"]').trigger('click')
+    await wrapper
+      .get('[data-testid="source-import-input"]')
+      .setValue('https://github.com/demo/skills-repo')
+    await wrapper.get('[data-testid="source-import-preview"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="source-import-install-seed"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="source-import-install-result"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="source-import-install-result-dismiss"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="source-import-install-result"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="source-import-panel"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="source-import-input"]').exists()).toBe(true)
   })
 
   it('refreshes visible results after progress events without resetting filters', async () => {
@@ -1180,6 +1293,26 @@ describe('SkillStoreTab', () => {
 
     const installedChip = wrapper.get('.skill-card .meta-chip-installed')
     expect(installedChip.classes()).toContain('meta-chip-status')
+
+    wrapper.unmount()
+  })
+
+  it('localizes developer-tools tags on cards', async () => {
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(
+      makeSearchResponse([
+        makeSkill({
+          tags: ['developer-tools'],
+        }),
+      ]) as never
+    )
+
+    const wrapper = await mountSkillStore()
+    const renderedTags = wrapper
+      .findAll('.skill-card .card-tag-row .meta-chip-soft')
+      .map((tag) => tag.text())
+
+    expect(renderedTags).toContain('Development Tools')
+    expect(renderedTags).not.toContain('developer-tools')
 
     wrapper.unmount()
   })

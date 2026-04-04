@@ -15,6 +15,7 @@ import {
   type SkillSource,
   type SkillSourceImportPreviewResponse,
   type SkillSecurityEvidence,
+  type URLSkillInstallResult,
 } from '@/api/skill'
 import SkillContractNotice from '@/components/extensions/SkillContractNotice.vue'
 import SemanticSearchField from '@/components/ui/SemanticSearchField.vue'
@@ -87,8 +88,10 @@ const showSourceImport = ref(false)
 const sourceImportURL = ref('')
 const sourceImportLoading = ref(false)
 const sourceImportSaving = ref(false)
+const sourceImportInstalling = ref(false)
 const sourceImportError = ref<string | null>(null)
 const sourceImportPreview = ref<SkillSourceImportPreviewResponse | null>(null)
+const sourceImportInstallResult = ref<URLSkillInstallResult | null>(null)
 const configuredSources = ref<SkillSource[]>([])
 const sourceListLoading = ref(false)
 const sourceListError = ref<string | null>(null)
@@ -127,6 +130,7 @@ const protectedSkillStoreSourceIDs = new Set([
   'llmskills',
   'moltbot',
 ])
+const installableSourceImportSeedTypes = new Set(['skill_url', 'github_repo'])
 
 const selectedSkill = computed<RemoteSkill | null>(() => {
   if (!selectedSkillId.value) return null
@@ -230,6 +234,39 @@ const sourceImportStatusMessage = computed(() => {
     name,
   })
 })
+const sourceImportInstallURL = computed(() => {
+  if (sourceImportPreview.value?.kind !== 'seed') return ''
+  return sourceImportPreview.value.normalized_url || sourceImportPreview.value.url || ''
+})
+const sourceImportCanInstallSeed = computed(() => {
+  if (sourceImportPreview.value?.kind !== 'seed') return false
+  const seedType = (sourceImportPreview.value.seed_type || '').trim()
+  if (!installableSourceImportSeedTypes.has(seedType)) return false
+  return sourceImportInstallURL.value.length > 0
+})
+const sourceImportInstallSkillName = computed(() => {
+  const result = sourceImportInstallResult.value
+  if (!result) return ''
+  return (
+    result.skill?.name?.trim() ||
+    result.skill?.id?.trim() ||
+    marketplaceText('sourceImport.installResultTitle', 'Install result')
+  )
+})
+const sourceImportInstallMessage = computed(() => {
+  const result = sourceImportInstallResult.value
+  if (!result) return ''
+  if (result.message?.trim()) return result.message
+  if (result.entry_file?.trim()) {
+    return marketplaceText('sourceImport.installResultEntryFile', 'Entry file: {file}', {
+      file: result.entry_file,
+    })
+  }
+  return marketplaceText('sourceImport.installResultSummaryHint', 'Review the install notes below.')
+})
+const sourceImportInstallWarnings = computed(() =>
+  (sourceImportInstallResult.value?.warnings ?? []).map(localizeInstallWarning)
+)
 const catalogCount = computed(() => totalSkills.value || skills.value.length)
 const isInitialCatalogLoad = computed(
   () =>
@@ -1022,6 +1059,8 @@ function installTypeLabel(value?: string): string {
 
 const marketplaceCategoryAliases: Record<string, string> = {
   development: 'development_tools',
+  'developer-tools': 'development_tools',
+  developer_tools: 'development_tools',
   analytics: 'data_analysis',
   communication: 'communication_collaboration',
   system: 'security_compliance',
@@ -1040,6 +1079,8 @@ const marketplaceDisplayTagCategoryAliases: Record<string, string> = {
   人工智能: 'ai_intelligence',
   智能: 'ai_intelligence',
   development: 'development_tools',
+  'developer-tools': 'development_tools',
+  developer_tools: 'development_tools',
   development_tools: 'development_tools',
   development_tool: 'development_tools',
   开发工具: 'development_tools',
@@ -1923,8 +1964,10 @@ function resetSourceImportState() {
   sourceImportURL.value = ''
   sourceImportError.value = null
   sourceImportPreview.value = null
+  sourceImportInstallResult.value = null
   sourceImportLoading.value = false
   sourceImportSaving.value = false
+  sourceImportInstalling.value = false
 }
 
 function toggleSourceImport() {
@@ -1932,6 +1975,10 @@ function toggleSourceImport() {
   if (!showSourceImport.value) {
     resetSourceImportState()
   }
+}
+
+function dismissSourceImportInstallResult() {
+  sourceImportInstallResult.value = null
 }
 
 async function previewSourceImport() {
@@ -1948,6 +1995,7 @@ async function previewSourceImport() {
   sourceImportLoading.value = true
   sourceImportError.value = null
   sourceImportPreview.value = null
+  sourceImportInstallResult.value = null
 
   try {
     const response = await skillApi.previewSourceImport({ url: trimmed })
@@ -1991,6 +2039,60 @@ async function confirmSourceImport() {
       getErrorMessage(err) || marketplaceText('sourceImport.addError', 'Failed to add source.')
   } finally {
     sourceImportSaving.value = false
+  }
+}
+
+async function installPreviewedSeed() {
+  if (!sourceImportCanInstallSeed.value) return
+
+  sourceImportInstalling.value = true
+  sourceImportError.value = null
+
+  try {
+    const response = await skillApi.installFromURL({
+      url: sourceImportInstallURL.value,
+    })
+    if (!response.data.success) {
+      sourceImportError.value =
+        response.data.message ||
+        marketplaceText('sourceImport.installSeedError', 'Failed to install this seed.')
+      return
+    }
+    sourceImportInstallResult.value = response.data
+    const installedSkillID = response.data.skill?.id?.trim()
+    if (installedSkillID) {
+      const visibleSkill = skills.value.find((skill) => skill.id === installedSkillID)
+      if (visibleSkill) {
+        visibleSkill.installed = true
+      }
+      if (selectedDetail.value?.skill?.id === installedSkillID) {
+        selectedDetail.value = {
+          ...selectedDetail.value,
+          installed: true,
+        }
+      }
+    }
+
+    const installedLabel =
+      response.data.skill?.name ||
+      response.data.skill?.id ||
+      sourceImportPreview.value?.seed_value ||
+      sourceImportInstallURL.value
+
+    sourceImportURL.value = ''
+    sourceImportPreview.value = null
+    notification.success(
+      skillStoreText('title', 'Skill Store'),
+      marketplaceText('sourceImport.installSeedSuccess', 'Installed seed: {name}', {
+        name: installedLabel,
+      })
+    )
+  } catch (err) {
+    sourceImportError.value =
+      getErrorMessage(err) ||
+      marketplaceText('sourceImport.installSeedError', 'Failed to install this seed.')
+  } finally {
+    sourceImportInstalling.value = false
   }
 }
 
@@ -2670,6 +2772,38 @@ onBeforeUnmount(() => {
         </div>
 
         <div
+          v-if="sourceImportInstallResult?.success"
+          class="source-import-install-result dashboard-card-surface"
+          data-testid="source-import-install-result"
+        >
+          <div class="source-import-install-result__header">
+            <div class="source-import-install-result__copy">
+              <span class="source-import-install-result__eyebrow">{{
+                marketplaceText('sourceImport.installResultHeading', 'Install result')
+              }}</span>
+              <strong>{{ sourceImportInstallSkillName }}</strong>
+              <p>{{ sourceImportInstallMessage }}</p>
+            </div>
+            <button
+              type="button"
+              class="source-import-install-result__dismiss"
+              data-testid="source-import-install-result-dismiss"
+              :aria-label="
+                marketplaceText('sourceImport.installResultDismiss', 'Dismiss install result')
+              "
+              @click="dismissSourceImportInstallResult"
+            >
+              ×
+            </button>
+          </div>
+          <SkillContractNotice
+            compact
+            :contract="sourceImportInstallResult"
+            :warnings="sourceImportInstallWarnings"
+          />
+        </div>
+
+        <div
           v-if="sourceListLoading || configuredSources.length > 0 || sourceListError"
           class="configured-sources"
           data-testid="configured-sources"
@@ -2758,7 +2892,7 @@ onBeforeUnmount(() => {
               type="button"
               class="btn-ghost"
               data-testid="source-import-preview"
-              :disabled="sourceImportLoading || sourceImportSaving"
+              :disabled="sourceImportLoading || sourceImportSaving || sourceImportInstalling"
               @click="previewSourceImport"
             >
               {{
@@ -2772,13 +2906,27 @@ onBeforeUnmount(() => {
               type="button"
               class="btn-primary"
               data-testid="source-import-confirm"
-              :disabled="sourceImportSaving"
+              :disabled="sourceImportSaving || sourceImportInstalling"
               @click="confirmSourceImport"
             >
               {{
                 sourceImportSaving
                   ? marketplaceText('sourceImport.adding', 'Adding...')
                   : marketplaceText('sourceImport.confirm', 'Add source')
+              }}
+            </button>
+            <button
+              v-if="sourceImportCanInstallSeed"
+              type="button"
+              class="btn-primary"
+              data-testid="source-import-install-seed"
+              :disabled="sourceImportInstalling || sourceImportSaving"
+              @click="installPreviewedSeed"
+            >
+              {{
+                sourceImportInstalling
+                  ? marketplaceText('sourceImport.installingSeed', 'Installing...')
+                  : marketplaceText('sourceImport.installSeed', 'Install seed')
               }}
             </button>
           </div>
@@ -4142,6 +4290,9 @@ onBeforeUnmount(() => {
 
 .source-import-panel,
 .source-import-panel__copy,
+.source-import-install-result,
+.source-import-install-result__header,
+.source-import-install-result__copy,
 .configured-sources,
 .configured-sources__list,
 .configured-source-card,
@@ -4168,12 +4319,14 @@ onBeforeUnmount(() => {
 }
 
 .source-import-panel__copy,
+.source-import-install-result,
 .configured-sources,
 .source-import-preview {
   gap: 4px;
 }
 
 .source-import-panel__copy strong,
+.source-import-install-result__copy strong,
 .configured-sources__header strong,
 .source-import-preview__headline strong {
   color: var(--text-primary);
@@ -4182,6 +4335,7 @@ onBeforeUnmount(() => {
 }
 
 .source-import-panel__copy p,
+.source-import-install-result__copy p,
 .configured-sources p,
 .source-import-preview p,
 .source-import-error {
@@ -4193,6 +4347,53 @@ onBeforeUnmount(() => {
 
 .configured-sources {
   gap: 8px;
+}
+
+.source-import-install-result {
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 12%, var(--panel-border));
+}
+
+.source-import-install-result__header {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.source-import-install-result__copy {
+  gap: 4px;
+}
+
+.source-import-install-result__eyebrow {
+  color: var(--text-secondary);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.source-import-install-result__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.source-import-install-result__dismiss:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text-primary);
 }
 
 .configured-sources__header,

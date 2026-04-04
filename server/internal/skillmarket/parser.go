@@ -79,6 +79,8 @@ var marketplaceCategoryAliases = map[string]string{
 	"connector":                       "development_tools",
 	"connectors":                      "development_tools",
 	"developer":                       "development_tools",
+	"developer_tools":                 "development_tools",
+	"developer-tools":                 "development_tools",
 	"development":                     "development_tools",
 	"development_tools":               "development_tools",
 	"dev":                             "development_tools",

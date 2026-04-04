@@ -27,13 +27,15 @@ Review branches, inspect pull requests, and fix rebases.
 
 func TestNormalizeMarketplaceCategoryUsesBusinessTaxonomy(t *testing.T) {
 	tests := map[string]string{
-		"AI 智能": "ai_intelligence",
-		"开发工具":  "development_tools",
-		"效率提升":  "productivity",
-		"数据分析":  "data_analysis",
-		"内容创作":  "content_creation",
-		"安全合规":  "security_compliance",
-		"通讯协作":  "communication_collaboration",
+		"AI 智能":          "ai_intelligence",
+		"开发工具":            "development_tools",
+		"developer-tools": "development_tools",
+		"developer_tools": "development_tools",
+		"效率提升":            "productivity",
+		"数据分析":            "data_analysis",
+		"内容创作":            "content_creation",
+		"安全合规":            "security_compliance",
+		"通讯协作":            "communication_collaboration",
 	}
 
 	for raw, want := range tests {

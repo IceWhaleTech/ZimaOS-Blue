@@ -1255,6 +1255,65 @@ card_support: none
 		}
 	})
 
+	t.Run("installs GitHub repository root URL via contents API", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Host == "api.github.com" && r.URL.Path == "/repos/demo/root-skill/contents":
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `[
+					{
+						"name":"SKILL.md",
+						"path":"SKILL.md",
+						"type":"file",
+						"download_url":"https://raw.githubusercontent.com/demo/root-skill/main/SKILL.md"
+					}
+				]`)
+			case r.Host == "raw.githubusercontent.com" && r.URL.Path == "/demo/root-skill/main/SKILL.md":
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				_, _ = io.WriteString(w, `---
+id: github_repo_root_skill
+name: GitHub Repo Root Skill
+version: 1.0.0
+description: Installed from repository root URL
+invocation: blue github_repo_root_skill action=list
+examples:
+  - blue github_repo_root_skill action=list
+capability_tags:
+  - github
+interaction_mode: stateless
+card_support: none
+---
+
+# GitHub Repo Root Skill
+`)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		handler.httpClient = &http.Client{Transport: newRewriteHostTransport(t, server)}
+
+		body := `{"url":"https://github.com/demo/root-skill"}`
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/install-url", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.InstallFromURL(c); err != nil {
+			t.Fatalf("InstallFromURL failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		if registry.Get("github_repo_root_skill") == nil {
+			t.Fatalf("expected GitHub repo root skill to be registered")
+		}
+		if _, err := os.Stat(filepath.Join(handler.skillsDir, "github_repo_root_skill", "SKILL.md")); err != nil {
+			t.Fatalf("expected SKILL.md to be written: %v", err)
+		}
+	})
+
 	t.Run("rejects canonical alias conflict", func(t *testing.T) {
 		skillDir := filepath.Join(handler.skillsDir, "team-browser")
 		if err := os.MkdirAll(skillDir, 0o755); err != nil {

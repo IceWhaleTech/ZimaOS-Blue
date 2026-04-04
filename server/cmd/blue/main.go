@@ -636,13 +636,7 @@ func runServerOnce() serverRunOutcome {
 
 	// Initialize tools registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
-	webSearchConfig, webFetchConfig := buildBuiltinToolConfigs(cfg)
-	workspaceAllowedPaths := bootstrap.ResolveBuiltinToolAllowedPaths(cfg, dataDir)
-	tools.RegisterBuiltinToolsWithRuntimeConfig(toolRegistry, webSearchConfig, webFetchConfig, workspaceAllowedPaths, 0, tools.BuiltinRuntimeConfig{
-		DataDir: dataDir,
-		Ripgrep: cfg.ToolCalling.Ripgrep,
-	})
-	tools.RegisterFactoryToolDefinitions(toolRegistry)
+	registerServerToolRegistry(toolRegistry, cfg, dataDir)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
 	// Initialize skill registry and register built-in skills

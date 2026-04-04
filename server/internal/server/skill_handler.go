@@ -2011,6 +2011,14 @@ func parseGitHubBlobURL(u string) (string, string, string, string, bool) {
 	return skillbundle.ParseGitHubBlobURL(u)
 }
 
+func parseGitHubRepoURL(u string) (string, string, bool) {
+	matches := skillbundle.GitHubRepoURLPattern.FindStringSubmatch(strings.TrimSpace(u))
+	if len(matches) != 3 {
+		return "", "", false
+	}
+	return matches[1], matches[2], true
+}
+
 func rawGitHubBlobURL(owner, repo, ref, path string) string {
 	return skillbundle.RawGitHubBlobURL(owner, repo, ref, path)
 }
@@ -2196,7 +2204,14 @@ func (h *SkillHandler) syncInstalledSkillRegistration(manifest *skill.Manifest) 
 func (h *SkillHandler) downloadGitHubDirectory(ctx context.Context, ghURL, destDir string, progressFn func(downloaded, total int)) error {
 	owner, repo, ref, path, ok := parseGitHubDirURL(ghURL)
 	if !ok {
-		return fmt.Errorf("not a valid GitHub directory URL: %s", ghURL)
+		repoOwner, repoName, repoOK := parseGitHubRepoURL(ghURL)
+		if !repoOK {
+			return fmt.Errorf("not a valid GitHub directory URL: %s", ghURL)
+		}
+		owner = repoOwner
+		repo = repoName
+		ref = ""
+		path = ""
 	}
 
 	// Collect all files first (recursive)
@@ -2208,7 +2223,14 @@ func (h *SkillHandler) downloadGitHubDirectory(ctx context.Context, ghURL, destD
 
 	var walk func(apiPath, relBase string) error
 	walk = func(apiPath, relBase string) error {
-		apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", owner, repo, apiPath, ref)
+		apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents", owner, repo)
+		apiPath = strings.TrimPrefix(apiPath, "/")
+		if apiPath != "" {
+			apiURL += "/" + apiPath
+		}
+		if ref != "" {
+			apiURL += "?ref=" + url.QueryEscape(ref)
+		}
 		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 		if err != nil {
 			return err
@@ -4089,7 +4111,7 @@ func attachWarnings(payload map[string]interface{}, warnings []string) map[strin
 }
 
 // InstallFromURL installs a skill from a URL. Supports both direct SKILL.md URLs
-// and GitHub directory URLs (downloads all files in the directory).
+// and GitHub directory or repository URLs (downloads all files in the directory).
 func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 	var req InstallFromURLRequest
 	if err := c.Bind(&req); err != nil {
@@ -4108,8 +4130,8 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
-	// Check if this is a GitHub directory URL
-	if isGitHubDirURL(installURL) {
+	// Check if this is a GitHub directory or repository URL.
+	if isGitHubDirURL(installURL) || skillbundle.IsGitHubRepoURL(installURL) {
 		tempDir, err := os.MkdirTemp(h.skillsDir, ".skill-install-*")
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir temp: %v", err)})
