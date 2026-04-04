@@ -221,6 +221,10 @@ export function localizeDeepResearchGap(
 ): string {
   const trimmed = String(value || '').trim()
   if (!trimmed) return ''
+  const parts = splitDeepResearchSegments(trimmed)
+  if (parts.length > 1) {
+    return parts.map((part) => localizeDeepResearchGap(part, translate) || part).join(' · ')
+  }
   const token = normalizeDeepResearchToken(trimmed)
   return translateKnownToken(token, DEEP_RESEARCH_GAP_KEYS, translate) || trimmed
 }

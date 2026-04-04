@@ -540,7 +540,7 @@ func TestNewRuntimeAskPolicyBinding_AppliesQuestionAndAgentPolicy(t *testing.T) 
 	}
 
 	binding := newRuntimeAskPolicyBinding(settings)
-	if binding.silentFunc == nil || binding.timeoutFunc == nil || binding.timeoutActionFunc == nil || binding.maxToolRoundsFunc == nil || binding.autoReflectFunc == nil {
+	if binding.timeoutFunc == nil || binding.timeoutActionFunc == nil || binding.maxToolRoundsFunc == nil || binding.autoReflectFunc == nil {
 		t.Fatalf("expected runtime ask policy functions to be wired, got %#v", binding)
 	}
 
@@ -549,8 +549,8 @@ func TestNewRuntimeAskPolicyBinding_AppliesQuestionAndAgentPolicy(t *testing.T) 
 	binding.applyQuestionManager(questionTarget)
 	binding.applyAgent(agentTarget)
 
-	if questionTarget.silentFunc == nil || !questionTarget.silentFunc() {
-		t.Fatalf("expected silent func wiring, got %#v", questionTarget)
+	if questionTarget.silentFunc != nil {
+		t.Fatalf("expected silentFunc to be nil (ask-user-question should never auto-answer), got non-nil function")
 	}
 	if questionTarget.timeoutFunc == nil || questionTarget.timeoutFunc() != 45*time.Second {
 		t.Fatalf("expected timeout func wiring, got %#v", questionTarget)
@@ -5157,5 +5157,75 @@ func (s *stubWorkflowRuntimeHookTarget) SetServiceInitHook(hook func(*workflow.W
 	s.hook = func(svc *workflow.WorkflowService) {
 		prev(svc)
 		hook(svc)
+	}
+}
+
+// Test that ask-user-question is never affected by auto-confirm mode
+func TestNewRuntimeAskPolicyBinding_QuestionManagerNeverGetsSilentFunc(t *testing.T) {
+	settings := &stubRuntimeAskPolicySettingsSource{
+		autoConfirm:    true, // auto-confirm is enabled
+		askTimeoutSecs: 60,
+		timeoutAction:  "default",
+	}
+	binding := newRuntimeAskPolicyBinding(settings)
+	
+	questionTarget := &stubQuestionRuntimePolicyTarget{}
+	binding.applyQuestionManager(questionTarget)
+	
+	// Key assertion: silentFunc should be nil even when auto-confirm is enabled
+	// This ensures ask-user-question always requires user interaction
+	if questionTarget.silentFunc != nil {
+		t.Fatalf("questionTarget.silentFunc should be nil even with auto-confirm=true; ask-user-question must never auto-answer")
+	}
+	
+	// Timeout settings should still be applied
+	if questionTarget.timeoutFunc == nil {
+		t.Fatalf("expected timeoutFunc to be set")
+	}
+	if questionTarget.timeoutActionFunc == nil {
+		t.Fatalf("expected timeoutActionFunc to be set")
+	}
+}
+
+// Test that exec auto-confirm and agent settings are still wired correctly
+func TestNewRuntimeAskPolicyBinding_AgentSettingsStillWork(t *testing.T) {
+	settings := &stubRuntimeAskPolicySettingsSource{
+		autoConfirm:    true,
+		askTimeoutSecs: 30,
+		timeoutAction:  "error",
+		maxToolRounds:  5,
+		autoReflect:    true,
+	}
+	binding := newRuntimeAskPolicyBinding(settings)
+	
+	agentTarget := &stubAgentRuntimePolicyTarget{}
+	binding.applyAgent(agentTarget)
+	
+	// Agent should still get all settings
+	if agentTarget.askTimeoutFunc == nil {
+		t.Fatalf("expected agent askTimeoutFunc to be set")
+	}
+	if agentTarget.askTimeoutActionFunc == nil {
+		t.Fatalf("expected agent askTimeoutActionFunc to be set")
+	}
+	if agentTarget.maxToolRoundsFunc == nil {
+		t.Fatalf("expected agent maxToolRoundsFunc to be set")
+	}
+	if agentTarget.autoReflectFunc == nil {
+		t.Fatalf("expected agent autoReflectFunc to be set")
+	}
+	
+	// Verify the values
+	if agentTarget.askTimeoutFunc() != 30*time.Second {
+		t.Fatalf("askTimeout = %v, want 30s", agentTarget.askTimeoutFunc())
+	}
+	if agentTarget.askTimeoutActionFunc() != "error" {
+		t.Fatalf("askTimeoutAction = %q, want 'error'", agentTarget.askTimeoutActionFunc())
+	}
+	if agentTarget.maxToolRoundsFunc() != 5 {
+		t.Fatalf("maxToolRounds = %d, want 5", agentTarget.maxToolRoundsFunc())
+	}
+	if !agentTarget.autoReflectFunc() {
+		t.Fatalf("autoReflect = %v, want true", agentTarget.autoReflectFunc())
 	}
 }

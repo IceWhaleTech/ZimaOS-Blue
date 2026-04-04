@@ -142,7 +142,7 @@ export default mergeHarnessLocale('ca-ES', {
   browserMonitor: {
     blockerFallback: 'Esperant entrada',
     buttonLabel: 'Monitor',
-    capabilityBlocker: "Bloqueig d'execució",
+    capabilityBlocker: "Bloqueig d\'execució",
     capabilityBrowser: 'Continuïtat del navegador',
     capabilityBrowserIdle: 'No hi ha cap pestanya activa',
     capabilityHeading: 'Prioritats',
@@ -158,9 +158,9 @@ export default mergeHarnessLocale('ca-ES', {
     compactTaskIdle: 'Cap tasca activa',
     expand: 'Expandir',
     eyebrow: 'Execució del navegador',
-    hideTooltip: "Amaga el monitor d'execució",
+    hideTooltip: "Amaga el monitor d\'execució",
     justNow: 'ara mateix',
-    launcherActive: "Monitor d'execució",
+    launcherActive: "Monitor d\'execució",
     launcherIdle: 'Monitor en directe',
     launcherMeta: 'Feu clic per obrir',
     noCurrentConversation: 'Obriu una conversa de xat per seguir només l’execució actual.',
@@ -1434,7 +1434,7 @@ export default mergeHarnessLocale('ca-ES', {
     systemVersion: 'Actualitzacions i versions',
     workspaceBasics: "Fonaments de l'espai de treball",
     providerMatrix: 'Matriu de proveïdors',
-    codingRuntime: "Entorn d'execució de codi",
+    codingRuntime: "Entorn d\'execució de codi",
     advancedCodingTools: 'Eines avançades de codi',
     requestFlow: 'Flux de sol·licituds',
     proxyRouting: 'Encaminament del proxy',
@@ -1447,7 +1447,7 @@ export default mergeHarnessLocale('ca-ES', {
     tabDescriptions: {
       general:
         "Idioma, tema, comportament del dispositiu, punt d'entrada de xarxa i actualitzacions.",
-      llm: "Gestiona proveïdors, l'entorn d'execució de codi i les capacitats d'encaminament de models.",
+      llm: "Gestiona proveïdors, l'entorn d\'execució de codi i les capacitats d'encaminament de models.",
       proxy:
         "Ajusta l'encaminament de sol·licituds, els ajudants lleugers i el comportament de reserva.",
       speech: "Configura l'entrada i sortida de veu i les funcions de la cadena de veu.",
@@ -1635,7 +1635,7 @@ export default mergeHarnessLocale('ca-ES', {
         "Ajusta-ho només per a resolució de problemes o validació d'un desplegament controlat.",
       expand: 'Amplia',
       collapse: 'Redueix',
-      runtime: "Motor d'execució",
+      runtime: "Motor d\'execució",
       modelId: 'Identificador del model',
       noLLMDegrade: 'Política de gestió sense LLM',
       unavailablePolicy: 'Política quan no està disponible',
@@ -1662,7 +1662,7 @@ export default mergeHarnessLocale('ca-ES', {
       imageQA: "Acceleració del reconeixement d'imatges",
       shortQA: 'Acceleració de preguntes breus',
       shadowOnly: 'Fase 1: només validació en segon pla',
-      statsTitle: "Estadístiques d'execució (resolució de problemes)",
+      statsTitle: "Estadístiques d\'execució (resolució de problemes)",
       statsHint:
         "Principalment per a resolució de problemes i ajust fi; es pot ignorar en l'ús diari.",
       resetStats: 'Neteja estadístiques',
@@ -2281,7 +2281,7 @@ export default mergeHarnessLocale('ca-ES', {
         summaryOk: 'El servei principal respon amb normalitat',
         summaryDegraded: 'El servei està disponible, però les comprovacions requereixen atenció',
         summaryError: 'Les comprovacions de salut necessiten atenció immediata',
-        summaryUnknown: "Esperant mostres de salut del temps d'execució",
+        summaryUnknown: "Esperant mostres de salut del temps d\'execució",
       },
       uptime: {
         subtitle: 'Disponibilitat del procés',
@@ -2307,11 +2307,11 @@ export default mergeHarnessLocale('ca-ES', {
         awaitingSample: 'Esperant una mostra recent',
         currentValue: 'Actual {value}',
         chartSubtitle: "Petjada de l'assignador durant els darrers 5 minuts",
-        chartCaption: "Assignació amb heap mostrejada durant la finestra d'execució més recent",
+        chartCaption: "Assignació amb heap mostrejada durant la finestra d\'execució més recent",
       },
       heapChart: {
         chartSubtitle: 'Assignació del heap gestionat durant els darrers 5 minuts',
-        chartCaption: "Creixement i retenció del heap dins de la finestra d'execució més recent",
+        chartCaption: "Creixement i retenció del heap dins de la finestra d\'execució més recent",
       },
       goroutinesChart: {
         chartSubtitle: 'Concurrència del planificador durant els darrers 5 minuts',
@@ -2696,7 +2696,7 @@ export default mergeHarnessLocale('ca-ES', {
       skillManagementHint:
         'Les habilitats integrades es poden activar o desactivar aquí, però només les habilitats locals es poden desinstal·lar.',
       toolManagementHint:
-        "Les eines integrades es poden activar o desactivar aquí, però la seva disponibilitat encara pot estar limitada per la política d'eines en temps d'execució.",
+        "Les eines integrades es poden activar o desactivar aquí, però la seva disponibilitat encara pot estar limitada per la política d'eines en temps d\'execució.",
       builtinSkillDetailHint:
         'Aquesta habilitat integrada es pot activar o desactivar aquí, però no es pot desinstal·lar.',
       builtinSkillUninstallBlocked:
@@ -3069,8 +3069,8 @@ export default mergeHarnessLocale('ca-ES', {
     sandboxStatus: {
       title: 'Estat del sandbox',
       description:
-        "Revisa si l'execució en sandbox està habilitada i els límits d'execució aplicats actualment.",
-      runtimeTitle: "Configuració d'execució",
+        "Revisa si l'execució en sandbox està habilitada i els límits d\'execució aplicats actualment.",
+      runtimeTitle: "Configuració d\'execució",
       enabled: 'Activat',
       disabled: 'Desactivat',
       checking: 'Comprovant...',
@@ -3101,7 +3101,7 @@ export default mergeHarnessLocale('ca-ES', {
         "Inspecciona l'exposició, la connectivitat i la configuració dels serveis escoltant.",
       masking: 'Controla el redactat de dades sensibles abans que el contingut surti del sistema.',
       monitoring: 'Ajusta la retenció, la visibilitat i la supervisió operativa.',
-      logs: "Inspecciona esdeveniments en temps d'execució, sol·licituds i pistes d'auditoria.",
+      logs: "Inspecciona esdeveniments en temps d\'execució, sol·licituds i pistes d'auditoria.",
     },
     firewall: {
       title: 'Tallafoc de prompts',
@@ -3244,7 +3244,7 @@ export default mergeHarnessLocale('ca-ES', {
         sandbox_enabled: "L'execució sandbox està habilitada",
         sandbox_disabled: "El sandbox està deshabilitat. L'execució de codi no està aïllada.",
         no_memory_limit: 'No hi ha límit de memòria configurat per al sandbox',
-        no_timeout_configured: "No hi ha timeout d'execució configurat",
+        no_timeout_configured: "No hi ha timeout d\'execució configurat",
         network_disabled_sandbox: "L'accés a la xarxa està deshabilitat al sandbox",
         network_enabled_sandbox:
           "L'accés a la xarxa està habilitat al sandbox. Considereu deshabilitar-lo per a millor aïllament.",
@@ -3485,11 +3485,11 @@ export default mergeHarnessLocale('ca-ES', {
             "Desactiveu l'accés a la xarxa al sandbox tret que es requereixi específicament",
         },
         sandbox_timeout: {
-          name: "Temps d'espera d'execució",
-          description: "Comprovar si el temps d'espera d'execució està configurat",
+          name: "Temps d'espera d\'execució",
+          description: "Comprovar si el temps d'espera d\'execució està configurat",
           risk: "No hi ha temps d'espera que permet bucles infinits o codi maliciós de llarga durada",
           impact: 'Els recursos del sistema podrien estar lligats indefinidament per codi maliciós',
-          remediation: "Estableix el temps d'espera d'execució en 30 segons o menys",
+          remediation: "Estableix el temps d'espera d\'execució en 30 segons o menys",
         },
         data_encryption_rest: {
           name: 'Xifrat de dades en repòs',
@@ -3555,7 +3555,7 @@ export default mergeHarnessLocale('ca-ES', {
         },
         system_go_version: {
           name: 'Versió del temps d’execució de Go',
-          description: "Comproveu si el temps d'execució de Go està actualitzat",
+          description: "Comproveu si el temps d\'execució de Go està actualitzat",
         },
         system_memory: {
           name: 'Ús de memòria',
@@ -6133,8 +6133,8 @@ export default mergeHarnessLocale('ca-ES', {
       sessionsRetention: 'Retenció de sessions',
       eventsRetention: "Retenció d'esdeveniments",
       alertsRetention: "Retenció d'alertes",
-      sessionsHint: "Cicle de vida de les sessions de l'agent i metadades d'execució.",
-      eventsHint: "Crides d'eines, traces d'execució i esdeveniments d'auditoria.",
+      sessionsHint: "Cicle de vida de les sessions de l'agent i metadades d\'execució.",
+      eventsHint: "Crides d'eines, traces d\'execució i esdeveniments d'auditoria.",
       alertsHint: "Alertes de seguretat, puntuacions de risc i estat d'acceptació.",
       sessionsSuggested: 'Suggerit: 14-30 dies per a operacions rutinàries',
       eventsSuggested: 'Suggerit: 7-14 dies per equilibrar auditoria i emmagatzematge',
@@ -6547,7 +6547,7 @@ export default mergeHarnessLocale('ca-ES', {
         microphoneUnavailable: 'L’entrada del micròfon no està disponible.',
         startFailed: 'No s’ha pogut iniciar VoiceWake.',
         sendFailed: 'VoiceWake ha capturat una ordre però no l’ha pogut enviar.',
-        runtimeError: "VoiceWake s'ha aturat per un error d'execució.",
+        runtimeError: "VoiceWake s'ha aturat per un error d\'execució.",
         unsupported:
           'VoiceWake només està disponible quan Blue s’executa localment a macOS (aplicació d’escriptori o bluecli interactiu).',
         unavailable: 'L’estat de VoiceWake no està disponible.',
@@ -7276,10 +7276,16 @@ export default mergeHarnessLocale('ca-ES', {
     title: "Sol·licitud d'accés al directori",
     subtitle: 'Una ordre vol accedir a un directori fora de la llista permesa',
     directory: 'Directori',
+    workdir: 'Directori de treball',
     command: 'Ordre',
     deny: 'Denegar',
     allowOnce: 'Permetre un cop',
     allowAlways: 'Permetre sempre',
+    commandTitle: 'Confirmació d\'execució de comanda',
+    commandSubtitle: 'Aquesta comanda requereix confirmació per motius de seguretat',
+    allowAlwaysCommand: 'Permet aquesta comanda exacta',
+    commandHint:
+      'Això no afegeix el directori a la llista de permesos. Només omet les sol·licituds futures per a la mateixa comanda mentre Blue està en execució.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Llicència verificada',

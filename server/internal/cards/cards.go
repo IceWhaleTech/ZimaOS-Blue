@@ -414,7 +414,7 @@ func ToCard(toolName, content string) map[string]interface{} {
 	case "memory_search", "memory":
 		return memorySearchCard(content)
 	case "tool_search":
-		return toolSearchCard(content)
+		return nil
 	case "reminder":
 		return reminderCard(content)
 	case "analyze":
@@ -1586,28 +1586,6 @@ func GenericCard(toolName, content string) map[string]interface{} {
 		"title":   toolName,
 		"status":  "info",
 		"message": message,
-	}
-}
-
-func toolSearchCard(content string) map[string]interface{} {
-	var data map[string]interface{}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return GenericCard("tool_search", content)
-	}
-	if hasNonEmptyError(data) {
-		return buildToolErrorCard("tool_search", data)
-	}
-
-	matchCount := 0
-	if matches, ok := data["matches"].([]interface{}); ok {
-		matchCount = len(matches)
-	}
-
-	return map[string]interface{}{
-		"type":    "result",
-		"title":   "tool_search",
-		"status":  "info",
-		"message": fmt.Sprintf("Found %d results", matchCount),
 	}
 }
 

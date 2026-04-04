@@ -209,6 +209,19 @@ func TestSkillIntegration_BrowserAct(t *testing.T) {
 	}
 }
 
+func TestSkillIntegration_BrowserActAcceptsAtRef(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "browser.act", Params: map[string]string{"target_id": "tab-1", "ref": "@1", "act_type": "click"}})
+	if resp.Status != "ok" {
+		t.Fatalf("browser.act @ref: status=%q error=%q", resp.Status, resp.Error)
+	}
+	if !strings.Contains(resp.Data["message"], "click") {
+		t.Errorf("message = %q", resp.Data["message"])
+	}
+}
+
 func TestSkillIntegration_BrowserScreenshot(t *testing.T) {
 	conn, cleanup := setupAllSkills(t)
 	defer cleanup()

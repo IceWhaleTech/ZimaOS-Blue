@@ -7182,10 +7182,16 @@ export default mergeHarnessLocale('nl-NL', {
     title: 'Maptoegangsverzoek',
     subtitle: 'Een opdracht wil toegang tot een map buiten de toegestane lijst',
     directory: 'Map',
+    workdir: 'Werkmap',
     command: 'Opdracht',
     deny: 'Weigeren',
     allowOnce: 'Eenmalig toestaan',
     allowAlways: 'Altijd toestaan',
+    commandTitle: 'Commando-uitvoeringsbevestiging',
+    commandSubtitle: 'Dit commando vereist bevestiging om veiligheidsredenen',
+    allowAlwaysCommand: 'Sta precies dit commando toe',
+    commandHint:
+      'Dit voegt de map niet toe aan de toegestane lijst. Het slaat alleen toekomstige vragen over voor hetzelfde commando terwijl Blue draait.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licentie geverifieerd',

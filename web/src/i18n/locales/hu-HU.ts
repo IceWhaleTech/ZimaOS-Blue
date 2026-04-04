@@ -7086,10 +7086,16 @@ export default mergeHarnessLocale('hu-HU', {
     title: 'Könyvtár-hozzáférési kérelem',
     subtitle: 'Egy parancs az engedélyezett listán kívüli könyvtárhoz szeretne hozzáférni',
     directory: 'Könyvtár',
+    workdir: 'Munkakönyvtár',
     command: 'Parancs',
     deny: 'Elutasítás',
     allowOnce: 'Egyszeri engedélyezés',
     allowAlways: 'Mindig engedélyezés',
+    commandTitle: 'Parancs végrehajtásának megerősítése',
+    commandSubtitle: 'Ez a parancs biztonsági okokból megerősítést igényel',
+    allowAlwaysCommand: 'Engedélyezze pontosan ezt a parancsot',
+    commandHint:
+      'Ez nem adja hozzá a könyvtárat az engedélyezett listához. Csak a jövőbeli kéréseket hagyja ki ugyanarra a parancsra, amíg a Blue fut.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licenc ellenőrizve',

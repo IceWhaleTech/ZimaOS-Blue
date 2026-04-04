@@ -7165,10 +7165,16 @@ export default mergeHarnessLocale('pl-PL', {
     title: 'Żądanie dostępu do katalogu',
     subtitle: 'Polecenie chce uzyskać dostęp do katalogu spoza listy dozwolonych',
     directory: 'Katalog',
+    workdir: 'Katalog roboczy',
     command: 'Polecenie',
     deny: 'Odmów',
     allowOnce: 'Zezwól raz',
     allowAlways: 'Zezwalaj zawsze',
+    commandTitle: 'Potwierdzenie wykonania polecenia',
+    commandSubtitle: 'To polecenie wymaga potwierdzenia ze względów bezpieczeństwa',
+    allowAlwaysCommand: 'Zezwól na dokładnie to polecenie',
+    commandHint:
+      'Nie dodaje to katalogu do listy dozwolonych. Pomija tylko przyszłe monity dla tego samego polecenia, gdy Blue jest uruchomiony.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licencja zweryfikowana',

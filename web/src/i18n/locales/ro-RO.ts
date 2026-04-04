@@ -7094,10 +7094,16 @@ export default mergeHarnessLocale('ro-RO', {
     title: 'Cerere de acces la director',
     subtitle: 'O comandă dorește să acceseze un director din afara listei permise',
     directory: 'Director',
+    workdir: 'Director de lucru',
     command: 'Comandă',
     deny: 'Refuză',
     allowOnce: 'Permite o dată',
     allowAlways: 'Permite întotdeauna',
+    commandTitle: 'Confirmare execuție comandă',
+    commandSubtitle: 'Această comandă necesită confirmare din motive de securitate',
+    allowAlwaysCommand: 'Permite exact această comandă',
+    commandHint:
+      'Aceasta nu adaugă directorul în lista permisă. Sari doar peste solicitările viitoare pentru aceeași comandă în timp ce Blue rulează.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licență verificată',

@@ -7030,10 +7030,16 @@ export default mergeHarnessLocale('nb-NO', {
     title: 'Forespørsel om katalogtilgang',
     subtitle: 'En kommando ønsker tilgang til en katalog utenfor den tillatte listen',
     directory: 'Katalog',
+    workdir: 'Arbeidskatalog',
     command: 'Kommando',
     deny: 'Avslå',
     allowOnce: 'Tillat én gang',
     allowAlways: 'Tillat alltid',
+    commandTitle: 'Kommandobekreftelse',
+    commandSubtitle: 'Denne kommandoen krever bekreftelse av sikkerhetshensyn',
+    allowAlwaysCommand: 'Tillat akkurat denne kommandoen',
+    commandHint:
+      'Dette legger ikke til mappen i tillatelseslisten. Det hopper bare over fremtidige forespørsler for den samme kommandoen mens Blue kjører.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Lisens verifisert',

@@ -11,6 +11,21 @@ const taskProjections = useTaskProjectionsStore()
 const approval = computed(() => chatStore.pendingExecApproval)
 const submittingDecision = ref<'deny' | 'allow-once' | 'allow-always' | null>(null)
 const isSubmitting = computed(() => submittingDecision.value !== null)
+const isCommandApproval = computed(() => approval.value?.type === 'command')
+const dialogTitle = computed(() =>
+  isCommandApproval.value ? t('execApproval.commandTitle') : t('execApproval.title')
+)
+const dialogSubtitle = computed(() =>
+  isCommandApproval.value ? t('execApproval.commandSubtitle') : t('execApproval.subtitle')
+)
+const primaryActionLabel = computed(() =>
+  isCommandApproval.value ? t('execApproval.allowAlwaysCommand') : t('execApproval.allowAlways')
+)
+const shouldShowWorkdir = computed(() => {
+  const current = approval.value
+  if (!current?.workdir) return false
+  return current.type === 'command' || current.workdir !== current.directory
+})
 
 // Countdown timer
 const remainingSeconds = ref(0)
@@ -94,10 +109,10 @@ function deny() {
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                {{ t('execApproval.title') }}
+                {{ dialogTitle }}
               </h3>
               <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('execApproval.subtitle') }}
+                {{ dialogSubtitle }}
               </p>
             </div>
             <span
@@ -119,6 +134,15 @@ function deny() {
                 >{{ approval.directory }}</code
               >
             </div>
+            <div v-if="shouldShowWorkdir" class="space-y-1">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                {{ t('execApproval.workdir') }}
+              </p>
+              <code
+                class="block text-sm px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 break-all"
+                >{{ approval.workdir }}</code
+              >
+            </div>
             <div v-if="approval.command" class="space-y-1">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('execApproval.command') }}
@@ -128,6 +152,12 @@ function deny() {
                 >{{ approval.command }}</code
               >
             </div>
+            <p
+              v-if="isCommandApproval"
+              class="text-xs leading-5 text-gray-500 dark:text-gray-400"
+            >
+              {{ t('execApproval.commandHint') }}
+            </p>
           </div>
 
           <!-- Actions -->
@@ -164,7 +194,7 @@ function deny() {
               {{
                 submittingDecision === 'allow-always'
                   ? t('common.processing', 'Processing...')
-                  : t('execApproval.allowAlways')
+                  : primaryActionLabel
               }}
             </button>
           </div>

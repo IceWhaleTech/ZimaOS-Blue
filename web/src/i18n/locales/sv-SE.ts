@@ -7145,10 +7145,16 @@ export default mergeHarnessLocale('sv-SE', {
     title: 'Begäran om katalogåtkomst',
     subtitle: 'Ett kommando vill komma åt en katalog utanför den tillåtna listan',
     directory: 'Katalog',
+    workdir: 'Arbetskatalog',
     command: 'Kommando',
     deny: 'Neka',
     allowOnce: 'Tillåt en gång',
     allowAlways: 'Tillåt alltid',
+    commandTitle: 'Kommandobekräftelse',
+    commandSubtitle: 'Detta kommando kräver bekräftelse av säkerhetsskäl',
+    allowAlwaysCommand: 'Tillåt exakt detta kommando',
+    commandHint:
+      'Detta lägger inte till mappen i tillåtelselistan. Det hoppar bara över framtida förfrågningar för samma kommando medan Blue körs.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licens verifierad',

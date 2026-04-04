@@ -680,9 +680,17 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(wrapper.text()).toContain('Anthropic')
   })
 
-  it('pins ollama to the top of the provider list', async () => {
-    const openai = createRankedProvider('openai', 100)
-    const anthropic = createRankedProvider('anthropic', 90)
+  it('shows ollama first in the add provider dialog', async () => {
+    const openai = {
+      ...createRankedProvider('openai', 100),
+      type: 'builtin',
+      metadata_mode: 'catalog',
+    }
+    const anthropic = {
+      ...createRankedProvider('anthropic', 90),
+      type: 'builtin',
+      metadata_mode: 'catalog',
+    }
     const ollama = {
       ...createRankedProvider('ollama', 10),
       name: 'Ollama',
@@ -696,8 +704,10 @@ describe('ProviderPoolSection media verification gating', () => {
     await flushPromises()
 
     const setupState = (wrapper.vm.$ as any).setupState
+    setupState.openAddProviderModal()
+    await flushPromises()
 
-    expect(setupState.filteredProviders.map((provider: { id: string }) => provider.id)).toEqual([
+    expect(setupState.officialProviderOptions.map((provider: { id: string }) => provider.id)).toEqual([
       'ollama',
       'openai',
       'anthropic',

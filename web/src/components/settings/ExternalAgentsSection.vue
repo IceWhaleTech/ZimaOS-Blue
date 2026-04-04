@@ -550,35 +550,39 @@ onMounted(() => {
             :key="profile.id"
             type="button"
             class="external-agents__profile-card"
-            :class="{ 'external-agents__profile-card--active': selectedProfileID === profile.id }"
+            :class="[
+              'external-agents__profile-card--' + profileStatusTone(profile),
+              { 'external-agents__profile-card--active': selectedProfileID === profile.id }
+            ]"
             data-testid="external-agents-profile-card"
             @click="selectProfile(profile.id)"
           >
-            <div class="external-agents__profile-top">
-              <div class="external-agents__profile-main">
-                <div class="external-agents__profile-heading">
-                  <strong class="external-agents__profile-name">
-                    {{ profile.title || profile.name }}
-                  </strong>
-                  <span
-                    class="external-agents__badge external-agents__badge--protocol"
-                    :class="`external-agents__badge--${profile.protocol}`"
-                  >
-                    {{ profile.protocol.toUpperCase() }}
-                  </span>
+            <div class="external-agents__profile-header">
+              <div class="external-agents__profile-identity">
+                <div class="external-agents__profile-icon-shell">
+                  <span class="external-agents__profile-icon">{{ profile.protocol.toUpperCase() }}</span>
                 </div>
-                <p class="external-agents__profile-summary">{{ summarizeProfile(profile) }}</p>
+                <div class="external-agents__profile-copy">
+                  <div class="external-agents__profile-title-row">
+                    <h3 class="external-agents__profile-name">{{ profile.title || profile.name }}</h3>
+                    <span
+                      v-if="profile.builtin"
+                      class="external-agents__badge external-agents__badge--builtin"
+                    >
+                      {{ t('settings.externalAgents.builtinTemplate') }}
+                    </span>
+                    <span
+                      v-else
+                      class="external-agents__badge external-agents__badge--status"
+                      :class="`external-agents__badge--${profileStatusTone(profile)}`"
+                    >
+                      <span class="external-agents__badge-dot"></span>
+                      {{ statusLabel(profile) }}
+                    </span>
+                  </div>
+                  <p class="external-agents__profile-summary">{{ summarizeProfile(profile) }}</p>
+                </div>
               </div>
-              <p v-if="profile.builtin" class="external-agents__profile-placeholder">
-                {{ t('settings.externalAgents.builtinTemplate') }}
-              </p>
-              <span
-                v-else
-                class="external-agents__badge external-agents__badge--status"
-                :class="`external-agents__badge--${profileStatusTone(profile)}`"
-              >
-                {{ statusLabel(profile) }}
-              </span>
             </div>
           </button>
         </div>

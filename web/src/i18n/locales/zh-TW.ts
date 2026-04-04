@@ -7174,10 +7174,16 @@ export default mergeHarnessLocale('zh-TW', {
     title: '目錄存取請求',
     subtitle: '命令需要存取允許清單之外的目錄',
     directory: '目錄',
+    workdir: '工作目錄',
     command: '命令',
     deny: '拒絕',
     allowOnce: '允許一次',
     allowAlways: '始終允許',
+    commandTitle: '命令執行確認',
+    commandSubtitle: '這條命令因安全策略需要你的確認後才能執行',
+    allowAlwaysCommand: '允許此精確命令',
+    commandHint:
+      '這不會把目錄加入白名單；只會在 Blue 目前執行期間，對完全相同的命令跳過後續確認。',
   },
   media: {
     fallbackSourceLicenseVerified: '許可已核驗',

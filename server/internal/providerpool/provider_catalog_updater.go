@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/embedded"
 	"go.uber.org/zap"
 )
 
@@ -19,12 +20,11 @@ type ProviderCatalogStatus struct {
 }
 
 type ProviderCatalogUpdater struct {
-	dl       *downloader.Downloader
-	logger   *zap.Logger
-	interval time.Duration
-	stopCh   chan struct{}
-	fetchMu  sync.Mutex
-
+	dl            *downloader.Downloader
+	logger        *zap.Logger
+	interval      time.Duration
+	stopCh        chan struct{}
+	fetchMu       sync.Mutex
 	mu            sync.RWMutex
 	lastETag      string
 	lastUpdatedAt time.Time
@@ -51,9 +51,42 @@ func (u *ProviderCatalogUpdater) SetApplyCallback(callback func()) {
 	u.mu.Unlock()
 }
 
+// LoadEmbeddedCatalog loads the embedded catalog from local file as fallback.
+// This should be called before Start() to ensure data is available even if remote fetch fails.
+func (u *ProviderCatalogUpdater) LoadEmbeddedCatalog() error {
+	content, err := embedded.ProviderCatalogFS.ReadFile("provider_catalog.json")
+	if err != nil {
+		return err
+	}
+
+	var catalog officialProviderCatalog
+	if err := json.Unmarshal(content, &catalog); err != nil {
+		return err
+	}
+
+	SetOfficialProviderCatalog(catalog)
+
+	u.mu.Lock()
+	u.lastUpdatedAt = time.Now()
+	u.fallbackInUse = true
+	u.mu.Unlock()
+
+	if u.onApplied != nil {
+		u.onApplied()
+	}
+
+	if u.logger != nil {
+		u.logger.Info("embedded provider catalog loaded",
+			zap.Int("providers", len(catalog.Providers)),
+			zap.Int("provider_models", len(catalog.Models)),
+			zap.Int("pinchbench_models", len(catalog.PinchBenchModels)))
+	}
+
+	return nil
+}
+
 func (u *ProviderCatalogUpdater) Start() {
 	go u.fetchAndApply()
-
 	go func() {
 		ticker := time.NewTicker(u.interval)
 		defer ticker.Stop()
@@ -75,7 +108,6 @@ func (u *ProviderCatalogUpdater) Stop() {
 func (u *ProviderCatalogUpdater) Status() ProviderCatalogStatus {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
-
 	return ProviderCatalogStatus{
 		ETag:          u.lastETag,
 		LastUpdatedAt: u.lastUpdatedAt,
@@ -88,7 +120,6 @@ func (u *ProviderCatalogUpdater) fetchAndApply() {
 	u.fetchMu.Lock()
 	content, etag, err := u.dl.FetchIfChanged()
 	u.fetchMu.Unlock()
-
 	if err != nil {
 		if u.logger != nil {
 			u.logger.Debug("official provider catalog fetch failed (will retry)", zap.Error(err))
@@ -98,7 +129,6 @@ func (u *ProviderCatalogUpdater) fetchAndApply() {
 	if content == "" {
 		return
 	}
-
 	u.mu.RLock()
 	lastETag := u.lastETag
 	callback := u.onApplied
@@ -106,7 +136,6 @@ func (u *ProviderCatalogUpdater) fetchAndApply() {
 	if etag != "" && etag == lastETag {
 		return
 	}
-
 	var catalog officialProviderCatalog
 	if err := json.Unmarshal([]byte(content), &catalog); err != nil {
 		if u.logger != nil {
@@ -114,24 +143,17 @@ func (u *ProviderCatalogUpdater) fetchAndApply() {
 		}
 		return
 	}
-
 	SetOfficialProviderCatalog(catalog)
-
 	now := time.Now()
 	u.mu.Lock()
 	u.lastETag = etag
 	u.lastUpdatedAt = now
 	u.fallbackInUse = false
 	u.mu.Unlock()
-
 	if callback != nil {
 		callback()
 	}
-
 	if u.logger != nil {
-		u.logger.Info("official provider catalog applied",
-			zap.String("etag", etag),
-			zap.Int("providers", len(catalog.Providers)),
-			zap.Int("provider_models", len(catalog.Models)))
+		u.logger.Info("official provider catalog applied", zap.String("etag", etag), zap.Int("providers", len(catalog.Providers)), zap.Int("provider_models", len(catalog.Models)))
 	}
 }

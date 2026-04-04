@@ -56,12 +56,18 @@ func bindHarnessRuntimeAskSupport(
 	binding.applyQuestionManager(questionMgr)
 }
 
+// newRuntimeAskPolicyBinding creates policy bindings for ask-user-question and agent runtime.
+// Note: silentFunc is intentionally NOT wired to question manager to ensure ask-user-question
+// always requires explicit user interaction, even when auto-confirm is enabled for approvals.
+// Auto-confirm only affects approval flows (exec, tool approval, browser checkpoint), not questions.
 func newRuntimeAskPolicyBinding(settings runtimeAskPolicySettingsSource) runtimeAskPolicyBinding {
 	if settings == nil {
 		return runtimeAskPolicyBinding{}
 	}
 	return runtimeAskPolicyBinding{
-		silentFunc: settings.GetAgentAutoConfirm,
+		// Note: We intentionally do NOT set silentFunc here
+		// Ask-user-question should never auto-answer, even in auto-confirm mode
+		// Silent mode is only for exec skill clarification, not for user questions
 		timeoutFunc: func() time.Duration {
 			seconds := settings.GetAgentAskTimeoutSeconds()
 			if seconds <= 0 {
@@ -79,9 +85,9 @@ func (binding runtimeAskPolicyBinding) applyQuestionManager(target questionRunti
 	if target == nil {
 		return
 	}
-	if binding.silentFunc != nil {
-		target.SetSilentFunc(binding.silentFunc)
-	}
+	// Note: We intentionally do NOT apply silentFunc to question manager
+	// This ensures ask-user-question always requires explicit user confirmation
+	// even when auto-confirm is enabled for approval flows
 	if binding.timeoutFunc != nil {
 		target.SetTimeoutFunc(binding.timeoutFunc)
 	}

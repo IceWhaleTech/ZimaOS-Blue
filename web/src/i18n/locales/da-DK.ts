@@ -7137,10 +7137,16 @@ export default mergeHarnessLocale('da-DK', {
     title: 'Anmodning om mappeadgang',
     subtitle: 'En kommando ønsker adgang til en mappe uden for den tilladte liste',
     directory: 'Mappe',
+    workdir: 'Arbejdsmappe',
     command: 'Kommando',
     deny: 'Afvis',
     allowOnce: 'Tillad én gang',
     allowAlways: 'Tillad altid',
+    commandTitle: 'Kommandobekræftelse',
+    commandSubtitle: 'Denne kommando kræver bekræftelse af sikkerhedshensyn',
+    allowAlwaysCommand: 'Tillad præcis denne kommando',
+    commandHint:
+      'Dette tilføjer ikke mappen til tilladelseslisten. Det springer kun fremtidige anmodninger over for den samme kommando, mens Blue kører.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licens bekræftet',

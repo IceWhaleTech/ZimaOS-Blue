@@ -7137,10 +7137,16 @@ export default mergeHarnessLocale('cs-CZ', {
     title: 'Žádost o přístup k adresáři',
     subtitle: 'Příkaz chce přistoupit k adresáři mimo povolený seznam',
     directory: 'Adresář',
+    workdir: 'Pracovní adresář',
     command: 'Příkaz',
     deny: 'Zamítnout',
     allowOnce: 'Povolit jednou',
     allowAlways: 'Povolit vždy',
+    commandTitle: 'Potvrzení spuštění příkazu',
+    commandSubtitle: 'Tento příkaz vyžaduje potvrzení ze bezpečnostních důvodů',
+    allowAlwaysCommand: 'Povolit přesně tento příkaz',
+    commandHint:
+      'Toto nepřidá adresář do seznamu povolených. Pouze přeskočí budoucí výzvy pro stejný příkaz, zatímco Blue běží.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licence ověřena',

@@ -7049,10 +7049,16 @@ export default mergeHarnessLocale('sk-SK', {
     title: 'Žiadosť o prístup k adresáru',
     subtitle: 'Príkaz chce pristúpiť k adresáru mimo povolený zoznam',
     directory: 'Adresár',
+    workdir: 'Pracovný adresár',
     command: 'Príkaz',
     deny: 'Zamietnuť',
     allowOnce: 'Povoliť raz',
     allowAlways: 'Povoliť vždy',
+    commandTitle: 'Potvrdenie spustenia príkazu',
+    commandSubtitle: 'Tento príkaz vyžaduje potvrdenie z bezpečnostných dôvodov',
+    allowAlwaysCommand: 'Povoliť presne tento príkaz',
+    commandHint:
+      'Toto nepridá adresár do zoznamu povolených. Len preskočí budúce výzvy pre rovnaký príkaz, kým Blue beží.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licencia overená',

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"go.uber.org/zap"
 )
 
@@ -71,8 +72,8 @@ func RegisterBrowserHandlers(srv *Server, browser BrowserBackend, log *zap.Logge
 		if refStr == "" {
 			return ErrResponse("missing ref")
 		}
-		ref, err := strconv.Atoi(refStr)
-		if err != nil {
+		ref, ok := tools.CoerceBrowserRef(refStr)
+		if !ok {
 			return ErrResponse("invalid ref: " + refStr)
 		}
 		actType := req.Params["act_type"]

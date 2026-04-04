@@ -175,6 +175,11 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 	pool.providerCatalogUpdater.SetApplyCallback(func() {
 		pool.applyOfficialProviderCatalog()
 	})
+
+	// Load embedded catalog first as fallback before remote updates
+	if err := pool.providerCatalogUpdater.LoadEmbeddedCatalog(); err != nil {
+		fmt.Printf("[Pool] Failed to load embedded catalog: %v\n", err)
+	}
 	// Initialize built-in providers and catalog-backed model metadata synchronously
 	// so chat can route immediately, even before background updaters start.
 	pool.applyOfficialProviderCatalog()

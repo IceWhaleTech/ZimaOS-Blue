@@ -6781,11 +6781,17 @@ export default mergeHarnessLocale('zh-CN', {
   execApproval: {
     title: '目录访问请求',
     subtitle: '命令需要访问允许列表之外的目录',
+    commandTitle: '命令执行确认',
+    commandSubtitle: '这条命令因安全策略需要你的确认后才能运行',
     directory: '目录',
+    workdir: '工作目录',
     command: '命令',
     deny: '拒绝',
     allowOnce: '允许一次',
     allowAlways: '始终允许',
+    allowAlwaysCommand: '允许此精确命令',
+    commandHint:
+      '这不会把目录加入白名单；只会在 Blue 当前运行期间，对完全相同的命令跳过后续确认。',
   },
   media: {
     fallbackSourceLicenseVerified: '许可已核验',

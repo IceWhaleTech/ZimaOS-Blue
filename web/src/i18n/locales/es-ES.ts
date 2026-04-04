@@ -7425,10 +7425,16 @@ export default mergeHarnessLocale('es-ES', {
     title: 'Solicitud de acceso a directorio',
     subtitle: 'Un comando quiere acceder a un directorio fuera de la lista permitida',
     directory: 'Directorio',
+    workdir: 'Directorio de trabajo',
     command: 'Comando',
     deny: 'Denegar',
     allowOnce: 'Permitir una vez',
     allowAlways: 'Permitir siempre',
+    commandTitle: 'Confirmación de ejecución de comando',
+    commandSubtitle: 'Este comando requiere confirmación por razones de seguridad',
+    allowAlwaysCommand: 'Permitir este comando exacto',
+    commandHint:
+      'Esto no añade el directorio a la lista de permitidos. Solo omite las solicitudes futuras para el mismo comando mientras Blue está en ejecución.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licencia verificada',

@@ -10,7 +10,7 @@ const systemStore = reactive({
   loading: false,
   health: {
     status: 'ok',
-    version: '0.10.37',
+    version: '0.10.38',
     num_cpu: 8,
     timestamp: '2026-03-14T00:00:25.000Z',
     uptime: '4m36s',

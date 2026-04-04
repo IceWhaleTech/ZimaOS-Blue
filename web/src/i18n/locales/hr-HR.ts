@@ -7045,10 +7045,16 @@ export default mergeHarnessLocale('hr-HR', {
     title: 'Zahtjev za pristup direktoriju',
     subtitle: 'Naredba želi pristupiti direktoriju izvan dopuštenog popisa',
     directory: 'Direktorij',
+    workdir: 'Radni direktorij',
     command: 'Naredba',
     deny: 'Odbij',
     allowOnce: 'Dopusti jednom',
     allowAlways: 'Uvijek dopusti',
+    commandTitle: 'Potvrda izvršavanja naredbe',
+    commandSubtitle: 'Ova naredba zahtijeva potvrdu iz sigurnosnih razloga',
+    allowAlwaysCommand: 'Dopusti točno ovu naredbu',
+    commandHint:
+      'Ovo ne dodaje direktorij na popis dopuštenih. Samo preskače buduće upite za istu naredbu dok Blue radi.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licenca provjerena',

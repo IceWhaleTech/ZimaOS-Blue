@@ -7080,10 +7080,16 @@ export default mergeHarnessLocale('ga-IE', {
     title: 'Iarratas ar rochtain eolaire',
     subtitle: 'Tá ordú ag iarraidh rochtain ar eolaire lasmuigh den liosta ceadaithe',
     directory: 'Eolaire',
+    workdir: 'Eolaire oibre',
     command: 'Ordú',
     deny: 'Diúltaigh',
     allowOnce: 'Ceadaigh uair amháin',
     allowAlways: 'Ceadaigh i gcónaí',
+    commandTitle: 'Deimhniú reatha ordaithe',
+    commandSubtitle: 'Teastaíonn deimhniú ón ordú seo ar chúiseanna slándála',
+    allowAlwaysCommand: 'Ceadaigh an t-ordú seo go beacht',
+    commandHint:
+      'Ní chuireann seo an eolaire leis an liosta ceadaithe. Ní chuireann sé ach leideanna amach anseo don ordú céanna fad a bhíonn Blue ag rith.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Ceadúnas fíoraithe',

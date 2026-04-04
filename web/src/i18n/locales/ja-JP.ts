@@ -7349,11 +7349,17 @@ export default mergeHarnessLocale('ja-JP', {
   execApproval: {
     title: 'ディレクトリアクセスリクエスト',
     subtitle: 'コマンドが許可リスト外のディレクトリにアクセスしようとしています',
+    commandTitle: 'コマンド実行確認',
+    commandSubtitle: 'このコマンドはセキュリティ上の理由から承認が必要です',
     directory: 'ディレクトリ',
+    workdir: '作業ディレクトリ',
     command: 'コマンド',
     deny: '拒否',
     allowOnce: '一度だけ許可',
     allowAlways: '常に許可',
+    allowAlwaysCommand: 'この正確なコマンドを許可',
+    commandHint:
+      'これによりディレクトリが許可リストに追加されるわけではありません。Blue の実行中、同じコマンドに対する今後のプロンプトのみをスキップします。',
   },
   media: {
     fallbackSourceLicenseVerified: 'ライセンス確認済み',

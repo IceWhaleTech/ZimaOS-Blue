@@ -88,6 +88,50 @@ func TestCLIDispatch_ContextSearchRequiresRunningServiceWhenIPCUnavailable(t *te
 	}
 }
 
+func TestCLIDispatch_BrowserNavigateRoutesThroughIPC(t *testing.T) {
+	oldRoundTrip := ipcRoundTripFunc
+	oldIPCExit := ipcExit
+	oldCLIExit := cliDispatchExit
+	oldJSONOutput := jsonOutput
+	defer func() {
+		ipcRoundTripFunc = oldRoundTrip
+		ipcExit = oldIPCExit
+		cliDispatchExit = oldCLIExit
+		jsonOutput = oldJSONOutput
+	}()
+
+	var capturedReq *sockipc.Request
+	ipcRoundTripFunc = func(req *sockipc.Request) (*sockipc.Response, error) {
+		capturedReq = req
+		return sockipc.OkResponse(map[string]string{
+			"__stdout":    "browser ok\n",
+			"__exit_code": "0",
+		}), nil
+	}
+	ipcExit = func(code int) { panic(cliDispatchExitPanic{code: code}) }
+	cliDispatchExit = func(code int) { panic(cliDispatchExitPanic{code: code}) }
+
+	handled, exitCode, stdout := runCLIDispatchForTest([]string{"browser", "navigate", "url=https://example.com"})
+	if !handled {
+		t.Fatal("expected cliDispatch to handle browser navigate")
+	}
+	if exitCode != 0 {
+		t.Fatalf("exitCode = %d, want 0 (stdout=%q)", exitCode, stdout)
+	}
+	if capturedReq == nil {
+		t.Fatal("expected IPC request to be issued")
+	}
+	if capturedReq.Cmd != "browser.navigate" {
+		t.Fatalf("cmd = %q, want %q", capturedReq.Cmd, "browser.navigate")
+	}
+	if got := capturedReq.Params["url"]; got != "https://example.com" {
+		t.Fatalf("url = %q, want %q", got, "https://example.com")
+	}
+	if !strings.Contains(stdout, "browser ok") {
+		t.Fatalf("stdout = %q, want IPC output", stdout)
+	}
+}
+
 func runCLIDispatchForTest(args []string) (handled bool, exitCode int, stdout string) {
 	oldStdout := os.Stdout
 	r, w, err := os.Pipe()

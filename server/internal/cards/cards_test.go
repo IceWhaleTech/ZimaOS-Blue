@@ -227,41 +227,24 @@ func TestWebQueryCard_SearchCardEmittedStillReturnsSecondaryDetailCard(t *testin
 	}
 }
 
-func TestToolSearchCard_CollapsesInternalStateToLowEmphasisSummary(t *testing.T) {
+func TestToolSearchCard_IsHiddenFromTypelessCards(t *testing.T) {
 	card := ToCard("tool_search", `{"matches":[{"id":"read","name":"read","kind":"tool"},{"id":"write","name":"write","kind":"tool"}],"activated":{"tools":["read"]}}`)
-	if card == nil {
-		t.Fatal("expected non-nil card")
-	}
-	if got := card["type"]; got != "result" {
-		t.Fatalf("type=%v, want result", got)
-	}
-	if got := card["title"]; got != "tool_search" {
-		t.Fatalf("title=%v, want tool_search", got)
-	}
-	if got := card["status"]; got != "info" {
-		t.Fatalf("status=%v, want info", got)
-	}
-	if got := card["message"]; got != "Found 2 results" {
-		t.Fatalf("message=%v, want summary-only result count", got)
-	}
-	if _, ok := card["details"]; ok {
-		t.Fatalf("details=%v, want no raw internal tool_search detail rows", card["details"])
+	if card != nil {
+		t.Fatalf("card=%v, want nil so tool_search only shows in the process/details surface", card)
 	}
 }
 
-func TestToolSearchCard_EmptyResultsStayQuiet(t *testing.T) {
-	card := ToCard("tool_search", `{"matches":[],"activated":{}}`)
-	if card == nil {
-		t.Fatal("expected non-nil card")
+func TestFormatTypeless_SkipsToolSearchCards(t *testing.T) {
+	calls := []llm.ToolCall{
+		{ID: "1", Name: "tool_search", Arguments: `{"query":"LLM agent memory long-term memory RAG OpenClaw"}`},
 	}
-	if got := card["status"]; got != "info" {
-		t.Fatalf("status=%v, want info", got)
+	results := []llm.Message{
+		{Role: llm.RoleTool, Content: `{"matches":[],"activated":{}}`, ToolCallID: "1"},
 	}
-	if got := card["message"]; got != "Found 0 results" {
-		t.Fatalf("message=%v, want quiet empty summary", got)
-	}
-	if _, ok := card["details"]; ok {
-		t.Fatalf("details=%v, want no raw detail rows for empty tool_search", card["details"])
+
+	out := FormatTypeless(calls, results)
+	if strings.Contains(out, "```typeless") {
+		t.Fatalf("out=%q, want no typeless block for tool_search", out)
 	}
 }
 

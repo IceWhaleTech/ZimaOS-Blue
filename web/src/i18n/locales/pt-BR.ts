@@ -7339,10 +7339,16 @@ export default mergeHarnessLocale('pt-BR', {
     title: 'Solicitação de acesso ao diretório',
     subtitle: 'Um comando deseja acessar um diretório fora da lista permitida',
     directory: 'Diretório',
+    workdir: 'Diretório de trabalho',
     command: 'Comando',
     deny: 'Negar',
     allowOnce: 'Permitir uma vez',
     allowAlways: 'Permitir sempre',
+    commandTitle: 'Confirmação de execução de comando',
+    commandSubtitle: 'Este comando requer confirmação por razões de segurança',
+    allowAlwaysCommand: 'Permitir exatamente este comando',
+    commandHint:
+      'Isso não adiciona o diretório à lista de permitidos. Ele apenas ignora prompts futuros para o mesmo comando enquanto o Blue está em execução.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licença verificada',

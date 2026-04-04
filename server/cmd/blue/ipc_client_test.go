@@ -278,3 +278,127 @@ func TestNormalizeIPCCommand_MapsContextAnnotateFlagsAndNote(t *testing.T) {
 		t.Fatalf("unexpected positional args: %#v", positional)
 	}
 }
+
+func TestNormalizeIPCCommand_MapsBrowserNavigateToDedicatedIPCCommand(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"navigate", "url=https://example.com", "target_id=tab-1"})
+
+	if cmd != "browser.navigate" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.navigate")
+	}
+	if got := params["url"]; got != "https://example.com" {
+		t.Fatalf("url = %q, want %q", got, "https://example.com")
+	}
+	if got := params["target_id"]; got != "tab-1" {
+		t.Fatalf("target_id = %q, want %q", got, "tab-1")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserBareURLToNavigate(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"https://example.com"})
+
+	if cmd != "browser.navigate" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.navigate")
+	}
+	if got := params["url"]; got != "https://example.com" {
+		t.Fatalf("url = %q, want %q", got, "https://example.com")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserOpenAliasToNavigate(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"open", "https://example.com"})
+
+	if cmd != "browser.navigate" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.navigate")
+	}
+	if got := params["url"]; got != "https://example.com" {
+		t.Fatalf("url = %q, want %q", got, "https://example.com")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserDottedNavigatePositionalURL(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser.navigate", []string{"https://example.com"})
+
+	if cmd != "browser.navigate" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.navigate")
+	}
+	if got := params["url"]; got != "https://example.com" {
+		t.Fatalf("url = %q, want %q", got, "https://example.com")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserClickShorthandToAct(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"click", "@5"})
+
+	if cmd != "browser.act" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.act")
+	}
+	if got := params["ref"]; got != "5" {
+		t.Fatalf("ref = %q, want %q", got, "5")
+	}
+	if got := params["act_type"]; got != "click" {
+		t.Fatalf("act_type = %q, want %q", got, "click")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserTypeShorthandToActWithValue(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"type", "@8", "hello world"})
+
+	if cmd != "browser.act" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.act")
+	}
+	if got := params["ref"]; got != "8" {
+		t.Fatalf("ref = %q, want %q", got, "8")
+	}
+	if got := params["act_type"]; got != "type" {
+		t.Fatalf("act_type = %q, want %q", got, "type")
+	}
+	if got := params["value"]; got != "hello world" {
+		t.Fatalf("value = %q, want %q", got, "hello world")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserClosePositionalTargetID(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"close", "tab-1"})
+
+	if cmd != "browser.close" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.close")
+	}
+	if got := params["target_id"]; got != "tab-1" {
+		t.Fatalf("target_id = %q, want %q", got, "tab-1")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserListAliasToTabs(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"list"})
+
+	if cmd != "browser.tabs" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.tabs")
+	}
+	if len(params) != 0 {
+		t.Fatalf("unexpected params: %#v", params)
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}

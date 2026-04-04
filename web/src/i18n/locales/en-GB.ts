@@ -6969,10 +6969,16 @@ export default mergeHarnessLocale('en-GB', {
     title: 'Directory Access Request',
     subtitle: 'A command wants to access a directory outside the allowed list',
     directory: 'Directory',
+    workdir: 'Working Directory',
     command: 'Command',
     deny: 'Deny',
     allowOnce: 'Allow Once',
     allowAlways: 'Always Allow',
+    commandTitle: 'Command Approval Request',
+    commandSubtitle: 'This command needs approval before it can run',
+    allowAlwaysCommand: 'Allow Exact Command',
+    commandHint:
+      'This does not add the directory to the allowlist. It only skips future prompts for the same command while Blue is running.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licence verified',

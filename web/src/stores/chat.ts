@@ -2399,9 +2399,10 @@ export const useChatStore = defineStore('chat', () => {
       expiresAt = Date.now() + 2 * 60 * 1000
     }
 
+    const type = stringifyOptional(source.type) || 'directory'
     const normalized = {
       id,
-      type: stringifyOptional(source.type) || 'directory',
+      type,
       command: stringifyOptional(command),
       directory: stringifyOptional(source.directory ?? source.dir ?? source.path),
       workdir: stringifyOptional(source.workdir ?? source.cwd),
@@ -2413,7 +2414,7 @@ export const useChatStore = defineStore('chat', () => {
       expires_at: expiresAt,
     }
 
-    if (!normalized.directory && normalized.workdir) {
+    if (normalized.type === 'directory' && !normalized.directory && normalized.workdir) {
       normalized.directory = normalized.workdir
     }
 

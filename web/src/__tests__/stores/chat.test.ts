@@ -394,6 +394,28 @@ describe('Chat Store', () => {
       expect(store.awaitingConfirmation).toBe(true)
     })
 
+    it('should not present command approvals as directory approvals', () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      const workspaceDir = '/Users/orca/.zimaos-blue/data/workspace'
+
+      store.setPendingExecApproval({
+        approval: {
+          id: 'exec-command-1',
+          type: 'command',
+          command: 'rm -rf /tmp/demo',
+          workdir: workspaceDir,
+          expires_at: Math.floor((Date.now() + 60_000) / 1000),
+          session_id: 'conv-1',
+        },
+      })
+
+      expect(store.pendingExecApproval?.type).toBe('command')
+      expect(store.pendingExecApproval?.workdir).toBe(workspaceDir)
+      expect(store.pendingExecApproval?.directory).toBeUndefined()
+      expect(store.awaitingConfirmation).toBe(true)
+    })
+
     it('should query tool approvals scoped to the current conversation', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'

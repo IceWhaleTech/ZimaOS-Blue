@@ -7289,11 +7289,17 @@ export default mergeHarnessLocale('ko-KR', {
   execApproval: {
     title: '디렉토리 접근 요청',
     subtitle: '명령이 허용 목록 외부의 디렉토리에 접근하려고 합니다',
+    commandTitle: '명령 실행 확인',
+    commandSubtitle: '보안상의 이유로 이 명령에 대한 확인이 필요합니다',
     directory: '디렉토리',
+    workdir: '작업 디렉토리',
     command: '명령',
     deny: '거부',
     allowOnce: '한 번 허용',
     allowAlways: '항상 허용',
+    allowAlwaysCommand: '정확히 이 명령 허용',
+    commandHint:
+      '이렇게 하면 디렉토리가 허용 목록에 추가되지 않습니다. Blue가 실행되는 동안 동일한 명령에 대한 향후 프롬프트만 건너뜁니다.',
   },
   media: {
     fallbackSourceLicenseVerified: '라이선스 확인됨',

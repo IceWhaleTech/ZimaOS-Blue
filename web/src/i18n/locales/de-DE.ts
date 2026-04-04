@@ -7486,11 +7486,17 @@ export default mergeHarnessLocale('de-DE', {
   execApproval: {
     title: 'Verzeichniszugriffsanfrage',
     subtitle: 'Ein Befehl möchte auf ein Verzeichnis außerhalb der erlaubten Liste zugreifen',
+    commandTitle: 'Befehlsausführungsbestätigung',
+    commandSubtitle: 'Dieser Befehl erfordert aus Sicherheitsgründen eine Bestätigung',
     directory: 'Verzeichnis',
+    workdir: 'Arbeitsverzeichnis',
     command: 'Befehl',
     deny: 'Ablehnen',
     allowOnce: 'Einmal erlauben',
     allowAlways: 'Immer erlauben',
+    allowAlwaysCommand: 'Genau diesen Befehl erlauben',
+    commandHint:
+      'Dies fügt das Verzeichnis nicht zur Positivliste hinzu. Es überspringt nur zukünftige Aufforderungen für denselben Befehl, während Blue läuft.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Lizenz verifiziert',

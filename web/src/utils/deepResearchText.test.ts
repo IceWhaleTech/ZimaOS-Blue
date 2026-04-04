@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  localizeDeepResearchGap,
   localizeDeepResearchSegment,
   localizeDeepResearchStatus,
   localizeResearchProgressLabel,
@@ -11,6 +12,9 @@ import {
 const zhMessages: Record<string, string> = {
   'chat.deepResearchStageCompleted': '已完成',
   'chat.deepResearchActionCompleted': '已完成',
+  'chat.deepResearchGapNeedEvidenceCoverage': '需要补充证据',
+  'chat.deepResearchGapNeedBroaderSourceDiversity': '需要更广泛的来源多样性',
+  'chat.deepResearchGapNeedPrimaryOrOfficialSources': '需要一手或官方来源',
 }
 
 function translate(key: string, fallback: string): string {
@@ -26,6 +30,15 @@ describe('deepResearchText', () => {
   it('localizes bracket-wrapped segment tokens', () => {
     expect(localizeDeepResearchSegment('[completed]', translate)).toBe('已完成')
     expect(localizeDeepResearchSegment('【completed】', translate)).toBe('已完成')
+  })
+
+  it('localizes compound gap strings segment by segment', () => {
+    expect(
+      localizeDeepResearchGap(
+        'Need evidence coverage • Need broader source diversity • Need primary or official sources',
+        translate
+      )
+    ).toBe('需要补充证据 · 需要更广泛的来源多样性 · 需要一手或官方来源')
   })
 
   it('prefers deep research title and progress labels when available', () => {

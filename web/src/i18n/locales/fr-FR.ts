@@ -453,7 +453,7 @@ export default mergeHarnessLocale('fr-FR', {
       linkedRuns: 'Exécutions liées',
       noLinkedRuns: "Aucune exécution liée n'a encore été enregistrée pour ce groupe.",
       artifacts: 'Artefacts',
-      noArtifacts: "Aucun artefact n'est encore joint aux exécutions liées.",
+      noArtifacts: "Aucun artefact n\'est encore joint aux exécutions liées.",
     },
   },
   myUsage: {
@@ -526,7 +526,7 @@ export default mergeHarnessLocale('fr-FR', {
       enabled: 'Activé',
       matches: 'Correspondances',
       tasks: 'Tâches',
-      running: "En cours d'exécution",
+      running: "En cours d\'exécution",
       sessions: 'Sessions',
     },
     quickActions: 'Actions rapides',
@@ -557,7 +557,7 @@ export default mergeHarnessLocale('fr-FR', {
     requestFailed: 'Échec de la requête (code {code})',
     connectionFailed: 'Impossible de se connecter au serveur',
     connectionFailedDesc:
-      "Impossible de se connecter au serveur. Vérifiez que le service est en cours d'exécution et réessayez.",
+      "Impossible de se connecter au serveur. Vérifiez que le service est en cours d\'exécution et réessayez.",
     checkingConnection: 'Checking connection...',
     unknownError: 'Une erreur inconnue est survenue',
     pleaseRetry: 'Veuillez réessayer',
@@ -1077,7 +1077,7 @@ export default mergeHarnessLocale('fr-FR', {
       eyebrow: 'Modèle fixe indisponible',
       title: 'Passer au routage automatique et réessayer ?',
       description:
-        "Le modèle fixe {model} n'est pas disponible pour le moment. Voulez-vous remettre cette conversation en routage automatique et relancer votre dernière demande ?",
+        "Le modèle fixe {model} n\'est pas disponible pour le moment. Voulez-vous remettre cette conversation en routage automatique et relancer votre dernière demande ?",
       secondaryAction: 'Garder le modèle actuel',
       primaryAction: 'Changer et réessayer',
     },
@@ -1420,7 +1420,7 @@ export default mergeHarnessLocale('fr-FR', {
         description: 'Créer et exécuter des automatisations de workflows de style n8n',
       },
     },
-    noContent: "Aucun contenu detaille n'est disponible pour cette competence.",
+    noContent: "Aucun contenu detaille n\'est disponible pour cette competence.",
     filters: {
       allStatus: 'Tous les statuts',
     },
@@ -1506,7 +1506,7 @@ export default mergeHarnessLocale('fr-FR', {
     systemVersion: 'Mises à jour et versions',
     workspaceBasics: "Fondamentaux de l'espace de travail",
     providerMatrix: 'Matrice des fournisseurs',
-    codingRuntime: "Environnement d'exécution de code",
+    codingRuntime: "Environnement d\'exécution de code",
     advancedCodingTools: 'Outils de code avancés',
     requestFlow: 'Flux des requetes',
     proxyRouting: 'Routage proxy',
@@ -1561,7 +1561,7 @@ export default mergeHarnessLocale('fr-FR', {
       applying: 'Application de la mise à jour...',
       restarting: 'Redémarrage...',
       waitingForServer: 'En attente du retour du serveur...',
-      serverNotResponding: "Le serveur n'est pas revenu après la mise à jour",
+      serverNotResponding: "Le serveur n\'est pas revenu après la mise à jour",
       upToDate: 'À jour',
     },
     network: {
@@ -1616,7 +1616,7 @@ export default mergeHarnessLocale('fr-FR', {
           noteText:
             'Le port 80 doit être accessible depuis internet pour la vérification du domaine. Le certificat sera renouvelé automatiquement.',
           noteTextDNS:
-            "Les enregistrements DNS seront créés automatiquement à l'aide de vos identifiants API. Aucun accès au port 80 n'est requis.",
+            "Les enregistrements DNS seront créés automatiquement à l'aide de vos identifiants API. Aucun accès au port 80 n\'est requis.",
           emailDomainRequired: "L'e-mail et au moins un domaine sont requis",
           configured: 'Certificat ACME configuré',
           requestFailed: 'Échec de la demande de certificat',
@@ -1684,7 +1684,7 @@ export default mergeHarnessLocale('fr-FR', {
     smallModel: {
       title: 'Accélération légère',
       description:
-        "Utilise d'abord le modèle léger pour les tâches simples, avec repli automatique lorsqu'il n'est pas disponible.",
+        "Utilise d'abord le modèle léger pour les tâches simples, avec repli automatique lorsqu\'il n\'est pas disponible.",
       ready: 'Disponible',
       downloading: 'Téléchargement',
       notReady: 'Non téléchargé',
@@ -1693,19 +1693,19 @@ export default mergeHarnessLocale('fr-FR', {
         "Lorsqu'elle est activee, les taches adaptees sont traitees d'abord par le modele leger.",
       resourceTitle: 'Empreinte des ressources',
       storageUsage: 'Empreinte disque/téléchargement : environ {storage}.',
-      runtimeUsage: "Recommandation mémoire/VRAM à l'exécution : réservez au moins {runtime}.",
+      runtimeUsage: "Recommandation mémoire/VRAM à l\'exécution : réservez au moins {runtime}.",
       userGuideTitle: 'Ce que cela fait',
       userGuideItem1:
         "Priorise les questions courtes et certaines decisions d'outils pour des reponses plus rapides.",
       userGuideItem2:
-        "Bascule automatiquement vers le modèle principal lorsque le modèle léger n'est pas disponible.",
+        "Bascule automatiquement vers le modèle principal lorsque le modèle léger n\'est pas disponible.",
       userGuideItem3: 'Téléchargez le modèle avant la première utilisation.',
       advancedTitle: 'Parametres avances (aucune modification necessaire en general)',
       advancedHint:
         "À ajuster uniquement pour le dépannage ou la validation d'un déploiement contrôlé.",
       expand: 'Développer',
       collapse: 'Réduire',
-      runtime: "Moteur d'exécution",
+      runtime: "Moteur d\'exécution",
       modelId: 'Identifiant du modèle',
       noLLMDegrade: 'Politique de traitement sans LLM',
       unavailablePolicy: "Politique en cas d'indisponibilité",
@@ -1732,7 +1732,7 @@ export default mergeHarnessLocale('fr-FR', {
       imageQA: "Accélération de reconnaissance d'images",
       shortQA: 'Accélération des Q&R courtes',
       shadowOnly: 'Phase 1 : validation en arrière-plan uniquement',
-      statsTitle: "Statistiques d'exécution (dépannage)",
+      statsTitle: "Statistiques d\'exécution (dépannage)",
       statsHint:
         "Principalement pour le dépannage et l'ajustement ; peut être ignoré au quotidien.",
       resetStats: 'Effacer les statistiques',
@@ -2045,7 +2045,7 @@ export default mergeHarnessLocale('fr-FR', {
     allStatus: 'Tous les statuts',
     noPluginsFound: 'Aucun plugin trouvé',
     tryAdjustingFilters: 'Essayez de modifier les filtres',
-    noPluginsInstalled: "Aucun plugin n'est encore installé",
+    noPluginsInstalled: "Aucun plugin n\'est encore installé",
     by: 'par',
     moreCapabilities: '+{count} de plus',
     configure: 'Configurer',
@@ -2289,7 +2289,7 @@ export default mergeHarnessLocale('fr-FR', {
     proposalConfidence: 'Confiance',
     proposalRecommendedAction: 'Action recommandée',
     proposalPatchPreview: 'Aperçu du patch',
-    proposalNoPatch: "Aucun aperçu du patch n'est disponible.",
+    proposalNoPatch: "Aucun aperçu du patch n\'est disponible.",
     proposalReviewNote: 'Note de révision',
     proposalReviewPlaceholder: "Justification facultative pour l'approbation ou le rejet",
     proposalReviewedAt: 'Révisé',
@@ -2342,7 +2342,7 @@ export default mergeHarnessLocale('fr-FR', {
     reset: 'Réinitialiser',
     exportCSV: 'Exporter CSV',
     featureDisabled:
-      "La facturation est actuellement indisponible car le suivi d'utilisation du fournisseur n'est pas initialise.",
+      "La facturation est actuellement indisponible car le suivi d'utilisation du fournisseur n\'est pas initialise.",
     noData: 'Aucun enregistrement de facturation trouvé pour les filtres actuels',
     loadFailed: 'Échec du chargement des données de facturation',
     filters: {
@@ -2760,7 +2760,7 @@ export default mergeHarnessLocale('fr-FR', {
     status: {
       builtin: 'Intégré',
       installed: 'Installé',
-      running: "En cours d'exécution",
+      running: "En cours d\'exécution",
       loaded: 'Chargé',
       stopped: 'Arrêté',
       error: 'Erreur',
@@ -2814,7 +2814,7 @@ export default mergeHarnessLocale('fr-FR', {
       skillManagementHint:
         'Les compétences intégrées peuvent être activées ou désactivées ici, mais seules les compétences locales peuvent être désinstallées.',
       toolManagementHint:
-        "Les outils intégrés peuvent être activés ou désactivés ici, mais leur disponibilité peut encore être limitée par la politique des outils à l'exécution.",
+        "Les outils intégrés peuvent être activés ou désactivés ici, mais leur disponibilité peut encore être limitée par la politique des outils à l\'exécution.",
       builtinSkillDetailHint:
         'Cette compétence intégrée peut être activée ou désactivée ici, mais elle ne peut pas être désinstallée.',
       builtinSkillUninstallBlocked:
@@ -2879,7 +2879,7 @@ export default mergeHarnessLocale('fr-FR', {
     newTask: 'Nouvelle tâche',
     stats: {
       totalTasks: 'Total des tâches',
-      running: "En cours d'exécution",
+      running: "En cours d\'exécution",
       completed: 'Terminé',
       activeSessions: 'Sessions actives',
     },
@@ -3011,7 +3011,7 @@ export default mergeHarnessLocale('fr-FR', {
     },
     status: {
       pending: 'En attente',
-      running: "En cours d'exécution",
+      running: "En cours d\'exécution",
       completed: 'Terminé',
       failed: 'Échoué',
       cancelled: 'Annulé',
@@ -3196,8 +3196,8 @@ export default mergeHarnessLocale('fr-FR', {
     sandboxStatus: {
       title: 'État du bac à sable',
       description:
-        "Vérifiez si l'exécution en bac à sable est activée et quelles limites d'exécution sont actuellement appliquées.",
-      runtimeTitle: "Configuration d'exécution",
+        "Vérifiez si l\'exécution en bac à sable est activée et quelles limites d\'exécution sont actuellement appliquées.",
+      runtimeTitle: "Configuration d\'exécution",
       enabled: 'Activé',
       disabled: 'Désactivé',
       checking: 'Vérification...',
@@ -3337,7 +3337,7 @@ export default mergeHarnessLocale('fr-FR', {
         },
       },
       detailMessages: {
-        threat_detector_not_initialized: "Le détecteur de menaces n'est pas initialisé",
+        threat_detector_not_initialized: "Le détecteur de menaces n\'est pas initialisé",
         xss_detection_enabled:
           'La détection de motifs XSS est activée dans le détecteur de menaces',
         sql_injection_enabled: "La détection de motifs d'injection SQL est activée",
@@ -3349,7 +3349,7 @@ export default mergeHarnessLocale('fr-FR', {
         ai_output_validation_disabled:
           "La validation de sortie IA est désactivée. Envisagez de l'activer pour des opérations IA plus sûres.",
         model_whitelist_no_models:
-          "La liste blanche des modèles est activée mais aucun modèle n'est configuré",
+          "La liste blanche des modèles est activée mais aucun modèle n\'est configuré",
         model_whitelist_disabled:
           "La liste blanche des modèles est désactivée. Tous les modèles sont accessibles. Envisagez de l'activer pour la production.",
         sensitive_data_filtering_enabled: 'Le filtrage des données sensibles est activé',
@@ -3370,9 +3370,9 @@ export default mergeHarnessLocale('fr-FR', {
         server_localhost: 'Le serveur est accessible sur localhost',
         server_binding_unknown: 'Impossible de vérifier la liaison du serveur',
         sandbox_enabled: "L'exécution en bac à sable est activée",
-        sandbox_disabled: "Le bac à sable est désactivé. L'exécution du code n'est pas isolée.",
+        sandbox_disabled: "Le bac à sable est désactivé. L'exécution du code n\'est pas isolée.",
         no_memory_limit: 'Aucune limite de mémoire configurée pour le bac à sable',
-        no_timeout_configured: "Aucun délai d'exécution configuré",
+        no_timeout_configured: "Aucun délai d\'exécution configuré",
         network_disabled_sandbox: "L'accès réseau est désactivé dans le bac à sable",
         network_enabled_sandbox:
           "L'accès réseau est activé dans le bac à sable. Envisagez de le désactiver pour une meilleure isolation.",
@@ -3397,11 +3397,11 @@ export default mergeHarnessLocale('fr-FR', {
         running_development:
           'Exécution en mode développement. Vérifiez les paramètres de production avant le déploiement.',
         token_expiration_too_long_or_unset:
-          "L'expiration du jeton est trop longue ou n'est pas définie. Cela augmente le risque de vol de jeton.",
+          "L'expiration du jeton est trop longue ou n\'est pas définie. Cela augmente le risque de vol de jeton.",
         token_expiration_too_long:
           "L'expiration du jeton dépasse 8 heures. Cela augmente le risque de vol de jeton.",
         token_expiration_not_set:
-          "L'expiration du jeton n'est pas définie. Vérifiez security.jwt.expiration dans la configuration de sécurité chargée.",
+          "L'expiration du jeton n\'est pas définie. Vérifiez security.jwt.expiration dans la configuration de sécurité chargée.",
       },
       categories: {
         auth: 'Authentification',
@@ -3487,7 +3487,7 @@ export default mergeHarnessLocale('fr-FR', {
         },
         input_threat_detection: {
           name: 'Détection de menaces active',
-          description: "Vérifiez si la détection des menaces d'entrée est en cours d'exécution",
+          description: "Vérifiez si la détection des menaces d'entrée est en cours d\'exécution",
         },
         input_xss_protection: {
           name: 'Protection XSS',
@@ -3516,7 +3516,7 @@ export default mergeHarnessLocale('fr-FR', {
         },
         ai_output_validation: {
           name: 'Validation de la sortie IA',
-          description: "Vérifier si les sorties IA sont validées avant l'exécution",
+          description: "Vérifier si les sorties IA sont validées avant l\'exécution",
           risk: 'Les sorties IA non validées peuvent contenir du code malveillant ou du contenu nuisible',
           impact:
             'Du contenu malveillant généré par l’IA pourrait être exécuté, entraînant une injection de code ou une corruption de données',
@@ -3583,11 +3583,11 @@ export default mergeHarnessLocale('fr-FR', {
         },
         sandbox_enabled: {
           name: 'Exécution en bac à sable',
-          description: "Vérifier si l'exécution en bac à sable est activée",
+          description: "Vérifier si l\'exécution en bac à sable est activée",
           risk: "L'exécution de code sans bac à sable permet un accès direct au système",
           impact:
             "Un code malveillant pourrait accéder aux fichiers, au réseau ou compromettre l'ensemble du système",
-          remediation: "Activer l'exécution sandbox pour isoler le code non fiable du système hôte",
+          remediation: "Activer l\'exécution sandbox pour isoler le code non fiable du système hôte",
         },
         sandbox_resource_limits: {
           name: 'Limites de ressources',
@@ -3616,12 +3616,12 @@ export default mergeHarnessLocale('fr-FR', {
             "Désactiver l'accès au réseau dans le bac à sable, sauf si cela est spécifiquement requis",
         },
         sandbox_timeout: {
-          name: "Délai d'expiration d'exécution",
-          description: "Vérifier si le délai d'expiration d'exécution est configuré",
+          name: "Délai d'expiration d\'exécution",
+          description: "Vérifier si le délai d'expiration d\'exécution est configuré",
           risk: "Aucun délai d'attente n'autorise des boucles infinies ou un code malveillant de longue durée",
           impact:
             'Les ressources système pourraient être bloquées indéfiniment par un code malveillant',
-          remediation: "Définir le délai d'exécution sur 30 secondes ou moins",
+          remediation: "Définir le délai d\'exécution sur 30 secondes ou moins",
         },
         data_encryption_rest: {
           name: 'Chiffrement des données au repos',
@@ -3773,14 +3773,14 @@ export default mergeHarnessLocale('fr-FR', {
     subtitle: 'Exécuter des commandes dans un environnement isolé sécurisé',
     notSupported: 'Bac à sable non pris en charge',
     notSupportedDesc:
-      "L'exécution en bac à sable n'est pas disponible sur cette plateforme ou n'a pas été configurée.",
+      "L'exécution en bac à sable n\'est pas disponible sur cette plateforme ou n'a pas été configurée.",
     executeCommand: 'Exécuter la commande',
     execute: 'Exécuter',
     executing: 'Exécution en cours...',
-    result: "Résultat de l'exécution",
+    result: "Résultat de l\'exécution",
     kill: 'Arrêter le processus',
     configuration: 'Configuration',
-    history: "Historique d'exécution",
+    history: "Historique d\'exécution",
     noHistory: "Aucune exécution pour l'instant",
     exitCode: 'Code de sortie',
     duration: 'Durée',
@@ -3814,7 +3814,7 @@ export default mergeHarnessLocale('fr-FR', {
     errors: {
       fetchInfo: 'Impossible de récupérer les informations du bac à sable',
       commandRequired: 'La commande est requise',
-      executeFailed: "Échec de l'exécution de la commande",
+      executeFailed: "Échec de l\'exécution de la commande",
       killFailed: "Échec de l'arrêt du processus",
     },
   },
@@ -3848,7 +3848,7 @@ export default mergeHarnessLocale('fr-FR', {
     groupAccessMentionPolicyMentioned: "Répondre uniquement lorsque Blue est mentionné avec {'@'}",
     groupAccessMentionPolicyAlways: 'Répondre à tous les messages de groupe autorisés',
     groupAccessMentionHint:
-      "Par défaut, Blue ne répond dans les groupes que lorsqu'il est explicitement mentionné avec {'@'}.",
+      "Par défaut, Blue ne répond dans les groupes que lorsqu\'il est explicitement mentionné avec {'@'}.",
     groupAccessAllowedChats: 'Groupes autorisés',
     groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed\nmatrix:!roomid:matrix.org',
     groupAccessAllowedChatsHint:
@@ -3870,7 +3870,7 @@ export default mergeHarnessLocale('fr-FR', {
     errors: {
       imessage: {
         not_set_up:
-          "iMessage n'est pas configuré sur ce Mac. Ouvrez l'app Messages et connectez-vous avec votre Apple ID.",
+          "iMessage n\'est pas configuré sur ce Mac. Ouvrez l'app Messages et connectez-vous avec votre Apple ID.",
         not_signed_in:
           "Vous n'êtes pas connecté à iMessage. Ouvrez l'app Messages et connectez-vous avec votre Apple ID.",
         full_disk_access:
@@ -4508,7 +4508,7 @@ export default mergeHarnessLocale('fr-FR', {
     providerRaceSinkThreshold: 'Seuil de repli',
     providerRaceExcludeThreshold: "Seuil d'exclusion",
     providerRaceCooldownRule:
-      "Refroidissement si le taux d'exécutions à vide ≥ {threshold} (min {samples} échantillons), durée {duration}",
+      "Refroidissement si le taux d\'exécutions à vide ≥ {threshold} (min {samples} échantillons), durée {duration}",
     prunerTitle: 'Élagueur global de contexte',
     prunerDesc:
       'Contrôle l’élagueur du proxy API pour les requêtes /v1 acheminées via le proxy. Le chat Blue peut encore ignorer l’élagage requête par requête lorsque la pression de contexte est faible.',
@@ -5050,7 +5050,7 @@ export default mergeHarnessLocale('fr-FR', {
         evidence: 'Preuves',
         moreEvidence: '+{count} preuves supplementaires',
         noMajorWarnings: 'Aucun avertissement majeur detecte.',
-        noReport: "Aucun rapport de securite n'est encore disponible.",
+        noReport: "Aucun rapport de securite n\'est encore disponible.",
       },
       dynamic: {
         permissions: {
@@ -5828,7 +5828,7 @@ export default mergeHarnessLocale('fr-FR', {
     preferredModels: 'Preferred',
     selectPreferredModels: 'Sélectionner les modèles préférés',
     preferredModelsHint:
-      "Cochez les modèles que vous préférez. Seuls les modèles cochés seront disponibles ; si aucun n'est coché, tous les modèles seront disponibles.",
+      "Cochez les modèles que vous préférez. Seuls les modèles cochés seront disponibles ; si aucun n\'est coché, tous les modèles seront disponibles.",
     filtered: 'filtré',
     filteredModels: 'Afficher uniquement les modèles autorisés',
     selectAll: 'Tout sélectionner',
@@ -5938,7 +5938,7 @@ export default mergeHarnessLocale('fr-FR', {
     isDefault: 'Utiliser les tarifs par défaut',
     configureAllowedModels: 'Configurer les modèles autorisés',
     allowedModelsHint:
-      "Sélectionnez les modèles disponibles pour ce fournisseur. Si aucun n'est sélectionné, tous les modèles de l'API seront disponibles.",
+      "Sélectionnez les modèles disponibles pour ce fournisseur. Si aucun n\'est sélectionné, tous les modèles de l'API seront disponibles.",
     pricing: {
       title: 'Configuration des tarifs',
       description: 'Configurer les tarifs des modèles pour le calcul des coûts',
@@ -6025,7 +6025,7 @@ export default mergeHarnessLocale('fr-FR', {
     logs: 'Journaux',
     logsTitle: 'Journaux de connexion',
     noLogs: 'Aucun journal disponible',
-    tunnelRunning: "Tunnel en cours d'exécution",
+    tunnelRunning: "Tunnel en cours d\'exécution",
     firewallException: 'Exception de pare-feu',
     platform: 'Plateforme',
     troubleshootingHints: 'Conseils de dépannage',
@@ -6526,13 +6526,13 @@ export default mergeHarnessLocale('fr-FR', {
       "Forcer la reconnaissance sur l'appareil (aucune donnée envoyée aux serveurs Apple)",
     macosNativeOnDeviceUnsupported: "Modèle sur l'appareil non disponible pour la langue actuelle",
     dictationDisabledGuide:
-      "La dictée n'est pas activée. La reconnaissance sur l'appareil nécessite la dictée. Allez dans Réglages système > Clavier > Dictée pour l'activer.",
+      "La dictée n\'est pas activée. La reconnaissance sur l'appareil nécessite la dictée. Allez dans Réglages système > Clavier > Dictée pour l'activer.",
     recheckDictation: 'Revérifier',
     offlineLanguages: 'Offline Languages',
     currentLangInstalled: 'Current language available',
     currentLangNotInstalled: 'Current language not installed',
     onDeviceUnavailableError:
-      "La reconnaissance sur l'appareil n'est pas disponible. Veuillez activer la dictée dans Réglages système > Clavier > Dictée, ou désactiver le mode « Appareil uniquement ».",
+      "La reconnaissance sur l'appareil n\'est pas disponible. Veuillez activer la dictée dans Réglages système > Clavier > Dictée, ou désactiver le mode « Appareil uniquement ».",
     error: {
       timeout: 'La reconnaissance vocale a expiré. Veuillez réessayer.',
       audioInvalid: 'Entrée audio invalide. Veuillez enregistrer à nouveau.',
@@ -6911,7 +6911,7 @@ export default mergeHarnessLocale('fr-FR', {
     exitCode: 'sortie',
     duration: 'Durée',
     outputTruncated: 'tronqué',
-    outputUnavailable: "La sortie n'est pas disponible dans cette carte",
+    outputUnavailable: "La sortie n\'est pas disponible dans cette carte",
     noOutput: 'Aucune sortie',
     noCommand: 'Aucune commande',
     running: 'Exécution...',
@@ -7262,7 +7262,7 @@ export default mergeHarnessLocale('fr-FR', {
   agent: {
     mode: 'Mode boucle de tâches',
     modeDescription:
-      "Active des boucles continues de planification et d'exécution des tâches jusqu'à désactivation",
+      "Active des boucles continues de planification et d\'exécution des tâches jusqu'à désactivation",
     autoConfirm: 'Confirmation automatique',
     autoConfirmDescription:
       'Ignorer la confirmation pour les actions destructrices (clic droit sur le bouton de boucle de tâches pour basculer)',
@@ -7438,7 +7438,7 @@ export default mergeHarnessLocale('fr-FR', {
   },
   approval: {
     title: "Approbation d'appel d'outil",
-    subtitle: "Un outil demande la permission d'exécution",
+    subtitle: "Un outil demande la permission d\'exécution",
     tool: 'Outil',
     arguments: 'Arguments',
     deny: 'Refuser',
@@ -7455,11 +7455,17 @@ export default mergeHarnessLocale('fr-FR', {
   execApproval: {
     title: "Demande d'accès au répertoire",
     subtitle: 'Une commande souhaite accéder à un répertoire hors de la liste autorisée',
+    commandTitle: 'Confirmation d\'exécution de commande',
+    commandSubtitle: 'Cette commande nécessite une confirmation pour des raisons de sécurité',
     directory: 'Répertoire',
+    workdir: 'Répertoire de travail',
     command: 'Commande',
     deny: 'Refuser',
     allowOnce: 'Autoriser une fois',
     allowAlways: 'Toujours autoriser',
+    allowAlwaysCommand: 'Autoriser cette commande exacte',
+    commandHint:
+      'Ceci n\'ajoute pas le répertoire à la liste des autorisations. Il ignore seulement les futures demandes pour la même commande pendant que Blue est en cours d\'exécution.',
   },
   media: {
     fallbackSourceLicenseVerified: 'Licence vérifiée',

@@ -12,6 +12,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cardproto"
 	cardconv "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 var (
@@ -162,9 +163,15 @@ func ipcDispatchPreparedCommand(cmd string, params map[string]string, requireSer
 
 func normalizeIPCCommand(cmd string, args []string) (string, map[string]string, []string) {
 	params, positional := parseIPCArgs(args)
-	switch strings.TrimSpace(cmd) {
+	trimmedCmd := strings.TrimSpace(cmd)
+	if strings.HasPrefix(trimmedCmd, "browser.") {
+		return normalizeBrowserDottedIPCCommand(trimmedCmd, params, positional)
+	}
+	switch trimmedCmd {
 	case "context":
 		return normalizeContextIPCCommand(params, positional)
+	case "browser":
+		return normalizeBrowserIPCCommand(params, positional)
 	case "reminder":
 		return normalizeReminderIPCCommand(params, positional)
 	case "/install":
@@ -193,6 +200,168 @@ func normalizeIPCCommand(cmd string, args []string) (string, map[string]string, 
 		return "skill.search", params, positional
 	default:
 		return cmd, params, positional
+	}
+}
+
+func normalizeBrowserIPCCommand(params map[string]string, positional []string) (string, map[string]string, []string) {
+	return normalizeBrowserIPCAction("", params, positional)
+}
+
+func normalizeBrowserDottedIPCCommand(cmd string, params map[string]string, positional []string) (string, map[string]string, []string) {
+	action := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(cmd), "browser."))
+	return normalizeBrowserIPCAction(action, params, positional)
+}
+
+func normalizeBrowserIPCAction(defaultAction string, params map[string]string, positional []string) (string, map[string]string, []string) {
+	if params == nil {
+		params = make(map[string]string)
+	}
+
+	actionRaw := strings.ToLower(strings.TrimSpace(params["action"]))
+	if actionRaw == "" {
+		actionRaw = strings.ToLower(strings.TrimSpace(defaultAction))
+	}
+	if actionRaw == "" && len(positional) > 0 {
+		first := strings.TrimSpace(positional[0])
+		switch {
+		case browserPositionalLooksLikeURL(first):
+			if strings.TrimSpace(params["url"]) == "" {
+				params["url"] = first
+			}
+			positional = append([]string(nil), positional[1:]...)
+			actionRaw = "navigate"
+		default:
+			mappedAction, ok := normalizeBrowserActionAlias(first)
+			if ok {
+				actionRaw = mappedAction
+				positional = append([]string(nil), positional[1:]...)
+			}
+		}
+	}
+
+	// Keep bare `blue browser url=...` behavior routed through the skill fallback,
+	// where the browser skill can still default url-only input to navigate.
+	if actionRaw == "" {
+		return "browser", params, positional
+	}
+
+	if mappedAction, ok := normalizeBrowserActionAlias(actionRaw); ok {
+		actionRaw = mappedAction
+	}
+
+	actType := strings.TrimSpace(params["act_type"])
+	if actType == "" {
+		actType = strings.TrimSpace(params["actType"])
+	}
+	action, canonicalActType := tools.CanonicalizeBrowserAction(actionRaw, actType)
+	delete(params, "action")
+	if strings.TrimSpace(params["act_type"]) == "" && canonicalActType != "" {
+		params["act_type"] = canonicalActType
+	}
+	if strings.TrimSpace(params["actType"]) != "" {
+		delete(params, "actType")
+	}
+	positional = normalizeBrowserPositionalArgs(action, params, positional)
+	normalizeBrowserIPCRef(params)
+
+	return "browser." + action, params, positional
+}
+
+func normalizeBrowserActionAlias(action string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "navigate", "open", "goto", "go", "visit":
+		return "navigate", true
+	case "snapshot", "inspect", "tree":
+		return "snapshot", true
+	case "snapshot_interactive", "interactive", "elements":
+		return "snapshot_interactive", true
+	case "snapshot_auto", "read", "page":
+		return "snapshot_auto", true
+	case "act", "click", "type", "focus", "hover", "scroll", "select":
+		return strings.ToLower(strings.TrimSpace(action)), true
+	case "screenshot", "shot", "capture", "screen":
+		return "screenshot", true
+	case "tabs", "list", "ls", "tab", "status":
+		return "tabs", true
+	case "close", "remove", "rm", "delete":
+		return "close", true
+	case "recipe", "run_recipe", "run-recipe":
+		return "recipe", true
+	case "recipes", "list_recipes", "list-recipes":
+		return "recipes", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeBrowserPositionalArgs(action string, params map[string]string, positional []string) []string {
+	switch action {
+	case "navigate":
+		if strings.TrimSpace(params["url"]) == "" {
+			positional = promotePositionalIPCParam(params, positional, "url")
+		}
+	case "snapshot", "snapshot_interactive", "snapshot_auto", "close":
+		if strings.TrimSpace(params["target_id"]) == "" {
+			positional = promotePositionalIPCParam(params, positional, "target_id")
+		}
+	case "screenshot":
+		if strings.TrimSpace(params["url"]) == "" && strings.TrimSpace(params["target_id"]) == "" && len(positional) > 0 {
+			first := strings.TrimSpace(positional[0])
+			if browserPositionalLooksLikeURL(first) {
+				params["url"] = first
+			} else {
+				params["target_id"] = first
+			}
+			positional = append([]string(nil), positional[1:]...)
+		}
+	case "recipe":
+		if strings.TrimSpace(params["recipe"]) == "" {
+			positional = promotePositionalIPCParam(params, positional, "recipe")
+		}
+	case "act":
+		if strings.TrimSpace(params["ref"]) == "" {
+			positional = promotePositionalIPCParam(params, positional, "ref")
+		}
+		if strings.TrimSpace(params["act_type"]) == "" && strings.TrimSpace(params["actType"]) == "" {
+			positional = promotePositionalIPCParam(params, positional, "act_type")
+		}
+		if strings.TrimSpace(params["value"]) == "" && len(positional) > 0 {
+			params["value"] = strings.Join(positional, " ")
+			positional = nil
+		}
+	}
+
+	return positional
+}
+
+func normalizeBrowserIPCRef(params map[string]string) {
+	if params == nil {
+		return
+	}
+	ref := strings.TrimSpace(params["ref"])
+	if ref == "" {
+		return
+	}
+	ref = strings.TrimPrefix(ref, "@")
+	if ref != "" {
+		params["ref"] = ref
+	}
+}
+
+func browserPositionalLooksLikeURL(raw string) bool {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	switch {
+	case strings.HasPrefix(value, "http://"),
+		strings.HasPrefix(value, "https://"),
+		strings.HasPrefix(value, "file://"),
+		strings.HasPrefix(value, "ftp://"),
+		strings.HasPrefix(value, "www."),
+		strings.HasPrefix(value, "localhost:"),
+		strings.HasPrefix(value, "127.0.0.1:"),
+		strings.HasPrefix(value, "[::1]:"):
+		return true
+	default:
+		return false
 	}
 }
 

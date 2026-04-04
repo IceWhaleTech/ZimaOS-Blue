@@ -328,12 +328,17 @@ const selectedProviderModels = computed(() => {
   if (!store.selectedProviderId || !store.models) return []
   return store.models.filter((m) => m.provider_id === store.selectedProviderId)
 })
-
-const officialProviderOptions = computed(() =>
-  visibleProviders.value.filter(
+const officialProviderOptions = computed(() => {
+  const providers = visibleProviders.value.filter(
     (provider) => provider.type === 'builtin' || provider.type === 'platform'
   )
-)
+  // Sort: Ollama first, then by priority (descending)
+  return providers.sort((a, b) => {
+    if (a.id === 'ollama' && b.id !== 'ollama') return -1
+    if (a.id !== 'ollama' && b.id === 'ollama') return 1
+    return b.priority - a.priority
+  })
+})
 
 const canReorderProviders = computed(() => filteredProviders.value.length > 1)
 const providerOutputLimitLabel = computed(() =>
@@ -606,12 +611,6 @@ const filteredProviders = computed(() => {
 
   // Sort: enabled first, then by priority (descending)
   return providers.sort((a, b) => {
-    if (a.id === 'ollama' && b.id !== 'ollama') {
-      return -1
-    }
-    if (a.id !== 'ollama' && b.id === 'ollama') {
-      return 1
-    }
     if (a.enabled !== b.enabled) {
       return a.enabled ? -1 : 1
     }

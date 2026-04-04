@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   localizeDeepResearchAction,
+  localizeDeepResearchGap,
   localizeDeepResearchSegment,
   localizeDeepResearchStatus,
   localizeResearchProgressLabel,
@@ -72,6 +73,49 @@ describe('Deep research locale coverage', () => {
       expect(localizeDeepResearchSegment('[completed]', translate), `${file} segment []`).toBe(
         stageCompleted
       )
+    }
+  })
+
+  it('keeps deep research gap localization working for all 27 locales', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    expect(entries).toHaveLength(27)
+
+    const cases: Array<[token: string, key: string]> = [
+      ['need_evidence_coverage', 'chat.deepResearchGapNeedEvidenceCoverage'],
+      ['need_primary_or_official_sources', 'chat.deepResearchGapNeedPrimaryOrOfficialSources'],
+      ['need_broader_evidence_coverage', 'chat.deepResearchGapNeedBroaderEvidenceCoverage'],
+      ['need_broader_source_diversity', 'chat.deepResearchGapNeedBroaderSourceDiversity'],
+      ['need_fresher_sources', 'chat.deepResearchGapNeedFresherSources'],
+      ['resolve_conflicting_claims', 'chat.deepResearchGapResolveConflictingClaims'],
+    ]
+
+    for (const [modulePath, mod] of entries) {
+      const file = fileNameFromModulePath(modulePath)
+      const messages = mod.default
+      const translate = translateFor(messages)
+
+      for (const [token, key] of cases) {
+        const localized = getPathValue(messages, key)
+        expect(typeof localized, `${file} missing ${key}`).toBe('string')
+        expect(
+          localizeDeepResearchGap(token, translate),
+          `${file} failed to localize ${token}`
+        ).toBe(localized)
+      }
+
+      const evidenceCoverage = getPathValue(messages, 'chat.deepResearchGapNeedEvidenceCoverage')
+      const broaderSourceDiversity = getPathValue(
+        messages,
+        'chat.deepResearchGapNeedBroaderSourceDiversity'
+      )
+
+      expect(
+        localizeDeepResearchGap(
+          'need_evidence_coverage • need_broader_source_diversity',
+          translate
+        ),
+        `${file} failed to localize combined gap string`
+      ).toBe(`${evidenceCoverage} · ${broaderSourceDiversity}`)
     }
   })
 
