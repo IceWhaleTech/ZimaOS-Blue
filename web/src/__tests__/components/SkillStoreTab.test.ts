@@ -914,6 +914,58 @@ describe('SkillStoreTab', () => {
     i18n.global.locale.value = 'en-US'
   })
 
+  it('localizes category-like skill tags on cards and uses the status chip for installed badges', async () => {
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(
+      makeSearchResponse([
+        makeSkill({
+          installed: true,
+          tags: ['AI 智能', 'productivity', 'automation'],
+        }),
+      ]) as never
+    )
+
+    const wrapper = await mountSkillStore()
+
+    const renderedTags = wrapper
+      .findAll('.skill-card .card-tag-row .meta-chip-soft')
+      .map((tag) => tag.text())
+
+    expect(renderedTags).toContain('AI Intelligence')
+    expect(renderedTags).toContain('Productivity')
+    expect(renderedTags).not.toContain('AI 智能')
+    expect(renderedTags).not.toContain('productivity')
+
+    const installedChip = wrapper.get('.skill-card .meta-chip-installed')
+    expect(installedChip.classes()).toContain('meta-chip-status')
+
+    wrapper.unmount()
+  })
+
+  it('localizes productivity tags for zh-CN cards', async () => {
+    const zhCN = await import('@/i18n/locales/zh-CN')
+    ;(i18n.global as any).setLocaleMessage('zh-CN', zhCN.default)
+    i18n.global.locale.value = 'zh-CN'
+
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(
+      makeSearchResponse([
+        makeSkill({
+          tags: ['productivity'],
+        }),
+      ]) as never
+    )
+
+    const wrapper = await mountSkillStore()
+    const renderedTags = wrapper
+      .findAll('.skill-card .card-tag-row .meta-chip-soft')
+      .map((tag) => tag.text())
+
+    expect(renderedTags).toContain('效率提升')
+    expect(renderedTags).not.toContain('productivity')
+
+    wrapper.unmount()
+    i18n.global.locale.value = 'en-US'
+  })
+
   it('renders source brand icons in result cards, progress, and source filter hints', async () => {
     vi.mocked(skillApi.discoverStatus).mockResolvedValue({
       data: {

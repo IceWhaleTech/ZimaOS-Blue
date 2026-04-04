@@ -878,6 +878,58 @@ const marketplaceCategoryAliases: Record<string, string> = {
   extension: 'development_tools',
 }
 
+const marketplaceDisplayTagCategoryAliases: Record<string, string> = {
+  ai: 'ai_intelligence',
+  ai_intelligence: 'ai_intelligence',
+  ai_智能: 'ai_intelligence',
+  ai智能: 'ai_intelligence',
+  ai_與智能: 'ai_intelligence',
+  人工智能: 'ai_intelligence',
+  智能: 'ai_intelligence',
+  development: 'development_tools',
+  development_tools: 'development_tools',
+  development_tool: 'development_tools',
+  开发工具: 'development_tools',
+  productivity: 'productivity',
+  效率: 'productivity',
+  效率提升: 'productivity',
+  data_analysis: 'data_analysis',
+  data_analytics: 'data_analysis',
+  数据分析: 'data_analysis',
+  content_creation: 'content_creation',
+  内容创作: 'content_creation',
+  security: 'security_compliance',
+  security_compliance: 'security_compliance',
+  security_and_compliance: 'security_compliance',
+  安全: 'security_compliance',
+  安全与合规: 'security_compliance',
+  安全與合規: 'security_compliance',
+  communication_collaboration: 'communication_collaboration',
+  communication_and_collaboration: 'communication_collaboration',
+  沟通与协作: 'communication_collaboration',
+  溝通與協作: 'communication_collaboration',
+  通讯协作: 'communication_collaboration',
+  other: 'other',
+  其他: 'other',
+}
+
+function marketplaceDisplayTagAliasKey(value?: string | null): string {
+  const raw = value?.trim().toLowerCase()
+  if (!raw) return ''
+  return raw
+    .replace(/[&/\\.,:]+/g, ' ')
+    .replace(/-/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .join('_')
+}
+
+function marketplaceDisplayTagTokenKey(value?: string | null): string {
+  const raw = value?.trim().toLowerCase()
+  if (!raw) return ''
+  return raw.replace(/[\s-]+/g, '_')
+}
+
 function categoryLabel(value?: string): string {
   const normalized = value ? marketplaceCategoryAliases[value] || value : 'other'
   const fallback: Record<string, string> = {
@@ -892,6 +944,17 @@ function categoryLabel(value?: string): string {
   }
   const fallbackText: string = fallback[normalized] || value || 'Other'
   return marketplaceText(`categories.${normalized}`, fallbackText)
+}
+
+function localizeMarketplaceTag(value?: string | null): string {
+  const raw = value?.trim()
+  if (!raw) return ''
+  const canonical =
+    marketplaceDisplayTagCategoryAliases[marketplaceDisplayTagAliasKey(raw)] ||
+    marketplaceDisplayTagCategoryAliases[marketplaceDisplayTagTokenKey(raw)] ||
+    ''
+  if (!canonical) return raw
+  return categoryLabel(canonical)
 }
 
 function formatNumber(value?: number): string {
@@ -938,7 +1001,13 @@ function skillVersionLabel(skill?: RemoteSkill | null): string {
 }
 
 function visibleSkillTags(skill?: RemoteSkill | null, limit = 2): string[] {
-  return normalizeTags(skill).slice(0, limit)
+  return Array.from(
+    new Set(
+      normalizeTags(skill)
+        .map((tag) => localizeMarketplaceTag(tag))
+        .filter(Boolean)
+    )
+  ).slice(0, limit)
 }
 
 function openSkillSource(skill?: RemoteSkill | null) {
@@ -2778,7 +2847,7 @@ onBeforeUnmount(() => {
                 <div class="card-title-copy">
                   <div class="card-title-row">
                     <h4>{{ skill.name }}</h4>
-                    <span v-if="skill.installed" class="meta-chip meta-chip-installed">{{
+                    <span v-if="skill.installed" class="meta-chip meta-chip-installed meta-chip-status">{{
                       skillStoreText('installed', 'Installed')
                     }}</span>
                   </div>
@@ -2906,7 +2975,10 @@ onBeforeUnmount(() => {
                     </div>
                     <div class="detail-pill-row">
                       <span class="detail-version-pill">{{ skillVersionLabel(detailSkill) }}</span>
-                      <span v-if="detailInstalled" class="meta-chip meta-chip-installed">{{
+                      <span
+                        v-if="detailInstalled"
+                        class="meta-chip meta-chip-installed meta-chip-status"
+                      >{{
                         skillStoreText('installed', 'Installed')
                       }}</span>
                     </div>
@@ -4271,6 +4343,14 @@ onBeforeUnmount(() => {
   background: rgba(34, 197, 94, 0.12);
   color: var(--success);
   border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.meta-chip-status {
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .tag-chip {

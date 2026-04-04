@@ -1,5 +1,5 @@
 // Auto-generated translation overrides for runtime and audit coverage.
-export default {
+const priorityTranslationOverrides = {
   "ca-ES": {
     "a2ui": {
       "canvas": "Tela",
@@ -48160,3 +48160,220 @@ export default {
     }
   }
 }
+
+type LocaleOverrideValue = Record<string, unknown>
+
+function isPlainObject(value: unknown): value is LocaleOverrideValue {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function mergeLocaleOverrideValue(
+  base: LocaleOverrideValue,
+  override: LocaleOverrideValue
+): LocaleOverrideValue {
+  const merged: LocaleOverrideValue = { ...base }
+
+  for (const [key, overrideValue] of Object.entries(override)) {
+    const baseValue = merged[key]
+    merged[key] =
+      isPlainObject(baseValue) && isPlainObject(overrideValue)
+        ? mergeLocaleOverrideValue(baseValue, overrideValue)
+        : overrideValue
+  }
+
+  return merged
+}
+
+function mergeLocaleOverrideCatalogs(
+  base: Record<string, LocaleOverrideValue>,
+  override: Record<string, LocaleOverrideValue>
+): Record<string, LocaleOverrideValue> {
+  const merged = { ...base }
+
+  for (const [locale, localeOverrides] of Object.entries(override)) {
+    const current = merged[locale]
+    merged[locale] =
+      isPlainObject(current) && isPlainObject(localeOverrides)
+        ? mergeLocaleOverrideValue(current, localeOverrides)
+        : localeOverrides
+  }
+
+  return merged
+}
+
+const toolLocaleTerms: Record<
+  string,
+  { details: string; tags: string; tagsPlaceholder: string }
+> = {
+  "ca-ES": {
+    details: "Detalls",
+    tags: "Etiquetes (opcional)",
+    tagsPlaceholder: "etiqueta1, etiqueta2, etiqueta3",
+  },
+  "cs-CZ": {
+    details: "Podrobnosti",
+    tags: "Štítky (volitelné)",
+    tagsPlaceholder: "štítek1, štítek2, štítek3",
+  },
+  "da-DK": {
+    details: "Detaljer",
+    tags: "Etiketter (valgfrit)",
+    tagsPlaceholder: "etiket1, etiket2, etiket3",
+  },
+  "de-DE": {
+    details: "Einzelheiten",
+    tags: "Schlagwörter (optional)",
+    tagsPlaceholder: "schlagwort1, schlagwort2, schlagwort3",
+  },
+  "el-GR": {
+    details: "Λεπτομέρειες",
+    tags: "Ετικέτες (προαιρετικά)",
+    tagsPlaceholder: "ετικέτα1, ετικέτα2, ετικέτα3",
+  },
+  "en-GB": {
+    details: "Details",
+    tags: "Tags (optional)",
+    tagsPlaceholder: "tag1, tag2, tag3",
+  },
+  "en-US": {
+    details: "Details",
+    tags: "Tags (optional)",
+    tagsPlaceholder: "tag1, tag2, tag3",
+  },
+  "es-ES": {
+    details: "Detalles",
+    tags: "Etiquetas (opcional)",
+    tagsPlaceholder: "etiqueta1, etiqueta2, etiqueta3",
+  },
+  "fr-FR": {
+    details: "Détails",
+    tags: "Étiquettes (facultatif)",
+    tagsPlaceholder: "étiquette1, étiquette2, étiquette3",
+  },
+  "ga-IE": {
+    details: "Sonraí",
+    tags: "Clibeanna (roghnach)",
+    tagsPlaceholder: "clib1, clib2, clib3",
+  },
+  "hr-HR": {
+    details: "Detalji",
+    tags: "Oznake (neobavezno)",
+    tagsPlaceholder: "oznaka1, oznaka2, oznaka3",
+  },
+  "hu-HU": {
+    details: "Részletek",
+    tags: "Címkék (opcionális)",
+    tagsPlaceholder: "címke1, címke2, címke3",
+  },
+  "it-IT": {
+    details: "Dettagli",
+    tags: "Etichette (facoltative)",
+    tagsPlaceholder: "etichetta1, etichetta2, etichetta3",
+  },
+  "ja-JP": {
+    details: "詳細",
+    tags: "タグ（任意）",
+    tagsPlaceholder: "タグ1、タグ2、タグ3",
+  },
+  "ko-KR": {
+    details: "세부정보",
+    tags: "태그(선택)",
+    tagsPlaceholder: "태그1, 태그2, 태그3",
+  },
+  "ml-IN": {
+    details: "വിശദാംശങ്ങൾ",
+    tags: "ടാഗുകൾ (ഐച്ഛികം)",
+    tagsPlaceholder: "ടാഗ്1, ടാഗ്2, ടാഗ്3",
+  },
+  "nb-NO": {
+    details: "Detaljer",
+    tags: "Tagger (valgfritt)",
+    tagsPlaceholder: "tagg1, tagg2, tagg3",
+  },
+  "nl-NL": {
+    details: "Bijzonderheden",
+    tags: "Labels (optioneel)",
+    tagsPlaceholder: "label1, label2, label3",
+  },
+  "pl-PL": {
+    details: "Szczegóły",
+    tags: "Tagi (opcjonalnie)",
+    tagsPlaceholder: "etykieta1, etykieta2, etykieta3",
+  },
+  "pt-BR": {
+    details: "Detalhes",
+    tags: "Etiquetas (opcional)",
+    tagsPlaceholder: "etiqueta1, etiqueta2, etiqueta3",
+  },
+  "pt-PT": {
+    details: "Detalhes",
+    tags: "Etiquetas (opcional)",
+    tagsPlaceholder: "etiqueta1, etiqueta2, etiqueta3",
+  },
+  "ro-RO": {
+    details: "Detalii",
+    tags: "Etichete (opțional)",
+    tagsPlaceholder: "etichetă1, etichetă2, etichetă3",
+  },
+  "ru-RU": {
+    details: "Подробности",
+    tags: "Теги (необязательно)",
+    tagsPlaceholder: "тег1, тег2, тег3",
+  },
+  "sk-SK": {
+    details: "Podrobnosti",
+    tags: "Štítky (voliteľné)",
+    tagsPlaceholder: "štítok1, štítok2, štítok3",
+  },
+  "sv-SE": {
+    details: "Detaljer",
+    tags: "Taggar (valfritt)",
+    tagsPlaceholder: "tagg1, tagg2, tagg3",
+  },
+  "zh-CN": {
+    details: "详情",
+    tags: "标签（可选）",
+    tagsPlaceholder: "标签1, 标签2, 标签3",
+  },
+  "zh-TW": {
+    details: "詳情",
+    tags: "標籤（選填）",
+    tagsPlaceholder: "標籤1、標籤2、標籤3",
+  },
+}
+
+const toolDetailsAndTagsOverrides = Object.fromEntries(
+  Object.entries(toolLocaleTerms).map(([locale, terms]) => [
+    locale,
+    {
+      common: {
+        details: terms.details,
+      },
+      memory: {
+        tags: terms.tags,
+        tagsPlaceholder: terms.tagsPlaceholder,
+      },
+      extensions: {
+        actions: {
+          details: terms.details,
+        },
+      },
+      skillStore: {
+        actions: {
+          details: terms.details,
+        },
+        detail: {
+          title: terms.details,
+          sections: {
+            details: terms.details,
+          },
+        },
+      },
+    },
+  ])
+) as Record<string, LocaleOverrideValue>
+
+export default mergeLocaleOverrideCatalogs(
+  priorityTranslationOverrides as Record<string, LocaleOverrideValue>,
+  toolDetailsAndTagsOverrides
+)

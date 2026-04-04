@@ -135,7 +135,10 @@ func (h *UserSkillHandler) listInstalledSkills() []installedSkillInfo {
 				continue
 			}
 			seen[id] = struct{}{}
-			name := firstString(strings.TrimSpace(bundle.Document.Name), id, entry.Name())
+			_, name := canonicalSkillIdentity(
+				id,
+				firstString(strings.TrimSpace(bundle.Document.Name), id, entry.Name()),
+			)
 			skills = append(skills, installedSkillInfo{
 				ID:            id,
 				Name:          name,

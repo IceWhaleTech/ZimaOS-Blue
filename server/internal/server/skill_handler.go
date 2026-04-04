@@ -123,6 +123,51 @@ func firstString(values ...string) string {
 	return ""
 }
 
+func canonicalSkillCompatID(raw string) string {
+	normalized := strings.ReplaceAll(skillmarket.NormalizeSkillID(raw), "-", "_")
+	switch normalized {
+	case "mgmt":
+		return "config"
+	default:
+		return normalized
+	}
+}
+
+func skillCompatAliases(raw string) []string {
+	switch canonicalSkillCompatID(raw) {
+	case "config":
+		return []string{"config", "mgmt"}
+	default:
+		return nil
+	}
+}
+
+func canonicalSkillIdentity(id, name string) (string, string) {
+	canonicalID := strings.TrimSpace(id)
+	if normalized, err := normalizedSkillID(id); err == nil {
+		canonicalID = normalized
+	} else if normalized, err := normalizedSkillID(name); err == nil {
+		canonicalID = normalized
+	}
+	if canonicalID == "" {
+		canonicalID = firstString(strings.TrimSpace(id), strings.TrimSpace(name))
+	}
+
+	displayName := strings.TrimSpace(name)
+	switch canonicalID {
+	case "config":
+		switch strings.ToLower(strings.TrimSpace(displayName)) {
+		case "", "config", "mgmt", "management":
+			displayName = "Configuration"
+		}
+	}
+	if displayName == "" {
+		displayName = canonicalID
+	}
+
+	return canonicalID, displayName
+}
+
 func skillIDAliases(id string) []string {
 	validatedID, err := skillmarket.ValidateSkillID(id)
 	if err != nil {
@@ -146,6 +191,11 @@ func skillIDAliases(id string) []string {
 	add(validatedID)
 	add(strings.ReplaceAll(validatedID, "-", "_"))
 	add(strings.ReplaceAll(validatedID, "_", "-"))
+	for _, alias := range skillCompatAliases(validatedID) {
+		add(alias)
+		add(strings.ReplaceAll(alias, "-", "_"))
+		add(strings.ReplaceAll(alias, "_", "-"))
+	}
 	return aliases
 }
 
@@ -160,6 +210,10 @@ func normalizedSkillID(id string) (string, error) {
 	}
 	// Local skill installs historically used underscores as canonical separators.
 	normalized = strings.ReplaceAll(normalized, "-", "_")
+	switch normalized {
+	case "mgmt":
+		normalized = "config"
+	}
 	return skillmarket.ValidateSkillID(normalized)
 }
 
@@ -505,9 +559,13 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 			if !meta.UserInvocable {
 				continue
 			}
+			canonicalID, canonicalName := canonicalSkillIdentity(ls.ID, ls.Name)
+			if _, exists := seen[canonicalID]; exists {
+				continue
+			}
 			item := SkillResponse{
-				ID:               ls.ID,
-				Name:             ls.Name,
+				ID:               canonicalID,
+				Name:             canonicalName,
 				Version:          ls.Version,
 				Description:      ls.Description,
 				Author:           ls.Author,
@@ -522,7 +580,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 			}
 			applySkillContractResponse(&item, contractMeta)
 			response = append(response, item)
-			seen[ls.ID] = struct{}{}
+			seen[canonicalID] = struct{}{}
 		}
 	}
 
@@ -543,12 +601,13 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 		if !meta.UserInvocable {
 			continue
 		}
-		if _, exists := seen[id]; exists {
+		canonicalID, canonicalName := canonicalSkillIdentity(info.Manifest.ID, info.Manifest.Name)
+		if _, exists := seen[canonicalID]; exists {
 			continue
 		}
 		item := SkillResponse{
-			ID:               id,
-			Name:             info.Manifest.Name,
+			ID:               canonicalID,
+			Name:             canonicalName,
 			Version:          info.Manifest.Version,
 			Description:      info.Manifest.Description,
 			Author:           info.Manifest.Author,
@@ -566,6 +625,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 		}
 		applySkillContractResponse(&item, skillContractMetadataFromManifest(info.Manifest))
 		response = append(response, item)
+		seen[canonicalID] = struct{}{}
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -606,9 +666,10 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 				if doc, ok := parseSkillDocumentFromEntryPath(ls.FilePath); ok {
 					contractMeta = skillContractMetadataFromDocument(doc)
 				}
+				canonicalID, canonicalName := canonicalSkillIdentity(ls.ID, ls.Name)
 				return c.JSON(http.StatusOK, attachSkillContract(marketDetailCompatibilityPayload(&RemoteSkill{
-					ID:            ls.ID,
-					Name:          ls.Name,
+					ID:            canonicalID,
+					Name:          canonicalName,
 					Version:       ls.Version,
 					Description:   ls.Description,
 					Author:        ls.Author,
@@ -629,9 +690,10 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 	// is absent or does not include this skill.
 	for _, candidate := range skillIDAliases(id) {
 		if info := h.registry.GetInfo(candidate); info != nil && info.Manifest != nil {
+			canonicalID, canonicalName := canonicalSkillIdentity(info.Manifest.ID, info.Manifest.Name)
 			return c.JSON(http.StatusOK, attachSkillContract(marketDetailCompatibilityPayload(&RemoteSkill{
-				ID:            info.Manifest.ID,
-				Name:          info.Manifest.Name,
+				ID:            canonicalID,
+				Name:          canonicalName,
 				Version:       info.Manifest.Version,
 				Description:   info.Manifest.Description,
 				Author:        info.Manifest.Author,
@@ -696,9 +758,10 @@ func (h *SkillHandler) installedSkillDetailPayload(id string) (map[string]interf
 			tags = append([]string(nil), info.Manifest.Tags...)
 		}
 	}
+	canonicalID, canonicalName := canonicalSkillIdentity(resolved.ID, name)
 	return attachSkillContract(marketDetailCompatibilityPayload(&RemoteSkill{
-		ID:            resolved.ID,
-		Name:          name,
+		ID:            canonicalID,
+		Name:          canonicalName,
 		Version:       version,
 		Description:   description,
 		Author:        author,
@@ -728,6 +791,7 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 		if info := h.registry.GetInfo(resolved.ID); info != nil && info.Manifest != nil {
 			name = firstString(info.Manifest.Name, name)
 		}
+		canonicalID, canonicalName := canonicalSkillIdentity(resolved.ID, name)
 		content := string(resolved.Raw)
 		if content == "" {
 			if _, data, err := readInstalledSkillEntry(resolved.EntryDir); err == nil {
@@ -736,8 +800,8 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 		}
 		if content != "" {
 			return c.JSON(http.StatusOK, attachSkillContract(map[string]interface{}{
-				"id":         resolved.ID,
-				"name":       name,
+				"id":         canonicalID,
+				"name":       canonicalName,
 				"content":    content,
 				"source":     "directory",
 				"entry_file": resolved.Document.EntryFile,
@@ -770,9 +834,10 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 				if doc, ok := parseSkillDocumentFromEntryPath(entryDoc.Path); ok {
 					contractMeta = skillContractMetadataFromDocument(doc)
 				}
+				canonicalID, canonicalName := canonicalSkillIdentity(candidate, name)
 				return c.JSON(http.StatusOK, attachSkillContract(map[string]interface{}{
-					"id":         candidate,
-					"name":       name,
+					"id":         canonicalID,
+					"name":       canonicalName,
 					"content":    string(data),
 					"source":     "directory",
 					"entry_file": entryDoc.Name,
@@ -792,9 +857,10 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 		for _, candidate := range skillIDAliases(id) {
 			skill, err := h.store.GetSkill(ctx, candidate)
 			if err == nil && skill != nil && skill.Readme != "" {
+				canonicalID, canonicalName := canonicalSkillIdentity(candidate, info.Manifest.Name)
 				return c.JSON(http.StatusOK, map[string]interface{}{
-					"id":      candidate,
-					"name":    info.Manifest.Name,
+					"id":      canonicalID,
+					"name":    canonicalName,
 					"content": skill.Readme,
 					"source":  "database",
 				})
@@ -805,6 +871,7 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 	// For builtin skills, return the description as content
 	if info.Builtin {
 		m := info.Manifest
+		canonicalID, canonicalName := canonicalSkillIdentity(m.ID, m.Name)
 		content := fmt.Sprintf("# %s\n\n%s\n\n", m.Name, m.Description)
 		if m.Author != "" {
 			content += fmt.Sprintf("**Author:** %s\n\n", m.Author)
@@ -836,17 +903,18 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 			}
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"id":      m.ID,
-			"name":    m.Name,
+			"id":      canonicalID,
+			"name":    canonicalName,
 			"content": content,
 			"source":  "builtin",
 		})
 	}
 
 	// No content available
+	canonicalID, canonicalName := canonicalSkillIdentity(info.Manifest.ID, info.Manifest.Name)
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"id":      info.Manifest.ID,
-		"name":    info.Manifest.Name,
+		"id":      canonicalID,
+		"name":    canonicalName,
 		"content": "",
 		"source":  "none",
 	})
@@ -2694,7 +2762,8 @@ func (h *SkillHandler) installedSkillCanonicalID(bundle *skillmanifest.InstallBu
 			continue
 		}
 		if info := h.registry.GetInfo(candidate); info != nil && info.Manifest != nil {
-			return strings.TrimSpace(info.Manifest.ID)
+			canonicalID, _ := canonicalSkillIdentity(info.Manifest.ID, info.Manifest.Name)
+			return canonicalID
 		}
 	}
 	if h.localScanner != nil {
@@ -2703,21 +2772,26 @@ func (h *SkillHandler) installedSkillCanonicalID(bundle *skillmanifest.InstallBu
 				continue
 			}
 			if ls := h.localScanner.Get(candidate); ls != nil {
-				return strings.TrimSpace(firstString(ls.ID, candidate))
+				canonicalID, _ := canonicalSkillIdentity(firstString(ls.ID, candidate), ls.Name)
+				return canonicalID
 			}
 		}
 	}
 	if name := strings.TrimSpace(bundle.Document.Name); name != "" {
-		if _, err := skillmarket.ValidateSkillID(name); err == nil {
-			return name
+		if normalized, err := normalizedSkillID(name); err == nil {
+			return normalized
 		}
 	}
 	if id := strings.TrimSpace(bundle.Document.ID); id != "" {
-		if _, err := skillmarket.ValidateSkillID(id); err == nil {
-			return id
+		if normalized, err := normalizedSkillID(id); err == nil {
+			return normalized
 		}
 	}
-	return strings.TrimSpace(firstString(bundle.Document.Name, bundle.Document.ID))
+	canonicalID, _ := canonicalSkillIdentity(
+		firstString(bundle.Document.ID, bundle.Document.Name),
+		bundle.Document.Name,
+	)
+	return canonicalID
 }
 
 func (h *SkillHandler) newInstalledSkillResolution(bundle *skillmanifest.InstallBundle) installedSkillResolution {

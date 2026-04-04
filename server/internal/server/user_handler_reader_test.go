@@ -327,6 +327,79 @@ func TestUserSkillHandler_ListCanonicalizesAliasDirAndLegacyConfig(t *testing.T)
 	}
 }
 
+func TestUserSkillHandler_ListCanonicalizesLegacyMgmtSkillToConfig(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "user-skill-mgmt.db")
+
+	writeDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(write): %v", err)
+	}
+	defer writeDB.Close()
+
+	skillsDir := filepath.Join(t.TempDir(), "skills")
+	skillDir := filepath.Join(skillsDir, "mgmt")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(skill): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(strings.Join([]string{
+		"---",
+		"name: mgmt",
+		"description: Legacy management skill",
+		"version: 1.0.0",
+		"invocation: blue mgmt.providers.list",
+		"examples:",
+		"  - blue mgmt.providers.list",
+		"capability_tags:",
+		"  - admin",
+		"interaction_mode: stateless",
+		"card_support: none",
+		"---",
+		"# Mgmt Skill",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatalf("WriteFile(SKILL.md): %v", err)
+	}
+
+	handler, err := NewUserSkillHandler(writeDB, skillsDir)
+	if err != nil {
+		t.Fatalf("NewUserSkillHandler: %v", err)
+	}
+
+	_, err = handler.writeTable(context.Background()).Insert(map[string]interface{}{
+		"id":         "skill-mgmt",
+		"user_id":    "user-1",
+		"skill_id":   "mgmt",
+		"enabled":    0,
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("seed skill config: %v", err)
+	}
+
+	listCtx, listRec := newAuthenticatedHandlerContext(http.MethodGet, "/api/v1/user/skills", "", "user-1")
+	if err := handler.List(listCtx); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("List status=%d body=%s", listRec.Code, listRec.Body.String())
+	}
+
+	var listResp []UserSkillResponse
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode list response: %v body=%s", err, listRec.Body.String())
+	}
+	if len(listResp) != 1 {
+		t.Fatalf("List response len=%d, want 1 body=%s", len(listResp), listRec.Body.String())
+	}
+	if listResp[0].ID != "config" || listResp[0].Name != "Configuration" {
+		t.Fatalf("unexpected canonicalized legacy mgmt skill identity: %+v", listResp[0])
+	}
+	if listResp[0].Enabled || !listResp[0].Installed || !listResp[0].UserToggled {
+		t.Fatalf("unexpected skill state via legacy mgmt config: %+v", listResp[0])
+	}
+}
+
 func TestUserSkillHandler_ToggleCanonicalizesInstalledAliasIDs(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "user-skill-toggle.db")
 

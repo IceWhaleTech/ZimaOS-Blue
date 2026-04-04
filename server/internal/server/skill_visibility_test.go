@@ -437,6 +437,113 @@ version: 1.0.0
 	}
 }
 
+func TestSkillVisibility_ListCanonicalizesLegacyMgmtSkillToConfig(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	skillDir := filepath.Join(handler.skillsDir, "mgmt")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: mgmt
+description: Legacy management skill
+version: 1.0.0
+---
+
+# Mgmt Skill
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	scanner := skillstore.NewLocalSkillScanner(handler.skillsDir)
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("scan skills: %v", err)
+	}
+	handler.SetLocalScanner(scanner)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListSkills(c); err != nil {
+		t.Fatalf("ListSkills failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload []map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+
+	var foundConfig bool
+	for _, item := range payload {
+		if item["id"] == "mgmt" {
+			t.Fatalf("expected legacy mgmt skill to be hidden behind canonical config, got payload=%#v", item)
+		}
+		if item["id"] == "config" {
+			foundConfig = true
+			if item["name"] != "Configuration" {
+				t.Fatalf("expected canonical config skill name, got %#v", item["name"])
+			}
+		}
+	}
+	if !foundConfig {
+		t.Fatalf("expected canonical config skill entry, got payload=%#v", payload)
+	}
+}
+
+func TestSkillVisibility_GetSkillContentAcceptsCanonicalConfigIDForLegacyMgmtDir(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	skillDir := filepath.Join(handler.skillsDir, "mgmt")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: mgmt
+description: Legacy management skill
+version: 1.0.0
+---
+
+# Mgmt Skill
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/config/content", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("config")
+
+	if err := handler.GetSkillContent(c); err != nil {
+		t.Fatalf("GetSkillContent failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload["id"] != "config" {
+		t.Fatalf("expected canonical id config, got %#v", payload["id"])
+	}
+	if payload["name"] != "Configuration" {
+		t.Fatalf("expected canonical config skill name, got %#v", payload["name"])
+	}
+	if payload["source"] != "directory" {
+		t.Fatalf("expected directory source, got %#v", payload["source"])
+	}
+}
+
 func TestSkillVisibility_EnableDisableRegistersManifestOnlyAliasDirSkill(t *testing.T) {
 	registry := skill.NewRegistry()
 	handler := newTestSkillHandler(t, registry)
