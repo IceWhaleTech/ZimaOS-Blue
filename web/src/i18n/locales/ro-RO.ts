@@ -1404,9 +1404,6 @@ export default mergeHarnessLocale('ro-RO', {
       ui_reviewer: {
         name: 'Revizuire UI',
       },
-      mgmt: {
-        name: 'Configurare',
-      },
       configuration: {
         name: 'Configurare',
       },

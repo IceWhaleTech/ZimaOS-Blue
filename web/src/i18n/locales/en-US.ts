@@ -1393,9 +1393,6 @@ export default mergeHarnessLocale('en-US', {
       ui_reviewer: {
         name: 'UI Reviewer',
       },
-      mgmt: {
-        name: 'Configuration',
-      },
       configuration: {
         name: 'Configuration',
       },

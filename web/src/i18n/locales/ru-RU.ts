@@ -1456,9 +1456,6 @@ export default mergeHarnessLocale('ru-RU', {
       ui_reviewer: {
         name: 'Проверка UI',
       },
-      mgmt: {
-        name: 'Конфигурация',
-      },
       configuration: {
         name: 'Конфигурация',
       },

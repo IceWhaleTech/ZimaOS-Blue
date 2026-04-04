@@ -1453,9 +1453,6 @@ export default mergeHarnessLocale('ja-JP', {
       ui_reviewer: {
         name: 'UIレビュー',
       },
-      mgmt: {
-        name: '設定',
-      },
       configuration: {
         name: '設定',
       },

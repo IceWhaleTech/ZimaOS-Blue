@@ -45,7 +45,7 @@ func (t *MgmtTool) SetUpgrade(svc AdminUpgradeService)    { t.upgrade = svc }
 func (t *MgmtTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "config",
-		Description: `Runtime configuration and admin tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status. Legacy "mgmt" requests should resolve here.`,
+		Description: `Runtime configuration and admin tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.`,
 		Icon:        "settings",
 		Parameters: map[string]interface{}{
 			"type": "object",

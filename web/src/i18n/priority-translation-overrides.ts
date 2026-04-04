@@ -13921,9 +13921,6 @@ const priorityTranslationOverrides = {
         "configuration": {
           "name": "Configuration"
         },
-        "mgmt": {
-          "name": "Configuration"
-        }
       },
       "names": {
         "Configuration": "Configuration"

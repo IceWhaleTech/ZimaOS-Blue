@@ -1399,9 +1399,6 @@ export default mergeHarnessLocale('cs-CZ', {
       ui_reviewer: {
         name: 'Kontrola UI',
       },
-      mgmt: {
-        name: 'Konfigurace',
-      },
       configuration: {
         name: 'Konfigurace',
       },

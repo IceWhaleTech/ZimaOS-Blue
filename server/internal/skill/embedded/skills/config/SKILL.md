@@ -65,5 +65,4 @@ blue config.users.list
 
 - `config` is for system administration and diagnostics; avoid using it for normal user conversation tasks.
 - `config` is intentionally a namespaced admin umbrella (`config.<domain>.<action>`) so low-frequency operational controls stay in one place instead of being split across many tiny operator-only skills.
-- Legacy `mgmt` requests may still resolve here as a compatibility alias, but `config` is the canonical surface.
 - Prefer domain skills like `browser`, `web_query`, `analyze`, `deep_research`, `reminder`, or `scheduler` for ordinary user-facing work; use `config` only when the task is explicitly about runtime state, configuration, or diagnostics.

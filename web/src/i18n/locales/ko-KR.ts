@@ -1443,9 +1443,6 @@ export default mergeHarnessLocale('ko-KR', {
       ui_reviewer: {
         name: 'UI 리뷰',
       },
-      mgmt: {
-        name: '구성',
-      },
       configuration: {
         name: '구성',
       },

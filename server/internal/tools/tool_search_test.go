@@ -12,6 +12,19 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 )
 
+func TestToolSearchTool_SchemaAcceptsStringSelectCompat(t *testing.T) {
+	searchTool := NewToolSearchTool(NewRegistry())
+	def := searchTool.Definition()
+
+	err := ValidateToolArguments(def.Parameters, map[string]interface{}{
+		"query":  "process helpers",
+		"select": "process,read",
+	})
+	if err != nil {
+		t.Fatalf("ValidateToolArguments() error = %v, want nil for string select compat", err)
+	}
+}
+
 func TestToolSearchTool_SelectAndRequiredTermsActivateDeferredTool(t *testing.T) {
 	registry := NewRegistry()
 	searchTool := NewToolSearchTool(registry)

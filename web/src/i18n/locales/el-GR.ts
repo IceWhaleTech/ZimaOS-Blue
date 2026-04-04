@@ -1407,9 +1407,6 @@ export default mergeHarnessLocale('el-GR', {
       ui_reviewer: {
         name: 'Έλεγχος UI',
       },
-      mgmt: {
-        name: 'Ρύθμιση',
-      },
       configuration: {
         name: 'Ρύθμιση',
       },

@@ -1393,7 +1393,7 @@ func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill s
 
 func isDestructiveSkill(skillName string) bool {
 	lower := strings.ToLower(strings.TrimSpace(skillName))
-	if strings.HasPrefix(lower, "mgmt") || strings.HasPrefix(lower, "config") || strings.HasPrefix(lower, "admin") {
+	if strings.HasPrefix(lower, "config") || strings.HasPrefix(lower, "admin") {
 		return true
 	}
 	for _, kw := range []string{"delete", "remove", "drop", "reset", "overwrite", "uninstall"} {

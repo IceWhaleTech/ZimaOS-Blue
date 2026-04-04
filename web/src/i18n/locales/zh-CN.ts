@@ -1358,9 +1358,6 @@ export default mergeHarnessLocale('zh-CN', {
       ui_reviewer: {
         name: 'UI 评审',
       },
-      mgmt: {
-        name: '配置',
-      },
       configuration: {
         name: '配置',
       },

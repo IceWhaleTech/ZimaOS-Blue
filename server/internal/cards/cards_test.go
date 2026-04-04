@@ -227,6 +227,44 @@ func TestWebQueryCard_SearchCardEmittedStillReturnsSecondaryDetailCard(t *testin
 	}
 }
 
+func TestToolSearchCard_CollapsesInternalStateToLowEmphasisSummary(t *testing.T) {
+	card := ToCard("tool_search", `{"matches":[{"id":"read","name":"read","kind":"tool"},{"id":"write","name":"write","kind":"tool"}],"activated":{"tools":["read"]}}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "result" {
+		t.Fatalf("type=%v, want result", got)
+	}
+	if got := card["title"]; got != "tool_search" {
+		t.Fatalf("title=%v, want tool_search", got)
+	}
+	if got := card["status"]; got != "info" {
+		t.Fatalf("status=%v, want info", got)
+	}
+	if got := card["message"]; got != "Found 2 results" {
+		t.Fatalf("message=%v, want summary-only result count", got)
+	}
+	if _, ok := card["details"]; ok {
+		t.Fatalf("details=%v, want no raw internal tool_search detail rows", card["details"])
+	}
+}
+
+func TestToolSearchCard_EmptyResultsStayQuiet(t *testing.T) {
+	card := ToCard("tool_search", `{"matches":[],"activated":{}}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["status"]; got != "info" {
+		t.Fatalf("status=%v, want info", got)
+	}
+	if got := card["message"]; got != "Found 0 results" {
+		t.Fatalf("message=%v, want quiet empty summary", got)
+	}
+	if _, ok := card["details"]; ok {
+		t.Fatalf("details=%v, want no raw detail rows for empty tool_search", card["details"])
+	}
+}
+
 func TestImageCard_MapsProcessingToGenerating(t *testing.T) {
 	card := ToCard("image_generate", `{"status":"processing","task_id":"task-42","message":"still generating"}`)
 	if card == nil {

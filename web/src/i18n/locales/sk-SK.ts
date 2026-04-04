@@ -1397,9 +1397,6 @@ export default mergeHarnessLocale('sk-SK', {
       ui_reviewer: {
         name: 'Kontrola UI',
       },
-      mgmt: {
-        name: 'Konfigurácia',
-      },
       configuration: {
         name: 'Konfigurácia',
       },

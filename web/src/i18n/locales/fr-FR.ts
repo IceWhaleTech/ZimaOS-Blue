@@ -1470,9 +1470,6 @@ export default mergeHarnessLocale('fr-FR', {
       ui_reviewer: {
         name: 'Revue UI',
       },
-      mgmt: {
-        name: 'Configuration',
-      },
       configuration: {
         name: 'Configuration',
       },

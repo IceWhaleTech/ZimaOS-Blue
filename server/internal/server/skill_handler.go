@@ -556,25 +556,6 @@ func marketSourceFromUpsertRequest(req SkillSourceUpsertRequest) (skillmarket.So
 	return result, nil
 }
 
-func canonicalSkillCompatID(raw string) string {
-	normalized := strings.ReplaceAll(skillmarket.NormalizeSkillID(raw), "-", "_")
-	switch normalized {
-	case "mgmt":
-		return "config"
-	default:
-		return normalized
-	}
-}
-
-func skillCompatAliases(raw string) []string {
-	switch canonicalSkillCompatID(raw) {
-	case "config":
-		return []string{"config", "mgmt"}
-	default:
-		return nil
-	}
-}
-
 func canonicalSkillIdentity(id, name string) (string, string) {
 	canonicalID := strings.TrimSpace(id)
 	if normalized, err := normalizedSkillID(id); err == nil {
@@ -590,7 +571,7 @@ func canonicalSkillIdentity(id, name string) (string, string) {
 	switch canonicalID {
 	case "config":
 		switch strings.ToLower(strings.TrimSpace(displayName)) {
-		case "", "config", "mgmt", "management":
+		case "", "config", "management":
 			displayName = "Configuration"
 		}
 	}
@@ -624,11 +605,6 @@ func skillIDAliases(id string) []string {
 	add(validatedID)
 	add(strings.ReplaceAll(validatedID, "-", "_"))
 	add(strings.ReplaceAll(validatedID, "_", "-"))
-	for _, alias := range skillCompatAliases(validatedID) {
-		add(alias)
-		add(strings.ReplaceAll(alias, "-", "_"))
-		add(strings.ReplaceAll(alias, "_", "-"))
-	}
 	return aliases
 }
 
@@ -643,10 +619,6 @@ func normalizedSkillID(id string) (string, error) {
 	}
 	// Local skill installs historically used underscores as canonical separators.
 	normalized = strings.ReplaceAll(normalized, "-", "_")
-	switch normalized {
-	case "mgmt":
-		normalized = "config"
-	}
 	return skillmarket.ValidateSkillID(normalized)
 }
 

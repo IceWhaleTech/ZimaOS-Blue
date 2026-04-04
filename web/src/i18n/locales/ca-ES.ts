@@ -1405,9 +1405,6 @@ export default mergeHarnessLocale('ca-ES', {
       ui_reviewer: {
         name: "Revisor d'interfície",
       },
-      mgmt: {
-        name: 'Configuració',
-      },
       configuration: {
         name: 'Configuració',
       },

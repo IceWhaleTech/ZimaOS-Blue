@@ -1021,50 +1021,492 @@ const visibleBuiltinToolLocaleTerms = {
   }
 >
 
+const fileDeleteLocaleTerms: Record<
+  LocaleKey,
+  {
+    name: string
+    description: string
+  }
+> = {
+  'ca-ES': {
+    name: 'Eliminar fitxer',
+    description:
+      'Suprimeix un fitxer o directori local. Per als directoris, estableix recursive=true per eliminar contingut no buit.',
+  },
+  'cs-CZ': {
+    name: 'Smazat soubor',
+    description:
+      'Smaže místní soubor nebo adresář. U adresářů nastavte recursive=true, chcete-li odstranit i neprázdný obsah.',
+  },
+  'da-DK': {
+    name: 'Slet fil',
+    description:
+      'Sletter en lokal fil eller mappe. For mapper skal du sætte recursive=true for at fjerne ikke-tomt indhold.',
+  },
+  'de-DE': {
+    name: 'Datei löschen',
+    description:
+      'Löscht eine lokale Datei oder ein lokales Verzeichnis. Setze bei Verzeichnissen recursive=true, um auch nicht-leere Inhalte zu entfernen.',
+  },
+  'el-GR': {
+    name: 'Διαγραφή αρχείου',
+    description:
+      'Διαγράφει ένα τοπικό αρχείο ή κατάλογο. Για καταλόγους, ορίστε recursive=true για να αφαιρέσετε και μη κενό περιεχόμενο.',
+  },
+  'en-GB': {
+    name: 'File Delete',
+    description:
+      'Deletes a local file or directory. For directories, set recursive=true to remove non-empty contents.',
+  },
+  'en-US': {
+    name: 'File Delete',
+    description:
+      'Deletes a local file or directory. For directories, set recursive=true to remove non-empty contents.',
+  },
+  'es-ES': {
+    name: 'Eliminar archivo',
+    description:
+      'Elimina un archivo o directorio local. Para los directorios, establece recursive=true para quitar contenido no vacío.',
+  },
+  'fr-FR': {
+    name: 'Supprimer le fichier',
+    description:
+      'Supprime un fichier ou répertoire local. Pour les répertoires, définissez recursive=true pour supprimer aussi le contenu non vide.',
+  },
+  'ga-IE': {
+    name: 'Scrios comhad',
+    description:
+      'Scriosann sé comhad nó comhadlann áitiúil. Maidir le comhadlanna, socraigh recursive=true chun ábhar neamhfholamh a bhaint.',
+  },
+  'hr-HR': {
+    name: 'Obriši datoteku',
+    description:
+      'Briše lokalnu datoteku ili direktorij. Za direktorije postavite recursive=true kako biste uklonili i neprazan sadržaj.',
+  },
+  'hu-HU': {
+    name: 'Fájl törlése',
+    description:
+      'Töröl egy helyi fájlt vagy könyvtárat. Könyvtáraknál állítsa a recursive=true értéket a nem üres tartalom eltávolításához.',
+  },
+  'it-IT': {
+    name: 'Elimina file',
+    description:
+      'Elimina un file o una directory locale. Per le directory, imposta recursive=true per rimuovere anche il contenuto non vuoto.',
+  },
+  'ja-JP': {
+    name: 'ファイル削除',
+    description:
+      'ローカルのファイルまたはディレクトリを削除します。ディレクトリでは、空でない内容も削除するには recursive=true を設定します。',
+  },
+  'ko-KR': {
+    name: '파일 삭제',
+    description:
+      '로컬 파일이나 디렉터리를 삭제합니다. 디렉터리의 경우 비어 있지 않은 내용까지 제거하려면 recursive=true로 설정하세요.',
+  },
+  'ml-IN': {
+    name: 'ഫയൽ ഇല്ലാതാക്കുക',
+    description:
+      'ഒരു ലോക്കൽ ഫയൽ അല്ലെങ്കിൽ ഡയറക്ടറി ഇല്ലാതാക്കുന്നു. ഡയറക്ടറികൾക്കായി ശൂന്യമല്ലാത്ത ഉള്ളടക്കവും നീക്കാൻ recursive=true ആയി സജ്ജീകരിക്കുക.',
+  },
+  'nb-NO': {
+    name: 'Slett fil',
+    description:
+      'Sletter en lokal fil eller katalog. For kataloger må du sette recursive=true for å fjerne innhold som ikke er tomt.',
+  },
+  'nl-NL': {
+    name: 'Bestand verwijderen',
+    description:
+      'Verwijdert een lokaal bestand of map. Stel voor mappen recursive=true in om ook niet-lege inhoud te verwijderen.',
+  },
+  'pl-PL': {
+    name: 'Usuń plik',
+    description:
+      'Usuwa lokalny plik lub katalog. W przypadku katalogów ustaw recursive=true, aby usunąć także niepustą zawartość.',
+  },
+  'pt-BR': {
+    name: 'Excluir arquivo',
+    description:
+      'Exclui um arquivo ou diretório local. Para diretórios, defina recursive=true para remover também conteúdo não vazio.',
+  },
+  'pt-PT': {
+    name: 'Eliminar ficheiro',
+    description:
+      'Elimina um ficheiro ou diretório local. Para diretórios, defina recursive=true para remover também conteúdo não vazio.',
+  },
+  'ro-RO': {
+    name: 'Șterge fișier',
+    description:
+      'Șterge un fișier sau director local. Pentru directoare, setați recursive=true pentru a elimina și conținutul nevid.',
+  },
+  'ru-RU': {
+    name: 'Удалить файл',
+    description:
+      'Удаляет локальный файл или каталог. Для каталогов установите recursive=true, чтобы удалить и непустое содержимое.',
+  },
+  'sk-SK': {
+    name: 'Odstrániť súbor',
+    description:
+      'Odstráni lokálny súbor alebo adresár. Pri adresároch nastavte recursive=true, ak chcete odstrániť aj neprázdny obsah.',
+  },
+  'sv-SE': {
+    name: 'Ta bort fil',
+    description:
+      'Tar bort en lokal fil eller katalog. För kataloger anger du recursive=true för att även ta bort innehåll som inte är tomt.',
+  },
+  'zh-CN': {
+    name: '删除文件',
+    description: '删除本地文件或目录。对于目录，请设置 recursive=true 以删除其中的非空内容。',
+  },
+  'zh-TW': {
+    name: '刪除檔案',
+    description: '刪除本機檔案或目錄。對於目錄，請設定 recursive=true 以移除其中的非空內容。',
+  },
+}
+
+const configLocaleTerms: Record<
+  LocaleKey,
+  {
+    name: string
+    description: string
+  }
+> = {
+  'ca-ES': {
+    name: 'Configuració',
+    description:
+      'Eina de configuració i administració del runtime. Utilitza el format {domain}.{action}. Dominis: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Crida primer amb action="providers.list" per explorar les operacions disponibles. Comuns: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'cs-CZ': {
+    name: 'Konfigurace',
+    description:
+      'Nástroj pro konfiguraci runtime a správu. Používejte formát {domain}.{action}. Domény: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Nejprve zavolejte action="providers.list" pro prozkoumání dostupných operací. Běžné: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'da-DK': {
+    name: 'Konfiguration',
+    description:
+      'Runtime-konfigurations- og administrationsværktøj. Brug formatet {domain}.{action}. Domæner: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Kald først med action="providers.list" for at udforske tilgængelige handlinger. Almindelige: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'de-DE': {
+    name: 'Konfiguration',
+    description:
+      'Laufzeit-Konfigurations- und Verwaltungstool. Verwende das Format {domain}.{action}. Domänen: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Rufe zuerst action="providers.list" auf, um verfügbare Operationen zu erkunden. Häufig: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'el-GR': {
+    name: 'Ρυθμίσεις',
+    description:
+      'Εργαλείο ρυθμίσεων και διαχείρισης runtime. Χρησιμοποιήστε τη μορφή {domain}.{action}. Τομείς: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Καλέστε πρώτα με action="providers.list" για να εξερευνήσετε τις διαθέσιμες λειτουργίες. Συνήθη: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'en-GB': {
+    name: 'Config',
+    description:
+      'Runtime configuration and admin tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'en-US': {
+    name: 'Config',
+    description:
+      'Runtime configuration and admin tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'es-ES': {
+    name: 'Configuración',
+    description:
+      'Herramienta de configuración y administración del runtime. Usa el formato {domain}.{action}. Dominios: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Llama primero con action="providers.list" para explorar las operaciones disponibles. Comunes: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'fr-FR': {
+    name: 'Configuration',
+    description:
+      'Outil de configuration et d’administration du runtime. Utilisez le format {domain}.{action}. Domaines : providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Appelez d’abord avec action="providers.list" pour explorer les opérations disponibles. Courants : providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'ga-IE': {
+    name: 'Cumraíocht',
+    description:
+      'Uirlis chumraíochta agus riaracháin runtime. Úsáid an fhormáid {domain}.{action}. Fearainn: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Glaoigh ar action="providers.list" ar dtús chun na hoibríochtaí atá ar fáil a iniúchadh. Coitianta: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'hr-HR': {
+    name: 'Konfiguracija',
+    description:
+      'Alat za konfiguraciju i administraciju runtimea. Koristite format {domain}.{action}. Domene: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Najprije pozovite action="providers.list" kako biste istražili dostupne operacije. Uobičajeno: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'hu-HU': {
+    name: 'Konfiguráció',
+    description:
+      'Futásidejű konfigurációs és adminisztrációs eszköz. Használja a(z) {domain}.{action} formátumot. Domainek: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Először a action="providers.list" hívással fedezze fel az elérhető műveleteket. Gyakoriak: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'it-IT': {
+    name: 'Configurazione',
+    description:
+      'Strumento di configurazione e amministrazione del runtime. Usa il formato {domain}.{action}. Domini: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Chiama prima con action="providers.list" per esplorare le operazioni disponibili. Comuni: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'ja-JP': {
+    name: '設定',
+    description:
+      'ランタイム設定と管理のためのツールです。{domain}.{action} 形式を使用します。ドメイン: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade。利用可能な操作を確認するには、まず action="providers.list" を呼び出してください。一般的な操作: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status。',
+  },
+  'ko-KR': {
+    name: '설정',
+    description:
+      '런타임 구성 및 관리자 도구입니다. {domain}.{action} 형식을 사용하세요. 도메인: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. 사용 가능한 작업을 먼저 확인하려면 action="providers.list"로 호출하세요. 일반 예: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'ml-IN': {
+    name: 'ക്രമീകരണം',
+    description:
+      'റൺടൈം കോൺഫിഗറേഷനും അഡ്മിൻ പ്രവർത്തനങ്ങൾക്കും ഉള്ള ടൂളാണ് ഇത്. {domain}.{action} ഫോർമാറ്റ് ഉപയോഗിക്കുക. ഡൊമെയ്‌നുകൾ: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. ലഭ്യമായ പ്രവർത്തനങ്ങൾ പരിശോധിക്കാൻ ആദ്യം action="providers.list" ഉപയോഗിച്ച് വിളിക്കുക. സാധാരണ: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'nb-NO': {
+    name: 'Konfigurasjon',
+    description:
+      'Konfigurasjons- og administrasjonsverktøy for runtime. Bruk formatet {domain}.{action}. Domener: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Kall først med action="providers.list" for å utforske tilgjengelige operasjoner. Vanlige: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'nl-NL': {
+    name: 'Configuratie',
+    description:
+      'Runtime-configuratie- en beheertool. Gebruik de indeling {domain}.{action}. Domeinen: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Roep eerst action="providers.list" aan om beschikbare bewerkingen te verkennen. Gebruikelijk: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'pl-PL': {
+    name: 'Konfiguracja',
+    description:
+      'Narzędzie do konfiguracji środowiska uruchomieniowego i administracji. Używaj formatu {domain}.{action}. Domeny: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Najpierw wywołaj action="providers.list", aby poznać dostępne operacje. Typowe: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'pt-BR': {
+    name: 'Configuração',
+    description:
+      'Ferramenta de configuração e administração do runtime. Use o formato {domain}.{action}. Domínios: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Chame primeiro com action="providers.list" para explorar as operações disponíveis. Comuns: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'pt-PT': {
+    name: 'Configuração',
+    description:
+      'Ferramenta de configuração e administração do runtime. Use o formato {domain}.{action}. Domínios: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Chame primeiro com action="providers.list" para explorar as operações disponíveis. Comuns: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'ro-RO': {
+    name: 'Configurare',
+    description:
+      'Instrument de configurare și administrare pentru runtime. Folosește formatul {domain}.{action}. Domenii: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Apelează mai întâi cu action="providers.list" pentru a explora operațiile disponibile. Comune: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'ru-RU': {
+    name: 'Конфиг',
+    description:
+      'Инструмент настройки и администрирования рантайма. Используйте формат {domain}.{action}. Домены: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Сначала вызовите action="providers.list", чтобы изучить доступные операции. Частые: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'sk-SK': {
+    name: 'Konfigurácia',
+    description:
+      'Nástroj na konfiguráciu runtime a správu. Používajte formát {domain}.{action}. Domény: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Najprv zavolajte action="providers.list", aby ste preskúmali dostupné operácie. Bežné: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'sv-SE': {
+    name: 'Konfiguration',
+    description:
+      'Verktyg för runtime-konfiguration och administration. Använd formatet {domain}.{action}. Domäner: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Anropa först med action="providers.list" för att utforska tillgängliga operationer. Vanliga: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  'zh-CN': {
+    name: '配置',
+    description:
+      '运行时配置与管理工具。使用 {domain}.{action} 格式。域包括：providers、settings、channels、skills、tools、system、proxy、users、apikeys、upgrade。请先调用 action="providers.list" 以探索可用操作。常见操作：providers.list、settings.get、system.health、tools.list、users.list、upgrade.status。',
+  },
+  'zh-TW': {
+    name: '設定',
+    description:
+      '執行階段設定與管理工具。使用 {domain}.{action} 格式。領域包括：providers、settings、channels、skills、tools、system、proxy、users、apikeys、upgrade。請先以 action="providers.list" 呼叫來探索可用操作。常見操作：providers.list、settings.get、system.health、tools.list、users.list、upgrade.status。',
+  },
+}
+
+const convertLocaleTerms: Record<
+  LocaleKey,
+  {
+    name: string
+    description: string
+  }
+> = {
+  'ca-ES': {
+    name: 'Converteix',
+    description:
+      'Converteix fitxers locals, adjunts i sortides prèvies. La forma preferida és input_path + output_path amb camins relatius. Les tasques normals d’un sol fitxer retornen de manera síncrona; només les més pesades retornen async=true amb un task_id per consultar-les.',
+  },
+  'cs-CZ': {
+    name: 'Převést',
+    description:
+      'Převádí místní soubory, přílohy a dřívější výstupy. Preferovaná forma je input_path + output_path s relativními cestami. Běžné úlohy s jedním souborem se vracejí synchronně; pouze náročnější vracejí async=true s task_id pro dotazování.',
+  },
+  'da-DK': {
+    name: 'Konverter',
+    description:
+      'Konverterer lokale filer, vedhæftninger og tidligere output. Den foretrukne form er input_path + output_path med relative stier. Normale enkeltfiljobs returnerer synkront; kun tungere job returnerer async=true med et task_id til polling.',
+  },
+  'de-DE': {
+    name: 'Konvertieren',
+    description:
+      'Konvertiert lokale Dateien, Anhänge und frühere Ausgaben. Die bevorzugte Form ist input_path + output_path mit relativen Pfaden. Normale Einzeldatei-Jobs kehren synchron zurück; nur schwerere Jobs liefern async=true mit einer task_id zum Abfragen.',
+  },
+  'el-GR': {
+    name: 'Μετατροπή',
+    description:
+      'Μετατρέπει τοπικά αρχεία, συνημμένα και προηγούμενα αποτελέσματα. Η προτιμώμενη μορφή είναι input_path + output_path με σχετικές διαδρομές. Οι κανονικές εργασίες ενός αρχείου επιστρέφουν συγχρονισμένα· μόνο οι βαρύτερες επιστρέφουν async=true με task_id για έλεγχο κατάστασης.',
+  },
+  'en-GB': {
+    name: 'Convert',
+    description:
+      'Convert local files, attachments, and prior outputs. Preferred form: input_path + output_path using relative paths. Normal single-file jobs return synchronously; only heavier jobs return async=true with a task_id for polling.',
+  },
+  'en-US': {
+    name: 'Convert',
+    description:
+      'Convert local files, attachments, and prior outputs. Preferred form: input_path + output_path using relative paths. Normal single-file jobs return synchronously; only heavier jobs return async=true with a task_id for polling.',
+  },
+  'es-ES': {
+    name: 'Convertir',
+    description:
+      'Convierte archivos locales, adjuntos y salidas previas. La forma preferida es input_path + output_path usando rutas relativas. Los trabajos normales de un solo archivo devuelven resultados de forma síncrona; solo los más pesados devuelven async=true con un task_id para consultarlos.',
+  },
+  'fr-FR': {
+    name: 'Convertir',
+    description:
+      'Convertit les fichiers locaux, les pièces jointes et les sorties précédentes. La forme recommandée est input_path + output_path avec des chemins relatifs. Les tâches normales sur un seul fichier reviennent de façon synchrone ; seules les plus lourdes renvoient async=true avec un task_id pour le suivi.',
+  },
+  'ga-IE': {
+    name: 'Tiontaigh',
+    description:
+      'Tiontaíonn sé comhaid áitiúla, ceangaltáin agus aschuir roimhe seo. Is é input_path + output_path le cosáin choibhneasta an fhoirm is fearr. Filleann gnáthphoist aon chomhaid go sioncronach; ní fhilleann ach poist níos troime async=true le task_id le haghaidh pobalbhreithe.',
+  },
+  'hr-HR': {
+    name: 'Pretvori',
+    description:
+      'Pretvara lokalne datoteke, privitke i prethodne izlaze. Poželjni oblik je input_path + output_path s relativnim putanjama. Uobičajeni poslovi s jednom datotekom vraćaju se sinkrono; samo teži vraćaju async=true s task_id za provjeru.',
+  },
+  'hu-HU': {
+    name: 'Konvertálás',
+    description:
+      'Helyi fájlokat, mellékleteket és korábbi kimeneteket alakít át. Az ajánlott forma: input_path + output_path relatív útvonalakkal. A normál egyfájlos feladatok szinkron módon térnek vissza; csak a nehezebbek adnak vissza async=true értéket lekérdezhető task_id-val.',
+  },
+  'it-IT': {
+    name: 'Converti',
+    description:
+      'Converte file locali, allegati e output precedenti. La forma preferita è input_path + output_path usando percorsi relativi. I normali job con un solo file ritornano in modo sincrono; solo quelli più pesanti restituiscono async=true con un task_id da interrogare.',
+  },
+  'ja-JP': {
+    name: '変換',
+    description:
+      'ローカルファイル、添付ファイル、以前の出力を変換します。推奨形式は相対パスを使う input_path + output_path です。通常の単一ファイルジョブは同期で返り、より重いジョブだけが状態確認用の task_id とともに async=true を返します。',
+  },
+  'ko-KR': {
+    name: '변환',
+    description:
+      '로컬 파일, 첨부파일, 이전 출력물을 변환합니다. 권장 형식은 상대 경로를 사용하는 input_path + output_path 입니다. 일반적인 단일 파일 작업은 동기적으로 반환되며, 더 무거운 작업만 상태 조회용 task_id와 함께 async=true를 반환합니다.',
+  },
+  'ml-IN': {
+    name: 'പരിവർത്തനം',
+    description:
+      'ലോക്കൽ ഫയലുകളും അറ്റാച്ച്മെന്റുകളും മുൻ ഔട്ട്പുട്ടുകളും പരിവർത്തനം ചെയ്യുന്നു. മുൻഗണന നൽകുന്ന രൂപം റിലേറ്റീവ് പാത്തുകൾ ഉപയോഗിക്കുന്ന input_path + output_path ആണ്. സാധാരണ സിംഗിൾ-ഫൈൽ ജോബുകൾ സിങ്ക്രോണസായി മടങ്ങും; കൂടുതൽ ഭാരമുള്ള ജോബുകൾ മാത്രം പോളിംഗിനായി task_id സഹിതം async=true ആയി മടങ്ങും.',
+  },
+  'nb-NO': {
+    name: 'Konverter',
+    description:
+      'Konverterer lokale filer, vedlegg og tidligere utdata. Foretrukket form er input_path + output_path med relative stier. Vanlige enkeltfiljobber returnerer synkront; bare tyngre jobber returnerer async=true med en task_id for polling.',
+  },
+  'nl-NL': {
+    name: 'Converteren',
+    description:
+      'Converteert lokale bestanden, bijlagen en eerdere uitvoer. De voorkeursvorm is input_path + output_path met relatieve paden. Normale taken met één bestand keren synchroon terug; alleen zwaardere taken geven async=true terug met een task_id om te pollen.',
+  },
+  'pl-PL': {
+    name: 'Konwertuj',
+    description:
+      'Konwertuje lokalne pliki, załączniki i wcześniejsze wyniki. Preferowana forma to input_path + output_path z użyciem ścieżek względnych. Zwykłe zadania na jednym pliku zwracają wynik synchronicznie; tylko cięższe zwracają async=true z task_id do odpytywania.',
+  },
+  'pt-BR': {
+    name: 'Converter',
+    description:
+      'Converte arquivos locais, anexos e saídas anteriores. A forma preferida é input_path + output_path usando caminhos relativos. Trabalhos normais de arquivo único retornam de forma síncrona; apenas os mais pesados retornam async=true com um task_id para consulta.',
+  },
+  'pt-PT': {
+    name: 'Converter',
+    description:
+      'Converte ficheiros locais, anexos e resultados anteriores. A forma preferida é input_path + output_path usando caminhos relativos. Os trabalhos normais de um único ficheiro devolvem resultados de forma síncrona; apenas os mais pesados devolvem async=true com um task_id para consulta.',
+  },
+  'ro-RO': {
+    name: 'Convertește',
+    description:
+      'Convertește fișiere locale, atașamente și rezultate anterioare. Forma preferată este input_path + output_path folosind căi relative. Joburile normale pe un singur fișier revin sincron; doar cele mai grele returnează async=true cu un task_id pentru interogare.',
+  },
+  'ru-RU': {
+    name: 'Конвертировать',
+    description:
+      'Преобразует локальные файлы, вложения и предыдущие результаты. Предпочтительная форма: input_path + output_path с относительными путями. Обычные задачи с одним файлом возвращаются синхронно; только более тяжёлые возвращают async=true с task_id для опроса.',
+  },
+  'sk-SK': {
+    name: 'Konvertovať',
+    description:
+      'Konvertuje lokálne súbory, prílohy a predchádzajúce výstupy. Uprednostňovaná forma je input_path + output_path s relatívnymi cestami. Bežné úlohy s jedným súborom sa vracajú synchrónne; iba náročnejšie vracajú async=true s task_id na zisťovanie stavu.',
+  },
+  'sv-SE': {
+    name: 'Konvertera',
+    description:
+      'Konverterar lokala filer, bilagor och tidigare utdata. Föredragen form är input_path + output_path med relativa sökvägar. Normala jobb med en fil returnerar synkront; endast tyngre jobb returnerar async=true med ett task_id för polling.',
+  },
+  'zh-CN': {
+    name: '转换',
+    description:
+      '转换本地文件、附件和先前输出。推荐形式是使用相对路径的 input_path + output_path。普通单文件任务会同步返回；只有更重的任务才会返回 async=true，并附带用于轮询的 task_id。',
+  },
+  'zh-TW': {
+    name: '轉換',
+    description:
+      '轉換本機檔案、附件與先前輸出。建議形式是使用相對路徑的 input_path + output_path。一般單檔工作會同步回傳；只有較重的工作才會回傳 async=true，並附帶可輪詢的 task_id。',
+  },
+}
+
 const builtinToolBackfills = Object.fromEntries(
-  Object.entries(visibleBuiltinToolLocaleTerms).map(([locale, terms]) => [
-    locale,
-    {
-      tools: {
-        names: {
-          find: terms.findName,
-          ls: terms.lsName,
-          tool_search: terms.toolSearchName,
-          agents_list: terms.agentsListName,
-          bash: terms.bashName,
-          canvas: terms.canvasName,
-          edit: terms.editName,
-          gateway: terms.gatewayName,
-          grep: terms.grepName,
-          image: terms.imageName,
-          nodes: terms.nodesName,
-          office: terms.officeName,
-          pdf: terms.pdfName,
-          subagents: terms.subagentsName,
-          tts: terms.ttsName,
-        },
-        descriptions: {
-          find: terms.findDescription,
-          ls: terms.lsDescription,
-          tool_search: terms.toolSearchDescription,
-          agents_list: terms.agentsListDescription,
-          bash: terms.bashDescription,
-          canvas: terms.canvasDescription,
-          edit: terms.editDescription,
-          gateway: terms.gatewayDescription,
-          grep: terms.grepDescription,
-          image: terms.imageDescription,
-          nodes: terms.nodesDescription,
-          office: terms.officeDescription,
-          pdf: terms.pdfDescription,
-          subagents: terms.subagentsDescription,
-          tts: terms.ttsDescription,
-          mcp: terms.mcpDescription,
-          memory: terms.memoryDescription,
+  Object.entries(visibleBuiltinToolLocaleTerms).map(([locale, terms]) => {
+    const fileDeleteTerms = fileDeleteLocaleTerms[locale as LocaleKey]
+    const configTerms = configLocaleTerms[locale as LocaleKey]
+    const convertTerms = convertLocaleTerms[locale as LocaleKey]
+
+    return [
+      locale,
+      {
+        tools: {
+          names: {
+            find: terms.findName,
+            ls: terms.lsName,
+            tool_search: terms.toolSearchName,
+            agents_list: terms.agentsListName,
+            bash: terms.bashName,
+            canvas: terms.canvasName,
+            config: configTerms.name,
+            convert: convertTerms.name,
+            edit: terms.editName,
+            file_delete: fileDeleteTerms.name,
+            gateway: terms.gatewayName,
+            grep: terms.grepName,
+            image: terms.imageName,
+            nodes: terms.nodesName,
+            office: terms.officeName,
+            pdf: terms.pdfName,
+            subagents: terms.subagentsName,
+            tts: terms.ttsName,
+          },
+          descriptions: {
+            find: terms.findDescription,
+            ls: terms.lsDescription,
+            tool_search: terms.toolSearchDescription,
+            agents_list: terms.agentsListDescription,
+            bash: terms.bashDescription,
+            canvas: terms.canvasDescription,
+            config: configTerms.description,
+            convert: convertTerms.description,
+            edit: terms.editDescription,
+            file_delete: fileDeleteTerms.description,
+            gateway: terms.gatewayDescription,
+            grep: terms.grepDescription,
+            image: terms.imageDescription,
+            nodes: terms.nodesDescription,
+            office: terms.officeDescription,
+            pdf: terms.pdfDescription,
+            subagents: terms.subagentsDescription,
+            tts: terms.ttsDescription,
+            mcp: terms.mcpDescription,
+            memory: terms.memoryDescription,
+          },
         },
       },
-    },
-  ])
+    ]
+  })
 ) as Partial<Record<LocaleKey, LocaleNode>>
 
 export default builtinToolBackfills

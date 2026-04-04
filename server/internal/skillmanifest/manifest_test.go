@@ -657,6 +657,15 @@ func TestCandidateIDs_IncludesCanonicalWebQueryForLegacyWebSearch(t *testing.T) 
 	}
 }
 
+func TestCandidateIDs_ConfigNoLongerExpandsLegacyMgmtAlias(t *testing.T) {
+	got := CandidateIDs("config")
+	for _, candidate := range got {
+		if candidate == "mgmt" {
+			t.Fatalf("CandidateIDs(config) should not include legacy mgmt alias: %v", got)
+		}
+	}
+}
+
 func TestFindByCandidates_LegacyWebSearchFallsBackToEmbeddedWebQuery(t *testing.T) {
 	resolved, ok := FindByCandidates(CandidateIDs("web_search"), ResolveRoots(""), Options{RequireContract: true})
 	if !ok {

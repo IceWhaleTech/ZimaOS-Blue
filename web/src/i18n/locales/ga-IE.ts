@@ -1404,9 +1404,6 @@ export default mergeHarnessLocale('ga-IE', {
       ui_reviewer: {
         name: 'Athbhreithniú UI',
       },
-      mgmt: {
-        name: 'Cumraíocht',
-      },
       configuration: {
         name: 'Cumraíocht',
       },

@@ -1398,9 +1398,6 @@ export default mergeHarnessLocale('da-DK', {
       ui_reviewer: {
         name: 'UI-gennemgang',
       },
-      mgmt: {
-        name: 'Konfiguration',
-      },
       configuration: {
         name: 'Konfiguration',
       },

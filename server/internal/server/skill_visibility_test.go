@@ -501,7 +501,7 @@ version: 1.0.0
 	}
 }
 
-func TestSkillVisibility_ListCanonicalizesLegacyMgmtSkillToConfig(t *testing.T) {
+func TestSkillVisibility_ListKeepsMgmtSkillAsDistinctSkill(t *testing.T) {
 	registry := skill.NewRegistry()
 	handler := newTestSkillHandler(t, registry)
 
@@ -543,24 +543,21 @@ version: 1.0.0
 		t.Fatalf("unmarshal payload: %v", err)
 	}
 
-	var foundConfig bool
+	var foundMgmt bool
 	for _, item := range payload {
 		if item["id"] == "mgmt" {
-			t.Fatalf("expected legacy mgmt skill to be hidden behind canonical config, got payload=%#v", item)
-		}
-		if item["id"] == "config" {
-			foundConfig = true
-			if item["name"] != "Configuration" {
-				t.Fatalf("expected canonical config skill name, got %#v", item["name"])
+			foundMgmt = true
+			if item["name"] != "mgmt" {
+				t.Fatalf("expected mgmt skill name to remain distinct, got %#v", item["name"])
 			}
 		}
 	}
-	if !foundConfig {
-		t.Fatalf("expected canonical config skill entry, got payload=%#v", payload)
+	if !foundMgmt {
+		t.Fatalf("expected mgmt skill entry to remain distinct, got payload=%#v", payload)
 	}
 }
 
-func TestSkillVisibility_GetSkillContentAcceptsCanonicalConfigIDForLegacyMgmtDir(t *testing.T) {
+func TestSkillVisibility_GetSkillContentConfigNoLongerFallsBackToMgmtDir(t *testing.T) {
 	registry := skill.NewRegistry()
 	handler := newTestSkillHandler(t, registry)
 
@@ -589,22 +586,8 @@ version: 1.0.0
 	if err := handler.GetSkillContent(c); err != nil {
 		t.Fatalf("GetSkillContent failed: %v", err)
 	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, rec.Code, rec.Body.String())
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("unmarshal payload: %v", err)
-	}
-	if payload["id"] != "config" {
-		t.Fatalf("expected canonical id config, got %#v", payload["id"])
-	}
-	if payload["name"] != "Configuration" {
-		t.Fatalf("expected canonical config skill name, got %#v", payload["name"])
-	}
-	if payload["source"] != "directory" {
-		t.Fatalf("expected directory source, got %#v", payload["source"])
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d after alias removal, got %d body=%s", http.StatusNotFound, rec.Code, rec.Body.String())
 	}
 }
 

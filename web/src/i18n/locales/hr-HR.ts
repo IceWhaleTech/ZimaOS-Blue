@@ -1400,9 +1400,6 @@ export default mergeHarnessLocale('hr-HR', {
       ui_reviewer: {
         name: 'Pregled UI-ja',
       },
-      mgmt: {
-        name: 'Konfiguracija',
-      },
       configuration: {
         name: 'Konfiguracija',
       },

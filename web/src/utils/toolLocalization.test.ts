@@ -186,6 +186,27 @@ const descriptionCoverage = [
   },
 ] as const
 
+const reportedBuiltinToolCoverage = [
+  {
+    name: 'file_delete',
+    englishLabel: 'File Delete',
+    englishDescription:
+      'Deletes a local file or directory. For directories, set recursive=true to remove non-empty contents.',
+  },
+  {
+    name: 'config',
+    englishLabel: 'Config',
+    englishDescription:
+      'Runtime configuration and admin tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.',
+  },
+  {
+    name: 'convert',
+    englishLabel: 'Convert',
+    englishDescription:
+      'Convert local files, attachments, and prior outputs. Preferred form: input_path + output_path using relative paths. Normal single-file jobs return synchronously; only heavier jobs return async=true with a task_id for polling.',
+  },
+] as const
+
 const runtimeVisibleToolCoverage = [
   'agents_list',
   'analyze',
@@ -255,7 +276,6 @@ const preferredToolNameMap: Record<string, string> = {
 }
 
 const toolNameAliases: Record<string, string[]> = {
-  config: ['mgmt'],
   cron: ['scheduler'],
   image: ['image_generation'],
   message: ['reminder'],
@@ -441,6 +461,49 @@ describe('tool page localization coverage', () => {
     expect(getLocalizedToolDescription('file_read', 'fallback', t, te)).toBe(
       'Read a local file and extract supported document content'
     )
+  })
+
+  it('keeps the reported file_delete, config, and convert tools localized across all 27 locales', () => {
+    for (const locale of localeCodes) {
+      const messages = getMergedLocaleMessages(locale)
+      const t = (key: string) => String(getByPath(messages, key) ?? '')
+      const te = (key: string) => {
+        const value = getByPath(messages, key)
+        return typeof value === 'string' && value.trim().length > 0
+      }
+
+      for (const tool of reportedBuiltinToolCoverage) {
+        const localizedName = getLocalizedToolName(tool.name, t, te)
+        const localizedDescription = getLocalizedToolDescription(
+          tool.name,
+          tool.englishDescription,
+          t,
+          te
+        )
+
+        expect(localizedName.trim().length, `${locale} should localize name for ${tool.name}`).toBeGreaterThan(0)
+        expect(
+          localizedDescription.trim().length,
+          `${locale} should localize description for ${tool.name}`
+        ).toBeGreaterThan(0)
+
+        if (locale.startsWith('en')) {
+          expect(localizedName, `${locale} English label for ${tool.name}`).toBe(tool.englishLabel)
+          expect(localizedDescription, `${locale} English description for ${tool.name}`).toBe(
+            tool.englishDescription
+          )
+          continue
+        }
+
+        expect(localizedName, `${locale} should not fall back to English label for ${tool.name}`).not.toBe(
+          tool.englishLabel
+        )
+        expect(
+          localizedDescription,
+          `${locale} should not fall back to English description for ${tool.name}`
+        ).not.toBe(tool.englishDescription)
+      }
+    }
   })
 
   it('keeps runtime-visible 37-tool resources available across all locales', () => {

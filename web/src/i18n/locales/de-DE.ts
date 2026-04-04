@@ -1470,9 +1470,6 @@ export default mergeHarnessLocale('de-DE', {
       ui_reviewer: {
         name: 'UI-Prüfung',
       },
-      mgmt: {
-        name: 'Konfiguration',
-      },
       configuration: {
         name: 'Konfiguration',
       },

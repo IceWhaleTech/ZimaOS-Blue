@@ -322,10 +322,17 @@ func (t *ToolSearchTool) Definition() ToolDefinition {
 					},
 				},
 				"select": map[string]interface{}{
-					"type":        "array",
-					"description": "Optional exact capability names/IDs to activate in addition to query matches.",
-					"items": map[string]interface{}{
-						"type": "string",
+					"description": "Optional exact capability names/IDs to activate in addition to query matches. Accepts either a string array or a comma-separated string for compatibility.",
+					"anyOf": []interface{}{
+						map[string]interface{}{
+							"type": "array",
+							"items": map[string]interface{}{
+								"type": "string",
+							},
+						},
+						map[string]interface{}{
+							"type": "string",
+						},
 					},
 				},
 			},

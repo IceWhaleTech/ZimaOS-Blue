@@ -1399,9 +1399,6 @@ export default mergeHarnessLocale('hu-HU', {
       ui_reviewer: {
         name: 'UI-ellenőrzés',
       },
-      mgmt: {
-        name: 'Konfiguráció',
-      },
       configuration: {
         name: 'Konfiguráció',
       },

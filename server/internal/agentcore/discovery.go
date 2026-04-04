@@ -17,7 +17,6 @@ const (
 	CanonicalHimalaya     CanonicalSkillID = "himalaya"
 	CanonicalDeepResearch CanonicalSkillID = "deep_research"
 	CanonicalConfig       CanonicalSkillID = "config"
-	CanonicalMgmt         CanonicalSkillID = CanonicalConfig
 	CanonicalExec         CanonicalSkillID = "exec"
 	CanonicalUnknown      CanonicalSkillID = "unknown"
 )
@@ -173,7 +172,7 @@ func init() {
 		CanonicalConfig: {
 			CanonicalID:       CanonicalConfig,
 			Kind:              "skill",
-			Aliases:           []string{"mgmt", "management", "admin"},
+			Aliases:           []string{"management", "admin"},
 			SearchHints:       []string{"settings", "providers", "config", "runtime", "health", "proxy", "channels", "skills", "tools"},
 			CapabilityTags:    []string{"admin", "settings", "diagnostics"},
 			ExecutionProfile:  ExecutionProfileInline,

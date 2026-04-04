@@ -1419,9 +1419,6 @@ export default mergeHarnessLocale('zh-TW', {
       ui_reviewer: {
         name: 'UI 審查',
       },
-      mgmt: {
-        name: '設定',
-      },
       configuration: {
         name: '設定',
       },

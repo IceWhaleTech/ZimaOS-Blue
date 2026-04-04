@@ -776,11 +776,6 @@ func TestSelectorDryRun_CriticalPlanRoutes(t *testing.T) {
 			skill: "ask",
 		},
 		{
-			name:  "mgmt_alias_routes_to_config",
-			query: "mgmt providers.list",
-			skill: "config",
-		},
-		{
 			name:  "config_routes_to_config",
 			query: "config providers.list",
 			skill: "config",
@@ -809,7 +804,6 @@ func TestSelectorDryRun_DynamicExposureCollapsesAskConfigAndWorkspaceToExec(t *t
 	}{
 		{name: "workspace", query: "看下 workspace 里的 README", wantCanonical: "exec"},
 		{name: "ask", query: "ask me two clarifying questions before continuing", wantCanonical: "ask"},
-		{name: "mgmt_alias", query: "mgmt providers.list", wantCanonical: "config"},
 		{name: "config", query: "config providers.list", wantCanonical: "config"},
 	}
 

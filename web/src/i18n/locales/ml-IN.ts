@@ -1406,9 +1406,6 @@ export default mergeHarnessLocale('ml-IN', {
       ui_reviewer: {
         name: 'UI അവലോകനം',
       },
-      mgmt: {
-        name: 'ക്രമീകരണം',
-      },
       configuration: {
         name: 'ക്രമീകരണം',
       },

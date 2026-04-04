@@ -642,7 +642,6 @@ export function buildBuiltinSkillBackfill(
     firstString(messages, [
       'skills.catalog.config.name',
       'skills.catalog.configuration.name',
-      'skills.catalog.mgmt.name',
       'tools.names.configuration',
     ]),
     terms.configDescription

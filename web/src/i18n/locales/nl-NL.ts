@@ -1403,9 +1403,6 @@ export default mergeHarnessLocale('nl-NL', {
       ui_reviewer: {
         name: 'UI-beoordeling',
       },
-      mgmt: {
-        name: 'Configuratie',
-      },
       configuration: {
         name: 'Configuratie',
       },

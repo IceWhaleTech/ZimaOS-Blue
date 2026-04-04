@@ -327,7 +327,7 @@ func TestUserSkillHandler_ListCanonicalizesAliasDirAndLegacyConfig(t *testing.T)
 	}
 }
 
-func TestUserSkillHandler_ListCanonicalizesLegacyMgmtSkillToConfig(t *testing.T) {
+func TestUserSkillHandler_ListKeepsMgmtSkillAsDistinctSkill(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "user-skill-mgmt.db")
 
 	writeDB, err := sql.Open("sqlite3", dbPath)
@@ -392,11 +392,11 @@ func TestUserSkillHandler_ListCanonicalizesLegacyMgmtSkillToConfig(t *testing.T)
 	if len(listResp) != 1 {
 		t.Fatalf("List response len=%d, want 1 body=%s", len(listResp), listRec.Body.String())
 	}
-	if listResp[0].ID != "config" || listResp[0].Name != "Configuration" {
-		t.Fatalf("unexpected canonicalized legacy mgmt skill identity: %+v", listResp[0])
+	if listResp[0].ID != "mgmt" || listResp[0].Name != "mgmt" {
+		t.Fatalf("unexpected mgmt skill identity after alias removal: %+v", listResp[0])
 	}
 	if listResp[0].Enabled || !listResp[0].Installed || !listResp[0].UserToggled {
-		t.Fatalf("unexpected skill state via legacy mgmt config: %+v", listResp[0])
+		t.Fatalf("unexpected mgmt skill state after alias removal: %+v", listResp[0])
 	}
 }
 

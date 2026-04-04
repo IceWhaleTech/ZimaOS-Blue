@@ -1397,9 +1397,6 @@ export default mergeHarnessLocale('nb-NO', {
       ui_reviewer: {
         name: 'UI-gjennomgang',
       },
-      mgmt: {
-        name: 'Konfigurasjon',
-      },
       configuration: {
         name: 'Konfigurasjon',
       },

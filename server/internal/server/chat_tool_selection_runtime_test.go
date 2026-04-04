@@ -623,14 +623,6 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
 		},
 		{
-			name:              "mgmt_alias_routes_to_config_skill",
-			query:             "mgmt providers.list",
-			wantCanonical:     agentcore.CanonicalConfig,
-			wantProfile:       agentcore.ExecutionProfileInline,
-			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
-			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
-		},
-		{
 			name:              "config_routes_to_config_skill",
 			query:             "config providers.list",
 			wantCanonical:     agentcore.CanonicalConfig,

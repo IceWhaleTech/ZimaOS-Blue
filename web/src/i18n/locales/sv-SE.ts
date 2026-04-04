@@ -1398,9 +1398,6 @@ export default mergeHarnessLocale('sv-SE', {
       ui_reviewer: {
         name: 'UI-granskning',
       },
-      mgmt: {
-        name: 'Konfiguration',
-      },
       configuration: {
         name: 'Konfiguration',
       },
