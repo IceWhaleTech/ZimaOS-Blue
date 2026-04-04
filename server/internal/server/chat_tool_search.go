@@ -83,7 +83,8 @@ func (h *ChatHandler) applyToolSearchSurfaceSelection(policyReq tools.ToolPolicy
 	if h.toolSearchSkillExposureStamp != nil {
 		skillStamp = h.toolSearchSkillExposureStamp()
 	}
-	if h.deferredToolExposure.InvalidateIfStale(sessionID, registryVersion, h.resolvePromptPolicy().Hash, skillStamp) {
+	if invalidated, reason := h.deferredToolExposure.InvalidateIfStale(sessionID, registryVersion, h.resolvePromptPolicy().Hash, skillStamp); invalidated {
+		h.recordToolSurfaceCacheInvalidation(reason)
 		selection.PromptCacheUnsafe = true
 		return selection
 	}
@@ -133,6 +134,9 @@ func (h *ChatHandler) overlayDeferredToolExposure(policyReq tools.ToolPolicyRequ
 		merged = filtered
 		if execDef, ok := byName["exec"]; ok {
 			merged = mergeToolDefsByName(merged, []tools.ToolDefinition{execDef})
+			if hasToolDefName(merged, "exec") {
+				h.recordToolSurfaceExecCutover("deferred_exposure")
+			}
 		}
 	}
 	if state.NeedAgentTools {

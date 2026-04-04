@@ -41,6 +41,7 @@ var githubBlobPattern = skillbundle.GitHubBlobURLPattern
 var githubRepoPattern = skillbundle.GitHubRepoURLPattern
 var githubRawPattern = skillbundle.GitHubRawURLPattern
 var skillHubStringRefPattern = regexp.MustCompile(`skillMdRaw":"\$([0-9A-Za-z]+)"`)
+var llmSkillsWebsitePattern = regexp.MustCompile(`(?s)"skill":\{.*?"website":"((?:\\.|[^"\\])*)".*?"installPath":"((?:\\.|[^"\\])*)"`)
 
 func (s *Service) discoverFromHTMLCatalog(ctx context.Context, source Source, processedSources int, total *DiscoverResult, run *CrawlRun) error {
 	job, err := buildDiscoverJob(s, source, run)
@@ -51,7 +52,7 @@ func (s *Service) discoverFromHTMLCatalog(ctx context.Context, source Source, pr
 }
 
 func (s *Service) discoverGitHubRepoSeed(ctx context.Context, owner, repo string) error {
-	record, err := s.prepareGitHubRepoSeedRecord(ctx, owner, repo)
+	record, err := s.prepareGitHubRepoSeedRecord(ctx, owner, repo, nil)
 	if err != nil {
 		return err
 	}
@@ -59,7 +60,7 @@ func (s *Service) discoverGitHubRepoSeed(ctx context.Context, owner, repo string
 	return err
 }
 
-func (s *Service) prepareGitHubRepoSeedRecord(ctx context.Context, owner, repo string) (*SkillUpsertRecord, error) {
+func (s *Service) prepareGitHubRepoSeedRecord(ctx context.Context, owner, repo string, origin *Source) (*SkillUpsertRecord, error) {
 	if strings.TrimSpace(owner) == "" || strings.TrimSpace(repo) == "" {
 		return nil, fmt.Errorf("invalid github seed")
 	}
@@ -94,29 +95,46 @@ func (s *Service) prepareGitHubRepoSeedRecord(ctx context.Context, owner, repo s
 	if err != nil {
 		return nil, err
 	}
+	sourceID := "curated-github-seed"
+	sourceName := "GitHub"
+	sourceGroup := "github"
+	originSourceID := ""
+	originSourceName := ""
+	originSourceURL := ""
+	if origin != nil {
+		sourceID = strings.TrimSpace(origin.ID)
+		sourceName = defaultString(origin.DisplayName, origin.ID)
+		sourceGroup = defaultString(origin.SourceGroup, origin.ID)
+		originSourceID = strings.TrimSpace(origin.ID)
+		originSourceName = defaultString(origin.DisplayName, origin.ID)
+		originSourceURL = strings.TrimSpace(origin.BaseURL)
+	}
 	return s.prepareIngestRecord(ctx, ingestRequest{
-		SourceID:       "curated-github-seed",
-		SourceName:     "GitHub",
-		SourceGroup:    "github",
-		SourceType:     "github_repo",
-		RepoURL:        repoMeta.HTMLURL,
-		Homepage:       repoMeta.HTMLURL,
-		DownloadURL:    rawGitHubBlobURL(owner, repo, repoMeta.DefaultBranch, contents.Path),
-		SourceURL:      repoMeta.HTMLURL,
-		SkillPath:      contents.Path,
-		SkillContent:   contents.Raw,
-		CommitHash:     contents.Commit,
-		Stars:          repoMeta.Stargazers,
-		LastUpdated:    repoMeta.UpdatedAt,
-		DefaultSkillID: pathSkillID(repoMeta.HTMLURL, contents.Path, repo),
-		Installable:    true,
-		InstallType:    InstallTypeGitRepo,
-		ArtifactKind:   ArtifactKindOpenSource,
+		SourceID:         sourceID,
+		SourceName:       sourceName,
+		SourceGroup:      sourceGroup,
+		OriginSourceID:   originSourceID,
+		OriginSourceName: originSourceName,
+		OriginSourceURL:  originSourceURL,
+		SourceType:       "github_repo",
+		RepoURL:          repoMeta.HTMLURL,
+		Homepage:         repoMeta.HTMLURL,
+		DownloadURL:      rawGitHubBlobURL(owner, repo, repoMeta.DefaultBranch, contents.Path),
+		SourceURL:        repoMeta.HTMLURL,
+		SkillPath:        contents.Path,
+		SkillContent:     contents.Raw,
+		CommitHash:       contents.Commit,
+		Stars:            repoMeta.Stargazers,
+		LastUpdated:      repoMeta.UpdatedAt,
+		DefaultSkillID:   pathSkillID(repoMeta.HTMLURL, contents.Path, repo),
+		Installable:      true,
+		InstallType:      InstallTypeGitRepo,
+		ArtifactKind:     ArtifactKindOpenSource,
 	})
 }
 
 func (s *Service) discoverSkillURLSeed(ctx context.Context, rawURL string) error {
-	record, err := s.prepareSkillURLSeedRecord(ctx, rawURL)
+	record, err := s.prepareSkillURLSeedRecord(ctx, rawURL, nil)
 	if err != nil {
 		return err
 	}
@@ -124,27 +142,44 @@ func (s *Service) discoverSkillURLSeed(ctx context.Context, rawURL string) error
 	return err
 }
 
-func (s *Service) prepareSkillURLSeedRecord(ctx context.Context, rawURL string) (*SkillUpsertRecord, error) {
+func (s *Service) prepareSkillURLSeedRecord(ctx context.Context, rawURL string, origin *Source) (*SkillUpsertRecord, error) {
 	content, skillPath, repoURL, downloadURL, installType, err := s.fetchSkillReference(ctx, rawURL)
 	if err != nil {
 		return nil, err
 	}
+	sourceID := "curated-skill-url"
+	sourceName := "External Skill"
+	sourceGroup := "external"
+	originSourceID := ""
+	originSourceName := ""
+	originSourceURL := ""
+	if origin != nil {
+		sourceID = strings.TrimSpace(origin.ID)
+		sourceName = defaultString(origin.DisplayName, origin.ID)
+		sourceGroup = defaultString(origin.SourceGroup, origin.ID)
+		originSourceID = strings.TrimSpace(origin.ID)
+		originSourceName = defaultString(origin.DisplayName, origin.ID)
+		originSourceURL = strings.TrimSpace(origin.BaseURL)
+	}
 	return s.prepareIngestRecord(ctx, ingestRequest{
-		SourceID:       "curated-skill-url",
-		SourceName:     "External Skill",
-		SourceGroup:    "external",
-		SourceType:     "skill_url",
-		RepoURL:        repoURL,
-		Homepage:       rawURL,
-		DownloadURL:    downloadURL,
-		SourceURL:      rawURL,
-		SkillPath:      skillPath,
-		SkillContent:   content,
-		DefaultSkillID: pathSkillID(repoURL, skillPath, filepath.Base(skillPath)),
-		LastUpdated:    timeutil.NowTime(),
-		Installable:    true,
-		InstallType:    installType,
-		ArtifactKind:   ArtifactKindOpenSource,
+		SourceID:         sourceID,
+		SourceName:       sourceName,
+		SourceGroup:      sourceGroup,
+		OriginSourceID:   originSourceID,
+		OriginSourceName: originSourceName,
+		OriginSourceURL:  originSourceURL,
+		SourceType:       "skill_url",
+		RepoURL:          repoURL,
+		Homepage:         rawURL,
+		DownloadURL:      downloadURL,
+		SourceURL:        rawURL,
+		SkillPath:        skillPath,
+		SkillContent:     content,
+		DefaultSkillID:   pathSkillID(repoURL, skillPath, filepath.Base(skillPath)),
+		LastUpdated:      timeutil.NowTime(),
+		Installable:      true,
+		InstallType:      installType,
+		ArtifactKind:     ArtifactKindOpenSource,
 	})
 }
 
@@ -277,6 +312,9 @@ func (s *Service) fetchCatalogPage(ctx context.Context, source Source, rawURL st
 			links = extractHTMLLinks(doc)
 		}
 	}
+	if website := extractLLMSkillsFlightWebsite(rawURL, htmlBody); website != "" && !containsString(links, website) {
+		links = append(links, website)
+	}
 	return &catalogPage{
 		URL:         rawURL,
 		Title:       title,
@@ -354,6 +392,23 @@ func extractCatalogEmbeddedSkill(pageURL, htmlBody string) *catalogEmbeddedSkill
 		SkillPath: decodeEmbeddedCatalogMatch(normalizedBody, `skillPath":"((?:\\.|[^"\\])*)"`),
 		RawSkill:  rawSkill,
 	}
+}
+
+func extractLLMSkillsFlightWebsite(pageURL, htmlBody string) string {
+	if !strings.Contains(strings.ToLower(pageURL), "/skill/") {
+		return ""
+	}
+	normalizedBody := strings.ReplaceAll(htmlBody, `\"`, `"`)
+	match := llmSkillsWebsitePattern.FindStringSubmatch(normalizedBody)
+	if len(match) != 3 {
+		return ""
+	}
+	website := decodeEmbeddedCatalogString(match[1])
+	installPath := decodeEmbeddedCatalogString(match[2])
+	if strings.TrimSpace(installPath) == "" || !looksLikeSkillURL(website) {
+		return ""
+	}
+	return website
 }
 
 func decodeEmbeddedCatalogMatch(htmlBody, pattern string) string {
@@ -585,4 +640,13 @@ func summarizeText(text string) string {
 
 func escapeYAMLText(value string) string {
 	return strings.ReplaceAll(strings.TrimSpace(value), "\n", " ")
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

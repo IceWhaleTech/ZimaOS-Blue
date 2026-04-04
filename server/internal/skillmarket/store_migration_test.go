@@ -238,3 +238,56 @@ func TestNewStoreMigratesLegacySchemaWithoutFTSModule(t *testing.T) {
 		}
 	}
 }
+
+func TestNewStoreAddsOriginSourceColumns(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "origin-columns.db"))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	legacySchema := `
+	CREATE TABLE skills (
+		id TEXT PRIMARY KEY,
+		slug TEXT,
+		name TEXT NOT NULL,
+		description TEXT,
+		category TEXT,
+		tags TEXT,
+		skill_content TEXT,
+		trending_score REAL DEFAULT 0,
+		last_updated DATETIME,
+		downloads INTEGER DEFAULT 0,
+		latest_version TEXT,
+		source_id TEXT,
+		source_name TEXT,
+		source_group TEXT,
+		security_badge TEXT DEFAULT 'yellow',
+		install_type TEXT DEFAULT 'manual_external',
+		artifact_kind TEXT DEFAULT 'unknown',
+		curated_rank INTEGER DEFAULT 0,
+		created_at DATETIME,
+		updated_at DATETIME
+	);
+	`
+	if _, err := db.Exec(legacySchema); err != nil {
+		t.Fatalf("db.Exec(legacySchema) error = %v", err)
+	}
+
+	if _, err := NewStore(db); err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	for _, column := range []string{"origin_source_id", "origin_source_name", "origin_source_url"} {
+		var count int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('skills') WHERE name = ?`,
+			column,
+		).Scan(&count); err != nil {
+			t.Fatalf("query pragma for %s error = %v", column, err)
+		}
+		if count != 1 {
+			t.Fatalf("expected column %s to be present, count=%d", column, count)
+		}
+	}
+}

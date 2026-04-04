@@ -565,7 +565,7 @@ func shouldPreferPublicArtifactResearchWorkflow(message string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if extractRequestedArtifactPath(trimmed) == "" {
+	if extractRequestedArtifactPath(trimmed) == "" && !hasGenericOfficeArtifactIntent(trimmed) {
 		return false
 	}
 	if isReminderIntentMessage(trimmed) || isCalendarIntentMessage(trimmed) || isEmailIntentMessage(trimmed) || isImageGenerationIntentMessage(trimmed) {
@@ -587,6 +587,72 @@ func shouldPreferPublicArtifactResearchWorkflow(message string) bool {
 		return true
 	}
 	return hasPublicArtifactResearchCue(trimmed)
+}
+
+func detectGenericOfficeArtifactFormat(message string) string {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return ""
+	}
+	switch {
+	case strings.Contains(lower, ".docx"),
+		strings.Contains(lower, " docx"),
+		strings.Contains(lower, "word document"),
+		strings.Contains(lower, "word report"),
+		strings.Contains(message, "Word文档"),
+		strings.Contains(message, "Word 文档"),
+		strings.Contains(message, "Word报告"),
+		strings.Contains(message, "Word 报告"):
+		return ".docx"
+	case strings.Contains(lower, ".xlsx"),
+		strings.Contains(lower, " xlsx"),
+		strings.Contains(lower, "excel spreadsheet"),
+		strings.Contains(lower, "excel workbook"),
+		strings.Contains(message, "Excel表格"),
+		strings.Contains(message, "Excel 表格"),
+		strings.Contains(message, "Excel工作簿"),
+		strings.Contains(message, "Excel 工作簿"):
+		return ".xlsx"
+	default:
+		return ""
+	}
+}
+
+func hasGenericOfficeArtifactIntent(message string) bool {
+	if detectGenericOfficeArtifactFormat(message) == "" {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return false
+	}
+	outputVerbs := []string{
+		"generate",
+		"create",
+		"save",
+		"export",
+		"write",
+		"produce",
+		"deliver",
+		"final",
+		"output",
+		"生成",
+		"输出",
+		"导出",
+		"写成",
+		"整理成",
+		"做成",
+		"产出",
+		"保存",
+		"最后",
+		"最终",
+	}
+	for _, cue := range outputVerbs {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldPreferDirectArtifactWriting(message string) bool {
@@ -619,12 +685,21 @@ func buildDeepSearchExecutionHint(userMessage string) string {
 func buildArtifactWorkflowExecutionHint(userMessage string) string {
 	target := extractRequestedArtifactPath(userMessage)
 	lower := strings.ToLower(strings.TrimSpace(userMessage))
-	if target == "" && !isImageGenerationIntentMessage(userMessage) {
+	genericOfficeFormat := detectGenericOfficeArtifactFormat(userMessage)
+	hasGenericOfficeOutput := target == "" && hasGenericOfficeArtifactIntent(userMessage)
+	if target == "" && !hasGenericOfficeOutput && !isImageGenerationIntentMessage(userMessage) {
 		return ""
 	}
 	officeHint := ""
-	if isOfficeArtifactPath(target) {
+	if isOfficeArtifactPath(target) || hasGenericOfficeOutput {
 		officeHint = " When the requested output path ends in .xlsx or .docx, prefer the native office tool instead of raw file_write so workbook styling, report layout, and typography are preserved."
+	}
+	genericOfficeTarget := "an office workspace file"
+	switch genericOfficeFormat {
+	case ".docx":
+		genericOfficeTarget = "a .docx workspace file"
+	case ".xlsx":
+		genericOfficeTarget = "a .xlsx workspace file"
 	}
 	if shouldPreferExplicitMemoryFileWorkflow(userMessage) {
 		if isExplicitMemoryFileRecallRequest(userMessage) {
@@ -655,9 +730,15 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 		return fmt.Sprintf("This is a direct writing task with an explicit output file. Keep the local file workflow tools available together (file_read/file_write/file_delete plus ls/find/grep/rg/edit/convert/pdf when useful), but do not detour through browser, email, calendar, or research tools unless the user explicitly asked for outside information. Write the complete deliverable directly to %q, follow any requested format, tone, length, paragraph, and section constraints, and then give a brief confirmation.%s", target, officeHint)
 	}
 	if shouldUseHeavyResearchWorkflow(userMessage) {
+		if target == "" && hasGenericOfficeOutput {
+			return fmt.Sprintf("This is a research task whose final deliverable should be %s. Once you have enough evidence, use the native office tool to create the final synthesized report instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.%s", genericOfficeTarget, officeHint)
+		}
 		return fmt.Sprintf("This is a research task with an explicit saved deliverable. Once you have enough evidence, write the full synthesized report to %q instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.%s", target, officeHint)
 	}
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+		if target == "" && hasGenericOfficeOutput {
+			return fmt.Sprintf("This is a public-information research task whose final deliverable should be %s. Prefer a fast artifact workflow: use web_query as the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then use the native office tool to create the final document. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", genericOfficeTarget, officeHint)
+		}
 		return fmt.Sprintf("This is a public-information research task with an explicit output file. Prefer a fast artifact workflow: use web_query as the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then write the complete result to %q. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", target, officeHint)
 	}
 	return ""
@@ -5905,6 +5986,9 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 		DeepResearchEnabled: deepResearchEnabled,
 	}, webSearchEnabled, deepResearchEnabled)
 	selectedTools := selection.NativeDefs
+	if selection.NativeMode == chatNativeToolSurfaceModeSkillExec && hasToolDefName(selectedTools, "exec") {
+		h.recordToolSurfaceExecCutover("skill_exec_surface")
+	}
 	if selection.NativeMode != chatNativeToolSurfaceModeLegacy || selection.PromptCacheUnsafe {
 		h.clearPromptCacheToolSurface(sessionID)
 		return sortToolDefsByName(selectedTools)
@@ -6009,11 +6093,11 @@ func (h *ChatHandler) lookupCutoverNativeExecToolDefinition(kind tools.ToolRoute
 	if h == nil || h.toolRegistry == nil {
 		return tools.ToolDefinition{}, false
 	}
-	if tool := h.toolRegistry.Get("exec"); tool != nil {
-		return tool.Definition(), true
-	}
 	if def, ok := h.toolRegistry.LookupDefinitionForRoute("exec", kind); ok {
 		return def, true
+	}
+	if tool := h.toolRegistry.Get("exec"); tool != nil {
+		return tool.Definition(), true
 	}
 	return tools.ToolDefinition{}, false
 }
@@ -6286,6 +6370,7 @@ type ChatHandler struct {
 	toolRegistry       *tools.Registry
 	toolExecutor       *tools.Executor
 	toolGateway        *tools.ToolGateway
+	toolSurfaceAudit   *tools.ToolSurfaceAuditState
 	sessionAuditStore  *sessionaudit.Store
 	persistCoordinator *PersistenceCoordinator
 	streamController   *agentcore.StreamController
@@ -6610,6 +6695,13 @@ func (h *ChatHandler) resolvePromptPolicy() PromptPolicy {
 // by compressing schemas and hiding obviously irrelevant low-signal members.
 func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.ToolPolicyRequest) ([]tools.ToolDefinition, *tools.ToolSelectionDebug) {
 	allDefs := h.toolDefinitionsForPolicy(policyReq)
+	if policyReq.RouteKind == tools.ToolRouteKindChat && !policyReq.SkipDefaultChatDirectAllowlist && shouldExpandChatToolAllowlistForOfficeArtifact(userMessage) {
+		expandedReq := policyReq
+		expandedReq.SkipDefaultChatDirectAllowlist = true
+		if expandedDefs := h.toolDefinitionsForPolicy(expandedReq); len(expandedDefs) > 0 {
+			allDefs = expandedDefs
+		}
+	}
 	routed := allDefs
 	if h.toolRouter != nil {
 		routed = h.toolRouter.Route(userMessage, policyReq.Model, allDefs)
@@ -6638,6 +6730,14 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		Msg("[chat] selectTools")
 
 	return routed, nil
+}
+
+func shouldExpandChatToolAllowlistForOfficeArtifact(userMessage string) bool {
+	target := extractRequestedArtifactPath(userMessage)
+	if isOfficeArtifactPath(target) {
+		return true
+	}
+	return hasGenericOfficeArtifactIntent(userMessage)
 }
 
 func keepAlwaysExposedChatTools(allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
@@ -6669,7 +6769,24 @@ func (h *ChatHandler) toolDefinitionsForPolicy(policyReq tools.ToolPolicyRequest
 	if h.toolPolicyResolver != nil {
 		allDefs = h.toolPolicyResolver.Filter(policyReq, allDefs)
 	}
+	if policyReq.RouteKind == tools.ToolRouteKindChat && !policyReq.SkipDefaultChatDirectAllowlist {
+		allDefs = collapseDefaultChatShellCompatDefs(allDefs)
+	}
 	return allDefs
+}
+
+func collapseDefaultChatShellCompatDefs(defs []tools.ToolDefinition) []tools.ToolDefinition {
+	if !hasToolDefName(defs, "bash") {
+		return defs
+	}
+	filtered := make([]tools.ToolDefinition, 0, len(defs))
+	for _, def := range defs {
+		if strings.EqualFold(strings.TrimSpace(def.Name), "exec") {
+			continue
+		}
+		filtered = append(filtered, def)
+	}
+	return filtered
 }
 
 func preferResearchReportWorkflowTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
@@ -10147,12 +10264,25 @@ type runtimeCounterRecorder interface {
 	RecordCounter(name string, value int64, tags map[string]string)
 }
 
+func newConfiguredChatToolGateway(registry *tools.Registry, executor *tools.Executor, recorder MetricsRecorder, audit *tools.ToolSurfaceAuditState) *tools.ToolGateway {
+	if registry == nil || executor == nil {
+		return nil
+	}
+	gateway := tools.NewToolGateway(registry, executor)
+	gateway.SetToolSurfaceAuditState(audit)
+	if counterRecorder, ok := recorder.(runtimeCounterRecorder); ok {
+		gateway.SetMetricsRecorder(counterRecorder)
+	}
+	return gateway
+}
+
 // NewChatHandler creates a new chat handler.
 func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRegistry *tools.Registry) *ChatHandler {
 	toolExecutor := tools.NewExecutor(toolRegistry)
+	toolSurfaceAudit := tools.NewToolSurfaceAuditState()
 	var toolGateway *tools.ToolGateway
 	if toolRegistry != nil {
-		toolGateway = tools.NewToolGateway(toolRegistry, toolExecutor)
+		toolGateway = newConfiguredChatToolGateway(toolRegistry, toolExecutor, nil, toolSurfaceAudit)
 	}
 	h := &ChatHandler{
 		store:                          store,
@@ -10160,6 +10290,7 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		toolRegistry:                   toolRegistry,
 		toolExecutor:                   toolExecutor,
 		toolGateway:                    toolGateway,
+		toolSurfaceAudit:               toolSurfaceAudit,
 		streamController:               agentcore.NewStreamController(),
 		compactionConfig:               agentcore.DefaultCompactionConfig(),
 		convToSession:                  make(map[string]string),
@@ -10199,7 +10330,7 @@ func (h *ChatHandler) SetToolApprover(approver tools.ToolApprover) {
 		return
 	}
 	if h.toolGateway == nil && h.toolRegistry != nil && h.toolExecutor != nil {
-		h.toolGateway = tools.NewToolGateway(h.toolRegistry, h.toolExecutor)
+		h.toolGateway = newConfiguredChatToolGateway(h.toolRegistry, h.toolExecutor, h.metricsRecorder, h.toolSurfaceAudit)
 	}
 	if h.toolGateway == nil {
 		return
@@ -10213,7 +10344,7 @@ func (h *ChatHandler) SetToolEventObserver(observer tools.RuntimeEventObserver) 
 		return
 	}
 	if h.toolGateway == nil && h.toolRegistry != nil && h.toolExecutor != nil {
-		h.toolGateway = tools.NewToolGateway(h.toolRegistry, h.toolExecutor)
+		h.toolGateway = newConfiguredChatToolGateway(h.toolRegistry, h.toolExecutor, h.metricsRecorder, h.toolSurfaceAudit)
 	}
 	if h.toolGateway == nil {
 		return
@@ -10307,6 +10438,50 @@ func (h *ChatHandler) SetMetricsRecorder(recorder MetricsRecorder) {
 		h.toolGateway.SetMetricsRecorder(counterRecorder)
 	}
 	h.ensurePersistenceCoordinator()
+}
+
+func (h *ChatHandler) toolSurfaceAuditSnapshot() tools.ToolSurfaceAuditSnapshot {
+	if h == nil || h.toolSurfaceAudit == nil {
+		return tools.ToolSurfaceAuditSnapshot{}
+	}
+	return h.toolSurfaceAudit.Snapshot()
+}
+
+func (h *ChatHandler) recordToolSurfaceCounter(name string, tags map[string]string) {
+	if h == nil || strings.TrimSpace(name) == "" {
+		return
+	}
+	counterRecorder, ok := h.metricsRecorder.(runtimeCounterRecorder)
+	if !ok || counterRecorder == nil {
+		return
+	}
+	counterRecorder.RecordCounter(name, 1, tags)
+}
+
+func (h *ChatHandler) recordToolSurfaceCacheInvalidation(reason string) {
+	if h == nil {
+		return
+	}
+	if h.toolSurfaceAudit != nil {
+		h.toolSurfaceAudit.RecordCacheInvalidation()
+	}
+	h.recordToolSurfaceCounter("tool_surface_cache_invalidation_total", map[string]string{
+		"reason":     strings.TrimSpace(reason),
+		"route_kind": string(tools.ToolRouteKindChat),
+	})
+}
+
+func (h *ChatHandler) recordToolSurfaceExecCutover(source string) {
+	if h == nil {
+		return
+	}
+	if h.toolSurfaceAudit != nil {
+		h.toolSurfaceAudit.RecordExecCutover()
+	}
+	h.recordToolSurfaceCounter("tool_surface_exec_cutover_total", map[string]string{
+		"source":     strings.TrimSpace(source),
+		"route_kind": string(tools.ToolRouteKindChat),
+	})
 }
 
 // SetSessionAuditStore sets an isolated audit store for raw tool payload logs.

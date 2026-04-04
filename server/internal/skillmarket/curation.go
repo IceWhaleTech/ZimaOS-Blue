@@ -77,8 +77,8 @@ func (s *Service) syncCurations(ctx context.Context) error {
 	if err := s.store.ReplaceCurations(ctx, curations); err != nil {
 		return err
 	}
-	for _, seed := range cfg.AdditionalSeeds {
-		if err := s.ingestAdditionalSeed(ctx, seed); err != nil && s.logger != nil {
+	for idx, seed := range cfg.AdditionalSeeds {
+		if err := s.ingestAdditionalSeed(ctx, seed, idx); err != nil && s.logger != nil {
 			s.logger.Warn("skillmarket additional seed failed", zap.String("type", seed.Type), zap.String("value", seed.Value), zap.Error(err))
 		}
 	}
@@ -147,7 +147,7 @@ func (s *Service) readCuratedCandidate(ctx context.Context, candidate string) ([
 	return data, candidate, nil
 }
 
-func (s *Service) ingestAdditionalSeed(ctx context.Context, seed AdditionalSeed) error {
+func (s *Service) ingestAdditionalSeed(ctx context.Context, seed AdditionalSeed, order int) error {
 	switch strings.TrimSpace(seed.Type) {
 	case "github_repo":
 		parts := strings.Split(strings.Trim(strings.TrimSpace(seed.Value), "/"), "/")
@@ -157,9 +157,44 @@ func (s *Service) ingestAdditionalSeed(ctx context.Context, seed AdditionalSeed)
 		return s.discoverGitHubRepoSeed(ctx, parts[0], parts[1])
 	case "skill_url":
 		return s.discoverSkillURLSeed(ctx, seed.Value)
+	case "seed_page":
+		return s.registerAdditionalSeedPage(ctx, seed, order)
 	default:
 		return fmt.Errorf("unsupported additional seed type: %s", seed.Type)
 	}
+}
+
+func (s *Service) registerAdditionalSeedPage(ctx context.Context, seed AdditionalSeed, order int) error {
+	baseURL := strings.TrimSpace(seed.Value)
+	if baseURL == "" {
+		return fmt.Errorf("invalid seed_page seed: %s", seed.Value)
+	}
+	sourceID := strings.TrimSpace(seed.ID)
+	if sourceID == "" {
+		sourceID = "seed-page-" + checksumBytes([]byte(baseURL))[:12]
+	}
+	displayName := strings.TrimSpace(seed.OriginName)
+	if displayName == "" {
+		displayName = strings.TrimSpace(seed.DisplayName)
+	}
+	if displayName == "" {
+		displayName = sourceID
+	}
+	sourceGroup := strings.TrimSpace(seed.SourceGroup)
+	if sourceGroup == "" {
+		sourceGroup = sourceID
+	}
+	return s.store.UpsertSource(ctx, Source{
+		ID:                 sourceID,
+		Type:               "seed_page",
+		BaseURL:            baseURL,
+		DisplayName:        displayName,
+		SourceGroup:        sourceGroup,
+		AuthMode:           "none",
+		Enabled:            true,
+		RateLimitPerMinute: 10,
+		Priority:           80 + order,
+	})
 }
 
 func checksumBytes(data []byte) string {

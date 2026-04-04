@@ -2347,7 +2347,7 @@ func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 	expectedIDs := []string{
 		"tencent-skillhub",
 		"clawhub",
-		"github-skill-md",
+		"vercel",
 		"github-claude-md",
 		"github-agent-md",
 		"skillhub-club",
@@ -2649,10 +2649,10 @@ func TestDiscoverGitHubMarksPartialOnIncompleteResults(t *testing.T) {
 		t.Fatalf("disable sources: %v", err)
 	}
 	cfg := Source{
-		ID:          "github-skill-md",
+		ID:          "github-custom-skill-md",
 		Type:        "github_code_search",
 		BaseURL:     "filename:SKILL.md",
-		DisplayName: "GitHub SKILL.md",
+		DisplayName: "Custom GitHub SKILL.md",
 		SourceGroup: "github",
 		Enabled:     true,
 		Priority:    1,
@@ -2675,6 +2675,42 @@ func TestDiscoverGitHubMarksPartialOnIncompleteResults(t *testing.T) {
 	}
 	if source.Discovered != 1 {
 		t.Fatalf("github discovered = %d, want 1", source.Discovered)
+	}
+}
+
+func TestPrepareIngestRecordRelabelsVercelSkillsSource(t *testing.T) {
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+
+	record, err := svc.prepareIngestRecord(context.Background(), ingestRequest{
+		SourceID:       "github-custom-skill-md",
+		SourceName:     "Custom GitHub SKILL.md",
+		SourceGroup:    "github",
+		SourceType:     "github_code_search",
+		RepoURL:        "https://github.com/vercel-labs/skills",
+		Homepage:       "https://github.com/vercel-labs/skills/tree/main/skills/nextjs",
+		DownloadURL:    "https://github.com/vercel-labs/skills/blob/main/skills/nextjs/SKILL.md",
+		SourceURL:      "https://raw.githubusercontent.com/vercel-labs/skills/main/skills/nextjs/SKILL.md",
+		SkillPath:      "skills/nextjs/SKILL.md",
+		SkillContent:   skillMarkdownFixture("vercel-nextjs", "Next.js", "1.0.0"),
+		DefaultSkillID: "vercel-nextjs",
+		LastUpdated:    time.Date(2026, time.April, 4, 0, 0, 0, 0, time.UTC),
+		Installable:    true,
+		InstallType:    InstallTypeGitRepo,
+		ArtifactKind:   ArtifactKindOpenSource,
+	})
+	if err != nil {
+		t.Fatalf("prepareIngestRecord() error = %v", err)
+	}
+
+	if got := record.Doc.SourceID; got != "vercel" {
+		t.Fatalf("source id = %q, want vercel", got)
+	}
+	if got := record.Doc.SourceName; got != "Vercel" {
+		t.Fatalf("source name = %q, want Vercel", got)
+	}
+	if got := record.Doc.SourceGroup; got != "vercel" {
+		t.Fatalf("source group = %q, want vercel", got)
 	}
 }
 

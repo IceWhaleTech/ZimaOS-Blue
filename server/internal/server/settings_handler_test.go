@@ -661,6 +661,49 @@ func TestSelectorDryRunOmitsRemovedCutoverSwitchesAfterCutover(t *testing.T) {
 	}
 }
 
+func TestSelectorDryRunIncludesToolSurfaceAuditCounts(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+
+	initial := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
+	for _, key := range []string{
+		"tool_surface_alias_rewrite_count",
+		"tool_surface_cache_invalidation_count",
+		"tool_surface_exec_cutover_count",
+	} {
+		if got, ok := initial[key].(float64); !ok || int(got) != 0 {
+			t.Fatalf("%s = %#v, want 0", key, initial[key])
+		}
+	}
+
+	h.chatHandler.toolSurfaceAudit.RecordAliasRewrite()
+	h.chatHandler.toolSurfaceAudit.RecordCacheInvalidation()
+	h.chatHandler.toolSurfaceAudit.RecordExecCutover()
+
+	body := runSelectorDryRun(t, h, "搜索最新 OpenAI Responses API 文档。")
+	if got, ok := body["tool_surface_alias_rewrite_count"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("tool_surface_alias_rewrite_count = %#v, want 1", body["tool_surface_alias_rewrite_count"])
+	}
+	if got, ok := body["tool_surface_cache_invalidation_count"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("tool_surface_cache_invalidation_count = %#v, want 1", body["tool_surface_cache_invalidation_count"])
+	}
+	if got, ok := body["tool_surface_exec_cutover_count"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("tool_surface_exec_cutover_count = %#v, want 1", body["tool_surface_exec_cutover_count"])
+	}
+	discoveryRuntime, ok := body["discovery_runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected discovery_runtime payload, got=%T", body["discovery_runtime"])
+	}
+	if got, ok := discoveryRuntime["tool_surface_alias_rewrite_count"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("discovery_runtime.tool_surface_alias_rewrite_count = %#v, want 1", discoveryRuntime["tool_surface_alias_rewrite_count"])
+	}
+	if got, ok := discoveryRuntime["tool_surface_cache_invalidation_count"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("discovery_runtime.tool_surface_cache_invalidation_count = %#v, want 1", discoveryRuntime["tool_surface_cache_invalidation_count"])
+	}
+	if got, ok := discoveryRuntime["tool_surface_exec_cutover_count"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("discovery_runtime.tool_surface_exec_cutover_count = %#v, want 1", discoveryRuntime["tool_surface_exec_cutover_count"])
+	}
+}
+
 func TestSelectorDryRun_MultilingualCuratedRoutes(t *testing.T) {
 	h := newSelectorDryRunTestHandler(t)
 

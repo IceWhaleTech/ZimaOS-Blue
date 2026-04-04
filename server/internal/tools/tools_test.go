@@ -252,6 +252,60 @@ func TestRegistryExposeDefinition_ActiveToolWins(t *testing.T) {
 	}
 }
 
+func TestRegistryExposeDefinition_DisabledToolKeepsVisibleOverlay(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(NewMockTool("exec", "native exec"))
+	registry.ExposeDefinition(ToolDefinition{
+		Name:        "exec",
+		Description: "visible exec overlay",
+	})
+	if !registry.Disable("exec") {
+		t.Fatal("expected Disable(exec) to succeed")
+	}
+
+	if got := registry.List(); len(got) != 0 {
+		t.Fatalf("active tool list = %v, want empty after disabling exec", got)
+	}
+	if got := registry.Get("exec"); got == nil {
+		t.Fatal("expected disabled exec tool to remain retrievable for execution")
+	}
+
+	defs := registry.Definitions()
+	if len(defs) != 1 {
+		t.Fatalf("definitions len = %d, want 1 visible overlay", len(defs))
+	}
+	if defs[0].Name != "exec" {
+		t.Fatalf("definition name = %q, want exec", defs[0].Name)
+	}
+	if defs[0].Description != "visible exec overlay" {
+		t.Fatalf("definition description = %q, want visible exec overlay", defs[0].Description)
+	}
+
+	def, ok := registry.LookupDefinition("exec")
+	if !ok {
+		t.Fatal("expected exec lookup to return the visible overlay definition")
+	}
+	if def.Description != "visible exec overlay" {
+		t.Fatalf("lookup definition description = %q, want visible exec overlay", def.Description)
+	}
+}
+
+func TestRegisterExecTools_ExposesExecOverlayDefinition(t *testing.T) {
+	registry := NewRegistry()
+	RegisterExecTools(registry, DefaultExecConfig(), nil, nil, nil)
+
+	def, ok := registry.LookupDefinition("exec")
+	if !ok {
+		t.Fatal("expected exec to stay lookup-visible after canonical shell registration")
+	}
+	if def.Name != "exec" {
+		t.Fatalf("definition name = %q, want exec", def.Name)
+	}
+	if got := registry.Get("exec"); got == nil {
+		t.Fatal("expected exec implementation to remain registered for execution")
+	}
+}
+
 // Test Registry duplicate registration
 func TestRegistryDuplicateRegistration(t *testing.T) {
 	registry := NewRegistry()

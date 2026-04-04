@@ -273,6 +273,26 @@ func TestShouldPreferPublicArtifactResearchWorkflow_ForStockArtifact(t *testing.
 	}
 }
 
+func TestShouldPreferPublicArtifactResearchWorkflow_ForGenericDocxOutput(t *testing.T) {
+	prompt := "先做多轮资料研究，再整理成结构化结论，最后生成 .docx 并做一次文件校验。"
+	if !shouldPreferPublicArtifactResearchWorkflow(prompt) {
+		t.Fatalf("expected generic .docx research prompt to prefer public research workflow")
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForGenericDocxOutput(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("先做多轮资料研究，再整理成结构化结论，最后生成 .docx 并做一次文件校验。")
+	if hint == "" {
+		t.Fatal("expected non-empty artifact workflow hint for generic .docx research task")
+	}
+	if !strings.Contains(hint, ".docx workspace file") {
+		t.Fatalf("expected hint to reference generic .docx output, got=%q", hint)
+	}
+	if !strings.Contains(hint, "native office tool") {
+		t.Fatalf("expected hint to preserve office guidance, got=%q", hint)
+	}
+}
+
 func TestShouldPreferWorkspaceFileWorkflow_ForLocalResearchFolderSummary(t *testing.T) {
 	prompt := "Review all files in the research/ folder and write a daily summary to daily_briefing.md."
 	if !shouldPreferWorkspaceFileWorkflow(prompt) {

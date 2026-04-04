@@ -642,7 +642,7 @@ func (j *htmlCatalogDiscoverJob) preparePageRecords(ctx context.Context, page *c
 		switch {
 		case skillbundle.IsGitHubRepoURL(resolved):
 			j.seenSeeds[resolved] = struct{}{}
-			record, err := j.svc.prepareGitHubRepoSeedRecord(ctx, repoOwner(resolved), repoName(resolved))
+			record, err := j.svc.prepareGitHubRepoSeedRecord(ctx, repoOwner(resolved), repoName(resolved), &j.source)
 			if err != nil {
 				failures++
 				continue
@@ -651,7 +651,7 @@ func (j *htmlCatalogDiscoverJob) preparePageRecords(ctx context.Context, page *c
 			records = append(records, record)
 		case looksLikeSkillURL(resolved):
 			j.seenSeeds[resolved] = struct{}{}
-			record, err := j.svc.prepareSkillURLSeedRecord(ctx, resolved)
+			record, err := j.svc.prepareSkillURLSeedRecord(ctx, resolved, &j.source)
 			if err != nil {
 				failures++
 				continue
@@ -705,7 +705,7 @@ func (j *seedPageDiscoverJob) Step(ctx context.Context) (discoverStepStats, erro
 			}
 			switch {
 			case skillbundle.IsGitHubRepoURL(resolved):
-				record, err := j.svc.prepareGitHubRepoSeedRecord(ctx, repoOwner(resolved), repoName(resolved))
+				record, err := j.svc.prepareGitHubRepoSeedRecord(ctx, repoOwner(resolved), repoName(resolved), &j.source)
 				if err != nil {
 					j.run.Failed++
 					j.result.Failed++
@@ -714,7 +714,7 @@ func (j *seedPageDiscoverJob) Step(ctx context.Context) (discoverStepStats, erro
 				seenSeeds[resolved] = struct{}{}
 				batch = append(batch, record)
 			case looksLikeSkillURL(resolved):
-				record, err := j.svc.prepareSkillURLSeedRecord(ctx, resolved)
+				record, err := j.svc.prepareSkillURLSeedRecord(ctx, resolved, &j.source)
 				if err != nil {
 					j.run.Failed++
 					j.result.Failed++

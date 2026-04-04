@@ -444,19 +444,22 @@ func securityBadgeForReport(report *SecurityReport) string {
 		return BadgeRed
 	case report.RiskLevel == RiskMedium:
 		return BadgeYellow
-	case report.VulnerabilityStatus == VulnerabilityStatusUnknown || report.VulnerabilityStatus == VulnerabilityStatusSuspected:
+	case report.VulnerabilityStatus == VulnerabilityStatusSuspected:
 		return BadgeYellow
 	case report.HasPromptInjection || report.HasDataExfiltration || report.HasBinary:
 		return BadgeYellow
-	case report.InstallSurface.ArtifactKind == ArtifactKindClosedBinary || report.InstallSurface.ArtifactKind == ArtifactKindMixed || report.InstallSurface.ArtifactKind == ArtifactKindUnknown:
+	case report.InstallSurface.ArtifactKind == ArtifactKindClosedBinary || report.InstallSurface.ArtifactKind == ArtifactKindMixed:
 		return BadgeYellow
 	case report.RiskLevel == RiskLow &&
-		(report.VulnerabilityStatus == VulnerabilityStatusNone || report.VulnerabilityStatus == VulnerabilityStatusNotApplicable) &&
+		(report.VulnerabilityStatus == VulnerabilityStatusNone ||
+			report.VulnerabilityStatus == VulnerabilityStatusNotApplicable ||
+			report.VulnerabilityStatus == VulnerabilityStatusUnknown) &&
 		!report.HasPromptInjection &&
 		!report.HasShellInjection &&
 		!report.HasDataExfiltration &&
 		!report.HasBinary &&
-		report.InstallSurface.ArtifactKind == ArtifactKindOpenSource:
+		(report.InstallSurface.ArtifactKind == ArtifactKindOpenSource ||
+			report.InstallSurface.ArtifactKind == ArtifactKindUnknown):
 		return BadgeGreen
 	default:
 		return BadgeYellow

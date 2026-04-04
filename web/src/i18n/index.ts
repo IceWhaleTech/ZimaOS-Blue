@@ -1,6 +1,7 @@
 import { createI18n } from 'vue-i18n'
 import { hasStoredSessionHint } from '@/utils/authStorage'
 import { shouldDeferLocaleEnhancementsOnDesktopStartup } from '@/utils/desktopStartup'
+import builtinToolBackfills from './builtin-tool-backfills'
 import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
 import { localeKeys, localeOptions, type LocaleKey } from './locale-catalog'
 import smallModelFallbackReasonOverrides from './small-model-fallback-reason-overrides'
@@ -281,7 +282,10 @@ async function loadLocaleOverrides(): Promise<LocaleOverrideCatalog> {
     return mergeOverrideCatalogs(
       mergeOverrideCatalogs(
         mergeOverrideCatalogs(
-          mergeOverrideCatalogs(priorityModule.default, translationModule.default),
+          mergeOverrideCatalogs(
+            mergeOverrideCatalogs(priorityModule.default, translationModule.default),
+            builtinToolBackfills as LocaleOverrideCatalog
+          ),
           systemDashboardCardOverrides as LocaleOverrideCatalog
         ),
         dashboardCardCopyOverrides as LocaleOverrideCatalog

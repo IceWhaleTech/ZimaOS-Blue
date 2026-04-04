@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import builtinToolBackfills from '@/i18n/builtin-tool-backfills'
+import priorityTranslationOverrides from '@/i18n/priority-translation-overrides'
+
 import { getLocalizedToolDescription, getLocalizedToolName } from './toolLocalization'
 
 type LocaleMessages = Record<string, unknown>
@@ -40,6 +43,32 @@ function getLocaleMessages(locale: string): LocaleMessages {
     throw new Error(`Missing locale: ${locale}`)
   }
   return localeMessages
+}
+
+function isPlainObject(value: unknown): value is LocaleMessages {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function deepMergeMessages(base: LocaleMessages, override: LocaleMessages): LocaleMessages {
+  const merged: LocaleMessages = { ...base }
+
+  for (const [key, overrideValue] of Object.entries(override)) {
+    const baseValue = merged[key]
+    merged[key] =
+      isPlainObject(baseValue) && isPlainObject(overrideValue)
+        ? deepMergeMessages(baseValue, overrideValue)
+        : overrideValue
+  }
+
+  return merged
+}
+
+function getMergedLocaleMessages(locale: string): LocaleMessages {
+  const base = getLocaleMessages(locale)
+  const priorityOverrides =
+    (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
+  const builtinToolOverrides = (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
+  return deepMergeMessages(deepMergeMessages(base, priorityOverrides), builtinToolOverrides)
 }
 
 const nameCoverage = [
@@ -157,6 +186,185 @@ const descriptionCoverage = [
   },
 ] as const
 
+const runtimeVisibleToolCoverage = [
+  'agents_list',
+  'analyze',
+  'bash',
+  'browser',
+  'canvas',
+  'cron',
+  'deep_research',
+  'edit',
+  'exec',
+  'find',
+  'gateway',
+  'grep',
+  'image',
+  'ls',
+  'mcp',
+  'memory',
+  'memory_forget',
+  'memory_get',
+  'memory_search',
+  'memory_write',
+  'message',
+  'nodes',
+  'office',
+  'pdf',
+  'ppt',
+  'read',
+  'session_status',
+  'sessions',
+  'sessions_history',
+  'sessions_list',
+  'sessions_send',
+  'sessions_spawn',
+  'subagents',
+  'tool_search',
+  'tts',
+  'web_query',
+  'write',
+] as const
+
+const preferredToolNameMap: Record<string, string> = {
+  read: 'file_read',
+  write: 'file_write',
+  image_generation: 'image',
+  generate_image: 'image',
+  generateImage: 'image',
+  memory_search: 'memory',
+  memory_get: 'memory',
+  memory_read: 'memory',
+  memory_write: 'memory',
+  memory_remember: 'memory',
+  memory_store: 'memory',
+  memory_forget: 'memory',
+  memory_delete: 'memory',
+  sessions_list: 'sessions',
+  sessions_history: 'sessions',
+  session_status: 'sessions',
+  sessions_spawn: 'sessions',
+  sessions_send: 'sessions',
+  deep_research: 'research_run',
+  web_query: 'web',
+  web_search: 'web',
+  web_fetch: 'web',
+  web_read: 'web',
+  web_extract: 'web',
+  web_crawl: 'web',
+}
+
+const toolNameAliases: Record<string, string[]> = {
+  config: ['mgmt'],
+  cron: ['scheduler'],
+  image: ['image_generation'],
+  message: ['reminder'],
+  ppt: ['mediagen'],
+  web: ['web_search'],
+}
+
+const toolDescriptionKeyMap: Record<string, string[]> = {
+  analyze: ['tools.descriptions.analyze'],
+  ask: ['tools.descriptions.ask'],
+  auto_reply: ['skills.builtin.autoreply.description'],
+  autoreply: ['skills.builtin.autoreply.description'],
+  browser: ['skills.builtin.browser.description'],
+  calculator: ['skills.builtin.calculator.description'],
+  calendar: ['skills.builtin.calendar.description'],
+  contacts: ['skills.builtin.contacts.description'],
+  cron: ['skills.builtin.scheduler.description'],
+  crypto: ['skills.builtin.crypto.description'],
+  datetime: ['skills.builtin.datetime.description'],
+  deep_research: ['tools.descriptions.deep_research', 'tools.descriptions.research_run'],
+  discord: ['skills.builtin.discord-skill.description'],
+  docker: ['skills.builtin.docker.description'],
+  email: ['skills.builtin.email.description'],
+  exec: ['tools.descriptions.exec'],
+  files: ['skills.builtin.files.description'],
+  github: ['skills.builtin.github.description'],
+  mediagen: ['tools.descriptions.mediagen'],
+  message: ['skills.builtin.reminder.description'],
+  news: ['skills.builtin.news.description'],
+  network: ['skills.builtin.network.description'],
+  notion: ['skills.builtin.notion.description'],
+  notes: ['skills.builtin.notes.description'],
+  notifications: ['skills.builtin.notifications.description'],
+  ppt: ['tools.descriptions.mediagen'],
+  process: ['skills.builtin.processes.description'],
+  file_read: ['tools.descriptions.file_read', 'tools.descriptions.read'],
+  reminder: ['skills.builtin.reminder.description'],
+  reminders: ['skills.builtin.reminder.description'],
+  sandbox: ['skills.builtin.sandbox.description'],
+  search: ['skills.builtin.search.description'],
+  slack: ['skills.builtin.slack-skill.description'],
+  stocks: ['skills.builtin.stocks.description'],
+  system_info: ['skills.builtin.system-info.description'],
+  tasks: ['skills.builtin.tasks.description'],
+  timer: ['skills.builtin.timer.description'],
+  translate: ['skills.builtin.translate.description'],
+  ui_reviewer: ['skills.builtin.ui-reviewer.description'],
+  unit_converter: ['skills.builtin.unit-converter.description'],
+  weather: ['skills.builtin.weather.description'],
+  web: ['tools.descriptions.web', 'tools.descriptions.web_search'],
+  web_crawl: ['tools.descriptions.web_crawl'],
+  web_extract: ['tools.descriptions.web_extract'],
+  web_fetch: ['tools.descriptions.web_fetch'],
+  web_read: ['tools.descriptions.web_read'],
+  web_search: ['tools.descriptions.web_search'],
+  workflows: ['skills.builtin.workflows.description'],
+  file_write: ['tools.descriptions.file_write', 'tools.descriptions.write'],
+}
+
+function toLegacyToolLabel(toolName: string): string {
+  switch (toolName) {
+    case 'system_info':
+      return 'System Info'
+    case 'ui_reviewer':
+      return 'UI Reviewer'
+    case 'auto_reply':
+      return 'Auto Reply'
+    case 'web_search':
+      return 'Web Search'
+    case 'web_query':
+      return 'Web Query'
+    case 'web_fetch':
+      return 'Web Fetch'
+    case 'web_read':
+      return 'Web Read'
+    case 'web_extract':
+      return 'Web Extract'
+    case 'web_crawl':
+      return 'Web Crawl'
+    case 'file_read':
+      return 'File Read'
+    case 'file_write':
+      return 'File Write'
+    case 'current_time':
+      return 'Current Time'
+    default:
+      return toolName
+        .split('_')
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ')
+  }
+}
+
+function nameResourceKeysFor(toolName: string): string[] {
+  const preferredToolName = preferredToolNameMap[toolName] || toolName
+  const aliases = toolNameAliases[preferredToolName] || []
+  return [
+    `tools.names.${preferredToolName}`,
+    ...aliases.map((alias) => `tools.names.${alias}`),
+    ...[preferredToolName, ...aliases].map((name) => `tools.names.${toLegacyToolLabel(name)}`),
+  ]
+}
+
+function descriptionResourceKeysFor(toolName: string): string[] {
+  const preferredToolName = preferredToolNameMap[toolName] || toolName
+  return [...(toolDescriptionKeyMap[preferredToolName] || []), `tools.descriptions.${preferredToolName}`]
+}
+
 describe('tool page localization coverage', () => {
   it('loads the full 27-locale set', () => {
     expect(localeCodes.length).toBe(27)
@@ -164,7 +372,7 @@ describe('tool page localization coverage', () => {
 
   it('resolves localized built-in tool names across all locales', () => {
     for (const locale of localeCodes) {
-      const messages = getLocaleMessages(locale)
+      const messages = getMergedLocaleMessages(locale)
       const t = (key: string) => String(getByPath(messages, key) ?? '')
       const te = (key: string) => {
         const value = getByPath(messages, key)
@@ -181,7 +389,7 @@ describe('tool page localization coverage', () => {
 
   it('resolves localized built-in tool descriptions across all locales', () => {
     for (const locale of localeCodes) {
-      const messages = getLocaleMessages(locale)
+      const messages = getMergedLocaleMessages(locale)
       const t = (key: string) => String(getByPath(messages, key) ?? '')
       const te = (key: string) => {
         const value = getByPath(messages, key)
@@ -205,7 +413,7 @@ describe('tool page localization coverage', () => {
   })
 
   it('prefers unified labels and descriptions for legacy alias tools', () => {
-    const messages = getLocaleMessages('en-US')
+    const messages = getMergedLocaleMessages('en-US')
     const t = (key: string) => String(getByPath(messages, key) ?? '')
     const te = (key: string) => {
       const value = getByPath(messages, key)
@@ -233,5 +441,40 @@ describe('tool page localization coverage', () => {
     expect(getLocalizedToolDescription('file_read', 'fallback', t, te)).toBe(
       'Read a local file and extract supported document content'
     )
+  })
+
+  it('keeps runtime-visible 37-tool resources available across all locales', () => {
+    expect(runtimeVisibleToolCoverage).toHaveLength(37)
+    const missingResources: string[] = []
+
+    for (const locale of localeCodes) {
+      const messages = getMergedLocaleMessages(locale)
+
+      for (const toolName of runtimeVisibleToolCoverage) {
+        const nameKeys = nameResourceKeysFor(toolName)
+        const descriptionKeys = descriptionResourceKeysFor(toolName)
+        const hasName = nameKeys.some((key) => {
+          const value = getByPath(messages, key)
+          return typeof value === 'string' && value.trim().length > 0
+        })
+        const hasDescription = descriptionKeys.some((key) => {
+          const value = getByPath(messages, key)
+          return typeof value === 'string' && value.trim().length > 0
+        })
+
+        if (!hasName) {
+          missingResources.push(
+            `${locale} missing name resource for ${toolName} via ${nameKeys.join(', ')}`
+          )
+        }
+        if (!hasDescription) {
+          missingResources.push(
+            `${locale} missing description resource for ${toolName} via ${descriptionKeys.join(', ')}`
+          )
+        }
+      }
+    }
+
+    expect(missingResources, missingResources.join('\n')).toEqual([])
   })
 })

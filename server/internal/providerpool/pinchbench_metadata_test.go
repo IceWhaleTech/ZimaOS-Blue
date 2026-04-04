@@ -127,3 +127,51 @@ func TestToModelResponsesHeuristicallyMatchesPinchBenchMetadata(t *testing.T) {
 		t.Fatalf("anthropic heuristic url = %q, want model page url", got)
 	}
 }
+
+func TestToModelResponsesUsesPinchBenchOnlyCatalogEntriesWithoutAddingBuiltinModels(t *testing.T) {
+	ClearOfficialProviderCatalog()
+	defer ClearOfficialProviderCatalog()
+
+	score := 84.8
+	SetOfficialProviderCatalog(officialProviderCatalog{
+		PinchBenchModels: map[string][]officialProviderCatalogModel{
+			"moonshot": {
+				{
+					ID:              "moonshotai/kimi-k2.5",
+					DisplayName:     "Kimi K2.5",
+					PinchBenchScore: &score,
+					PinchBenchURL:   "https://pinchbench.com/submission/ce9bbcbd-f78b-4655-af1f-c97781320ce6",
+				},
+			},
+		},
+	})
+
+	for _, model := range GetBuiltinModels("moonshot") {
+		if model == nil {
+			continue
+		}
+		if model.ID == "moonshotai/kimi-k2.5" || model.ID == "kimi-k2.5" {
+			t.Fatalf("pinchbench-only catalog entry should not add builtin model %q", model.ID)
+		}
+	}
+
+	responses := toModelResponses([]*Model{
+		{
+			ID:          "kimi-k2.5",
+			ProviderID:  "moonshot",
+			Name:        "moonshotai/kimi-k2.5",
+			DisplayName: "Kimi K2.5",
+			Enabled:     true,
+		},
+	}, nil, nil)
+
+	if len(responses) != 1 {
+		t.Fatalf("responses len = %d, want 1", len(responses))
+	}
+	if responses[0].PinchBenchScore == nil || *responses[0].PinchBenchScore != score {
+		t.Fatalf("pinchbench-only heuristic score = %#v, want %v", responses[0].PinchBenchScore, score)
+	}
+	if got := responses[0].PinchBenchURL; got != "https://pinchbench.com/submission/ce9bbcbd-f78b-4655-af1f-c97781320ce6" {
+		t.Fatalf("pinchbench-only heuristic url = %q, want submission page url", got)
+	}
+}

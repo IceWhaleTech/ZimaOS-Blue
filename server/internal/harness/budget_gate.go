@@ -33,25 +33,28 @@ type SkillCutoverBudgetRequest struct {
 }
 
 type SkillCutoverBudgetMetrics struct {
-	CaseCount                       int            `json:"case_count"`
-	ComparableCaseCount             int            `json:"comparable_case_count"`
-	MissingSurfaceCaseCount         int            `json:"missing_surface_case_count"`
-	BaseMedianToolCount             float64        `json:"base_median_tool_count"`
-	TargetMedianToolCount           float64        `json:"target_median_tool_count"`
-	BaseMedianSchemaBytes           float64        `json:"base_median_schema_bytes"`
-	TargetMedianSchemaBytes         float64        `json:"target_median_schema_bytes"`
-	MedianSchemaByteReductionRate   float64        `json:"median_schema_byte_reduction_rate"`
-	BaseMedianLatencyMs             float64        `json:"base_median_latency_ms"`
-	TargetMedianLatencyMs           float64        `json:"target_median_latency_ms"`
-	MedianLatencyIncreaseRate       float64        `json:"median_latency_increase_rate"`
-	AllowedFinalNativeTools         []string       `json:"allowed_final_native_tools,omitempty"`
-	AllowedFinalNativeToolCases     int            `json:"allowed_final_native_tool_cases"`
-	AllowedFinalNativeToolCaseRate  float64        `json:"allowed_final_native_tool_case_rate"`
-	NonAllowedNativeToolCaseCount   int            `json:"non_allowed_native_tool_case_count"`
-	SelectedCanonicalSkillBreakdown map[string]int `json:"selected_canonical_skill_breakdown,omitempty"`
-	NativeSurfaceModeBreakdown      map[string]int `json:"native_surface_mode_breakdown,omitempty"`
-	NativeSurfaceReasonBreakdown    map[string]int `json:"native_surface_reason_breakdown,omitempty"`
-	ExecutionProfileBreakdown       map[string]int `json:"execution_profile_breakdown,omitempty"`
+	CaseCount                         int            `json:"case_count"`
+	ComparableCaseCount               int            `json:"comparable_case_count"`
+	MissingSurfaceCaseCount           int            `json:"missing_surface_case_count"`
+	BaseMedianToolCount               float64        `json:"base_median_tool_count"`
+	TargetMedianToolCount             float64        `json:"target_median_tool_count"`
+	BaseMedianSchemaBytes             float64        `json:"base_median_schema_bytes"`
+	TargetMedianSchemaBytes           float64        `json:"target_median_schema_bytes"`
+	MedianSchemaByteReductionRate     float64        `json:"median_schema_byte_reduction_rate"`
+	BaseMedianLatencyMs               float64        `json:"base_median_latency_ms"`
+	TargetMedianLatencyMs             float64        `json:"target_median_latency_ms"`
+	MedianLatencyIncreaseRate         float64        `json:"median_latency_increase_rate"`
+	AllowedFinalNativeTools           []string       `json:"allowed_final_native_tools,omitempty"`
+	AllowedFinalNativeToolCases       int            `json:"allowed_final_native_tool_cases"`
+	AllowedFinalNativeToolCaseRate    float64        `json:"allowed_final_native_tool_case_rate"`
+	NonAllowedNativeToolCaseCount     int            `json:"non_allowed_native_tool_case_count"`
+	SelectedCanonicalSkillBreakdown   map[string]int `json:"selected_canonical_skill_breakdown,omitempty"`
+	NativeSurfaceModeBreakdown        map[string]int `json:"native_surface_mode_breakdown,omitempty"`
+	NativeSurfaceReasonBreakdown      map[string]int `json:"native_surface_reason_breakdown,omitempty"`
+	ExecutionProfileBreakdown         map[string]int `json:"execution_profile_breakdown,omitempty"`
+	ToolSurfaceAliasRewriteCount      int            `json:"tool_surface_alias_rewrite_count,omitempty"`
+	ToolSurfaceCacheInvalidationCount int            `json:"tool_surface_cache_invalidation_count,omitempty"`
+	ToolSurfaceExecCutoverCount       int            `json:"tool_surface_exec_cutover_count,omitempty"`
 }
 
 type SkillCutoverBudgetCheck struct {
@@ -209,6 +212,12 @@ func buildSkillCutoverBudgetMetrics(baseReport *EvalRunReport, targetReport *Eva
 		incrementBreakdownValue(&metrics.NativeSurfaceModeBreakdown, target.Observation.NativeSurfaceMode)
 		incrementBreakdownValue(&metrics.NativeSurfaceReasonBreakdown, target.Observation.NativeSurfaceReason)
 		incrementBreakdownValue(&metrics.ExecutionProfileBreakdown, target.Observation.ExecutionProfile)
+		accumulateDiscoverFirstAuditCounts(
+			&metrics.ToolSurfaceAliasRewriteCount,
+			&metrics.ToolSurfaceCacheInvalidationCount,
+			&metrics.ToolSurfaceExecCutoverCount,
+			target.Observation,
+		)
 		if skillCutoverToolsAllowed(target.ToolNames, allowedSet) {
 			metrics.AllowedFinalNativeToolCases++
 		} else {

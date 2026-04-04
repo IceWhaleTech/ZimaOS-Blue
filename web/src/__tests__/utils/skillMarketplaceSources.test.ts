@@ -17,6 +17,10 @@ const translate = (path: string, fallback: string, params?: Record<string, unkno
     'sources.skillhub.description': '聚合说明',
     'sources.tencentSkillHub.label': '腾讯 SkillHub',
     'sources.tencentSkillHub.description': '腾讯来源说明',
+    'sources.githubAwesomeSkills.label': 'GitHub Awesome Skills',
+    'sources.githubAwesomeSkills.description': '聚合 GitHub awesome skills 上游来源。',
+    'sources.vercel.label': 'Vercel',
+    'sources.vercel.description': 'Vercel 官方 skills 来源',
     'sources.seedInstance.label': '发现页 {index}',
     'sources.seedInstance.description': '发现页说明 {index}',
     'sources.clawhubMirror.label': 'ClawHub 镜像',
@@ -41,6 +45,12 @@ describe('skillMarketplaceSources', () => {
   it('localizes known source ids and source groups', () => {
     expect(localizeMarketplaceSource('tencent-skillhub', 'label', translate)).toBe('腾讯 SkillHub')
     expect(localizeMarketplaceSource('skillhub', 'description', translate)).toBe('聚合说明')
+    expect(localizeMarketplaceSource('github-awesome-skills', 'label', translate)).toBe(
+      'GitHub Awesome Skills'
+    )
+    expect(localizeMarketplaceSource('vercel', 'description', translate)).toBe(
+      'Vercel 官方 skills 来源'
+    )
   })
 
   it('supports seed and mirror source instances with params', () => {
@@ -74,6 +84,14 @@ describe('skillMarketplaceSources', () => {
   })
 
   it('resolves source brand metadata for current and candidate sources', () => {
+    expect(resolveMarketplaceSourceBrand('github-awesome-skills')).toMatchObject({
+      iconUrl: 'https://github.githubassets.com/favicons/favicon.svg',
+    })
+    expect(resolveMarketplaceSourceBrand('vercel')).toMatchObject({
+      iconUrl: '/icons/providers/vercel.svg',
+      logoUrl: '/icons/providers/vercel-wordmark.svg',
+      logoDarkUrl: '/icons/providers/vercel-wordmark-dark.svg',
+    })
     expect(resolveMarketplaceSourceBrand('skillmd.io')).toMatchObject({
       iconUrl: 'https://skillmd.io/favicon.png',
       logoUrl: 'https://skillmd.io/logo.png',

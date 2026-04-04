@@ -793,6 +793,57 @@ function sourceBrand(skill?: RemoteSkill | null): MarketplaceSourceBrand | null 
   return resolveMarketplaceSourceBrandFromCandidates(sourceCandidates(skill))
 }
 
+function originSourceCandidates(skill?: RemoteSkill | null): Array<string | null | undefined> {
+  return [skill?.origin_source_name, skill?.origin_source_id, skill?.origin_source_url]
+}
+
+function sourceCandidateMatches(
+  left: Array<string | null | undefined>,
+  right: Array<string | null | undefined>
+): boolean {
+  const rightNormalized = new Set(
+    right
+      .map((value) => trimMarketplaceSourceToken(value).toLowerCase())
+      .filter((value) => value.length > 0)
+  )
+  if (rightNormalized.size === 0) return false
+  return left.some((value) => rightNormalized.has(trimMarketplaceSourceToken(value).toLowerCase()))
+}
+
+function showOriginSource(skill?: RemoteSkill | null): boolean {
+  const origin = originSourceCandidates(skill)
+  const hasOrigin = origin.some((value) => trimMarketplaceSourceToken(value).length > 0)
+  if (!hasOrigin) return false
+  return !sourceCandidateMatches(origin, [
+    skill?.source_id,
+    skill?.source_name,
+    skill?.source_group,
+    skill?.source_url,
+  ])
+}
+
+function originSourceLabel(skill?: RemoteSkill | null): string {
+  const localized = localizeMarketplaceSourceFromCandidates(
+    originSourceCandidates(skill),
+    'label',
+    marketplaceText
+  )
+  if (localized) return localized
+  return firstMarketplaceSourceCandidate(originSourceCandidates(skill))
+}
+
+function originSourceDescription(skill?: RemoteSkill | null): string {
+  return localizeMarketplaceSourceFromCandidates(
+    originSourceCandidates(skill),
+    'description',
+    marketplaceText
+  )
+}
+
+function originSourceBrand(skill?: RemoteSkill | null): MarketplaceSourceBrand | null {
+  return resolveMarketplaceSourceBrandFromCandidates(originSourceCandidates(skill))
+}
+
 function badgeLabelByValue(badge?: SecurityBadge | string): string {
   const normalized = (badge || 'yellow') as SecurityBadge | string
   if (normalized === 'green') return marketplaceText('badges.green', 'Security')
@@ -1755,11 +1806,6 @@ async function installSkill(skill: RemoteSkill, options: InstallSkillOptions = {
     pendingRiskSkill.value = skill
     return
   }
-  if (badge === 'yellow' && !ackRisk) {
-    error.value = null
-    pendingRiskSkill.value = skill
-    return
-  }
 
   installingSkillId.value = skill.id
   error.value = null
@@ -1767,7 +1813,7 @@ async function installSkill(skill: RemoteSkill, options: InstallSkillOptions = {
   try {
     const response = await skillApi.installMarket({
       id: skill.id,
-      ack_risk: ackRisk || badge === 'yellow' || forceInstall,
+      ack_risk: ackRisk || forceInstall,
       force_install: forceInstall,
     })
     const current = skills.value.find((item) => item.id === skill.id)
@@ -3121,6 +3167,19 @@ onBeforeUnmount(() => {
                     aria-hidden="true"
                   />
                   <span class="source-brand__label">{{ sourceLabel(detailSkill) }}</span>
+                </strong>
+              </div>
+              <div v-if="showOriginSource(detailSkill)" class="meta-item">
+                <span>{{ marketplaceText('detail.meta.upstream', 'Upstream') }}</span>
+                <strong class="source-brand" :title="originSourceDescription(detailSkill) || undefined">
+                  <img
+                    v-if="sourceBrandAssetUrl(originSourceBrand(detailSkill))"
+                    class="source-brand__icon source-brand__icon--prominent"
+                    :src="sourceBrandAssetUrl(originSourceBrand(detailSkill))"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  <span class="source-brand__label">{{ originSourceLabel(detailSkill) }}</span>
                 </strong>
               </div>
             </div>
@@ -5125,6 +5184,8 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(96px, 118px) minmax(0, 1fr);
   gap: 8px;
+  box-sizing: border-box;
+  padding-inline-start: 6px;
 }
 
 .security-overview .score-card {

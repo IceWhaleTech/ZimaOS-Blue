@@ -45,6 +45,10 @@ const (
 	VulnerabilityStatusNotApplicable = "not_applicable"
 
 	ScannerVersion = "skillmarket-detector-v2"
+
+	GitHubAwesomeSkillsSourceID    = "github-awesome-skills"
+	GitHubAwesomeSkillsSourceName  = "GitHub Awesome Skills"
+	GitHubAwesomeSkillsSourceGroup = "github-awesome-skills"
 )
 
 var defaultDiscoveryPageURLs = []string{
@@ -179,6 +183,9 @@ type SkillDocument struct {
 	SourceID            string    `json:"source_id,omitempty"`
 	SourceName          string    `json:"source_name,omitempty"`
 	SourceGroup         string    `json:"source_group,omitempty"`
+	OriginSourceID      string    `json:"origin_source_id,omitempty"`
+	OriginSourceName    string    `json:"origin_source_name,omitempty"`
+	OriginSourceURL     string    `json:"origin_source_url,omitempty"`
 	SourceType          string    `json:"source_type,omitempty"`
 	SkillPath           string    `json:"skill_path,omitempty"`
 	SkillContent        string    `json:"skill_content,omitempty"`
@@ -509,8 +516,12 @@ type CurationEntry struct {
 }
 
 type AdditionalSeed struct {
-	Type  string `yaml:"type" json:"type"`
-	Value string `yaml:"value" json:"value"`
+	ID          string `yaml:"id" json:"id"`
+	Type        string `yaml:"type" json:"type"`
+	Value       string `yaml:"value" json:"value"`
+	DisplayName string `yaml:"display_name" json:"display_name"`
+	SourceGroup string `yaml:"source_group" json:"source_group"`
+	OriginName  string `yaml:"origin_name" json:"origin_name"`
 }
 
 type CuratedConfig struct {

@@ -130,7 +130,8 @@ type skillReportLookupRow struct {
 }
 
 type skillSourceIDRow struct {
-	SourceID *string `zorm:"source_id"`
+	SourceID       *string `zorm:"source_id"`
+	OriginSourceID *string `zorm:"origin_source_id"`
 }
 
 type sourcePriorityRow struct {
@@ -177,6 +178,9 @@ type skillDocumentRow struct {
 	SourceID            *string `zorm:"source_id"`
 	SourceName          *string `zorm:"source_name"`
 	SourceGroup         *string `zorm:"source_group"`
+	OriginSourceID      *string `zorm:"origin_source_id"`
+	OriginSourceName    *string `zorm:"origin_source_name"`
+	OriginSourceURL     *string `zorm:"origin_source_url"`
 	SourceType          *string `zorm:"source_type"`
 	SkillPath           *string `zorm:"skill_path"`
 	SkillContent        *string `zorm:"skill_content"`
@@ -228,6 +232,9 @@ type skillDocumentWriteRow struct {
 	SourceID            string    `zorm:"source_id"`
 	SourceName          string    `zorm:"source_name"`
 	SourceGroup         string    `zorm:"source_group"`
+	OriginSourceID      string    `zorm:"origin_source_id"`
+	OriginSourceName    string    `zorm:"origin_source_name"`
+	OriginSourceURL     string    `zorm:"origin_source_url"`
 	SourceType          string    `zorm:"source_type"`
 	SkillPath           string    `zorm:"skill_path"`
 	SkillContent        string    `zorm:"skill_content"`
@@ -496,6 +503,9 @@ func skillDocumentFromRow(row skillDocumentRow) SkillDocument {
 		SourceID:            nullableStringValue(row.SourceID),
 		SourceName:          nullableStringValue(row.SourceName),
 		SourceGroup:         nullableStringValue(row.SourceGroup),
+		OriginSourceID:      nullableStringValue(row.OriginSourceID),
+		OriginSourceName:    nullableStringValue(row.OriginSourceName),
+		OriginSourceURL:     nullableStringValue(row.OriginSourceURL),
 		SourceType:          nullableStringValue(row.SourceType),
 		SkillPath:           nullableStringValue(row.SkillPath),
 		SkillContent:        nullableStringValue(row.SkillContent),
@@ -549,6 +559,9 @@ func skillDocumentWriteRowFromDoc(doc *SkillDocument) skillDocumentWriteRow {
 		SourceID:            doc.SourceID,
 		SourceName:          doc.SourceName,
 		SourceGroup:         doc.SourceGroup,
+		OriginSourceID:      doc.OriginSourceID,
+		OriginSourceName:    doc.OriginSourceName,
+		OriginSourceURL:     doc.OriginSourceURL,
 		SourceType:          doc.SourceType,
 		SkillPath:           doc.SkillPath,
 		SkillContent:        doc.SkillContent,
@@ -851,6 +864,9 @@ func (s *Store) initSchema() error {
 		source_id TEXT,
 		source_name TEXT,
 		source_group TEXT,
+		origin_source_id TEXT,
+		origin_source_name TEXT,
+		origin_source_url TEXT,
 		source_type TEXT,
 		skill_path TEXT,
 		skill_content TEXT,
@@ -1002,6 +1018,9 @@ func (s *Store) initSchema() error {
 			"risk_level":            "TEXT DEFAULT 'unknown'",
 			"source_name":           "TEXT",
 			"source_group":          "TEXT",
+			"origin_source_id":      "TEXT",
+			"origin_source_name":    "TEXT",
+			"origin_source_url":     "TEXT",
 			"source_type":           "TEXT DEFAULT ''",
 			"security_badge":        "TEXT DEFAULT 'yellow'",
 			"installable":           "INTEGER DEFAULT 0",
@@ -1272,7 +1291,13 @@ func (s *Store) UpsertSkillBatch(ctx context.Context, records []*SkillUpsertReco
 			result.Inserted++
 			continue
 		}
-		shouldReplaceDoc, err := shouldReplaceSkillDocument(ctx, tx, record.Doc.ID, record.Doc.SourceID)
+		shouldReplaceDoc, err := shouldReplaceSkillDocument(
+			ctx,
+			tx,
+			record.Doc.ID,
+			record.Doc.SourceID,
+			record.Doc.OriginSourceID,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -1625,6 +1650,9 @@ func (s *Store) updateSkillDocs(ctx context.Context, tx *sql.Tx, records []*Skil
 				"source_id":             doc.SourceID,
 				"source_name":           doc.SourceName,
 				"source_group":          doc.SourceGroup,
+				"origin_source_id":      doc.OriginSourceID,
+				"origin_source_name":    doc.OriginSourceName,
+				"origin_source_url":     doc.OriginSourceURL,
 				"source_type":           doc.SourceType,
 				"skill_path":            doc.SkillPath,
 				"skill_content":         doc.SkillContent,
@@ -1673,6 +1701,9 @@ func (s *Store) updateSkillDocs(ctx context.Context, tx *sql.Tx, records []*Skil
 				"source_id",
 				"source_name",
 				"source_group",
+				"origin_source_id",
+				"origin_source_name",
+				"origin_source_url",
 				"source_type",
 				"skill_path",
 				"skill_content",
@@ -1908,13 +1939,13 @@ func (s *Store) updateSkillReports(ctx context.Context, tx *sql.Tx, records []*S
 	return nil
 }
 
-func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomingSourceID string) (bool, error) {
+func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomingSourceID, incomingOriginSourceID string) (bool, error) {
 	if strings.TrimSpace(skillID) == "" {
 		return true, nil
 	}
 	var rows []skillSourceIDRow
 	if _, err := z.TableContext(ctx, tx, "skills").Select(&rows,
-		z.Fields("source_id"),
+		z.Fields("source_id", "origin_source_id"),
 		z.Where(z.Eq("id", skillID)),
 		z.Limit(1),
 	); err != nil {
@@ -1923,8 +1954,11 @@ func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomi
 	if len(rows) == 0 {
 		return true, nil
 	}
-	existingSourceID := strings.TrimSpace(nullableStringValue(rows[0].SourceID))
-	incomingSourceID = strings.TrimSpace(incomingSourceID)
+	existingSourceID := effectivePrioritySourceID(
+		nullableStringValue(rows[0].SourceID),
+		nullableStringValue(rows[0].OriginSourceID),
+	)
+	incomingSourceID = effectivePrioritySourceID(incomingSourceID, incomingOriginSourceID)
 	if existingSourceID == "" || incomingSourceID == "" || existingSourceID == incomingSourceID {
 		return true, nil
 	}
@@ -1938,6 +1972,13 @@ func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomi
 		return false, err
 	}
 	return incomingPriority <= existingPriority, nil
+}
+
+func effectivePrioritySourceID(sourceID, originSourceID string) string {
+	if trimmed := strings.TrimSpace(originSourceID); trimmed != "" {
+		return trimmed
+	}
+	return strings.TrimSpace(sourceID)
 }
 
 func lookupSourcePriority(ctx context.Context, tx *sql.Tx, sourceID string) (int, error) {
@@ -2494,6 +2535,9 @@ func skillSelectMapFields(alias string) []string {
 		"source_id",
 		"source_name",
 		"source_group",
+		"origin_source_id",
+		"origin_source_name",
+		"origin_source_url",
 		"source_type",
 		"skill_path",
 		"skill_content",
@@ -2555,6 +2599,9 @@ func skillSelectColumns(alias string) string {
 		`COALESCE(` + alias + `.source_id, '')`,
 		`COALESCE(` + alias + `.source_name, '')`,
 		`COALESCE(` + alias + `.source_group, '')`,
+		`COALESCE(` + alias + `.origin_source_id, '')`,
+		`COALESCE(` + alias + `.origin_source_name, '')`,
+		`COALESCE(` + alias + `.origin_source_url, '')`,
 		`COALESCE(` + alias + `.source_type, '')`,
 		`COALESCE(` + alias + `.skill_path, '')`,
 		`COALESCE(` + alias + `.skill_content, '')`,
@@ -3506,6 +3553,9 @@ func skillDocumentFromMapRow(row z.V) SkillDocument {
 		SourceID:            skillmarketStringFromMapValue(row, "source_id"),
 		SourceName:          skillmarketStringFromMapValue(row, "source_name"),
 		SourceGroup:         skillmarketStringFromMapValue(row, "source_group"),
+		OriginSourceID:      skillmarketStringFromMapValue(row, "origin_source_id"),
+		OriginSourceName:    skillmarketStringFromMapValue(row, "origin_source_name"),
+		OriginSourceURL:     skillmarketStringFromMapValue(row, "origin_source_url"),
 		SourceType:          skillmarketStringFromMapValue(row, "source_type"),
 		SkillPath:           skillmarketStringFromMapValue(row, "skill_path"),
 		SkillContent:        skillmarketStringFromMapValue(row, "skill_content"),

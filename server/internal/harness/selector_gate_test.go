@@ -131,11 +131,59 @@ func TestController_EvaluateSelectorGate_PassesWithOptionalComparisonThresholds(
 	if got := report.Metrics.ExecutionProfileBreakdown["inline"]; got != 1 {
 		t.Fatalf("metrics.execution_profile_breakdown[inline] = %#v, want 1", got)
 	}
+	if report.Metrics.ToolSurfaceExecCutoverCount != 0 {
+		t.Fatalf("metrics.tool_surface_exec_cutover_count = %#v, want 0", report.Metrics.ToolSurfaceExecCutoverCount)
+	}
 	if check := selectorGateCheckByName(t, report.Checks, "route_agreement_rate"); !check.Passed {
 		t.Fatalf("route_agreement_rate check = %#v, want pass", check)
 	}
 	if check := selectorGateCheckByName(t, report.Checks, "clarify_rate_delta"); !check.Passed {
 		t.Fatalf("clarify_rate_delta check = %#v, want pass", check)
+	}
+}
+
+func TestController_EvaluateSelectorGate_AccumulatesToolSurfaceAuditCounts(t *testing.T) {
+	controller := newTestController(t)
+	items := selectorGateSmokeItems(t)
+	evalSpec := createSelectorEvalSpecForItems(t, controller, "Selector gate tool surface audit", items)
+
+	baselineReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-audit-baseline", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", false, "selected"),
+		},
+	}, len(items))
+	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
+		Name:        "selector-gate-audit-baseline",
+		OwnerUserID: "user-1",
+		EvalRunID:   baselineReport.EvalRun.ID,
+		IsDefault:   true,
+	})
+	if err != nil {
+		t.Fatalf("CreateBaseline failed: %v", err)
+	}
+
+	candidateReport := runSelectorEvalReport(t, controller, evalSpec, "selector-gate-audit-candidate", selectorEvalSource{
+		responses: map[string]map[string]interface{}{
+			"Search the latest OpenAI Responses API documentation.":            selectorEvalResponse("web_query", false, "selected"),
+			"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponse("exec", false, "selected"),
+		},
+	}, len(items))
+
+	report, err := controller.EvaluateSelectorGate(context.Background(), candidateReport.EvalRun.ID, SelectorGateRequest{
+		BaselineID: baseline.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSelectorGate failed: %v", err)
+	}
+	if got := report.Metrics.ToolSurfaceAliasRewriteCount; got != 0 {
+		t.Fatalf("metrics.tool_surface_alias_rewrite_count = %#v, want 0", got)
+	}
+	if got := report.Metrics.ToolSurfaceCacheInvalidationCount; got != 0 {
+		t.Fatalf("metrics.tool_surface_cache_invalidation_count = %#v, want 0", got)
+	}
+	if got := report.Metrics.ToolSurfaceExecCutoverCount; got != 1 {
+		t.Fatalf("metrics.tool_surface_exec_cutover_count = %#v, want 1", got)
 	}
 }
 

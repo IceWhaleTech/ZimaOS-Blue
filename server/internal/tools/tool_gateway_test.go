@@ -693,6 +693,151 @@ func TestToolGatewayRejectsToolHiddenFromRoute(t *testing.T) {
 	}
 }
 
+func TestToolGatewayExecutesDisabledToolWithVisibleOverlayDefinition(t *testing.T) {
+	registry := NewRegistry()
+	execTool := &gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute skill and shell commands",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+		result: map[string]interface{}{"ok": true},
+	}
+	registry.Register(execTool)
+	registry.ExposeDefinition(execTool.Definition())
+	if !registry.Disable("exec") {
+		t.Fatal("expected Disable(exec) to succeed")
+	}
+
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-disabled-overlay",
+		ToolName:   "exec",
+		Arguments:  `{"command":"echo hi"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if execTool.calls != 1 {
+		t.Fatalf("exec calls = %d, want 1", execTool.calls)
+	}
+	if result.NormalizedCall.ToolName != "exec" {
+		t.Fatalf("tool name = %q, want exec", result.NormalizedCall.ToolName)
+	}
+	if got, _ := execTool.args["command"].(string); got != "echo hi" {
+		t.Fatalf("command = %q, want %q", got, "echo hi")
+	}
+}
+
+func TestToolGatewayFallsBackExecToPublicBashWhenExecHiddenFromRoute(t *testing.T) {
+	registry := NewRegistry()
+	execTool := &gatewayResultTool{
+		def: ToolDefinition{
+			Name:                "exec",
+			Description:         "Execute skill and shell commands",
+			VisibilityAllowlist: []string{string(ToolRouteKindAgent)},
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+		result: map[string]interface{}{"ok": true},
+	}
+	registry.Register(execTool)
+	registry.Register(NewPublicBashTool(registry))
+
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+	metrics := &gatewayMetricsStub{}
+	gateway.SetMetricsRecorder(metrics)
+	audit := NewToolSurfaceAuditState()
+	gateway.SetToolSurfaceAuditState(audit)
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-exec-fallback",
+		ToolName:   "exec",
+		Arguments:  `{"command":"echo hi"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.NormalizedCall.ToolName != "bash" {
+		t.Fatalf("tool name = %q, want bash", result.NormalizedCall.ToolName)
+	}
+	if execTool.calls != 1 {
+		t.Fatalf("exec calls = %d, want 1", execTool.calls)
+	}
+	if got, _ := execTool.args["command"].(string); got != "echo hi" {
+		t.Fatalf("command = %q, want %q", got, "echo hi")
+	}
+	if got := audit.Snapshot().AliasRewriteCount; got != 1 {
+		t.Fatalf("alias rewrite count = %d, want 1", got)
+	}
+	foundMetric := false
+	for _, call := range metrics.calls {
+		if call.name != "tool_surface_alias_rewrite_total" {
+			continue
+		}
+		if call.tags["from"] == "exec" && call.tags["to"] == "bash" && call.tags["route_kind"] == string(ToolRouteKindChat) {
+			foundMetric = true
+			break
+		}
+	}
+	if !foundMetric {
+		t.Fatalf("expected alias rewrite metric, got %#v", metrics.calls)
+	}
+}
+
+func TestToolGatewayKeepsVisibleExecWithoutPublicBashFallback(t *testing.T) {
+	registry := NewRegistry()
+	execTool := &gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute skill and shell commands",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+		result: map[string]interface{}{"ok": true},
+	}
+	registry.Register(execTool)
+	registry.Register(NewPublicBashTool(registry))
+
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+	audit := NewToolSurfaceAuditState()
+	gateway.SetToolSurfaceAuditState(audit)
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-exec-visible",
+		ToolName:   "exec",
+		Arguments:  `{"command":"echo hi"}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.NormalizedCall.ToolName != "exec" {
+		t.Fatalf("tool name = %q, want exec", result.NormalizedCall.ToolName)
+	}
+	if got := audit.Snapshot().AliasRewriteCount; got != 0 {
+		t.Fatalf("alias rewrite count = %d, want 0", got)
+	}
+}
+
 func TestToolGatewayNormalizesCompatAliasToUnifiedTool(t *testing.T) {
 	registry := NewRegistry()
 	webTool := &captureArgsTool{

@@ -991,7 +991,7 @@ func TestMarketFeaturedAndFiltersFallback(t *testing.T) {
 	}
 }
 
-func TestMarketInstallRequiresAckForYellowSkill(t *testing.T) {
+func TestMarketInstallAllowsYellowSkillWithoutAck(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "market.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -1073,18 +1073,8 @@ This skill can read files and call APIs.`
 	if err := handler.MarketInstallSkill(e.NewContext(req, rec)); err != nil {
 		t.Fatalf("install handler: %v", err)
 	}
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("install status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-
-	req = httptest.NewRequest(http.MethodPost, "/skills/install?ack_risk=true", strings.NewReader(`{"id":"yellow-skill"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec = httptest.NewRecorder()
-	if err := handler.MarketInstallSkill(e.NewContext(req, rec)); err != nil {
-		t.Fatalf("install with ack handler: %v", err)
-	}
 	if rec.Code != http.StatusOK {
-		t.Fatalf("install with ack status = %d, want %d", rec.Code, http.StatusOK)
+		t.Fatalf("install status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 
@@ -1232,6 +1222,36 @@ func TestGetSkillFallbackIncludesMarketplaceCompatibilityFields(t *testing.T) {
 	}
 	if nested["id"] != "compat-skill" {
 		t.Fatalf("nested skill id = %#v, want compat-skill", nested["id"])
+	}
+}
+
+func TestRemoteSkillFromDocumentIncludesOriginSourceFields(t *testing.T) {
+	handler := NewSkillHandler(skill.NewRegistry())
+	doc := skillmarket.SkillDocument{
+		ID:               "repo-seed",
+		Name:             "Repo Seed",
+		LatestVersion:    "1.0.0",
+		Description:      "Fixture",
+		SourceID:         skillmarket.GitHubAwesomeSkillsSourceID,
+		SourceName:       skillmarket.GitHubAwesomeSkillsSourceName,
+		SourceGroup:      skillmarket.GitHubAwesomeSkillsSourceGroup,
+		OriginSourceID:   "github-awesome-composio",
+		OriginSourceName: "ComposioHQ Awesome Claude Skills",
+		OriginSourceURL:  "https://github.com/ComposioHQ/awesome-claude-skills",
+	}
+
+	remote := handler.remoteSkillFromDocument(doc, nil)
+	if remote == nil {
+		t.Fatal("expected remote skill")
+	}
+	if remote.OriginSourceID != "github-awesome-composio" {
+		t.Fatalf("origin_source_id = %q", remote.OriginSourceID)
+	}
+	if remote.OriginSourceName != "ComposioHQ Awesome Claude Skills" {
+		t.Fatalf("origin_source_name = %q", remote.OriginSourceName)
+	}
+	if remote.OriginSourceURL != "https://github.com/ComposioHQ/awesome-claude-skills" {
+		t.Fatalf("origin_source_url = %q", remote.OriginSourceURL)
 	}
 }
 

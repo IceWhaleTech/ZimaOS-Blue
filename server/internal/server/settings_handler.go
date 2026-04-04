@@ -402,15 +402,19 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 		debug := chatHandler.toolSelector.SelectDetailed(query, allDefs).Debug
 		toolDebug = &debug
 	}
+	auditSnapshot := chatHandler.toolSurfaceAuditSnapshot()
 
 	response := map[string]interface{}{
-		"query":                        query,
-		"model":                        model,
-		"selected_tools":               toolNames,
-		"selected_tool_surface":        toolSurface,
-		"selected_native_tools":        selectedNativeNames,
-		"selected_native_tool_surface": selectedNativeSurface,
-		"selected_native_surface_mode": string(selection.NativeMode),
+		"query":                                 query,
+		"model":                                 model,
+		"selected_tools":                        toolNames,
+		"selected_tool_surface":                 toolSurface,
+		"selected_native_tools":                 selectedNativeNames,
+		"selected_native_tool_surface":          selectedNativeSurface,
+		"selected_native_surface_mode":          string(selection.NativeMode),
+		"tool_surface_alias_rewrite_count":      auditSnapshot.AliasRewriteCount,
+		"tool_surface_cache_invalidation_count": auditSnapshot.CacheInvalidationCount,
+		"tool_surface_exec_cutover_count":       auditSnapshot.ExecCutoverCount,
 	}
 	if toolDebug != nil {
 		response["tool_debug"] = toolDebug
@@ -436,12 +440,15 @@ func (h *SettingsHandler) PreviewSelectorDryRun(ctx context.Context, query strin
 			response["clarify_outcome"] = outcome
 		}
 		discoveryRuntime := map[string]interface{}{
-			"native_surface_mode":    string(copied.NativeSurfaceMode),
-			"selected_native_mode":   string(selection.NativeMode),
-			"surface_reason":         surfaceReason,
-			"execution_profile":      string(observation.ExecutionProfile),
-			"skill_exec_cutover":     observation.SkillExecCutover,
-			"forked_skill_execution": observation.ForkedSkillExecution,
+			"native_surface_mode":                   string(copied.NativeSurfaceMode),
+			"selected_native_mode":                  string(selection.NativeMode),
+			"surface_reason":                        surfaceReason,
+			"execution_profile":                     string(observation.ExecutionProfile),
+			"skill_exec_cutover":                    observation.SkillExecCutover,
+			"forked_skill_execution":                observation.ForkedSkillExecution,
+			"tool_surface_alias_rewrite_count":      auditSnapshot.AliasRewriteCount,
+			"tool_surface_cache_invalidation_count": auditSnapshot.CacheInvalidationCount,
+			"tool_surface_exec_cutover_count":       auditSnapshot.ExecCutoverCount,
 		}
 		if copied.CanonicalTarget != "" && copied.CanonicalTarget != agentcore.CanonicalUnknown {
 			discoveryRuntime["canonical_target"] = string(copied.CanonicalTarget)

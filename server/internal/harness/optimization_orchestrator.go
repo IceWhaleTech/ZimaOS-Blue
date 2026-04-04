@@ -122,8 +122,42 @@ func evalRunOptimizationMetadata(evalRun *EvalRun) map[string]interface{} {
 	if surface := evalRunOptimizationSurface(evalRun); strings.TrimSpace(string(surface)) != "" {
 		metadata["optimization_surface"] = string(surface)
 	}
+	appendToolSurfaceAuditMetadata(metadata, evalRun.Metadata)
 	if len(metadata) == 0 {
 		return nil
 	}
 	return metadata
+}
+
+func appendToolSurfaceAuditMetadata(dest map[string]interface{}, source map[string]interface{}) {
+	if dest == nil || len(source) == 0 {
+		return
+	}
+	structured := nestedMetadataMap(source, "selector_dry_run_response")
+	discoveryRuntime := nestedMetadataMap(structured, "discovery_runtime")
+	for _, key := range []string{
+		"tool_surface_alias_rewrite_count",
+		"tool_surface_cache_invalidation_count",
+		"tool_surface_exec_cutover_count",
+	} {
+		if value, ok := firstToolSurfaceAuditMetadataValue(key, source, structured, discoveryRuntime); ok {
+			dest[key] = value
+		}
+	}
+}
+
+func firstToolSurfaceAuditMetadataValue(key string, sources ...map[string]interface{}) (int, bool) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return 0, false
+	}
+	for _, source := range sources {
+		if len(source) == 0 {
+			continue
+		}
+		if value := intMetadataPtr(source[key]); value != nil {
+			return *value, true
+		}
+	}
+	return 0, false
 }

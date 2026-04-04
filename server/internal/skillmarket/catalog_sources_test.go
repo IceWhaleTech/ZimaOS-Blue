@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -280,6 +281,118 @@ Use bash to inspect files quickly.
 	}
 }
 
+func TestDiscoverFromHTMLCatalogUsesLLMSkillsWebsiteFromFlightData(t *testing.T) {
+	rawSkill := `---
+id: webapp-testing
+name: Webapp Testing
+version: 1.0.0
+description: Automated end-to-end testing
+---
+
+Write and execute tests for web applications using tools like Playwright.
+`
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/catalog", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+<html>
+  <head><title>LLMSkills Catalog</title><meta name="description" content="fixture catalog"></head>
+  <body>
+    <a href="/skill/anthropics-skills-webapp-testing">Webapp Testing</a>
+  </body>
+</html>`))
+	})
+	mux.HandleFunc("/skill/anthropics-skills-webapp-testing", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+<html>
+  <head>
+    <title>Webapp Testing</title>
+    <meta name="description" content="Automated end-to-end testing">
+  </head>
+  <body>
+    <script>self.__next_f.push([1,"7:[\"$\",\"$L1e\",null,{\"skill\":{\"id\":\"anthropics-skills-webapp-testing\",\"name\":\"Webapp Testing\",\"tagline\":\"Automated end-to-end testing\",\"description\":\"Write and execute tests for web applications using tools like Playwright.\",\"website\":\"https://github.com/anthropics/skills/tree/main/skills/webapp-testing\",\"installPath\":\"@anthropics/skills/webapp-testing\"},\"relatedSkills\":[]}]\"])</script>
+  </body>
+</html>`))
+	})
+	mux.HandleFunc("/github/repos/anthropics/skills/contents/skills/webapp-testing", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"name": "SKILL.md",
+				"path": "skills/webapp-testing/SKILL.md",
+				"type": "file",
+				"url":  server.URL + "/github/blob/webapp-testing",
+			},
+		})
+	})
+	mux.HandleFunc("/github/blob/webapp-testing", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"encoding": "base64",
+			"content":  base64.StdEncoding.EncodeToString([]byte(rawSkill)),
+		})
+	})
+
+	tempDir := t.TempDir()
+	db, err := sql.Open("sqlite3", filepath.Join(tempDir, "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	cfg := DefaultConfig(tempDir, filepath.Join(tempDir, "active"))
+	cfg.CacheRoot = filepath.Join(tempDir, "cache")
+	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.DiscoveryPageURLs = nil
+	cfg.GitHubAPIBaseURL = server.URL + "/github"
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(filepath.Join(tempDir, "active")),
+		Scanner:      NewScanner(nil),
+		HTTPClient:   server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	run := &CrawlRun{}
+	source := Source{
+		ID:          "llmskills",
+		Type:        "html_catalog",
+		BaseURL:     server.URL + "/catalog",
+		DisplayName: "LLMSkills",
+		SourceGroup: "llmskills",
+		Enabled:     true,
+	}
+	if err := svc.discoverFromHTMLCatalog(context.Background(), source, 0, &DiscoverResult{}, run); err != nil {
+		t.Fatalf("discover html catalog: %v", err)
+	}
+
+	result, err := svc.Search(context.Background(), SearchQuery{Page: 1, PageSize: 20})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	for _, item := range result.Skills {
+		if !strings.EqualFold(item.Skill.Name, "Webapp Testing") {
+			continue
+		}
+		if !item.Skill.Installable {
+			t.Fatalf("expected Webapp Testing to be installable, got %+v", item.Skill)
+		}
+		if item.Skill.InstallType != InstallTypeGitRepo {
+			t.Fatalf("install type = %q, want %q", item.Skill.InstallType, InstallTypeGitRepo)
+		}
+		return
+	}
+
+	t.Fatal("expected Webapp Testing to be indexed as installable")
+}
+
 func TestDiscoverFromHTMLCatalogTraversesBeyondLegacyPageCap(t *testing.T) {
 	const totalPages = 35
 
@@ -368,5 +481,97 @@ func TestDiscoverFromHTMLCatalogTraversesBeyondLegacyPageCap(t *testing.T) {
 	}
 	if detail.Skill.Installable {
 		t.Fatalf("expected catalog-only page to remain non-installable, got %+v", detail.Skill)
+	}
+}
+
+func TestSeedPageDiscoverAggregatesPublicSourceAndPreservesOrigin(t *testing.T) {
+	rawRepoSkill := skillMarkdownFixture("repo-seed", "Repo Seed", "1.0.0")
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `<html><body>
+			<a href="https://github.com/demo/repo-seed">repo</a>
+		</body></html>`)
+	})
+	mux.HandleFunc("/repos/demo/repo-seed", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"html_url":         "https://github.com/demo/repo-seed",
+			"default_branch":   "main",
+			"updated_at":       "2026-03-01T00:00:00Z",
+			"stargazers_count": 5,
+		})
+	})
+	mux.HandleFunc("/repos/demo/repo-seed/contents/", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"name": "SKILL.md",
+				"path": "SKILL.md",
+				"type": "file",
+				"url":  server.URL + "/blob/repo-seed",
+			},
+		})
+	})
+	mux.HandleFunc("/blob/repo-seed", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"encoding": "base64",
+			"content":  encodeBase64Test(rawRepoSkill),
+		})
+	})
+
+	svc, cleanup := newTestServiceWithClient(t, server.Client())
+	defer cleanup()
+	svc.cfg.GitHubAPIBaseURL = server.URL
+
+	if _, err := svc.store.db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable sources: %v", err)
+	}
+	source := Source{
+		ID:          "github-awesome-composio",
+		Type:        "seed_page",
+		BaseURL:     server.URL,
+		DisplayName: "ComposioHQ Awesome Claude Skills",
+		SourceGroup: "github-awesome-skills",
+		Enabled:     true,
+		Priority:    1,
+	}
+	if err := svc.store.UpsertSource(context.Background(), source); err != nil {
+		t.Fatalf("UpsertSource() error = %v", err)
+	}
+
+	result, err := svc.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if result == nil || result.Discovered != 1 {
+		t.Fatalf("discover result = %+v, want 1 discovered skill", result)
+	}
+
+	detail, err := svc.GetSkill(context.Background(), "repo-seed")
+	if err != nil {
+		t.Fatalf("GetSkill(repo-seed) error = %v", err)
+	}
+	if detail == nil {
+		t.Fatal("expected repo-seed detail")
+	}
+	if detail.Skill.SourceID != "github-awesome-skills" {
+		t.Fatalf("source id = %q, want github-awesome-skills", detail.Skill.SourceID)
+	}
+	if detail.Skill.SourceName != "GitHub Awesome Skills" {
+		t.Fatalf("source name = %q, want GitHub Awesome Skills", detail.Skill.SourceName)
+	}
+	if detail.Skill.SourceGroup != "github-awesome-skills" {
+		t.Fatalf("source group = %q, want github-awesome-skills", detail.Skill.SourceGroup)
+	}
+	if detail.Skill.OriginSourceID != "github-awesome-composio" {
+		t.Fatalf("origin source id = %q, want github-awesome-composio", detail.Skill.OriginSourceID)
+	}
+	if detail.Skill.OriginSourceName != "ComposioHQ Awesome Claude Skills" {
+		t.Fatalf("origin source name = %q, want ComposioHQ Awesome Claude Skills", detail.Skill.OriginSourceName)
+	}
+	if detail.Skill.OriginSourceURL != server.URL {
+		t.Fatalf("origin source url = %q, want %q", detail.Skill.OriginSourceURL, server.URL)
 	}
 }

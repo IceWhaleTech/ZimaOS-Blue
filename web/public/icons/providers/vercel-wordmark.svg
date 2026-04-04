@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 116 24" fill="none">
+  <path d="M12 4 3.5 19h17L12 4Z" fill="#111111"/>
+  <text
+    x="28"
+    y="16.4"
+    fill="#111111"
+    font-family="Verdana, Arial, sans-serif"
+    font-size="13"
+    font-weight="700"
+    letter-spacing="0.02em"
+  >
+    Vercel
+  </text>
+</svg>

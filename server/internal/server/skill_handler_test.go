@@ -32,6 +32,33 @@ func newTestSkillHandler(t *testing.T, registry *skill.Registry) *SkillHandler {
 	return handler
 }
 
+func newTestSkillHandlerWithMarketplace(t *testing.T, registry *skill.Registry) (*SkillHandler, *skillmarket.Service) {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	market, err := skillmarket.NewService(db, skillmarket.Options{
+		Config: skillmarket.Config{
+			Enabled:         true,
+			CacheRoot:       t.TempDir(),
+			ActiveSkillsDir: t.TempDir(),
+		},
+		Registry: registry,
+	})
+	if err != nil {
+		t.Fatalf("skillmarket.NewService() error = %v", err)
+	}
+	t.Cleanup(func() { _ = market.Close() })
+
+	handler := newTestSkillHandler(t, registry)
+	handler.SetMarketplace(market)
+	return handler, market
+}
+
 func newMultipartUploadRequest(t *testing.T, targetURL, filename string, body []byte) (*http.Request, string) {
 	t.Helper()
 
@@ -255,6 +282,237 @@ func TestSkillHandler_RemoveSource(t *testing.T) {
 
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+		}
+	})
+}
+
+func TestSkillHandler_ListSources_UsesMarketplaceWhenAvailable(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler, market := newTestSkillHandlerWithMarketplace(t, registry)
+
+	if err := market.Store().UpsertSource(context.Background(), skillmarket.Source{
+		ID:                 "custom-catalog",
+		Type:               "html_catalog",
+		BaseURL:            "https://catalog.example.com",
+		DisplayName:        "Catalog Example",
+		SourceGroup:        "catalog-example",
+		AuthMode:           "none",
+		Enabled:            true,
+		RateLimitPerMinute: 20,
+		Priority:           205,
+	}); err != nil {
+		t.Fatalf("UpsertSource(custom-catalog) error = %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skill-store/sources", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListSources(c); err != nil {
+		t.Fatalf("ListSources failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var sources []SkillSource
+	if err := json.Unmarshal(rec.Body.Bytes(), &sources); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	found := false
+	for _, source := range sources {
+		if source.ID != "custom-catalog" {
+			continue
+		}
+		found = true
+		if source.Name != "Catalog Example" {
+			t.Fatalf("source.Name = %q, want %q", source.Name, "Catalog Example")
+		}
+		if source.URL != "https://catalog.example.com" {
+			t.Fatalf("source.URL = %q, want %q", source.URL, "https://catalog.example.com")
+		}
+		if source.Type != "html_catalog" {
+			t.Fatalf("source.Type = %q, want %q", source.Type, "html_catalog")
+		}
+	}
+	if !found {
+		t.Fatalf("expected custom-catalog in marketplace-backed source list")
+	}
+}
+
+func TestSkillHandler_AddSource_UsesMarketplaceInference(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler, market := newTestSkillHandlerWithMarketplace(t, registry)
+
+	e := echo.New()
+	body := `{"url":"https://catalog.example.com/skills"}`
+	req := httptest.NewRequest(http.MethodPost, "/skill-store/sources", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.AddSource(c); err != nil {
+		t.Fatalf("AddSource failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	sources, err := market.Store().ListSources(context.Background())
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+
+	found := false
+	for _, source := range sources {
+		if source.BaseURL != "https://catalog.example.com/skills" {
+			continue
+		}
+		found = true
+		if source.Type != "html_catalog" {
+			t.Fatalf("source.Type = %q, want %q", source.Type, "html_catalog")
+		}
+		if !source.Enabled {
+			t.Fatal("expected inferred marketplace source to be enabled")
+		}
+		if strings.TrimSpace(source.ID) == "" {
+			t.Fatal("expected inferred marketplace source id")
+		}
+	}
+	if !found {
+		t.Fatalf("expected inferred source to be persisted in marketplace store")
+	}
+}
+
+func TestSkillHandler_RemoveSource_UsesMarketplaceSoftDelete(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler, market := newTestSkillHandlerWithMarketplace(t, registry)
+
+	if err := market.Store().UpsertSource(context.Background(), skillmarket.Source{
+		ID:                 "custom-catalog",
+		Type:               "html_catalog",
+		BaseURL:            "https://catalog.example.com",
+		DisplayName:        "Catalog Example",
+		SourceGroup:        "catalog-example",
+		AuthMode:           "none",
+		Enabled:            true,
+		RateLimitPerMinute: 20,
+		Priority:           205,
+	}); err != nil {
+		t.Fatalf("UpsertSource(custom-catalog) error = %v", err)
+	}
+
+	e := echo.New()
+
+	t.Run("disables custom marketplace source", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/skill-store/sources/custom-catalog", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues("custom-catalog")
+
+		if err := handler.RemoveSource(c); err != nil {
+			t.Fatalf("RemoveSource failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		sources, err := market.Store().ListSources(context.Background())
+		if err != nil {
+			t.Fatalf("ListSources() error = %v", err)
+		}
+		for _, source := range sources {
+			if source.ID == "custom-catalog" {
+				t.Fatalf("expected custom-catalog to be hidden from enabled source list after removal")
+			}
+		}
+	})
+
+	t.Run("rejects removal of protected built-in marketplace source", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/skill-store/sources/clawhub", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues("clawhub")
+
+		if err := handler.RemoveSource(c); err != nil {
+			t.Fatalf("RemoveSource failed: %v", err)
+		}
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+		}
+	})
+}
+
+func TestSkillHandler_PreviewSourceImport(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler, _ := newTestSkillHandlerWithMarketplace(t, registry)
+	e := echo.New()
+
+	type previewResponse struct {
+		Kind            string       `json:"kind"`
+		Confidence      string       `json:"confidence"`
+		SeedType        string       `json:"seed_type"`
+		SeedValue       string       `json:"seed_value"`
+		SuggestedSource *SkillSource `json:"suggested_source"`
+	}
+
+	t.Run("classifies HTML catalog as source", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/sources/preview", strings.NewReader(`{"url":"https://catalog.example.com/skills"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.PreviewSourceImport(c); err != nil {
+			t.Fatalf("PreviewSourceImport failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload previewResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+		if payload.Kind != "source" {
+			t.Fatalf("kind = %q, want %q", payload.Kind, "source")
+		}
+		if payload.SuggestedSource == nil {
+			t.Fatal("expected suggested_source for source preview")
+		}
+		if payload.SuggestedSource.Type != "html_catalog" {
+			t.Fatalf("suggested_source.type = %q, want %q", payload.SuggestedSource.Type, "html_catalog")
+		}
+	})
+
+	t.Run("classifies GitHub repository as seed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/sources/preview", strings.NewReader(`{"url":"https://github.com/demo/skills-repo"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.PreviewSourceImport(c); err != nil {
+			t.Fatalf("PreviewSourceImport failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload previewResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+		if payload.Kind != "seed" {
+			t.Fatalf("kind = %q, want %q", payload.Kind, "seed")
+		}
+		if payload.SeedType != "github_repo" {
+			t.Fatalf("seed_type = %q, want %q", payload.SeedType, "github_repo")
+		}
+		if payload.SeedValue != "demo/skills-repo" {
+			t.Fatalf("seed_value = %q, want %q", payload.SeedValue, "demo/skills-repo")
 		}
 	})
 }

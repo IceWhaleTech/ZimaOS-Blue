@@ -19,25 +19,39 @@ boosts:
     reason: Newly added by MiniMax on 2026-03-21 for PDF generation and refactoring.
 hidden: []
 additional_seeds:
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/android-native-dev
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/frontend-dev
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/fullstack-dev
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/gif-sticker-maker
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/ios-application-dev
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-docx
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-multimodal-toolkit
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-pdf
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-xlsx
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/pptx-generator
-  - type: skill_url
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills/shader-dev
+  - type: seed_page
+    id: github-awesome-composio
+    display_name: GitHub Awesome Skills
+    source_group: github-awesome-skills
+    origin_name: ComposioHQ Awesome Claude Skills
+    value: https://github.com/ComposioHQ/awesome-claude-skills
+  - type: seed_page
+    id: github-awesome-voltagent-openclaw
+    display_name: GitHub Awesome Skills
+    source_group: github-awesome-skills
+    origin_name: VoltAgent Awesome OpenClaw Skills
+    value: https://github.com/VoltAgent/awesome-openclaw-skills
+  - type: seed_page
+    id: github-awesome-voltagent-agent
+    display_name: GitHub Awesome Skills
+    source_group: github-awesome-skills
+    origin_name: VoltAgent Awesome Agent Skills
+    value: https://github.com/VoltAgent/awesome-agent-skills
+  - type: seed_page
+    id: github-awesome-antigravity
+    display_name: GitHub Awesome Skills
+    source_group: github-awesome-skills
+    origin_name: Antigravity Awesome Skills
+    value: https://github.com/sickn33/antigravity-awesome-skills/tree/main/skills
+  - type: seed_page
+    id: github-awesome-minimax
+    display_name: GitHub Awesome Skills
+    source_group: github-awesome-skills
+    origin_name: MiniMax Skills
+    value: https://github.com/MiniMax-AI/skills/tree/main/skills
+  - type: seed_page
+    id: github-awesome-openclaw
+    display_name: GitHub Awesome Skills
+    source_group: github-awesome-skills
+    origin_name: OpenClaw Skills
+    value: https://github.com/openclaw/skills/tree/main/skills

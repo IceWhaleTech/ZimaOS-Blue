@@ -366,6 +366,36 @@ func TestSelectTools_PublicStockArtifactKeepsWebQueryAndWrite(t *testing.T) {
 	}
 }
 
+func TestSelectChatToolSurfacesForRequest_GenericDocxResearchKeepsOfficeWorkflow(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "office", Description: "Create polished .docx and .xlsx artifacts"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Research current public web information"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	selection := handler.selectChatToolSurfacesForRequest(context.Background(), "先做多轮资料研究，再整理成结构化结论，最后生成 .docx 并做一次文件校验。", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
+	}
+	names := toolNameSet(selection.NativeDefs)
+	for _, required := range []string{"office", "read", "web_query", "write", "tool_search"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q in generic .docx research workflow, got=%v", required, selectedToolNames(selection.NativeDefs))
+		}
+	}
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("expected generic .docx research workflow to keep mixed tools instead of exec-only cutover, got=%v", selectedToolNames(selection.NativeDefs))
+	}
+}
+
 func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})
@@ -431,6 +461,36 @@ func TestSelectChatToolsForRequest_SmartSkillSelectionCollapsesToExec(t *testing
 
 	if names := selectedToolNames(got); len(names) != 1 || names[0] != "exec" {
 		t.Fatalf("selectChatToolsForRequest() = %v, want [exec]", names)
+	}
+}
+
+func TestSelectChatToolSurfacesForRequest_DiscoverFirstUsesRuntimeExecOverlay(t *testing.T) {
+	registry := tools.NewRegistry()
+	tools.RegisterExecTools(registry, tools.DefaultExecConfig(), nil, nil, nil)
+	registry.Register(tools.NewToolSearchTool(registry))
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs")
+	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+	handler.ConfigureToolSearchRuntime(workspaceDir, &config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	})
+
+	selection := handler.selectChatToolSurfacesForRequest(context.Background(), "搜索最新 OpenAI Responses API 文档。", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+
+	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	}
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
+		t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
 	}
 }
 
@@ -801,6 +861,67 @@ func TestSelectChatToolsForRequest_DiscoverFirstCutoverSkipsPromptCacheStickyUni
 	}
 	if cached := handler.getPromptCacheToolSurface("conv-discover-cutover"); cached != nil {
 		t.Fatalf("prompt cache surface = %#v, want cleared after discover-first cutover", cached)
+	}
+}
+
+func TestSelectChatToolSurfacesForRequest_RecordsToolSurfaceAuditCounts(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	tools.RegisterExecTools(registry, tools.DefaultExecConfig(), nil, nil, nil)
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	bindToolSearchTestRuntime(t, handler, nil, "")
+
+	if _, ok := handler.deferredToolExposure.Apply("conv-audit", tools.DeferredToolExposureUpdate{
+		NeedExec:         true,
+		RegistryVersion:  registry.Version(),
+		PromptPolicyHash: handler.resolvePromptPolicy().Hash,
+	}); !ok {
+		t.Fatal("expected deferred tool exposure update to apply")
+	}
+
+	first := handler.selectChatToolSurfacesForRequest(context.Background(), "Review the workspace and continue.", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		SessionID: "conv-audit",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+	firstNames := toolNameSet(first.NativeDefs)
+	for _, required := range []string{"exec", "read", "tool_search", "write"} {
+		if _, ok := firstNames[required]; !ok {
+			t.Fatalf("first native defs = %v, want exec/read/tool_search/write", selectedToolNames(first.NativeDefs))
+		}
+	}
+	if _, ok := firstNames["bash"]; ok {
+		t.Fatalf("first native defs = %v, want bash to be replaced during deferred exec cutover", selectedToolNames(first.NativeDefs))
+	}
+	firstSnapshot := handler.toolSurfaceAudit.Snapshot()
+	if firstSnapshot.ExecCutoverCount != 1 {
+		t.Fatalf("exec cutover count = %d, want 1", firstSnapshot.ExecCutoverCount)
+	}
+	if firstSnapshot.CacheInvalidationCount != 0 {
+		t.Fatalf("cache invalidation count = %d, want 0", firstSnapshot.CacheInvalidationCount)
+	}
+
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling"})
+	second := handler.selectChatToolSurfacesForRequest(context.Background(), "Review the workspace and continue.", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		SessionID: "conv-audit",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+	secondNames := toolNameSet(second.NativeDefs)
+	for _, required := range []string{"bash", "read", "tool_search", "write"} {
+		if _, ok := secondNames[required]; !ok {
+			t.Fatalf("second native defs = %v, want bash/read/tool_search/write", selectedToolNames(second.NativeDefs))
+		}
+	}
+	if _, ok := secondNames["exec"]; ok {
+		t.Fatalf("second native defs = %v, want exec removed after cache invalidation", selectedToolNames(second.NativeDefs))
+	}
+	secondSnapshot := handler.toolSurfaceAudit.Snapshot()
+	if secondSnapshot.CacheInvalidationCount != 1 {
+		t.Fatalf("cache invalidation count = %d, want 1", secondSnapshot.CacheInvalidationCount)
 	}
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import builtinToolBackfills from '@/i18n/builtin-tool-backfills'
 import priorityTranslationOverrides from '@/i18n/priority-translation-overrides'
 
 type LocaleMessages = Record<string, unknown>
@@ -44,6 +45,16 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
   }, messages)
 }
 
+const visibleBuiltinToolLocaleCoverage = {
+  'tools.names.find': 'Find',
+  'tools.names.ls': 'List',
+  'tools.names.tool_search': 'Tool Search',
+  'tools.descriptions.find': 'Find files and directories by glob pattern',
+  'tools.descriptions.ls': 'List files and directories',
+  'tools.descriptions.tool_search':
+    'Search tools, skills, and agents by capability',
+} as const
+
 describe('tool locale labels', () => {
   it('keeps tool-related details and tags localized for all 27 locales', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
@@ -52,8 +63,13 @@ describe('tool locale labels', () => {
     for (const [modulePath, mod] of entries) {
       const locale = getLocaleCode(modulePath)
       const file = fileNameFromModulePath(modulePath)
-      const overrides = (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
-      const messages = deepMergeMessages(mod.default, overrides)
+      const priorityOverrides =
+        (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
+      const builtinToolOverrides = (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
+      const messages = deepMergeMessages(
+        deepMergeMessages(mod.default, priorityOverrides),
+        builtinToolOverrides
+      )
 
       const commonDetails = getPathValue(messages, 'common.details')
       const extensionsDetails = getPathValue(messages, 'extensions.actions.details')
@@ -100,6 +116,38 @@ describe('tool locale labels', () => {
         memoryTagsPlaceholder,
         `${file} should not fall back to English tag placeholders`
       ).not.toBe('tag1, tag2, tag3')
+    }
+  })
+
+  it('keeps visible built-in tool names and descriptions localized for all 27 locales', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    expect(entries).toHaveLength(27)
+
+    for (const [modulePath, mod] of entries) {
+      const locale = getLocaleCode(modulePath)
+      const file = fileNameFromModulePath(modulePath)
+      const priorityOverrides =
+        (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
+      const builtinToolOverrides = (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
+      const messages = deepMergeMessages(
+        deepMergeMessages(mod.default, priorityOverrides),
+        builtinToolOverrides
+      )
+
+      for (const [path, englishValue] of Object.entries(visibleBuiltinToolLocaleCoverage)) {
+        const localizedValue = getPathValue(messages, path)
+        expect(typeof localizedValue, `${file} missing ${path}`).toBe('string')
+        expect(String(localizedValue).trim().length, `${file} empty ${path}`).toBeGreaterThan(0)
+
+        if (locale === 'en-US' || locale === 'en-GB') {
+          expect(localizedValue, `${file} English copy for ${path}`).toBe(englishValue)
+          continue
+        }
+
+        expect(localizedValue, `${file} should not fall back to English for ${path}`).not.toBe(
+          englishValue
+        )
+      }
     }
   })
 })

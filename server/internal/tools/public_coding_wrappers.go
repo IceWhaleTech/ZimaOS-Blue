@@ -192,6 +192,12 @@ func registerCanonicalShellSurface(registry *Registry) {
 		return
 	}
 	registry.Register(NewPublicBashTool(registry))
+	if execTool := registry.Get("exec"); execTool != nil {
+		// Keep `exec` hidden from the default public shell surface while still
+		// exposing a visible overlay definition for discover-first/tool_search
+		// flows that intentionally hydrate it.
+		registry.ExposeDefinition(execTool.Definition())
+	}
 	hideLegacyCodingTools(registry, "exec", "process")
 }
 

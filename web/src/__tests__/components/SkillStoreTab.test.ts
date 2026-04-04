@@ -23,6 +23,8 @@ vi.mock('@/api/skill', () => ({
     adviseMarket: vi.fn(),
     getMarketplaceSkill: vi.fn(),
     installMarket: vi.fn(),
+    previewSourceImport: vi.fn(),
+    addSource: vi.fn(),
   },
 }))
 
@@ -201,6 +203,33 @@ describe('SkillStoreTab', () => {
       return makeDetailResponse(makeSkill({ id })) as never
     })
     vi.mocked(skillApi.installMarket).mockResolvedValue({ data: {} } as never)
+    vi.mocked(skillApi.previewSourceImport).mockResolvedValue({
+      data: {
+        url: 'https://catalog.example.com/skills',
+        normalized_url: 'https://catalog.example.com/skills',
+        kind: 'source',
+        confidence: 'medium',
+        suggested_source: {
+          id: 'user-catalog-example-com',
+          name: 'Catalog Example',
+          url: 'https://catalog.example.com/skills',
+          type: 'html_catalog',
+          enabled: true,
+          display_name: 'Catalog Example',
+          base_url: 'https://catalog.example.com/skills',
+          source_group: 'example',
+          auth_mode: 'none',
+          rate_limit_per_minute: 20,
+          priority: 250,
+        },
+      },
+    } as never)
+    vi.mocked(skillApi.addSource).mockResolvedValue({
+      data: {
+        success: true,
+        message: 'source added',
+      },
+    } as never)
   })
 
   afterEach(() => {
@@ -430,6 +459,37 @@ describe('SkillStoreTab', () => {
 
     expect(skillApi.discoverStatus).toHaveBeenCalled()
     expect(wrapper.get('.discover-progress').text()).toContain('Tencent SkillHub')
+  })
+
+  it('previews and adds a marketplace source from the toolbar', async () => {
+    const { wrapper, pinia } = await mountSkillStoreWithPinia()
+    const notification = useNotificationStore(pinia)
+
+    await wrapper.get('[data-testid="source-import-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="source-import-input"]').setValue('https://catalog.example.com/skills')
+    await wrapper.get('[data-testid="source-import-preview"]').trigger('click')
+    await flushPromises()
+
+    expect(skillApi.previewSourceImport).toHaveBeenCalledWith({
+      url: 'https://catalog.example.com/skills',
+    })
+    expect(wrapper.get('[data-testid="source-import-preview-result"]').text()).toContain(
+      'Catalog Example'
+    )
+
+    await wrapper.get('[data-testid="source-import-confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(skillApi.addSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'user-catalog-example-com',
+        type: 'html_catalog',
+        url: 'https://catalog.example.com/skills',
+      })
+    )
+    expect(skillApi.discoverRefresh).toHaveBeenCalledTimes(1)
+    expect(notification.notifications[0]?.type).toBe('success')
+    expect(wrapper.find('[data-testid="source-import-panel"]').exists()).toBe(false)
   })
 
   it('refreshes visible results after progress events without resetting filters', async () => {
@@ -712,6 +772,36 @@ describe('SkillStoreTab', () => {
     wrapper.unmount()
   })
 
+  it('shows upstream source details for github awesome aggregated skills in the detail modal', async () => {
+    const aggregatedSkill = makeSkill({
+      source_id: 'github-awesome-skills',
+      source_name: 'GitHub Awesome Skills',
+      source_group: 'github-awesome-skills',
+      origin_source_id: 'github-awesome-composio',
+      origin_source_name: 'ComposioHQ Awesome Claude Skills',
+      origin_source_url: 'https://github.com/ComposioHQ/awesome-claude-skills',
+      homepage: 'https://github.com/demo/repo-seed',
+      source_url: 'https://github.com/demo/repo-seed',
+      download_url: 'https://raw.githubusercontent.com/demo/repo-seed/main/SKILL.md',
+    })
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(
+      makeSearchResponse([aggregatedSkill]) as never
+    )
+    vi.mocked(skillApi.getMarketplaceSkill).mockResolvedValue(
+      makeDetailResponse(aggregatedSkill) as never
+    )
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('.skill-card').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('GitHub Awesome Skills')
+    expect(document.body.textContent).toContain('ComposioHQ Awesome Claude Skills')
+
+    wrapper.unmount()
+  })
+
   it('applies semantic tones to the security summary cards in the detail modal', async () => {
     const skill = makeSkill({
       security_badge: 'yellow',
@@ -780,6 +870,28 @@ describe('SkillStoreTab', () => {
     expect(notificationStore.notifications[0]?.message).toContain(
       'This skill is blocked by the security policy.'
     )
+
+    wrapper.unmount()
+  })
+
+  it('installs yellow skills directly without a risk acknowledgement modal', async () => {
+    const reviewSkill = makeSkill({
+      security_badge: 'yellow',
+      risk_level: 'medium',
+    })
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(makeSearchResponse([reviewSkill]) as never)
+
+    const { wrapper } = await mountSkillStoreWithPinia()
+
+    await wrapper.get('.skill-card .install-button').trigger('click')
+    await flushPromises()
+
+    expect(skillApi.installMarket).toHaveBeenCalledWith({
+      id: 'skill-alpha',
+      ack_risk: false,
+      force_install: false,
+    })
+    expect(document.body.textContent || '').not.toContain('Risk acknowledgement required')
 
     wrapper.unmount()
   })

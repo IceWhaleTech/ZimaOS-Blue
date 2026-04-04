@@ -387,6 +387,72 @@ func TestController_EvaluateExecutionEquivalence_PassesWithinDefaultThresholds(t
 	}
 }
 
+func TestController_EvaluateExecutionEquivalence_EmitsToolSurfaceAuditMetadata(t *testing.T) {
+	controller := newTestController(t)
+	triggerer := &recordingOptimizationTriggerer{}
+	controller.SetOptimizationTriggerer(triggerer)
+	items := executionGateSmokeItems(t)
+	evalSpec := createExecutionEvalSpecForItems(t, controller, "Execution gate tool surface audit", items)
+
+	baselineReport := runExecutionEvalReport(t, controller, evalSpec, "execution-audit-baseline", executionEvalDriver{
+		defaultOutcome: executionEvalOutcome{Status: RunStatusCompleted, Result: "completed"},
+		delay:          10 * time.Millisecond,
+	}, len(items))
+	baseline, err := controller.CreateBaseline(context.Background(), BaselineSpec{
+		Name:        "execution-gate-audit-baseline",
+		OwnerUserID: "user-1",
+		EvalRunID:   baselineReport.EvalRun.ID,
+		IsDefault:   true,
+	})
+	if err != nil {
+		t.Fatalf("CreateBaseline failed: %v", err)
+	}
+
+	nonCriticalQuery := findExecutionManifestItem(t, items, "exec-web_search-en-us").Input["goal"].(string)
+	candidateReport := runExecutionEvalReport(t, controller, evalSpec, "execution-audit-candidate", executionEvalDriver{
+		defaultOutcome: executionEvalOutcome{Status: RunStatusCompleted, Result: "completed"},
+		outcomes: map[string]executionEvalOutcome{
+			nonCriticalQuery: {Status: RunStatusFailed, Error: "web search execution failed"},
+		},
+		delay: 10 * time.Millisecond,
+	}, len(items))
+	evalRun := candidateReport.EvalRun
+	if evalRun.Metadata == nil {
+		evalRun.Metadata = map[string]interface{}{}
+	}
+	evalRun.Metadata["selector_dry_run_response"] = map[string]interface{}{
+		"tool_surface_alias_rewrite_count":      2,
+		"tool_surface_cache_invalidation_count": 3,
+		"tool_surface_exec_cutover_count":       4,
+	}
+	if err := controller.store.UpdateEvalRun(context.Background(), evalRun); err != nil {
+		t.Fatalf("UpdateEvalRun failed: %v", err)
+	}
+
+	report, err := controller.EvaluateExecutionEquivalence(context.Background(), candidateReport.EvalRun.ID, ExecutionEquivalenceRequest{
+		BaselineID: baseline.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateExecutionEquivalence failed: %v", err)
+	}
+	if report.Passed {
+		t.Fatalf("execution equivalence report = %#v, want failure", report)
+	}
+	if len(triggerer.events) != 1 {
+		t.Fatalf("trigger count = %d, want 1", len(triggerer.events))
+	}
+	event := triggerer.events[0]
+	if got := intMetadata(event.Metadata["tool_surface_alias_rewrite_count"]); got != 2 {
+		t.Fatalf("event.metadata.tool_surface_alias_rewrite_count = %d, want 2", got)
+	}
+	if got := intMetadata(event.Metadata["tool_surface_cache_invalidation_count"]); got != 3 {
+		t.Fatalf("event.metadata.tool_surface_cache_invalidation_count = %d, want 3", got)
+	}
+	if got := intMetadata(event.Metadata["tool_surface_exec_cutover_count"]); got != 4 {
+		t.Fatalf("event.metadata.tool_surface_exec_cutover_count = %d, want 4", got)
+	}
+}
+
 func TestController_EvaluateExecutionEquivalence_FailsPassRateDrop(t *testing.T) {
 	controller := newTestController(t)
 	items := executionGateSmokeItems(t)

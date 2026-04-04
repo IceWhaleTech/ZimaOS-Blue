@@ -93,15 +93,21 @@ type ToolGatewayResult struct {
 
 // ToolGateway centralizes tool validation, approval, execution, and output shaping.
 type ToolGateway struct {
-	registry *Registry
-	executor *Executor
-	approver ToolApprover
-	observer RuntimeEventObserver
-	metrics  toolGatewayMetricsRecorder
+	registry         *Registry
+	executor         *Executor
+	approver         ToolApprover
+	observer         RuntimeEventObserver
+	metrics          toolGatewayMetricsRecorder
+	toolSurfaceAudit *ToolSurfaceAuditState
 }
 
 type toolGatewayMetricsRecorder interface {
 	RecordCounter(name string, value int64, tags map[string]string)
+}
+
+type toolGatewayNameRewrite struct {
+	From string
+	To   string
 }
 
 // NewToolGateway creates a new shared tool execution gateway.
@@ -136,6 +142,14 @@ func (g *ToolGateway) SetMetricsRecorder(recorder toolGatewayMetricsRecorder) {
 	g.metrics = recorder
 }
 
+// SetToolSurfaceAuditState wires a shared tool-surface audit counter sink into the gateway.
+func (g *ToolGateway) SetToolSurfaceAuditState(state *ToolSurfaceAuditState) {
+	if g == nil {
+		return
+	}
+	g.toolSurfaceAudit = state
+}
+
 // Execute validates and executes a tool call through the shared runtime gateway.
 func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*ToolGatewayResult, error) {
 	if g == nil || g.executor == nil || g.registry == nil {
@@ -146,13 +160,22 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 	result := &ToolGatewayResult{}
 	requestedName := strings.TrimSpace(req.ToolName)
 
-	def, resolvedName, err := g.lookupDefinition(requestedName, req.RouteKind)
+	def, resolvedName, rewrite, err := g.lookupDefinition(requestedName, req.RouteKind)
 	if err != nil {
 		result.populateError(req.ToolCallID, requestedName, nil, err)
 		g.recordMetric("tool_call_rejected_total", req, map[string]string{
 			"reason": classifyToolGatewayErrorCode(err),
 		})
 		return result, err
+	}
+	if rewrite.From != "" && rewrite.To != "" {
+		if g.toolSurfaceAudit != nil {
+			g.toolSurfaceAudit.RecordAliasRewrite()
+		}
+		g.recordMetric("tool_surface_alias_rewrite_total", req, map[string]string{
+			"from": rewrite.From,
+			"to":   rewrite.To,
+		})
 	}
 
 	args, argsJSON, err := normalizeToolArguments(req.Arguments)
@@ -366,21 +389,24 @@ func (r *ToolGatewayResult) populateError(toolCallID, toolName string, args map[
 	r.CompactLLMContent = serializeToolPayload(payload)
 }
 
-func (g *ToolGateway) lookupDefinition(name string, routeKind ToolRouteKind) (ToolDefinition, string, error) {
+func (g *ToolGateway) lookupDefinition(name string, routeKind ToolRouteKind) (ToolDefinition, string, toolGatewayNameRewrite, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
-		return ToolDefinition{}, "", &ToolGatewayError{Code: "tool_not_found", Message: "tool name is required"}
+		return ToolDefinition{}, "", toolGatewayNameRewrite{}, &ToolGatewayError{Code: "tool_not_found", Message: "tool name is required"}
 	}
 	if def, ok := g.registry.LookupDefinitionForRoute(trimmed, routeKind); ok {
-		return def, trimmed, nil
+		return def, trimmed, toolGatewayNameRewrite{}, nil
 	}
 	normalized := normalizeCompatToolName(trimmed)
 	if def, ok := g.registry.LookupDefinitionForRoute(normalized, routeKind); ok {
-		return def, normalized, nil
+		return def, normalized, toolGatewayNameRewrite{}, nil
+	}
+	if def, fallbackName, ok := g.lookupPublicRouteFallback(trimmed, routeKind); ok {
+		return def, fallbackName, toolGatewayNameRewrite{From: trimmed, To: fallbackName}, nil
 	}
 	if routeKind != ToolRouteKindUnknown {
 		if _, ok := g.registry.LookupDefinition(trimmed); ok {
-			return ToolDefinition{}, "", &ToolGatewayError{
+			return ToolDefinition{}, "", toolGatewayNameRewrite{}, &ToolGatewayError{
 				Code:    "tool_not_visible_for_route",
 				Message: fmt.Sprintf("tool %q is not visible for route %q", trimmed, routeKind),
 				Details: map[string]interface{}{"tool": trimmed, "route_kind": routeKind},
@@ -388,7 +414,7 @@ func (g *ToolGateway) lookupDefinition(name string, routeKind ToolRouteKind) (To
 		}
 		if normalized != trimmed {
 			if _, ok := g.registry.LookupDefinition(normalized); ok {
-				return ToolDefinition{}, "", &ToolGatewayError{
+				return ToolDefinition{}, "", toolGatewayNameRewrite{}, &ToolGatewayError{
 					Code:    "tool_not_visible_for_route",
 					Message: fmt.Sprintf("tool %q is not visible for route %q", normalized, routeKind),
 					Details: map[string]interface{}{"tool": normalized, "route_kind": routeKind},
@@ -396,11 +422,27 @@ func (g *ToolGateway) lookupDefinition(name string, routeKind ToolRouteKind) (To
 			}
 		}
 	}
-	return ToolDefinition{}, "", &ToolGatewayError{
+	return ToolDefinition{}, "", toolGatewayNameRewrite{}, &ToolGatewayError{
 		Code:    "tool_not_found",
 		Message: fmt.Sprintf("tool %q is not registered or visible", trimmed),
 		Details: map[string]interface{}{"tool": trimmed},
 	}
+}
+
+func (g *ToolGateway) lookupPublicRouteFallback(name string, routeKind ToolRouteKind) (ToolDefinition, string, bool) {
+	if g == nil || g.registry == nil || routeKind == ToolRouteKindUnknown {
+		return ToolDefinition{}, "", false
+	}
+	if !strings.EqualFold(strings.TrimSpace(name), "exec") {
+		return ToolDefinition{}, "", false
+	}
+	if _, ok := g.registry.LookupDefinition("exec"); !ok {
+		return ToolDefinition{}, "", false
+	}
+	if def, ok := g.registry.LookupDefinitionForRoute("bash", routeKind); ok {
+		return def, "bash", true
+	}
+	return ToolDefinition{}, "", false
 }
 
 func normalizeToolArguments(raw string) (map[string]interface{}, string, error) {

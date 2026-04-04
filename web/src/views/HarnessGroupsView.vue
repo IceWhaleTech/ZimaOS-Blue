@@ -3812,22 +3812,27 @@ onUnmounted(() => {
 <style scoped>
 .harness-groups-page {
   --dashboard-page-accent: 37, 99, 235;
-  --harness-title-color: rgb(var(--dashboard-page-accent, 37, 99, 235));
+  --harness-title-color: var(--color-text);
+  --harness-copy-color: var(--color-text-secondary);
+  --harness-muted-color: var(--color-text-muted);
+  --harness-strong-color: var(--color-text);
   --harness-surface-radius: 0.78rem;
   --harness-control-radius: 0.62rem;
   --harness-chip-radius: 999px;
   --harness-shadow: 0 8px 18px rgba(15, 23, 42, 0.045);
   --harness-shadow-strong: 0 10px 24px rgba(15, 23, 42, 0.07);
-  --harness-panel-bg: #f8fafc;
-  --harness-card-bg: #ffffff;
-  --harness-subsurface-bg: rgba(248, 250, 252, 0.96);
-  --harness-selected-card-bg: rgba(239, 246, 255, 0.92);
+  --harness-panel-bg: var(--color-background-soft);
+  --harness-card-bg: var(--color-background-soft);
+  --harness-subsurface-bg: var(--color-bg-surface);
+  --harness-selected-card-bg: var(--color-bg-surface);
+  --harness-input-bg: var(--color-bg-base);
   max-width: 1480px;
   margin: 0 auto;
   padding: 0 0.75rem 1.8rem;
   display: flex;
   flex-direction: column;
   font-size: 0.82rem;
+  color: var(--harness-strong-color);
 }
 
 .harness-stage {
@@ -4847,6 +4852,79 @@ onUnmounted(() => {
   color: #0f172a;
   font-size: 0.78rem;
   line-height: 1.15;
+}
+
+.harness-groups-page :is(
+  .secondary-button,
+  .stat-value,
+  .quick-eval-summary strong,
+  .meta-grid dd,
+  .run-metric-pill strong,
+  .highlight-card strong,
+  .comparison-item strong,
+  .comparison-item span,
+  .metric strong,
+  .footer-row strong
+) {
+  color: var(--harness-strong-color);
+}
+
+.harness-groups-page :is(
+  .section-description,
+  .state-card p,
+  .action-card-header p,
+  .field-hint,
+  .card-copy,
+  .entity-header p,
+  .report-hero-copy p,
+  .group-subject
+) {
+  color: var(--harness-copy-color);
+}
+
+.harness-groups-page :is(
+  .stat-label,
+  .form-grid span,
+  .meta-grid dt,
+  .run-metric-pill span,
+  .search-label,
+  .metric span,
+  .count-row,
+  .footer-row span,
+  .empty-panel,
+  .card-copy.muted,
+  .dot-separator
+) {
+  color: var(--harness-muted-color);
+}
+
+.harness-groups-page :is(
+  .quick-eval-summary,
+  .run-metric-pill,
+  .empty-panel
+) {
+  border-color: var(--color-border);
+  background: var(--harness-subsurface-bg);
+}
+
+.harness-groups-page :is(
+  .form-grid input,
+  .form-grid select,
+  .form-grid textarea,
+  .search-field input
+) {
+  border-color: var(--color-border);
+  background: var(--harness-input-bg);
+  color: var(--harness-strong-color);
+}
+
+.harness-groups-page .secondary-button {
+  border: 1px solid var(--color-border);
+  background: var(--harness-subsurface-bg);
+}
+
+.harness-groups-page .segment-button.active {
+  background: var(--harness-card-bg);
 }
 
 @media (max-width: 1200px) {

@@ -119,24 +119,24 @@ func (s *DeferredToolExposureStore) Delete(sessionID string) bool {
 	return deleted
 }
 
-func (s *DeferredToolExposureStore) InvalidateIfStale(sessionID string, registryVersion uint64, promptPolicyHash, skillExposureStamp string) bool {
+func (s *DeferredToolExposureStore) InvalidateIfStale(sessionID string, registryVersion uint64, promptPolicyHash, skillExposureStamp string) (bool, string) {
 	if s == nil {
-		return false
+		return false, ""
 	}
 	state, ok := s.Snapshot(sessionID)
 	if !ok {
-		return false
+		return false, ""
 	}
 	if state.RegistryVersion != registryVersion {
-		return s.Delete(sessionID)
+		return s.Delete(sessionID), "registry_version"
 	}
 	if strings.TrimSpace(state.PromptPolicyHash) != strings.TrimSpace(promptPolicyHash) {
-		return s.Delete(sessionID)
+		return s.Delete(sessionID), "prompt_policy"
 	}
 	if strings.TrimSpace(state.SkillExposureStamp) != strings.TrimSpace(skillExposureStamp) {
-		return s.Delete(sessionID)
+		return s.Delete(sessionID), "skill_exposure"
 	}
-	return false
+	return false, ""
 }
 
 func (s *DeferredToolExposureStore) Apply(sessionID string, update DeferredToolExposureUpdate) (DeferredToolExposureState, bool) {

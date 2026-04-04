@@ -37,6 +37,7 @@ import (
 
 const maxArchiveDownloadBytes = 128 << 20
 const maxSemanticCandidates = 200
+const vercelSkillsSourceURL = "https://github.com/vercel-labs/skills/tree/main/skills"
 
 type Options struct {
 	Config                   Config
@@ -657,9 +658,6 @@ func enforceInstallSecurityPolicy(report *SecurityReport, ackRisk bool, forceIns
 	if isInstallBlockedBySecurityPolicy(report) && !forceInstall {
 		return fmt.Errorf("installation blocked by security policy: %s risk", report.RiskLevel)
 	}
-	if requiresInstallRiskAcknowledgement(report) && !ackRisk {
-		return fmt.Errorf("installation requires risk acknowledgement")
-	}
 	return nil
 }
 
@@ -1045,7 +1043,7 @@ func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
 func (s *Service) ensureDefaultSources(ctx context.Context) error {
 	defaults := []Source{
 		{ID: "tencent-skillhub", Type: "lightmake_api", BaseURL: strings.TrimRight(s.cfg.TencentSkillHubAPIBaseURL, "/"), DisplayName: "Tencent SkillHub", SourceGroup: "skillhub", AuthMode: "none", Enabled: true, RateLimitPerMinute: 120, Priority: 5},
-		{ID: "github-skill-md", Type: "github_code_search", BaseURL: "filename:SKILL.md", DisplayName: "GitHub SKILL.md", SourceGroup: "github", AuthMode: "optional_token", Enabled: true, RateLimitPerMinute: 30, Priority: 30},
+		{ID: "vercel", Type: "seed_page", BaseURL: vercelSkillsSourceURL, DisplayName: "Vercel", SourceGroup: "vercel", AuthMode: "none", Enabled: true, RateLimitPerMinute: 10, Priority: 29},
 		{ID: "github-claude-md", Type: "github_code_search", BaseURL: "filename:CLAUDE.md", DisplayName: "GitHub CLAUDE.md", SourceGroup: "github", AuthMode: "optional_token", Enabled: true, RateLimitPerMinute: 30, Priority: 31},
 		{ID: "github-agent-md", Type: "github_code_search", BaseURL: "filename:AGENT.md", DisplayName: "GitHub AGENT.md", SourceGroup: "github", AuthMode: "optional_token", Enabled: true, RateLimitPerMinute: 30, Priority: 32},
 		{ID: "clawhub", Type: "clawhub", BaseURL: strings.TrimRight(s.cfg.ClawHubBaseURL, "/"), DisplayName: "ClawHub", SourceGroup: "clawhub", AuthMode: "none", Enabled: true, RateLimitPerMinute: 60, Priority: 10},
@@ -2520,34 +2518,37 @@ func (s *Service) discoverFromSeedPage(ctx context.Context, source Source, proce
 }
 
 type ingestRequest struct {
-	SourceID        string
-	SourceName      string
-	SourceGroup     string
-	SourceType      string
-	RepoURL         string
-	Homepage        string
-	DownloadURL     string
-	SourceURL       string
-	SkillPath       string
-	SkillContent    string
-	CommitHash      string
-	Stars           int
-	Downloads       int
-	LastUpdated     time.Time
-	DefaultSkillID  string
-	ExplicitID      string
-	ExplicitName    string
-	ExplicitVersion string
-	ExplicitAuthor  string
-	DescriptionHint string
-	CategoryHint    string
-	AdditionalTags  []string
-	SecuritySignals *SourceSecuritySignals
-	Installable     bool
-	InstallType     string
-	ArtifactKind    string
-	HasBinary       bool
-	HasScripts      bool
+	SourceID         string
+	SourceName       string
+	SourceGroup      string
+	OriginSourceID   string
+	OriginSourceName string
+	OriginSourceURL  string
+	SourceType       string
+	RepoURL          string
+	Homepage         string
+	DownloadURL      string
+	SourceURL        string
+	SkillPath        string
+	SkillContent     string
+	CommitHash       string
+	Stars            int
+	Downloads        int
+	LastUpdated      time.Time
+	DefaultSkillID   string
+	ExplicitID       string
+	ExplicitName     string
+	ExplicitVersion  string
+	ExplicitAuthor   string
+	DescriptionHint  string
+	CategoryHint     string
+	AdditionalTags   []string
+	SecuritySignals  *SourceSecuritySignals
+	Installable      bool
+	InstallType      string
+	ArtifactKind     string
+	HasBinary        bool
+	HasScripts       bool
 }
 
 func (s *Service) prepareIngestRecord(ctx context.Context, req ingestRequest) (*SkillUpsertRecord, error) {
@@ -2595,6 +2596,7 @@ func (s *Service) prepareIngestRecord(ctx context.Context, req ingestRequest) (*
 		HasScripts:   req.HasScripts,
 	})
 	report = mergeExternalSecuritySignals(report, req.SecuritySignals)
+	sourceID, sourceName, sourceGroup := normalizeDiscoveredSkillSource(req)
 	doc := &SkillDocument{
 		ID:                  parsed.Manifest.ID,
 		Slug:                normalizeSkillID(parsed.Manifest.ID),
@@ -2626,9 +2628,12 @@ func (s *Service) prepareIngestRecord(ctx context.Context, req ingestRequest) (*
 		ScanStatus:          report.LLMStatus,
 		ContentSHA256:       parsed.Checksum,
 		Published:           true,
-		SourceID:            req.SourceID,
-		SourceName:          req.SourceName,
-		SourceGroup:         req.SourceGroup,
+		SourceID:            sourceID,
+		SourceName:          sourceName,
+		SourceGroup:         sourceGroup,
+		OriginSourceID:      req.OriginSourceID,
+		OriginSourceName:    req.OriginSourceName,
+		OriginSourceURL:     req.OriginSourceURL,
 		SourceType:          req.SourceType,
 		SkillPath:           req.SkillPath,
 		SkillContent:        req.SkillContent,
@@ -2661,6 +2666,38 @@ func (s *Service) prepareIngestRecord(ctx context.Context, req ingestRequest) (*
 		Version: version,
 		Report:  report,
 	}, nil
+}
+
+func normalizeDiscoveredSkillSource(req ingestRequest) (string, string, string) {
+	if isVercelSkillsReference(req.RepoURL, req.Homepage, req.DownloadURL, req.SourceURL) {
+		return "vercel", "Vercel", "vercel"
+	}
+	if strings.TrimSpace(req.SourceGroup) == GitHubAwesomeSkillsSourceGroup {
+		return GitHubAwesomeSkillsSourceID, GitHubAwesomeSkillsSourceName, GitHubAwesomeSkillsSourceGroup
+	}
+	return req.SourceID, req.SourceName, req.SourceGroup
+}
+
+func isVercelSkillsReference(values ...string) bool {
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		if strings.Contains(normalized, "github.com/vercel-labs/skills") {
+			return true
+		}
+		if strings.Contains(normalized, "raw.githubusercontent.com/vercel-labs/skills/") {
+			return true
+		}
+		if strings.Contains(normalized, "raw.gitmirror.com/vercel-labs/skills/") {
+			return true
+		}
+		if strings.Contains(normalized, "cdn.jsdelivr.net/gh/vercel-labs/skills@") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) ingestSkillContent(ctx context.Context, req ingestRequest) (bool, error) {

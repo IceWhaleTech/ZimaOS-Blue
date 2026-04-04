@@ -1,5 +1,25 @@
 import type { LocaleKey } from './locale-catalog'
 
+const githubAwesomeSkillsLabel = 'GitHub Awesome Skills'
+
+function buildGitHubAwesomeSkillsBackfill(description: string, upstream: string) {
+  return {
+    marketplace: {
+      sources: {
+        githubAwesomeSkills: {
+          label: githubAwesomeSkillsLabel,
+          description,
+        },
+      },
+      detail: {
+        meta: {
+          upstream,
+        },
+      },
+    },
+  }
+}
+
 const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
   'ca-ES': {
     common: { backToTop: 'Torna a dalt' },
@@ -11,6 +31,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           "Les eines integrades es poden desactivar, però no es poden desinstal·lar.",
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Agrega fonts seleccionades de GitHub awesome skills.',
+      'Origen original'
+    ),
   },
   'cs-CZ': {
     common: { backToTop: 'Zpět nahoru' },
@@ -22,6 +46,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Vestavěné nástroje lze zakázat, ale nelze je odinstalovat.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Agregovaný výběr kurátorovaných zdrojů GitHub awesome skills.',
+      'Původní zdroj'
+    ),
   },
   'da-DK': {
     common: { backToTop: 'Tilbage til toppen' },
@@ -33,6 +61,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Indbyggede værktøjer kan deaktiveres, men de kan ikke afinstalleres.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Samlet udvalg af kuraterede GitHub awesome skills-kilder.',
+      'Oprindelig kilde'
+    ),
   },
   'de-DE': {
     common: { backToTop: 'Zurück nach oben' },
@@ -44,6 +76,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Integrierte Tools können deaktiviert, aber nicht deinstalliert werden.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Zusammengefasste kuratierte GitHub-Awesome-Skills-Quellen.',
+      'Ursprungsquelle'
+    ),
   },
   'el-GR': {
     common: { backToTop: 'Επιστροφή στην κορυφή' },
@@ -55,6 +91,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Τα ενσωματωμένα εργαλεία μπορούν να απενεργοποιηθούν, αλλά δεν μπορούν να απεγκατασταθούν.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Συγκεντρωμένες επιλεγμένες πηγές GitHub awesome skills.',
+      'Αρχική πηγή'
+    ),
   },
   'en-GB': {
     common: { backToTop: 'Back to top' },
@@ -66,6 +106,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Built-in tools can be disabled, but they cannot be uninstalled.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Aggregated curated GitHub awesome skills upstreams.',
+      'Upstream'
+    ),
   },
   'es-ES': {
     common: { backToTop: 'Volver arriba' },
@@ -77,6 +121,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Las herramientas integradas se pueden desactivar, pero no se pueden desinstalar.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Agregado de fuentes seleccionadas de GitHub awesome skills.',
+      'Origen'
+    ),
   },
   'fr-FR': {
     common: { backToTop: 'Retour en haut' },
@@ -88,6 +136,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Les outils intégrés peuvent être désactivés, mais ils ne peuvent pas être désinstallés.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Agrégat de sources GitHub awesome skills sélectionnées.',
+      "Source d'origine"
+    ),
   },
   'ga-IE': {
     common: { backToTop: 'Ar ais go barr' },
@@ -99,6 +151,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Is féidir uirlisí ionsuite a dhíchumasú, ach ní féidir iad a dhíshuiteáil.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Comhiomlán de fhoinsí roghnaithe GitHub awesome skills.',
+      'Foinse bhunaidh'
+    ),
   },
   'hr-HR': {
     common: { backToTop: 'Natrag na vrh' },
@@ -110,6 +166,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Ugrađeni alati mogu se onemogućiti, ali se ne mogu deinstalirati.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Objedinjeni odabrani izvori GitHub awesome skills.',
+      'Izvorni izvor'
+    ),
   },
   'hu-HU': {
     common: { backToTop: 'Vissza a tetejére' },
@@ -121,6 +181,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'A beépített eszközök letilthatók, de nem távolíthatók el.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Összesített, válogatott GitHub awesome skills források.',
+      'Eredeti forrás'
+    ),
   },
   'it-IT': {
     common: { backToTop: 'Torna in alto' },
@@ -132,6 +196,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Gli strumenti integrati possono essere disabilitati, ma non possono essere disinstallati.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Raccolta di fonti GitHub awesome skills selezionate.',
+      'Fonte originale'
+    ),
   },
   'ja-JP': {
     common: { backToTop: 'トップに戻る' },
@@ -143,6 +211,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           '組み込みツールは無効にできますが、アンインストールはできません。',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      '厳選された GitHub awesome skills ソースを集約した一覧です。',
+      '元のソース'
+    ),
   },
   'ko-KR': {
     common: { backToTop: '맨 위로' },
@@ -154,6 +226,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           '내장 도구는 비활성화할 수 있지만 제거할 수는 없습니다.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      '엄선된 GitHub awesome skills 소스를 모아 둔 집계입니다.',
+      '원본 출처'
+    ),
   },
   'ml-IN': {
     common: { backToTop: 'മുകളിൽേക്ക് മടങ്ങുക' },
@@ -165,6 +241,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'ഉൾനിർമ്മിത ടൂളുകൾ പ്രവർത്തനരഹിതമാക്കാം, എന്നാൽ അൺഇൻസ്റ്റാൾ ചെയ്യാനാവില്ല.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'തിരഞ്ഞെടുത്ത GitHub awesome skills ഉറവിടങ്ങളെ ഏകോപിപ്പിച്ച സമാഹാരം.',
+      'മൂല ഉറവിടം'
+    ),
   },
   'nb-NO': {
     common: { backToTop: 'Tilbake til toppen' },
@@ -176,6 +256,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Innebygde verktøy kan deaktiveres, men de kan ikke avinstalleres.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Samlet oversikt over kuraterte GitHub awesome skills-kilder.',
+      'Opprinnelig kilde'
+    ),
   },
   'nl-NL': {
     common: { backToTop: 'Terug naar boven' },
@@ -187,6 +271,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Ingebouwde tools kunnen worden uitgeschakeld, maar niet worden verwijderd.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Verzamelde selectie van GitHub awesome skills-bronnen.',
+      'Oorspronkelijke bron'
+    ),
   },
   'pl-PL': {
     common: { backToTop: 'Wróć na górę' },
@@ -198,6 +286,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Wbudowane narzędzia można wyłączyć, ale nie można ich odinstalować.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Zbiorczy zestaw wyselekcjonowanych źródeł GitHub awesome skills.',
+      'Źródło pierwotne'
+    ),
   },
   'pt-BR': {
     common: { backToTop: 'Voltar ao topo' },
@@ -209,6 +301,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'As ferramentas integradas podem ser desativadas, mas não podem ser desinstaladas.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Agregado de fontes selecionadas de GitHub awesome skills.',
+      'Fonte de origem'
+    ),
   },
   'pt-PT': {
     common: { backToTop: 'Voltar ao topo' },
@@ -220,6 +316,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'As ferramentas integradas podem ser desativadas, mas não podem ser desinstaladas.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Agregado de fontes selecionadas de GitHub awesome skills.',
+      'Fonte de origem'
+    ),
   },
   'ro-RO': {
     common: { backToTop: 'Înapoi sus' },
@@ -231,6 +331,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Instrumentele integrate pot fi dezactivate, dar nu pot fi dezinstalate.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Agregare de surse GitHub awesome skills selectate.',
+      'Sursa de origine'
+    ),
   },
   'ru-RU': {
     common: { backToTop: 'Наверх' },
@@ -242,6 +346,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Встроенные инструменты можно отключить, но нельзя удалить.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Собранные отобранные источники GitHub awesome skills.',
+      'Исходный источник'
+    ),
   },
   'sk-SK': {
     common: { backToTop: 'Späť hore' },
@@ -253,6 +361,10 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Vstavané nástroje možno zakázať, ale nemožno ich odinštalovať.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Agregovaný výber kurátorovaných zdrojov GitHub awesome skills.',
+      'Pôvodný zdroj'
+    ),
   },
   'sv-SE': {
     common: { backToTop: 'Till toppen' },
@@ -264,9 +376,17 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
           'Inbyggda verktyg kan inaktiveras, men de kan inte avinstalleras.',
       },
     },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      'Samlad översikt över utvalda GitHub awesome skills-källor.',
+      'Ursprungskälla'
+    ),
   },
   'zh-TW': {
     common: { backToTop: '回到頂部' },
+    skillStore: buildGitHubAwesomeSkillsBackfill(
+      '聚合多個人工篩選的 GitHub awesome skills 上游來源。',
+      '上游來源'
+    ),
   },
 }
 

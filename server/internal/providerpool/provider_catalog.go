@@ -7,8 +7,9 @@ import (
 )
 
 type officialProviderCatalog struct {
-	Providers map[string]officialProviderCatalogProvider `json:"providers"`
-	Models    map[string][]officialProviderCatalogModel  `json:"models"`
+	Providers        map[string]officialProviderCatalogProvider `json:"providers"`
+	Models           map[string][]officialProviderCatalogModel  `json:"models"`
+	PinchBenchModels map[string][]officialProviderCatalogModel  `json:"pinchbench_models,omitempty"`
 }
 
 type officialProviderCatalogProvider struct {
@@ -41,8 +42,9 @@ func SetOfficialProviderCatalog(catalog officialProviderCatalog) {
 	defer officialProviderCatalogState.mu.Unlock()
 
 	normalized := officialProviderCatalog{
-		Providers: make(map[string]officialProviderCatalogProvider, len(catalog.Providers)),
-		Models:    make(map[string][]officialProviderCatalogModel, len(catalog.Models)),
+		Providers:        make(map[string]officialProviderCatalogProvider, len(catalog.Providers)),
+		Models:           make(map[string][]officialProviderCatalogModel, len(catalog.Models)),
+		PinchBenchModels: make(map[string][]officialProviderCatalogModel, len(catalog.PinchBenchModels)),
 	}
 
 	for providerID, provider := range catalog.Providers {
@@ -72,6 +74,28 @@ func SetOfficialProviderCatalog(catalog officialProviderCatalog) {
 			})
 		}
 		normalized.Models[providerID] = copied
+	}
+
+	for providerID, models := range catalog.PinchBenchModels {
+		if providerID == "" {
+			continue
+		}
+		copied := make([]officialProviderCatalogModel, 0, len(models))
+		for _, model := range models {
+			if model.ID == "" {
+				continue
+			}
+			copied = append(copied, officialProviderCatalogModel{
+				ID:              model.ID,
+				DisplayName:     model.DisplayName,
+				ContextWindow:   model.ContextWindow,
+				MaxOutput:       model.MaxOutput,
+				Capabilities:    append([]string(nil), model.Capabilities...),
+				PinchBenchScore: cloneOptionalFloat64(model.PinchBenchScore),
+				PinchBenchURL:   model.PinchBenchURL,
+			})
+		}
+		normalized.PinchBenchModels[providerID] = copied
 	}
 
 	officialProviderCatalogState.catalog = normalized
@@ -249,6 +273,7 @@ func pinchBenchMetadataForModel(providerID string, model *Model) (*float64, stri
 
 	officialProviderCatalogState.mu.RLock()
 	catalogModels := append([]officialProviderCatalogModel(nil), officialProviderCatalogState.catalog.Models[providerID]...)
+	catalogModels = append(catalogModels, officialProviderCatalogState.catalog.PinchBenchModels[providerID]...)
 	officialProviderCatalogState.mu.RUnlock()
 
 	if len(catalogModels) == 0 {

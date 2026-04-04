@@ -282,6 +282,12 @@ func buildSelectorGateMetrics(report *EvalRunReport) SelectorGateMetrics {
 			incrementBreakdownValue(&metrics.NativeSurfaceModeBreakdown, observation.NativeSurfaceMode)
 			incrementBreakdownValue(&metrics.NativeSurfaceReasonBreakdown, observation.NativeSurfaceReason)
 			incrementBreakdownValue(&metrics.ExecutionProfileBreakdown, observation.ExecutionProfile)
+			accumulateDiscoverFirstAuditCounts(
+				&metrics.ToolSurfaceAliasRewriteCount,
+				&metrics.ToolSurfaceCacheInvalidationCount,
+				&metrics.ToolSurfaceExecCutoverCount,
+				observation,
+			)
 		}
 	}
 
@@ -309,6 +315,12 @@ func buildSelectorGateMetrics(report *EvalRunReport) SelectorGateMetrics {
 				incrementBreakdownValue(&metrics.NativeSurfaceModeBreakdown, observation.NativeSurfaceMode)
 				incrementBreakdownValue(&metrics.NativeSurfaceReasonBreakdown, observation.NativeSurfaceReason)
 				incrementBreakdownValue(&metrics.ExecutionProfileBreakdown, observation.ExecutionProfile)
+				accumulateDiscoverFirstAuditCounts(
+					&metrics.ToolSurfaceAliasRewriteCount,
+					&metrics.ToolSurfaceCacheInvalidationCount,
+					&metrics.ToolSurfaceExecCutoverCount,
+					observation,
+				)
 			}
 		}
 	}

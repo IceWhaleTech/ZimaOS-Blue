@@ -946,9 +946,15 @@ onUnmounted(() => {
 
 <style scoped>
 .harness-detail-page {
+  --harness-detail-surface: var(--color-background-soft);
+  --harness-detail-subsurface: var(--color-bg-surface);
+  --harness-detail-text-strong: var(--color-text);
+  --harness-detail-text-secondary: var(--color-text-secondary);
+  --harness-detail-text-muted: var(--color-text-muted);
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  color: var(--harness-detail-text-strong);
 }
 
 .automation-tab-strip {
@@ -1282,6 +1288,70 @@ onUnmounted(() => {
 .status-chip.is-active {
   background: rgba(59, 130, 246, 0.16);
   color: #1d4ed8;
+}
+
+.harness-detail-page :is(
+  .detail-hero,
+  .state-card,
+  .stat-card,
+  .panel,
+  .failed-card,
+  .item-card,
+  .artifact-card
+) {
+  border-color: var(--color-border);
+  background: var(--harness-detail-surface);
+}
+
+.harness-detail-page :is(
+  .hero-description,
+  .state-card p,
+  .failed-reason,
+  .artifact-card p,
+  .panel-description
+) {
+  color: var(--harness-detail-text-secondary);
+}
+
+.harness-detail-page :is(
+  .hero-meta dt,
+  .panel-caption,
+  .summary-row,
+  .detail-pills,
+  .failed-card-header,
+  .stat-card span,
+  .verdict-card span,
+  .empty-text
+) {
+  color: var(--harness-detail-text-muted);
+}
+
+.harness-detail-page :is(
+  .hero-meta dd,
+  .stat-card strong,
+  .panel-subsection h3,
+  .verdict-card strong,
+  .failed-title
+) {
+  color: var(--harness-detail-text-strong);
+}
+
+.harness-detail-page :is(
+  .verdict-card,
+  .detail-pills span
+) {
+  background: var(--harness-detail-subsurface);
+  border: 1px solid var(--color-border);
+}
+
+.harness-detail-page .ghost-button {
+  border-color: var(--color-border);
+  background: var(--harness-detail-surface);
+  color: var(--harness-detail-text-strong);
+}
+
+.harness-detail-page :is(.kind-chip, .status-chip.is-muted) {
+  color: var(--harness-detail-text-secondary);
 }
 
 @media (max-width: 959px) {

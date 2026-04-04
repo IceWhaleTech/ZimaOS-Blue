@@ -153,54 +153,58 @@ defineExpose({ open, close })
             </button>
           </div>
 
-          <!-- Category Tabs -->
-          <div class="dashboard-customize-tabs">
-            <button
-              v-for="cat in categories"
-              :key="cat.id"
-              class="dashboard-customize-tab"
-              :class="{ active: activeCategory === cat.id }"
-              @click="activeCategory = cat.id as typeof activeCategory"
-            >
-              {{ tr(cat.labelKey, cat.id) }}
-            </button>
-          </div>
-
-          <!-- Card List -->
-          <div class="dashboard-customize-list">
-            <div class="dashboard-customize-list-grid">
-              <div
-                v-for="card in filteredCards"
-                :key="card.config.id"
-                class="dashboard-customize-item"
-                :class="{ enabled: card.enabled }"
+          <div class="dashboard-customize-frame">
+            <!-- Category Tabs -->
+            <div class="dashboard-customize-tabs">
+              <button
+                v-for="cat in categories"
+                :key="cat.id"
+                class="dashboard-customize-tab"
+                :class="{ active: activeCategory === cat.id }"
+                @click="activeCategory = cat.id as typeof activeCategory"
               >
-                <div class="dashboard-customize-item-copy">
-                  <div
-                    class="dashboard-customize-item-dot"
-                    :class="{ enabled: card.enabled }"
-                  ></div>
-                  <div>
-                    <div class="dashboard-customize-item-title">
-                      {{ tr(card.config.titleKey, card.config.id) }}
-                    </div>
-                    <div class="dashboard-customize-item-subtitle">
-                      {{ tr(`dashboard.categories.${card.config.category}`, card.config.category) }}
+                {{ tr(cat.labelKey, cat.id) }}
+              </button>
+            </div>
+
+            <!-- Card List -->
+            <div class="dashboard-customize-list">
+              <div class="dashboard-customize-list-grid">
+                <div
+                  v-for="card in filteredCards"
+                  :key="card.config.id"
+                  class="dashboard-customize-item"
+                  :class="{ enabled: card.enabled }"
+                >
+                  <div class="dashboard-customize-item-copy">
+                    <div
+                      class="dashboard-customize-item-dot"
+                      :class="{ enabled: card.enabled }"
+                    ></div>
+                    <div>
+                      <div class="dashboard-customize-item-title">
+                        {{ tr(card.config.titleKey, card.config.id) }}
+                      </div>
+                      <div class="dashboard-customize-item-subtitle">
+                        {{
+                          tr(`dashboard.categories.${card.config.category}`, card.config.category)
+                        }}
+                      </div>
                     </div>
                   </div>
+                  <label class="dashboard-customize-switch">
+                    <input
+                      type="checkbox"
+                      :checked="card.enabled"
+                      class="sr-only"
+                      :aria-label="tr(card.config.titleKey, card.config.id)"
+                      @change="toggleCard(card.config.id)"
+                    />
+                    <span class="dashboard-customize-switch-track">
+                      <span class="dashboard-customize-switch-thumb"></span>
+                    </span>
+                  </label>
                 </div>
-                <label class="dashboard-customize-switch">
-                  <input
-                    type="checkbox"
-                    :checked="card.enabled"
-                    class="sr-only"
-                    :aria-label="tr(card.config.titleKey, card.config.id)"
-                    @change="toggleCard(card.config.id)"
-                  />
-                  <span class="dashboard-customize-switch-track">
-                    <span class="dashboard-customize-switch-thumb"></span>
-                  </span>
-                </label>
               </div>
             </div>
           </div>
@@ -286,9 +290,10 @@ defineExpose({ open, close })
 .dashboard-customize-modal {
   position: relative;
   width: min(52rem, 100%);
+  height: min(88vh, 48rem);
   max-height: min(88vh, 48rem);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   border-radius: 1rem;
   border: 1px solid rgba(203, 213, 225, 0.82);
@@ -299,7 +304,6 @@ defineExpose({ open, close })
 }
 
 .dashboard-customize-head {
-  flex: 0 0 auto;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -340,8 +344,13 @@ defineExpose({ open, close })
   background: rgba(255, 255, 255, 0.85);
 }
 
+.dashboard-customize-frame {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .dashboard-customize-tabs {
-  flex: 0 0 auto;
   display: flex;
   gap: 0.4rem;
   padding: 0.75rem 1rem;
@@ -372,11 +381,10 @@ defineExpose({ open, close })
 }
 
 .dashboard-customize-list {
-  flex: 0 1 auto;
   min-height: 0;
-  max-height: min(52vh, 30rem);
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 0.95rem 1rem;
 }
 
@@ -473,13 +481,15 @@ defineExpose({ open, close })
 }
 
 .dashboard-customize-foot {
-  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
   padding: 0.8rem 1rem;
   border-top: 1px solid rgba(203, 213, 225, 0.74);
+  background: inherit;
+  position: relative;
+  z-index: 1;
 }
 
 .dashboard-customize-reset,
@@ -626,6 +636,7 @@ defineExpose({ open, close })
 
   .dashboard-customize-modal {
     width: 100%;
+    height: 92vh;
     max-height: 92vh;
     border-radius: 0.86rem;
   }

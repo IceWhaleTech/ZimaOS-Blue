@@ -3,10 +3,13 @@ package harness
 import "strings"
 
 type discoverFirstObservation struct {
-	SelectedCanonicalSkill string
-	NativeSurfaceMode      string
-	NativeSurfaceReason    string
-	ExecutionProfile       string
+	SelectedCanonicalSkill            string
+	NativeSurfaceMode                 string
+	NativeSurfaceReason               string
+	ExecutionProfile                  string
+	ToolSurfaceAliasRewriteCount      int
+	ToolSurfaceCacheInvalidationCount int
+	ToolSurfaceExecCutoverCount       int
 }
 
 func decodeDiscoverFirstObservation(structured map[string]interface{}) discoverFirstObservation {
@@ -37,6 +40,59 @@ func decodeDiscoverFirstObservation(structured map[string]interface{}) discoverF
 			metadataString(discoveryRuntime, "execution_profile"),
 			metadataString(discoveryDecision, "execution_profile"),
 		)),
+		ToolSurfaceAliasRewriteCount:      firstDiscoverFirstAuditCount("tool_surface_alias_rewrite_count", structured, discoveryRuntime),
+		ToolSurfaceCacheInvalidationCount: firstDiscoverFirstAuditCount("tool_surface_cache_invalidation_count", structured, discoveryRuntime),
+		ToolSurfaceExecCutoverCount: firstNonZeroDiscoverFirstAuditCount(
+			firstDiscoverFirstAuditCount("tool_surface_exec_cutover_count", structured, discoveryRuntime),
+			boolToDiscoverFirstAuditCount(
+				metadataBoolValue(structured, "skill_exec_cutover") ||
+					metadataBoolValue(discoveryRuntime, "skill_exec_cutover"),
+			),
+		),
+	}
+}
+
+func firstDiscoverFirstAuditCount(key string, sources ...map[string]interface{}) int {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return 0
+	}
+	for _, source := range sources {
+		if len(source) == 0 {
+			continue
+		}
+		if value := intMetadataPtr(source[key]); value != nil {
+			return *value
+		}
+	}
+	return 0
+}
+
+func firstNonZeroDiscoverFirstAuditCount(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func boolToDiscoverFirstAuditCount(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func accumulateDiscoverFirstAuditCounts(aliasRewriteCount, cacheInvalidationCount, execCutoverCount *int, observation discoverFirstObservation) {
+	if aliasRewriteCount != nil {
+		*aliasRewriteCount += observation.ToolSurfaceAliasRewriteCount
+	}
+	if cacheInvalidationCount != nil {
+		*cacheInvalidationCount += observation.ToolSurfaceCacheInvalidationCount
+	}
+	if execCutoverCount != nil {
+		*execCutoverCount += observation.ToolSurfaceExecCutoverCount
 	}
 }
 

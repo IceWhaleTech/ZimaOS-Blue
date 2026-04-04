@@ -274,6 +274,11 @@ function toggleBatch() {
 
 <style scoped>
 .tree-branch {
+  --harness-tree-surface: var(--color-background-soft);
+  --harness-tree-subsurface: var(--color-bg-surface);
+  --harness-tree-text: var(--color-text);
+  --harness-tree-copy: var(--color-text-secondary);
+  --harness-tree-muted: var(--color-text-muted);
   position: relative;
 }
 
@@ -300,9 +305,9 @@ function toggleBatch() {
   gap: 0.6rem;
   padding: 1rem 1rem 1rem 1.1rem;
   border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(248, 250, 252, 0.9);
-  color: #0f172a;
+  border: 1px solid var(--color-border);
+  background: var(--harness-tree-surface);
+  color: var(--harness-tree-text);
   text-align: left;
   cursor: pointer;
   transition:
@@ -324,13 +329,16 @@ function toggleBatch() {
 }
 
 .tree-node.is-coordinator {
-  background:
-    linear-gradient(180deg, rgba(236, 253, 245, 0.92), rgba(248, 250, 252, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(16, 185, 129, 0.12),
+    var(--harness-tree-surface)
+  );
   border-color: rgba(16, 185, 129, 0.22);
 }
 
 .tree-node.is-worker {
-  background: rgba(248, 250, 252, 0.86);
+  background: var(--harness-tree-surface);
 }
 
 .tree-node.is-detached {
@@ -370,7 +378,7 @@ function toggleBatch() {
 
 .role-pill {
   background: rgba(15, 23, 42, 0.07);
-  color: #1e293b;
+  color: var(--harness-tree-text);
 }
 
 .status-pill.tone-success {
@@ -416,18 +424,18 @@ function toggleBatch() {
 }
 
 .node-goal {
-  color: #334155;
+  color: var(--harness-tree-copy);
 }
 
 .node-meta,
 .batch-summary-meta {
-  color: #64748b;
+  color: var(--harness-tree-muted);
   font-size: 0.84rem;
 }
 
 .node-preview,
 .batch-summary-subtitle {
-  color: #475569;
+  color: var(--harness-tree-copy);
   font-size: 0.88rem;
 }
 
@@ -436,7 +444,7 @@ function toggleBatch() {
   padding: 0.32rem 0.55rem;
   border-radius: 0.7rem;
   background: rgba(15, 23, 42, 0.06);
-  color: #1e293b;
+  color: var(--harness-tree-text);
   font-size: 0.8rem;
   word-break: break-all;
 }
@@ -464,7 +472,7 @@ function toggleBatch() {
 }
 
 .batch-summary-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.92));
+  background: var(--harness-tree-subsurface);
   border-style: dashed;
 }
 

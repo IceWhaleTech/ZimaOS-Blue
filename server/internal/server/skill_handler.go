@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,12 +32,52 @@ import (
 
 // SkillSource represents an external skill source
 type SkillSource struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	URL         string `json:"url"`
-	Type        string `json:"type"` // "clawdhub", "github", "custom"
-	Description string `json:"description,omitempty"`
-	Enabled     bool   `json:"enabled"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	URL                string            `json:"url"`
+	Type               string            `json:"type"` // Legacy field; may contain marketplace source types.
+	Description        string            `json:"description,omitempty"`
+	Enabled            bool              `json:"enabled"`
+	DisplayName        string            `json:"display_name,omitempty"`
+	BaseURL            string            `json:"base_url,omitempty"`
+	SourceGroup        string            `json:"source_group,omitempty"`
+	MirrorOf           string            `json:"mirror_of,omitempty"`
+	AuthMode           string            `json:"auth_mode,omitempty"`
+	Headers            map[string]string `json:"headers,omitempty"`
+	RateLimitPerMinute int               `json:"rate_limit_per_minute,omitempty"`
+	Priority           int               `json:"priority,omitempty"`
+}
+
+type SkillSourceUpsertRequest struct {
+	ID                 string             `json:"id"`
+	Name               string             `json:"name"`
+	URL                string             `json:"url"`
+	Type               string             `json:"type"`
+	Description        string             `json:"description,omitempty"`
+	Enabled            *bool              `json:"enabled,omitempty"`
+	DisplayName        string             `json:"display_name,omitempty"`
+	BaseURL            string             `json:"base_url,omitempty"`
+	SourceGroup        string             `json:"source_group,omitempty"`
+	MirrorOf           string             `json:"mirror_of,omitempty"`
+	AuthMode           string             `json:"auth_mode,omitempty"`
+	Headers            map[string]string  `json:"headers,omitempty"`
+	RateLimitPerMinute int                `json:"rate_limit_per_minute,omitempty"`
+	Priority           int                `json:"priority,omitempty"`
+}
+
+type SkillSourceImportPreviewRequest struct {
+	URL string `json:"url"`
+}
+
+type SkillSourceImportPreviewResponse struct {
+	URL             string       `json:"url"`
+	NormalizedURL   string       `json:"normalized_url,omitempty"`
+	Kind            string       `json:"kind"`
+	Confidence      string       `json:"confidence,omitempty"`
+	Message         string       `json:"message,omitempty"`
+	SuggestedSource *SkillSource `json:"suggested_source,omitempty"`
+	SeedType        string       `json:"seed_type,omitempty"`
+	SeedValue       string       `json:"seed_value,omitempty"`
 }
 
 // RemoteSkill represents a skill from an external source
@@ -51,6 +92,9 @@ type RemoteSkill struct {
 	SourceID            string   `json:"source_id"`
 	SourceName          string   `json:"source_name"`
 	SourceGroup         string   `json:"source_group,omitempty"`
+	OriginSourceID      string   `json:"origin_source_id,omitempty"`
+	OriginSourceName    string   `json:"origin_source_name,omitempty"`
+	OriginSourceURL     string   `json:"origin_source_url,omitempty"`
 	DownloadURL         string   `json:"download_url,omitempty"`
 	Homepage            string   `json:"homepage,omitempty"`
 	Stars               int      `json:"stars,omitempty"`
@@ -82,6 +126,9 @@ func (h *SkillHandler) remoteSkillFromDocument(doc skillmarket.SkillDocument, in
 		SourceID:            doc.SourceID,
 		SourceName:          firstString(doc.SourceName, doc.SourceGroup, doc.SourceID),
 		SourceGroup:         doc.SourceGroup,
+		OriginSourceID:      doc.OriginSourceID,
+		OriginSourceName:    doc.OriginSourceName,
+		OriginSourceURL:     doc.OriginSourceURL,
 		DownloadURL:         firstString(doc.DownloadURL, doc.RepoURL, doc.Homepage),
 		Homepage:            firstString(doc.Homepage, doc.RepoURL, doc.DownloadURL),
 		Stars:               doc.Stars,
@@ -121,6 +168,394 @@ func firstString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+var protectedSkillStoreSourceIDs = map[string]struct{}{
+	"tencent-skillhub": {},
+	"github-skill-md":  {},
+	"github-claude-md": {},
+	"github-agent-md":  {},
+	"clawhub":          {},
+	"skillhub-club":    {},
+	"skillstack":       {},
+	"llmskills":        {},
+	"moltbot":          {},
+}
+
+func isProtectedSkillStoreSourceID(id string) bool {
+	id = strings.TrimSpace(id)
+	if _, ok := protectedSkillStoreSourceIDs[id]; ok {
+		return true
+	}
+	return strings.HasPrefix(id, "seed-") || strings.HasPrefix(id, "clawhub-mirror-")
+}
+
+func isSupportedSkillStoreSourceType(sourceType string) bool {
+	switch strings.TrimSpace(sourceType) {
+	case "lightmake_api", "github_code_search", "clawhub", "html_catalog", "seed_page":
+		return true
+	default:
+		return false
+	}
+}
+
+func skillStoreSourceFromMarket(source skillmarket.Source) SkillSource {
+	name := firstString(source.DisplayName, source.ID)
+	return SkillSource{
+		ID:                 source.ID,
+		Name:               name,
+		URL:                source.BaseURL,
+		Type:               source.Type,
+		Description:        "",
+		Enabled:            source.Enabled,
+		DisplayName:        source.DisplayName,
+		BaseURL:            source.BaseURL,
+		SourceGroup:        source.SourceGroup,
+		MirrorOf:           source.MirrorOf,
+		AuthMode:           source.AuthMode,
+		Headers:            source.Headers,
+		RateLimitPerMinute: source.RateLimitPerMinute,
+		Priority:           source.Priority,
+	}
+}
+
+func normalizeSkillStoreURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	trimmed = normalizeSkillInstallURL(trimmed)
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return trimmed
+	}
+	parsed.Fragment = ""
+	if parsed.Path != "/" {
+		parsed.Path = strings.TrimRight(parsed.Path, "/")
+	}
+	return parsed.String()
+}
+
+func normalizeSourceHost(raw string) string {
+	host := strings.ToLower(strings.TrimSpace(raw))
+	host = strings.TrimPrefix(host, "www.")
+	return host
+}
+
+func humanizeSourceHost(host string) string {
+	host = normalizeSourceHost(host)
+	if host == "" {
+		return "Custom Source"
+	}
+	parts := strings.FieldsFunc(host, func(r rune) bool {
+		switch r {
+		case '.', '-', '_':
+			return true
+		default:
+			return false
+		}
+	})
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		switch strings.TrimSpace(part) {
+		case "", "com", "org", "net", "ai", "me", "site", "club", "io", "cn":
+			continue
+		default:
+			filtered = append(filtered, part)
+		}
+	}
+	if len(filtered) == 0 {
+		filtered = parts
+	}
+	for i := range filtered {
+		if filtered[i] == "" {
+			continue
+		}
+		filtered[i] = strings.ToUpper(filtered[i][:1]) + filtered[i][1:]
+	}
+	if len(filtered) == 0 {
+		return "Custom Source"
+	}
+	return strings.Join(filtered, " ")
+}
+
+func sourceGroupFromHost(host string) string {
+	host = normalizeSourceHost(host)
+	parts := strings.FieldsFunc(host, func(r rune) bool {
+		switch r {
+		case '.', '-', '_':
+			return true
+		default:
+			return false
+		}
+	})
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		switch strings.TrimSpace(part) {
+		case "", "www", "com", "org", "net", "ai", "me", "site", "club", "io", "cn":
+			continue
+		default:
+			filtered = append(filtered, part)
+		}
+	}
+	if len(filtered) == 0 {
+		return "custom"
+	}
+	return skillmarket.NormalizeSkillID(filtered[len(filtered)-1])
+}
+
+func userDefinedSourceID(host string) string {
+	base := skillmarket.NormalizeSkillID(host)
+	if base == "" {
+		base = "custom-source"
+	}
+	if strings.HasPrefix(base, "user-") {
+		return base
+	}
+	return "user-" + base
+}
+
+func previewSourceSuggestion(source skillmarket.Source, confidence, message string) SkillSourceImportPreviewResponse {
+	legacy := skillStoreSourceFromMarket(source)
+	return SkillSourceImportPreviewResponse{
+		URL:             legacy.URL,
+		NormalizedURL:   legacy.URL,
+		Kind:            "source",
+		Confidence:      confidence,
+		Message:         message,
+		SuggestedSource: &legacy,
+	}
+}
+
+func previewSeedSuggestion(rawURL, seedType, seedValue, confidence, message string) SkillSourceImportPreviewResponse {
+	return SkillSourceImportPreviewResponse{
+		URL:           rawURL,
+		NormalizedURL: rawURL,
+		Kind:          "seed",
+		Confidence:    confidence,
+		Message:       message,
+		SeedType:      seedType,
+		SeedValue:     seedValue,
+	}
+}
+
+func previewUnsupportedSource(rawURL, message string) SkillSourceImportPreviewResponse {
+	return SkillSourceImportPreviewResponse{
+		URL:           rawURL,
+		NormalizedURL: rawURL,
+		Kind:          "unsupported",
+		Confidence:    "low",
+		Message:       message,
+	}
+}
+
+func classifySkillStoreImport(rawURL string) (SkillSourceImportPreviewResponse, error) {
+	normalized := normalizeSkillStoreURL(rawURL)
+	if normalized == "" {
+		return SkillSourceImportPreviewResponse{}, fmt.Errorf("URL is required")
+	}
+
+	if strings.HasPrefix(strings.ToLower(normalized), "filename:") {
+		filename := strings.TrimSpace(strings.TrimPrefix(normalized, "filename:"))
+		source := skillmarket.Source{
+			ID:                 "github-" + skillmarket.NormalizeSkillID(filename),
+			Type:               "github_code_search",
+			BaseURL:            normalized,
+			DisplayName:        "GitHub " + strings.ToUpper(strings.TrimSuffix(filename, filepath.Ext(filename))),
+			SourceGroup:        "github",
+			AuthMode:           "optional_token",
+			Enabled:            true,
+			RateLimitPerMinute: 30,
+			Priority:           220,
+		}
+		return previewSourceSuggestion(source, "high", "Looks like a reusable GitHub code search source."), nil
+	}
+
+	if isGitHubDirURL(normalized) {
+		return previewSeedSuggestion(normalized, "skill_url", normalized, "high", "Looks like a one-off GitHub skill path. Import it as a seed or install it directly by URL."), nil
+	}
+	if _, _, _, _, ok := parseGitHubBlobURL(normalized); ok {
+		return previewSeedSuggestion(normalized, "skill_url", normalized, "high", "Looks like a direct GitHub skill document, which is better handled as a seed or direct URL install."), nil
+	}
+	if _, _, _, _, ok := skillbundle.ParseGitHubRawURL(normalized); ok {
+		return previewSeedSuggestion(normalized, "skill_url", normalized, "high", "Looks like a direct raw skill document, which is better handled as a seed or direct URL install."), nil
+	}
+	if skillbundle.IsGitHubRepoURL(normalized) {
+		matches := skillbundle.GitHubRepoURLPattern.FindStringSubmatch(normalized)
+		if len(matches) == 3 {
+			return previewSeedSuggestion(normalized, "github_repo", matches[1]+"/"+matches[2], "high", "Looks like a GitHub repository seed rather than a long-lived store source."), nil
+		}
+	}
+
+	parsed, err := url.Parse(normalized)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return SkillSourceImportPreviewResponse{}, fmt.Errorf("invalid URL")
+	}
+
+	host := normalizeSourceHost(parsed.Hostname())
+	pathValue := strings.Trim(strings.ToLower(parsed.Path), "/")
+	if host == "github.com" && strings.HasPrefix(pathValue, "topics/") {
+		source := skillmarket.Source{
+			ID:                 userDefinedSourceID(host + "-" + pathValue),
+			Type:               "seed_page",
+			BaseURL:            normalized,
+			DisplayName:        humanizeSourceHost(host) + " Discovery Page",
+			SourceGroup:        "seed",
+			AuthMode:           "none",
+			Enabled:            true,
+			RateLimitPerMinute: 10,
+			Priority:           240,
+		}
+		return previewSourceSuggestion(source, "high", "Looks like a reusable discovery page source."), nil
+	}
+
+	baseName := filepath.Base(parsed.Path)
+	if skillbundle.IsEntryDocumentName(baseName) || strings.HasSuffix(strings.ToLower(baseName), ".md") {
+		return previewSeedSuggestion(normalized, "skill_url", normalized, "high", "Looks like a direct skill document. Use URL install or import it as a seed."), nil
+	}
+
+	switch host {
+	case "lightmake.site":
+		return previewSourceSuggestion(skillmarket.Source{
+			ID:                 "tencent-skillhub",
+			Type:               "lightmake_api",
+			BaseURL:            normalized,
+			DisplayName:        "Tencent SkillHub",
+			SourceGroup:        "skillhub",
+			AuthMode:           "none",
+			Enabled:            true,
+			RateLimitPerMinute: 120,
+			Priority:           205,
+		}, "high", "Looks like a supported API marketplace source."), nil
+	case "clawhub.ai":
+		return previewSourceSuggestion(skillmarket.Source{
+			ID:                 "clawhub",
+			Type:               "clawhub",
+			BaseURL:            normalized,
+			DisplayName:        "ClawHub",
+			SourceGroup:        "clawhub",
+			AuthMode:           "none",
+			Enabled:            true,
+			RateLimitPerMinute: 60,
+			Priority:           210,
+		}, "high", "Looks like a supported ClawHub marketplace source."), nil
+	case "skillhub.club":
+		return previewSourceSuggestion(skillmarket.Source{
+			ID:                 "skillhub-club",
+			Type:               "html_catalog",
+			BaseURL:            normalized,
+			DisplayName:        "SkillHub Club",
+			SourceGroup:        "skillhub",
+			AuthMode:           "optional_api_key",
+			Enabled:            true,
+			RateLimitPerMinute: 20,
+			Priority:           215,
+		}, "high", "Looks like a supported HTML catalog source."), nil
+	case "skillstack.me":
+		return previewSourceSuggestion(skillmarket.Source{
+			ID:                 "skillstack",
+			Type:               "html_catalog",
+			BaseURL:            normalized,
+			DisplayName:        "SkillStack",
+			SourceGroup:        "skillstack",
+			AuthMode:           "none",
+			Enabled:            true,
+			RateLimitPerMinute: 20,
+			Priority:           216,
+		}, "high", "Looks like a supported HTML catalog source."), nil
+	case "llmskills.org":
+		return previewSourceSuggestion(skillmarket.Source{
+			ID:                 "llmskills",
+			Type:               "html_catalog",
+			BaseURL:            normalized,
+			DisplayName:        "LLMSkills",
+			SourceGroup:        "llmskills",
+			AuthMode:           "none",
+			Enabled:            true,
+			RateLimitPerMinute: 20,
+			Priority:           217,
+		}, "high", "Looks like a supported HTML catalog source."), nil
+	}
+
+	source := skillmarket.Source{
+		ID:                 userDefinedSourceID(host),
+		Type:               "html_catalog",
+		BaseURL:            normalized,
+		DisplayName:        humanizeSourceHost(host),
+		SourceGroup:        sourceGroupFromHost(host),
+		AuthMode:           "none",
+		Enabled:            true,
+		RateLimitPerMinute: 20,
+		Priority:           250,
+	}
+	if host == "" {
+		return previewUnsupportedSource(normalized, "Unable to determine a supported source type from this input."), nil
+	}
+	return previewSourceSuggestion(source, "medium", "Treating this URL as an HTML catalog source. You can confirm before saving it."), nil
+}
+
+func requestEnabledOrDefault(value *bool, defaultValue bool) bool {
+	if value == nil {
+		return defaultValue
+	}
+	return *value
+}
+
+func marketSourceFromUpsertRequest(req SkillSourceUpsertRequest) (skillmarket.Source, error) {
+	preview, err := classifySkillStoreImport(firstString(req.BaseURL, req.URL))
+	if err != nil {
+		return skillmarket.Source{}, err
+	}
+	if preview.Kind != "source" || preview.SuggestedSource == nil {
+		if preview.Kind == "seed" {
+			return skillmarket.Source{}, fmt.Errorf("input resolves to %s seed %q, not a long-lived store source", preview.SeedType, preview.SeedValue)
+		}
+		return skillmarket.Source{}, fmt.Errorf("unsupported source input")
+	}
+
+	suggested := preview.SuggestedSource
+	sourceID := strings.TrimSpace(firstString(req.ID, suggested.ID))
+	if sourceID == "" {
+		return skillmarket.Source{}, fmt.Errorf("source id is required")
+	}
+	validatedID, err := skillmarket.ValidateSkillID(sourceID)
+	if err != nil {
+		return skillmarket.Source{}, err
+	}
+
+	sourceType := strings.TrimSpace(firstString(req.Type, suggested.Type))
+	if !isSupportedSkillStoreSourceType(sourceType) {
+		return skillmarket.Source{}, fmt.Errorf("unsupported source type: %s", sourceType)
+	}
+
+	baseURL := normalizeSkillStoreURL(firstString(req.BaseURL, req.URL, suggested.BaseURL, suggested.URL))
+	if baseURL == "" {
+		return skillmarket.Source{}, fmt.Errorf("source URL is required")
+	}
+
+	result := skillmarket.Source{
+		ID:                 validatedID,
+		Type:               sourceType,
+		BaseURL:            baseURL,
+		DisplayName:        firstString(req.DisplayName, req.Name, suggested.DisplayName, suggested.Name, validatedID),
+		SourceGroup:        firstString(req.SourceGroup, suggested.SourceGroup),
+		MirrorOf:           strings.TrimSpace(firstString(req.MirrorOf, suggested.MirrorOf)),
+		AuthMode:           firstString(req.AuthMode, suggested.AuthMode, "none"),
+		Headers:            req.Headers,
+		Enabled:            requestEnabledOrDefault(req.Enabled, true),
+		RateLimitPerMinute: req.RateLimitPerMinute,
+		Priority:           req.Priority,
+	}
+	if result.RateLimitPerMinute <= 0 {
+		result.RateLimitPerMinute = suggested.RateLimitPerMinute
+	}
+	if result.Priority <= 0 {
+		result.Priority = suggested.Priority
+	}
+	if len(result.Headers) == 0 && len(suggested.Headers) > 0 {
+		result.Headers = suggested.Headers
+	}
+	return result, nil
 }
 
 func canonicalSkillCompatID(raw string) string {
@@ -483,6 +918,7 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	// Skill store routes
 	store := g.Group("/skill-store")
 	store.GET("/sources", h.ListSources)
+	store.POST("/sources/preview", h.PreviewSourceImport)
 	store.POST("/sources", h.AddSource)
 	store.DELETE("/sources/:id", h.RemoveSource)
 	store.GET("/browse", h.BrowseSkills)
@@ -1148,6 +1584,20 @@ func isSkillArchiveFilename(name string) bool {
 
 // ListSources returns all skill sources
 func (h *SkillHandler) ListSources(c echo.Context) error {
+	if market, err := h.ensureMarketplace(); err == nil && market != nil {
+		sources, listErr := market.Store().ListSources(c.Request().Context())
+		if listErr != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to list marketplace sources: %v", listErr),
+			})
+		}
+		result := make([]SkillSource, 0, len(sources))
+		for _, source := range sources {
+			result = append(result, skillStoreSourceFromMarket(source))
+		}
+		return c.JSON(http.StatusOK, result)
+	}
+
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -1160,6 +1610,58 @@ func (h *SkillHandler) ListSources(c echo.Context) error {
 
 // AddSource adds a new skill source
 func (h *SkillHandler) AddSource(c echo.Context) error {
+	if market, err := h.ensureMarketplace(); err == nil && market != nil {
+		var req SkillSourceUpsertRequest
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "invalid request body",
+			})
+		}
+
+		source, err := marketSourceFromUpsertRequest(req)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+		}
+
+		existingSources, err := market.Store().ListSources(c.Request().Context())
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to inspect marketplace sources: %v", err),
+			})
+		}
+		for _, existing := range existingSources {
+			if existing.ID != source.ID {
+				continue
+			}
+			if isProtectedSkillStoreSourceID(existing.ID) {
+				if existing.Type == source.Type && existing.BaseURL == source.BaseURL {
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"success": true,
+						"message": "source already configured",
+						"source":  skillStoreSourceFromMarket(existing),
+					})
+				}
+				return c.JSON(http.StatusForbidden, map[string]string{
+					"error": "cannot modify built-in source",
+				})
+			}
+		}
+
+		if err := market.Store().UpsertSource(c.Request().Context(), source); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to save marketplace source: %v", err),
+			})
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "source added",
+			"source":  skillStoreSourceFromMarket(source),
+		})
+	}
+
 	var source SkillSource
 	if err := c.Bind(&source); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -1187,6 +1689,45 @@ func (h *SkillHandler) AddSource(c echo.Context) error {
 func (h *SkillHandler) RemoveSource(c echo.Context) error {
 	id := c.Param("id")
 
+	if market, err := h.ensureMarketplace(); err == nil && market != nil {
+		if isProtectedSkillStoreSourceID(id) {
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"error": "cannot remove default source",
+			})
+		}
+
+		sources, err := market.Store().ListSources(c.Request().Context())
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to inspect marketplace sources: %v", err),
+			})
+		}
+
+		var source *skillmarket.Source
+		for i := range sources {
+			if sources[i].ID == id {
+				source = &sources[i]
+				break
+			}
+		}
+		if source == nil {
+			return c.JSON(http.StatusNotFound, map[string]string{
+				"error": "source not found",
+			})
+		}
+
+		source.Enabled = false
+		if err := market.Store().UpsertSource(c.Request().Context(), *source); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to remove marketplace source: %v", err),
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "source removed",
+		})
+	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -1208,6 +1749,23 @@ func (h *SkillHandler) RemoveSource(c echo.Context) error {
 		"success": true,
 		"message": "source removed",
 	})
+}
+
+func (h *SkillHandler) PreviewSourceImport(c echo.Context) error {
+	var req SkillSourceImportPreviewRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request body",
+		})
+	}
+
+	preview, err := classifySkillStoreImport(req.URL)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+	return c.JSON(http.StatusOK, preview)
 }
 
 // BrowseSkills returns skills from all enabled sources
@@ -2665,9 +3223,12 @@ func (h *SkillHandler) createManifestFromRemoteSkill(rs *RemoteSkill) *skill.Man
 		Category:    rs.Category,
 		Tags:        rs.Tags,
 		Metadata: map[string]string{
-			"source_id":   rs.SourceID,
-			"source_name": rs.SourceName,
-			"homepage":    rs.Homepage,
+			"source_id":         rs.SourceID,
+			"source_name":       rs.SourceName,
+			"origin_source_id":  rs.OriginSourceID,
+			"origin_source_name": rs.OriginSourceName,
+			"origin_source_url": rs.OriginSourceURL,
+			"homepage":          rs.Homepage,
 		},
 	}
 }
@@ -2957,6 +3518,9 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 				"tags":                  strings.Join(doc.Tags, ","),
 				"source_id":             doc.SourceID,
 				"source_name":           firstString(doc.SourceName, doc.SourceGroup, doc.SourceID),
+				"origin_source_id":      doc.OriginSourceID,
+				"origin_source_name":    doc.OriginSourceName,
+				"origin_source_url":     doc.OriginSourceURL,
 				"homepage":              doc.Homepage,
 				"download_url":          firstString(doc.DownloadURL, doc.RepoURL, doc.Homepage),
 				"stars":                 doc.Stars,

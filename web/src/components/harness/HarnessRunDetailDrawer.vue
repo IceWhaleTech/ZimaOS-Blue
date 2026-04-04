@@ -862,13 +862,18 @@ function closeDrawer() {
 
 <style scoped>
 .detail-drawer {
+  --harness-drawer-surface: var(--color-background-soft);
+  --harness-drawer-subsurface: var(--color-bg-surface);
+  --harness-drawer-text: var(--color-text);
+  --harness-drawer-copy: var(--color-text-secondary);
+  --harness-drawer-muted: var(--color-text-muted);
   min-width: 0;
 }
 
 .detail-panel {
   border-radius: 1.1rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: #fff;
+  border: 1px solid var(--color-border);
+  background: var(--harness-drawer-surface);
   box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
 }
 
@@ -890,7 +895,7 @@ function closeDrawer() {
 .detail-header h3,
 .detail-section h4 {
   margin: 0;
-  color: #0f172a;
+  color: var(--harness-drawer-text);
 }
 
 .detail-kicker,
@@ -898,7 +903,7 @@ function closeDrawer() {
 .artifact-card p,
 .overview-grid dt,
 .detail-state {
-  color: #64748b;
+  color: var(--harness-drawer-muted);
 }
 
 .detail-kicker,
@@ -933,7 +938,7 @@ function closeDrawer() {
 .close-button {
   border-radius: 0.85rem;
   background: rgba(148, 163, 184, 0.14);
-  color: #334155;
+  color: var(--harness-drawer-copy);
   padding: 0.75rem 0.95rem;
 }
 
@@ -971,13 +976,12 @@ function closeDrawer() {
   gap: 0.8rem;
   padding: 0.95rem 1rem;
   border-radius: 0.95rem;
-  background: rgba(248, 250, 252, 0.88);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: var(--harness-drawer-subsurface);
+  border: 1px solid var(--color-border);
 }
 
 .summary-section {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.1), var(--harness-drawer-surface));
 }
 
 .section-header {
@@ -996,7 +1000,7 @@ function closeDrawer() {
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.14);
-  color: #475569;
+  color: var(--harness-drawer-copy);
   font-size: 0.76rem;
   font-weight: 700;
 }
@@ -1015,12 +1019,12 @@ function closeDrawer() {
 .summary-title-row strong {
   font-size: 1rem;
   line-height: 1.25;
-  color: #0f172a;
+  color: var(--harness-drawer-text);
 }
 
 .summary-pill.role-pill {
   background: rgba(15, 23, 42, 0.07);
-  color: #1e293b;
+  color: var(--harness-drawer-text);
 }
 
 .summary-pill.tone-success {
@@ -1053,12 +1057,12 @@ function closeDrawer() {
 }
 
 .summary-goal {
-  color: #334155;
+  color: var(--harness-drawer-copy);
 }
 
 .summary-preview,
 .spawn-narrative {
-  color: #475569;
+  color: var(--harness-drawer-copy);
 }
 
 .summary-pills,
@@ -1075,7 +1079,7 @@ function closeDrawer() {
   padding: 0.28rem 0.62rem;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.14);
-  color: #475569;
+  color: var(--harness-drawer-copy);
   font-size: 0.8rem;
 }
 
@@ -1088,7 +1092,7 @@ function closeDrawer() {
 
 .overview-grid dd {
   margin: 0;
-  color: #0f172a;
+  color: var(--harness-drawer-text);
   line-height: 1.5;
   word-break: break-word;
 }
@@ -1111,8 +1115,8 @@ function closeDrawer() {
   gap: 0.65rem;
   padding: 0.85rem 0.95rem;
   border-radius: 0.9rem;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: var(--harness-drawer-surface);
+  border: 1px solid var(--color-border);
 }
 
 .event-header {
@@ -1133,8 +1137,8 @@ function closeDrawer() {
   margin: 0.55rem 0 0;
   padding: 0.8rem 0.9rem;
   border-radius: 0.85rem;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--color-bg-base);
+  color: var(--color-text);
   overflow: auto;
   font-size: 0.8rem;
   line-height: 1.5;
@@ -1152,7 +1156,7 @@ function closeDrawer() {
   padding: 0.32rem 0.55rem;
   border-radius: 0.7rem;
   background: rgba(15, 23, 42, 0.06);
-  color: #1e293b;
+  color: var(--harness-drawer-text);
 }
 
 .detail-state {

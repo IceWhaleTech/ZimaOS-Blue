@@ -430,5 +430,143 @@
         "capabilities": ["chat", "vision", "function_call", "streaming", "json", "system_prompt"]
       }
     ]
+  },
+  "pinchbench_models": {
+    "anthropic": [
+      {
+        "id": "anthropic/claude-haiku-4.5",
+        "display_name": "Claude Haiku 4.5",
+        "pinchbench_score": 89.5,
+        "pinchbench_url": "https://pinchbench.com/submission/f29c3e4c-b73c-4fa9-9c8d-2eb0afb050c8"
+      },
+      {
+        "id": "anthropic/claude-opus-4.6",
+        "display_name": "Claude Opus 4.6",
+        "pinchbench_score": 93.3,
+        "pinchbench_url": "https://pinchbench.com/submission/1aff7c69-35c5-439e-ba52-4768586cc773"
+      },
+      {
+        "id": "anthropic/claude-sonnet-4.6",
+        "display_name": "Claude Sonnet 4.6",
+        "pinchbench_score": 88.0,
+        "pinchbench_url": "https://pinchbench.com/submission/1935b2ec-6d50-47d6-b2b3-6be233d30aca"
+      }
+    ],
+    "deepseek": [
+      {
+        "id": "deepseek/deepseek-v3.2",
+        "display_name": "DeepSeek V3.2",
+        "pinchbench_score": 84.3,
+        "pinchbench_url": "https://pinchbench.com/submission/df86a99e-a26a-4785-9408-158577b05d7d"
+      }
+    ],
+    "glm": [
+      {
+        "id": "z-ai/glm-4.5-air",
+        "display_name": "GLM 4.5 Air",
+        "pinchbench_score": 85.7,
+        "pinchbench_url": "https://pinchbench.com/submission/048edef1-bb7b-4ee4-8023-8320b019a510"
+      },
+      {
+        "id": "z-ai/glm-5",
+        "display_name": "GLM 5",
+        "pinchbench_score": 86.4,
+        "pinchbench_url": "https://pinchbench.com/submission/220a7484-2a99-441f-b101-08ed8fb8870f"
+      },
+      {
+        "id": "z-ai/glm-5-turbo",
+        "display_name": "GLM 5 Turbo",
+        "pinchbench_score": 86.5,
+        "pinchbench_url": "https://pinchbench.com/submission/bc57bf80-2020-4a8c-be16-d8be99f94cea"
+      }
+    ],
+    "google": [
+      {
+        "id": "google/gemini-3-flash-preview",
+        "display_name": "Gemini 3 Flash Preview",
+        "pinchbench_score": 85.2,
+        "pinchbench_url": "https://pinchbench.com/submission/8892d4e7-1ba2-415d-883c-ca7ec30bf7e0"
+      },
+      {
+        "id": "google/gemini-3.1-pro-preview",
+        "display_name": "Gemini 3.1 Pro Preview",
+        "pinchbench_score": 84.5,
+        "pinchbench_url": "https://pinchbench.com/submission/bb9662c1-7c7f-4058-98a2-727ad0632301"
+      }
+    ],
+    "minimax": [
+      {
+        "id": "minimax/minimax-m2.1",
+        "display_name": "MiniMax M2.1",
+        "pinchbench_score": 84.3,
+        "pinchbench_url": "https://pinchbench.com/submission/09880b08-8e5f-4119-8200-99b92c7affa1"
+      },
+      {
+        "id": "minimax/minimax-m2.5",
+        "display_name": "MiniMax M2.5",
+        "pinchbench_score": 87.8,
+        "pinchbench_url": "https://pinchbench.com/submission/e010a739-c548-4808-90a6-7b574731ce49"
+      },
+      {
+        "id": "minimax/minimax-m2.7",
+        "display_name": "MiniMax M2.7",
+        "pinchbench_score": 89.8,
+        "pinchbench_url": "https://pinchbench.com/submission/0e379397-42e2-440e-a466-5e3adcb3eadb"
+      },
+      {
+        "id": "codex-MiniMax-M2.5",
+        "display_name": "MiniMax M2.5 (Codex)",
+        "pinchbench_score": 87.8,
+        "pinchbench_url": "https://pinchbench.com/submission/e010a739-c548-4808-90a6-7b574731ce49"
+      }
+    ],
+    "moonshot": [
+      {
+        "id": "moonshotai/kimi-k2.5",
+        "display_name": "Kimi K2.5",
+        "pinchbench_score": 84.8,
+        "pinchbench_url": "https://pinchbench.com/submission/ce9bbcbd-f78b-4655-af1f-c97781320ce6"
+      }
+    ],
+    "openai": [
+      {
+        "id": "openai/gpt-5.4",
+        "display_name": "GPT-5.4",
+        "pinchbench_score": 90.5,
+        "pinchbench_url": "https://pinchbench.com/submission/5d73c775-fb81-4df1-ac2f-a08434541601"
+      }
+    ],
+    "qwen": [
+      {
+        "id": "qwen/qwen3.5-122b-a10b",
+        "display_name": "Qwen 3.5 122B A10B",
+        "pinchbench_score": 85.5,
+        "pinchbench_url": "https://pinchbench.com/submission/ad4e56aa-e193-4188-a0a0-69d27bdadc71"
+      },
+      {
+        "id": "qwen/qwen3.5-27b",
+        "display_name": "Qwen 3.5 27B",
+        "pinchbench_score": 90.0,
+        "pinchbench_url": "https://pinchbench.com/submission/6769a9a6-825d-4848-af0c-8e7f590dcc7f"
+      },
+      {
+        "id": "qwen/qwen3.5-397b-a17b",
+        "display_name": "Qwen 3.5 397B A17B",
+        "pinchbench_score": 89.1,
+        "pinchbench_url": "https://pinchbench.com/submission/3a06230b-8189-44ca-83e1-8111f05552ed"
+      },
+      {
+        "id": "qwen/qwen3.5-plus-02-15",
+        "display_name": "Qwen 3.5 Plus 02-15",
+        "pinchbench_score": 85.8,
+        "pinchbench_url": "https://pinchbench.com/submission/a3f8c8d8-0b0b-4a28-a61e-a8f4c7193c5a"
+      },
+      {
+        "id": "qwen/qwen3.6-plus-preview",
+        "display_name": "Qwen 3.6 Plus Preview",
+        "pinchbench_score": 88.6,
+        "pinchbench_url": "https://pinchbench.com/submission/1561ccd1-3f5a-419d-9b7f-4dd9027b6644"
+      }
+    ]
   }
 }

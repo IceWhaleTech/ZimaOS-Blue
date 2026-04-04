@@ -117,6 +117,9 @@ export interface RemoteSkill extends SkillContractMetadata {
   source_id?: string
   source_name?: string
   source_group?: string
+  origin_source_id?: string
+  origin_source_name?: string
+  origin_source_url?: string
   download_url?: string
   homepage?: string
   source_url?: string

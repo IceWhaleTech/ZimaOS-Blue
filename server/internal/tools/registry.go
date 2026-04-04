@@ -186,9 +186,6 @@ func (r *Registry) Definitions() []ToolDefinition {
 		if _, ok := seen[name]; ok {
 			continue
 		}
-		if _, disabled := r.disabled[name]; disabled {
-			continue
-		}
 		defs = append(defs, def)
 	}
 	sort.Slice(defs, func(i, j int) bool {
@@ -226,11 +223,11 @@ func (r *Registry) LookupDefinition(name string) (ToolDefinition, bool) {
 	if tool := r.tools[trimmed]; tool != nil {
 		return tool.Definition(), true
 	}
-	if _, disabled := r.disabled[trimmed]; disabled {
-		return ToolDefinition{}, false
-	}
 	if def, ok := r.exposed[trimmed]; ok {
 		return def, true
+	}
+	if _, disabled := r.disabled[trimmed]; disabled {
+		return ToolDefinition{}, false
 	}
 	return ToolDefinition{}, false
 }

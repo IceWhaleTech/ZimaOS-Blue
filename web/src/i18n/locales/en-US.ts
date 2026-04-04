@@ -4577,6 +4577,10 @@ export default mergeHarnessLocale('en-US', {
           description:
             'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
         },
+        githubAwesomeSkills: {
+          label: 'GitHub Awesome Skills',
+          description: 'Aggregated curated GitHub awesome skills upstreams.',
+        },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: 'GitHub code search for repositories that publish SKILL.md.',
@@ -4859,6 +4863,7 @@ export default mergeHarnessLocale('en-US', {
         meta: {
           category: 'Category',
           author: 'Author',
+          upstream: 'Upstream',
         },
         catalogSource: 'Catalog source',
         installTitle: 'Install',

@@ -68,7 +68,7 @@ func TestScannerAssignsGreenBadgeForLowRiskOpenSource(t *testing.T) {
 	}
 }
 
-func TestScannerAssignsYellowBadgeWhenDependenciesAreUnknown(t *testing.T) {
+func TestScannerKeepsGreenBadgeWhenDependenciesAreUnknownWithoutOtherSignals(t *testing.T) {
 	scanner := NewScanner(nil)
 	report := scanner.ScanWithSurface(context.Background(), "deps", "1.0.0", `
 	This skill reads local files and summarizes dependency trees.
@@ -80,11 +80,29 @@ func TestScannerAssignsYellowBadgeWhenDependenciesAreUnknown(t *testing.T) {
 		DependencyManifests: []string{"package.json"},
 	})
 
-	if report.SecurityBadge != BadgeYellow {
-		t.Fatalf("security badge = %q, want %q", report.SecurityBadge, BadgeYellow)
+	if report.SecurityBadge != BadgeGreen {
+		t.Fatalf("security badge = %q, want %q", report.SecurityBadge, BadgeGreen)
 	}
 	if report.VulnerabilityStatus != VulnerabilityStatusUnknown {
 		t.Fatalf("vulnerability status = %q, want %q", report.VulnerabilityStatus, VulnerabilityStatusUnknown)
+	}
+}
+
+func TestScannerKeepsGreenBadgeForUnknownArtifactKindWithoutOtherSignals(t *testing.T) {
+	scanner := NewScanner(nil)
+	report := scanner.ScanWithSurface(context.Background(), "archive-skill", "1.0.0", `
+	This skill documents deployment steps for installing an archive package.
+	`, nil, InstallSurface{
+		InstallType:  InstallTypeSourceArchive,
+		ArtifactKind: ArtifactKindUnknown,
+		Installable:  true,
+	})
+
+	if report.SecurityBadge != BadgeGreen {
+		t.Fatalf("security badge = %q, want %q", report.SecurityBadge, BadgeGreen)
+	}
+	if report.RiskLevel != RiskLow {
+		t.Fatalf("risk level = %q, want %q", report.RiskLevel, RiskLow)
 	}
 }
 

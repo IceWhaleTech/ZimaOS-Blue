@@ -4407,6 +4407,10 @@ export default mergeHarnessLocale('zh-CN', {
           label: 'GitHub',
           description: '用于搜索 GitHub 上 SKILL.md、CLAUDE.md 与 AGENT.md 文件的仓库源。',
         },
+        githubAwesomeSkills: {
+          label: 'GitHub Awesome Skills',
+          description: '聚合多个人工筛选的 GitHub awesome skills 上游来源。',
+        },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
           description: '搜索发布 SKILL.md 的 GitHub 仓库。',
@@ -4688,6 +4692,7 @@ export default mergeHarnessLocale('zh-CN', {
         meta: {
           category: '分类',
           author: '作者',
+          upstream: '上游来源',
         },
         catalogSource: '目录来源',
         installTitle: '安装',

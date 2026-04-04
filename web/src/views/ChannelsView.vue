@@ -2619,6 +2619,12 @@ onErrorCaptured((error, _instance, info) => {
   min-width: 0;
 }
 
+.channels-board__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.72rem;
+}
+
 .channels-board__detail-empty {
   display: flex;
   min-height: 100%;
@@ -2713,7 +2719,7 @@ onErrorCaptured((error, _instance, info) => {
 }
 
 .channels-board__stack--secondary {
-  padding-top: 0.18rem;
+  padding-top: 0;
 }
 
 .channels-safe-list {
