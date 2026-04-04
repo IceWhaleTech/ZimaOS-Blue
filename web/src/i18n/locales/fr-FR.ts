@@ -1971,7 +1971,7 @@ export default mergeHarnessLocale('fr-FR', {
       deleted: "Le profil d'agent externe a été supprimé.",
       deleteFailed: "Échec de la suppression du profil d'agent externe.",
       deleteConfirm:
-        "Supprimer le profil d'agent externe \"{name}\" ? Les profils encore référencés par des sessions doivent d'abord être nettoyés.",
+        'Supprimer le profil d\'agent externe "{name}" ? Les profils encore référencés par des sessions doivent d\'abord être nettoyés.',
       saveBeforeHealth: 'Enregistrez le profil avant d’exécuter une vérification de l’état.',
       duplicate: 'Dupliquer',
       builtinHelp:
@@ -2835,7 +2835,7 @@ export default mergeHarnessLocale('fr-FR', {
       skillManagementHint:
         'Les compétences intégrées peuvent être activées ou désactivées ici, mais seules les compétences locales peuvent être désinstallées.',
       toolManagementHint:
-        'Les outils intégrés peuvent être activés ou désactivés ici, mais leur disponibilité peut encore être limitée par la politique des outils à l\'exécution.',
+        "Les outils intégrés peuvent être activés ou désactivés ici, mais leur disponibilité peut encore être limitée par la politique des outils à l'exécution.",
       builtinSkillDetailHint:
         'Cette compétence intégrée peut être activée ou désactivée ici, mais elle ne peut pas être désinstallée.',
       builtinSkillUninstallBlocked:
@@ -4845,7 +4845,8 @@ export default mergeHarnessLocale('fr-FR', {
         },
         github: {
           label: 'GitHub',
-          description: 'Sources de recherche GitHub pour les fichiers SKILL.md, CLAUDE.md et AGENT.md.',
+          description:
+            'Sources de recherche GitHub pour les fichiers SKILL.md, CLAUDE.md et AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4869,7 +4870,8 @@ export default mergeHarnessLocale('fr-FR', {
         },
         skillstack: {
           label: 'SkillStack',
-          description: 'Catalogue communautaire centré sur des collections de skills réutilisables.',
+          description:
+            'Catalogue communautaire centré sur des collections de skills réutilisables.',
         },
         skillsmp: {
           label: 'SkillsMP',
@@ -4885,19 +4887,22 @@ export default mergeHarnessLocale('fr-FR', {
         },
         curatedSkillUrl: {
           label: 'Skill Externe',
-          description: 'Entrée de marketplace sélectionnée importée depuis une URL directe de skill.',
+          description:
+            'Entrée de marketplace sélectionnée importée depuis une URL directe de skill.',
         },
         curatedGithubSeed: {
           label: 'Sources GitHub sélectionnées',
-          description: 'Liste de sources GitHub sélectionnées importées depuis des références GitHub.',
+          description:
+            'Liste de sources GitHub sélectionnées importées depuis des références GitHub.',
         },
         seed: {
           label: 'Pages de découverte',
-          description: 'Pages de découverte menant à d\'autres compétences trouvées sur le web.',
+          description: "Pages de découverte menant à d'autres compétences trouvées sur le web.",
         },
         seedInstance: {
           label: 'Page de découverte {index}',
-          description: 'Page de découverte {index} menant à d\'autres compétences trouvées sur le web.',
+          description:
+            "Page de découverte {index} menant à d'autres compétences trouvées sur le web.",
         },
       },
       hero: {
@@ -7409,6 +7414,9 @@ export default mergeHarnessLocale('fr-FR', {
     summaryTitle: 'Recherche web',
     resultCount: '{count} résultats',
     moreResults: '+{count} de plus',
+    emptyState: 'Aucun résultat correspondant',
+    partialState:
+      "Affichage des résumés de sources, car le contenu lisible de la page n'était pas disponible.",
   },
   cardActions: {
     use_browser: 'Utiliser le navigateur',

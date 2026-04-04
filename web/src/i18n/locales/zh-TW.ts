@@ -1484,11 +1484,11 @@ export default mergeHarnessLocale('zh-TW', {
       healthRequestFailed: '檢查外部智慧代理健康狀態失敗。',
       deleted: '外部智慧代理設定檔已刪除。',
       deleteFailed: '刪除外部智慧代理設定檔失敗。',
-      deleteConfirm: '確定刪除外部智慧代理設定檔「{name}」嗎？仍被工作階段引用的設定檔需要先清理相關工作階段。',
+      deleteConfirm:
+        '確定刪除外部智慧代理設定檔「{name}」嗎？仍被工作階段引用的設定檔需要先清理相關工作階段。',
       saveBeforeHealth: '執行健康檢查前請先儲存設定檔。',
       duplicate: '複製',
-      builtinHelp:
-        '內建設定檔保持唯讀。如需自訂，請先複製一份。',
+      builtinHelp: '內建設定檔保持唯讀。如需自訂，請先複製一份。',
       acpTemplateSummary: '複製後填入可執行命令以啟用 ACP 執行階段。',
       acpTemplateHelp: '內建 ACP 項目現在只提供設定範本。請先複製，再填入可執行的 ACP 命令。',
       acpTemplateActionDisabled: '內建 ACP 範本不能直接驗證或進行健康檢查。請先複製並設定命令。',
@@ -7127,6 +7127,8 @@ export default mergeHarnessLocale('zh-TW', {
     summaryTitle: 'Web search',
     resultCount: '{count} 筆結果',
     moreResults: '另有 {count} 筆',
+    emptyState: '未找到相符結果',
+    partialState: '因無法取得可讀的頁面內容，僅顯示來源摘要。',
   },
   cardActions: {
     use_browser: '使用瀏覽器',

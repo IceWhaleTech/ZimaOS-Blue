@@ -162,6 +162,12 @@ export interface AgentcoreRunnerStatus {
   last_optimization_at?: string
   last_optimization_state?: string
   last_optimization_summary?: string
+  manifest_path?: string
+  supported_parts?: string[]
+  optimized_parts?: string[]
+  primary_part?: string
+  source_optimization_run_id?: string
+  source_eval_run_id?: string
 }
 
 export interface AgentcoreRunnerLastRunTranscriptEntry {
@@ -179,6 +185,12 @@ export interface AgentcoreRunnerLastRun {
   eval_run_id?: string
   base_eval_run_id?: string
   optimization_surface?: string
+  manifest_path?: string
+  supported_parts?: string[]
+  optimized_parts?: string[]
+  primary_part?: string
+  source_optimization_run_id?: string
+  source_eval_run_id?: string
   repo_url?: string
   ref?: string
   runner_artifact_path?: string
@@ -201,6 +213,10 @@ export interface AgentcoreRunnerTagList {
   repo_url: string
   default_ref: string
   tags: string[]
+}
+
+export interface AgentcoreRunnerPrepareRequest {
+  requested_parts?: string[]
 }
 
 export interface PromptPolicyStatus {
@@ -256,7 +272,8 @@ export const settingsApi = {
     api.get<AgentcoreRunnerTagList>('/settings/agentcore-runner/tags', {
       params: repoURL ? { repo_url: repoURL } : undefined,
     }),
-  prepareAgentcoreRunner: () => api.post<AgentcoreRunnerStatus>('/settings/agentcore-runner/prepare'),
+  prepareAgentcoreRunner: (request?: AgentcoreRunnerPrepareRequest) =>
+    api.post<AgentcoreRunnerStatus>('/settings/agentcore-runner/prepare', request ?? {}),
   // Small-model observability counters
   getSmallModelStats: () => api.get<SmallModelStats>('/small-model/stats'),
   resetSmallModelStats: () => api.post<{ success: boolean }>('/small-model/stats/reset'),

@@ -231,6 +231,21 @@ function primeApiMocks() {
       last_optimization_at: '2026-04-03T12:05:00Z',
       last_optimization_state: 'completed',
       last_optimization_summary: 'agentcore runner summary',
+      manifest_path: '/tmp/agentcore-runner.manifest.json',
+      supported_parts: [
+        'constraints',
+        'skill_definition',
+        'prompt_template',
+        'context_assembly',
+        'coordinator_policy',
+        'orchestrator_policy',
+        'tool_exposure',
+        'verification_policy',
+        'runner_code',
+        'build_recipe',
+      ],
+      optimized_parts: [],
+      primary_part: '',
     },
   } as never)
   vi.mocked(settingsApi.getAgentcoreRunnerLastRun).mockResolvedValue({
@@ -282,6 +297,21 @@ function primeApiMocks() {
       last_optimization_at: '2026-04-03T12:31:45Z',
       last_optimization_state: 'completed',
       last_optimization_summary: 'agentcore runner summary 2',
+      manifest_path: '/tmp/agentcore-runner.manifest.json',
+      supported_parts: [
+        'constraints',
+        'skill_definition',
+        'prompt_template',
+        'context_assembly',
+        'coordinator_policy',
+        'orchestrator_policy',
+        'tool_exposure',
+        'verification_policy',
+        'runner_code',
+        'build_recipe',
+      ],
+      optimized_parts: [],
+      primary_part: '',
     },
   } as never)
   vi.mocked(settingsApi.getSmallModelStats).mockResolvedValue({
@@ -910,6 +940,116 @@ describe('SettingsView small-model controls', () => {
     const refSelect = wrapper.get('[data-testid="agentcore-runner-ref-input"]')
     expect(refSelect.text()).toContain('v2.0.0')
     expect(refSelect.text()).not.toContain('v0.10.37')
+
+    wrapper.unmount()
+  })
+
+  it('shows fixed-order evolvable part tags even when no parts are currently optimized', async () => {
+    routeTab = 'proxy'
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await settleSettingsAsyncTabComponents()
+
+    await wrapper.get('[data-testid="agentcore-runner-status-toggle"]').trigger('click')
+    await flushPromises()
+
+    const tags = wrapper.findAll('[data-testid="agentcore-runner-evolvable-part"]')
+    expect(tags.map((item) => item.attributes('data-part'))).toEqual([
+      'constraints',
+      'skill_definition',
+      'prompt_template',
+      'context_assembly',
+      'coordinator_policy',
+      'orchestrator_policy',
+      'tool_exposure',
+      'verification_policy',
+      'runner_code',
+      'build_recipe',
+    ])
+    expect(tags.every((item) => item.attributes('data-active') === 'false')).toBe(true)
+    expect(wrapper.find('[data-testid="agentcore-runner-optimized-summary"]').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('highlights optimized evolvable parts and shows primary-part metadata', async () => {
+    routeTab = 'proxy'
+    vi.mocked(settingsApi.getAgentcoreRunnerStatus).mockResolvedValueOnce({
+      data: {
+        enabled: true,
+        repo_url: 'https://github.com/example/runner',
+        resolved_ref: 'main',
+        resolved_commit: 'abc123',
+        required_go_version: '1.24.0',
+        installed_go_version: '1.24.0',
+        toolchain_ready: true,
+        binary_ready: true,
+        binary_path: '/tmp/agentcore-runner',
+        binary_sha256: 'deadbeef',
+        last_prepare_at: '2026-04-03T12:00:00Z',
+        last_prepare_state: 'ready',
+        last_error: '',
+        last_optimization_run_id: 'opt-123',
+        last_optimization_at: '2026-04-03T12:05:00Z',
+        last_optimization_state: 'completed',
+        last_optimization_summary: 'agentcore runner summary',
+        manifest_path: '/tmp/agentcore-runner.manifest.json',
+        supported_parts: [
+          'constraints',
+          'skill_definition',
+          'prompt_template',
+          'context_assembly',
+          'coordinator_policy',
+          'orchestrator_policy',
+          'tool_exposure',
+          'verification_policy',
+          'runner_code',
+          'build_recipe',
+        ],
+        optimized_parts: ['prompt_template', 'context_assembly'],
+        primary_part: 'prompt_template',
+        source_optimization_run_id: 'opt-123',
+      },
+    } as never)
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await settleSettingsAsyncTabComponents()
+
+    await wrapper.get('[data-testid="agentcore-runner-status-toggle"]').trigger('click')
+    await flushPromises()
+
+    const tags = wrapper.findAll('[data-testid="agentcore-runner-evolvable-part"]')
+    expect(tags.find((item) => item.attributes('data-part') === 'prompt_template')?.attributes('data-active')).toBe(
+      'true'
+    )
+    expect(
+      tags.find((item) => item.attributes('data-part') === 'context_assembly')?.attributes('data-active')
+    ).toBe('true')
+    expect(tags.find((item) => item.attributes('data-part') === 'constraints')?.attributes('data-active')).toBe(
+      'false'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-optimized-summary"]').text()).toContain(
+      'prompt_template'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-primary-part"]').text()).toContain(
+      'prompt_template'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-source-optimization-run-id"]').text()).toContain(
+      'opt-123'
+    )
 
     wrapper.unmount()
   })

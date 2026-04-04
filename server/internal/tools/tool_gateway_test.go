@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -106,6 +108,52 @@ type structuredRuntimeErrorStub struct {
 	code    string
 	message string
 	details map[string]interface{}
+}
+
+func buildWebQueryGatewayPayloadForTests(content string) map[string]interface{} {
+	return map[string]interface{}{
+		"status":      "ok",
+		"mode":        "search_read",
+		"input":       "blue release notes",
+		"query":       "blue release notes",
+		"provider":    "duckduckgo",
+		"title":       "Blue Release Notes v1.2.3",
+		"target_url":  "https://docs.example.com/releases/1.2.3",
+		"final_url":   "https://docs.example.com/releases/1.2.3",
+		"content":     content,
+		"next_action": "none",
+		"warnings": []map[string]interface{}{
+			{"code": "stale_mirror", "message": "Mirror lag observed for 2 pages."},
+		},
+		"sources": []interface{}{
+			map[string]interface{}{
+				"rank":          1,
+				"title":         "Blue Release Notes v1.2.3",
+				"url":           "https://docs.example.com/releases/1.2.3",
+				"final_url":     "https://docs.example.com/releases/1.2.3",
+				"snippet":       "April 4, 2026 release with 12 improvements, 4 fixes, and 2 migrations.",
+				"source":        "duckduckgo",
+				"content_chars": len(content),
+				"selected":      true,
+			},
+			map[string]interface{}{
+				"rank":          2,
+				"title":         "Blue Upgrade Guide",
+				"url":           "https://docs.example.com/releases/upgrade-guide",
+				"final_url":     "https://docs.example.com/releases/upgrade-guide",
+				"snippet":       "Upgrade guide for version 1.2.3 with migration steps and rollback notes.",
+				"source":        "duckduckgo",
+				"content_chars": 640,
+				"selected":      false,
+			},
+		},
+		"diagnostics": map[string]interface{}{
+			"route":           "search_http",
+			"candidate_count": 2,
+			"selected_source": 1,
+			"degraded":        false,
+		},
+	}
 }
 
 func (e *structuredRuntimeErrorStub) Error() string { return e.message }
@@ -736,6 +784,105 @@ func TestToolGatewaySanitizesScalarPayloads(t *testing.T) {
 	}
 	if got := items[2]; got != "clean" {
 		t.Fatalf("items[2] = %v, want clean", got)
+	}
+}
+
+func TestToolGatewayCompactsWebQueryPayloadForLLM(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(&gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "web_query",
+			Description: "web query",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+		result: buildWebQueryGatewayPayloadForTests(strings.Repeat("On April 4, 2026, version 1.2.3 shipped 12 improvements, 4 fixes, and 2 migrations. ", 80)),
+	})
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-web-query-compact",
+		ToolName:   "web_query",
+		Arguments:  `{}`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.CompactLLMContent), &payload); err != nil {
+		t.Fatalf("decode compact payload: %v", err)
+	}
+	if got, ok := payload["has_results"].(bool); !ok || !got {
+		t.Fatalf("has_results = %#v, want true", payload["has_results"])
+	}
+	selected, ok := payload["selected_result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("selected_result = %#v, want object", payload["selected_result"])
+	}
+	if got := selected["url"]; got != "https://docs.example.com/releases/1.2.3" {
+		t.Fatalf("selected_result.url = %v, want selected page", got)
+	}
+	facts, ok := payload["key_facts"].([]interface{})
+	if !ok || len(facts) == 0 {
+		t.Fatalf("key_facts = %#v, want non-empty array", payload["key_facts"])
+	}
+}
+
+func TestToolGatewayCompactsWebQueryPayloadForLLM_MaterializesLargePayload(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	registry := NewRegistry()
+	registry.Register(&gatewayResultTool{
+		def: ToolDefinition{
+			Name:        "web_query",
+			Description: "web query",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+		result: buildWebQueryGatewayPayloadForTests(strings.Repeat("On April 4, 2026, version 1.2.3 shipped 12 improvements, 4 fixes, and 2 migrations. ", 220)),
+	})
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	ctx := WithFSScope(context.Background(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot})
+	result, err := gateway.Execute(ctx, ToolGatewayRequest{
+		ToolCallID: "call-web-query-materialize",
+		ToolName:   "web_query",
+		Arguments:  `{}`,
+		RouteKind:  ToolRouteKindChat,
+		SessionID:  "conv-web-query",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.CompactLLMContent), &payload); err != nil {
+		t.Fatalf("decode compact payload: %v", err)
+	}
+	artifactPath, _ := payload["research_artifact_path"].(string)
+	if strings.TrimSpace(artifactPath) == "" {
+		t.Fatalf("research_artifact_path = %#v, want non-empty path", payload["research_artifact_path"])
+	}
+	if got, ok := payload["materialized"].(bool); !ok || !got {
+		t.Fatalf("materialized = %#v, want true", payload["materialized"])
+	}
+	artifactBytes, err := os.ReadFile(filepath.Join(workspaceRoot, artifactPath))
+	if err != nil {
+		t.Fatalf("read materialized artifact: %v", err)
+	}
+	artifact := string(artifactBytes)
+	if !strings.Contains(artifact, `"query": "blue release notes"`) {
+		t.Fatalf("artifact missing query metadata: %q", artifact)
+	}
+	if !strings.Contains(artifact, `"sources"`) {
+		t.Fatalf("artifact missing audit JSON section: %q", artifact)
 	}
 }
 

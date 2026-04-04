@@ -16,6 +16,7 @@ import type { ComponentPublicInstance } from 'vue'
 import { useChatStore, type ActiveMessageStreamState, type StreamUIState } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
+import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
 import { useTaskProjectionsStore } from '@/stores/taskProjections'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
 import { getLocaleDirection } from '@/i18n'
@@ -52,7 +53,12 @@ const MediaParamPanel = defineAsyncComponent(() => import('@/components/MediaPar
 const UserTaskProjectionCard = defineAsyncComponent(
   () => import('@/components/UserTaskProjectionCard.vue')
 )
-const ChatActivityDock = defineAsyncComponent(() => import('@/components/ChatActivityDock.vue'))
+const UserTaskProjectionDock = defineAsyncComponent(
+  () => import('@/components/UserTaskProjectionDock.vue')
+)
+const DeepResearchTaskDock = defineAsyncComponent(
+  () => import('@/components/DeepResearchTaskDock.vue')
+)
 
 const { t, te, locale } = useI18n()
 const router = useRouter()
@@ -64,6 +70,7 @@ const hasGlobalMobileSidebarToggle = inject<ComputedRef<boolean>>(
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
+const deepResearchJobs = useDeepResearchJobsStore()
 const taskProjections = useTaskProjectionsStore()
 const mediaGen = useMediaGenerate()
 
@@ -135,7 +142,6 @@ watch(locale, (newLocale) => {
 // Trial quota animation state
 const tokenAnimating = ref(false)
 const previousTokens = ref<number | null>(null)
-const ACTIVITY_DOCK_EXPANDED_KEY = 'zima.chat.activity_dock_expanded.v1'
 const ACTIVE_TODO_PANEL_COLLAPSED_KEY = 'zima.chat.active_todo_collapsed.v1'
 
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -245,7 +251,10 @@ watch(showTalkMode, (open) => {
 })
 
 const currentConversationActiveTasks = computed(() => taskProjections.currentActiveTasks)
-const activityDockExpanded = ref(loadActivityDockExpanded())
+const hasBackgroundTasks = computed(() => taskProjections.backgroundTasks.length > 0)
+const hasActiveDeepResearchJobs = computed(
+  () => Array.isArray(deepResearchJobs.activeJobs) && deepResearchJobs.activeJobs.length > 0
+)
 
 const hasCancelableWork = computed(() => {
   if (
@@ -266,7 +275,7 @@ const hasCancelableWork = computed(() => {
   return currentConversationActiveTasks.value.length > 0
 })
 
-const activityDockStreamState = computed<StreamUIState>(() => {
+const streamStatusRailState = computed<StreamUIState>(() => {
   const base = chatStore.streamUIState
   if (base.phase !== 'idle' && base.phase !== 'completed') {
     return base
@@ -275,7 +284,12 @@ const activityDockStreamState = computed<StreamUIState>(() => {
     return {
       ...base,
       phase: 'awaiting_confirmation',
-      label: base.label || 'Waiting for your confirmation to continue',
+      label:
+        base.label ||
+        chatTextWithFallback(
+          'chat.awaitingConfirmation',
+          'Waiting for your confirmation to continue'
+        ),
       detail: base.detail,
       updatedAt: Date.now(),
     }
@@ -284,7 +298,11 @@ const activityDockStreamState = computed<StreamUIState>(() => {
     return {
       ...base,
       phase: 'executing',
-      label: base.label || chatStore.statusSummary || chatStore.streamProgress || 'Processing',
+      label:
+        base.label ||
+        chatStore.statusSummary ||
+        chatStore.streamProgress ||
+        chatTextWithFallback('chat.streamExecuting', 'Processing'),
       detail: base.detail,
       updatedAt: Date.now(),
     }
@@ -293,7 +311,7 @@ const activityDockStreamState = computed<StreamUIState>(() => {
     return {
       ...base,
       phase: 'executing',
-      label: base.label || 'Generating media',
+      label: base.label || chatTextWithFallback('chat.streamExecuting', 'Generating media'),
       detail: base.detail,
       updatedAt: Date.now(),
     }
@@ -302,7 +320,11 @@ const activityDockStreamState = computed<StreamUIState>(() => {
     return {
       ...base,
       phase: 'streaming',
-      label: base.label || chatStore.statusSummary || chatStore.streamProgress || 'Thinking',
+      label:
+        base.label ||
+        chatStore.statusSummary ||
+        chatStore.streamProgress ||
+        chatTextWithFallback('chat.waitingThinking', 'Thinking'),
       detail: base.detail,
       updatedAt: Date.now(),
     }
@@ -311,7 +333,7 @@ const activityDockStreamState = computed<StreamUIState>(() => {
     return {
       ...base,
       phase: 'connecting',
-      label: base.label || 'Thinking',
+      label: base.label || chatTextWithFallback('chat.waitingThinking', 'Thinking'),
       detail: base.detail,
       updatedAt: Date.now(),
     }
@@ -323,26 +345,37 @@ const chatInputDisabled = computed(
   () => (chatStore.sending && !chatStore.isPreTTFT) || chatStore.isRecovering
 )
 
-const hasActivityDock = computed(
+const showStreamStatusRail = computed(
   () =>
-    hasCancelableWork.value ||
-    currentConversationActiveTasks.value.length > 0 ||
-    taskProjections.backgroundTasks.length > 0 ||
-    !!taskProjections.recentOutcome ||
-    !!activeTodoSummary.value
+    streamStatusRailState.value.phase !== 'idle' && streamStatusRailState.value.phase !== 'completed'
 )
-
-const messageAreaPaddingClass = computed(() => {
-  if (!hasActivityDock.value) {
-    return isMobile.value ? 'pb-6' : 'pb-8'
+const streamStatusRailPhaseLabel = computed(() => {
+  switch (streamStatusRailState.value.phase) {
+    case 'connecting':
+      return chatTextWithFallback('chat.streamConnecting', 'Connecting')
+    case 'streaming':
+      return chatTextWithFallback('chat.streamStreaming', 'Streaming')
+    case 'executing':
+      return chatTextWithFallback('chat.streamExecuting', 'Working')
+    case 'recovering':
+      return chatTextWithFallback('chat.streamRecovering', 'Recovering')
+    case 'awaiting_confirmation':
+      return chatTextWithFallback('chat.streamAwaitingConfirmation', 'Waiting')
+    case 'interrupted':
+      return chatTextWithFallback('chat.streamInterrupted', 'Interrupted')
+    default:
+      return streamStatusRailState.value.phase.replace('_', ' ')
   }
-  if (isMobile.value) {
-    return activityDockExpanded.value ? 'pb-20' : 'pb-14'
-  }
-  return activityDockExpanded.value ? 'pb-16' : 'pb-12'
 })
 
-const showExternalStreamDockStatus = computed(() => false)
+const messageAreaPaddingClass = computed(() => {
+  if (isMobile.value) {
+    return hasBackgroundTasks.value ? 'pb-16' : 'pb-6'
+  }
+  return hasBackgroundTasks.value ? 'pb-12' : 'pb-8'
+})
+
+const showExternalStreamDockStatus = computed(() => showStreamStatusRail.value)
 
 const executingConversationIds = computed(() => {
   const ids = new Set<string>()
@@ -386,6 +419,17 @@ async function navigateProjectedTask(target: string) {
     await router.push(href)
   } catch (e) {
     console.error('Failed to navigate projected task:', e)
+  }
+}
+
+async function handleOpenDeepResearchJob(job: { job_id?: string; conversation_id?: string }) {
+  const jobId = String(job?.job_id || '').trim()
+  const conversationId = String(job?.conversation_id || '').trim()
+  if (!jobId || !conversationId) return
+  try {
+    await deepResearchJobs.openJob(jobId, conversationId)
+  } catch (e) {
+    console.error('Failed to open deep research job:', e)
   }
 }
 
@@ -702,26 +746,6 @@ function loadActiveTodoPanelCollapsed(): boolean {
   }
 }
 
-function loadActivityDockExpanded(): boolean {
-  try {
-    return localStorage.getItem(ACTIVITY_DOCK_EXPANDED_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-
-function persistActivityDockExpanded(value: boolean) {
-  try {
-    if (value) {
-      localStorage.removeItem(ACTIVITY_DOCK_EXPANDED_KEY)
-      return
-    }
-    localStorage.setItem(ACTIVITY_DOCK_EXPANDED_KEY, '0')
-  } catch {
-    // Ignore storage errors
-  }
-}
-
 function persistActiveTodoPanelCollapsed(value: boolean) {
   try {
     if (value) {
@@ -862,8 +886,29 @@ let focusedTodoMessageTimer: ReturnType<typeof setTimeout> | null = null
 const activeTodoSummary = computed(() =>
   findLatestTodoChecklistSummary(chatStore.messages, chatStore.recentTodoCompletion)
 )
+const activeTodoProgressText = computed(() => {
+  const summary = activeTodoSummary.value
+  if (!summary) return ''
+
+  return chatTextWithNamedFallback(
+    'chat.activeTodo.progress',
+    `${summary.completedCount} out of ${summary.totalCount} tasks completed`,
+    {
+      completed: summary.completedCount,
+      total: summary.totalCount,
+    }
+  )
+})
 const activeTodoJumpMessageId = computed(
   () => activeTodoSummary.value?.focusMessageId || activeTodoSummary.value?.messageId || ''
+)
+const activeTodoPanelToggleTitle = computed(() =>
+  activeTodoPanelCollapsed.value
+    ? chatTextWithFallback('chat.activeTodo.expand', 'Expand todo list')
+    : chatTextWithFallback('chat.activeTodo.collapse', 'Collapse todo list')
+)
+const activeTodoPanelJumpTitle = computed(() =>
+  chatTextWithFallback('chat.activeTodo.jumpToMessage', 'Jump to checklist message')
 )
 
 // Provider status computed properties
@@ -1909,10 +1954,6 @@ function handleActiveTodoPanelJump() {
 
 watch(activeTodoPanelCollapsed, (value) => {
   persistActiveTodoPanelCollapsed(value)
-})
-
-watch(activityDockExpanded, (value) => {
-  persistActivityDockExpanded(value)
 })
 
 watch(
@@ -3426,6 +3467,46 @@ onUnmounted(() => {
                   />
                 </div>
 
+                <Transition name="fade">
+                  <div v-if="showStreamStatusRail" class="flex justify-center py-2">
+                    <div class="chat-stream-status-rail">
+                      <div class="chat-stream-status-rail__copy">
+                        <span class="chat-stream-status-rail__badge">
+                          {{ streamStatusRailPhaseLabel }}
+                        </span>
+                        <span class="chat-stream-status-rail__label">
+                          {{ streamStatusRailState.label || t('chat.waitingThinking') }}
+                        </span>
+                        <span
+                          v-if="streamStatusRailState.detail"
+                          class="chat-stream-status-rail__detail"
+                        >
+                          {{ streamStatusRailState.detail }}
+                        </span>
+                      </div>
+                      <div class="chat-stream-status-rail__actions">
+                        <button
+                          v-if="
+                            streamStatusRailState.phase === 'interrupted' &&
+                            streamStatusRailState.canRetry
+                          "
+                          class="chat-stream-status-rail__action"
+                          @click="handleStreamRetry"
+                        >
+                          {{ t('common.retry') }}
+                        </button>
+                        <button
+                          v-if="chatStore.isRecovering"
+                          class="chat-stream-status-rail__action is-danger"
+                          @click="handleCancel"
+                        >
+                          {{ t('chat.stopGenerating') }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </Transition>
+
                 <!-- Context trim indicator (pruning/compaction) -->
                 <Transition name="fade">
                   <div v-if="showContextTrim" class="flex justify-center py-2">
@@ -3809,6 +3890,17 @@ onUnmounted(() => {
 
             <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
             <div class="chat-input-dock flex-shrink-0">
+              <div v-if="hasBackgroundTasks" class="max-w-5xl mx-auto px-3 sm:px-4 py-1">
+                <UserTaskProjectionDock
+                  :tasks="taskProjections.backgroundTasks"
+                  @open="openProjectedTask"
+                  @action="performProjectedTaskAction"
+                  @navigate="navigateProjectedTask"
+                />
+              </div>
+              <div v-if="hasActiveDeepResearchJobs" class="max-w-5xl mx-auto px-3 sm:px-4 py-1">
+                <DeepResearchTaskDock @view="handleOpenDeepResearchJob" />
+              </div>
               <!-- Media generation param panel -->
               <div v-if="mediaGen.showPanel.value" class="max-w-4xl mx-auto px-3 sm:px-4">
                 <MediaParamPanel
@@ -3825,32 +3917,101 @@ onUnmounted(() => {
                   @switch-category="mediaGen.switchCategory($event)"
                 />
               </div>
-              <div v-if="hasActivityDock" class="max-w-5xl mx-auto px-3 sm:px-4 py-1">
-                <ChatActivityDock
-                  v-model:expanded="activityDockExpanded"
-                  :stream-state="activityDockStreamState"
-                  :can-stop="hasCancelableWork"
-                  :current-tasks="currentConversationActiveTasks"
-                  :background-tasks="taskProjections.backgroundTasks"
-                  :recent-outcome="taskProjections.recentOutcome"
-                  :todo-summary="activeTodoSummary"
-                  :todo-collapsed="activeTodoPanelCollapsed"
-                  @cancel="handleCancel"
-                  @retry="handleStreamRetry"
-                  @action="performProjectedTaskAction"
-                  @open="openProjectedTask"
-                  @navigate="navigateProjectedTask"
-                  @dismiss-outcome="taskProjections.dismissRecentOutcome()"
-                  @todo-toggle="toggleActiveTodoPanel"
-                  @todo-jump="handleActiveTodoPanelJump"
-                />
+              <div
+                v-if="activeTodoSummary"
+                class="active-todo-panel-wrap w-full max-w-3xl mx-auto px-2.5 sm:px-3.5"
+                data-testid="active-todo-panel"
+              >
+                <section
+                  class="active-todo-panel"
+                  :class="{
+                    'is-complete': activeTodoSummary.allCompleted,
+                    'is-expanded': !activeTodoPanelCollapsed,
+                  }"
+                  aria-live="polite"
+                >
+                  <div class="active-todo-panel__header">
+                    <button
+                      type="button"
+                      class="active-todo-panel__summary active-todo-panel__summary--interactive"
+                      :title="activeTodoPanelJumpTitle"
+                      data-testid="active-todo-panel-jump"
+                      @click="handleActiveTodoPanelJump"
+                    >
+                      <span class="active-todo-panel__icon" aria-hidden="true">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.8"
+                            d="M8.75 6.75h10.5M8.75 12h10.5m-10.5 5.25h10.5M4.75 6.75h.01M4.75 12h.01M4.75 17.25h.01"
+                          />
+                        </svg>
+                      </span>
+                      <span class="active-todo-panel__progress">{{ activeTodoProgressText }}</span>
+                    </button>
+                    <div class="active-todo-panel__header-actions">
+                      <button
+                        type="button"
+                        class="active-todo-panel__icon-btn"
+                        :title="activeTodoPanelToggleTitle"
+                        data-testid="active-todo-panel-toggle"
+                        @click="toggleActiveTodoPanel"
+                      >
+                        <svg
+                          class="active-todo-panel__toggle-icon"
+                          :class="{ 'is-collapsed': activeTodoPanelCollapsed }"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 9l6 6 6-6"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <ol v-if="!activeTodoPanelCollapsed" class="active-todo-panel__list">
+                    <li
+                      v-for="(item, index) in activeTodoSummary.items"
+                      :key="`${activeTodoSummary.messageId}-${index}`"
+                      class="active-todo-panel__item"
+                      :class="{ 'is-checked': item.checked }"
+                    >
+                      <span
+                        class="active-todo-panel__check"
+                        :class="{ 'is-checked': item.checked }"
+                        aria-hidden="true"
+                      >
+                        <svg
+                          v-if="item.checked"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2.4"
+                            d="M5 12.5l4.2 4.2L19 7.5"
+                          />
+                        </svg>
+                      </span>
+                      <span class="active-todo-panel__index">{{ index + 1 }}.</span>
+                      <span class="active-todo-panel__text">{{ item.text }}</span>
+                    </li>
+                  </ol>
+                </section>
               </div>
               <ChatInput
                 ref="chatInputRef"
                 :disabled="chatInputDisabled"
                 :streaming="chatStore.streaming"
                 :can-cancel="hasCancelableWork"
-                :show-inline-cancel="false"
                 :conversation-id="chatStore.currentConversationId || undefined"
                 @send="handleSend"
                 @draft-change="handleDraftChange"

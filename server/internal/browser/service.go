@@ -216,9 +216,24 @@ func waitPageDOMStable(page *rod.Page, timeout time.Duration, threshold float64)
 }
 
 var (
-	waitPageStableLoadFn = waitPageLoad
-	waitPageStableIdleFn = waitPageIdle
-	waitPageStableSleep  = time.Sleep
+	waitPageStableLoadFn    = waitPageLoad
+	waitPageStableIdleFn    = waitPageIdle
+	waitPageStableSleep     = time.Sleep
+	waitPageReadyLoadFn     = waitPageLoad
+	waitPageReadySelectorFn = func(page *rod.Page, selector string, timeout time.Duration) error {
+		if page == nil {
+			return fmt.Errorf("page is not available")
+		}
+		selector = strings.TrimSpace(selector)
+		if selector == "" {
+			return nil
+		}
+		return safeRodPageCall("wait selector", func() error {
+			_, err := page.Timeout(timeout).Element(selector)
+			return err
+		})
+	}
+	waitPageReadySleep = time.Sleep
 )
 
 func waitPageStable(page *rod.Page, timeout time.Duration) error {
@@ -257,6 +272,26 @@ func waitPageStable(page *rod.Page, timeout time.Duration) error {
 		settleDelay = 500 * time.Millisecond
 	}
 	waitPageStableSleep(settleDelay)
+	return nil
+}
+
+func waitDetachedPageReady(page *rod.Page, timeout time.Duration, waitForSelector *string, skipWaitLoad bool, waitForMS int) error {
+	if page == nil {
+		return fmt.Errorf("page is not available")
+	}
+	if !skipWaitLoad {
+		if err := waitPageReadyLoadFn(page, timeout); err != nil {
+			return err
+		}
+	}
+	if waitForSelector != nil {
+		if err := waitPageReadySelectorFn(page, *waitForSelector, timeout); err != nil {
+			return err
+		}
+	}
+	if waitForMS > 0 {
+		waitPageReadySleep(time.Duration(waitForMS) * time.Millisecond)
+	}
 	return nil
 }
 
@@ -1266,22 +1301,9 @@ func (s *RodService) Screenshot(ctx context.Context, req *ScreenshotRequest) (*S
 		return nil, err
 	}
 
-	err = waitPageLoad(page, timeout)
+	err = waitDetachedPageReady(page, timeout, req.WaitForSelector, req.SkipWaitLoad, req.WaitFor)
 	if err != nil {
 		return nil, err
-	}
-
-	// Wait for selector if specified
-	if req.WaitForSelector != nil && *req.WaitForSelector != "" {
-		_, err = page.Timeout(timeout).Element(*req.WaitForSelector)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Additional wait time
-	if req.WaitFor > 0 {
-		time.Sleep(time.Duration(req.WaitFor) * time.Millisecond)
 	}
 
 	var data []byte
@@ -1495,22 +1517,9 @@ func (s *RodService) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeRes
 		return nil, err
 	}
 
-	err = waitPageLoad(page, timeout)
+	err = waitDetachedPageReady(page, timeout, req.WaitForSelector, req.SkipWaitLoad, req.WaitFor)
 	if err != nil {
 		return nil, err
-	}
-
-	// Wait for selector if specified
-	if req.WaitForSelector != nil && *req.WaitForSelector != "" {
-		_, err = page.Timeout(timeout).Element(*req.WaitForSelector)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Additional wait time
-	if req.WaitFor > 0 {
-		time.Sleep(time.Duration(req.WaitFor) * time.Millisecond)
 	}
 
 	// Extract data
@@ -1521,6 +1530,9 @@ func (s *RodService) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeRes
 			if err != nil {
 				data[name] = []string{}
 				continue
+			}
+			if config.MaxMatches > 0 && len(elements) > config.MaxMatches {
+				elements = elements[:config.MaxMatches]
 			}
 			values := make([]string, 0, len(elements))
 			for _, el := range elements {

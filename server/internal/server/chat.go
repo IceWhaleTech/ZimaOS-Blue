@@ -14814,7 +14814,7 @@ func (h *ChatHandler) executeToolCallsWithAudit(ctx context.Context, toolCalls [
 		if auditPayload == "" {
 			auditPayload = content
 		}
-		historyContent := contentForChatToolHistory(tc.Name, content, auditPayload)
+		historyContent := contentForChatToolHistory(ctx, tc.Name, tc.ID, content, auditPayload)
 		h.recordToolPayloadAudit(ctx, "tool_result", string(llm.RoleTool), tc, auditPayload, err != nil)
 		results = append(results, llm.Message{
 			Role:       llm.RoleTool,
@@ -14832,7 +14832,7 @@ func (h *ChatHandler) executeToolCallsWithAudit(ctx context.Context, toolCalls [
 	return results, auditResults
 }
 
-func contentForChatToolHistory(toolName, content, auditPayload string) string {
+func contentForChatToolHistory(ctx context.Context, toolName, toolCallID, content, auditPayload string) string {
 	auditPayload = strings.TrimSpace(auditPayload)
 	if auditPayload == "" {
 		return content
@@ -14845,6 +14845,12 @@ func contentForChatToolHistory(toolName, content, auditPayload string) string {
 		var payload map[string]interface{}
 		if json.Unmarshal([]byte(auditPayload), &payload) == nil && isPDFPayloadForLLM(payload) {
 			return compactToolResultContentForLLM(normalizeFileToolCompatName(toolName), auditPayload)
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "web_query", "web":
+		if compacted := compactWebQueryContentForLLM(ctx, content, auditPayload, toolCallID, maxLLMToolOutputBytes, tools.WebQueryLLMCompactionDefault, false); compacted != "" {
+			return compacted
 		}
 	}
 	return content
@@ -14939,10 +14945,16 @@ func compactToolResultsForLLM(toolCalls []llm.ToolCall, toolResults []llm.Messag
 		if searchLike {
 			searchLikeCount++
 			if searchLikeCount > maxLLMSearchRoundsKeepFull {
+				if strings.TrimSpace(tr.ToolName) == "" {
+					tr.ToolName = toolName
+				}
 				tr.Content = compactAdditionalSearchToolResultForLLM(toolName, tr.Content)
 				out[i] = tr
 				continue
 			}
+		}
+		if strings.TrimSpace(tr.ToolName) == "" {
+			tr.ToolName = toolName
 		}
 		tr.Content = compactToolResultContentForLLM(toolName, tr.Content)
 		out[i] = tr
@@ -16470,6 +16482,12 @@ func isSearchLikeToolCallForLLM(tc llm.ToolCall) bool {
 }
 
 func compactAdditionalSearchToolResultForLLM(toolName, content string) string {
+	if strings.EqualFold(strings.TrimSpace(toolName), "web_query") {
+		if compacted := compactWebQueryContentForLLM(nil, content, content, "", maxLLMSearchSummaryBytes, tools.WebQueryLLMCompactionSummary, true); compacted != "" {
+			return compacted
+		}
+	}
+
 	summary := map[string]interface{}{
 		"status":                   "compacted",
 		"omitted_from_llm_context": true, // full raw payload omitted; compact evidence retained below
@@ -16661,8 +16679,12 @@ func compactToolResultContentForLLM(toolName, content string) string {
 			payload = compactJSONValueForLLM(payload, 0)
 		}
 	case "read", "file_read":
-		if m, ok := payload.(map[string]interface{}); ok && isPDFPayloadForLLM(m) {
-			payload = compactPDFPayloadForLLM(m)
+		if m, ok := payload.(map[string]interface{}); ok {
+			if isPDFPayloadForLLM(m) {
+				payload = compactPDFPayloadForLLM(m)
+			} else {
+				payload = compactFileReadPayloadForLLM(m)
+			}
 		} else {
 			payload = compactJSONValueForLLM(payload, 0)
 		}
@@ -16882,68 +16904,57 @@ func compactWebSearchPayloadForLLM(payload map[string]interface{}) map[string]in
 }
 
 func compactWebQueryPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
-	if len(payload) == 0 {
-		return map[string]interface{}{}
+	if compacted, ok := tools.BuildCompactWebQueryPayloadForLLM(nil, payload, "", tools.WebQueryLLMCompactionOptions{
+		ByteBudget:   maxLLMToolOutputBytes,
+		Mode:         tools.WebQueryLLMCompactionDefault,
+		ResultLimit:  maxLLMSearchResults,
+		FactLimit:    10,
+		WarningLimit: 3,
+		ToolName:     "web_query",
+	}); ok {
+		return compacted
 	}
-	if data, ok := payload["data"].(map[string]interface{}); ok {
-		if anyToStringForLLM(payload["query"]) == "" &&
-			anyToStringForLLM(payload["input"]) == "" &&
-			anyToStringForLLM(payload["title"]) == "" &&
-			anyToStringForLLM(payload["target_url"]) == "" {
-			if _, hasSources := payload["sources"]; !hasSources {
-				payload = data
-			}
-		}
+	if compacted, ok := compactJSONValueForLLM(payload, 0).(map[string]interface{}); ok {
+		return compacted
 	}
+	return map[string]interface{}{}
+}
 
-	out := make(map[string]interface{}, 12)
-	for _, k := range []string{"status", "mode", "next_action"} {
-		if v, ok := payload[k]; ok {
-			out[k] = compactJSONValueForLLM(v, 1)
-		}
+func compactWebQueryContentForLLM(ctx context.Context, content, auditPayload, toolCallID string, byteBudget int, mode tools.WebQueryLLMCompactionMode, omittedFromLLM bool) string {
+	raw := strings.TrimSpace(content)
+	if raw == "" {
+		raw = strings.TrimSpace(auditPayload)
 	}
-	if input := anyToStringForLLM(payload["input"]); input != "" {
-		out["input"] = truncateUTF8Bytes(input, 256)
+	if raw == "" {
+		return ""
 	}
-	query := anyToStringForLLM(payload["query"])
-	if query != "" {
-		out["query"] = truncateUTF8Bytes(query, 256)
-	} else if input := anyToStringForLLM(payload["input"]); input != "" {
-		query = input
+	conversationID := ""
+	if ctx != nil {
+		conversationID = strings.TrimSpace(tools.GetSessionID(ctx))
 	}
-	for _, k := range []string{"title", "target_url", "final_url"} {
-		if v := anyToStringForLLM(payload[k]); v != "" {
-			out[k] = truncateUTF8Bytes(v, 320)
-		}
+	compacted, ok := tools.BuildCompactWebQueryPayloadForLLM(ctx, raw, auditPayload, tools.WebQueryLLMCompactionOptions{
+		ByteBudget:     byteBudget,
+		Mode:           mode,
+		ResultLimit:    maxLLMSearchResults,
+		FactLimit:      10,
+		WarningLimit:   3,
+		Materialize:    ctx != nil,
+		ToolCallID:     strings.TrimSpace(toolCallID),
+		ConversationID: conversationID,
+		ToolName:       "web_query",
+		OmittedFromLLM: omittedFromLLM,
+	})
+	if !ok {
+		return ""
 	}
-	if content := anyToStringForLLM(payload["content"]); content != "" {
-		out["content"] = truncateUTF8Bytes(content, 640)
+	encoded, err := json.Marshal(compacted)
+	if err != nil {
+		return ""
 	}
-	if warningCount := warningCountForLLM(payload["warnings"]); warningCount > 0 {
-		out["warning_count"] = warningCount
-		out["warnings"] = compactJSONValueForLLM(payload["warnings"], 1)
+	if len(encoded) > byteBudget {
+		return ""
 	}
-
-	results, ok := parseWebQueryResultsForLLM(payload)
-	if ok {
-		ranked := rerankSearchResultsForLLM(query, results, maxLLMSearchResults)
-		out["results"] = searchResultsToInterfacesForLLM(ranked)
-
-		totalCount := anyToIntForLLM(payload["candidate_count"])
-		if totalCount <= 0 {
-			if diagnostics, ok := payload["diagnostics"].(map[string]interface{}); ok {
-				totalCount = anyToIntForLLM(diagnostics["candidate_count"])
-			}
-		}
-		if totalCount <= 0 {
-			totalCount = len(results)
-		}
-		out["total_count"] = totalCount
-		if omitted := len(results) - len(ranked); omitted > 0 {
-			out["omitted_results"] = omitted
-		}
-	}
-	return out
+	return string(encoded)
 }
 
 func isPDFPayloadForLLM(payload map[string]interface{}) bool {
@@ -17067,6 +17078,122 @@ func compactPDFPayloadForLLM(payload map[string]interface{}) map[string]interfac
 		return map[string]interface{}{}
 	}
 	return out
+}
+
+func compactFileReadPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
+	if len(payload) == 0 {
+		return map[string]interface{}{}
+	}
+
+	out := make(map[string]interface{}, len(payload))
+	for key, value := range payload {
+		if key == "content" {
+			continue
+		}
+		out[key] = compactJSONValueForLLM(value, 1)
+	}
+
+	content, hasContent := fileReadContentForLLM(payload["content"])
+	if !hasContent {
+		return out
+	}
+
+	compactedContent, llmTruncated := compactFileReadContentForLLM(out, content)
+	out["content"] = compactedContent
+	if llmTruncated {
+		out["truncated"] = true
+	}
+	return ensureFileReadPayloadFitsWithinLLMBudget(out)
+}
+
+func fileReadContentForLLM(v interface{}) (string, bool) {
+	switch t := v.(type) {
+	case nil:
+		return "", false
+	case string:
+		return t, true
+	case json.RawMessage:
+		return string(t), true
+	default:
+		return anyToStringForLLM(v), true
+	}
+}
+
+func compactFileReadContentForLLM(base map[string]interface{}, content string) (string, bool) {
+	if compactFileReadPayloadFitsWithinLLMBudget(base, content) {
+		return content, false
+	}
+
+	hi := min(len(content), maxLLMToolOutputBytes)
+	best := ""
+	for lo := 0; lo <= hi; {
+		mid := (lo + hi) / 2
+		candidate := ""
+		if mid > 0 {
+			candidate = truncateUTF8Bytes(content, mid)
+		}
+		if compactFileReadPayloadFitsWithinLLMBudget(base, candidate) {
+			best = candidate
+			lo = mid + 1
+			continue
+		}
+		hi = mid - 1
+	}
+	return best, best != content
+}
+
+func compactFileReadPayloadFitsWithinLLMBudget(base map[string]interface{}, content string) bool {
+	payload := make(map[string]interface{}, len(base)+1)
+	for key, value := range base {
+		payload[key] = value
+	}
+	payload["content"] = content
+
+	encoded, err := json.Marshal(payload)
+	return err == nil && len(encoded) <= maxLLMToolOutputBytes
+}
+
+func ensureFileReadPayloadFitsWithinLLMBudget(payload map[string]interface{}) map[string]interface{} {
+	if len(payload) == 0 {
+		return payload
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err == nil && len(encoded) <= maxLLMToolOutputBytes {
+		return payload
+	}
+
+	content, hasContent := fileReadContentForLLM(payload["content"])
+	if !hasContent {
+		return payload
+	}
+
+	working := make(map[string]interface{}, len(payload))
+	for key, value := range payload {
+		working[key] = value
+	}
+	working["truncated"] = true
+
+	hi := len(content)
+	best := ""
+	for lo := 0; lo <= hi; {
+		mid := (lo + hi) / 2
+		candidate := ""
+		if mid > 0 {
+			candidate = truncateUTF8Bytes(content, mid)
+		}
+		working["content"] = candidate
+		encoded, err := json.Marshal(working)
+		if err == nil && len(encoded) <= maxLLMToolOutputBytes {
+			best = candidate
+			lo = mid + 1
+			continue
+		}
+		hi = mid - 1
+	}
+
+	working["content"] = best
+	return working
 }
 
 type compactPDFDocumentForLLM struct {
@@ -18492,7 +18619,7 @@ func applyToolResultsTotalBudgetForLLM(results []llm.Message, totalBudget int) [
 			allow = minLLMToolOutputBytes
 		}
 		if len(results[i].Content) > allow {
-			results[i].Content = truncateUTF8Bytes(results[i].Content, allow)
+			results[i].Content = recompactToolResultForLLMBudget(results[i].ToolName, results[i].Content, allow)
 		}
 		remainingBudget -= len(results[i].Content)
 		if remainingBudget < 0 {
@@ -18513,7 +18640,7 @@ func applyToolResultsTotalBudgetForLLM(results []llm.Message, totalBudget int) [
 		perMessage = 128
 	}
 	for i := range results {
-		results[i].Content = truncateUTF8Bytes(results[i].Content, perMessage)
+		results[i].Content = recompactToolResultForLLMBudget(results[i].ToolName, results[i].Content, perMessage)
 	}
 
 	total = 0
@@ -18531,13 +18658,32 @@ func applyToolResultsTotalBudgetForLLM(results []llm.Message, totalBudget int) [
 		if newLen < 64 {
 			newLen = 64
 		}
-		results[i].Content = truncateUTF8Bytes(results[i].Content, newLen)
+		results[i].Content = recompactToolResultForLLMBudget(results[i].ToolName, results[i].Content, newLen)
 		total = 0
 		for _, r := range results {
 			total += len(r.Content)
 		}
 	}
 	return results
+}
+
+func recompactToolResultForLLMBudget(toolName, content string, budget int) string {
+	if budget <= 0 {
+		return ""
+	}
+	if len(content) <= budget {
+		return content
+	}
+	if strings.EqualFold(strings.TrimSpace(toolName), "web_query") {
+		mode := tools.WebQueryLLMCompactionSummary
+		if budget <= 640 {
+			mode = tools.WebQueryLLMCompactionMinimal
+		}
+		if compacted := compactWebQueryContentForLLM(nil, content, content, "", budget, mode, budget <= maxLLMSearchSummaryBytes); compacted != "" && len(compacted) <= budget {
+			return compacted
+		}
+	}
+	return truncateUTF8Bytes(content, budget)
 }
 
 // ansiPattern matches ANSI escape sequences (CSI, OSC, simple escapes).
@@ -22096,6 +22242,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// of waiting for a large buffered burst to arrive.
 	const forceFlushAfterIdle = 96 * time.Millisecond
 	const paceEMAAlpha = 0.2
+	var typelessCardsPersisted bool // true once tool cards are appended to persisted content
 
 	adaptiveFlushTargets := func() (time.Duration, int) {
 		switch {
@@ -22183,6 +22330,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			return
 		}
 		block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
+		if cardType, _ := card["type"].(string); strings.EqualFold(strings.TrimSpace(cardType), "search") {
+			fullContent += block
+			typelessCardsPersisted = true
+		}
 		emitSSE(map[string]interface{}{
 			"delta":     block,
 			"done":      false,
@@ -22259,10 +22410,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	streamWorkspaceArtifactTarget := extractRequestedArtifactPath(routingMessage)
 	streamWorkspaceArtifactHistoryCalls := make([]llm.ToolCall, 0, 8)
 	streamWorkspaceArtifactHistoryResults := make([]llm.Message, 0, 8)
-	var prevToolSig string          // signature of previous round's tool calls for duplicate detection
-	var consecutiveDups int         // count of consecutive identical tool call rounds
-	var staleIntentGuardTrips int   // count guard-triggered redirections away from stale carry-over
-	var typelessCardsPersisted bool // true once tool result cards are appended to persisted content
+	var prevToolSig string        // signature of previous round's tool calls for duplicate detection
+	var consecutiveDups int       // count of consecutive identical tool call rounds
+	var staleIntentGuardTrips int // count guard-triggered redirections away from stale carry-over
 	var streamLoopDetector tools.ToolLoopDetector
 	isAgentMode = requestAgentModeEnabled
 	agentModeAutoContinue := isAgentMode

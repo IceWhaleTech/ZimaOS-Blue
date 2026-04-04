@@ -4819,7 +4819,8 @@ export default mergeHarnessLocale('es-ES', {
         },
         github: {
           label: 'GitHub',
-          description: 'Fuentes de búsqueda de repositorios en GitHub para archivos SKILL.md, CLAUDE.md y AGENT.md.',
+          description:
+            'Fuentes de búsqueda de repositorios en GitHub para archivos SKILL.md, CLAUDE.md y AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4859,19 +4860,23 @@ export default mergeHarnessLocale('es-ES', {
         },
         curatedSkillUrl: {
           label: 'Skill Externa',
-          description: 'Entrada seleccionada del marketplace importada desde una URL directa de skill.',
+          description:
+            'Entrada seleccionada del marketplace importada desde una URL directa de skill.',
         },
         curatedGithubSeed: {
           label: 'Fuentes de GitHub seleccionadas',
-          description: 'Lista de fuentes de GitHub seleccionadas importadas desde referencias de GitHub.',
+          description:
+            'Lista de fuentes de GitHub seleccionadas importadas desde referencias de GitHub.',
         },
         seed: {
           label: 'Páginas de descubrimiento',
-          description: 'Páginas de descubrimiento que enlazan a más habilidades encontradas en la web.',
+          description:
+            'Páginas de descubrimiento que enlazan a más habilidades encontradas en la web.',
         },
         seedInstance: {
           label: 'Página de descubrimiento {index}',
-          description: 'Página de descubrimiento {index} que enlaza a más habilidades encontradas en la web.',
+          description:
+            'Página de descubrimiento {index} que enlaza a más habilidades encontradas en la web.',
         },
       },
       hero: {
@@ -7378,6 +7383,9 @@ export default mergeHarnessLocale('es-ES', {
     summaryTitle: 'Busqueda web',
     resultCount: '{count} resultados',
     moreResults: '+{count} más',
+    emptyState: 'No se encontraron resultados coincidentes',
+    partialState:
+      'Se muestran resúmenes de las fuentes porque el contenido legible de la página no estaba disponible.',
   },
   cardActions: {
     use_browser: 'Usar navegador',

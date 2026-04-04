@@ -4569,7 +4569,8 @@ export default mergeHarnessLocale('da-DK', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub-kilder til repositoriesøgning efter filer som SKILL.md, CLAUDE.md og AGENT.md.',
+          description:
+            'GitHub-kilder til repositoriesøgning efter filer som SKILL.md, CLAUDE.md og AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -7094,6 +7095,8 @@ export default mergeHarnessLocale('da-DK', {
     summaryTitle: 'Websogning',
     resultCount: '{count} resultater',
     moreResults: '+{count} flere',
+    emptyState: 'Ingen matchende resultater fundet',
+    partialState: 'Viser kildeoversigter, fordi sidens læsbare indhold ikke var tilgængeligt.',
   },
   cardActions: {
     use_browser: 'Brug browser',

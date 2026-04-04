@@ -280,6 +280,7 @@ vi.mock('@/components/ChatInput.vue', () =>
         <button
           v-if="canCancel && showInlineCancel !== false"
           type="button"
+          data-testid="chat-input-inline-cancel"
           @click="$emit('cancel')"
         >
           Stop generating
@@ -349,38 +350,6 @@ vi.mock('@/components/UserTaskProjectionCard.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'UserTaskProjectionCard',
     template: '<div class="agent-task-panel-stub" />',
-  })
-)
-
-vi.mock('@/components/ChatActivityDock.vue', () =>
-  helpers.asAsyncSFCModule({
-    name: 'ChatActivityDock',
-    props: {
-      streamState: { type: Object, default: () => ({ phase: 'idle' }) },
-      canStop: { type: Boolean, default: false },
-      recentOutcome: { type: Object, default: null },
-      todoSummary: { type: Object, default: null },
-    },
-    emits: ['cancel', 'retry', 'dismiss-outcome', 'todo-toggle', 'todo-jump'],
-    template: `
-      <section
-        v-if="
-          canStop ||
-          (streamState && streamState.phase !== 'idle' && streamState.phase !== 'completed') ||
-          recentOutcome ||
-          todoSummary
-        "
-        data-testid="chat-activity-dock"
-        class="chat-activity-dock-stub"
-      >
-        <span class="chat-activity-dock-stub__label">
-          {{ (streamState && (streamState.label || streamState.phase)) || '' }}
-        </span>
-        <button v-if="canStop" type="button" data-testid="chat-activity-dock-stop" @click="$emit('cancel')">
-          Stop generating
-        </button>
-      </section>
-    `,
   })
 )
 
@@ -729,8 +698,8 @@ describe('ChatView streaming card chain integration', () => {
 
     expect(mocks.injectMessage).toHaveBeenCalledWith('conv-1', '补充一点背景')
     expect(wrapper.text()).toContain('补充一点背景')
-    expect(wrapper.find('.assistant-status-bar').exists()).toBe(true)
-    expect(wrapper.find('.assistant-status-label').exists()).toBe(true)
+    expect(wrapper.find('.chat-stream-status-rail').exists()).toBe(true)
+    expect(wrapper.find('.assistant-status-bar').exists()).toBe(false)
   })
 
   it('restores a server-reported active stream with persisted preview content after the view remounts', async () => {
@@ -759,7 +728,9 @@ describe('ChatView streaming card chain integration', () => {
     expect(store.sending).toBe(false)
     expect(store.streamingContent).toContain('我继续执行第二步。')
     expect(wrapper.text()).toContain('我继续执行第二步。')
-    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
+    expect(wrapper.find('.chat-stream-status-rail').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chat-activity-dock"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
   })
 
   it('shows an executing rail and stop control when the server reports an active stream without preview text', async () => {
@@ -778,9 +749,10 @@ describe('ChatView streaming card chain integration', () => {
     expect(store.sending).toBe(false)
     expect(store.toolExecuting).toBe(true)
     expect(store.streamUIState.phase).toBe('executing')
-    expect(wrapper.get('[data-testid="chat-activity-dock"]').exists()).toBe(true)
+    expect(wrapper.find('.chat-stream-status-rail').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chat-activity-dock"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Processing')
-    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
   })
 
   it('does not render the previous assistant reply as active preview when only the latest user turn is persisted', async () => {
@@ -822,7 +794,8 @@ describe('ChatView streaming card chain integration', () => {
     expect(wrapper.text()).toContain('上一轮已经完成的回复')
     expect(wrapper.text()).toContain('继续执行新的任务')
     expect(wrapper.text()).toContain('Processing')
-    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(wrapper.find('.chat-stream-status-rail').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
   })
 
   it('renders streamed web-fetch and browser cards with the real chat store, then submits both card actions', async () => {
@@ -1071,7 +1044,7 @@ describe('ChatView streaming card chain integration', () => {
     const webFetchCard = wrapper.get('#web-fetch-chain')
 
     expect(wrapper.text()).toContain('OpenAI latest updates')
-    expect(wrapper.text()).not.toContain('Latest announcements and product updates.')
+    expect(searchCard.text()).toContain('Latest announcements and product updates.')
     expect(browserProgressCard.text()).not.toContain('Navigating')
     expect(webFetchCard.text()).not.toContain('Expanded page content from the OpenAI blog.')
 

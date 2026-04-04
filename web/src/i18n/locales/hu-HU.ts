@@ -2615,8 +2615,8 @@ export default mergeHarnessLocale('hu-HU', {
       descriptionPlaceholder: 'Írja le ezt a forrást...',
       cancel: 'Mégse',
       add: 'Hozzáadás',
-    close: 'Bezárás',
-    backToTop: 'Vissza a tetejére',
+      close: 'Bezárás',
+      backToTop: 'Vissza a tetejére',
       refresh: 'Frissítés',
       allLevels: 'Minden szint',
       error: 'Hiba',
@@ -2638,10 +2638,8 @@ export default mergeHarnessLocale('hu-HU', {
         'A beépített eszközök itt engedélyezhetők vagy letilthatók, de elérhetőségüket továbbra is korlátozhatja a futásidejű eszközszabályzat.',
       builtinSkillDetailHint:
         'Ez a beépített készség itt engedélyezhető vagy letiltható, de nem távolítható el.',
-      builtinSkillUninstallBlocked:
-        'A beépített készségek letilthatók, de nem távolíthatók el.',
-      builtinToolUninstallBlocked:
-        'A beépített eszközök letilthatók, de nem távolíthatók el.',
+      builtinSkillUninstallBlocked: 'A beépített készségek letilthatók, de nem távolíthatók el.',
+      builtinToolUninstallBlocked: 'A beépített eszközök letilthatók, de nem távolíthatók el.',
       closeSkillDetails: 'Készség részleteinek bezárása',
       sourceLabel: 'Forrás',
       skillCollectionFilters: 'Készséggyűjtemény szűrői',
@@ -4593,7 +4591,8 @@ export default mergeHarnessLocale('hu-HU', {
       sources: {
         skillhub: {
           label: 'SkillHub',
-          description: 'Összesített SkillHub-katalógusok a Tencent SkillHub és a SkillHub Club forrásaiból.',
+          description:
+            'Összesített SkillHub-katalógusok a Tencent SkillHub és a SkillHub Club forrásaiból.',
         },
         tencentSkillHub: {
           label: 'Tencent SkillHub',
@@ -4605,7 +4604,8 @@ export default mergeHarnessLocale('hu-HU', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub repositorykereső források a SKILL.md, CLAUDE.md és AGENT.md fájlokhoz.',
+          description:
+            'GitHub repositorykereső források a SKILL.md, CLAUDE.md és AGENT.md fájlokhoz.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4629,7 +4629,8 @@ export default mergeHarnessLocale('hu-HU', {
         },
         skillstack: {
           label: 'SkillStack',
-          description: 'Közösségi katalógus, amely az újrafelhasználható skillgyűjteményekre összpontosít.',
+          description:
+            'Közösségi katalógus, amely az újrafelhasználható skillgyűjteményekre összpontosít.',
         },
         skillsmp: {
           label: 'SkillsMP',
@@ -7041,6 +7042,9 @@ export default mergeHarnessLocale('hu-HU', {
     summaryTitle: 'Webes kereses',
     resultCount: '{count} találat',
     moreResults: '+{count} további',
+    emptyState: 'Nincs egyező találat',
+    partialState:
+      'Forrás-összefoglalók jelennek meg, mert az oldal olvasható tartalma nem volt elérhető.',
   },
   cardActions: {
     use_browser: 'Böngésző használata',

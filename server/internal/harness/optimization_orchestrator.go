@@ -21,6 +21,7 @@ const (
 	OptimizationReasonExecutionGateFailed OptimizationReason = "execution_gate_failed"
 	OptimizationReasonBudgetGateFailed    OptimizationReason = "budget_gate_failed"
 	OptimizationReasonCutoverBlocking     OptimizationReason = "cutover_readiness_blocking"
+	OptimizationReasonManualSkillOptimize OptimizationReason = "manual_skill_optimize"
 	OptimizationReasonSelectorGatePassed  OptimizationReason = "selector_gate_passed"
 	OptimizationReasonExecutionGatePassed OptimizationReason = "execution_gate_passed"
 	OptimizationReasonBudgetGatePassed    OptimizationReason = "budget_gate_passed"

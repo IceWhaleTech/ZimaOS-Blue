@@ -6730,6 +6730,8 @@ export default mergeHarnessLocale('zh-CN', {
     summaryTitle: '网页搜索',
     resultCount: '{count} 条结果',
     moreResults: '另有 {count} 条',
+    emptyState: '未找到匹配结果',
+    partialState: '搜索源不可读，仅显示摘要',
   },
   cardActions: {
     use_browser: '使用浏览器',

@@ -980,6 +980,48 @@ func TestFallbackCraiyonQuerySlugUsesEnglishHyphenatedQuery(t *testing.T) {
 	}
 }
 
+func TestSearchBrowserImageResultsCraiyonScopesScrapeSelectorsToPreviewWindow(t *testing.T) {
+	engine := newFallbackEngineForTest(t, nil, stubFallbackSearcher{}, stubFallbackBrowser{
+		scrape: func(_ context.Context, req *browser.ScrapeRequest) (*browser.ScrapeResponse, error) {
+			if req == nil {
+				t.Fatal("expected scrape request")
+			}
+			if !strings.Contains(req.URL, "craiyon.com/en/search/toy-poodle-running-in-snow") {
+				return nil, fmt.Errorf("unexpected scrape url: %s", req.URL)
+			}
+			imagesCfg, ok := req.Selectors["images"]
+			if !ok {
+				t.Fatal("expected images selector")
+			}
+			if !strings.Contains(imagesCfg.Selector, "img.craiyon.com") {
+				t.Fatalf("images selector = %q, want img.craiyon.com-scoped selector", imagesCfg.Selector)
+			}
+			if imagesCfg.MaxMatches != fallbackCraiyonPreviewResultLimit {
+				t.Fatalf("images max_matches = %d, want %d", imagesCfg.MaxMatches, fallbackCraiyonPreviewResultLimit)
+			}
+			if !req.SkipWaitLoad {
+				t.Fatalf("scrape request = %#v, want skip_wait_load for Craiyon first-screen scrape", req)
+			}
+			linksCfg, ok := req.Selectors["links"]
+			if !ok {
+				t.Fatal("expected links selector")
+			}
+			if !strings.Contains(linksCfg.Selector, "/images/") {
+				t.Fatalf("links selector = %q, want result-link scoped selector", linksCfg.Selector)
+			}
+			if linksCfg.MaxMatches != fallbackCraiyonPreviewResultLimit {
+				t.Fatalf("links max_matches = %d, want %d", linksCfg.MaxMatches, fallbackCraiyonPreviewResultLimit)
+			}
+			return &browser.ScrapeResponse{URL: req.URL, Data: map[string]interface{}{}}, nil
+		},
+	}, FallbackConfig{SearchMaxResults: 20})
+
+	results := engine.searchBrowserImageResults(context.Background(), "toy poodle running in snow")
+	if len(results) != 0 {
+		t.Fatalf("results = %#v, want no parsed image results from empty scrape payload", results)
+	}
+}
+
 func TestSearchBrowserImageResultsCraiyonUsesIntentJudgeToReorder(t *testing.T) {
 	engine := newFallbackEngineForTest(t, nil, stubFallbackSearcher{}, stubFallbackBrowser{
 		scrape: func(_ context.Context, req *browser.ScrapeRequest) (*browser.ScrapeResponse, error) {
@@ -998,8 +1040,14 @@ func TestSearchBrowserImageResultsCraiyonUsesIntentJudgeToReorder(t *testing.T) 
 			}, nil
 		},
 		screenshot: func(_ context.Context, req *browser.ScreenshotRequest) (*browser.ScreenshotResponse, error) {
-			if !req.FullPage {
-				t.Fatalf("expected full-page screenshot request")
+			if req == nil || req.FullPage {
+				t.Fatalf("expected capped viewport screenshot request, got %#v", req)
+			}
+			if !req.SkipWaitLoad {
+				t.Fatalf("screenshot request = %#v, want skip_wait_load for Craiyon judge screenshot", req)
+			}
+			if req.Height != fallbackCraiyonJudgeViewportHeight {
+				t.Fatalf("screenshot height = %d, want %d", req.Height, fallbackCraiyonJudgeViewportHeight)
 			}
 			return &browser.ScreenshotResponse{Data: fakeMediaImagePNGBase64, Format: browser.FormatPNG}, nil
 		},
@@ -1028,6 +1076,46 @@ func TestSearchBrowserImageResultsCraiyonUsesIntentJudgeToReorder(t *testing.T) 
 	}
 	if results[0].Provider != "Craiyon Search" {
 		t.Fatalf("provider = %q, want Craiyon Search", results[0].Provider)
+	}
+}
+
+func TestSearchBrowserImageResultsCraiyonCapsCandidatesBeforeIntentJudge(t *testing.T) {
+	imageURLs := make([]string, 0, fallbackCraiyonPreviewResultLimit+6)
+	alts := make([]string, 0, fallbackCraiyonPreviewResultLimit+6)
+	for i := 0; i < fallbackCraiyonPreviewResultLimit+6; i++ {
+		imageURLs = append(imageURLs, fmt.Sprintf("https://img.craiyon.com/%02d.png", i))
+		alts = append(alts, fmt.Sprintf("toy poodle variant %02d", i))
+	}
+
+	engine := newFallbackEngineForTest(t, nil, stubFallbackSearcher{}, stubFallbackBrowser{
+		scrape: func(_ context.Context, req *browser.ScrapeRequest) (*browser.ScrapeResponse, error) {
+			if !strings.Contains(req.URL, "craiyon.com/en/search/toy-poodle-running-in-snow") {
+				return nil, fmt.Errorf("unexpected scrape url: %s", req.URL)
+			}
+			return &browser.ScrapeResponse{
+				URL: "https://www.craiyon.com/en/search/toy-poodle-running-in-snow",
+				Data: map[string]interface{}{
+					"images": imageURLs,
+					"alts":   alts,
+				},
+			}, nil
+		},
+		screenshot: func(_ context.Context, req *browser.ScreenshotRequest) (*browser.ScreenshotResponse, error) {
+			return &browser.ScreenshotResponse{Data: fakeMediaImagePNGBase64, Format: browser.FormatPNG}, nil
+		},
+	}, FallbackConfig{SearchMaxResults: fallbackCraiyonPreviewResultLimit + 6})
+	engine.SetVisionBridge(stubFallbackVLM{
+		chat: func(_ context.Context, prompt string, imageBase64 string) (string, error) {
+			if strings.Contains(prompt, fmt.Sprintf("%d. title=", fallbackCraiyonPreviewResultLimit+1)) {
+				t.Fatalf("judge prompt = %q, want candidates capped at %d", prompt, fallbackCraiyonPreviewResultLimit)
+			}
+			return `{"selected_index":1,"score":90,"reason":"top result still matches intent"}`, nil
+		},
+	})
+
+	results := engine.searchBrowserImageResults(context.Background(), "toy poodle running in snow")
+	if len(results) != fallbackCraiyonPreviewResultLimit {
+		t.Fatalf("result count = %d, want %d", len(results), fallbackCraiyonPreviewResultLimit)
 	}
 }
 
@@ -1060,8 +1148,11 @@ func TestSearchBrowserImageResultsCraiyonRandomizesWhenVisionUnavailable(t *test
 			}, nil
 		},
 		screenshot: func(_ context.Context, req *browser.ScreenshotRequest) (*browser.ScreenshotResponse, error) {
-			if !req.FullPage {
-				t.Fatalf("expected full-page screenshot request")
+			if req == nil || req.FullPage {
+				t.Fatalf("expected capped viewport screenshot request, got %#v", req)
+			}
+			if req.Height != fallbackCraiyonJudgeViewportHeight {
+				t.Fatalf("screenshot height = %d, want %d", req.Height, fallbackCraiyonJudgeViewportHeight)
 			}
 			return &browser.ScreenshotResponse{Data: fakeMediaImagePNGBase64, Format: browser.FormatPNG}, nil
 		},
@@ -1073,6 +1164,50 @@ func TestSearchBrowserImageResultsCraiyonRandomizesWhenVisionUnavailable(t *test
 	}
 	if results[0].ImageURL != "https://img.craiyon.com/b.png" {
 		t.Fatalf("first result = %q, want random fallback to promote second image", results[0].ImageURL)
+	}
+}
+
+func TestSearchBrowserImageResultsCraiyonJudgeScreenshotUsesCappedViewport(t *testing.T) {
+	var screenshotReq *browser.ScreenshotRequest
+	engine := newFallbackEngineForTest(t, nil, stubFallbackSearcher{}, stubFallbackBrowser{
+		scrape: func(_ context.Context, req *browser.ScrapeRequest) (*browser.ScrapeResponse, error) {
+			if !strings.Contains(req.URL, "craiyon.com/en/search/toy-poodle-running-in-snow") {
+				return nil, fmt.Errorf("unexpected scrape url: %s", req.URL)
+			}
+			return &browser.ScrapeResponse{
+				URL: "https://www.craiyon.com/en/search/toy-poodle-running-in-snow",
+				Data: map[string]interface{}{
+					"images": []string{
+						"https://img.craiyon.com/a.png",
+						"https://img.craiyon.com/b.png",
+					},
+					"alts": []string{"toy poodle sitting", "toy poodle running in snow"},
+				},
+			}, nil
+		},
+		screenshot: func(_ context.Context, req *browser.ScreenshotRequest) (*browser.ScreenshotResponse, error) {
+			screenshotReq = req
+			return &browser.ScreenshotResponse{Data: fakeMediaImagePNGBase64, Format: browser.FormatPNG}, nil
+		},
+	}, FallbackConfig{SearchMaxResults: 2, ScreenshotHeight: fallbackCraiyonJudgeViewportHeight + 800})
+	engine.SetVisionBridge(stubFallbackVLM{
+		chat: func(_ context.Context, _ string, _ string) (string, error) {
+			return `{"selected_index":2,"score":92,"reason":"matches the running dog in snow"}`, nil
+		},
+	})
+
+	results := engine.searchBrowserImageResults(context.Background(), "toy poodle running in snow")
+	if len(results) != 2 {
+		t.Fatalf("results = %#v, want 2 entries", results)
+	}
+	if screenshotReq == nil {
+		t.Fatal("expected screenshot request")
+	}
+	if screenshotReq.FullPage {
+		t.Fatalf("screenshot request = %#v, want viewport capture instead of full page", screenshotReq)
+	}
+	if screenshotReq.Height != fallbackCraiyonJudgeViewportHeight {
+		t.Fatalf("screenshot height = %d, want %d", screenshotReq.Height, fallbackCraiyonJudgeViewportHeight)
 	}
 }
 
@@ -1105,8 +1240,11 @@ func TestSearchBrowserImageResultsPhotoPromptDropsRandomCraiyonPickAfterScreensh
 			}, nil
 		},
 		screenshot: func(_ context.Context, req *browser.ScreenshotRequest) (*browser.ScreenshotResponse, error) {
-			if req == nil || !req.FullPage {
-				t.Fatalf("expected full-page screenshot request")
+			if req == nil || req.FullPage {
+				t.Fatalf("expected capped viewport screenshot request, got %#v", req)
+			}
+			if req.Height != fallbackCraiyonJudgeViewportHeight {
+				t.Fatalf("screenshot height = %d, want %d", req.Height, fallbackCraiyonJudgeViewportHeight)
 			}
 			return nil, context.DeadlineExceeded
 		},
@@ -1134,6 +1272,37 @@ func TestFallbackBrowserImageEnginesPreferCraiyonFirstForPhotoPrompt(t *testing.
 	}
 	if engines[3].Name != "baidu_images" {
 		t.Fatalf("fourth engine = %q, want baidu_images", engines[3].Name)
+	}
+}
+
+func TestFallbackBrowserImageEnginesCraiyonUsesTrimmedPreviewWindow(t *testing.T) {
+	engines := fallbackBrowserImageEngines("toy poodle running in snow", "en-US")
+	if len(engines) == 0 {
+		t.Fatal("expected browser image engines")
+	}
+	craiyon := engines[0]
+	if craiyon.Name != "craiyon_search" {
+		t.Fatalf("first engine = %q, want craiyon_search", craiyon.Name)
+	}
+	if craiyon.ResultLimit != 10 {
+		t.Fatalf("result limit = %d, want 10", craiyon.ResultLimit)
+	}
+	if craiyon.JudgeViewportHeight != 960 {
+		t.Fatalf("judge viewport height = %d, want 960", craiyon.JudgeViewportHeight)
+	}
+	imagesCfg, ok := craiyon.Selectors["images"]
+	if !ok {
+		t.Fatal("expected images selector")
+	}
+	if imagesCfg.MaxMatches != 10 {
+		t.Fatalf("images max_matches = %d, want 10", imagesCfg.MaxMatches)
+	}
+	linksCfg, ok := craiyon.Selectors["links"]
+	if !ok {
+		t.Fatal("expected links selector")
+	}
+	if linksCfg.MaxMatches != 10 {
+		t.Fatalf("links max_matches = %d, want 10", linksCfg.MaxMatches)
 	}
 }
 
@@ -1177,7 +1346,7 @@ func TestPrepareFallbackBrowserJudgeScreenshotResizesTallPayload(t *testing.T) {
 	}
 }
 
-func TestSearchBrowserImageResultsPhotoPromptUsesCraiyonAndExtendedTimeout(t *testing.T) {
+func TestSearchBrowserImageResultsPhotoPromptUsesCraiyonAndShorterTimeoutBudget(t *testing.T) {
 	var visitedURLs []string
 	var timeouts []int
 	engine := newFallbackEngineForTest(t, nil, stubFallbackSearcher{}, stubFallbackBrowser{
@@ -1204,10 +1373,17 @@ func TestSearchBrowserImageResultsPhotoPromptUsesCraiyonAndExtendedTimeout(t *te
 	if !strings.Contains(visitedURLs[0], "craiyon.com") {
 		t.Fatalf("visited urls = %v, want craiyon search to run first", visitedURLs)
 	}
-	wantTimeout := int((fallbackBrowserSearchTimeout + 2*time.Second) / time.Millisecond)
-	for _, timeout := range timeouts {
-		if timeout != wantTimeout {
-			t.Fatalf("timeouts = %v, want all browser image searches to use %dms", timeouts, wantTimeout)
+	wantCraiyonTimeout := 20_000
+	wantGenericTimeout := int((fallbackBrowserSearchTimeout + 2*time.Second) / time.Millisecond)
+	for idx, visitedURL := range visitedURLs {
+		if strings.Contains(visitedURL, "craiyon.com") {
+			if timeouts[idx] != wantCraiyonTimeout {
+				t.Fatalf("craiyon timeouts = %v for urls %v, want %dms for craiyon", timeouts, visitedURLs, wantCraiyonTimeout)
+			}
+			continue
+		}
+		if timeouts[idx] != wantGenericTimeout {
+			t.Fatalf("timeouts = %v for urls %v, want non-craiyon searches to use %dms", timeouts, visitedURLs, wantGenericTimeout)
 		}
 	}
 }
@@ -1385,10 +1561,10 @@ func TestGenerateWebCanvasPhotoPromptDirectDownloadsRandomBrowserPick(t *testing
 				URL: req.URL,
 				Data: map[string]interface{}{
 					"result_links": []string{
-						"/imgres?imgurl=" + url.QueryEscape(imageServer.URL+"/missing.png") + "&imgrefurl=" + url.QueryEscape("https://example.com/ignored"),
-						"/imgres?imgurl=" + url.QueryEscape(imageServer.URL+"/picked.png") + "&imgrefurl=" + url.QueryEscape("https://example.com/picked"),
+						"/imgres?imgurl=" + url.QueryEscape(imageServer.URL+"/missing.png") + "&imgrefurl=" + url.QueryEscape("https://example.com/toy-poodle-snow-ignored"),
+						"/imgres?imgurl=" + url.QueryEscape(imageServer.URL+"/picked.png") + "&imgrefurl=" + url.QueryEscape("https://example.com/toy-poodle-snow-picked"),
 					},
-					"image_alts": []string{"Generated image", "Generated image"},
+					"image_alts": []string{"Toy poodle in snow", "Toy poodle playing in snow"},
 				},
 			}, nil
 		},
@@ -1415,24 +1591,24 @@ func TestGenerateWebCanvasPhotoPromptDirectDownloadsRandomBrowserPick(t *testing
 		t.Fatalf("task = %#v, want direct image result", task)
 	}
 	result := task.Response.Data[0]
-	if result.OriginalURL != "https://example.com/picked" {
+	if result.OriginalURL != "https://example.com/toy-poodle-snow-picked" {
 		t.Fatalf("original_url = %q, want random-picked result page url", result.OriginalURL)
 	}
 	if strings.TrimSpace(result.URL) == "" {
 		t.Fatalf("url = %q, want stored local media url", result.URL)
 	}
-	if task.FallbackInfo == nil || len(task.FallbackInfo.Sources) != 1 {
-		t.Fatalf("fallback_info = %#v, want one disclosed source", task.FallbackInfo)
+	if task.FallbackInfo == nil || len(task.FallbackInfo.Sources) == 0 {
+		t.Fatalf("fallback_info = %#v, want disclosed sources", task.FallbackInfo)
 	}
 	source := task.FallbackInfo.Sources[0]
-	if source.PageURL != "https://example.com/picked" {
+	if source.PageURL != "https://example.com/toy-poodle-snow-picked" {
 		t.Fatalf("page_url = %q, want picked page url", source.PageURL)
 	}
 	if source.AssetURL != imageServer.URL+"/picked.png" {
 		t.Fatalf("asset_url = %q, want picked image url", source.AssetURL)
 	}
-	if len(task.FallbackInfo.SourceURLs) != 1 || task.FallbackInfo.SourceURLs[0] != "https://example.com/picked" {
-		t.Fatalf("source_urls = %#v, want picked source url only", task.FallbackInfo.SourceURLs)
+	if len(task.FallbackInfo.SourceURLs) == 0 || task.FallbackInfo.SourceURLs[0] != "https://example.com/toy-poodle-snow-picked" {
+		t.Fatalf("source_urls = %#v, want picked source url first", task.FallbackInfo.SourceURLs)
 	}
 }
 

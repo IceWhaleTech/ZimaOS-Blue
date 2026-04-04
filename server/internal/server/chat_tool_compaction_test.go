@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -9,6 +10,62 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 )
+
+func buildWebQueryToolPayloadForLLMTests(content string) map[string]interface{} {
+	return map[string]interface{}{
+		"status":      "ok",
+		"mode":        "search_read",
+		"input":       "blue release notes",
+		"query":       "blue release notes",
+		"provider":    "duckduckgo",
+		"title":       "Blue Release Notes v1.2.3",
+		"target_url":  "https://docs.example.com/releases/1.2.3",
+		"final_url":   "https://docs.example.com/releases/1.2.3",
+		"content":     content,
+		"next_action": "none",
+		"warnings": []map[string]interface{}{
+			{"code": "stale_mirror", "message": "Mirror lag observed for 2 pages."},
+		},
+		"sources": []interface{}{
+			map[string]interface{}{
+				"rank":          1,
+				"title":         "Blue Release Notes v1.2.3",
+				"url":           "https://docs.example.com/releases/1.2.3",
+				"final_url":     "https://docs.example.com/releases/1.2.3",
+				"snippet":       "April 4, 2026 release with 12 improvements, 4 fixes, and 2 migrations.",
+				"source":        "duckduckgo",
+				"content_chars": len(content),
+				"selected":      true,
+			},
+			map[string]interface{}{
+				"rank":          2,
+				"title":         "Blue Upgrade Guide",
+				"url":           "https://docs.example.com/releases/upgrade-guide",
+				"final_url":     "https://docs.example.com/releases/upgrade-guide",
+				"snippet":       "Upgrade guide for version 1.2.3 with migration steps and rollback notes.",
+				"source":        "duckduckgo",
+				"content_chars": 640,
+				"selected":      false,
+			},
+			map[string]interface{}{
+				"rank":          3,
+				"title":         "Blue Status",
+				"url":           "https://status.example.net/incidents/2026-04-04",
+				"final_url":     "https://status.example.net/incidents/2026-04-04",
+				"snippet":       "Status update published on 2026-04-04 for the same release window.",
+				"source":        "newswire",
+				"content_chars": 420,
+				"selected":      false,
+			},
+		},
+		"diagnostics": map[string]interface{}{
+			"route":           "search_http",
+			"candidate_count": 3,
+			"selected_source": 1,
+			"degraded":        false,
+		},
+	}
+}
 
 func TestCompactToolResultsForLLM_ExecSearchTrimAndRerank(t *testing.T) {
 	results := []map[string]interface{}{
@@ -148,6 +205,125 @@ func TestCompactToolResultContentForLLM_NonJSONCapped(t *testing.T) {
 	}
 	if !strings.Contains(compacted, "[truncated]") {
 		t.Fatalf("expected truncated marker in compacted output")
+	}
+}
+
+func TestCompactToolResultContentForLLM_FileReadKeepsLargerContentBudget(t *testing.T) {
+	lines := make([]string, 0, 240)
+	for i := 1; i <= 240; i++ {
+		lines = append(lines, fmt.Sprintf("line %03d %s", i, strings.Repeat("payload ", 2)))
+	}
+	raw := map[string]interface{}{
+		"path":        "notes/output.txt",
+		"size":        4096,
+		"start_line":  1,
+		"end_line":    len(lines),
+		"total_lines": len(lines),
+		"truncated":   false,
+		"content":     strings.Join(lines, "\n"),
+	}
+	contentBytes, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal file_read payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("file_read", string(contentBytes))
+	if len(compacted) > maxLLMToolOutputBytes {
+		t.Fatalf("compacted file_read output too large: %d", len(compacted))
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted file_read payload: %v", err)
+	}
+	content, _ := out["content"].(string)
+	if len(content) <= 512 {
+		t.Fatalf("expected file_read content budget > 512 bytes, got %d", len(content))
+	}
+	if !strings.Contains(content, "line 120 payload payload ") {
+		t.Fatalf("expected compacted file_read content to preserve mid-file lines beyond 512 bytes, got=%q", content)
+	}
+	if truncated, _ := out["truncated"].(bool); truncated {
+		t.Fatalf("expected truncated=false when file_read content fits LLM budget, got true")
+	}
+}
+
+func TestCompactToolResultContentForLLM_FileReadMarksTruncatedWhenLLMCompactsContent(t *testing.T) {
+	rawContent := strings.Repeat("alpha beta gamma delta epsilon zeta eta theta iota kappa\n", 260)
+	raw := map[string]interface{}{
+		"path":        "notes/output.txt",
+		"size":        len(rawContent),
+		"start_line":  1,
+		"end_line":    260,
+		"total_lines": 260,
+		"truncated":   false,
+		"content":     rawContent,
+	}
+	contentBytes, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal file_read payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("file_read", string(contentBytes))
+	if len(compacted) > maxLLMToolOutputBytes {
+		t.Fatalf("compacted file_read output too large: %d", len(compacted))
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted file_read payload: %v", err)
+	}
+	content, _ := out["content"].(string)
+	if len(content) >= len(rawContent) {
+		t.Fatalf("expected file_read content to be compacted for LLM, got len=%d want < %d", len(content), len(rawContent))
+	}
+	if !strings.Contains(content, "[truncated]") {
+		t.Fatalf("expected compacted file_read content to include truncated marker, got=%q", content)
+	}
+	if truncated, _ := out["truncated"].(bool); !truncated {
+		t.Fatalf("expected truncated=true when LLM compacts file_read content, got %#v", out["truncated"])
+	}
+}
+
+func TestCompactToolResultContentForLLM_WebQueryPreservesSelectedResultAndFacts(t *testing.T) {
+	raw := buildWebQueryToolPayloadForLLMTests(strings.Repeat("On April 4, 2026, version 1.2.3 shipped 12 improvements, 4 fixes, and 2 migrations. ", 180))
+	contentBytes, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal web_query payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("web_query", string(contentBytes))
+	if len(compacted) > maxLLMToolOutputBytes {
+		t.Fatalf("compacted web_query output too large: %d", len(compacted))
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted web_query payload: %v", err)
+	}
+	if got, ok := out["has_results"].(bool); !ok || !got {
+		t.Fatalf("has_results = %#v, want true", out["has_results"])
+	}
+	selected, ok := out["selected_result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("selected_result = %#v, want object", out["selected_result"])
+	}
+	if got := selected["url"]; got != "https://docs.example.com/releases/1.2.3" {
+		t.Fatalf("selected_result.url = %v, want selected page", got)
+	}
+	facts, ok := out["key_facts"].([]interface{})
+	if !ok || len(facts) == 0 {
+		t.Fatalf("key_facts = %#v, want non-empty array", out["key_facts"])
+	}
+	joinedFacts := make([]string, 0, len(facts))
+	for _, fact := range facts {
+		joinedFacts = append(joinedFacts, fmt.Sprint(fact))
+	}
+	if got := strings.Join(joinedFacts, " "); !strings.Contains(got, "2026") && !strings.Contains(got, "1.2.3") {
+		t.Fatalf("key_facts = %q, want date/version evidence", got)
+	}
+	if got, ok := out["llm_compacted"].(bool); !ok || !got {
+		t.Fatalf("llm_compacted = %#v, want true", out["llm_compacted"])
 	}
 }
 
@@ -472,7 +648,7 @@ func TestContentForChatToolHistory_CompactsPDFAuditPayloadForLLM(t *testing.T) {
 	compact := `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":1,"text":"sample"}]}`
 	raw := `{"document":{"path":"openclaw_report.pdf"},"outline":[{"title":"Executive Summary","level":1,"page_number":1}],"markdown":"[Page 1]\nfull raw text","pages":[{"number":1,"text":"sample"}],"raw_text":"[Page 1]\nfull raw text"}`
 	want := compactToolResultContentForLLM("pdf", raw)
-	if got := contentForChatToolHistory("pdf", compact, raw); got != want {
+	if got := contentForChatToolHistory(context.Background(), "pdf", "", compact, raw); got != want {
 		t.Fatalf("contentForChatToolHistory() = %q, want compacted payload %q", got, want)
 	}
 }
@@ -481,7 +657,7 @@ func TestContentForChatToolHistory_CompactsFileReadAuditPayloadForPDF(t *testing
 	compact := `{"document":{"path":"openclaw_report.pdf"},"pages":[{"number":1,"text":"sample"}]}`
 	raw := `{"document":{"path":"openclaw_report.pdf"},"outline":[{"title":"Executive Summary","level":1,"page_number":1}],"markdown":"[Page 1]\nfull raw text","pages":[{"number":1,"text":"sample"}],"raw_text":"[Page 1]\nfull raw text"}`
 	want := compactToolResultContentForLLM("read", raw)
-	if got := contentForChatToolHistory("read", compact, raw); got != want {
+	if got := contentForChatToolHistory(context.Background(), "read", "", compact, raw); got != want {
 		t.Fatalf("contentForChatToolHistory() = %q, want compacted payload %q", got, want)
 	}
 }
@@ -786,6 +962,82 @@ func TestCompactToolResultsForLLM_BoundsResponsesBodySize(t *testing.T) {
 	}
 	if len(body) > 28*1024 {
 		t.Fatalf("responses request body too large after compaction: %d", len(body))
+	}
+}
+
+func TestCompactToolResultsForLLM_WebQueryAdditionalRoundsKeepNonEmptySummary(t *testing.T) {
+	raw := buildWebQueryToolPayloadForLLMTests(strings.Repeat("On April 4, 2026, version 1.2.3 shipped 12 improvements, 4 fixes, and 2 migrations. ", 160))
+	contentBytes, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal web_query payload: %v", err)
+	}
+
+	toolCalls := []llm.ToolCall{
+		{ID: "call_1", Name: "web_query", Arguments: `{"input":"blue release notes alpha"}`},
+		{ID: "call_2", Name: "web_query", Arguments: `{"input":"blue release notes beta"}`},
+		{ID: "call_3", Name: "web_query", Arguments: `{"input":"blue release notes gamma"}`},
+		{ID: "call_4", Name: "web_query", Arguments: `{"input":"blue release notes delta"}`},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call_1", ToolName: "web_query", Content: string(contentBytes)},
+		{Role: llm.RoleTool, ToolCallID: "call_2", ToolName: "web_query", Content: string(contentBytes)},
+		{Role: llm.RoleTool, ToolCallID: "call_3", ToolName: "web_query", Content: string(contentBytes)},
+		{Role: llm.RoleTool, ToolCallID: "call_4", ToolName: "web_query", Content: string(contentBytes)},
+	}
+
+	compacted := compactToolResultsForLLM(toolCalls, toolResults)
+	if len(compacted) != 4 {
+		t.Fatalf("len(compacted) = %d, want 4", len(compacted))
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted[3].Content), &out); err != nil {
+		t.Fatalf("unmarshal fourth-round web_query summary: %v payload=%q", err, compacted[3].Content)
+	}
+	if got, ok := out["omitted_from_llm_context"].(bool); !ok || !got {
+		t.Fatalf("omitted_from_llm_context = %#v, want true", out["omitted_from_llm_context"])
+	}
+	if got, ok := out["has_results"].(bool); !ok || !got {
+		t.Fatalf("has_results = %#v, want true", out["has_results"])
+	}
+	if _, ok := out["selected_result"].(map[string]interface{}); !ok {
+		t.Fatalf("selected_result = %#v, want preserved selected result", out["selected_result"])
+	}
+}
+
+func TestCompactToolResultsForLLM_WebQueryBudgetPressureKeepsValidJSON(t *testing.T) {
+	raw := buildWebQueryToolPayloadForLLMTests(strings.Repeat("On April 4, 2026, version 1.2.3 shipped 12 improvements, 4 fixes, and 2 migrations. ", 220))
+	contentBytes, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal web_query payload: %v", err)
+	}
+
+	toolCalls := []llm.ToolCall{
+		{ID: "call_1", Name: "web_query", Arguments: `{"input":"blue release notes alpha"}`},
+		{ID: "call_2", Name: "web_query", Arguments: `{"input":"blue release notes beta"}`},
+		{ID: "call_3", Name: "web_query", Arguments: `{"input":"blue release notes gamma"}`},
+		{ID: "call_4", Name: "web_query", Arguments: `{"input":"blue release notes delta"}`},
+		{ID: "call_5", Name: "web_query", Arguments: `{"input":"blue release notes epsilon"}`},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call_1", ToolName: "web_query", Content: string(contentBytes)},
+		{Role: llm.RoleTool, ToolCallID: "call_2", ToolName: "web_query", Content: string(contentBytes)},
+		{Role: llm.RoleTool, ToolCallID: "call_3", ToolName: "web_query", Content: string(contentBytes)},
+		{Role: llm.RoleTool, ToolCallID: "call_4", ToolName: "web_query", Content: string(contentBytes)},
+		{Role: llm.RoleTool, ToolCallID: "call_5", ToolName: "web_query", Content: string(contentBytes)},
+	}
+
+	compacted := compactToolResultsForLLM(toolCalls, toolResults)
+	for idx, msg := range compacted {
+		var out map[string]interface{}
+		if err := json.Unmarshal([]byte(msg.Content), &out); err != nil {
+			t.Fatalf("message %d invalid JSON after budget compaction: %v payload=%q", idx, err, msg.Content)
+		}
+		if hasResults, ok := out["has_results"].(bool); ok && hasResults {
+			if _, ok := out["selected_result"].(map[string]interface{}); !ok {
+				t.Fatalf("message %d missing selected_result under budget pressure: %#v", idx, out)
+			}
+		}
 	}
 }
 

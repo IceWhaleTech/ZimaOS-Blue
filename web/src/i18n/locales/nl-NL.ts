@@ -2625,8 +2625,8 @@ export default mergeHarnessLocale('nl-NL', {
       descriptionPlaceholder: 'Beschrijf deze bron...',
       cancel: 'Annuleren',
       add: 'Toevoegen',
-    close: 'Sluiten',
-    backToTop: 'Terug naar boven',
+      close: 'Sluiten',
+      backToTop: 'Terug naar boven',
       refresh: 'Vernieuwen',
       allLevels: 'Alle niveaus',
       error: 'Fout',
@@ -4598,7 +4598,8 @@ export default mergeHarnessLocale('nl-NL', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub-repositoryzoekbronnen voor SKILL.md-, CLAUDE.md- en AGENT.md-bestanden.',
+          description:
+            'GitHub-repositoryzoekbronnen voor SKILL.md-, CLAUDE.md- en AGENT.md-bestanden.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4638,19 +4639,23 @@ export default mergeHarnessLocale('nl-NL', {
         },
         curatedSkillUrl: {
           label: 'Externe Skill',
-          description: 'Gecureerde marktplaatsvermelding geïmporteerd vanuit een directe skill-URL.',
+          description:
+            'Gecureerde marktplaatsvermelding geïmporteerd vanuit een directe skill-URL.',
         },
         curatedGithubSeed: {
           label: 'Geselecteerde GitHub-bronnen',
-          description: 'Lijst met geselecteerde GitHub-bronnen geïmporteerd uit GitHub-verwijzingen.',
+          description:
+            'Lijst met geselecteerde GitHub-bronnen geïmporteerd uit GitHub-verwijzingen.',
         },
         seed: {
-          label: 'Ontdekkingspagina\'s',
-          description: 'Ontdekkingspagina\'s die linken naar meer vaardigheden die op het web zijn gevonden.',
+          label: "Ontdekkingspagina's",
+          description:
+            "Ontdekkingspagina's die linken naar meer vaardigheden die op het web zijn gevonden.",
         },
         seedInstance: {
           label: 'Ontdekkingspagina {index}',
-          description: 'Ontdekkingspagina {index} die linkt naar meer vaardigheden die op het web zijn gevonden.',
+          description:
+            'Ontdekkingspagina {index} die linkt naar meer vaardigheden die op het web zijn gevonden.',
         },
       },
       hero: {
@@ -7134,6 +7139,9 @@ export default mergeHarnessLocale('nl-NL', {
     summaryTitle: 'Zoeken op het web',
     resultCount: '{count} resultaten',
     moreResults: '+{count} meer',
+    emptyState: 'Geen overeenkomende resultaten gevonden',
+    partialState:
+      'Bronsamenvattingen worden getoond omdat leesbare paginainhoud niet beschikbaar was.',
   },
   cardActions: {
     use_browser: 'Browser gebruiken',

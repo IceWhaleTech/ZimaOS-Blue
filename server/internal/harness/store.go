@@ -219,6 +219,22 @@ CREATE TABLE IF NOT EXISTS harness_comparison_reports (
 	scorer_delta_json TEXT NOT NULL DEFAULT '{}',
 	created_at DATETIME NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS harness_skill_revisions (
+	id TEXT PRIMARY KEY,
+	skill_id TEXT NOT NULL,
+	status TEXT NOT NULL,
+	source_path TEXT DEFAULT '',
+	candidate_id TEXT DEFAULT '',
+	parent_revision_id TEXT DEFAULT '',
+	backup_of_revision_id TEXT DEFAULT '',
+	eval_run_id TEXT DEFAULT '',
+	optimization_run_id TEXT DEFAULT '',
+	content TEXT NOT NULL DEFAULT '',
+	content_sha256 TEXT NOT NULL DEFAULT '',
+	created_at DATETIME NOT NULL,
+	promoted_at DATETIME
+);
 `
 
 const indexSchemaSQL = `
@@ -252,6 +268,10 @@ CREATE INDEX IF NOT EXISTS idx_harness_baselines_spec ON harness_baselines(eval_
 CREATE UNIQUE INDEX IF NOT EXISTS idx_harness_baselines_default_spec ON harness_baselines(eval_spec_id) WHERE is_default = 1;
 CREATE INDEX IF NOT EXISTS idx_harness_comparison_reports_target ON harness_comparison_reports(target_eval_run_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_harness_comparison_reports_spec ON harness_comparison_reports(eval_spec_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_revisions_skill ON harness_skill_revisions(skill_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_revisions_status ON harness_skill_revisions(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_revisions_eval_run ON harness_skill_revisions(eval_run_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_revisions_optimization_run ON harness_skill_revisions(optimization_run_id, created_at DESC);
 `
 
 type SQLiteStore struct {

@@ -7306,6 +7306,8 @@ export default mergeHarnessLocale('ja-JP', {
     summaryTitle: 'Web search',
     resultCount: '{count} 件の結果',
     moreResults: 'さらに {count} 件',
+    emptyState: '一致する結果は見つかりませんでした',
+    partialState: 'ページの可読コンテンツを取得できなかったため、ソース要約のみを表示しています。',
   },
   cardActions: {
     use_browser: 'ブラウザを使う',

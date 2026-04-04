@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -356,6 +358,193 @@ func TestHandler_PerformRunActionCancelsScopedRun(t *testing.T) {
 	}
 	if len(driver.cancelled) != 1 || driver.cancelled[0] != run.ID {
 		t.Fatalf("driver cancel calls = %#v, want [%q]", driver.cancelled, run.ID)
+	}
+}
+
+func TestHandler_OptimizeSkillUsesScopedEvalRunAndReturnsTrigger(t *testing.T) {
+	controller := newTestController(t)
+	triggerer := &recordingOptimizationTriggerer{}
+	controller.SetOptimizationTriggerer(triggerer)
+	evalRun := createManualOptimizeEvalRunForSkillRevisionTest(t, controller, map[string]interface{}{
+		"candidate_id": "candidate-browser-handler",
+		"skill_candidate": map[string]interface{}{
+			"skill_id":    "browser",
+			"source_path": "assets/skills/browser/SKILL.md",
+		},
+		"optimization_surface": string(OptimizationSurfaceSkillDefinition),
+	})
+	evalRun.OwnerUserID = "user-1"
+	if err := controller.store.UpdateEvalRun(context.Background(), evalRun); err != nil {
+		t.Fatalf("UpdateEvalRun failed: %v", err)
+	}
+
+	handler := NewHandler(controller)
+	e := echo.New()
+	body := strings.NewReader(`{"eval_run_id":"` + evalRun.ID + `"}`)
+	req := httptest.NewRequest(http.MethodPost, "/skills/browser/optimize", body)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("skill_id")
+	c.SetParamValues("browser")
+
+	if err := handler.OptimizeSkill(c); err != nil {
+		t.Fatalf("OptimizeSkill returned error: %v", err)
+	}
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+	if len(triggerer.events) != 1 {
+		t.Fatalf("trigger count = %d, want 1", len(triggerer.events))
+	}
+
+	var event OptimizationTrigger
+	if err := json.Unmarshal(rec.Body.Bytes(), &event); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got, want := event.Reason, OptimizationReasonManualSkillOptimize; got != want {
+		t.Fatalf("reason = %q, want %q", got, want)
+	}
+	if got := strings.TrimSpace(metadataString(event.Metadata, "followup_gate")); got != "selector" {
+		t.Fatalf("followup_gate = %q, want selector", got)
+	}
+}
+
+func TestHandler_ListSkillRevisionsReturnsSkillScopedResults(t *testing.T) {
+	controller := newTestController(t)
+	_, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		SkillID:     "browser",
+		Status:      SkillRevisionStatusAccepted,
+		SourcePath:  "assets/skills/browser/SKILL.md",
+		CandidateID: "candidate-browser-1",
+		Content:     "# Browser\nAccepted.\n",
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision(browser) failed: %v", err)
+	}
+	_, err = controller.CreateSkillRevision(context.Background(), SkillRevision{
+		SkillID:     "reminder",
+		Status:      SkillRevisionStatusAccepted,
+		SourcePath:  "assets/skills/reminder/SKILL.md",
+		CandidateID: "candidate-reminder-1",
+		Content:     "# Reminder\nAccepted.\n",
+		CreatedAt:   time.Now().UTC().Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision(reminder) failed: %v", err)
+	}
+
+	handler := NewHandler(controller)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/browser/revisions?status=accepted", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("skill_id")
+	c.SetParamValues("browser")
+
+	if err := handler.ListSkillRevisions(c); err != nil {
+		t.Fatalf("ListSkillRevisions returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var revisions []SkillRevision
+	if err := json.Unmarshal(rec.Body.Bytes(), &revisions); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(revisions) != 1 || revisions[0].SkillID != "browser" {
+		t.Fatalf("revisions = %#v, want one browser revision", revisions)
+	}
+}
+
+func TestHandler_GetSkillRevisionReturnsStoredRevision(t *testing.T) {
+	controller := newTestController(t)
+	revision, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		SkillID:     "browser",
+		Status:      SkillRevisionStatusAccepted,
+		SourcePath:  "assets/skills/browser/SKILL.md",
+		CandidateID: "candidate-browser-1",
+		Content:     "# Browser\nAccepted.\n",
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision failed: %v", err)
+	}
+
+	handler := NewHandler(controller)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skill-revisions/"+revision.ID, nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(revision.ID)
+
+	if err := handler.GetSkillRevision(c); err != nil {
+		t.Fatalf("GetSkillRevision returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got SkillRevision
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got.ID != revision.ID || got.SkillID != "browser" {
+		t.Fatalf("revision = %#v, want browser %q", got, revision.ID)
+	}
+}
+
+func TestHandler_PromoteSkillRevisionReturnsPromotionResult(t *testing.T) {
+	controller := newTestController(t)
+	repoRoot := t.TempDir()
+	skillDir := filepath.Join(repoRoot, "assets", "skills", "browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll skillDir: %v", err)
+	}
+	canonicalPath := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(canonicalPath, []byte("# Browser\nOriginal.\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile canonicalPath: %v", err)
+	}
+	restoreWD := chdirForSkillRevisionTest(t, repoRoot)
+	defer restoreWD()
+
+	revision, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		SkillID:     "browser",
+		Status:      SkillRevisionStatusAccepted,
+		SourcePath:  "assets/skills/browser/SKILL.md",
+		CandidateID: "candidate-browser-promote",
+		Content:     "# Browser\nPromoted.\n",
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision failed: %v", err)
+	}
+
+	handler := NewHandler(controller)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skill-revisions/"+revision.ID+"/promote", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(revision.ID)
+
+	if err := handler.PromoteSkillRevision(c); err != nil {
+		t.Fatalf("PromoteSkillRevision returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var result SkillPromoteResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if result.PromotedRevisionID != revision.ID || strings.TrimSpace(result.BackupRevisionID) == "" {
+		t.Fatalf("result = %#v, want promoted revision and backup id", result)
 	}
 }
 

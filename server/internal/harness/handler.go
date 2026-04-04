@@ -76,6 +76,10 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/comparison-reports/:id", h.GetComparisonReport)
 	g.POST("/baselines", h.CreateBaseline)
 	g.GET("/baselines", h.ListBaselines)
+	g.POST("/skills/:skill_id/optimize", h.OptimizeSkill)
+	g.GET("/skills/:skill_id/revisions", h.ListSkillRevisions)
+	g.GET("/skill-revisions/:id", h.GetSkillRevision)
+	g.POST("/skill-revisions/:id/promote", h.PromoteSkillRevision)
 	g.POST("/selector-curated/ensure", h.EnsureSelectorCuratedAssets)
 	g.POST("/execution-batch1/ensure", h.EnsureBatch1ExecutionAssets)
 	g.POST("/groups", h.CreateGroup)
@@ -299,6 +303,65 @@ func (h *Handler) CancelEvalRun(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+func (h *Handler) OptimizeSkill(c echo.Context) error {
+	skillID := strings.TrimSpace(c.Param("skill_id"))
+	if skillID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "skill_id is required"})
+	}
+	var req SkillOptimizeRequest
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	evalRun, err := h.manager.store.GetEvalRun(c.Request().Context(), strings.TrimSpace(req.EvalRunID))
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "eval run not found"})
+	}
+	if userID := harnessUserID(c); userID != "" && evalRun.OwnerUserID != "" && evalRun.OwnerUserID != userID {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "eval run not found"})
+	}
+	event, err := h.manager.OptimizeSkill(c.Request().Context(), skillID, req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusAccepted, event)
+}
+
+func (h *Handler) ListSkillRevisions(c echo.Context) error {
+	filter := SkillRevisionFilter{
+		SkillID: strings.TrimSpace(c.Param("skill_id")),
+		Limit:   50,
+	}
+	if rawLimit := strings.TrimSpace(c.QueryParam("limit")); rawLimit != "" {
+		if limit, err := strconv.Atoi(rawLimit); err == nil && limit > 0 {
+			filter.Limit = limit
+		}
+	}
+	if statuses := parseSkillRevisionStatuses(c.QueryParams()["status"], c.QueryParams()["statuses"]); len(statuses) > 0 {
+		filter.Statuses = statuses
+	}
+	revisions, err := h.manager.ListSkillRevisions(c.Request().Context(), filter)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, revisions)
+}
+
+func (h *Handler) GetSkillRevision(c echo.Context) error {
+	revision, err := h.manager.GetSkillRevision(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "skill revision not found"})
+	}
+	return c.JSON(http.StatusOK, revision)
+}
+
+func (h *Handler) PromoteSkillRevision(c echo.Context) error {
+	result, err := h.manager.PromoteSkillRevision(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) CompareEvalRun(c echo.Context) error {
@@ -941,6 +1004,24 @@ func parseRunGroupStatuses(values ...[]string) []RunGroupStatus {
 	seen := make(map[RunGroupStatus]struct{}, len(raw))
 	for _, item := range raw {
 		status := RunGroupStatus(strings.TrimSpace(item))
+		if status == "" {
+			continue
+		}
+		if _, ok := seen[status]; ok {
+			continue
+		}
+		seen[status] = struct{}{}
+		out = append(out, status)
+	}
+	return out
+}
+
+func parseSkillRevisionStatuses(values ...[]string) []SkillRevisionStatus {
+	raw := flattenQueryValues(values...)
+	out := make([]SkillRevisionStatus, 0, len(raw))
+	seen := make(map[SkillRevisionStatus]struct{}, len(raw))
+	for _, item := range raw {
+		status := SkillRevisionStatus(strings.TrimSpace(item))
 		if status == "" {
 			continue
 		}

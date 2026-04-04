@@ -608,8 +608,9 @@ func webSearchCard(content string) map[string]interface{} {
 		Query      string            `json:"query"`
 		Results    []json.RawMessage `json:"results"`
 		TotalCount int               `json:"total_count"`
+		Provider   string            `json:"provider"`
 	}
-	if json.Unmarshal([]byte(content), &resp) != nil || len(resp.Results) == 0 {
+	if json.Unmarshal([]byte(content), &resp) != nil {
 		return nil
 	}
 	var results []interface{}
@@ -618,25 +619,28 @@ func webSearchCard(content string) map[string]interface{} {
 		json.Unmarshal(r, &item)
 		results = append(results, item)
 	}
-	return map[string]interface{}{
-		"type":        "search",
-		"query":       resp.Query,
-		"total_count": resp.TotalCount,
-		"results":     results,
+	status := "success"
+	message := ""
+	if len(results) == 0 {
+		status = "empty"
+		message = "No matching sources were found."
 	}
+	return buildSearchCard("web-search", resp.Query, resp.Provider, results, resp.TotalCount, status, message, "")
 }
 
 func webQueryCard(content string) map[string]interface{} {
 	var data struct {
-		Status     string `json:"status"`
-		Mode       string `json:"mode"`
-		Input      string `json:"input"`
-		Query      string `json:"query"`
-		TargetURL  string `json:"target_url"`
-		FinalURL   string `json:"final_url"`
-		Title      string `json:"title"`
-		Content    string `json:"content"`
-		NextAction string `json:"next_action"`
+		Status            string `json:"status"`
+		Mode              string `json:"mode"`
+		Input             string `json:"input"`
+		Query             string `json:"query"`
+		Provider          string `json:"provider"`
+		TargetURL         string `json:"target_url"`
+		FinalURL          string `json:"final_url"`
+		Title             string `json:"title"`
+		Content           string `json:"content"`
+		NextAction        string `json:"next_action"`
+		SearchCardEmitted bool   `json:"search_card_emitted"`
 		Media      struct {
 			Platform string `json:"platform"`
 			Kind     string `json:"kind"`
@@ -685,8 +689,15 @@ func webQueryCard(content string) map[string]interface{} {
 		strings.TrimSpace(data.Transcript.Text),
 		strings.TrimSpace(data.Page.Content),
 	)
+	searchQuery := firstCardNonEmpty(
+		strings.TrimSpace(data.Query),
+		strings.TrimSpace(data.Input),
+		strings.TrimSpace(data.Title),
+		strings.TrimSpace(data.TargetURL),
+	)
 	if bodyText == "" && len(data.Sources) > 0 && len(data.Warnings) == 0 && data.NextAction != "retry_browser" {
 		results := make([]map[string]interface{}, 0, len(data.Sources))
+		selectedURL := ""
 		for _, source := range data.Sources {
 			target := strings.TrimSpace(source.FinalURL)
 			if target == "" {
@@ -708,27 +719,49 @@ func webQueryCard(content string) map[string]interface{} {
 			if description := firstCardNonEmpty(strings.TrimSpace(source.Snippet), strings.TrimSpace(source.Source)); description != "" {
 				result["description"] = escapeBackticks(RedactSensitiveText(description))
 			}
+			if sourceLabel := strings.TrimSpace(source.Source); sourceLabel != "" {
+				result["source"] = escapeBackticks(RedactSensitiveText(sourceLabel))
+			}
+			if source.Selected && selectedURL == "" {
+				selectedURL = target
+			}
 			results = append(results, result)
 		}
 
 		if len(results) > 0 {
-			query := firstCardNonEmpty(
-				strings.TrimSpace(data.Query),
-				strings.TrimSpace(data.Input),
-				strings.TrimSpace(data.Title),
-				strings.TrimSpace(data.TargetURL),
+			if data.SearchCardEmitted {
+				return nil
+			}
+			return buildSearchCard(
+				"web-query-search",
+				searchQuery,
+				data.Provider,
+				convertSearchResultMaps(results),
+				len(results),
+				searchCardStatus(strings.TrimSpace(data.Status), false),
+				"",
+				selectedURL,
 			)
-
-			card := map[string]interface{}{
-				"type":        "search",
-				"query":       escapeBackticks(RedactSensitiveText(query)),
-				"total_count": len(results),
-				"results":     results,
+		}
+	}
+	if bodyText == "" && data.NextAction != "retry_browser" {
+		for _, warning := range data.Warnings {
+			code := strings.ToLower(strings.TrimSpace(warning.Code))
+			if code != "no_results" && code != "search_failed" {
+				continue
 			}
-			if query != "" {
-				card["id"] = "web-query-search-" + url.QueryEscape(query)
+			if data.SearchCardEmitted {
+				return nil
 			}
-			return card
+			message := strings.TrimSpace(warning.Message)
+			if message == "" {
+				if code == "search_failed" {
+					message = "Search failed before any sources could be listed."
+				} else {
+					message = "No matching sources were found."
+				}
+			}
+			return buildSearchCard("web-query-search", searchQuery, data.Provider, []interface{}{}, 0, "empty", message, "")
 		}
 	}
 
@@ -890,6 +923,51 @@ func webQueryCard(content string) map[string]interface{} {
 		}}
 	}
 
+	return card
+}
+
+func searchCardStatus(status string, empty bool) string {
+	if empty {
+		return "empty"
+	}
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "ok":
+		return "success"
+	case "partial", "needs_browser", "error":
+		return "partial"
+	default:
+		return "success"
+	}
+}
+
+func convertSearchResultMaps(results []map[string]interface{}) []interface{} {
+	converted := make([]interface{}, 0, len(results))
+	for _, result := range results {
+		converted = append(converted, result)
+	}
+	return converted
+}
+
+func buildSearchCard(idPrefix, query, provider string, results []interface{}, totalCount int, status, message, selectedURL string) map[string]interface{} {
+	card := map[string]interface{}{
+		"type":        "search",
+		"query":       escapeBackticks(RedactSensitiveText(strings.TrimSpace(query))),
+		"total_count": totalCount,
+		"results":     results,
+		"status":      searchCardStatus(status, totalCount == 0),
+	}
+	if trimmedProvider := strings.TrimSpace(provider); trimmedProvider != "" {
+		card["provider"] = escapeBackticks(RedactSensitiveText(trimmedProvider))
+	}
+	if trimmedMessage := strings.TrimSpace(message); trimmedMessage != "" {
+		card["message"] = escapeBackticks(RedactSensitiveText(trimmedMessage))
+	}
+	if trimmedSelectedURL := strings.TrimSpace(selectedURL); trimmedSelectedURL != "" {
+		card["selectedUrl"] = escapeBackticks(RedactSensitiveText(trimmedSelectedURL))
+	}
+	if trimmedQuery := strings.TrimSpace(query); trimmedQuery != "" {
+		card["id"] = idPrefix + "-" + url.QueryEscape(trimmedQuery)
+	}
 	return card
 }
 

@@ -87,6 +87,8 @@ type ScreenshotRequest struct {
 	WaitFor int `json:"wait_for,omitempty"`
 	// WaitForSelector waits for a specific element to appear.
 	WaitForSelector *string `json:"wait_for_selector,omitempty"`
+	// SkipWaitLoad skips the full page load wait and relies on selector readiness instead.
+	SkipWaitLoad bool `json:"skip_wait_load,omitempty"`
 	// Timeout is the maximum time to wait (milliseconds).
 	Timeout int `json:"timeout,omitempty"`
 }
@@ -320,6 +322,8 @@ type ScrapeRequest struct {
 	WaitFor int `json:"wait_for,omitempty"`
 	// WaitForSelector waits for a specific element to appear.
 	WaitForSelector *string `json:"wait_for_selector,omitempty"`
+	// SkipWaitLoad skips the full page load wait and relies on selector readiness instead.
+	SkipWaitLoad bool `json:"skip_wait_load,omitempty"`
 	// Timeout is the maximum time to wait (milliseconds).
 	Timeout int `json:"timeout,omitempty"`
 }
@@ -332,6 +336,8 @@ type SelectorConfig struct {
 	Attribute string `json:"attribute,omitempty"`
 	// Multiple extracts all matching elements if true.
 	Multiple bool `json:"multiple,omitempty"`
+	// MaxMatches limits how many matching elements are extracted when Multiple is true.
+	MaxMatches int `json:"max_matches,omitempty"`
 }
 
 // ScrapeResponse represents the result of data scraping.

@@ -531,7 +531,10 @@ export interface TypelessCardSearch extends TypelessCardBase {
   query: string
   results: SearchResultItem[]
   totalCount?: number
+  status?: 'success' | 'partial' | 'empty'
+  message?: string
   provider?: string
+  selectedUrl?: string
 }
 
 export interface DeepResearchCitationItem {

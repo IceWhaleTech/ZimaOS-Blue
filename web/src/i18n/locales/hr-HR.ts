@@ -2613,8 +2613,8 @@ export default mergeHarnessLocale('hr-HR', {
       descriptionPlaceholder: 'Opišite ovaj izvor...',
       cancel: 'Odustani',
       add: 'Dodaj',
-    close: 'Zatvori',
-    backToTop: 'Natrag na vrh',
+      close: 'Zatvori',
+      backToTop: 'Natrag na vrh',
       refresh: 'Osvježi',
       allLevels: 'Sve razine',
       error: 'Greška',
@@ -4576,7 +4576,8 @@ export default mergeHarnessLocale('hr-HR', {
         },
         github: {
           label: 'GitHub',
-          description: 'Izvori pretraživanja GitHub repozitorija za datoteke SKILL.md, CLAUDE.md i AGENT.md.',
+          description:
+            'Izvori pretraživanja GitHub repozitorija za datoteke SKILL.md, CLAUDE.md i AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4628,7 +4629,8 @@ export default mergeHarnessLocale('hr-HR', {
         },
         seedInstance: {
           label: 'Stranica za otkrivanje {index}',
-          description: 'Stranica za otkrivanje {index} koja vodi na više vještina pronađenih na webu.',
+          description:
+            'Stranica za otkrivanje {index} koja vodi na više vještina pronađenih na webu.',
         },
       },
       hero: {
@@ -7000,6 +7002,8 @@ export default mergeHarnessLocale('hr-HR', {
     summaryTitle: 'Web pretraga',
     resultCount: '{count} rezultata',
     moreResults: '+{count} više',
+    emptyState: 'Nema podudarnih rezultata',
+    partialState: 'Prikazuju se sažeci izvora jer čitljiv sadržaj stranice nije bio dostupan.',
   },
   cardActions: {
     use_browser: 'Koristi preglednik',

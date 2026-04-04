@@ -1840,8 +1840,7 @@ export default mergeHarnessLocale('en-GB', {
         'Delete external agent profile "{name}"? Profiles still referenced by sessions must be cleaned up first.',
       saveBeforeHealth: 'Save the profile before running a health check.',
       duplicate: 'Duplicate',
-      builtinHelp:
-        'Built-in profiles stay read-only. Duplicate one to create a customised copy.',
+      builtinHelp: 'Built-in profiles stay read-only. Duplicate one to create a customised copy.',
       acpTemplateSummary: 'Duplicate to add a runnable ACP command.',
       acpTemplateHelp:
         'Built-in ACP entries are setup templates only. Duplicate one, then add any runnable ACP command.',
@@ -4531,7 +4530,8 @@ export default mergeHarnessLocale('en-GB', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
+          description:
+            'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -6925,6 +6925,8 @@ export default mergeHarnessLocale('en-GB', {
     summaryTitle: 'Web search',
     resultCount: '{count} results',
     moreResults: '+{count} more',
+    emptyState: 'No matching results',
+    partialState: 'Showing source summaries because readable page content was unavailable.',
   },
   cardActions: {
     use_browser: 'Use browser',

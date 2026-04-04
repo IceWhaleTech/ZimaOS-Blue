@@ -61,19 +61,22 @@ const (
 	fallbackMaxHTMLBytes        = 1 << 20
 	fallbackMaxImageBytes       = 10 << 20
 
-	fallbackSearchPlannerTimeout     = 1200 * time.Millisecond
-	fallbackSearchStageTimeout       = 30 * time.Second
-	fallbackSearchQueryTimeout       = 12 * time.Second
-	fallbackSourceQueryTimeout       = 4 * time.Second
-	fallbackSceneComposeTimeout      = 5 * time.Minute
-	fallbackImageResolveTimeout      = 3 * time.Second
-	fallbackBrowserImageStageTimeout = 180 * time.Second
-	fallbackBrowserSearchTimeout     = 60 * time.Second
-	fallbackBrowserCaptureTimeout    = 6 * time.Second
-	fallbackBrowserJudgeTimeout      = 8 * time.Second
-	fallbackBrowserJudgeMinScore     = 45.0
-	fallbackBrowserJudgeMaxImageDim  = 2048
-	fallbackBrowserJudgeMaxBase64Len = 4 << 20
+	fallbackSearchPlannerTimeout       = 1200 * time.Millisecond
+	fallbackSearchStageTimeout         = 30 * time.Second
+	fallbackSearchQueryTimeout         = 12 * time.Second
+	fallbackSourceQueryTimeout         = 4 * time.Second
+	fallbackSceneComposeTimeout        = 5 * time.Minute
+	fallbackImageResolveTimeout        = 3 * time.Second
+	fallbackBrowserImageStageTimeout   = 180 * time.Second
+	fallbackBrowserSearchTimeout       = 60 * time.Second
+	fallbackBrowserCaptureTimeout      = 6 * time.Second
+	fallbackBrowserJudgeTimeout        = 8 * time.Second
+	fallbackBrowserJudgeMinScore       = 45.0
+	fallbackBrowserJudgeMaxImageDim    = 2048
+	fallbackBrowserJudgeMaxBase64Len   = 4 << 20
+	fallbackCraiyonSearchTimeout       = 18 * time.Second
+	fallbackCraiyonPreviewResultLimit  = 10
+	fallbackCraiyonJudgeViewportHeight = 960
 )
 
 var fallbackComplexKeywords = []string{
@@ -1569,14 +1572,19 @@ func (e *FallbackEngine) searchSearchEngineImageResults(ctx context.Context, pro
 }
 
 type fallbackBrowserImageEngine struct {
-	Name            string
-	Label           string
-	BuildURL        func(query string) string
-	Selectors       map[string]browser.SelectorConfig
-	WaitForSelector string
-	WaitForMS       int
-	UsePageJudge    bool
-	Parse           func(*browser.ScrapeResponse, int) []FallbackSearchResult
+	Name                string
+	Label               string
+	BuildURL            func(query string) string
+	Selectors           map[string]browser.SelectorConfig
+	WaitForSelector     string
+	SkipWaitLoad        bool
+	WaitForMS           int
+	SearchTimeout       time.Duration
+	UsePageJudge        bool
+	ResultLimit         int
+	JudgeUseViewport    bool
+	JudgeViewportHeight int
+	Parse               func(*browser.ScrapeResponse, int) []FallbackSearchResult
 }
 
 func (e *FallbackEngine) referenceSourceQueries(ctx context.Context, prompt string) []string {
@@ -1719,11 +1727,16 @@ func (e *FallbackEngine) searchBrowserImageResults(ctx context.Context, prompt s
 			}
 			waitForSelector := engine.WaitForSelector
 			log.Printf("[mediagen] fallback browser image search query=%q engine=%q", truncateFallbackLogValue(query, 160), engine.Name)
+			searchTimeout := fallbackBrowserSearchTimeout
+			if engine.SearchTimeout > 0 {
+				searchTimeout = engine.SearchTimeout
+			}
 			req := &browser.ScrapeRequest{
-				URL:       searchURL,
-				Selectors: engine.Selectors,
-				WaitFor:   engine.WaitForMS,
-				Timeout:   int((fallbackBrowserSearchTimeout + 2*time.Second) / time.Millisecond),
+				URL:          searchURL,
+				Selectors:    engine.Selectors,
+				WaitFor:      engine.WaitForMS,
+				SkipWaitLoad: engine.SkipWaitLoad,
+				Timeout:      int((searchTimeout + 2*time.Second) / time.Millisecond),
 			}
 			if waitForSelector != "" {
 				req.WaitForSelector = &waitForSelector
@@ -1746,21 +1759,32 @@ func (e *FallbackEngine) searchBrowserImageResults(ctx context.Context, prompt s
 				log.Printf("[mediagen] fallback browser image search error query=%q engine=%q err=%v", truncateFallbackLogValue(query, 160), engine.Name, err)
 				continue
 			}
-			results := engine.Parse(resp, maxResults-len(combined))
+			resultBudget := maxResults - len(combined)
+			if engine.ResultLimit > 0 && resultBudget > engine.ResultLimit {
+				resultBudget = engine.ResultLimit
+			}
+			results := engine.Parse(resp, resultBudget)
 			if len(results) == 0 {
 				log.Printf("[mediagen] fallback browser image search empty query=%q engine=%q final_url=%q", truncateFallbackLogValue(query, 160), engine.Name, truncateFallbackLogValue(firstNonEmptyValue(resp.URL, searchURL), 160))
 				continue
 			}
 			if engine.UsePageJudge && len(results) > 1 {
 				screenshotBase64 := ""
+				fullPageCapture := true
+				screenshotHeight := max(e.config.ScreenshotHeight, 960)
+				if engine.JudgeUseViewport && engine.JudgeViewportHeight > 0 {
+					fullPageCapture = false
+					screenshotHeight = engine.JudgeViewportHeight
+				}
 				screenshotReq := &browser.ScreenshotRequest{
-					URL:      searchURL,
-					Format:   browser.FormatPNG,
-					FullPage: true,
-					Width:    max(e.config.ScreenshotWidth, 1280),
-					Height:   max(e.config.ScreenshotHeight, 960),
-					WaitFor:  engine.WaitForMS,
-					Timeout:  int((fallbackBrowserCaptureTimeout + 2*time.Second) / time.Millisecond),
+					URL:          searchURL,
+					Format:       browser.FormatPNG,
+					FullPage:     fullPageCapture,
+					Width:        max(e.config.ScreenshotWidth, 1280),
+					Height:       screenshotHeight,
+					WaitFor:      engine.WaitForMS,
+					SkipWaitLoad: engine.SkipWaitLoad,
+					Timeout:      int((fallbackBrowserCaptureTimeout + 2*time.Second) / time.Millisecond),
 				}
 				if waitForSelector != "" {
 					screenshotReq.WaitForSelector = &waitForSelector
@@ -1825,14 +1849,19 @@ func fallbackBrowserImageEngines(prompt, locale string) []fallbackBrowserImageEn
 			Label:    "Craiyon Search",
 			BuildURL: fallbackCraiyonSearchURL,
 			Selectors: map[string]browser.SelectorConfig{
-				"images": {Selector: "main img[src*='craiyon.com'], img[src*='craiyon.com']", Attribute: "src", Multiple: true},
-				"alts":   {Selector: "main img[alt][src*='craiyon.com'], img[alt][src*='craiyon.com']", Attribute: "alt", Multiple: true},
-				"links":  {Selector: "main a[href], a[href]", Attribute: "href", Multiple: true},
+				"images": {Selector: "main a[href*='/images/'] img[src*='img.craiyon.com'], a[href*='/images/'] img[src*='img.craiyon.com'], main img[src*='img.craiyon.com'], img[src*='img.craiyon.com']", Attribute: "src", Multiple: true, MaxMatches: fallbackCraiyonPreviewResultLimit},
+				"alts":   {Selector: "main a[href*='/images/'] img[alt][src*='img.craiyon.com'], a[href*='/images/'] img[alt][src*='img.craiyon.com'], main img[alt][src*='img.craiyon.com'], img[alt][src*='img.craiyon.com']", Attribute: "alt", Multiple: true, MaxMatches: fallbackCraiyonPreviewResultLimit},
+				"links":  {Selector: "main a[href*='/images/'], a[href*='/images/']", Attribute: "href", Multiple: true, MaxMatches: fallbackCraiyonPreviewResultLimit},
 			},
-			WaitForSelector: "main img[src*='craiyon.com'], img[src*='craiyon.com']",
-			WaitForMS:       2200,
-			UsePageJudge:    true,
-			Parse:           parseCraiyonImageScrapeResults,
+			WaitForSelector:     "main img[src*='img.craiyon.com'], img[src*='img.craiyon.com']",
+			SkipWaitLoad:        true,
+			WaitForMS:           2200,
+			SearchTimeout:       fallbackCraiyonSearchTimeout,
+			UsePageJudge:        true,
+			ResultLimit:         fallbackCraiyonPreviewResultLimit,
+			JudgeUseViewport:    true,
+			JudgeViewportHeight: fallbackCraiyonJudgeViewportHeight,
+			Parse:               parseCraiyonImageScrapeResults,
 		},
 		{
 			Name:     "bing_images",

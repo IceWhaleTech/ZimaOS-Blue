@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -69,6 +70,11 @@ var (
 	harnessCutoverMinMedianSchemaByteReductionRate string
 	harnessCutoverMaxMedianLatencyIncreaseRate     string
 	harnessCutoverAllowedFinalNativeTools          string
+
+	harnessSkillID          string
+	harnessSkillEvalRunID   string
+	harnessSkillCandidateID string
+	harnessSkillSourcePath  string
 )
 
 var harnessCmd = &cobra.Command{
@@ -177,6 +183,32 @@ var harnessCutoverReadinessCmd = &cobra.Command{
 	RunE:  runHarnessCutoverReadinessE,
 }
 
+var harnessSkillCmd = &cobra.Command{
+	Use:   "skill",
+	Short: "Manual skill optimization and revision management",
+}
+
+var harnessSkillOptimizeCmd = &cobra.Command{
+	Use:   "optimize",
+	Short: "Manually trigger skill optimization for an existing eval run",
+	Args:  cobra.NoArgs,
+	RunE:  runHarnessSkillOptimizeE,
+}
+
+var harnessSkillRevisionsCmd = &cobra.Command{
+	Use:   "revisions",
+	Short: "List persisted revisions for a skill",
+	Args:  cobra.NoArgs,
+	RunE:  runHarnessSkillRevisionsE,
+}
+
+var harnessSkillPromoteCmd = &cobra.Command{
+	Use:   "promote <revision-id>",
+	Short: "Promote an accepted skill revision into the canonical SKILL.md",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runHarnessSkillPromoteE,
+}
+
 func init() {
 	harnessSelectorCmd.PersistentFlags().StringVar(&harnessOwnerUserID, "owner", "", "owner user id for selector curated assets and eval runs (defaults to BLUE_USER_ID or local-cli)")
 
@@ -243,6 +275,15 @@ func init() {
 	harnessCmd.AddCommand(harnessSelectorCmd)
 	harnessCmd.AddCommand(harnessExecutionCmd)
 	harnessCmd.AddCommand(harnessBudgetCmd)
+	harnessSkillOptimizeCmd.Flags().StringVar(&harnessSkillID, "skill", "", "skill id to optimize")
+	harnessSkillOptimizeCmd.Flags().StringVar(&harnessSkillEvalRunID, "eval-run-id", "", "completed eval run id used as the optimization source")
+	harnessSkillOptimizeCmd.Flags().StringVar(&harnessSkillCandidateID, "candidate-id", "", "optional candidate id override")
+	harnessSkillOptimizeCmd.Flags().StringVar(&harnessSkillSourcePath, "source-path", "", "optional canonical SKILL.md source path override")
+	harnessSkillRevisionsCmd.Flags().StringVar(&harnessSkillID, "skill", "", "skill id to inspect")
+	harnessSkillCmd.AddCommand(harnessSkillOptimizeCmd)
+	harnessSkillCmd.AddCommand(harnessSkillRevisionsCmd)
+	harnessSkillCmd.AddCommand(harnessSkillPromoteCmd)
+	harnessCmd.AddCommand(harnessSkillCmd)
 	harnessCutoverReadinessCmd.Flags().StringVar(&harnessOwnerUserID, "owner", "", "owner user id for candidate readiness checks (defaults to BLUE_USER_ID or local-cli)")
 	harnessCutoverReadinessCmd.Flags().StringVar(&harnessCutoverCandidateID, "candidate-id", "", "candidate id to evaluate; if omitted the newest shared candidate_id is used")
 	harnessCutoverReadinessCmd.Flags().IntVar(&harnessCutoverRequiredConsecutiveRuns, "required-consecutive-runs", 2, "number of consecutive green runs required per lane")
@@ -838,6 +879,81 @@ func evaluateHarnessCutoverReadiness(req harnesspkg.SkillCutoverReadinessRequest
 		return nil, err
 	}
 	return &report, nil
+}
+
+func optimizeHarnessSkill(skillID string, req harnesspkg.SkillOptimizeRequest) (*harnesspkg.OptimizationTrigger, error) {
+	resp, err := doHarnessRequest(http.MethodPost, "/skills/"+url.PathEscape(strings.TrimSpace(skillID))+"/optimize", req)
+	if err != nil {
+		return nil, err
+	}
+	var event harnesspkg.OptimizationTrigger
+	if err := decodeInto(resp, &event); err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
+func listHarnessSkillRevisions(skillID string) ([]harnesspkg.SkillRevision, error) {
+	resp, err := doHarnessRequest(http.MethodGet, "/skills/"+url.PathEscape(strings.TrimSpace(skillID))+"/revisions", nil)
+	if err != nil {
+		return nil, err
+	}
+	var revisions []harnesspkg.SkillRevision
+	if err := decodeInto(resp, &revisions); err != nil {
+		return nil, err
+	}
+	return revisions, nil
+}
+
+func promoteHarnessSkillRevision(revisionID string) (*harnesspkg.SkillPromoteResult, error) {
+	resp, err := doHarnessRequest(http.MethodPost, "/skill-revisions/"+url.PathEscape(strings.TrimSpace(revisionID))+"/promote", nil)
+	if err != nil {
+		return nil, err
+	}
+	var result harnesspkg.SkillPromoteResult
+	if err := decodeInto(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func runHarnessSkillOptimizeE(cmd *cobra.Command, args []string) error {
+	skillID := strings.TrimSpace(harnessSkillID)
+	if skillID == "" {
+		return fmt.Errorf("--skill is required")
+	}
+	event, err := optimizeHarnessSkill(skillID, harnesspkg.SkillOptimizeRequest{
+		EvalRunID:   strings.TrimSpace(harnessSkillEvalRunID),
+		CandidateID: strings.TrimSpace(harnessSkillCandidateID),
+		SourcePath:  strings.TrimSpace(harnessSkillSourcePath),
+	})
+	if err != nil {
+		return err
+	}
+	printJSON(event)
+	return nil
+}
+
+func runHarnessSkillRevisionsE(cmd *cobra.Command, args []string) error {
+	skillID := strings.TrimSpace(harnessSkillID)
+	if skillID == "" {
+		return fmt.Errorf("--skill is required")
+	}
+	revisions, err := listHarnessSkillRevisions(skillID)
+	if err != nil {
+		return err
+	}
+	printJSON(revisions)
+	return nil
+}
+
+func runHarnessSkillPromoteE(cmd *cobra.Command, args []string) error {
+	result, err := promoteHarnessSkillRevision(strings.TrimSpace(args[0]))
+	if err != nil {
+		return err
+	}
+	printJSON(result)
+	return nil
 }
 
 func waitForHarnessEvalRun(evalRunID string, timeout time.Duration, pollEvery time.Duration) (*harnesspkg.EvalRun, error) {

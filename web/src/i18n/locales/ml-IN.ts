@@ -4604,7 +4604,8 @@ export default mergeHarnessLocale('ml-IN', {
       sources: {
         skillhub: {
           label: 'SkillHub',
-          description: 'Tencent SkillHub, SkillHub Club എന്നിവയിൽ നിന്ന് സംയോജിപ്പിച്ച SkillHub കാറ്റലോഗുകൾ.',
+          description:
+            'Tencent SkillHub, SkillHub Club എന്നിവയിൽ നിന്ന് സംയോജിപ്പിച്ച SkillHub കാറ്റലോഗുകൾ.',
         },
         tencentSkillHub: {
           label: 'Tencent SkillHub',
@@ -4616,7 +4617,8 @@ export default mergeHarnessLocale('ml-IN', {
         },
         github: {
           label: 'GitHub',
-          description: 'SKILL.md, CLAUDE.md, AGENT.md ഫയലുകൾക്കായുള്ള GitHub റീപോസിറ്ററി തിരയൽ ഉറവിടങ്ങൾ.',
+          description:
+            'SKILL.md, CLAUDE.md, AGENT.md ഫയലുകൾക്കായുള്ള GitHub റീപോസിറ്ററി തിരയൽ ഉറവിടങ്ങൾ.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4640,7 +4642,8 @@ export default mergeHarnessLocale('ml-IN', {
         },
         skillstack: {
           label: 'SkillStack',
-          description: 'വീണ്ടും ഉപയോഗിക്കാവുന്ന skill ശേഖരങ്ങളിൽ ശ്രദ്ധ കേന്ദ്രീകരിക്കുന്ന കമ്മ്യൂണിറ്റി കാറ്റലോഗ്.',
+          description:
+            'വീണ്ടും ഉപയോഗിക്കാവുന്ന skill ശേഖരങ്ങളിൽ ശ്രദ്ധ കേന്ദ്രീകരിക്കുന്ന കമ്മ്യൂണിറ്റി കാറ്റലോഗ്.',
         },
         skillsmp: {
           label: 'SkillsMP',
@@ -4656,11 +4659,13 @@ export default mergeHarnessLocale('ml-IN', {
         },
         curatedSkillUrl: {
           label: 'ബാഹ്യ സ്കിൽ',
-          description: 'നേരിട്ടുള്ള skill URL-ൽ നിന്ന് ഇറക്കുമതി ചെയ്ത തെരഞ്ഞെടുത്ത മാർക്കറ്റ്പ്ലേസ് എൻട്രി.',
+          description:
+            'നേരിട്ടുള്ള skill URL-ൽ നിന്ന് ഇറക്കുമതി ചെയ്ത തെരഞ്ഞെടുത്ത മാർക്കറ്റ്പ്ലേസ് എൻട്രി.',
         },
         curatedGithubSeed: {
           label: 'തിരഞ്ഞെടുത്ത GitHub ഉറവിടങ്ങൾ',
-          description: 'GitHub റഫറൻസുകളിൽ നിന്ന് ഇറക്കുമതി ചെയ്ത തിരഞ്ഞെടുത്ത GitHub ഉറവിടങ്ങളുടെ പട്ടിക.',
+          description:
+            'GitHub റഫറൻസുകളിൽ നിന്ന് ഇറക്കുമതി ചെയ്ത തിരഞ്ഞെടുത്ത GitHub ഉറവിടങ്ങളുടെ പട്ടിക.',
         },
         seed: {
           label: 'കണ്ടെത്തൽ പേജുകൾ',
@@ -4668,7 +4673,8 @@ export default mergeHarnessLocale('ml-IN', {
         },
         seedInstance: {
           label: 'കണ്ടെത്തൽ പേജ് {index}',
-          description: 'വെബിൽ കണ്ടെത്തിയ കൂടുതൽ കഴിവുകളിലേക്ക് ബന്ധിപ്പിക്കുന്ന കണ്ടെത്തൽ പേജ് {index}.',
+          description:
+            'വെബിൽ കണ്ടെത്തിയ കൂടുതൽ കഴിവുകളിലേക്ക് ബന്ധിപ്പിക്കുന്ന കണ്ടെത്തൽ പേജ് {index}.',
         },
       },
       hero: {
@@ -7063,6 +7069,9 @@ export default mergeHarnessLocale('ml-IN', {
     summaryTitle: 'വെബ് തിരച്ചില്',
     resultCount: '{count} ഫലങ്ങൾ',
     moreResults: '+{count} എണ്ണം കൂടി',
+    emptyState: 'പൊരുത്തപ്പെടുന്ന ഫലങ്ങൾ കണ്ടെത്തിയില്ല',
+    partialState:
+      'വായിക്കാനാകുന്ന പേജ് ഉള്ളടക്കം ലഭ്യമല്ലാത്തതിനാൽ ഉറവിട സംഗ്രഹങ്ങൾ മാത്രം കാണിക്കുന്നു.',
   },
   cardActions: {
     use_browser: 'ബ്രൗസർ ഉപയോഗിക്കുക',

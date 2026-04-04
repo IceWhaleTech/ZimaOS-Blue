@@ -2642,7 +2642,7 @@ export default mergeHarnessLocale('ga-IE', {
       skillManagementHint:
         'Is féidir scileanna ionsuite a chumasú nó a dhíchumasú anseo, ach ní féidir ach scileanna áitiúla a dhíshuiteáil.',
       toolManagementHint:
-        'Is féidir uirlisí ionsuite a chumasú nó a dhíchumasú anseo, ach d\'fhéadfadh a n-infhaighteacht a bheith teoranta fós ag beartas uirlisí ag am rite.',
+        "Is féidir uirlisí ionsuite a chumasú nó a dhíchumasú anseo, ach d'fhéadfadh a n-infhaighteacht a bheith teoranta fós ag beartas uirlisí ag am rite.",
       builtinSkillDetailHint:
         'Is féidir an scil ionsuite seo a chumasú nó a dhíchumasú anseo, ach ní féidir í a dhíshuiteáil.',
       builtinSkillUninstallBlocked:
@@ -4595,7 +4595,8 @@ export default mergeHarnessLocale('ga-IE', {
         },
         github: {
           label: 'GitHub',
-          description: 'Foinsí cuardaigh stórtha GitHub do chomhaid SKILL.md, CLAUDE.md agus AGENT.md.',
+          description:
+            'Foinsí cuardaigh stórtha GitHub do chomhaid SKILL.md, CLAUDE.md agus AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4643,11 +4644,13 @@ export default mergeHarnessLocale('ga-IE', {
         },
         seed: {
           label: 'Leathanaigh fionnachtana',
-          description: 'Leathanaigh fionnachtana a nascann le níos mó scileanna a aimsíodh ar an ngréasán.',
+          description:
+            'Leathanaigh fionnachtana a nascann le níos mó scileanna a aimsíodh ar an ngréasán.',
         },
         seedInstance: {
           label: 'Leathanach fionnachtana {index}',
-          description: 'Leathanach fionnachtana {index} a nascann le níos mó scileanna a aimsíodh ar an ngréasán.',
+          description:
+            'Leathanach fionnachtana {index} a nascann le níos mó scileanna a aimsíodh ar an ngréasán.',
         },
       },
       hero: {
@@ -7033,6 +7036,9 @@ export default mergeHarnessLocale('ga-IE', {
     summaryTitle: 'Cuardach gréasáin',
     resultCount: '{count} toradh',
     moreResults: '+{count} eile',
+    emptyState: 'Níor aimsíodh torthaí comhoiriúnacha',
+    partialState:
+      'Tá achoimrí foinsí á dtaispeáint mar ní raibh ábhar inléite an leathanaigh ar fáil.',
   },
   cardActions: {
     use_browser: 'Úsáid an brabhsálaí',

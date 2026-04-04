@@ -796,9 +796,9 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function prepareAgentcoreRunner() {
+  async function prepareAgentcoreRunner(request?: { requested_parts?: string[] }) {
     const { settingsApi } = await loadSettingsApiModule()
-    const response = await settingsApi.prepareAgentcoreRunner()
+    const response = await settingsApi.prepareAgentcoreRunner(request)
     agentcoreRunnerStatus.value = response.data
     return response.data
   }

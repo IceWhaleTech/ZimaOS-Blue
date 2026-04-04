@@ -36,6 +36,10 @@ const (
 	webQueryNextActionRefineQuery  = "refine_query"
 	webQueryNextActionAuthorize    = "authorize_provider"
 
+	webQuerySearchCardStatusSuccess = "success"
+	webQuerySearchCardStatusPartial = "partial"
+	webQuerySearchCardStatusEmpty   = "empty"
+
 	webQuerySearchSettleWindow = 180 * time.Millisecond
 	webQueryReadSettleWindow   = 140 * time.Millisecond
 	webQueryProxyHedgeDelay    = 120 * time.Millisecond
@@ -50,6 +54,10 @@ const (
 	maxWebQueryMediaMaxItems          = 4
 	webQueryMediaSummaryMaxChars      = 1600
 	webQueryMediaItemAnalysisMaxChars = 900
+
+	webQuerySearchCardEmptyMessage   = "No matching sources were found."
+	webQuerySearchCardFailedMessage  = "Search failed before any sources could be listed."
+	webQuerySearchCardPartialMessage = "Showing search summaries because readable page extraction was unavailable."
 )
 
 var (
@@ -75,22 +83,24 @@ type WebTool struct {
 }
 
 type webQueryEnvelope struct {
-	Status        string              `json:"status"`
-	Mode          string              `json:"mode"`
-	Input         string              `json:"input"`
-	Query         string              `json:"query"`
-	TargetURL     string              `json:"target_url"`
-	FinalURL      string              `json:"final_url"`
-	Title         string              `json:"title"`
-	Content       string              `json:"content"`
-	ContentFormat string              `json:"content_format"`
-	Sources       []webQuerySource    `json:"sources"`
-	Warnings      []webQueryWarning   `json:"warnings"`
-	NextAction    string              `json:"next_action"`
-	Media         *webQueryMedia      `json:"media,omitempty"`
-	Page          *webQueryPage       `json:"page,omitempty"`
-	Transcript    *webQueryTranscript `json:"transcript,omitempty"`
-	Diagnostics   webQueryDiagnostics `json:"diagnostics"`
+	Status            string              `json:"status"`
+	Mode              string              `json:"mode"`
+	Input             string              `json:"input"`
+	Query             string              `json:"query"`
+	Provider          string              `json:"provider,omitempty"`
+	TargetURL         string              `json:"target_url"`
+	FinalURL          string              `json:"final_url"`
+	Title             string              `json:"title"`
+	Content           string              `json:"content"`
+	ContentFormat     string              `json:"content_format"`
+	Sources           []webQuerySource    `json:"sources"`
+	Warnings          []webQueryWarning   `json:"warnings"`
+	NextAction        string              `json:"next_action"`
+	SearchCardEmitted bool                `json:"search_card_emitted,omitempty"`
+	Media             *webQueryMedia      `json:"media,omitempty"`
+	Page              *webQueryPage       `json:"page,omitempty"`
+	Transcript        *webQueryTranscript `json:"transcript,omitempty"`
+	Diagnostics       webQueryDiagnostics `json:"diagnostics"`
 }
 
 type webQueryMediaItem struct {
@@ -418,6 +428,7 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 				envelope.Diagnostics.SelectedSource = selected.Rank
 				envelope = applyResolvedReadToEnvelope(envelope, selected.Resolved, selected.Rank)
 				envelope.Sources = buildWebQuerySources(fastCandidates, strings.TrimSpace(selected.Search.URL))
+				emitWebQuerySearchCard(ctx, &envelope, webQuerySearchCardStatusSuccess, "", strings.TrimSpace(selected.Search.URL))
 				t.enrichWebQueryEnvelopeWithMedia(ctx, args, &envelope)
 				return envelope
 			}
@@ -435,6 +446,7 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 
 	searchResp, searchAttempts, err := t.runSearchDiscovery(ctx, args, query, maxResults)
 	envelope.Diagnostics.Attempts = append(envelope.Diagnostics.Attempts, searchAttempts...)
+	envelope.Provider = strings.TrimSpace(searchResp.Provider)
 
 	candidates := []webQueryCandidate{}
 	if err == nil {
@@ -449,6 +461,7 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 		if browserErr == nil {
 			envelope.Diagnostics.Route = "search_browser"
 			searchResp = browserResp
+			envelope.Provider = strings.TrimSpace(searchResp.Provider)
 			err = nil
 			candidates = buildWebQueryCandidates(searchResp.Results, allowedHosts)
 		}
@@ -462,6 +475,7 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 		if browserErr == nil {
 			envelope.Diagnostics.Route = "search_browser"
 			searchResp = browserResp
+			envelope.Provider = strings.TrimSpace(searchResp.Provider)
 			candidates = buildWebQueryCandidates(searchResp.Results, allowedHosts)
 		}
 	}
@@ -471,12 +485,14 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 		addWebQueryWarning(&envelope.Warnings, "search_failed", err.Error())
 		envelope.Status = webQueryStatusPartial
 		envelope.NextAction = webQueryNextActionRefineQuery
+		emitWebQuerySearchCard(ctx, &envelope, webQuerySearchCardStatusEmpty, webQuerySearchCardFailedMessage, "")
 		return envelope
 	}
 	if len(candidates) == 0 {
 		addWebQueryWarning(&envelope.Warnings, "no_results", "no matching sources were found")
 		envelope.Status = webQueryStatusPartial
 		envelope.NextAction = webQueryNextActionRefineQuery
+		emitWebQuerySearchCard(ctx, &envelope, webQuerySearchCardStatusEmpty, webQuerySearchCardEmptyMessage, "")
 		return envelope
 	}
 
@@ -489,6 +505,12 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 			videoEnvelope.Diagnostics.CandidateCount = len(candidates)
 			if videoEnvelope.Diagnostics.Route == "" {
 				videoEnvelope.Diagnostics.Route = "search_video"
+			}
+			if videoEnvelope.Provider == "" {
+				videoEnvelope.Provider = envelope.Provider
+			}
+			if len(videoEnvelope.Sources) > 0 {
+				emitWebQuerySearchCard(ctx, &videoEnvelope, searchCardStatusFromEnvelope(videoEnvelope.Status), "", selectedSearchURL(videoEnvelope.Sources))
 			}
 			return videoEnvelope
 		}
@@ -583,6 +605,11 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 	if envelope.NextAction == "" {
 		envelope.NextAction = webQueryNextActionNone
 	}
+	searchCardMessage := ""
+	if !selected.Resolved.HasSuccess {
+		searchCardMessage = webQuerySearchCardPartialMessage
+	}
+	emitWebQuerySearchCard(ctx, &envelope, searchCardStatusFromEnvelope(envelope.Status), searchCardMessage, strings.TrimSpace(selected.Search.URL))
 	return envelope
 }
 
@@ -1673,18 +1700,20 @@ func normalizeWebCrawlCompatArgs(args map[string]interface{}) map[string]interfa
 
 func newWebQueryEnvelope(input, format string) webQueryEnvelope {
 	return webQueryEnvelope{
-		Status:        webQueryStatusPartial,
-		Mode:          "",
-		Input:         strings.TrimSpace(input),
-		Query:         "",
-		TargetURL:     "",
-		FinalURL:      "",
-		Title:         "",
-		Content:       "",
-		ContentFormat: firstNonEmpty(strings.TrimSpace(format), webReadFormatText),
-		Sources:       []webQuerySource{},
-		Warnings:      []webQueryWarning{},
-		NextAction:    webQueryNextActionNone,
+		Status:            webQueryStatusPartial,
+		Mode:              "",
+		Input:             strings.TrimSpace(input),
+		Query:             "",
+		Provider:          "",
+		TargetURL:         "",
+		FinalURL:          "",
+		Title:             "",
+		Content:           "",
+		ContentFormat:     firstNonEmpty(strings.TrimSpace(format), webReadFormatText),
+		Sources:           []webQuerySource{},
+		Warnings:          []webQueryWarning{},
+		NextAction:        webQueryNextActionNone,
+		SearchCardEmitted: false,
 		Diagnostics: webQueryDiagnostics{
 			Route:          "",
 			Attempts:       []webQueryAttempt{},
@@ -2033,6 +2062,93 @@ func buildWebQuerySources(candidates []webQueryCandidate, selectedURL string) []
 		sources = append(sources, source)
 	}
 	return sources
+}
+
+func searchCardStatusFromEnvelope(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case webQueryStatusOK:
+		return webQuerySearchCardStatusSuccess
+	case webQueryStatusPartial, webQueryStatusNeedsBrowser, webQueryStatusError:
+		return webQuerySearchCardStatusPartial
+	default:
+		return webQuerySearchCardStatusPartial
+	}
+}
+
+func selectedSearchURL(sources []webQuerySource) string {
+	for _, source := range sources {
+		if !source.Selected {
+			continue
+		}
+		if target := firstNonEmpty(strings.TrimSpace(source.FinalURL), strings.TrimSpace(source.URL)); target != "" {
+			return target
+		}
+	}
+	return ""
+}
+
+func buildWebQuerySearchCard(query, provider string, sources []webQuerySource, status, message, selectedURL string) map[string]interface{} {
+	trimmedQuery := strings.TrimSpace(query)
+	results := make([]map[string]interface{}, 0, len(sources))
+	for _, source := range sources {
+		target := firstNonEmpty(strings.TrimSpace(source.FinalURL), strings.TrimSpace(source.URL))
+		if target == "" {
+			continue
+		}
+		title := firstNonEmpty(strings.TrimSpace(source.Title), target)
+		result := map[string]interface{}{
+			"title": title,
+			"url":   target,
+		}
+		if description := firstNonEmpty(strings.TrimSpace(source.Snippet), strings.TrimSpace(source.Source)); description != "" {
+			result["description"] = description
+		}
+		if sourceLabel := strings.TrimSpace(source.Source); sourceLabel != "" {
+			result["source"] = sourceLabel
+		}
+		results = append(results, result)
+	}
+
+	card := map[string]interface{}{
+		"type":        "search",
+		"query":       trimmedQuery,
+		"results":     results,
+		"total_count": len(results),
+		"status":      firstNonEmpty(strings.TrimSpace(status), webQuerySearchCardStatusSuccess),
+	}
+	if trimmedProvider := strings.TrimSpace(provider); trimmedProvider != "" {
+		card["provider"] = trimmedProvider
+	}
+	if trimmedMessage := strings.TrimSpace(message); trimmedMessage != "" {
+		card["message"] = trimmedMessage
+	}
+	if trimmedSelectedURL := strings.TrimSpace(selectedURL); trimmedSelectedURL != "" {
+		card["selectedUrl"] = trimmedSelectedURL
+	}
+	if trimmedQuery != "" {
+		card["id"] = "web-query-search-" + url.QueryEscape(trimmedQuery)
+	}
+	return card
+}
+
+func emitWebQuerySearchCard(ctx context.Context, envelope *webQueryEnvelope, status, message, selectedURL string) {
+	if envelope == nil || ctx == nil {
+		return
+	}
+	emitter, _ := ctx.Value(cardEmitKey).(CardEmitFunc)
+	if emitter == nil {
+		return
+	}
+	card := buildWebQuerySearchCard(
+		firstNonEmpty(strings.TrimSpace(envelope.Query), strings.TrimSpace(envelope.Input), strings.TrimSpace(envelope.Title)),
+		strings.TrimSpace(envelope.Provider),
+		envelope.Sources,
+		status,
+		message,
+		selectedURL,
+	)
+	EmitCard(ctx, card)
+	envelope.SearchCardEmitted = true
 }
 
 func applyResolvedReadToEnvelope(envelope webQueryEnvelope, readResult webQueryReadResult, rank int) webQueryEnvelope {

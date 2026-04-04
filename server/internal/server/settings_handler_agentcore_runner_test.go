@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ type stubAgentcoreRunnerManager struct {
 	prepareCalls    int
 	lastPrepareRepo string
 	lastPrepareRef  string
+	lastPrepareParts []string
 }
 
 func (m *stubAgentcoreRunnerManager) GetStatus(_ context.Context) AgentcoreRunnerStatus {
@@ -30,6 +32,7 @@ func (m *stubAgentcoreRunnerManager) Prepare(_ context.Context, req AgentcoreRun
 	m.prepareCalls++
 	m.lastPrepareRepo = req.RepoURL
 	m.lastPrepareRef = req.Ref
+	m.lastPrepareParts = append([]string(nil), req.RequestedParts...)
 	m.status.RepoURL = req.RepoURL
 	m.status.ResolvedRef = req.Ref
 	m.status.LastPrepareState = "preparing"
@@ -184,6 +187,9 @@ func TestSettingsHandlerAgentcoreRunnerPrepareEndpointUsesStoredSettings(t *test
 	if manager.lastPrepareRepo != "https://github.com/IceWhaleTech/ZimaOS-Blue" || manager.lastPrepareRef != "main" {
 		t.Fatalf("prepare request = repo %q ref %q", manager.lastPrepareRepo, manager.lastPrepareRef)
 	}
+	if len(manager.lastPrepareParts) != 0 {
+		t.Fatalf("prepare requested parts = %#v, want empty", manager.lastPrepareParts)
+	}
 }
 
 func TestSettingsHandlerAgentcoreRunnerPrepareEndpointUsesDefaultRepoWhenUnset(t *testing.T) {
@@ -206,6 +212,52 @@ func TestSettingsHandlerAgentcoreRunnerPrepareEndpointUsesDefaultRepoWhenUnset(t
 	}
 	if manager.lastPrepareRepo != "https://github.com/IceWhaleTech/ZimaOS-Blue" {
 		t.Fatalf("prepare request repo = %q", manager.lastPrepareRepo)
+	}
+}
+
+func TestSettingsHandlerAgentcoreRunnerPrepareEndpointPassesRequestedParts(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+	manager := &stubAgentcoreRunnerManager{}
+	handler.SetAgentcoreRunnerManager(manager)
+	handler.settings.ExperimentalAgentcoreRunnerRepoURL = "https://github.com/IceWhaleTech/ZimaOS-Blue"
+	handler.settings.ExperimentalAgentcoreRunnerRef = "main"
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/agentcore-runner/prepare", strings.NewReader(`{
+		"requested_parts": ["context_assembly", "prompt_template"]
+	}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	if err := handler.PrepareAgentcoreRunner(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("PrepareAgentcoreRunner returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if want := []string{"prompt_template", "context_assembly"}; !reflect.DeepEqual(manager.lastPrepareParts, want) {
+		t.Fatalf("prepare requested parts = %#v, want %#v", manager.lastPrepareParts, want)
+	}
+}
+
+func TestSettingsHandlerAgentcoreRunnerPrepareEndpointRejectsUnknownRequestedParts(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+	manager := &stubAgentcoreRunnerManager{}
+	handler.SetAgentcoreRunnerManager(manager)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/agentcore-runner/prepare", strings.NewReader(`{
+		"requested_parts": ["prompt_template", "mystery_surface"]
+	}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	if err := handler.PrepareAgentcoreRunner(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("PrepareAgentcoreRunner returned error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if manager.prepareCalls != 0 {
+		t.Fatalf("prepareCalls = %d, want 0", manager.prepareCalls)
 	}
 }
 
@@ -240,5 +292,41 @@ func TestSettingsHandlerAgentcoreRunnerTagsEndpointUsesRequestedRepo(t *testing.
 	}
 	if strings.Join(body.Tags, ",") != "v1.2.0,v1.1.0" {
 		t.Fatalf("tags = %#v", body.Tags)
+	}
+}
+
+func TestSettingsHandlerAgentcoreRunnerLastRunEndpointAddsEvolvablePartsCompatibilityFields(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+	handler.SetAgentcoreRunnerManager(&stubAgentcoreRunnerManager{
+		lastRun: optimization.OptimizationRunRecord{
+			"id":                   "opt-legacy",
+			"optimization_surface": "runner_code",
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/agentcore-runner/last-run", nil)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	if err := handler.GetAgentcoreRunnerLastRun(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("GetAgentcoreRunnerLastRun returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got := strings.TrimSpace(body["primary_part"].(string)); got != "runner_code" {
+		t.Fatalf("primary_part = %q, want runner_code", got)
+	}
+	optimized, ok := body["optimized_parts"].([]interface{})
+	if !ok || len(optimized) != 1 || strings.TrimSpace(optimized[0].(string)) != "runner_code" {
+		t.Fatalf("optimized_parts = %#v", body["optimized_parts"])
+	}
+	supported, ok := body["supported_parts"].([]interface{})
+	if !ok || len(supported) == 0 {
+		t.Fatalf("supported_parts = %#v", body["supported_parts"])
 	}
 }

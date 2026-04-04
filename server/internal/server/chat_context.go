@@ -12,6 +12,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // ContextTier represents the context strategy.
@@ -862,7 +863,22 @@ func trimPolicyToolNameForMessage(msg llm.Message, toolCallNameIndex map[string]
 	return strings.TrimSpace(detectToolNameFromToolResultContent(msg.Content))
 }
 
-func trimPolicySoftTrimToolMessage(msg llm.Message, settings trimPolicyPruneSettings) (llm.Message, bool) {
+func trimPolicySemanticToolMessage(msg llm.Message, toolName string, byteBudget int) (llm.Message, bool) {
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "web_query", "web":
+		compacted := compactWebQueryContentForLLM(nil, msg.Content, msg.Content, strings.TrimSpace(msg.ToolCallID), byteBudget, tools.WebQueryLLMCompactionMinimal, true)
+		if compacted == "" || compacted == msg.Content {
+			return msg, false
+		}
+		msg.Content = compacted
+		msg.ContentParts = nil
+		return msg, true
+	default:
+		return msg, false
+	}
+}
+
+func trimPolicySoftTrimToolMessage(msg llm.Message, toolName string, settings trimPolicyPruneSettings) (llm.Message, bool) {
 	if msg.Role != llm.RoleTool {
 		return msg, false
 	}
@@ -883,6 +899,9 @@ func trimPolicySoftTrimToolMessage(msg llm.Message, settings trimPolicyPruneSett
 	rawLen := len(runes)
 	if rawLen <= settings.SoftTrim.MaxChars {
 		return msg, false
+	}
+	if updated, changed := trimPolicySemanticToolMessage(msg, toolName, maxLLMSearchSummaryBytes); changed {
+		return updated, true
 	}
 	if settings.SoftTrim.HeadChars+settings.SoftTrim.TailChars >= rawLen {
 		return msg, false
@@ -990,7 +1009,7 @@ func trimPolicyPruneContextMessagesWithReport(
 		report.EligibleToolResults++
 		prunableToolIndexes = append(prunableToolIndexes, i)
 		prunableToolNames[i] = toolName
-		updated, changed := trimPolicySoftTrimToolMessage(msg, settings)
+		updated, changed := trimPolicySoftTrimToolMessage(msg, toolName, settings)
 		if !changed {
 			continue
 		}
@@ -1042,6 +1061,21 @@ func trimPolicyPruneContextMessagesWithReport(
 		}
 		msg := next[i]
 		if msg.Role != llm.RoleTool {
+			continue
+		}
+		if updated, changed := trimPolicySemanticToolMessage(msg, prunableToolNames[i], 640); changed {
+			beforeChars := trimPolicyEstimateMessageChars(msg)
+			next[i] = updated
+			if report.SoftTrimByTool == nil {
+				report.SoftTrimByTool = make(map[string]int)
+			}
+			report.SoftTrimmed++
+			report.SoftTrimByTool[prunableToolNames[i]]++
+			afterChars := trimPolicyEstimateMessageChars(updated)
+			totalChars += afterChars - beforeChars
+			ratio = float64(totalChars) / float64(charWindow)
+			report.AfterChars = totalChars
+			report.AfterRatio = ratio
 			continue
 		}
 		beforeChars := trimPolicyEstimateMessageChars(msg)

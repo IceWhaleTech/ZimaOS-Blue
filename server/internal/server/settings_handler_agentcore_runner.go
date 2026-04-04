@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -19,6 +21,10 @@ type AgentcoreRunnerTagList struct {
 	RepoURL    string   `json:"repo_url"`
 	DefaultRef string   `json:"default_ref"`
 	Tags       []string `json:"tags"`
+}
+
+type agentcoreRunnerPrepareBody struct {
+	RequestedParts []string `json:"requested_parts,omitempty"`
 }
 
 type agentcoreRunnerTagResolver func(ctx context.Context, repoURL string) ([]string, error)
@@ -90,6 +96,7 @@ func (h *SettingsHandler) GetAgentcoreRunnerLastRun(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	record = optimization.NormalizeOptimizationRunRecordEvolvableParts(record)
 	return c.JSON(http.StatusOK, record)
 }
 
@@ -129,9 +136,21 @@ func (h *SettingsHandler) PrepareAgentcoreRunner(c echo.Context) error {
 	if manager == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "agentcore runner manager not initialized"})
 	}
+	var body agentcoreRunnerPrepareBody
+	if c.Request().Body != nil {
+		decoder := json.NewDecoder(c.Request().Body)
+		if err := decoder.Decode(&body); err != nil && err != io.EOF {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid prepare request body"})
+		}
+	}
+	requestedParts, err := optimization.NormalizeRequestedEvolvableParts(body.RequestedParts)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 	status, err := manager.Prepare(c.Request().Context(), optimization.PrepareRequest{
-		RepoURL: repoURL,
-		Ref:     ref,
+		RepoURL:        repoURL,
+		Ref:            ref,
+		RequestedParts: requestedParts,
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -143,6 +162,7 @@ func (h *SettingsHandler) PrepareAgentcoreRunner(c echo.Context) error {
 	if status.ResolvedRef == "" {
 		status.ResolvedRef = ref
 	}
+	optimization.NormalizeStatusEvolvableParts(&status)
 	return c.JSON(http.StatusOK, status)
 }
 
@@ -160,6 +180,7 @@ func (h *SettingsHandler) agentcoreRunnerStatus(ctx context.Context) (optimizati
 		ResolvedRef: ref,
 	}
 	if manager == nil {
+		optimization.NormalizeStatusEvolvableParts(&status)
 		return status, nil
 	}
 	current := manager.GetStatus(ctx)
@@ -170,6 +191,7 @@ func (h *SettingsHandler) agentcoreRunnerStatus(ctx context.Context) (optimizati
 	if current.ResolvedRef == "" {
 		current.ResolvedRef = ref
 	}
+	optimization.NormalizeStatusEvolvableParts(&current)
 	return current, nil
 }
 

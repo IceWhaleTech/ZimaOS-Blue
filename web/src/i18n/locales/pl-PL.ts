@@ -2617,8 +2617,8 @@ export default mergeHarnessLocale('pl-PL', {
       descriptionPlaceholder: 'Opisz to źródło...',
       cancel: 'Anuluj',
       add: 'Dodaj',
-    close: 'Zamknij',
-    backToTop: 'Powrót do góry',
+      close: 'Zamknij',
+      backToTop: 'Powrót do góry',
       refresh: 'Odśwież',
       allLevels: 'Wszystkie poziomy',
       error: 'Błąd',
@@ -4584,7 +4584,8 @@ export default mergeHarnessLocale('pl-PL', {
         },
         github: {
           label: 'GitHub',
-          description: 'Źródła wyszukiwania repozytoriów GitHub dla plików SKILL.md, CLAUDE.md i AGENT.md.',
+          description:
+            'Źródła wyszukiwania repozytoriów GitHub dla plików SKILL.md, CLAUDE.md i AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4608,7 +4609,8 @@ export default mergeHarnessLocale('pl-PL', {
         },
         skillstack: {
           label: 'SkillStack',
-          description: 'Katalog społeczności skupiony na wielokrotnie używalnych kolekcjach skilli.',
+          description:
+            'Katalog społeczności skupiony na wielokrotnie używalnych kolekcjach skilli.',
         },
         skillsmp: {
           label: 'SkillsMP',
@@ -4632,11 +4634,13 @@ export default mergeHarnessLocale('pl-PL', {
         },
         seed: {
           label: 'Strony odkrywania',
-          description: 'Strony odkrywania prowadzące do kolejnych umiejętności znalezionych w sieci.',
+          description:
+            'Strony odkrywania prowadzące do kolejnych umiejętności znalezionych w sieci.',
         },
         seedInstance: {
           label: 'Strona odkrywania {index}',
-          description: 'Strona odkrywania {index} prowadząca do kolejnych umiejętności znalezionych w sieci.',
+          description:
+            'Strona odkrywania {index} prowadząca do kolejnych umiejętności znalezionych w sieci.',
         },
       },
       hero: {
@@ -7117,6 +7121,9 @@ export default mergeHarnessLocale('pl-PL', {
     summaryTitle: 'Wyszukiwanie w sieci',
     resultCount: '{count} wyników',
     moreResults: '+{count} więcej',
+    emptyState: 'Nie znaleziono pasujących wyników',
+    partialState:
+      'Wyświetlam podsumowania źródeł, ponieważ czytelna treść strony nie była dostępna.',
   },
   cardActions: {
     use_browser: 'Użyj przeglądarki',

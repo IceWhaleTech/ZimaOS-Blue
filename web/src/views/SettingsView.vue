@@ -48,6 +48,35 @@ interface SaveStatusToast {
   action?: SaveStatusAction
 }
 
+const AGENTCORE_RUNNER_EVOLVABLE_PART_ORDER = [
+  'constraints',
+  'skill_definition',
+  'prompt_template',
+  'context_assembly',
+  'coordinator_policy',
+  'orchestrator_policy',
+  'tool_exposure',
+  'verification_policy',
+  'runner_code',
+  'build_recipe',
+] as const
+
+const AGENTCORE_RUNNER_EVOLVABLE_PART_LABELS: Record<string, string> = {
+  constraints: '约束层',
+  skill_definition: 'Skill定义',
+  prompt_template: '提示词',
+  context_assembly: '上下文工程',
+  coordinator_policy: 'Coordinator',
+  orchestrator_policy: 'Orchestrator',
+  tool_exposure: '工具暴露',
+  verification_policy: '验证策略',
+  runner_code: 'Runner代码',
+  build_recipe: '构建配方',
+}
+
+const AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP = '该层在当前候选中已优化'
+const AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP = '该层可纳入自我进化，当前版本未调整'
+
 const saveStatus = ref<SaveStatusToast | null>(null)
 let saveStatusTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -247,6 +276,45 @@ const agentcoreRunnerHiddenTranscriptCount = computed(() =>
     agentcoreRunnerLastRunTranscriptEntries.value.length - agentcoreRunnerTranscriptPreviewCount,
     0
   )
+)
+const agentcoreRunnerSupportedParts = computed(() => {
+  const configured = new Set(
+    (agentcoreRunnerStatus.value?.supported_parts ?? [])
+      .map((part) => normalizeEvidenceText(part))
+      .filter(Boolean)
+  )
+  if (configured.size === 0) {
+    return [...AGENTCORE_RUNNER_EVOLVABLE_PART_ORDER]
+  }
+  return AGENTCORE_RUNNER_EVOLVABLE_PART_ORDER.filter((part) => configured.has(part))
+})
+const agentcoreRunnerOptimizedParts = computed(() => {
+  const parts = (agentcoreRunnerStatus.value?.optimized_parts ?? [])
+    .map((part) => normalizeEvidenceText(part))
+    .filter(Boolean)
+  return new Set(parts)
+})
+const agentcoreRunnerOptimizedPartList = computed(() =>
+  agentcoreRunnerSupportedParts.value.filter((part) => agentcoreRunnerOptimizedParts.value.has(part))
+)
+const agentcoreRunnerOptimizedSummary = computed(() =>
+  agentcoreRunnerOptimizedPartList.value.join(', ')
+)
+const agentcoreRunnerPrimaryPart = computed(() =>
+  normalizeEvidenceText(agentcoreRunnerStatus.value?.primary_part)
+)
+const agentcoreRunnerSourceOptimizationRunID = computed(() =>
+  normalizeEvidenceText(agentcoreRunnerStatus.value?.source_optimization_run_id)
+)
+const agentcoreRunnerEvolvablePartBadges = computed(() =>
+  agentcoreRunnerSupportedParts.value.map((part) => ({
+    part,
+    label: AGENTCORE_RUNNER_EVOLVABLE_PART_LABELS[part] ?? part,
+    active: agentcoreRunnerOptimizedParts.value.has(part),
+    tooltip: agentcoreRunnerOptimizedParts.value.has(part)
+      ? AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP
+      : AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP,
+  }))
 )
 
 watch(
@@ -1577,6 +1645,34 @@ onUnmounted(() => {
                       {{ formatStatusTime(agentcoreRunnerStatus?.last_prepare_at) }}
                     </div>
                   </div>
+                  <div class="text-sm sm:col-span-2">
+                    <span class="text-gray-500 dark:text-gray-400">可进化面</span>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      <span
+                        v-for="badge in agentcoreRunnerEvolvablePartBadges"
+                        :key="badge.part"
+                        data-testid="agentcore-runner-evolvable-part"
+                        :data-part="badge.part"
+                        :data-active="badge.active ? 'true' : 'false'"
+                        :title="badge.tooltip"
+                        class="rounded-full border px-2.5 py-1 text-[11px] font-medium transition"
+                        :class="
+                          badge.active
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
+                            : 'border-gray-200 bg-gray-100 text-gray-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-400'
+                        "
+                      >
+                        {{ badge.label }}
+                      </span>
+                    </div>
+                    <div
+                      v-if="agentcoreRunnerOptimizedSummary"
+                      data-testid="agentcore-runner-optimized-summary"
+                      class="mt-2 text-xs text-gray-700 dark:text-gray-200"
+                    >
+                      {{ agentcoreRunnerOptimizedSummary }}
+                    </div>
+                  </div>
                   <div class="text-sm">
                     <span class="text-gray-500 dark:text-gray-400">{{
                       t('settings.agentcoreRunner.lastOptimizationRunId', 'Last optimization run ID')
@@ -1613,6 +1709,20 @@ onUnmounted(() => {
                         agentcoreRunnerStatus?.last_optimization_summary ||
                         t('settings.agentcoreRunner.empty', 'Not available')
                       }}
+                    </div>
+                    <div
+                      v-if="agentcoreRunnerPrimaryPart"
+                      data-testid="agentcore-runner-primary-part"
+                      class="mt-1 text-xs text-gray-600 dark:text-gray-300"
+                    >
+                      {{ `Primary: ${agentcoreRunnerPrimaryPart}` }}
+                    </div>
+                    <div
+                      v-if="agentcoreRunnerSourceOptimizationRunID"
+                      data-testid="agentcore-runner-source-optimization-run-id"
+                      class="text-xs text-gray-500 dark:text-gray-400"
+                    >
+                      {{ `Source optimization: ${agentcoreRunnerSourceOptimizationRunID}` }}
                     </div>
                     <div
                       v-if="agentcoreRunnerLastRun"

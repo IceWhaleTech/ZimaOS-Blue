@@ -4780,7 +4780,8 @@ export default mergeHarnessLocale('it-IT', {
         },
         github: {
           label: 'GitHub',
-          description: 'Fonti di ricerca repository GitHub per file SKILL.md, CLAUDE.md e AGENT.md.',
+          description:
+            'Fonti di ricerca repository GitHub per file SKILL.md, CLAUDE.md e AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -7336,6 +7337,9 @@ export default mergeHarnessLocale('it-IT', {
     summaryTitle: 'Ricerca web',
     resultCount: '{count} risultati',
     moreResults: '+{count} altri',
+    emptyState: 'Nessun risultato corrispondente',
+    partialState:
+      'Mostro i riepiloghi delle fonti perché il contenuto leggibile della pagina non era disponibile.',
   },
   cardActions: {
     use_browser: 'Usa il browser',

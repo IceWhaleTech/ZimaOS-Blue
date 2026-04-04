@@ -311,7 +311,7 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 	result.ExecutionResult = normalizedResult
 	result.AuditPayload = sanitizeToolPayload(normalizedResult, maxToolGatewayAuditStringBytes)
 	result.AuditContent = serializeToolPayload(result.AuditPayload)
-	result.CompactLLMPayload = compactToolPayloadForLLM(resolvedName, normalizedResult)
+	result.CompactLLMPayload = compactToolPayloadForLLM(ctx, req, resolvedName, normalizedResult, result.AuditContent)
 	result.CompactLLMContent = serializeToolPayload(result.CompactLLMPayload)
 	if strings.Contains(result.AuditContent, "[circular payload omitted]") || strings.Contains(result.CompactLLMContent, "[circular payload omitted]") {
 		g.recordMetric("tool_payload_circular_total", req, map[string]string{
@@ -503,10 +503,25 @@ func normalizeGatewayToolResult(raw interface{}) interface{} {
 	}
 }
 
-func compactToolPayloadForLLM(toolName string, raw interface{}) interface{} {
+func compactToolPayloadForLLM(ctx context.Context, req ToolGatewayRequest, toolName string, raw interface{}, auditContent string) interface{} {
 	if strings.EqualFold(strings.TrimSpace(toolName), "pdf") {
 		preCompacted := sanitizeToolPayload(raw, maxToolGatewayPDFPreCompactBytes)
 		return sanitizeToolPayload(compactPDFPayloadForLLM(preCompacted), maxToolGatewayLLMStringBytes)
+	}
+	if strings.EqualFold(strings.TrimSpace(toolName), "web_query") {
+		if compacted, ok := BuildCompactWebQueryPayloadForLLM(ctx, raw, auditContent, WebQueryLLMCompactionOptions{
+			ByteBudget:     maxToolGatewayLLMStringBytes,
+			Mode:           WebQueryLLMCompactionDefault,
+			ResultLimit:    3,
+			FactLimit:      10,
+			WarningLimit:   3,
+			Materialize:    true,
+			ToolCallID:     strings.TrimSpace(req.ToolCallID),
+			ConversationID: strings.TrimSpace(req.SessionID),
+			ToolName:       strings.TrimSpace(toolName),
+		}); ok {
+			return compacted
+		}
 	}
 	sanitized := sanitizeToolPayload(raw, maxToolGatewayLLMStringBytes)
 	if isExternalContentTool(toolName) {

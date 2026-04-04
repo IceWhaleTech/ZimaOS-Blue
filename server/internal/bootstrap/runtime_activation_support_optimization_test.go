@@ -345,6 +345,13 @@ Prefer high-signal browsing steps.
 	if got := strings.TrimSpace(asStringForOptimizationTest(record["followup_state"])); got != "submitted" {
 		t.Fatalf("followup_state = %q, want submitted; record=%s", got, string(data))
 	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["promotion_state"])); got != "candidate" {
+		t.Fatalf("promotion_state = %q, want candidate; record=%s", got, string(data))
+	}
+	skillRevisionID := strings.TrimSpace(asStringForOptimizationTest(record["skill_revision_id"]))
+	if skillRevisionID == "" {
+		t.Fatalf("expected skill_revision_id in record: %s", string(data))
+	}
 	followupEvalRunID := strings.TrimSpace(asStringForOptimizationTest(record["followup_eval_run_id"]))
 	if followupEvalRunID == "" {
 		t.Fatalf("expected followup_eval_run_id in record: %s", string(data))
@@ -370,6 +377,9 @@ Prefer high-signal browsing steps.
 	}
 	if got := strings.TrimSpace(asStringForOptimizationTest(followupEvalRun.Metadata["optimization_run_id"])); got != current.LastOptimizationRunID {
 		t.Fatalf("optimization_run_id = %q, want %q", got, current.LastOptimizationRunID)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(followupEvalRun.Metadata["skill_revision_id"])); got != skillRevisionID {
+		t.Fatalf("skill_revision_id = %q, want %q", got, skillRevisionID)
 	}
 	if got := strings.TrimSpace(asStringForOptimizationTest(followupEvalRun.Metadata["candidate_id"])); got != "candidate-browser-optimized" {
 		t.Fatalf("candidate_id = %q, want candidate-browser-optimized", got)
@@ -398,6 +408,25 @@ Prefer high-signal browsing steps.
 	if got := gotContent; got != content {
 		t.Fatalf("skill_candidate.content = %q, want %q", got, content)
 	}
+	revision, err := controller.GetSkillRevision(context.Background(), skillRevisionID)
+	if err != nil {
+		t.Fatalf("GetSkillRevision(skillRevisionID): %v", err)
+	}
+	if got, want := revision.Status, harness.SkillRevisionStatusCandidate; got != want {
+		t.Fatalf("revision status = %q, want %q", got, want)
+	}
+	if got, want := revision.SkillID, "browser"; got != want {
+		t.Fatalf("revision skill_id = %q, want %q", got, want)
+	}
+	if got, want := revision.SourcePath, "assets/skills/browser/SKILL.md"; got != want {
+		t.Fatalf("revision source_path = %q, want %q", got, want)
+	}
+	if got, want := revision.EvalRunID, parentEvalRun.ID; got != want {
+		t.Fatalf("revision eval_run_id = %q, want %q", got, want)
+	}
+	if got, want := revision.OptimizationRunID, current.LastOptimizationRunID; got != want {
+		t.Fatalf("revision optimization_run_id = %q, want %q", got, want)
+	}
 }
 
 func TestHarnessOptimizationManagerAdapterReconcilesAcceptedFollowupSelectorRun(t *testing.T) {
@@ -423,6 +452,18 @@ func TestHarnessOptimizationManagerAdapterReconcilesAcceptedFollowupSelectorRun(
 		"optimization_run_id":        "opt-accepted",
 		"optimization_parent_run_id": "parent-eval-run",
 	})
+	revision, err := controller.CreateSkillRevision(context.Background(), harness.SkillRevision{
+		SkillID:           "browser",
+		Status:            harness.SkillRevisionStatusCandidate,
+		SourcePath:        "assets/skills/browser/SKILL.md",
+		CandidateID:       "candidate-browser-optimized",
+		EvalRunID:         "parent-eval-run",
+		OptimizationRunID: "opt-accepted",
+		Content:           "# Browser\nAccepted candidate.\n",
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision failed: %v", err)
+	}
 
 	recordID := "opt-accepted"
 	manager := newOptimizationManagerWithLastRunRecordForTest(t, filepath.Join(t.TempDir(), "agentcore-runner"), recordID, map[string]interface{}{
@@ -431,6 +472,7 @@ func TestHarnessOptimizationManagerAdapterReconcilesAcceptedFollowupSelectorRun(
 		"base_eval_run_id":     baselineEvalRun.ID,
 		"followup_eval_run_id": followupEvalRun.ID,
 		"followup_state":       "submitted",
+		"skill_revision_id":    revision.ID,
 		"runner_response_text": `{"status":"candidate_ready"}`,
 	})
 
@@ -450,6 +492,16 @@ func TestHarnessOptimizationManagerAdapterReconcilesAcceptedFollowupSelectorRun(
 	}
 	if got := strings.TrimSpace(asStringForOptimizationTest(record["followup_eval_status"])); got != string(harness.RunGroupStatusCompleted) {
 		t.Fatalf("followup_eval_status = %q, want %q", got, harness.RunGroupStatusCompleted)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["promotion_state"])); got != "accepted" {
+		t.Fatalf("promotion_state = %q, want accepted", got)
+	}
+	reloadedRevision, err := controller.GetSkillRevision(context.Background(), revision.ID)
+	if err != nil {
+		t.Fatalf("GetSkillRevision(revision.ID): %v", err)
+	}
+	if got, want := reloadedRevision.Status, harness.SkillRevisionStatusAccepted; got != want {
+		t.Fatalf("revision status = %q, want %q", got, want)
 	}
 
 	status := adapter.GetStatus(context.Background())
@@ -478,6 +530,18 @@ func TestHarnessOptimizationManagerAdapterMarksRunningFollowupEval(t *testing.T)
 	if err != nil {
 		t.Fatalf("SubmitEvalRun pending followup failed: %v", err)
 	}
+	revision, err := controller.CreateSkillRevision(context.Background(), harness.SkillRevision{
+		SkillID:           "browser",
+		Status:            harness.SkillRevisionStatusCandidate,
+		SourcePath:        "assets/skills/browser/SKILL.md",
+		CandidateID:       "candidate-pending",
+		EvalRunID:         "parent-eval-run",
+		OptimizationRunID: "opt-running",
+		Content:           "# Browser\nPending candidate.\n",
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision failed: %v", err)
+	}
 
 	recordID := "opt-running"
 	manager := newOptimizationManagerWithLastRunRecordForTest(t, filepath.Join(t.TempDir(), "agentcore-runner"), recordID, map[string]interface{}{
@@ -486,6 +550,7 @@ func TestHarnessOptimizationManagerAdapterMarksRunningFollowupEval(t *testing.T)
 		"base_eval_run_id":     "baseline-eval-run",
 		"followup_eval_run_id": followupEvalRun.ID,
 		"followup_state":       "submitted",
+		"skill_revision_id":    revision.ID,
 		"runner_response_text": `{"status":"candidate_ready"}`,
 	})
 
@@ -499,6 +564,13 @@ func TestHarnessOptimizationManagerAdapterMarksRunningFollowupEval(t *testing.T)
 	}
 	if got := strings.TrimSpace(asStringForOptimizationTest(record["followup_eval_status"])); got != string(harness.RunGroupStatusPending) {
 		t.Fatalf("followup_eval_status = %q, want %q", got, harness.RunGroupStatusPending)
+	}
+	reloadedRevision, err := controller.GetSkillRevision(context.Background(), revision.ID)
+	if err != nil {
+		t.Fatalf("GetSkillRevision(revision.ID): %v", err)
+	}
+	if got, want := reloadedRevision.Status, harness.SkillRevisionStatusCandidate; got != want {
+		t.Fatalf("revision status = %q, want %q", got, want)
 	}
 
 	status := adapter.GetStatus(context.Background())

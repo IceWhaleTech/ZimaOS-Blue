@@ -2633,10 +2633,8 @@ export default mergeHarnessLocale('cs-CZ', {
         'Vestavěné nástroje lze zde povolit nebo zakázat, ale jejich dostupnost může být stále omezena zásadami nástrojů za běhu.',
       builtinSkillDetailHint:
         'Tuto vestavěnou dovednost lze zde povolit nebo zakázat, ale nelze ji odinstalovat.',
-      builtinSkillUninstallBlocked:
-        'Vestavěné dovednosti lze zakázat, ale nelze je odinstalovat.',
-      builtinToolUninstallBlocked:
-        'Vestavěné nástroje lze zakázat, ale nelze je odinstalovat.',
+      builtinSkillUninstallBlocked: 'Vestavěné dovednosti lze zakázat, ale nelze je odinstalovat.',
+      builtinToolUninstallBlocked: 'Vestavěné nástroje lze zakázat, ale nelze je odinstalovat.',
       closeSkillDetails: 'Zavřít podrobnosti dovednosti',
       sourceLabel: 'Zdroj',
       skillCollectionFilters: 'Filtry kolekce dovedností',
@@ -4569,7 +4567,8 @@ export default mergeHarnessLocale('cs-CZ', {
         },
         github: {
           label: 'GitHub',
-          description: 'Zdroje vyhledávání repozitářů na GitHubu pro soubory SKILL.md, CLAUDE.md a AGENT.md.',
+          description:
+            'Zdroje vyhledávání repozitářů na GitHubu pro soubory SKILL.md, CLAUDE.md a AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4621,7 +4620,8 @@ export default mergeHarnessLocale('cs-CZ', {
         },
         seedInstance: {
           label: 'Objevovací stránka {index}',
-          description: 'Objevovací stránka {index}, která odkazuje na další dovednosti nalezené na webu.',
+          description:
+            'Objevovací stránka {index}, která odkazuje na další dovednosti nalezené na webu.',
         },
       },
       hero: {
@@ -7092,6 +7092,9 @@ export default mergeHarnessLocale('cs-CZ', {
     summaryTitle: 'Vyhledavani na webu',
     resultCount: '{count} výsledků',
     moreResults: '+{count} dalších',
+    emptyState: 'Nebyly nalezeny žádné odpovídající výsledky',
+    partialState:
+      'Zobrazují se souhrny zdrojů, protože se nepodařilo načíst čitelný obsah stránky.',
   },
   cardActions: {
     use_browser: 'Použít prohlížeč',

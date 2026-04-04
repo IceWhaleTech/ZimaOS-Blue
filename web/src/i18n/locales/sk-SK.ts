@@ -2609,8 +2609,8 @@ export default mergeHarnessLocale('sk-SK', {
       descriptionPlaceholder: 'Popíšte tento zdroj...',
       cancel: 'Zrušiť',
       add: 'Pridať',
-    close: 'Zavrieť',
-    backToTop: 'Späť hore',
+      close: 'Zavrieť',
+      backToTop: 'Späť hore',
       refresh: 'Obnoviť',
       allLevels: 'Všetky úrovne',
       error: 'Chyba',
@@ -2634,8 +2634,7 @@ export default mergeHarnessLocale('sk-SK', {
         'Túto vstavanú zručnosť tu môžete povoliť alebo zakázať, ale nemožno ju odinštalovať.',
       builtinSkillUninstallBlocked:
         'Vstavané zručnosti možno zakázať, ale nemožno ich odinštalovať.',
-      builtinToolUninstallBlocked:
-        'Vstavané nástroje možno zakázať, ale nemožno ich odinštalovať.',
+      builtinToolUninstallBlocked: 'Vstavané nástroje možno zakázať, ale nemožno ich odinštalovať.',
       closeSkillDetails: 'Zavrieť podrobnosti zručnosti',
       sourceLabel: 'Zdroj',
       skillCollectionFilters: 'Filtre zbierky zručností',
@@ -4570,7 +4569,8 @@ export default mergeHarnessLocale('sk-SK', {
         },
         github: {
           label: 'GitHub',
-          description: 'Zdroje vyhľadávania repozitárov na GitHube pre súbory SKILL.md, CLAUDE.md a AGENT.md.',
+          description:
+            'Zdroje vyhľadávania repozitárov na GitHube pre súbory SKILL.md, CLAUDE.md a AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4622,7 +4622,8 @@ export default mergeHarnessLocale('sk-SK', {
         },
         seedInstance: {
           label: 'Objavovacia stránka {index}',
-          description: 'Objavovacia stránka {index} odkazujúca na ďalšie zručnosti nájdené na webe.',
+          description:
+            'Objavovacia stránka {index} odkazujúca na ďalšie zručnosti nájdené na webe.',
         },
       },
       hero: {
@@ -7004,6 +7005,8 @@ export default mergeHarnessLocale('sk-SK', {
     summaryTitle: 'Vyhladavanie na webe',
     resultCount: '{count} výsledkov',
     moreResults: '+{count} ďalších',
+    emptyState: 'Nenašli sa žiadne zodpovedajúce výsledky',
+    partialState: 'Zobrazujú sa súhrny zdrojov, pretože čitateľný obsah stránky nebol dostupný.',
   },
   cardActions: {
     use_browser: 'Použiť prehliadač',

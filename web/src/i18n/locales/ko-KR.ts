@@ -2769,10 +2769,8 @@ export default mergeHarnessLocale('ko-KR', {
         '내장 도구는 여기에서 활성화하거나 비활성화할 수 있지만, 실제 사용 가능 여부는 런타임 도구 정책에 의해 제한될 수 있습니다.',
       builtinSkillDetailHint:
         '이 내장 스킬은 여기에서 활성화하거나 비활성화할 수 있지만 제거할 수는 없습니다.',
-      builtinSkillUninstallBlocked:
-        '내장 스킬은 비활성화할 수 있지만 제거할 수는 없습니다.',
-      builtinToolUninstallBlocked:
-        '내장 도구는 비활성화할 수 있지만 제거할 수는 없습니다.',
+      builtinSkillUninstallBlocked: '내장 스킬은 비활성화할 수 있지만 제거할 수는 없습니다.',
+      builtinToolUninstallBlocked: '내장 도구는 비활성화할 수 있지만 제거할 수는 없습니다.',
       closeSkillDetails: '스킬 세부 정보 닫기',
       sourceLabel: '출처',
       skillCollectionFilters: '스킬 모음 필터',
@@ -4721,7 +4719,8 @@ export default mergeHarnessLocale('ko-KR', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub의 SKILL.md, CLAUDE.md, AGENT.md 파일을 찾기 위한 저장소 검색 소스입니다.',
+          description:
+            'GitHub의 SKILL.md, CLAUDE.md, AGENT.md 파일을 찾기 위한 저장소 검색 소스입니다.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -7247,6 +7246,8 @@ export default mergeHarnessLocale('ko-KR', {
     summaryTitle: 'Web search',
     resultCount: '{count}개 결과',
     moreResults: '+{count}개 더',
+    emptyState: '일치하는 결과를 찾지 못했습니다',
+    partialState: '읽을 수 있는 페이지 콘텐츠를 가져오지 못해 소스 요약만 표시합니다.',
   },
   cardActions: {
     use_browser: '브라우저 사용',

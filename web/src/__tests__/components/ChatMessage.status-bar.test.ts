@@ -111,12 +111,16 @@ function makeMessage(content = '') {
   }
 }
 
-async function mountStreamingMessage(content = '') {
+async function mountStreamingMessage(
+  content = '',
+  propOverrides: Record<string, unknown> = {}
+) {
   const wrapper = mount(ChatMessage, {
     props: {
       message: makeMessage(content),
       isStreaming: true,
       disableAutoTTS: true,
+      ...propOverrides,
     },
     global: {
       plugins: [i18n],
@@ -204,6 +208,19 @@ describe('ChatMessage status bar', () => {
     expect(wrapper.text()).toContain('Searching the web')
     expect(wrapper.text()).toContain('search')
     expect(wrapper.text()).toContain('1.8s')
+  })
+
+  it('hides the in-message status pill when an external stream rail is active', async () => {
+    const wrapper = await mountStreamingMessage('', {
+      streamState: makeActiveStreamState({
+        statusSummary: 'Processing',
+        statusStartedAt: Date.now() - 1100,
+        showExternalStatusRail: true,
+      }),
+    })
+
+    expect(wrapper.find('.assistant-status-bar').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Processing')
   })
 
   it('prioritizes confirmation messaging over other restored status summaries', async () => {

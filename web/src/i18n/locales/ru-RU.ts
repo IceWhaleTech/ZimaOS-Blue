@@ -2807,10 +2807,8 @@ export default mergeHarnessLocale('ru-RU', {
         'Встроенные инструменты можно включать и отключать здесь, но их доступность всё равно может ограничиваться политикой инструментов во время выполнения.',
       builtinSkillDetailHint:
         'Этот встроенный навык можно включать и отключать здесь, но его нельзя удалить.',
-      builtinSkillUninstallBlocked:
-        'Встроенные навыки можно отключать, но их нельзя удалить.',
-      builtinToolUninstallBlocked:
-        'Встроенные инструменты можно отключать, но их нельзя удалить.',
+      builtinSkillUninstallBlocked: 'Встроенные навыки можно отключать, но их нельзя удалить.',
+      builtinToolUninstallBlocked: 'Встроенные инструменты можно отключать, но их нельзя удалить.',
       closeSkillDetails: 'Закрыть сведения о навыке',
       sourceLabel: 'Источник',
       skillCollectionFilters: 'Фильтры коллекции навыков',
@@ -4756,7 +4754,8 @@ export default mergeHarnessLocale('ru-RU', {
         },
         github: {
           label: 'GitHub',
-          description: 'Источники поиска репозиториев GitHub для файлов SKILL.md, CLAUDE.md и AGENT.md.',
+          description:
+            'Источники поиска репозиториев GitHub для файлов SKILL.md, CLAUDE.md и AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -7296,6 +7295,9 @@ export default mergeHarnessLocale('ru-RU', {
     summaryTitle: 'Поиск в интернете',
     resultCount: '{count} результатов',
     moreResults: '+{count} ещё',
+    emptyState: 'Подходящие результаты не найдены',
+    partialState:
+      'Показываются краткие описания источников, потому что читаемое содержимое страницы было недоступно.',
   },
   cardActions: {
     use_browser: 'Открыть в браузере',

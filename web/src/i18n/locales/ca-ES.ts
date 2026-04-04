@@ -1869,7 +1869,7 @@ export default mergeHarnessLocale('ca-ES', {
       deleted: "S'ha suprimit el perfil de l'agent extern.",
       deleteFailed: "No s'ha pogut suprimir el perfil de l'agent extern.",
       deleteConfirm:
-        "Voleu suprimir el perfil de l'agent extern \"{name}\"? Els perfils que encara fan servir les sessions s'han de netejar abans.",
+        'Voleu suprimir el perfil de l\'agent extern "{name}"? Els perfils que encara fan servir les sessions s\'han de netejar abans.',
       saveBeforeHealth: "Deseu el perfil abans d'executar una comprovació de salut.",
       duplicate: 'Duplicat',
       builtinHelp:
@@ -2335,14 +2335,16 @@ export default mergeHarnessLocale('ca-ES', {
       },
       goroutinesChart: {
         chartSubtitle: 'Concurrència del planificador durant els darrers 5 minuts',
-        chartCaption: "Treball concurrent del runtime i pressió del planificador a la finestra més recent",
+        chartCaption:
+          'Treball concurrent del runtime i pressió del planificador a la finestra més recent',
       },
       info: {
-        subtitle: "Versió del runtime i context del pool de treballadors",
+        subtitle: 'Versió del runtime i context del pool de treballadors',
         versionFootnote: 'Versió actual del servei desplegat',
         workerPool: 'Pool de treballadors',
         runningWorkers: '{active} / {total} en execució',
-        capacityFootnote: "Treballadors en execució respecte a la capacitat configurada del runtime",
+        capacityFootnote:
+          'Treballadors en execució respecte a la capacitat configurada del runtime',
       },
     },
     autoRefresh: 'Auto refresh (5s)',
@@ -2712,7 +2714,7 @@ export default mergeHarnessLocale('ca-ES', {
       toolGalleryHint:
         'Explora les eines en targetes, revisa què fan i activa-les o desactiva-les ràpidament.',
       skillManagementHint:
-        "Les habilitats integrades es poden activar o desactivar aquí, però només les habilitats locals es poden desinstal·lar.",
+        'Les habilitats integrades es poden activar o desactivar aquí, però només les habilitats locals es poden desinstal·lar.',
       toolManagementHint:
         "Les eines integrades es poden activar o desactivar aquí, però la seva disponibilitat encara pot estar limitada per la política d'eines en temps d'execució.",
       builtinSkillDetailHint:
@@ -4678,7 +4680,8 @@ export default mergeHarnessLocale('ca-ES', {
         },
         github: {
           label: 'GitHub',
-          description: 'Fonts de cerca de repositoris de GitHub per a fitxers SKILL.md, CLAUDE.md i AGENT.md.',
+          description:
+            'Fonts de cerca de repositoris de GitHub per a fitxers SKILL.md, CLAUDE.md i AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -7230,6 +7233,9 @@ export default mergeHarnessLocale('ca-ES', {
     summaryTitle: 'Cerca web',
     resultCount: '{count} resultats',
     moreResults: '+{count} més',
+    emptyState: "No s'han trobat resultats coincidents",
+    partialState:
+      "Es mostren resums de les fonts perquè no s'ha pogut llegir el contingut de la pàgina.",
   },
   cardActions: {
     use_browser: 'Utilitza el navegador',

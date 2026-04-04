@@ -270,6 +270,320 @@ func TestWebQueryToolAutoRoutesSearchAndReturnsEnvelope(t *testing.T) {
 	}
 }
 
+func TestWebQueryToolEmitsSearchCardForSearchReadResults(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{
+				Query: "zimaos blue",
+				Results: []WebSearchResult{
+					{Title: "Best Match", URL: "https://example.com/best", Description: "Official best result"},
+					{Title: "Second Match", URL: "https://example.com/second", Description: "Secondary result"},
+				},
+				TotalCount: 2,
+				Provider:   "duckduckgo",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Best Match",
+				Content:  "A long readable article body that is comfortably above the strong-read threshold for search_read coverage in this regression test. It includes release notes, compatibility details, rollout steps, migration caveats, troubleshooting notes, several sentences of explanatory prose, and enough additional wording to clearly count as a strong successful read in the unified web query pipeline.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	var emitted []map[string]interface{}
+	ctx := WithCardEmitter(context.Background(), func(card map[string]interface{}) {
+		cp := make(map[string]interface{}, len(card))
+		for k, v := range card {
+			cp[k] = v
+		}
+		emitted = append(emitted, cp)
+	})
+
+	raw, err := tool.Execute(ctx, map[string]interface{}{"input": "zimaos blue"})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if !envelope.SearchCardEmitted {
+		t.Fatal("expected search_card_emitted=true")
+	}
+	if len(emitted) != 1 {
+		t.Fatalf("emitted len=%d, want 1", len(emitted))
+	}
+	if got := emitted[0]["type"]; got != "search" {
+		t.Fatalf("type=%v, want search", got)
+	}
+	if got := emitted[0]["status"]; got != "success" {
+		t.Fatalf("status=%v, want success", got)
+	}
+	if got := emitted[0]["selectedUrl"]; got != "https://example.com/best" {
+		t.Fatalf("selectedUrl=%v, want best result", got)
+	}
+	if got := emitted[0]["provider"]; got != "duckduckgo" {
+		t.Fatalf("provider=%v, want duckduckgo", got)
+	}
+}
+
+func TestWebQueryToolSearchCardKeepsSelectedPageWhenResultsShareHost(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{
+				Query: "blue release notes",
+				Results: []WebSearchResult{
+					{Title: "Blue Overview", URL: "https://docs.example.com/overview", Description: "Overview page"},
+					{Title: "Blue Release Notes v1.2.3", URL: "https://docs.example.com/releases/1.2.3", Description: "Release notes page"},
+				},
+				TotalCount: 2,
+				Provider:   "duckduckgo",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+			}
+			switch url {
+			case "https://docs.example.com/overview":
+				resp.Title = "Blue Overview"
+				resp.Content = "Short overview."
+			case "https://docs.example.com/releases/1.2.3":
+				resp.Title = "Blue Release Notes v1.2.3"
+				resp.Content = "April 4, 2026 release notes with enough readable body text to count as the selected strong read. The article lists 12 improvements, 4 fixes, and 2 migrations, plus several paragraphs of rollout notes and compatibility guidance."
+			default:
+				t.Fatalf("unexpected read url=%q", url)
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	var emitted []map[string]interface{}
+	ctx := WithCardEmitter(context.Background(), func(card map[string]interface{}) {
+		cp := make(map[string]interface{}, len(card))
+		for k, v := range card {
+			cp[k] = v
+		}
+		emitted = append(emitted, cp)
+	})
+
+	raw, err := tool.Execute(ctx, map[string]interface{}{"input": "blue release notes"})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.TargetURL != "https://docs.example.com/releases/1.2.3" {
+		t.Fatalf("target_url=%q, want selected release page", envelope.TargetURL)
+	}
+	if len(envelope.Sources) != 2 {
+		t.Fatalf("sources len=%d, want both same-host pages retained", len(envelope.Sources))
+	}
+	selectedCount := 0
+	for _, source := range envelope.Sources {
+		if source.Selected {
+			selectedCount++
+			if source.URL != "https://docs.example.com/releases/1.2.3" {
+				t.Fatalf("selected source url=%q, want release page", source.URL)
+			}
+		}
+	}
+	if selectedCount != 1 {
+		t.Fatalf("selected source count=%d, want 1", selectedCount)
+	}
+	if len(emitted) != 1 {
+		t.Fatalf("emitted len=%d, want 1", len(emitted))
+	}
+	if got := emitted[0]["selectedUrl"]; got != "https://docs.example.com/releases/1.2.3" {
+		t.Fatalf("selectedUrl=%v, want selected release page", got)
+	}
+	if got := emitted[0]["status"]; got != "success" {
+		t.Fatalf("status=%v, want success", got)
+	}
+}
+
+func TestWebQueryToolEmitsSearchCardForSnippetOnlyPartialResults(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{
+				Query: "zimaos blue",
+				Results: []WebSearchResult{
+					{Title: "Best Match", URL: "https://example.com/best", Description: "Snippet only result"},
+				},
+				TotalCount: 1,
+				Provider:   "duckduckgo",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			return nil, errors.New("read failed")
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	var emitted []map[string]interface{}
+	ctx := WithCardEmitter(context.Background(), func(card map[string]interface{}) {
+		cp := make(map[string]interface{}, len(card))
+		for k, v := range card {
+			cp[k] = v
+		}
+		emitted = append(emitted, cp)
+	})
+
+	raw, err := tool.Execute(ctx, map[string]interface{}{"input": "zimaos blue"})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if !envelope.SearchCardEmitted {
+		t.Fatal("expected search_card_emitted=true")
+	}
+	if envelope.Status != webQueryStatusPartial {
+		t.Fatalf("status=%q, want %q", envelope.Status, webQueryStatusPartial)
+	}
+	if len(emitted) != 1 {
+		t.Fatalf("emitted len=%d, want 1", len(emitted))
+	}
+	if got := emitted[0]["type"]; got != "search" {
+		t.Fatalf("type=%v, want search", got)
+	}
+	if got := emitted[0]["status"]; got != "partial" {
+		t.Fatalf("status=%v, want partial", got)
+	}
+	if got := emitted[0]["selectedUrl"]; got != "https://example.com/best" {
+		t.Fatalf("selectedUrl=%v, want best result", got)
+	}
+}
+
+func TestWebQueryToolEmitsSearchCardForNoResults(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{
+				Query:      "zimaos blue",
+				Results:    []WebSearchResult{},
+				TotalCount: 0,
+				Provider:   "duckduckgo",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, nil, nil, nil)
+
+	var emitted []map[string]interface{}
+	ctx := WithCardEmitter(context.Background(), func(card map[string]interface{}) {
+		cp := make(map[string]interface{}, len(card))
+		for k, v := range card {
+			cp[k] = v
+		}
+		emitted = append(emitted, cp)
+	})
+
+	raw, err := tool.Execute(ctx, map[string]interface{}{"input": "zimaos blue"})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if !envelope.SearchCardEmitted {
+		t.Fatal("expected search_card_emitted=true")
+	}
+	if len(emitted) != 1 {
+		t.Fatalf("emitted len=%d, want 1", len(emitted))
+	}
+	if got := emitted[0]["status"]; got != "empty" {
+		t.Fatalf("status=%v, want empty", got)
+	}
+	if message := strings.TrimSpace(asString(emitted[0]["message"])); message == "" {
+		t.Fatal("expected explicit empty-state message")
+	}
+}
+
+func TestWebQueryToolEmitsSearchCardForSearchFailure(t *testing.T) {
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			return nil, errors.New("search backend unavailable")
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, nil, nil, nil)
+
+	var emitted []map[string]interface{}
+	ctx := WithCardEmitter(context.Background(), func(card map[string]interface{}) {
+		cp := make(map[string]interface{}, len(card))
+		for k, v := range card {
+			cp[k] = v
+		}
+		emitted = append(emitted, cp)
+	})
+
+	raw, err := tool.Execute(ctx, map[string]interface{}{"input": "zimaos blue"})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if !envelope.SearchCardEmitted {
+		t.Fatal("expected search_card_emitted=true")
+	}
+	if len(emitted) != 1 {
+		t.Fatalf("emitted len=%d, want 1", len(emitted))
+	}
+	if got := emitted[0]["status"]; got != "empty" {
+		t.Fatalf("status=%v, want empty", got)
+	}
+	if message := strings.ToLower(strings.TrimSpace(asString(emitted[0]["message"]))); !strings.Contains(message, "search") {
+		t.Fatalf("message=%q, want search failure hint", message)
+	}
+}
+
 func TestWebQueryToolReturnsNeedsBrowserWhenBrowserFallbackTimesOut(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)

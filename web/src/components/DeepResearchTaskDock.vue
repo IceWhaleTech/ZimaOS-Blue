@@ -87,7 +87,11 @@ watch(
 </script>
 
 <template>
-  <div data-testid="deep-research-task-dock" class="relative z-10 w-full min-w-0 h-12 -mb-1">
+  <div
+    v-if="jobs.length > 0"
+    data-testid="deep-research-task-dock"
+    class="relative z-10 w-full min-w-0 h-12 -mb-1"
+  >
     <section
       class="absolute inset-x-0 bottom-0 overflow-hidden rounded-[1.25rem] border border-slate-200/80 bg-white/95 shadow-xl backdrop-blur-md transition-shadow dark:border-slate-700/80 dark:bg-slate-900/90"
     >

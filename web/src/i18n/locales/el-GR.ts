@@ -4605,7 +4605,8 @@ export default mergeHarnessLocale('el-GR', {
       sources: {
         skillhub: {
           label: 'SkillHub',
-          description: 'Συγκεντρωμένοι κατάλογοι SkillHub από τα Tencent SkillHub και SkillHub Club.',
+          description:
+            'Συγκεντρωμένοι κατάλογοι SkillHub από τα Tencent SkillHub και SkillHub Club.',
         },
         tencentSkillHub: {
           label: 'Tencent SkillHub',
@@ -4617,7 +4618,8 @@ export default mergeHarnessLocale('el-GR', {
         },
         github: {
           label: 'GitHub',
-          description: 'Πηγές αναζήτησης αποθετηρίων GitHub για αρχεία SKILL.md, CLAUDE.md και AGENT.md.',
+          description:
+            'Πηγές αναζήτησης αποθετηρίων GitHub για αρχεία SKILL.md, CLAUDE.md και AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4665,11 +4667,13 @@ export default mergeHarnessLocale('el-GR', {
         },
         seed: {
           label: 'Σελίδες ανακάλυψης',
-          description: 'Σελίδες ανακάλυψης που συνδέουν με περισσότερες δεξιότητες που βρέθηκαν στον ιστό.',
+          description:
+            'Σελίδες ανακάλυψης που συνδέουν με περισσότερες δεξιότητες που βρέθηκαν στον ιστό.',
         },
         seedInstance: {
           label: 'Σελίδα ανακάλυψης {index}',
-          description: 'Σελίδα ανακάλυψης {index} που συνδέει με περισσότερες δεξιότητες που βρέθηκαν στον ιστό.',
+          description:
+            'Σελίδα ανακάλυψης {index} που συνδέει με περισσότερες δεξιότητες που βρέθηκαν στον ιστό.',
         },
       },
       hero: {
@@ -7069,6 +7073,9 @@ export default mergeHarnessLocale('el-GR', {
     summaryTitle: 'Αναζητηση στον ιστο',
     resultCount: '{count} αποτελέσματα',
     moreResults: '+{count} ακόμη',
+    emptyState: 'Δεν βρέθηκαν αντίστοιχα αποτελέσματα',
+    partialState:
+      'Εμφανίζονται περιλήψεις πηγών επειδή το αναγνώσιμο περιεχόμενο της σελίδας δεν ήταν διαθέσιμο.',
   },
   cardActions: {
     use_browser: 'Χρήση προγράμματος περιήγησης',

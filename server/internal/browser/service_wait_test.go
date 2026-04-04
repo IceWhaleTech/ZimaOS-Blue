@@ -103,3 +103,77 @@ func TestWaitPageStableFallsBackToSleepWhenIdleWaitFails(t *testing.T) {
 		t.Fatalf("sleptFor = %v, want 500ms capped settle delay", sleptFor)
 	}
 }
+
+func TestWaitDetachedPageReadySkipsLoadWhenRequested(t *testing.T) {
+	originalLoad := waitPageReadyLoadFn
+	originalSelector := waitPageReadySelectorFn
+	originalSleep := waitPageReadySleep
+	defer func() {
+		waitPageReadyLoadFn = originalLoad
+		waitPageReadySelectorFn = originalSelector
+		waitPageReadySleep = originalSleep
+	}()
+
+	var loadCalled, selectorCalled bool
+	var sleptFor time.Duration
+	waitPageReadyLoadFn = func(*rod.Page, time.Duration) error {
+		loadCalled = true
+		return nil
+	}
+	waitPageReadySelectorFn = func(page *rod.Page, selector string, timeout time.Duration) error {
+		selectorCalled = page != nil && selector == ".gallery img" && timeout == time.Second
+		return nil
+	}
+	waitPageReadySleep = func(d time.Duration) {
+		sleptFor = d
+	}
+
+	selector := ".gallery img"
+	if err := waitDetachedPageReady(&rod.Page{}, time.Second, &selector, true, 250); err != nil {
+		t.Fatalf("waitDetachedPageReady() error = %v", err)
+	}
+	if loadCalled {
+		t.Fatal("did not expect page load wait when skip_wait_load is enabled")
+	}
+	if !selectorCalled {
+		t.Fatal("expected selector wait to run")
+	}
+	if sleptFor != 250*time.Millisecond {
+		t.Fatalf("sleptFor = %v, want 250ms additional wait", sleptFor)
+	}
+}
+
+func TestWaitDetachedPageReadyUsesLoadBeforeSelectorByDefault(t *testing.T) {
+	originalLoad := waitPageReadyLoadFn
+	originalSelector := waitPageReadySelectorFn
+	originalSleep := waitPageReadySleep
+	defer func() {
+		waitPageReadyLoadFn = originalLoad
+		waitPageReadySelectorFn = originalSelector
+		waitPageReadySleep = originalSleep
+	}()
+
+	var loadCalled, selectorCalled bool
+	waitPageReadyLoadFn = func(page *rod.Page, timeout time.Duration) error {
+		loadCalled = page != nil && timeout == 2*time.Second
+		return nil
+	}
+	waitPageReadySelectorFn = func(page *rod.Page, selector string, timeout time.Duration) error {
+		selectorCalled = page != nil && selector == "#results" && timeout == 2*time.Second
+		return nil
+	}
+	waitPageReadySleep = func(time.Duration) {
+		t.Fatal("did not expect additional wait sleep")
+	}
+
+	selector := "#results"
+	if err := waitDetachedPageReady(&rod.Page{}, 2*time.Second, &selector, false, 0); err != nil {
+		t.Fatalf("waitDetachedPageReady() error = %v", err)
+	}
+	if !loadCalled {
+		t.Fatal("expected page load wait to run by default")
+	}
+	if !selectorCalled {
+		t.Fatal("expected selector wait to run after load wait")
+	}
+}

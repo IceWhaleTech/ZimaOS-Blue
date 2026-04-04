@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -149,6 +150,15 @@ type bufferedIntroThenToolAndCardProxyHandler struct {
 	callCount int
 }
 
+// emittedSearchCardThenDetailProxyHandler simulates:
+// 1) first round emits a web_query tool_call
+// 2) the tool live-emits a search card during execution
+// 3) the tool result still produces a secondary detail card via ToCard
+// 4) second round returns a final summary
+type emittedSearchCardThenDetailProxyHandler struct {
+	callCount int
+}
+
 // toolRoundPreContentFailingProxyHandler simulates:
 // 1) first round emits a tool_call
 // 2) second round fails before any SSE chunk with upstream 502
@@ -183,6 +193,12 @@ type resolvedRouteModelSwitchProxyHandler struct{}
 
 type emitCardToolMock struct {
 	def tools.ToolDefinition
+}
+
+type emittedSearchCardWebQueryToolMock struct {
+	mu    sync.Mutex
+	calls int
+	last  map[string]interface{}
 }
 
 // toolRoundOverloadedAfterSearchProxyHandler simulates:
@@ -302,6 +318,83 @@ func (m *emitCardToolMock) Execute(ctx context.Context, _ map[string]interface{}
 		"message": "buffer-flush-card",
 	})
 	return map[string]interface{}{"ok": true}, nil
+}
+
+func (m *emittedSearchCardWebQueryToolMock) Definition() tools.ToolDefinition {
+	return tools.ToolDefinition{
+		Name:        "web_query",
+		Description: "mock web_query that emits a search card and returns a detail envelope",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"input": map[string]interface{}{"type": "string"},
+			},
+			"additionalProperties": true,
+		},
+	}
+}
+
+func (m *emittedSearchCardWebQueryToolMock) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	m.mu.Lock()
+	m.calls++
+	m.last = make(map[string]interface{}, len(args))
+	for k, v := range args {
+		m.last[k] = v
+	}
+	m.mu.Unlock()
+
+	tools.EmitCard(ctx, map[string]interface{}{
+		"type":        "search",
+		"id":          "web-query-search-zimaos-release-notes",
+		"query":       "zimaos release notes",
+		"provider":    "mock-search",
+		"status":      "success",
+		"total_count": 2,
+		"selectedUrl": "https://example.com/release",
+		"results": []map[string]interface{}{
+			{
+				"title":       "ZimaOS Release Notes",
+				"url":         "https://example.com/release",
+				"description": "Official release summary",
+				"source":      "mock-search",
+			},
+			{
+				"title":       "ZimaOS Docs",
+				"url":         "https://example.com/docs",
+				"description": "Product documentation",
+				"source":      "mock-search",
+			},
+		},
+	})
+
+	return map[string]interface{}{
+		"status":              "ok",
+		"mode":                "search_read",
+		"input":               "zimaos release notes",
+		"query":               "zimaos release notes",
+		"provider":            "mock-search",
+		"title":               "ZimaOS Release Notes",
+		"target_url":          "https://example.com/release",
+		"final_url":           "https://example.com/release",
+		"content":             "Detailed release notes body",
+		"next_action":         "none",
+		"search_card_emitted": true,
+		"sources": []map[string]interface{}{
+			{
+				"title":    "ZimaOS Release Notes",
+				"url":      "https://example.com/release",
+				"snippet":  "Official release summary",
+				"source":   "mock-search",
+				"selected": true,
+			},
+			{
+				"title":   "ZimaOS Docs",
+				"url":     "https://example.com/docs",
+				"snippet": "Product documentation",
+				"source":  "mock-search",
+			},
+		},
+	}, nil
 }
 
 func (h *secondTurnTimeoutProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -989,6 +1082,35 @@ func (h *bufferedIntroThenToolAndCardProxyHandler) ServeHTTP(w http.ResponseWrit
 	}
 
 	fmt.Fprintf(w, "data: %s\n\n", `{"id":"buffered_intro_round_2","choices":[{"delta":{"content":"最终结果已返回。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+	flush()
+}
+
+func (h *emittedSearchCardThenDetailProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_emitted_search_card_detail"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	if h.callCount == 1 {
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"emitted_search_round_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_emitted_search_1","type":"function","function":{"name":"web_query","arguments":"{\"input\":\"zimaos release notes\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"emitted_search_round_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		return
+	}
+
+	fmt.Fprintf(w, "data: %s\n\n", `{"id":"emitted_search_round_2","choices":[{"delta":{"content":"已整理好 ZimaOS 发布说明。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 	flush()
 }
 
@@ -4144,6 +4266,116 @@ func TestStreamMessage_ToolCardFlushesBufferedIntroBeforeEmitCard(t *testing.T) 
 	}
 }
 
+func TestStreamMessage_EmittedSearchCardPersistsBeforeSecondaryDetailWithoutDuplication(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test emitted search card persistence")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&emittedSearchCardWebQueryToolMock{})
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &emittedSearchCardThenDetailProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请搜索 zimaos release notes","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+
+	var streamedContent strings.Builder
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			continue
+		}
+		var chunk map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if delta, ok := chunk["delta"].(string); ok {
+			streamedContent.WriteString(delta)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan stream body: %v", err)
+	}
+
+	streamed := streamedContent.String()
+	streamSearchIdx := strings.Index(streamed, `"type":"search"`)
+	streamDetailIdx := strings.Index(streamed, `"type":"result"`)
+	if streamSearchIdx < 0 {
+		t.Fatalf("expected emitted search card in streamed content, got=%s", streamed)
+	}
+	if streamDetailIdx < 0 {
+		t.Fatalf("expected secondary detail card in streamed content, got=%s", streamed)
+	}
+	if streamSearchIdx > streamDetailIdx {
+		t.Fatalf("expected search card before detail card in streamed content, search_idx=%d detail_idx=%d content=%s", streamSearchIdx, streamDetailIdx, streamed)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+
+	var persisted strings.Builder
+	for _, msg := range messages {
+		if msg.Role != "assistant" {
+			continue
+		}
+		persisted.WriteString(msg.Content)
+		persisted.WriteString("\n")
+	}
+
+	persistedContent := persisted.String()
+	persistedSearchCount := strings.Count(persistedContent, `"type":"search"`)
+	if persistedSearchCount != 1 {
+		t.Fatalf("expected exactly one persisted search card, got %d in content=%s", persistedSearchCount, persistedContent)
+	}
+	persistedSearchIdx := strings.Index(persistedContent, `"type":"search"`)
+	persistedDetailIdx := strings.Index(persistedContent, `"type":"result"`)
+	if persistedSearchIdx < 0 {
+		t.Fatalf("expected persisted search card after refresh, got=%s", persistedContent)
+	}
+	if persistedDetailIdx < 0 {
+		t.Fatalf("expected persisted secondary detail card, got=%s", persistedContent)
+	}
+	if persistedSearchIdx > persistedDetailIdx {
+		t.Fatalf("expected persisted search card before detail card, search_idx=%d detail_idx=%d content=%s", persistedSearchIdx, persistedDetailIdx, persistedContent)
+	}
+}
+
 func TestStreamMessage_ToolRoundPreContent502_SkipsChatLayerRetryAmplification(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -5177,6 +5409,183 @@ func TestStreamMessage_RecoversDirectXMLPseudoToolCallIntoRealToolExecution(t *t
 		if strings.Contains(m.Content, "<web_query>") || strings.Contains(m.Content, "<input>Apple AAPL stock price today2026</input>") {
 			t.Fatalf("expected recovered pseudo tool-call text to be discarded from persisted assistant messages, got=%q", m.Content)
 		}
+	}
+}
+
+func TestStreamMessage_FileReadToolResultPreservesMidFileContentInFollowUpRound(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "File read follow-up stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	workspaceRoot := t.TempDir()
+	sourcePath := filepath.Join(workspaceRoot, "notes.txt")
+	rawContent := buildFileReadRegressionContent(240, "payload ")
+	if err := os.WriteFile(sourcePath, []byte(rawContent), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-file-read-stream",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "file-read-stream-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_file_read_stream_1",
+						Name:      "file_read",
+						Arguments: fmt.Sprintf(`{"path":%q}`, sourcePath),
+					}},
+				},
+			},
+			{
+				ID:      "file-read-stream-round-2",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "我已经读取并确认文件内容。"},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewFileReadTool([]string{workspaceRoot}, 0))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"请先检查刚才读到的本地文件内容，然后直接告诉我第120行写了什么。不要创建或修改任何文件。","provider":"scripted-file-read-stream","model":"gpt-5.3-codex-spark"}`)
+	if !strings.Contains(body, "我已经读取并确认文件内容。") {
+		t.Fatalf("expected final stream content, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (file_read + final), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	toolMsg, payload := requireToolPayloadMessage(t, secondReq, "file_read")
+	if len(toolMsg.Content) > maxLLMToolOutputBytes {
+		t.Fatalf("file_read tool message too large: %d", len(toolMsg.Content))
+	}
+
+	content, _ := payload["content"].(string)
+	if len(content) <= 512 {
+		t.Fatalf("expected file_read follow-up content > 512 bytes, got %d", len(content))
+	}
+	if !strings.Contains(content, "line 120 payload payload ") {
+		t.Fatalf("expected preserved mid-file content in follow-up payload, got=%q", content)
+	}
+	if truncated, _ := payload["truncated"].(bool); truncated {
+		t.Fatalf("expected truncated=false for under-budget file_read payload, got %#v", payload["truncated"])
+	}
+}
+
+func TestStreamMessage_WebQueryToolFollowUpKeepsNonEmptySummary(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Web query summary stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-web-query-summary-stream",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "web-query-summary-stream-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_web_query_stream_summary_1",
+						Name:      "web_query",
+						Arguments: `{"input":"blue release notes"}`,
+					}},
+				},
+			},
+			{
+				ID:      "web-query-summary-stream-round-2",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "我已经整理好 Blue 的更新摘要。"},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&webSearchToolMock{
+		name:   "web_query",
+		result: buildWebQueryToolPayloadForLLMTests(strings.Repeat("On April 4, 2026, version 1.2.3 shipped 12 improvements, 4 fixes, and 2 migrations. ", 180)),
+	})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"请查一下 Blue 的最近更新，然后给我一个简短总结。","provider":"scripted-web-query-summary-stream","model":"gpt-5.3-codex-spark"}`)
+	if !strings.Contains(body, "我已经整理好 Blue 的更新摘要。") {
+		t.Fatalf("expected final stream content, body=%s", body)
+	}
+	if scripted.CallCount() < 2 {
+		t.Fatalf("expected at least 2 LLM rounds (web_query + follow-up), got %d", scripted.CallCount())
+	}
+
+	var followUpReq llm.ChatRequest
+	foundFollowUp := false
+	for idx := 0; idx < scripted.CallCount(); idx++ {
+		req, ok := scripted.RequestAt(idx)
+		if !ok {
+			continue
+		}
+		for _, msg := range req.Messages {
+			if msg.Role == llm.RoleTool && msg.ToolName == "web_query" {
+				followUpReq = req
+				foundFollowUp = true
+				break
+			}
+		}
+		if foundFollowUp {
+			break
+		}
+	}
+	if !foundFollowUp {
+		t.Fatalf("missing follow-up request carrying web_query tool result")
+	}
+
+	toolMsg, payload := requireToolPayloadMessage(t, followUpReq, "web_query")
+	if len(toolMsg.Content) > maxLLMToolOutputBytes {
+		t.Fatalf("web_query tool message too large: %d", len(toolMsg.Content))
+	}
+	if got, ok := payload["has_results"].(bool); !ok || !got {
+		t.Fatalf("has_results = %#v, want true", payload["has_results"])
+	}
+	if _, ok := payload["selected_result"].(map[string]interface{}); !ok {
+		t.Fatalf("selected_result = %#v, want object", payload["selected_result"])
+	}
+	facts, ok := payload["key_facts"].([]interface{})
+	if !ok || len(facts) == 0 {
+		t.Fatalf("key_facts = %#v, want non-empty array", payload["key_facts"])
+	}
+	if got, ok := payload["llm_compacted"].(bool); !ok || !got {
+		t.Fatalf("llm_compacted = %#v, want true", payload["llm_compacted"])
 	}
 }
 

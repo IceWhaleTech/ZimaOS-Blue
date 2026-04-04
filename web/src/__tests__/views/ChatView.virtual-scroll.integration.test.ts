@@ -333,13 +333,6 @@ vi.mock('@/components/UserTaskProjectionCard.vue', () =>
   })
 )
 
-vi.mock('@/components/ChatActivityDock.vue', () =>
-  helpers.asAsyncSFCModule({
-    name: 'ChatActivityDock',
-    template: '<div class="chat-activity-dock-stub" />',
-  })
-)
-
 vi.mock('@/components/UserTaskProjectionDock.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'UserTaskProjectionDock',

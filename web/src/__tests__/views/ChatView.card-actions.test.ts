@@ -302,9 +302,27 @@ vi.mock('@/components/ChatInput.vue', () =>
       disabled: { type: Boolean, default: false },
       streaming: { type: Boolean, default: false },
       canCancel: { type: Boolean, default: false },
+      showInlineCancel: { type: Boolean, default: true },
     },
-    template:
-      '<div class="chat-input-stub" :data-disabled="String(disabled)" :data-streaming="String(streaming)" :data-can-cancel="String(canCancel)" />',
+    emits: ['cancel'],
+    template: `
+      <div
+        class="chat-input-stub"
+        :data-disabled="String(disabled)"
+        :data-streaming="String(streaming)"
+        :data-can-cancel="String(canCancel)"
+        :data-show-inline-cancel="String(showInlineCancel !== false)"
+      >
+        <button
+          v-if="canCancel && showInlineCancel !== false"
+          type="button"
+          data-testid="chat-input-inline-cancel"
+          @click="$emit('cancel')"
+        >
+          Stop generating
+        </button>
+      </div>
+    `,
   })
 )
 
@@ -360,7 +378,40 @@ vi.mock('@/components/AgentTaskPanel.vue', () =>
 vi.mock('@/components/DeepResearchTaskDock.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'DeepResearchTaskDock',
-    template: '<div class="deep-research-task-dock-stub" />',
+    setup() {
+      return { store: mocks.deepResearchJobsStore, expanded: false }
+    },
+    template: `
+      <section
+        v-if="Array.isArray(store.activeJobs) && store.activeJobs.length > 0"
+        data-testid="deep-research-task-dock"
+        class="deep-research-task-dock-stub"
+      >
+        <button
+          type="button"
+          data-testid="deep-research-task-dock-toggle"
+          @click="expanded = !expanded"
+        >
+          Toggle
+        </button>
+        <button
+          v-if="expanded && store.activeJobs[0] && store.activeJobs[0].conversation_id"
+          type="button"
+          :data-testid="'deep-research-task-dock-view-' + store.activeJobs[0].job_id"
+          @click="store.openJob(store.activeJobs[0].job_id, store.activeJobs[0].conversation_id)"
+        >
+          View result
+        </button>
+        <button
+          v-if="expanded && store.activeJobs[0] && store.activeJobs[0].job_id"
+          type="button"
+          :data-testid="'deep-research-task-dock-cancel-' + store.activeJobs[0].job_id"
+          @click="store.cancelJob(store.activeJobs[0].job_id)"
+        >
+          Cancel
+        </button>
+      </section>
+    `,
   })
 )
 
@@ -392,151 +443,6 @@ vi.mock('@/components/UserTaskProjectionCard.vue', () =>
   })
 )
 
-vi.mock('@/components/ChatActivityDock.vue', () =>
-  helpers.asAsyncSFCModule({
-    name: 'ChatActivityDock',
-    props: {
-      streamState: { type: Object, default: () => ({ phase: 'idle' }) },
-      canStop: { type: Boolean, default: false },
-      currentTasks: { type: Array, default: () => [] },
-      backgroundTasks: { type: Array, default: () => [] },
-      recentOutcome: { type: Object, default: null },
-      todoSummary: { type: Object, default: null },
-      todoCollapsed: { type: Boolean, default: false },
-    },
-    emits: [
-      'update:expanded',
-      'cancel',
-      'retry',
-      'action',
-      'open',
-      'navigate',
-      'dismiss-outcome',
-      'todo-toggle',
-      'todo-jump',
-    ],
-    template: `
-      <section
-        v-if="
-          canStop ||
-          (streamState && streamState.phase !== 'idle' && streamState.phase !== 'completed') ||
-          (Array.isArray(currentTasks) && currentTasks.length > 0) ||
-          (Array.isArray(backgroundTasks) && backgroundTasks.length > 0) ||
-          recentOutcome ||
-          todoSummary
-        "
-        data-testid="chat-activity-dock"
-        class="chat-activity-dock-stub"
-      >
-        <div class="chat-activity-dock-stub__header">
-          <span class="chat-activity-dock-stub__label">
-            {{ (streamState && (streamState.label || streamState.phase)) || '' }}
-          </span>
-          <button
-            v-if="streamState && streamState.phase === 'interrupted' && streamState.canRetry"
-            type="button"
-            data-testid="chat-activity-dock-retry"
-            @click="$emit('retry')"
-          >
-            Retry
-          </button>
-          <button
-            v-if="canStop"
-            type="button"
-            data-testid="chat-activity-dock-stop"
-            @click="$emit('cancel')"
-          >
-            Stop generating
-          </button>
-        </div>
-
-        <div
-          v-if="Array.isArray(currentTasks) && currentTasks.length > 0"
-          data-testid="chat-activity-dock-current"
-        >
-          <div v-for="task in currentTasks" :key="'current-' + task.id">
-            <button
-              v-if="task.detail_href"
-              class="task-projection-card-navigate-stub"
-              @click="$emit('navigate', task.detail_href)"
-            >
-              Open run details
-            </button>
-            <button
-              v-if="task.actions && Array.isArray(task.actions.items) && task.actions.items[0]"
-              class="task-projection-card-action-stub"
-              @click="$emit('action', task, task.actions.items[0].id)"
-            >
-              {{ task.actions.items[0].label }}
-            </button>
-          </div>
-        </div>
-
-        <div
-          v-if="Array.isArray(backgroundTasks) && backgroundTasks.length > 0"
-          data-testid="chat-activity-dock-background"
-        >
-          <div v-for="task in backgroundTasks" :key="'background-' + task.id">
-            <button
-              v-if="task.detail_href"
-              class="task-projection-card-navigate-stub"
-              @click="$emit('navigate', task.detail_href)"
-            >
-              Open run details
-            </button>
-            <button
-              v-if="task.actions && Array.isArray(task.actions.items) && task.actions.items[0]"
-              class="task-projection-card-action-stub"
-              @click="$emit('action', task, task.actions.items[0].id)"
-            >
-              {{ task.actions.items[0].label }}
-            </button>
-          </div>
-        </div>
-
-        <section v-if="recentOutcome" data-testid="chat-activity-dock-outcome">
-          <span>{{ recentOutcome.title }}</span>
-          <button
-            type="button"
-            data-testid="chat-activity-dock-dismiss-outcome"
-            @click="$emit('dismiss-outcome')"
-          >
-            Dismiss
-          </button>
-        </section>
-
-        <section v-if="todoSummary" data-testid="chat-activity-dock-todo">
-          <div class="chat-activity-dock__todo-summary">
-            {{ todoSummary.completedCount }} out of {{ todoSummary.totalCount }} tasks completed
-          </div>
-          <button
-            type="button"
-            data-testid="chat-activity-dock-todo-jump"
-            @click="$emit('todo-jump')"
-          >
-            Jump to checklist message
-          </button>
-          <button
-            type="button"
-            data-testid="chat-activity-dock-todo-toggle"
-            @click="$emit('todo-toggle')"
-          >
-            {{ todoCollapsed ? 'Expand todo list' : 'Collapse todo list' }}
-          </button>
-          <ol v-if="!todoCollapsed" class="chat-activity-dock__todo-list">
-            <li
-              v-for="(item, index) in todoSummary.items"
-              :key="todoSummary.messageId + '-' + index"
-            >
-              {{ item.text }}
-            </li>
-          </ol>
-        </section>
-      </section>
-    `,
-  })
-)
-
 vi.mock('@/components/UserTaskProjectionDock.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'UserTaskProjectionDock',
@@ -545,7 +451,11 @@ vi.mock('@/components/UserTaskProjectionDock.vue', () =>
     },
     emits: ['action', 'open', 'navigate'],
     template: `
-      <div class="deep-research-task-dock-stub">
+      <section
+        v-if="Array.isArray(tasks) && tasks.length > 0"
+        data-testid="task-projection-dock"
+        class="task-projection-dock-stub"
+      >
         <button
           v-if="Array.isArray(tasks) && tasks[0] && tasks[0].detail_href"
           class="task-projection-dock-navigate-stub"
@@ -566,7 +476,7 @@ vi.mock('@/components/UserTaskProjectionDock.vue', () =>
         >
           {{ tasks[0].actions.items[0].label }}
         </button>
-      </div>
+      </section>
     `,
   })
 )
@@ -958,37 +868,38 @@ describe('ChatView page-level card actions', () => {
       },
     ])
 
-    const dock = wrapper.get('[data-testid="chat-activity-dock"]')
-    const panel = wrapper.get('[data-testid="chat-activity-dock-todo"]')
-    expect(dock.text()).toContain('1 out of 3 tasks completed')
+    const panel = wrapper.get('[data-testid="active-todo-panel"]')
+    expect(panel.text()).toContain('1 out of 3 tasks completed')
     expect(panel.text()).toContain('梳理 ChatView/ChatInput 与 todo 状态来源')
     expect(panel.text()).toContain('实现输入框上方的活跃 todo 状态展示与样式')
     expect(panel.text()).toContain('补上或更新前端测试，验证状态展示逻辑')
     expect(panel.text()).not.toContain('旧任务')
-    expect(wrapper.find('.chat-activity-dock__todo-list').exists()).toBe(true)
+    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(true)
 
-    await wrapper.get('[data-testid="chat-activity-dock-todo-jump"]').trigger('click')
+    await wrapper.get('[data-testid="active-todo-panel-jump"]').trigger('click')
     await flushPromises()
 
     expect(scrollIntoViewMock).toHaveBeenCalled()
     expect(wrapper.get('[data-message-id="msg-latest"]').classes()).toContain('is-todo-focused')
 
-    await wrapper.get('[data-testid="chat-activity-dock-todo-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="active-todo-panel-toggle"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('.chat-activity-dock__todo-list').exists()).toBe(false)
+    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(false)
     expect(localStorageMock.getItem('zima.chat.active_todo_collapsed.v1')).toBe('1')
 
-    await wrapper.get('[data-testid="chat-activity-dock-todo-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="active-todo-panel-toggle"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('.chat-activity-dock__todo-list').exists()).toBe(true)
+    expect(wrapper.find('.active-todo-panel__list').exists()).toBe(true)
     expect(localStorageMock.getItem('zima.chat.active_todo_collapsed.v1')).toBeNull()
 
     const dockChildren = Array.from(wrapper.get('.chat-input-dock').element.children)
     const panelIndex = dockChildren.findIndex(
       (child) =>
-        child instanceof HTMLElement && !!child.querySelector('[data-testid="chat-activity-dock"]')
+        child instanceof HTMLElement &&
+        (child.matches('[data-testid="active-todo-panel"]') ||
+          !!child.querySelector('[data-testid="active-todo-panel"]'))
     )
     const inputIndex = dockChildren.findIndex(
       (child) => child instanceof HTMLElement && child.classList.contains('chat-input-stub')
@@ -1011,7 +922,7 @@ describe('ChatView page-level card actions', () => {
       },
     ])
 
-    expect(wrapper.find('[data-testid="chat-activity-dock-todo"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(false)
   })
 
   it('hides the active todo panel when the latest checklist has an explicit completion signal', async () => {
@@ -1028,7 +939,7 @@ describe('ChatView page-level card actions', () => {
       },
     ])
 
-    expect(wrapper.find('[data-testid="chat-activity-dock-todo"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(false)
   })
 
   it('toggles waiting indicator, stop button, and input disabled state across conversation switches', async () => {
@@ -1042,7 +953,7 @@ describe('ChatView page-level card actions', () => {
     ])
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
@@ -1064,7 +975,7 @@ describe('ChatView page-level card actions', () => {
     const otherWrapper = await mountChatViewWithMessages([])
 
     expect(otherWrapper.text()).not.toContain('Waiting for your confirmation to continue')
-    expect(otherWrapper.find('[data-testid="chat-activity-dock-stop"]').exists()).toBe(false)
+    expect(otherWrapper.find('[data-testid="chat-input-inline-cancel"]').exists()).toBe(false)
     expect(otherWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('false')
     expect(otherWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('false')
     expect(otherWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('false')
@@ -1088,13 +999,13 @@ describe('ChatView page-level card actions', () => {
     ])
 
     expect(restoredWrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(restoredWrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
+    expect(restoredWrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
   })
 
-  it('shows the unified activity dock when the last streaming assistant message only contains cards', async () => {
+  it('shows the restored external stream rail when the last streaming assistant message only contains cards', async () => {
     const cardOnlyMessage = makeTypelessBlock({
       type: 'result',
       id: 'card-only-result',
@@ -1110,8 +1021,9 @@ describe('ChatView page-level card actions', () => {
       { id: 'msg-streaming-card-only', content: cardOnlyMessage },
     ])
 
-    expect(wrapper.get('[data-testid="chat-activity-dock"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
+    expect(wrapper.find('.chat-stream-status-rail').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chat-activity-dock"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
     expect(wrapper.find('.chat-streaming-actions').exists()).toBe(false)
   })
 
@@ -1170,7 +1082,7 @@ describe('ChatView page-level card actions', () => {
     ])
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
 
     const convoButtons = wrapper.findAll('.conversation-select-stub')
     expect(convoButtons).toHaveLength(2)
@@ -1182,7 +1094,7 @@ describe('ChatView page-level card actions', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('Waiting for your confirmation to continue')
-    expect(wrapper.find('[data-testid="chat-activity-dock-stop"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="chat-input-inline-cancel"]').exists()).toBe(false)
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('false')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('false')
 
@@ -1193,7 +1105,7 @@ describe('ChatView page-level card actions', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
-    expect(wrapper.get('[data-testid="chat-activity-dock-stop"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
   })
@@ -1341,12 +1253,10 @@ describe('ChatView page-level card actions', () => {
       { id: 'msg-bg-task', content: 'Background workflow is waiting for input.' },
     ])
 
-    const resumeButtons = wrapper
-      .findAll('button')
-      .filter((button) => button.text() === 'Resume workflow')
-    expect(resumeButtons.length).toBeGreaterThan(0)
+    expect(wrapper.get('[data-testid="task-projection-dock"]').exists()).toBe(true)
+    const resumeButton = wrapper.get('.task-projection-dock-action-stub')
 
-    await resumeButtons[0]!.trigger('click')
+    await resumeButton.trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="task-action-dialog"]').exists()).toBe(true)
@@ -1364,6 +1274,48 @@ describe('ChatView page-level card actions', () => {
         payload: { ticket: 'B-2' },
       }
     )
+  })
+
+  it('renders the deep research dock above the composer and forwards view plus cancel actions', async () => {
+    mocks.deepResearchJobsStore.activeJobs = [
+      {
+        id: 'job-1',
+        job_id: 'job-1',
+        conversation_id: 'conv-research',
+        query: 'Track session badge regressions',
+        status: 'running',
+        stage: 'planning',
+        progress: 48,
+        updated_at: '2026-03-20T12:00:00.000Z',
+      },
+    ]
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-research', content: 'Deep research is running.' },
+    ])
+
+    expect(wrapper.get('[data-testid="deep-research-task-dock"]').exists()).toBe(true)
+
+    const dockChildren = Array.from(wrapper.get('.chat-input-dock').element.children)
+    const researchDockIndex = dockChildren.findIndex(
+      (child) =>
+        child instanceof HTMLElement &&
+        !!child.querySelector('[data-testid="deep-research-task-dock"]')
+    )
+    const inputIndex = dockChildren.findIndex(
+      (child) => child instanceof HTMLElement && child.classList.contains('chat-input-stub')
+    )
+
+    expect(researchDockIndex).toBeGreaterThanOrEqual(0)
+    expect(inputIndex).toBeGreaterThan(researchDockIndex)
+
+    await wrapper.get('[data-testid="deep-research-task-dock-toggle"]').trigger('click')
+
+    await wrapper.get('[data-testid="deep-research-task-dock-view-job-1"]').trigger('click')
+    expect(mocks.deepResearchJobsStore.openJob).toHaveBeenCalledWith('job-1', 'conv-research')
+
+    await wrapper.get('[data-testid="deep-research-task-dock-cancel-job-1"]').trigger('click')
+    expect(mocks.deepResearchJobsStore.cancelJob).toHaveBeenCalledWith('job-1')
   })
 
   it('shows a notification when a direct task action fails', async () => {

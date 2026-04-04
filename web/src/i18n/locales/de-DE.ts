@@ -4864,7 +4864,8 @@ export default mergeHarnessLocale('de-DE', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub-Repositorysuchquellen für SKILL.md-, CLAUDE.md- und AGENT.md-Dateien.',
+          description:
+            'GitHub-Repositorysuchquellen für SKILL.md-, CLAUDE.md- und AGENT.md-Dateien.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4904,7 +4905,8 @@ export default mergeHarnessLocale('de-DE', {
         },
         curatedSkillUrl: {
           label: 'Externer Skill',
-          description: 'Kurierter Marktplatz-Eintrag, der aus einer direkten Skill-URL importiert wurde.',
+          description:
+            'Kurierter Marktplatz-Eintrag, der aus einer direkten Skill-URL importiert wurde.',
         },
         curatedGithubSeed: {
           label: 'Ausgewählte GitHub-Quellen',
@@ -4916,7 +4918,8 @@ export default mergeHarnessLocale('de-DE', {
         },
         seedInstance: {
           label: 'Entdeckungsseite {index}',
-          description: 'Entdeckungsseite {index}, die zu weiteren im Web gefundenen Skills verlinkt.',
+          description:
+            'Entdeckungsseite {index}, die zu weiteren im Web gefundenen Skills verlinkt.',
         },
       },
       hero: {
@@ -7441,6 +7444,9 @@ export default mergeHarnessLocale('de-DE', {
     summaryTitle: 'Websuche',
     resultCount: '{count} Ergebnisse',
     moreResults: '+{count} weitere',
+    emptyState: 'Keine passenden Ergebnisse gefunden',
+    partialState:
+      'Es werden Quellenzusammenfassungen angezeigt, da kein lesbarer Seiteninhalt verfügbar war.',
   },
   cardActions: {
     use_browser: 'Im Browser öffnen',

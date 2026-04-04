@@ -60,8 +60,9 @@ type ManagedLayout struct {
 }
 
 type PrepareRequest struct {
-	RepoURL string `json:"repo_url,omitempty"`
-	Ref     string `json:"ref,omitempty"`
+	RepoURL        string   `json:"repo_url,omitempty"`
+	Ref            string   `json:"ref,omitempty"`
+	RequestedParts []string `json:"requested_parts,omitempty"`
 }
 
 type Status struct {
@@ -75,6 +76,12 @@ type Status struct {
 	BinaryReady             bool       `json:"binary_ready"`
 	BinaryPath              string     `json:"binary_path,omitempty"`
 	BinarySHA256            string     `json:"binary_sha256,omitempty"`
+	ManifestPath            string     `json:"manifest_path,omitempty"`
+	SupportedParts          []string   `json:"supported_parts"`
+	OptimizedParts          []string   `json:"optimized_parts"`
+	PrimaryPart             string     `json:"primary_part,omitempty"`
+	SourceOptimizationRunID string     `json:"source_optimization_run_id,omitempty"`
+	SourceEvalRunID         string     `json:"source_eval_run_id,omitempty"`
 	LastPrepareAt           *time.Time `json:"last_prepare_at,omitempty"`
 	LastPrepareState        string     `json:"last_prepare_state,omitempty"`
 	LastError               string     `json:"last_error,omitempty"`
@@ -297,10 +304,16 @@ func (m *Manager) GetStatus(_ context.Context) Status {
 	defer m.mu.Unlock()
 	status := cloneStatus(m.status)
 	enrichStatusWithLastOptimizationSummary(m.layout, &status)
+	NormalizeStatusEvolvableParts(&status)
 	return status
 }
 
 func (m *Manager) Prepare(ctx context.Context, req PrepareRequest) (Status, error) {
+	requestedParts, err := NormalizeRequestedEvolvableParts(req.RequestedParts)
+	if err != nil {
+		return Status{}, err
+	}
+	req.RequestedParts = requestedParts
 	repo, err := NormalizeGitHubRepo(req.RepoURL)
 	if err != nil {
 		return m.failStatus(err)
@@ -340,6 +353,23 @@ func (m *Manager) Prepare(ctx context.Context, req PrepareRequest) (Status, erro
 	if err != nil {
 		return m.failStatus(err)
 	}
+	optimizedParts := append([]string{}, req.RequestedParts...)
+	manifestPath, err := writeRunnerArtifactManifest(binaryPath, RunnerArtifactManifest{
+		SchemaVersion:         RunnerArtifactManifestSchemaVersion,
+		BinarySHA256:          binarySHA,
+		RepoURL:               repo.CanonicalURL,
+		Ref:                   ref,
+		Commit:                resolvedCommit,
+		SupportedParts:        DefaultSupportedEvolvableParts(),
+		OptimizedParts:        optimizedParts,
+		PrimaryPart:           firstStringFromSlice(optimizedParts),
+		SourceOptimizationRun: "",
+		SourceEvalRun:         "",
+		BuiltAt:               time.Now().UTC(),
+	})
+	if err != nil {
+		return m.failStatus(err)
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -354,8 +384,16 @@ func (m *Manager) Prepare(ctx context.Context, req PrepareRequest) (Status, erro
 	m.status.BinarySHA256 = binarySHA
 	m.status.LastPrepareState = "ready"
 	m.status.LastError = ""
+	m.status.ManifestPath = manifestPath
+	m.status.SupportedParts = append([]string{}, DefaultSupportedEvolvableParts()...)
+	m.status.OptimizedParts = optimizedParts
+	m.status.PrimaryPart = firstStringFromSlice(optimizedParts)
+	m.status.SourceOptimizationRunID = ""
+	m.status.SourceEvalRunID = ""
 	_ = m.persistLocked()
-	return cloneStatus(m.status), nil
+	status := cloneStatus(m.status)
+	NormalizeStatusEvolvableParts(&status)
+	return status, nil
 }
 
 func (m *Manager) SetLastOptimizationRunID(id string) error {
@@ -377,7 +415,14 @@ func (m *Manager) RecordOptimizationEvent(id string, payload interface{}) error 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(payload, "", "  ")
+	normalizedPayload := payload
+	switch typed := payload.(type) {
+	case OptimizationRunRecord:
+		normalizedPayload = NormalizeOptimizationRunRecordEvolvableParts(typed)
+	case map[string]interface{}:
+		normalizedPayload = NormalizeOptimizationRunRecordEvolvableParts(OptimizationRunRecord(typed))
+	}
+	data, err := json.MarshalIndent(normalizedPayload, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -397,6 +442,13 @@ func (m *Manager) GetLastOptimizationRun(_ context.Context) (OptimizationRunReco
 		return nil, nil
 	}
 	return readOptimizationRunRecord(layout, runID)
+}
+
+func (m *Manager) GetOptimizationRun(_ context.Context, id string) (OptimizationRunRecord, error) {
+	if m == nil {
+		return nil, fmt.Errorf("manager is nil")
+	}
+	return readOptimizationRunRecord(m.layout, strings.TrimSpace(id))
 }
 
 func (m *Manager) ExecutePreparedRunnerACP(ctx context.Context, prompt string) (RunnerExecutionResult, error) {
@@ -1078,6 +1130,12 @@ func cloneStatus(status Status) Status {
 		copied := *status.LastOptimizationAt
 		out.LastOptimizationAt = &copied
 	}
+	if status.SupportedParts != nil {
+		out.SupportedParts = append([]string{}, status.SupportedParts...)
+	}
+	if status.OptimizedParts != nil {
+		out.OptimizedParts = append([]string{}, status.OptimizedParts...)
+	}
 	return out
 }
 
@@ -1096,6 +1154,24 @@ func enrichStatusWithLastOptimizationSummary(layout ManagedLayout, status *Statu
 	status.LastOptimizationAt = parseOptimizationRecordTime(record["created_at"])
 	status.LastOptimizationState = summarizeOptimizationState(record)
 	status.LastOptimizationSummary = summarizeOptimizationText(record)
+	if status.ManifestPath == "" {
+		status.ManifestPath = optimizationRecordString(record["manifest_path"])
+	}
+	if len(status.SupportedParts) == 0 {
+		status.SupportedParts = optimizationRecordStrings(record["supported_parts"])
+	}
+	if len(status.OptimizedParts) == 0 {
+		status.OptimizedParts = optimizationRecordStrings(record["optimized_parts"])
+	}
+	if status.PrimaryPart == "" {
+		status.PrimaryPart = optimizationRecordString(record["primary_part"])
+	}
+	if status.SourceOptimizationRunID == "" {
+		status.SourceOptimizationRunID = optimizationRecordString(record["source_optimization_run_id"])
+	}
+	if status.SourceEvalRunID == "" {
+		status.SourceEvalRunID = optimizationRecordString(record["source_eval_run_id"])
+	}
 }
 
 func readOptimizationRunRecord(layout ManagedLayout, runID string) (OptimizationRunRecord, error) {
@@ -1112,7 +1188,7 @@ func readOptimizationRunRecord(layout ManagedLayout, runID string) (Optimization
 	if err := json.Unmarshal(data, &record); err != nil {
 		return nil, err
 	}
-	return record, nil
+	return NormalizeOptimizationRunRecordEvolvableParts(record), nil
 }
 
 func parseOptimizationRecordTime(value interface{}) *time.Time {

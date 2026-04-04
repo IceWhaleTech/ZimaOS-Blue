@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -659,6 +660,53 @@ func TestTrimPolicyPruneContextMessagesWithReport_HardClearByTool(t *testing.T) 
 	}
 	if report.HardClearByTool["exec"] != 2 {
 		t.Fatalf("hard_clear_by_tool=%v, want exec:2", report.HardClearByTool)
+	}
+}
+
+func TestTrimPolicyPruneContextMessagesWithReport_WebQueryHardClearUsesSemanticSummary(t *testing.T) {
+	raw := buildWebQueryToolPayloadForLLMTests(strings.Repeat("On April 4, 2026, version 1.2.3 shipped 12 improvements, 4 fixes, and 2 migrations. ", 180))
+	contentBytes, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal web_query payload: %v", err)
+	}
+	longTool := string(contentBytes) + strings.Repeat("\n", 64)
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "tc1", Name: "web_query", Arguments: `{"input":"blue release notes"}`},
+			},
+		},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc1"},
+		{Role: llm.RoleUser, Content: "u2"},
+		{Role: llm.RoleAssistant, Content: "a2"},
+		{Role: llm.RoleUser, Content: "u3"},
+		{Role: llm.RoleAssistant, Content: "a3"},
+		{Role: llm.RoleUser, Content: "u4"},
+		{Role: llm.RoleAssistant, Content: "a4"},
+	}
+
+	settings := trimPolicyDefaultPruneSettings
+	settings.MinPrunableToolChars = 1500
+	settings.HardClearRatio = 0.4
+
+	out, report := trimPolicyPruneContextMessagesWithReport(msgs, 500, settings)
+	if out[2].Content == settings.HardClear.Placeholder {
+		t.Fatalf("web_query tool result fell back to generic placeholder: %q", out[2].Content)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(out[2].Content), &payload); err != nil {
+		t.Fatalf("semantic hard-clear payload must stay valid JSON: %v payload=%q", err, out[2].Content)
+	}
+	if got, ok := payload["has_results"].(bool); !ok || !got {
+		t.Fatalf("has_results = %#v, want true", payload["has_results"])
+	}
+	if _, ok := payload["selected_result"].(map[string]interface{}); !ok {
+		t.Fatalf("selected_result = %#v, want object", payload["selected_result"])
+	}
+	if report.HardCleared != 0 {
+		t.Fatalf("expected semantic downgrade instead of hard clear, report=%+v", report)
 	}
 }
 

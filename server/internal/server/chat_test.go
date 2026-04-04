@@ -572,6 +572,44 @@ func (p *scriptedChatProvider) RequestAt(idx int) (llm.ChatRequest, bool) {
 	return p.requests[idx], true
 }
 
+func buildFileReadRegressionContent(lineCount int, token string) string {
+	lines := make([]string, 0, lineCount)
+	for i := 1; i <= lineCount; i++ {
+		lines = append(lines, fmt.Sprintf("line %03d %s", i, strings.Repeat(token, 2)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func requireToolPayloadMessage(t *testing.T, req llm.ChatRequest, toolName string) (llm.Message, map[string]interface{}) {
+	t.Helper()
+
+	want := normalizeFileToolCompatName(toolName)
+	if want == "" {
+		want = strings.ToLower(strings.TrimSpace(toolName))
+	}
+
+	for _, msg := range req.Messages {
+		if msg.Role != llm.RoleTool {
+			continue
+		}
+		got := normalizeFileToolCompatName(msg.ToolName)
+		if got == "" {
+			got = strings.ToLower(strings.TrimSpace(msg.ToolName))
+		}
+		if got != want {
+			continue
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal([]byte(msg.Content), &payload); err != nil {
+			t.Fatalf("decode %s tool payload: %v content=%q", toolName, err, msg.Content)
+		}
+		return msg, payload
+	}
+
+	t.Fatalf("expected request to include %s tool result, got %#v", toolName, req.Messages)
+	return llm.Message{}, nil
+}
+
 func hasSystemAnchor(messages []llm.Message, title, goal string) bool {
 	for _, m := range messages {
 		if m.Role != llm.RoleSystem {
@@ -1516,6 +1554,207 @@ func TestProcessChannelMessage_AutoContinueRetriesEmptyReplyAfterToolRound(t *te
 	last := thirdReq.Messages[len(thirdReq.Messages)-1]
 	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
 		t.Fatalf("expected post-tool continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+}
+
+func TestChatHandlerSendMessage_PreservesHistoricalFileReadToolResultInPreparedContext(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "File read follow-up send")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	workspaceRoot := t.TempDir()
+	sourcePath := filepath.Join(workspaceRoot, "notes.txt")
+	rawContent := buildFileReadRegressionContent(240, "payload ")
+	if err := os.WriteFile(sourcePath, []byte(rawContent), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	readTool := tools.NewFileReadTool([]string{workspaceRoot}, 0)
+	readResult, err := readTool.Execute(context.Background(), map[string]interface{}{"path": sourcePath})
+	if err != nil {
+		t.Fatalf("execute file_read tool: %v", err)
+	}
+	readPayload, ok := readResult.(string)
+	if !ok {
+		t.Fatalf("file_read result type = %T, want string", readResult)
+	}
+
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "user",
+		Content: "请读取 notes.txt 并检查内容",
+	}); err != nil {
+		t.Fatalf("seed user message: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role: "assistant",
+		ToolCalls: []memory.ToolCall{{
+			ID:        "call_file_read_seed_1",
+			Name:      "file_read",
+			Arguments: fmt.Sprintf(`{"path":%q}`, sourcePath),
+		}},
+	}); err != nil {
+		t.Fatalf("seed assistant tool call: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:       "tool",
+		Content:    readPayload,
+		ToolCallID: "call_file_read_seed_1",
+		ToolName:   "file_read",
+	}); err != nil {
+		t.Fatalf("seed tool result: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"基于刚才读到的本地文件内容，直接告诉我第120行写了什么。不要创建或修改任何文件。","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	lastReq := capture.LastRequest()
+	toolMsg, payload := requireToolPayloadMessage(t, lastReq, "file_read")
+	if len(toolMsg.Content) > maxLLMToolOutputBytes {
+		t.Fatalf("file_read tool message too large: %d", len(toolMsg.Content))
+	}
+
+	content, _ := payload["content"].(string)
+	if len(content) <= 512 {
+		t.Fatalf("expected file_read follow-up content > 512 bytes, got %d", len(content))
+	}
+	if !strings.Contains(content, "line 120 payload payload ") {
+		t.Fatalf("expected preserved mid-file content in follow-up payload, got=%q", content)
+	}
+	if truncated, _ := payload["truncated"].(bool); truncated {
+		t.Fatalf("expected truncated=false for under-budget file_read payload, got true")
+	}
+}
+
+func TestChatHandlerSendMessage_WebQueryToolFollowUpKeepsNonEmptySummary(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Web query summary send")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-web-query-summary-send",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "web-query-summary-send-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_web_query_send_summary_1",
+						Name:      "web_query",
+						Arguments: `{"input":"blue release notes"}`,
+					}},
+				},
+			},
+			{
+				ID:      "web-query-summary-send-round-2",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "我已经整理好 Blue 的更新摘要。"},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&webSearchToolMock{
+		name:   "web_query",
+		result: buildWebQueryToolPayloadForLLMTests(strings.Repeat("On April 4, 2026, version 1.2.3 shipped 12 improvements, 4 fixes, and 2 migrations. ", 180)),
+	})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"请查一下 Blue 的最近更新，然后给我一个简短总结。","provider":"scripted-web-query-summary-send","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() < 2 {
+		t.Fatalf("expected at least 2 LLM rounds (web_query + follow-up), got %d", scripted.CallCount())
+	}
+
+	var followUpReq llm.ChatRequest
+	foundFollowUp := false
+	for idx := 0; idx < scripted.CallCount(); idx++ {
+		req, ok := scripted.RequestAt(idx)
+		if !ok {
+			continue
+		}
+		for _, msg := range req.Messages {
+			if msg.Role == llm.RoleTool && msg.ToolName == "web_query" {
+				followUpReq = req
+				foundFollowUp = true
+				break
+			}
+		}
+		if foundFollowUp {
+			break
+		}
+	}
+	if !foundFollowUp {
+		t.Fatalf("missing follow-up request carrying web_query tool result")
+	}
+
+	toolMsg, payload := requireToolPayloadMessage(t, followUpReq, "web_query")
+	if len(toolMsg.Content) > maxLLMToolOutputBytes {
+		t.Fatalf("web_query tool message too large: %d", len(toolMsg.Content))
+	}
+	if got, ok := payload["has_results"].(bool); !ok || !got {
+		t.Fatalf("has_results = %#v, want true", payload["has_results"])
+	}
+	if _, ok := payload["selected_result"].(map[string]interface{}); !ok {
+		t.Fatalf("selected_result = %#v, want object", payload["selected_result"])
+	}
+	facts, ok := payload["key_facts"].([]interface{})
+	if !ok || len(facts) == 0 {
+		t.Fatalf("key_facts = %#v, want non-empty array", payload["key_facts"])
+	}
+	if got, ok := payload["llm_compacted"].(bool); !ok || !got {
+		t.Fatalf("llm_compacted = %#v, want true", payload["llm_compacted"])
 	}
 }
 

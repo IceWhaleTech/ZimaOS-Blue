@@ -2605,8 +2605,8 @@ export default mergeHarnessLocale('nb-NO', {
       descriptionPlaceholder: 'Beskriv denne kilden...',
       cancel: 'Avbryt',
       add: 'Legg til',
-    close: 'Lukk',
-    backToTop: 'Tilbake til toppen',
+      close: 'Lukk',
+      backToTop: 'Tilbake til toppen',
       refresh: 'Oppdater',
       allLevels: 'Alle nivåer',
       error: 'Feil',
@@ -4563,7 +4563,8 @@ export default mergeHarnessLocale('nb-NO', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub-kilder for repositoriesøk etter SKILL.md-, CLAUDE.md- og AGENT.md-filer.',
+          description:
+            'GitHub-kilder for repositoriesøk etter SKILL.md-, CLAUDE.md- og AGENT.md-filer.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -6985,6 +6986,8 @@ export default mergeHarnessLocale('nb-NO', {
     summaryTitle: 'Nettsok',
     resultCount: '{count} resultater',
     moreResults: '+{count} flere',
+    emptyState: 'Fant ingen samsvarende resultater',
+    partialState: 'Viser kildesammendrag fordi lesbart sideinnhold ikke var tilgjengelig.',
   },
   cardActions: {
     use_browser: 'Bruk nettleser',

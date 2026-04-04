@@ -2627,8 +2627,8 @@ export default mergeHarnessLocale('ro-RO', {
       descriptionPlaceholder: 'Descrie această sursă...',
       cancel: 'Anulează',
       add: 'Adaugă',
-    close: 'Închide',
-    backToTop: 'Înapoi sus',
+      close: 'Închide',
+      backToTop: 'Înapoi sus',
       refresh: 'Actualizează',
       allLevels: 'Toate nivelurile',
       error: 'Eroare',
@@ -4606,7 +4606,8 @@ export default mergeHarnessLocale('ro-RO', {
         },
         github: {
           label: 'GitHub',
-          description: 'Surse de căutare în depozite GitHub pentru fișiere SKILL.md, CLAUDE.md și AGENT.md.',
+          description:
+            'Surse de căutare în depozite GitHub pentru fișiere SKILL.md, CLAUDE.md și AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4658,7 +4659,8 @@ export default mergeHarnessLocale('ro-RO', {
         },
         seedInstance: {
           label: 'Pagina de descoperire {index}',
-          description: 'Pagina de descoperire {index} care trimite către mai multe skilluri găsite pe web.',
+          description:
+            'Pagina de descoperire {index} care trimite către mai multe skilluri găsite pe web.',
         },
       },
       hero: {
@@ -7051,6 +7053,9 @@ export default mergeHarnessLocale('ro-RO', {
     summaryTitle: 'Cautare pe web',
     resultCount: '{count} rezultate',
     moreResults: '+{count} în plus',
+    emptyState: 'Nu au fost găsite rezultate potrivite',
+    partialState:
+      'Sunt afișate rezumate ale surselor deoarece conținutul lizibil al paginii nu a fost disponibil.',
   },
   cardActions: {
     use_browser: 'Folosește browserul',

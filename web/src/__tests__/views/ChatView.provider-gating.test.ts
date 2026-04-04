@@ -393,7 +393,6 @@ describe('ChatView provider gating', () => {
           ExecApprovalDialog: { template: '<div class="exec-approval-stub" />' },
           MediaParamPanel: { template: '<div class="media-param-panel-stub" />' },
           UserTaskProjectionCard: { template: '<div class="agent-task-panel-stub" />' },
-          ChatActivityDock: { template: '<div class="chat-activity-dock-stub" />' },
           UserTaskProjectionDock: { template: '<div class="deep-research-task-dock-stub" />' },
           Teleport: true,
           Transition: true,

@@ -4750,7 +4750,8 @@ export default mergeHarnessLocale('pt-BR', {
         },
         github: {
           label: 'GitHub',
-          description: 'Fontes de busca de repositórios no GitHub para arquivos SKILL.md, CLAUDE.md e AGENT.md.',
+          description:
+            'Fontes de busca de repositórios no GitHub para arquivos SKILL.md, CLAUDE.md e AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4798,11 +4799,13 @@ export default mergeHarnessLocale('pt-BR', {
         },
         seed: {
           label: 'Páginas de descoberta',
-          description: 'Páginas de descoberta que apontam para mais habilidades encontradas na web.',
+          description:
+            'Páginas de descoberta que apontam para mais habilidades encontradas na web.',
         },
         seedInstance: {
           label: 'Página de descoberta {index}',
-          description: 'Página de descoberta {index} que aponta para mais habilidades encontradas na web.',
+          description:
+            'Página de descoberta {index} que aponta para mais habilidades encontradas na web.',
         },
       },
       hero: {
@@ -7293,6 +7296,9 @@ export default mergeHarnessLocale('pt-BR', {
     summaryTitle: 'Pesquisa na web',
     resultCount: '{count} resultados',
     moreResults: '+{count} a mais',
+    emptyState: 'Nenhum resultado correspondente encontrado',
+    partialState:
+      'Mostrando resumos das fontes porque o conteúdo legível da página não estava disponível.',
   },
   cardActions: {
     use_browser: 'Usar navegador',

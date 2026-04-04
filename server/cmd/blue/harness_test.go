@@ -113,6 +113,10 @@ func resetHarnessCLIState(t *testing.T) {
 	oldCutoverMinMedianSchemaByteReductionRate := harnessCutoverMinMedianSchemaByteReductionRate
 	oldCutoverMaxMedianLatencyIncreaseRate := harnessCutoverMaxMedianLatencyIncreaseRate
 	oldCutoverAllowedFinalNativeTools := harnessCutoverAllowedFinalNativeTools
+	oldSkillID := harnessSkillID
+	oldSkillEvalRunID := harnessSkillEvalRunID
+	oldSkillCandidateID := harnessSkillCandidateID
+	oldSkillSourcePath := harnessSkillSourcePath
 
 	t.Cleanup(func() {
 		jsonOutput = oldJSONOutput
@@ -165,6 +169,10 @@ func resetHarnessCLIState(t *testing.T) {
 		harnessCutoverMinMedianSchemaByteReductionRate = oldCutoverMinMedianSchemaByteReductionRate
 		harnessCutoverMaxMedianLatencyIncreaseRate = oldCutoverMaxMedianLatencyIncreaseRate
 		harnessCutoverAllowedFinalNativeTools = oldCutoverAllowedFinalNativeTools
+		harnessSkillID = oldSkillID
+		harnessSkillEvalRunID = oldSkillEvalRunID
+		harnessSkillCandidateID = oldSkillCandidateID
+		harnessSkillSourcePath = oldSkillSourcePath
 	})
 
 	jsonOutput = true
@@ -217,6 +225,10 @@ func resetHarnessCLIState(t *testing.T) {
 	harnessCutoverMinMedianSchemaByteReductionRate = ""
 	harnessCutoverMaxMedianLatencyIncreaseRate = ""
 	harnessCutoverAllowedFinalNativeTools = ""
+	harnessSkillID = ""
+	harnessSkillEvalRunID = ""
+	harnessSkillCandidateID = ""
+	harnessSkillSourcePath = ""
 }
 
 func writeHarnessCLITestConfig(t *testing.T, jwtSecret string) string {
@@ -1040,6 +1052,152 @@ func TestRunHarnessCutoverReadinessReturnsStructuredReport(t *testing.T) {
 	}
 	if report.EvaluatedGatesReady {
 		t.Fatalf("evaluated_gates_ready = %#v, want false", report.EvaluatedGatesReady)
+	}
+}
+
+func TestRunHarnessSkillOptimizePostsManualRequest(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/harness/skills/browser/optimize", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("optimize method = %s, want POST", r.Method)
+		}
+		var req harnesspkg.SkillOptimizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode optimize request: %v", err)
+		}
+		if req.EvalRunID != "eval-manual-1" {
+			t.Fatalf("eval_run_id = %q, want eval-manual-1", req.EvalRunID)
+		}
+		if req.CandidateID != "candidate-manual-1" {
+			t.Fatalf("candidate_id = %q, want candidate-manual-1", req.CandidateID)
+		}
+		if req.SourcePath != "assets/skills/browser/SKILL.md" {
+			t.Fatalf("source_path = %q, want assets/skills/browser/SKILL.md", req.SourcePath)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(harnesspkg.OptimizationTrigger{
+			Reason:              harnesspkg.OptimizationReasonManualSkillOptimize,
+			CandidateID:         "candidate-manual-1",
+			EvalRunID:           "eval-manual-1",
+			OptimizationSurface: harnesspkg.OptimizationSurfaceSkillDefinition,
+			Metadata: map[string]interface{}{
+				"followup_gate": "selector",
+			},
+		})
+	})
+
+	addr := setupHarnessCLIServer(t, mux)
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	t.Setenv("BLUE_SERVER_HOST", host)
+	t.Setenv("BLUE_SERVER_PORT", portStr)
+
+	harnessSkillID = "browser"
+	harnessSkillEvalRunID = "eval-manual-1"
+	harnessSkillCandidateID = "candidate-manual-1"
+	harnessSkillSourcePath = "assets/skills/browser/SKILL.md"
+
+	out := captureStdout(t, func() {
+		err = runHarnessSkillOptimizeE(nil, nil)
+	})
+	if err != nil {
+		t.Fatalf("runHarnessSkillOptimizeE error: %v", err)
+	}
+
+	var event harnesspkg.OptimizationTrigger
+	if decodeErr := json.Unmarshal([]byte(out), &event); decodeErr != nil {
+		t.Fatalf("decode optimize output: %v\n%s", decodeErr, out)
+	}
+	if event.Reason != harnesspkg.OptimizationReasonManualSkillOptimize || event.EvalRunID != "eval-manual-1" {
+		t.Fatalf("event = %#v, want manual optimize trigger", event)
+	}
+}
+
+func TestRunHarnessSkillRevisionsReturnsStructuredList(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/harness/skills/browser/revisions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("revisions method = %s, want GET", r.Method)
+		}
+		_ = json.NewEncoder(w).Encode([]harnesspkg.SkillRevision{
+			{
+				ID:          "rev-1",
+				SkillID:     "browser",
+				Status:      harnesspkg.SkillRevisionStatusAccepted,
+				SourcePath:  "assets/skills/browser/SKILL.md",
+				CandidateID: "candidate-browser-1",
+			},
+		})
+	})
+
+	addr := setupHarnessCLIServer(t, mux)
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	t.Setenv("BLUE_SERVER_HOST", host)
+	t.Setenv("BLUE_SERVER_PORT", portStr)
+
+	harnessSkillID = "browser"
+
+	out := captureStdout(t, func() {
+		err = runHarnessSkillRevisionsE(nil, nil)
+	})
+	if err != nil {
+		t.Fatalf("runHarnessSkillRevisionsE error: %v", err)
+	}
+
+	var revisions []harnesspkg.SkillRevision
+	if decodeErr := json.Unmarshal([]byte(out), &revisions); decodeErr != nil {
+		t.Fatalf("decode revisions output: %v\n%s", decodeErr, out)
+	}
+	if len(revisions) != 1 || revisions[0].SkillID != "browser" {
+		t.Fatalf("revisions = %#v, want one browser revision", revisions)
+	}
+}
+
+func TestRunHarnessSkillPromoteReturnsPromotionResult(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/harness/skill-revisions/rev-1/promote", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("promote method = %s, want POST", r.Method)
+		}
+		_ = json.NewEncoder(w).Encode(harnesspkg.SkillPromoteResult{
+			PromotedRevisionID: "rev-1",
+			BackupRevisionID:   "backup-1",
+			WrittenSourcePath:  "/tmp/repo/assets/skills/browser/SKILL.md",
+		})
+	})
+
+	addr := setupHarnessCLIServer(t, mux)
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	t.Setenv("BLUE_SERVER_HOST", host)
+	t.Setenv("BLUE_SERVER_PORT", portStr)
+
+	out := captureStdout(t, func() {
+		err = runHarnessSkillPromoteE(nil, []string{"rev-1"})
+	})
+	if err != nil {
+		t.Fatalf("runHarnessSkillPromoteE error: %v", err)
+	}
+
+	var result harnesspkg.SkillPromoteResult
+	if decodeErr := json.Unmarshal([]byte(out), &result); decodeErr != nil {
+		t.Fatalf("decode promote output: %v\n%s", decodeErr, out)
+	}
+	if result.PromotedRevisionID != "rev-1" || result.BackupRevisionID != "backup-1" {
+		t.Fatalf("result = %#v, want rev-1/back-up-1", result)
 	}
 }
 

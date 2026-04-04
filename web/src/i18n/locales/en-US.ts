@@ -4574,7 +4574,8 @@ export default mergeHarnessLocale('en-US', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
+          description:
+            'GitHub repository search sources for SKILL.md, CLAUDE.md, and AGENT.md files.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -6954,6 +6955,8 @@ export default mergeHarnessLocale('en-US', {
     summaryTitle: 'Web search',
     resultCount: '{count} results',
     moreResults: '+{count} more',
+    emptyState: 'No matching results',
+    partialState: 'Showing source summaries because readable page content was unavailable.',
   },
   cardActions: {
     use_browser: 'Use browser',

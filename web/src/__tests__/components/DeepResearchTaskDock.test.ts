@@ -104,6 +104,18 @@ describe('DeepResearchTaskDock', () => {
     mocks.deepResearchJobsStore.activeJobs = makeJobs()
   })
 
+  it('does not render when there are no active jobs', () => {
+    mocks.deepResearchJobsStore.activeJobs = []
+
+    const wrapper = mount(DeepResearchTaskDock, {
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    expect(wrapper.find('[data-testid="deep-research-task-dock"]').exists()).toBe(false)
+  })
+
   it('starts collapsed and expands to show active job details', async () => {
     const wrapper = mount(DeepResearchTaskDock, {
       global: {

@@ -2608,8 +2608,8 @@ export default mergeHarnessLocale('sv-SE', {
       descriptionPlaceholder: 'Beskriv denna källa...',
       cancel: 'Avbryt',
       add: 'Lägg till',
-    close: 'Stäng',
-    backToTop: 'Tillbaka till toppen',
+      close: 'Stäng',
+      backToTop: 'Tillbaka till toppen',
       refresh: 'Uppdatera',
       allLevels: 'Alla nivåer',
       error: 'Fel',
@@ -4566,7 +4566,8 @@ export default mergeHarnessLocale('sv-SE', {
         },
         github: {
           label: 'GitHub',
-          description: 'GitHub-källor för repositoriesökning efter filer som SKILL.md, CLAUDE.md och AGENT.md.',
+          description:
+            'GitHub-källor för repositoriesökning efter filer som SKILL.md, CLAUDE.md och AGENT.md.',
         },
         githubSkillMd: {
           label: 'GitHub SKILL.md',
@@ -4618,7 +4619,8 @@ export default mergeHarnessLocale('sv-SE', {
         },
         seedInstance: {
           label: 'Upptäcktssida {index}',
-          description: 'Upptäcktssida {index} som länkar till fler färdigheter som hittats på webben.',
+          description:
+            'Upptäcktssida {index} som länkar till fler färdigheter som hittats på webben.',
         },
       },
       hero: {
@@ -7098,6 +7100,9 @@ export default mergeHarnessLocale('sv-SE', {
     summaryTitle: 'Webbsokning',
     resultCount: '{count} resultat',
     moreResults: '+{count} till',
+    emptyState: 'Inga matchande resultat hittades',
+    partialState:
+      'Visar källsammanfattningar eftersom sidans läsbara innehåll inte var tillgängligt.',
   },
   cardActions: {
     use_browser: 'Använd webbläsare',

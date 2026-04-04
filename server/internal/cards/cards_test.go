@@ -19,7 +19,7 @@ func TestToCard(t *testing.T) {
 		{"calculator_error", "calculator", `{"error":"bad expr"}`, "result", false},
 		{"calculator_invalid", "calculator", `not json`, "", true},
 		{"web_search", "web_search", `{"query":"go","results":[{"title":"Go"}],"total_count":1}`, "search", false},
-		{"web_search_empty", "web_search", `{"query":"go","results":[],"total_count":0}`, "", true},
+		{"web_search_empty", "web_search", `{"query":"go","results":[],"total_count":0}`, "search", false},
 		{"web_query", "web_query", `{"status":"ok","mode":"search_read","title":"Example","content":"Hello world","target_url":"https://example.com","final_url":"https://example.com","sources":[{"title":"Example","url":"https://example.com","selected":true}],"warnings":[],"next_action":"none","diagnostics":{"route":"search_read","attempts":[],"candidate_count":1,"selected_source":1,"degraded":false}}`, "result", false},
 		{"web_query_video", "web_query", `{"status":"ok","mode":"video_read","title":"Demo video","content":"Transcript preview","target_url":"https://www.youtube.com/watch?v=demo","final_url":"https://www.youtube.com/watch?v=demo","media":{"platform":"youtube","language":"en"},"page":{"content":"Page summary"},"transcript":{"source":"subtitle_manual","language":"en","text":"Transcript preview"},"sources":[{"title":"Transcript","url":"https://www.youtube.com/api/timedtext","selected":true}],"warnings":[],"next_action":"none","diagnostics":{"route":"video_url","attempts":[],"candidate_count":1,"selected_source":1,"degraded":false}}`, "result", false},
 		{"web_fetch_warning", "web_fetch", `{"url":"https://www.reddit.com/r/test","title":"Sign in","content":"Log in to continue","content_type":"text/html","extract_mode":"text","extractor":"html","warning":"page appears to be a login wall; use browser or pass browser_target_id","warning_code":"login_wall"}`, "web-fetch", false},
@@ -136,18 +136,94 @@ func TestWebQueryCard_SearchOnlyEnvelopeBecomesSearchCard(t *testing.T) {
 	if got := card["query"]; got != "OpenAI latest updates" {
 		t.Fatalf("query=%v, want OpenAI latest updates", got)
 	}
-	results, ok := card["results"].([]map[string]interface{})
-	if !ok || len(results) != 2 {
+	rawResults, ok := card["results"].([]interface{})
+	if !ok || len(rawResults) != 2 {
 		t.Fatalf("results=%T %#v, want 2 mapped search results", card["results"], card["results"])
 	}
-	if results[0]["title"] != "OpenAI blog" {
-		t.Fatalf("first result title=%v, want OpenAI blog", results[0]["title"])
+	first, ok := rawResults[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("first result=%T, want map[string]interface{}", rawResults[0])
 	}
-	if results[0]["description"] != "Latest announcements and product updates." {
-		t.Fatalf("first result description=%v, want snippet", results[0]["description"])
+	second, ok := rawResults[1].(map[string]interface{})
+	if !ok {
+		t.Fatalf("second result=%T, want map[string]interface{}", rawResults[1])
 	}
-	if results[1]["url"] != "https://platform.openai.com/docs" {
-		t.Fatalf("second result url=%v, want docs url", results[1]["url"])
+	if first["title"] != "OpenAI blog" {
+		t.Fatalf("first result title=%v, want OpenAI blog", first["title"])
+	}
+	if first["description"] != "Latest announcements and product updates." {
+		t.Fatalf("first result description=%v, want snippet", first["description"])
+	}
+	if second["url"] != "https://platform.openai.com/docs" {
+		t.Fatalf("second result url=%v, want docs url", second["url"])
+	}
+}
+
+func TestWebSearchCard_EmptyResultsBecomeExplicitEmptySearchCard(t *testing.T) {
+	card := ToCard("web_search", `{"query":"go","results":[],"total_count":0,"provider":"duckduckgo"}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "search" {
+		t.Fatalf("type=%v, want search", got)
+	}
+	if got := card["status"]; got != "empty" {
+		t.Fatalf("status=%v, want empty", got)
+	}
+	if got := card["provider"]; got != "duckduckgo" {
+		t.Fatalf("provider=%v, want duckduckgo", got)
+	}
+	if got := card["query"]; got != "go" {
+		t.Fatalf("query=%v, want go", got)
+	}
+	if message := strings.TrimSpace(card["message"].(string)); !strings.Contains(message, "No matching sources") {
+		t.Fatalf("message=%q, want explicit empty-state text", message)
+	}
+	results, ok := card["results"].([]interface{})
+	if !ok {
+		t.Fatalf("results=%T, want []interface{}", card["results"])
+	}
+	if len(results) != 0 {
+		t.Fatalf("results len=%d, want 0", len(results))
+	}
+}
+
+func TestWebQueryCard_NoResultsEnvelopeBecomesEmptySearchCard(t *testing.T) {
+	card := ToCard("web_query", `{"status":"partial","mode":"search","query":"OpenAI latest updates","next_action":"refine_query","warnings":[{"code":"no_results","message":"no matching sources were found"}],"sources":[]}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "search" {
+		t.Fatalf("type=%v, want search", got)
+	}
+	if got := card["status"]; got != "empty" {
+		t.Fatalf("status=%v, want empty", got)
+	}
+	if message := strings.TrimSpace(card["message"].(string)); !strings.Contains(message, "no matching sources") {
+		t.Fatalf("message=%q, want no-results fallback", message)
+	}
+}
+
+func TestWebQueryCard_SearchCardEmittedSkipsDuplicateSearchOnlyCard(t *testing.T) {
+	card := ToCard("web_query", `{"status":"partial","mode":"search","query":"OpenAI latest updates","search_card_emitted":true,"next_action":"refine_query","sources":[{"title":"OpenAI blog","url":"https://openai.com/blog","snippet":"Latest announcements and product updates.","selected":true}]}`)
+	if card != nil {
+		t.Fatalf("expected nil card when search card already emitted, got %#v", card)
+	}
+}
+
+func TestWebQueryCard_SearchCardEmittedStillReturnsSecondaryDetailCard(t *testing.T) {
+	card := ToCard("web_query", `{"status":"ok","mode":"search_read","query":"OpenAI latest updates","search_card_emitted":true,"title":"OpenAI blog","content":"Readable article body","target_url":"https://openai.com/blog","final_url":"https://openai.com/blog","sources":[{"title":"OpenAI blog","url":"https://openai.com/blog","snippet":"Latest announcements and product updates.","selected":true}],"next_action":"none"}`)
+	if card == nil {
+		t.Fatal("expected non-nil secondary detail card")
+	}
+	if got := card["type"]; got != "result" {
+		t.Fatalf("type=%v, want result", got)
+	}
+	if got := card["title"]; got != "OpenAI blog" {
+		t.Fatalf("title=%v, want OpenAI blog", got)
+	}
+	if got := card["message"]; got != "Readable article body" {
+		t.Fatalf("message=%v, want article body", got)
 	}
 }
 
