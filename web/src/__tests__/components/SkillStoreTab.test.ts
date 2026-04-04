@@ -1,10 +1,12 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import SkillStoreTab from '@/components/extensions/SkillStoreTab.vue'
 import { i18n } from '@/i18n'
 import { skillApi } from '@/api/skill'
 import { useNotificationStore } from '@/stores/notification'
+
+enableAutoUnmount(afterEach)
 
 const { sseState } = vi.hoisted(() => ({
   sseState: {
@@ -23,8 +25,10 @@ vi.mock('@/api/skill', () => ({
     adviseMarket: vi.fn(),
     getMarketplaceSkill: vi.fn(),
     installMarket: vi.fn(),
+    listSources: vi.fn(),
     previewSourceImport: vi.fn(),
     addSource: vi.fn(),
+    removeSource: vi.fn(),
   },
 }))
 
@@ -90,6 +94,23 @@ function makeSearchResponse(skills: Array<Record<string, unknown>>) {
       page_size: skills.length || 20,
       total_pages: 1,
     },
+  }
+}
+
+function makeSource(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'tencent-skillhub',
+    name: 'Tencent SkillHub',
+    url: 'https://skillhub.example.com/catalog',
+    type: 'lightmake_api',
+    enabled: true,
+    display_name: 'Tencent SkillHub',
+    base_url: 'https://skillhub.example.com/catalog',
+    source_group: 'skillhub',
+    auth_mode: 'none',
+    rate_limit_per_minute: 60,
+    priority: 10,
+    ...overrides,
   }
 }
 
@@ -203,6 +224,9 @@ describe('SkillStoreTab', () => {
       return makeDetailResponse(makeSkill({ id })) as never
     })
     vi.mocked(skillApi.installMarket).mockResolvedValue({ data: {} } as never)
+    vi.mocked(skillApi.listSources).mockResolvedValue({
+      data: [makeSource()],
+    } as never)
     vi.mocked(skillApi.previewSourceImport).mockResolvedValue({
       data: {
         url: 'https://catalog.example.com/skills',
@@ -228,6 +252,12 @@ describe('SkillStoreTab', () => {
       data: {
         success: true,
         message: 'source added',
+      },
+    } as never)
+    vi.mocked(skillApi.removeSource).mockResolvedValue({
+      data: {
+        success: true,
+        message: 'source removed',
       },
     } as never)
   })
@@ -466,7 +496,9 @@ describe('SkillStoreTab', () => {
     const notification = useNotificationStore(pinia)
 
     await wrapper.get('[data-testid="source-import-toggle"]').trigger('click')
-    await wrapper.get('[data-testid="source-import-input"]').setValue('https://catalog.example.com/skills')
+    await wrapper
+      .get('[data-testid="source-import-input"]')
+      .setValue('https://catalog.example.com/skills')
     await wrapper.get('[data-testid="source-import-preview"]').trigger('click')
     await flushPromises()
 
@@ -490,6 +522,105 @@ describe('SkillStoreTab', () => {
     expect(skillApi.discoverRefresh).toHaveBeenCalledTimes(1)
     expect(notification.notifications[0]?.type).toBe('success')
     expect(wrapper.find('[data-testid="source-import-panel"]').exists()).toBe(false)
+  })
+
+  it('shows configured sources in the import panel and lets users remove custom ones', async () => {
+    vi.mocked(skillApi.listSources)
+      .mockResolvedValueOnce({
+        data: [
+          makeSource(),
+          makeSource({
+            id: 'user-catalog-example-com',
+            name: 'Catalog Example',
+            url: 'https://catalog.example.com/skills',
+            type: 'html_catalog',
+            display_name: 'Catalog Example',
+            base_url: 'https://catalog.example.com/skills',
+            priority: 250,
+          }),
+        ],
+      } as never)
+      .mockResolvedValueOnce({
+        data: [makeSource()],
+      } as never)
+
+    const { wrapper, pinia } = await mountSkillStoreWithPinia()
+    const notification = useNotificationStore(pinia)
+
+    await wrapper.get('[data-testid="source-import-toggle"]').trigger('click')
+    await flushPromises()
+
+    const configured = wrapper.get('[data-testid="configured-sources"]')
+    expect(configured.text()).toContain('Tencent SkillHub')
+    expect(configured.text()).toContain('Catalog Example')
+    expect(configured.text()).toContain('Built-in')
+    expect(wrapper.find('[data-testid="remove-source-tencent-skillhub"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="remove-source-user-catalog-example-com"]').trigger('click')
+    await flushPromises()
+
+    expect(skillApi.removeSource).toHaveBeenCalledWith('user-catalog-example-com')
+    expect(wrapper.get('[data-testid="configured-sources"]').text()).not.toContain(
+      'Catalog Example'
+    )
+    expect(notification.notifications[0]?.type).toBe('success')
+  })
+
+  it('marks an existing custom source as already configured after preview', async () => {
+    vi.mocked(skillApi.listSources).mockResolvedValue({
+      data: [
+        makeSource({
+          id: 'user-catalog-example-com',
+          name: 'Catalog Example',
+          url: 'https://catalog.example.com/skills',
+          type: 'html_catalog',
+          display_name: 'Catalog Example',
+          base_url: 'https://catalog.example.com/skills',
+          priority: 250,
+        }),
+      ],
+    } as never)
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('[data-testid="source-import-toggle"]').trigger('click')
+    await wrapper
+      .get('[data-testid="source-import-input"]')
+      .setValue('https://catalog.example.com/skills')
+    await wrapper.get('[data-testid="source-import-preview"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="source-import-preview-result"]').text()).toContain(
+      'Already configured'
+    )
+    expect(wrapper.find('[data-testid="source-import-confirm"]').exists()).toBe(false)
+  })
+
+  it('marks built-in previewed sources as protected', async () => {
+    vi.mocked(skillApi.previewSourceImport).mockResolvedValue({
+      data: {
+        url: 'https://skillhub.example.com/catalog',
+        normalized_url: 'https://skillhub.example.com/catalog',
+        kind: 'source',
+        confidence: 'high',
+        suggested_source: makeSource(),
+        message: 'Detected marketplace source',
+      },
+    } as never)
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('[data-testid="source-import-toggle"]').trigger('click')
+    await wrapper
+      .get('[data-testid="source-import-input"]')
+      .setValue('https://skillhub.example.com/catalog')
+    await wrapper.get('[data-testid="source-import-preview"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="source-import-preview-result"]').text()).toContain(
+      'Built-in source'
+    )
+    expect(wrapper.find('[data-testid="source-import-confirm"]').exists()).toBe(false)
   })
 
   it('refreshes visible results after progress events without resetting filters', async () => {

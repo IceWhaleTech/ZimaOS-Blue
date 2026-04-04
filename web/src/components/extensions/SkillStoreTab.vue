@@ -12,6 +12,8 @@ import {
   type SecurityBadge,
   type SkillContractMetadata,
   type SkillFiltersResponse,
+  type SkillSource,
+  type SkillSourceImportPreviewResponse,
   type SkillSecurityEvidence,
 } from '@/api/skill'
 import SkillContractNotice from '@/components/extensions/SkillContractNotice.vue'
@@ -52,6 +54,7 @@ let latestSkillsRequestId = 0
 let latestDetailRequestId = 0
 let latestDiscoverPollId = 0
 let latestAdviceRequestId = 0
+let latestSourcesRequestId = 0
 let preferredSelectedSkillId: string | null = null
 let componentDisposed = false
 let refreshVisibleResultsTimer: ReturnType<typeof window.setTimeout> | null = null
@@ -80,6 +83,16 @@ const detailLoading = ref(false)
 const showDetailModal = ref(false)
 const skillAdvice = ref<MarketplaceAdviceResponse | null>(null)
 const adviceLoading = ref(false)
+const showSourceImport = ref(false)
+const sourceImportURL = ref('')
+const sourceImportLoading = ref(false)
+const sourceImportSaving = ref(false)
+const sourceImportError = ref<string | null>(null)
+const sourceImportPreview = ref<SkillSourceImportPreviewResponse | null>(null)
+const configuredSources = ref<SkillSource[]>([])
+const sourceListLoading = ref(false)
+const sourceListError = ref<string | null>(null)
+const sourceRemovingId = ref<string | null>(null)
 
 const searchQuery = ref(normalizeSearchQuery(props.initialSearchQuery || ''))
 const selectedCategory = ref('all')
@@ -102,6 +115,18 @@ type InstallSkillOptions = {
 }
 
 type SummaryTone = 'safe' | 'warn' | 'danger' | 'neutral'
+
+const protectedSkillStoreSourceIDs = new Set([
+  'tencent-skillhub',
+  'github-skill-md',
+  'github-claude-md',
+  'github-agent-md',
+  'clawhub',
+  'skillhub-club',
+  'skillstack',
+  'llmskills',
+  'moltbot',
+])
 
 const selectedSkill = computed<RemoteSkill | null>(() => {
   if (!selectedSkillId.value) return null
@@ -154,6 +179,56 @@ const detailContract = computed<SkillContractMetadata | null>(() => {
   }
 
   return contract
+})
+const sourceImportSuggestedSource = computed<SkillSource | null>(
+  () => sourceImportPreview.value?.suggested_source ?? null
+)
+const sourceImportExistingSource = computed<SkillSource | null>(() => {
+  const suggested = sourceImportSuggestedSource.value
+  if (!suggested) return null
+  return configuredSources.value.find((source) => source.id === suggested.id) ?? null
+})
+const sourceImportExistingState = computed<'configured' | 'protected' | null>(() => {
+  const source = sourceImportExistingSource.value
+  if (!source) return null
+  return isProtectedSkillStoreSource(source.id) ? 'protected' : 'configured'
+})
+const sourceImportCanConfirm = computed(
+  () =>
+    sourceImportPreview.value?.kind === 'source' &&
+    !!sourceImportSuggestedSource.value &&
+    !sourceImportExistingState.value
+)
+const sourceImportSummaryLabel = computed(() => {
+  if (sourceImportPreview.value?.kind === 'source') {
+    return (
+      sourceImportSuggestedSource.value?.display_name ||
+      sourceImportSuggestedSource.value?.name ||
+      sourceImportSuggestedSource.value?.id ||
+      ''
+    )
+  }
+  if (sourceImportPreview.value?.kind === 'seed') {
+    return marketplaceText('sourceImport.seedDetected', 'Detected one-off seed')
+  }
+  return marketplaceText('sourceImport.unsupportedDetected', 'Unable to classify source')
+})
+const sourceImportStatusMessage = computed(() => {
+  const existing = sourceImportExistingSource.value
+  if (!existing || !sourceImportExistingState.value) return ''
+  const name = sourceDisplayName(existing)
+  if (sourceImportExistingState.value === 'protected') {
+    return marketplaceText(
+      'sourceImport.builtinManaged',
+      'Built-in source already managed: {name}',
+      {
+        name,
+      }
+    )
+  }
+  return marketplaceText('sourceImport.alreadyConfigured', 'Already configured: {name}', {
+    name,
+  })
 })
 const catalogCount = computed(() => totalSkills.value || skills.value.length)
 const isInitialCatalogLoad = computed(
@@ -602,6 +677,23 @@ function translate(key: string, fallback: string, params?: Record<string, unknow
   return params ? t(key, params) : t(key)
 }
 
+function isProtectedSkillStoreSource(id: string): boolean {
+  const trimmed = id.trim()
+  return (
+    protectedSkillStoreSourceIDs.has(trimmed) ||
+    trimmed.startsWith('seed-') ||
+    trimmed.startsWith('clawhub-mirror-')
+  )
+}
+
+function sourceDisplayName(source?: SkillSource | null): string {
+  return source?.display_name || source?.name || source?.id || ''
+}
+
+function sourceAddress(source?: SkillSource | null): string {
+  return source?.base_url || source?.url || ''
+}
+
 function commonText(path: string, fallback: string, params?: Record<string, unknown>) {
   return translate(`common.${path}`, fallback, params)
 }
@@ -646,7 +738,9 @@ function sourceOptionDescription(option?: { value?: string; label?: string } | n
   return localizeMarketplaceSourceOptionDescription(option, marketplaceText)
 }
 
-function sourceOptionBrand(option?: { value?: string; label?: string } | null): MarketplaceSourceBrand | null {
+function sourceOptionBrand(
+  option?: { value?: string; label?: string } | null
+): MarketplaceSourceBrand | null {
   return resolveMarketplaceSourceBrandFromCandidates([option?.value, option?.label])
 }
 
@@ -780,13 +874,21 @@ function sourceLabel(skill?: RemoteSkill | null): string {
   )
   if (localized) return localized
   return (
-    firstMarketplaceSourceCandidate([skill?.author, skill?.source_name, skill?.source_group, skill?.source_id]) ||
-    marketplaceText('defaultSource', 'Marketplace')
+    firstMarketplaceSourceCandidate([
+      skill?.author,
+      skill?.source_name,
+      skill?.source_group,
+      skill?.source_id,
+    ]) || marketplaceText('defaultSource', 'Marketplace')
   )
 }
 
 function sourceDescription(skill?: RemoteSkill | null): string {
-  return localizeMarketplaceSourceFromCandidates(sourceCandidates(skill), 'description', marketplaceText)
+  return localizeMarketplaceSourceFromCandidates(
+    sourceCandidates(skill),
+    'description',
+    marketplaceText
+  )
 }
 
 function sourceBrand(skill?: RemoteSkill | null): MarketplaceSourceBrand | null {
@@ -1419,6 +1521,27 @@ async function fetchFilters() {
   }
 }
 
+async function fetchConfiguredSources() {
+  const requestId = ++latestSourcesRequestId
+  sourceListLoading.value = true
+  sourceListError.value = null
+
+  try {
+    const response = await skillApi.listSources()
+    if (requestId !== latestSourcesRequestId || componentDisposed) return
+    configuredSources.value = (response.data || []).filter((source) => source.enabled !== false)
+  } catch (err) {
+    if (requestId !== latestSourcesRequestId || componentDisposed) return
+    sourceListError.value =
+      getErrorMessage(err) ||
+      marketplaceText('sourceImport.listError', 'Failed to load configured sources.')
+  } finally {
+    if (requestId === latestSourcesRequestId && !componentDisposed) {
+      sourceListLoading.value = false
+    }
+  }
+}
+
 async function fetchSkills(reset = true, options?: { preserveVisible?: boolean }) {
   const requestId = ++latestSkillsRequestId
   const preserveVisible = !!options?.preserveVisible && reset && skills.value.length > 0
@@ -1585,11 +1708,15 @@ async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null
 }
 
 async function loadMarketplaceCatalog() {
-  await Promise.all([fetchFilters(), fetchSkills(true)])
+  await Promise.all([fetchFilters(), fetchSkills(true), fetchConfiguredSources()])
 }
 
 async function loadMarketplaceCatalogPreservingResults() {
-  await Promise.all([fetchFilters(), fetchSkills(true, { preserveVisible: true })])
+  await Promise.all([
+    fetchFilters(),
+    fetchSkills(true, { preserveVisible: true }),
+    fetchConfiguredSources(),
+  ])
 }
 
 async function continueMarketplaceDiscover(initial?: DiscoverStatusResponse | null) {
@@ -1792,6 +1919,108 @@ function clearSearch() {
   handleSearch()
 }
 
+function resetSourceImportState() {
+  sourceImportURL.value = ''
+  sourceImportError.value = null
+  sourceImportPreview.value = null
+  sourceImportLoading.value = false
+  sourceImportSaving.value = false
+}
+
+function toggleSourceImport() {
+  showSourceImport.value = !showSourceImport.value
+  if (!showSourceImport.value) {
+    resetSourceImportState()
+  }
+}
+
+async function previewSourceImport() {
+  const trimmed = sourceImportURL.value.trim()
+  if (!trimmed) {
+    sourceImportError.value = marketplaceText(
+      'sourceImport.urlRequired',
+      'Enter a source URL first.'
+    )
+    sourceImportPreview.value = null
+    return
+  }
+
+  sourceImportLoading.value = true
+  sourceImportError.value = null
+  sourceImportPreview.value = null
+
+  try {
+    const response = await skillApi.previewSourceImport({ url: trimmed })
+    if (componentDisposed) return
+    sourceImportPreview.value = response.data
+  } catch (err) {
+    if (componentDisposed) return
+    sourceImportError.value =
+      getErrorMessage(err) ||
+      marketplaceText('sourceImport.previewError', 'Failed to analyze this source URL.')
+  } finally {
+    if (!componentDisposed) {
+      sourceImportLoading.value = false
+    }
+  }
+}
+
+async function confirmSourceImport() {
+  const source = sourceImportSuggestedSource.value
+  if (!source) return
+
+  sourceImportSaving.value = true
+  sourceImportError.value = null
+
+  try {
+    await skillApi.addSource({
+      ...source,
+      enabled: source.enabled ?? true,
+    })
+    showSourceImport.value = false
+    resetSourceImportState()
+    notification.success(
+      skillStoreText('title', 'Skill Store'),
+      marketplaceText('sourceImport.addSuccess', 'Added source: {name}', {
+        name: source.display_name || source.name || source.id,
+      })
+    )
+    await triggerRefresh()
+  } catch (err) {
+    sourceImportError.value =
+      getErrorMessage(err) || marketplaceText('sourceImport.addError', 'Failed to add source.')
+  } finally {
+    sourceImportSaving.value = false
+  }
+}
+
+async function removeConfiguredSource(source: SkillSource) {
+  if (sourceRemovingId.value === source.id || isProtectedSkillStoreSource(source.id)) {
+    return
+  }
+
+  sourceRemovingId.value = source.id
+  sourceListError.value = null
+
+  try {
+    await skillApi.removeSource(source.id)
+    configuredSources.value = configuredSources.value.filter((item) => item.id !== source.id)
+    await fetchConfiguredSources()
+    notification.success(
+      skillStoreText('title', 'Skill Store'),
+      marketplaceText('sourceImport.removeSuccess', 'Removed source: {name}', {
+        name: sourceDisplayName(source),
+      })
+    )
+  } catch (err) {
+    sourceListError.value =
+      getErrorMessage(err) ||
+      marketplaceText('sourceImport.removeError', 'Failed to remove source.')
+  } finally {
+    sourceRemovingId.value = null
+  }
+}
+
 async function installSkill(skill: RemoteSkill, options: InstallSkillOptions = {}) {
   if (installingSkillId.value === skill.id) return
   if (!skill.installable) {
@@ -1802,6 +2031,13 @@ async function installSkill(skill: RemoteSkill, options: InstallSkillOptions = {
   const ackRisk = !!options.ackRisk
   const forceInstall = !!options.forceInstall
   if (badge === 'red' && !forceInstall) {
+    const blockedMessage = marketplaceText(
+      'messages.blockedByPolicy',
+      'This skill is blocked by the security policy.'
+    )
+    notification.error(skillStoreText('title', 'Skill Store'), blockedMessage, {
+      duration: 6000,
+    })
     error.value = null
     pendingRiskSkill.value = skill
     return
@@ -2148,8 +2384,8 @@ const sourceOptions = computed(() =>
     brand: sourceOptionBrand(option),
   }))
 )
-const selectedSourceOption = computed(() =>
-  sourceOptions.value.find((option) => option.value === selectedSource.value) || null
+const selectedSourceOption = computed(
+  () => sourceOptions.value.find((option) => option.value === selectedSource.value) || null
 )
 const selectedSourceBrand = computed(() => selectedSourceOption.value?.brand || null)
 const selectedSourceDescription = computed(() => {
@@ -2399,6 +2635,193 @@ onBeforeUnmount(() => {
                 : marketplaceText('actions.refreshSources', 'Refresh sources')
             }}
           </button>
+          <button
+            class="btn-ghost"
+            type="button"
+            data-testid="source-import-toggle"
+            @click="toggleSourceImport"
+          >
+            {{
+              showSourceImport
+                ? marketplaceText('actions.closeSourceImport', 'Close source import')
+                : marketplaceText('actions.addSource', 'Add source')
+            }}
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="showSourceImport"
+        class="source-import-panel dashboard-card-subsurface"
+        data-testid="source-import-panel"
+      >
+        <div class="source-import-panel__copy">
+          <strong>{{
+            marketplaceText('sourceImport.title', 'Import a marketplace source from URL')
+          }}</strong>
+          <p>
+            {{
+              marketplaceText(
+                'sourceImport.description',
+                'Paste a store or catalog URL. We will infer whether it should be saved as a reusable source or treated as a one-off seed.'
+              )
+            }}
+          </p>
+        </div>
+
+        <div
+          v-if="sourceListLoading || configuredSources.length > 0 || sourceListError"
+          class="configured-sources"
+          data-testid="configured-sources"
+        >
+          <div class="configured-sources__header">
+            <strong>{{
+              marketplaceText('sourceImport.configuredTitle', 'Configured sources')
+            }}</strong>
+            <span class="meta-chip meta-chip-soft">{{ configuredSources.length }}</span>
+          </div>
+          <p>
+            {{
+              marketplaceText(
+                'sourceImport.configuredHint',
+                'Built-in sources stay protected. You can remove custom sources here.'
+              )
+            }}
+          </p>
+
+          <p v-if="sourceListError" class="source-import-error">
+            {{ sourceListError }}
+          </p>
+
+          <div v-else class="configured-sources__list">
+            <div
+              v-if="sourceListLoading && configuredSources.length === 0"
+              class="configured-source-card"
+            >
+              <p>{{ commonText('loading', 'Loading') }}</p>
+            </div>
+
+            <div
+              v-for="source in configuredSources"
+              :key="source.id"
+              class="configured-source-card"
+            >
+              <div class="configured-source-card__copy">
+                <strong>{{ sourceDisplayName(source) }}</strong>
+                <p>{{ sourceAddress(source) }}</p>
+              </div>
+              <div class="configured-source-card__actions">
+                <span class="meta-chip meta-chip-soft">
+                  {{ source.type || marketplaceText('sourceImport.sourceType', 'source') }}
+                </span>
+                <span
+                  v-if="isProtectedSkillStoreSource(source.id)"
+                  :data-testid="`source-protected-${source.id}`"
+                  class="meta-chip meta-chip-soft"
+                >
+                  {{ marketplaceText('sourceImport.builtin', 'Built-in') }}
+                </span>
+                <button
+                  v-else
+                  type="button"
+                  class="btn-ghost"
+                  :data-testid="`remove-source-${source.id}`"
+                  :disabled="sourceRemovingId === source.id"
+                  @click="removeConfiguredSource(source)"
+                >
+                  {{
+                    sourceRemovingId === source.id
+                      ? marketplaceText('sourceImport.removing', 'Removing...')
+                      : commonText('remove', 'Remove')
+                  }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="source-import-panel__form">
+          <input
+            v-model="sourceImportURL"
+            type="url"
+            class="source-import-input"
+            data-testid="source-import-input"
+            :placeholder="
+              marketplaceText(
+                'sourceImport.placeholder',
+                'https://catalog.example.com/skills or https://github.com/topics/claude-code'
+              )
+            "
+          />
+          <div class="source-import-panel__actions">
+            <button
+              type="button"
+              class="btn-ghost"
+              data-testid="source-import-preview"
+              :disabled="sourceImportLoading || sourceImportSaving"
+              @click="previewSourceImport"
+            >
+              {{
+                sourceImportLoading
+                  ? marketplaceText('sourceImport.analyzing', 'Analyzing...')
+                  : marketplaceText('sourceImport.preview', 'Analyze source')
+              }}
+            </button>
+            <button
+              v-if="sourceImportCanConfirm"
+              type="button"
+              class="btn-primary"
+              data-testid="source-import-confirm"
+              :disabled="sourceImportSaving"
+              @click="confirmSourceImport"
+            >
+              {{
+                sourceImportSaving
+                  ? marketplaceText('sourceImport.adding', 'Adding...')
+                  : marketplaceText('sourceImport.confirm', 'Add source')
+              }}
+            </button>
+          </div>
+        </div>
+
+        <p v-if="sourceImportError" class="source-import-error">
+          {{ sourceImportError }}
+        </p>
+
+        <div
+          v-if="sourceImportPreview"
+          class="source-import-preview"
+          data-testid="source-import-preview-result"
+        >
+          <div class="source-import-preview__headline">
+            <strong>{{ sourceImportSummaryLabel }}</strong>
+            <span class="meta-chip meta-chip-soft">
+              {{
+                sourceImportPreview.kind === 'source'
+                  ? sourceImportSuggestedSource?.type || 'source'
+                  : sourceImportPreview.seed_type || sourceImportPreview.kind
+              }}
+            </span>
+          </div>
+          <p v-if="sourceImportStatusMessage" class="source-import-preview__status">
+            {{ sourceImportStatusMessage }}
+          </p>
+          <p>{{ sourceImportPreview.message }}</p>
+          <p
+            v-if="sourceImportPreview.kind === 'seed' && sourceImportPreview.seed_value"
+            class="source-import-preview__seed"
+          >
+            {{
+              marketplaceText(
+                'sourceImport.seedHint',
+                'This looks like a one-off seed ({type}: {value}) and should not be saved as a long-lived source.',
+                {
+                  type: sourceImportPreview.seed_type || 'seed',
+                  value: sourceImportPreview.seed_value,
+                }
+              )
+            }}
+          </p>
         </div>
       </div>
 
@@ -2571,7 +2994,10 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="advisor-skill-card__meta">
-                <span class="meta-chip meta-chip-soft" :title="sourceDescription(skill) || undefined">
+                <span
+                  class="meta-chip meta-chip-soft"
+                  :title="sourceDescription(skill) || undefined"
+                >
                   <span class="source-brand">
                     <img
                       v-if="sourceBrandAssetUrl(sourceBrand(skill))"
@@ -2893,9 +3319,11 @@ onBeforeUnmount(() => {
                 <div class="card-title-copy">
                   <div class="card-title-row">
                     <h4>{{ skill.name }}</h4>
-                    <span v-if="skill.installed" class="meta-chip meta-chip-installed meta-chip-status">{{
-                      skillStoreText('installed', 'Installed')
-                    }}</span>
+                    <span
+                      v-if="skill.installed"
+                      class="meta-chip meta-chip-installed meta-chip-status"
+                      >{{ skillStoreText('installed', 'Installed') }}</span
+                    >
                   </div>
                   <p>{{ cardDescription(skill) }}</p>
                   <div v-if="visibleSkillTags(skill).length" class="card-tag-row">
@@ -3024,9 +3452,8 @@ onBeforeUnmount(() => {
                       <span
                         v-if="detailInstalled"
                         class="meta-chip meta-chip-installed meta-chip-status"
-                      >{{
-                        skillStoreText('installed', 'Installed')
-                      }}</span>
+                        >{{ skillStoreText('installed', 'Installed') }}</span
+                      >
                     </div>
                     <p v-if="detailSkill.curated_reason" class="detail-callout">
                       {{ detailSkill.curated_reason }}
@@ -3171,7 +3598,10 @@ onBeforeUnmount(() => {
               </div>
               <div v-if="showOriginSource(detailSkill)" class="meta-item">
                 <span>{{ marketplaceText('detail.meta.upstream', 'Upstream') }}</span>
-                <strong class="source-brand" :title="originSourceDescription(detailSkill) || undefined">
+                <strong
+                  class="source-brand"
+                  :title="originSourceDescription(detailSkill) || undefined"
+                >
                   <img
                     v-if="sourceBrandAssetUrl(originSourceBrand(detailSkill))"
                     class="source-brand__icon source-brand__icon--prominent"
@@ -3708,6 +4138,135 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   margin-top: 10px;
+}
+
+.source-import-panel,
+.source-import-panel__copy,
+.configured-sources,
+.configured-sources__list,
+.configured-source-card,
+.configured-source-card__copy,
+.source-import-panel__form,
+.source-import-panel__actions,
+.source-import-preview {
+  display: flex;
+  flex-direction: column;
+}
+
+.source-import-panel {
+  margin-top: 10px;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 12%, var(--panel-border));
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 42%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--panel-bg-strong) 92%, white 2%) 0%,
+      var(--panel-bg) 100%
+    );
+}
+
+.source-import-panel__copy,
+.configured-sources,
+.source-import-preview {
+  gap: 4px;
+}
+
+.source-import-panel__copy strong,
+.configured-sources__header strong,
+.source-import-preview__headline strong {
+  color: var(--text-primary);
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+
+.source-import-panel__copy p,
+.configured-sources p,
+.source-import-preview p,
+.source-import-error {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.configured-sources {
+  gap: 8px;
+}
+
+.configured-sources__header,
+.configured-source-card__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.configured-sources__list {
+  gap: 8px;
+}
+
+.configured-source-card {
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 10%, var(--panel-border));
+  background: color-mix(in srgb, var(--panel-bg-strong) 82%, transparent);
+}
+
+.configured-source-card__copy {
+  gap: 2px;
+}
+
+.configured-source-card__copy strong {
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.source-import-panel__form {
+  gap: 8px;
+}
+
+.source-import-panel__actions,
+.source-import-preview__headline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.source-import-input {
+  width: 100%;
+  min-height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.source-import-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.source-import-error {
+  color: #fca5a5;
+}
+
+.source-import-preview__seed {
+  color: var(--text-secondary);
+}
+
+.source-import-preview__status {
+  color: var(--text-primary);
 }
 
 .advisor-panel {
@@ -5083,12 +5642,11 @@ onBeforeUnmount(() => {
 
 .score-card--safe {
   --score-card-border: color-mix(in srgb, var(--security-green-border) 82%, var(--border));
-  --score-card-bg:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--security-green-bg) 95%, var(--panel-bg-strong)) 0%,
-      color-mix(in srgb, var(--panel-bg) 78%, var(--security-green-bg) 22%) 100%
-    );
+  --score-card-bg: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--security-green-bg) 95%, var(--panel-bg-strong)) 0%,
+    color-mix(in srgb, var(--panel-bg) 78%, var(--security-green-bg) 22%) 100%
+  );
   --score-card-accent: color-mix(in srgb, var(--security-green-text) 72%, #22c55e);
   --score-card-label: color-mix(in srgb, var(--security-green-text) 62%, var(--text-secondary));
   --score-card-value: color-mix(in srgb, var(--security-green-text) 90%, var(--text-primary));
@@ -5096,29 +5654,23 @@ onBeforeUnmount(() => {
 
 .score-card--warn {
   --score-card-border: color-mix(in srgb, var(--security-yellow-border) 84%, var(--border));
-  --score-card-bg:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--security-yellow-bg) 94%, var(--panel-bg-strong)) 0%,
-      color-mix(in srgb, var(--panel-bg) 78%, var(--security-yellow-bg) 22%) 100%
-    );
-  --score-card-accent: color-mix(in srgb, var(--security-yellow-text) 74%, #f59e0b);
-  --score-card-label: color-mix(
-    in srgb,
-    var(--security-yellow-text) 62%,
-    var(--text-secondary)
+  --score-card-bg: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--security-yellow-bg) 94%, var(--panel-bg-strong)) 0%,
+    color-mix(in srgb, var(--panel-bg) 78%, var(--security-yellow-bg) 22%) 100%
   );
+  --score-card-accent: color-mix(in srgb, var(--security-yellow-text) 74%, #f59e0b);
+  --score-card-label: color-mix(in srgb, var(--security-yellow-text) 62%, var(--text-secondary));
   --score-card-value: color-mix(in srgb, var(--security-yellow-text) 92%, var(--text-primary));
 }
 
 .score-card--danger {
   --score-card-border: color-mix(in srgb, var(--security-red-border) 84%, var(--border));
-  --score-card-bg:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--security-red-bg) 94%, var(--panel-bg-strong)) 0%,
-      color-mix(in srgb, var(--panel-bg) 78%, var(--security-red-bg) 22%) 100%
-    );
+  --score-card-bg: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--security-red-bg) 94%, var(--panel-bg-strong)) 0%,
+    color-mix(in srgb, var(--panel-bg) 78%, var(--security-red-bg) 22%) 100%
+  );
   --score-card-accent: color-mix(in srgb, var(--security-red-text) 72%, #ef4444);
   --score-card-label: color-mix(in srgb, var(--security-red-text) 58%, var(--text-secondary));
   --score-card-value: color-mix(in srgb, var(--security-red-text) 92%, var(--text-primary));
@@ -5126,23 +5678,14 @@ onBeforeUnmount(() => {
 
 .score-card--neutral {
   --score-card-border: color-mix(in srgb, var(--security-neutral-border) 86%, var(--border));
-  --score-card-bg:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--security-neutral-bg) 92%, var(--panel-bg-strong)) 0%,
-      color-mix(in srgb, var(--panel-bg) 84%, var(--security-neutral-bg) 16%) 100%
-    );
+  --score-card-bg: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--security-neutral-bg) 92%, var(--panel-bg-strong)) 0%,
+    color-mix(in srgb, var(--panel-bg) 84%, var(--security-neutral-bg) 16%) 100%
+  );
   --score-card-accent: color-mix(in srgb, var(--security-neutral-text) 78%, #94a3b8);
-  --score-card-label: color-mix(
-    in srgb,
-    var(--security-neutral-text) 66%,
-    var(--text-secondary)
-  );
-  --score-card-value: color-mix(
-    in srgb,
-    var(--security-neutral-text) 94%,
-    var(--text-primary)
-  );
+  --score-card-label: color-mix(in srgb, var(--security-neutral-text) 66%, var(--text-secondary));
+  --score-card-value: color-mix(in srgb, var(--security-neutral-text) 94%, var(--text-primary));
 }
 
 .signal-detail-safe {

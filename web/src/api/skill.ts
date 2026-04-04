@@ -39,9 +39,32 @@ export interface SkillSource {
   id: string
   name: string
   url: string
-  type: 'clawdhub' | 'github' | 'custom'
+  type: string
   description?: string
   enabled: boolean
+  display_name?: string
+  base_url?: string
+  source_group?: string
+  mirror_of?: string
+  auth_mode?: string
+  headers?: Record<string, string>
+  rate_limit_per_minute?: number
+  priority?: number
+}
+
+export interface SkillSourceImportPreviewRequest {
+  url: string
+}
+
+export interface SkillSourceImportPreviewResponse {
+  url: string
+  normalized_url?: string
+  kind: 'source' | 'seed' | 'unsupported' | string
+  confidence?: 'high' | 'medium' | 'low' | string
+  message?: string
+  suggested_source?: SkillSource
+  seed_type?: string
+  seed_value?: string
 }
 
 export type SecurityBadge = 'green' | 'yellow' | 'red'
@@ -548,6 +571,8 @@ export const skillApi = {
   listMarketUpdates: () => api.get<MarketplaceUpdatesResponse>('/skills/updates'),
 
   listSources: () => api.get<SkillSource[]>('/skill-store/sources'),
+  previewSourceImport: (req: SkillSourceImportPreviewRequest) =>
+    api.post<SkillSourceImportPreviewResponse>('/skill-store/sources/preview', req),
   addSource: (source: Omit<SkillSource, 'enabled'> & { enabled?: boolean }) =>
     api.post<{ success: boolean; message: string }>('/skill-store/sources', source),
   removeSource: (id: string) =>

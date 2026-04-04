@@ -49,20 +49,20 @@ type SkillSource struct {
 }
 
 type SkillSourceUpsertRequest struct {
-	ID                 string             `json:"id"`
-	Name               string             `json:"name"`
-	URL                string             `json:"url"`
-	Type               string             `json:"type"`
-	Description        string             `json:"description,omitempty"`
-	Enabled            *bool              `json:"enabled,omitempty"`
-	DisplayName        string             `json:"display_name,omitempty"`
-	BaseURL            string             `json:"base_url,omitempty"`
-	SourceGroup        string             `json:"source_group,omitempty"`
-	MirrorOf           string             `json:"mirror_of,omitempty"`
-	AuthMode           string             `json:"auth_mode,omitempty"`
-	Headers            map[string]string  `json:"headers,omitempty"`
-	RateLimitPerMinute int                `json:"rate_limit_per_minute,omitempty"`
-	Priority           int                `json:"priority,omitempty"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	URL                string            `json:"url"`
+	Type               string            `json:"type"`
+	Description        string            `json:"description,omitempty"`
+	Enabled            *bool             `json:"enabled,omitempty"`
+	DisplayName        string            `json:"display_name,omitempty"`
+	BaseURL            string            `json:"base_url,omitempty"`
+	SourceGroup        string            `json:"source_group,omitempty"`
+	MirrorOf           string            `json:"mirror_of,omitempty"`
+	AuthMode           string            `json:"auth_mode,omitempty"`
+	Headers            map[string]string `json:"headers,omitempty"`
+	RateLimitPerMinute int               `json:"rate_limit_per_minute,omitempty"`
+	Priority           int               `json:"priority,omitempty"`
 }
 
 type SkillSourceImportPreviewRequest struct {
@@ -3223,12 +3223,12 @@ func (h *SkillHandler) createManifestFromRemoteSkill(rs *RemoteSkill) *skill.Man
 		Category:    rs.Category,
 		Tags:        rs.Tags,
 		Metadata: map[string]string{
-			"source_id":         rs.SourceID,
-			"source_name":       rs.SourceName,
-			"origin_source_id":  rs.OriginSourceID,
+			"source_id":          rs.SourceID,
+			"source_name":        rs.SourceName,
+			"origin_source_id":   rs.OriginSourceID,
 			"origin_source_name": rs.OriginSourceName,
-			"origin_source_url": rs.OriginSourceURL,
-			"homepage":          rs.Homepage,
+			"origin_source_url":  rs.OriginSourceURL,
+			"homepage":           rs.Homepage,
 		},
 	}
 }
