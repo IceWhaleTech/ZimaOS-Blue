@@ -102,5 +102,6 @@ func bindRuntimeToolSelection(
 		return true
 	})
 	chat.SetSkillSelector(rerankSelector)
+	chat.ConfigureToolSearchRuntime(workspaceDir, cfg)
 	return reranker
 }

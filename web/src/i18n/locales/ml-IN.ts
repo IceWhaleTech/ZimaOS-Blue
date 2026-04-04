@@ -4645,10 +4645,6 @@ export default mergeHarnessLocale('ml-IN', {
           description:
             'വീണ്ടും ഉപയോഗിക്കാവുന്ന skill ശേഖരങ്ങളിൽ ശ്രദ്ധ കേന്ദ്രീകരിക്കുന്ന കമ്മ്യൂണിറ്റി കാറ്റലോഗ്.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'SkillsMP മാർക്കറ്റ്പ്ലേസ് കാറ്റലോഗ്.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'LLMSkills കമ്മ്യൂണിറ്റി മാർക്കറ്റ്പ്ലേസ് കാറ്റലോഗ്.',

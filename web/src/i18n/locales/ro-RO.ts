@@ -4633,10 +4633,6 @@ export default mergeHarnessLocale('ro-RO', {
           label: 'SkillStack',
           description: 'Catalog comunitar axat pe colecții reutilizabile de skill-uri.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Catalogul marketplace-ului SkillsMP.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Catalogul marketplace-ului comunitar LLMSkills.',

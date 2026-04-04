@@ -34,3 +34,13 @@ func isCodexResponsesIntegrationBaseURL(raw string) bool {
 	path := strings.TrimSuffix(strings.ToLower(u.Path), "/")
 	return path == "/backend-api/codex/responses" || strings.HasSuffix(path, "/backend-api/codex/responses")
 }
+
+func isResponsesEndpointBaseURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		path := strings.TrimSuffix(raw, "/")
+		return path != "" && strings.HasSuffix(path, "/responses")
+	}
+	path := strings.TrimSuffix(u.Path, "/")
+	return path != "" && strings.HasSuffix(path, "/responses")
+}

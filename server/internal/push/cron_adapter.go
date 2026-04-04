@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
 )
@@ -10,6 +11,15 @@ import (
 // CronAdapter adapts cron.Service to the CronService interface used by push.Service.
 type CronAdapter struct {
 	resolve func() *cron.Service
+
+	mu       sync.Mutex
+	bound    *cron.Service
+	handlers []registeredHandler
+}
+
+type registeredHandler struct {
+	name    string
+	handler func(ctx context.Context, payload map[string]interface{}) (interface{}, error)
 }
 
 // NewCronAdapter creates a new adapter with lazy resolution.
@@ -18,23 +28,33 @@ func NewCronAdapter(resolve func() *cron.Service) *CronAdapter {
 }
 
 func (a *CronAdapter) svc() (*cron.Service, error) {
+	if a == nil || a.resolve == nil {
+		return nil, fmt.Errorf("cron service not available")
+	}
 	s := a.resolve()
 	if s == nil {
 		return nil, fmt.Errorf("cron service not available")
 	}
+	a.bindHandlers(s)
 	return s, nil
 }
 
 // RegisterHandler registers a push handler that receives payload from the cron Job.
 func (a *CronAdapter) RegisterHandler(name string, handler func(ctx context.Context, payload map[string]interface{}) (interface{}, error)) {
-	s, err := a.svc()
-	if err != nil {
+	if a == nil || handler == nil {
 		return
 	}
-	// Wrap to extract payload from *cron.Job
-	s.RegisterHandler(name, func(ctx context.Context, job *cron.Job) (interface{}, error) {
-		return handler(ctx, job.Payload)
-	})
+
+	var bound *cron.Service
+	a.mu.Lock()
+	a.handlers = append(a.handlers, registeredHandler{name: name, handler: handler})
+	bound = a.bound
+	a.mu.Unlock()
+
+	// If the cron service is already alive, register immediately.
+	if bound != nil {
+		bound.RegisterHandler(name, wrapPayloadHandler(handler))
+	}
 }
 
 // CreateJob creates a cron job and returns its ID.
@@ -57,4 +77,27 @@ func (a *CronAdapter) DeleteJob(id string) error {
 		return err
 	}
 	return s.Delete(id)
+}
+
+func (a *CronAdapter) bindHandlers(s *cron.Service) {
+	if s == nil {
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.bound == s {
+		return
+	}
+	for _, registered := range a.handlers {
+		s.RegisterHandler(registered.name, wrapPayloadHandler(registered.handler))
+	}
+	a.bound = s
+}
+
+func wrapPayloadHandler(handler func(ctx context.Context, payload map[string]interface{}) (interface{}, error)) func(context.Context, *cron.Job) (interface{}, error) {
+	return func(ctx context.Context, job *cron.Job) (interface{}, error) {
+		return handler(ctx, job.Payload)
+	}
 }

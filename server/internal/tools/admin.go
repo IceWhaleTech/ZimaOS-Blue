@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// MgmtTool is a native tool for system administration via chat.
+// MgmtTool is the native config/admin tool for runtime system management.
 // It provides a single entry point with action-based dispatch using dot notation
 // (e.g. "providers.list", "settings.get").
 type MgmtTool struct {
@@ -44,8 +44,8 @@ func (t *MgmtTool) SetUpgrade(svc AdminUpgradeService)    { t.upgrade = svc }
 // Definition returns the tool definition.
 func (t *MgmtTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "mgmt",
-		Description: `System management tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.`,
+		Name:        "config",
+		Description: `Runtime configuration and admin tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status. Legacy "mgmt" requests should resolve here.`,
 		Icon:        "settings",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -200,16 +200,6 @@ func (t *MgmtTool) handleProviders(ctx context.Context, op string, args map[stri
 			return errJSON(err.Error()), nil
 		}
 		return okJSON("provider disabled")
-	case "test":
-		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
-		if id == "" {
-			return errJSON("id is required for providers.test"), nil
-		}
-		result, err := t.providers.TestProvider(ctx, id)
-		if err != nil {
-			return errJSON(err.Error()), nil
-		}
-		return toJSON(result)
 	case "models":
 		result, err := t.providers.ListModels(ctx)
 		if err != nil {

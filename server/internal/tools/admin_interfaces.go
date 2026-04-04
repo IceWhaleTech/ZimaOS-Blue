@@ -33,7 +33,6 @@ type AdminProviderService interface {
 	RemoveProvider(ctx context.Context, id string) error
 	EnableProvider(ctx context.Context, id string) error
 	DisableProvider(ctx context.Context, id string) error
-	TestProvider(ctx context.Context, id string) (map[string]interface{}, error)
 	ListModels(ctx context.Context) ([]map[string]interface{}, error)
 }
 

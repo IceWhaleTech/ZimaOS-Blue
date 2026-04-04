@@ -57,12 +57,7 @@ func (s *stubRuntimeProxyProviderRouter) UpdateLatency(providerID string, latenc
 
 type stubRuntimeProxyProviderRegistry struct {
 	enabled  []*providerpool.Provider
-	onHealth func(providerID string, result *providerpool.HealthCheckResult)
 	onStatus func(providerID string, oldStatus, newStatus providerpool.ProviderStatus)
-}
-
-func (s *stubRuntimeProxyProviderRegistry) SetOnHealthResult(cb func(providerID string, result *providerpool.HealthCheckResult)) {
-	s.onHealth = cb
 }
 
 func (s *stubRuntimeProxyProviderRegistry) SetOnStatusChange(cb func(providerID string, oldStatus, newStatus providerpool.ProviderStatus)) {
@@ -439,7 +434,7 @@ func TestBindRuntimeProxyProviderBindings_WiresCallbacksAndBroadcasts(t *testing
 	if router.failoverCallback == nil {
 		t.Fatal("expected failover callback to be wired")
 	}
-	if registry.onHealth == nil || registry.onStatus == nil {
+	if registry.onStatus == nil {
 		t.Fatalf("expected registry callbacks to be wired, got %#v", registry)
 	}
 
@@ -466,11 +461,6 @@ func TestBindRuntimeProxyProviderBindings_WiresCallbacksAndBroadcasts(t *testing
 	}
 	if snapshot := pipelineStats.Snapshot(); snapshot.Failover.Total != 1 || snapshot.Failover.Success != 1 {
 		t.Fatalf("pipeline snapshot=%#v, want total=1 success=1", snapshot.Failover)
-	}
-
-	registry.onHealth("provider-a", &providerpool.HealthCheckResult{Healthy: true, Latency: 40 * time.Millisecond})
-	if got := router.latencies["provider-a"]; got != 40*time.Millisecond {
-		t.Fatalf("latency update=%v, want 40ms", got)
 	}
 
 	registry.onStatus("provider-a", providerpool.ProviderStatusInactive, providerpool.ProviderStatusActive)

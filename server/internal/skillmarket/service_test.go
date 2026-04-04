@@ -2247,7 +2247,6 @@ func TestEnsureDefaultSourcesAppliesOptionalAPIKeysToCorrectSources(t *testing.T
 	}
 	cfg.DiscoveryPageURLs = nil
 	cfg.SkillHubAPIKey = "skillhub-token"
-	cfg.SkillsMPAPIKey = "skillsmp-token"
 
 	svc, err := NewService(db, Options{
 		Config:       cfg,
@@ -2271,14 +2270,49 @@ func TestEnsureDefaultSourcesAppliesOptionalAPIKeysToCorrectSources(t *testing.T
 	if got := byID["skillhub-club"].Headers["X-API-Key"]; got != "skillhub-token" {
 		t.Fatalf("skillhub-club api key = %q, want skillhub-token", got)
 	}
-	if got := byID["skillsmp"].Headers["X-API-Key"]; got != "skillsmp-token" {
-		t.Fatalf("skillsmp api key = %q, want skillsmp-token", got)
-	}
 	if len(byID["clawhub"].Headers) != 0 {
 		t.Fatalf("clawhub headers = %#v, want none", byID["clawhub"].Headers)
 	}
 	if len(byID["skillstack"].Headers) != 0 {
 		t.Fatalf("skillstack headers = %#v, want none", byID["skillstack"].Headers)
+	}
+	if _, exists := byID["skillsmp"]; exists {
+		t.Fatalf("expected skillsmp to be absent from default sources, got %+v", byID["skillsmp"])
+	}
+}
+
+func TestEnsureDefaultSourcesDoesNotRegisterSkillsMP(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := DefaultConfig(t.TempDir(), activeDir)
+	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
+	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.DiscoveryPageURLs = nil
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	sources, err := svc.store.ListSources(context.Background())
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+	for _, source := range sources {
+		if source.ID == "skillsmp" {
+			t.Fatalf("expected skillsmp to be absent from default sources, got %+v", source)
+		}
 	}
 }
 
@@ -2318,7 +2352,6 @@ func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 		"github-agent-md",
 		"skillhub-club",
 		"skillstack",
-		"skillsmp",
 		"llmskills",
 	}
 	for i := range defaultDiscoveryPageURLs {

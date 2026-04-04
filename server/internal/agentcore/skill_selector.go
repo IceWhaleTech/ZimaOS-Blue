@@ -589,8 +589,8 @@ func stage0RuleRoute(query string) Decision {
 	if strings.Contains(lower, "plan_create") || strings.Contains(lower, "plan_update") || strings.Contains(lower, "plan_append") {
 		return selectSkill("plan_create", "rule_plan")
 	}
-	if strings.HasPrefix(lower, "mgmt") || strings.Contains(lower, "settings.") || strings.Contains(lower, "providers.") {
-		return selectSkill("mgmt", "rule_mgmt")
+	if strings.HasPrefix(lower, "mgmt") || strings.HasPrefix(lower, "config") || strings.Contains(lower, "settings.") || strings.Contains(lower, "providers.") {
+		return selectSkill("config", "rule_config")
 	}
 	return Decision{}
 }

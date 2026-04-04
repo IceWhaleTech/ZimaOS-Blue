@@ -4596,10 +4596,6 @@ export default mergeHarnessLocale('da-DK', {
           label: 'SkillStack',
           description: 'Community-katalog med fokus på genanvendelige skillsamlinger.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Katalog for SkillsMP-markedspladsen.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Katalog for LLMSkills community-markedspladsen.',

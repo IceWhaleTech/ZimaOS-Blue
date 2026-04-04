@@ -4873,10 +4873,6 @@ export default mergeHarnessLocale('fr-FR', {
           description:
             'Catalogue communautaire centré sur des collections de skills réutilisables.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Catalogue de la marketplace SkillsMP.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Catalogue de la marketplace communautaire LLMSkills.',

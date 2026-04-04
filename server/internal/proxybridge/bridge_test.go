@@ -172,7 +172,7 @@ func TestMarshalChatRequestNormalizesToolSchema(t *testing.T) {
 	}
 }
 
-func TestMarshalChatRequestNormalizesTypedCompositeToolSchema(t *testing.T) {
+func TestMarshalChatRequest_StripsTopLevelCompositeKeywordsFromToolSchema(t *testing.T) {
 	data, err := MarshalChatRequest(llm.ChatRequest{
 		Model: "gpt-5",
 		Messages: []llm.Message{
@@ -200,12 +200,17 @@ func TestMarshalChatRequestNormalizesTypedCompositeToolSchema(t *testing.T) {
 	if len(req.Tools) != 1 {
 		t.Fatalf("len(req.Tools) = %d, want 1", len(req.Tools))
 	}
-	anyOf, ok := req.Tools[0].Function.Parameters["anyOf"].([]interface{})
-	if !ok {
-		t.Fatalf("parameters.anyOf type = %T, want []interface{}", req.Tools[0].Function.Parameters["anyOf"])
+
+	params := req.Tools[0].Function.Parameters
+	if _, ok := params["anyOf"]; ok {
+		t.Fatalf("top-level anyOf should be stripped for OpenAI-compatible tool schemas, got %v", params["anyOf"])
 	}
-	if len(anyOf) != 2 {
-		t.Fatalf("len(parameters.anyOf) = %d, want 2", len(anyOf))
+	required, ok := params["required"].([]interface{})
+	if !ok {
+		t.Fatalf("parameters.required type = %T, want []interface{}", params["required"])
+	}
+	if len(required) != 0 {
+		t.Fatalf("len(parameters.required) = %d, want 0", len(required))
 	}
 }
 

@@ -156,9 +156,6 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 		Config: &PoolConfig{
 			DefaultStrategy:          RoutingStrategyPriority,
 			DefaultRoutingMode:       RoutingModeAuto,
-			HealthCheckEnabled:       true,
-			HealthCheckInterval:      60 * time.Second,
-			HealthCheckTimeout:       10 * time.Second,
 			IDEDiscoveryEnabled:      true,
 			IDEDiscoveryScanInterval: 5 * time.Minute,
 			UsageTrackingEnabled:     true,
@@ -212,12 +209,6 @@ func (p *Pool) Start(ctx context.Context) {
 		// Start usage tracker
 		if p.Config.UsageTrackingEnabled {
 			p.UsageTracker.Start()
-		}
-
-		// Start health checking
-		if p.Config.HealthCheckEnabled {
-			checker := NewHTTPHealthChecker(p.Config.HealthCheckTimeout)
-			p.Registry.StartHealthCheck(ctx, checker)
 		}
 
 		// Fix provider types for non-builtin providers that were incorrectly marked as builtin
@@ -290,7 +281,6 @@ func (p *Pool) IsReady() bool {
 
 // Stop stops background services
 func (p *Pool) Stop() {
-	p.Registry.StopHealthCheck()
 	p.UsageTracker.Stop()
 	if p.pricingUpdater != nil {
 		p.pricingUpdater.Stop()
@@ -654,7 +644,6 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/:id", h.DeleteProvider)
 	g.POST("/:id/enable", h.EnableProvider)
 	g.POST("/:id/disable", h.DisableProvider)
-	g.POST("/:id/test", h.TestProvider)
 	g.POST("/verify", h.VerifyProvider)
 	g.POST("/:id/verify", h.VerifyProviderByID)
 	g.POST("/:id/clear-error", h.ClearError)
@@ -722,7 +711,7 @@ func (h *Handler) RegisterPricingRoutes(g *echo.Group) {
 // Provider handlers
 
 // providerResponse is a slim JSON representation for the list endpoint.
-// Omits internal/default-value fields like timestamps, detected format, health check details.
+// Omits internal/default-value fields like timestamps and detected format details.
 type providerResponse struct {
 	ID       string           `json:"id"`
 	Name     string           `json:"name"`
@@ -921,6 +910,7 @@ func syncCatalogProviderCanonicalFields(provider *Provider) bool {
 func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLookup MediaPricingLookup) *providerResponse {
 	mr := make([]*modelResponse, len(models))
 	for i, m := range models {
+		pinchBenchScore, pinchBenchURL := effectivePinchBenchMetadata(p.ID, m)
 		mr[i] = &modelResponse{
 			ID:              m.ID,
 			ProviderID:      m.ProviderID,
@@ -934,8 +924,8 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 			PricePerRequest: m.PricePerRequest,
 			ContextWindow:   m.ContextWindow,
 			MaxOutput:       m.MaxOutput,
-			PinchBenchScore: cloneOptionalFloat64(m.PinchBenchScore),
-			PinchBenchURL:   m.PinchBenchURL,
+			PinchBenchScore: pinchBenchScore,
+			PinchBenchURL:   pinchBenchURL,
 		}
 		// Always prefer PricingManager pricing so runtime updates and canonical
 		// pricing data are reflected even when built-in models have stale values.
@@ -988,6 +978,7 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 func toModelResponses(models []*Model, pm *PricingManager, mpLookup MediaPricingLookup) []*modelResponse {
 	result := make([]*modelResponse, len(models))
 	for i, m := range models {
+		pinchBenchScore, pinchBenchURL := effectivePinchBenchMetadata(m.ProviderID, m)
 		result[i] = &modelResponse{
 			ID:              m.ID,
 			ProviderID:      m.ProviderID,
@@ -1001,8 +992,8 @@ func toModelResponses(models []*Model, pm *PricingManager, mpLookup MediaPricing
 			PricePerRequest: m.PricePerRequest,
 			ContextWindow:   m.ContextWindow,
 			MaxOutput:       m.MaxOutput,
-			PinchBenchScore: cloneOptionalFloat64(m.PinchBenchScore),
-			PinchBenchURL:   m.PinchBenchURL,
+			PinchBenchScore: pinchBenchScore,
+			PinchBenchURL:   pinchBenchURL,
 		}
 		if pm != nil {
 			if pricing := pm.GetModelPricingWithHeuristics(m.ID, m.ProviderID); pricing != nil {
@@ -1224,12 +1215,9 @@ func (h *Handler) GetProvider(c echo.Context) error {
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	// Get health status
-	health, _ := h.pool.Registry.GetHealth(id)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"provider": provider,
-		"health":   health,
 	})
 }
 
@@ -1410,69 +1398,6 @@ func (h *Handler) DisableProvider(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "disabled"})
-}
-
-// TestProvider tests a provider connection, optionally with a specific API key.
-func (h *Handler) TestProvider(c echo.Context) error {
-	id, err := validatedProviderIDParam(c)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-
-	provider, err := h.pool.Registry.Get(id)
-	if err != nil {
-		if err == ErrProviderNotFound {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-	// Optional: test with a specific API key
-	var body struct {
-		KeyID string `json:"key_id"`
-	}
-	_ = c.Bind(&body) // ignore bind errors — key_id is optional
-
-	// Build a provider copy scoped to the target key
-	testProvider := *provider // shallow copy
-	var targetKey *APIKey
-	if body.KeyID != "" {
-		for i := range provider.APIKeys {
-			if provider.APIKeys[i].ID == body.KeyID {
-				targetKey = &provider.APIKeys[i]
-				break
-			}
-		}
-		if targetKey == nil {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "api key not found"})
-		}
-		testProvider.APIKeys = []APIKey{*targetKey}
-	}
-
-	// Use singleflight to deduplicate concurrent test requests for the same provider+key
-	sfKey := fmt.Sprintf("test_provider:%s:%s", id, body.KeyID)
-	result, err, _ := h.sfGroup.Do(sfKey, func() (interface{}, error) {
-		checker := NewHTTPHealthChecker(10 * time.Second)
-		return checker.Check(c.Request().Context(), &testProvider), nil
-	})
-
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	healthResult := result.(*HealthCheckResult)
-	if targetKey != nil {
-		healthResult.KeyID = targetKey.ID
-		healthResult.KeyHash = targetKey.KeyHash
-	}
-	h.pool.Registry.SetHealth(id, healthResult)
-
-	// If health check auto-switched the BaseURL (e.g. MiniMax regional fallback), persist it
-	if testProvider.BaseURL != provider.BaseURL {
-		provider.BaseURL = testProvider.BaseURL
-		_ = h.pool.Registry.Update(provider)
-	}
-
-	return c.JSON(http.StatusOK, healthResult)
 }
 
 // VerifyProvider verifies a provider candidate and returns recommended API format/base URL.

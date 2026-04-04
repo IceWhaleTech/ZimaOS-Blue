@@ -330,7 +330,6 @@ var providerTimestampFields = []string{
 	"created_at",
 	"updated_at",
 	"detected_at",
-	"last_health_check",
 	"last_error_time",
 }
 

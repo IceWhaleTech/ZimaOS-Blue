@@ -14,6 +14,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { channelsApi } from '@/api/channels'
 import { getChannelIconOrDefault, getChannelIconStyleVars } from '@/utils/channelIcons'
 import ChannelCard from '@/components/channels/ChannelCard.vue'
+import ChannelCardShell from '@/components/channels/ChannelCardShell.vue'
 import ChannelDetailPanel from '@/components/channels/ChannelDetailPanel.vue'
 import RemoteAccessDetailPanel from '@/components/remote-access/RemoteAccessDetailPanel.vue'
 import {
@@ -1129,6 +1130,59 @@ const remoteAccessRenderKey = computed(() => {
     tunnelStatus.value?.url || '',
   ].join('|')
 })
+const remoteAccessStatusTone = computed(() => {
+  switch (remoteAccessState.value) {
+    case 'connected':
+      return 'connected'
+    case 'connecting':
+      return 'connecting'
+    case 'error':
+      return 'error'
+    default:
+      return 'disconnected'
+  }
+})
+
+const remoteAccessStatusText = computed(() => {
+  switch (remoteAccessState.value) {
+    case 'connected':
+      return t('channels.statusConnected')
+    case 'connecting':
+      return t('channels.statusConnecting')
+    case 'error':
+      return t('channels.statusError')
+    case 'loading':
+      return t('common.loading')
+    default:
+      return t('channels.statusDisconnected')
+  }
+})
+
+const remoteAccessStatusTitle = computed(() => {
+  return remoteAccessStatusTone.value === 'error' && remoteAccessError.value
+    ? `${remoteAccessStatusText.value}: ${remoteAccessError.value}`
+    : remoteAccessStatusText.value
+})
+
+const remoteAccessDescriptionError = computed(
+  () => remoteAccessStatusTone.value === 'error' && !!remoteAccessError.value
+)
+
+const remoteAccessDescription = computed(() => {
+  return remoteAccessDescriptionError.value
+    ? remoteAccessError.value || ''
+    : t('remoteAccess.channelDescription')
+})
+
+const remoteAccessIconAlt = computed(() => t('remoteAccess.title'))
+
+const remoteAccessRecommendedLabel = computed(() => t('remoteAccess.recommended'))
+
+const remoteAccessTitle = computed(() => t('remoteAccess.title'))
+
+const remoteAccessShouldShowToggle = computed(
+  () => remoteAccessState.value === 'connected' || remoteAccessState.value === 'ready'
+)
 
 watch(
   orderedChannels,
@@ -1964,86 +2018,57 @@ onErrorCaptured((error, _instance, info) => {
           <div v-else class="channels-board__content">
             <div class="channels-board__main">
               <div class="channels-board__stack">
-                <div
-                  class="channels-remote-card"
-                  :class="[
-                    `channels-remote-card--${remoteAccessState}`,
-                    { 'channels-remote-card--expanded': isRemoteAccessSelected },
-                  ]"
+                <ChannelCardShell
+                  class-prefix="channels-remote-card"
+                  :title="remoteAccessTitle"
+                  :description="remoteAccessDescription"
+                  :description-error="remoteAccessDescriptionError"
+                  :status-tone="remoteAccessStatusTone"
+                  :status-text="remoteAccessStatusText"
+                  :status-title="remoteAccessStatusTitle"
+                  :expanded="isRemoteAccessSelected"
+                  icon-src="/icons/tunnel/remote-access.svg"
+                  :icon-alt="remoteAccessIconAlt"
+                  :meta-label="remoteAccessRecommendedLabel"
+                  @header-click="toggleRemoteAccessExpanded"
                 >
-                  <div class="channels-remote-card__header" @click="toggleRemoteAccessExpanded">
-                    <div class="channels-remote-card__identity">
-                      <div class="channels-remote-card__icon-shell">
-                        <img
-                          src="/icons/tunnel/remote-access.svg"
-                          alt="Remote Access"
-                          class="channels-remote-card__icon"
-                        />
-                      </div>
-                      <div class="channels-remote-card__copy">
-                        <div class="channels-remote-card__title-row">
-                          <h3 class="channels-remote-card__title text-gray-900 dark:text-white">
-                            {{ t('remoteAccess.title') }}
-                          </h3>
-                          <span
-                            class="channels-remote-card__badge px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-slate-800/80 text-gray-900 dark:text-slate-100 rounded-full"
-                          >
-                            {{ t('remoteAccess.recommended') }}
-                          </span>
-                          <span
-                            class="w-2 h-2 rounded-full"
-                            :class="{
-                              'bg-green-500': remoteAccessState === 'connected',
-                              'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
-                              'bg-red-500': remoteAccessState === 'error',
-                              'bg-gray-400': ['loading', 'ready'].includes(remoteAccessState),
-                            }"
-                          ></span>
-                        </div>
-                        <p
-                          class="channels-remote-card__description text-gray-500 dark:text-slate-300 truncate"
-                        >
-                          {{ t('remoteAccess.channelDescription') }}
-                        </p>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                      <label
-                        v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'"
-                        class="relative inline-flex items-center cursor-pointer"
-                        @click.stop.prevent="
-                          remoteAccessState === 'connected'
-                            ? handleRemoteAccessStop()
-                            : handleRemoteAccessStart()
-                        "
-                      >
-                        <input
-                          :checked="remoteAccessState === 'connected'"
-                          type="checkbox"
-                          class="sr-only peer"
-                        />
-                        <div
-                          class="channels-remote-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
-                        ></div>
-                      </label>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="channels-remote-card__chevron"
-                        :class="{ 'channels-remote-card__chevron--active': isRemoteAccessSelected }"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
+                  <template #actions>
+                    <label
+                      v-if="remoteAccessShouldShowToggle"
+                      class="relative inline-flex items-center cursor-pointer"
+                      @click.stop.prevent="
+                        remoteAccessState === 'connected'
+                          ? handleRemoteAccessStop()
+                          : handleRemoteAccessStart()
+                      "
+                    >
+                      <input
+                        :checked="remoteAccessState === 'connected'"
+                        type="checkbox"
+                        class="sr-only peer channels-remote-card__toggle-input"
+                      />
+                      <div
+                        class="channels-remote-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
+                      ></div>
+                    </label>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="channels-remote-card__chevron"
+                      :class="{ 'channels-remote-card__chevron--active': isRemoteAccessSelected }"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </template>
+                </ChannelCardShell>
 
                 <ChannelCard
                   v-for="channel in primaryChannels"
@@ -3000,159 +3025,27 @@ onErrorCaptured((error, _instance, info) => {
   line-height: 1.4;
 }
 
-.channels-remote-card {
-  position: relative;
-  overflow: hidden;
-  border-radius: 1.25rem;
-  border: 1px solid rgba(226, 232, 240, 0.96);
-  background: #ffffff;
-  box-shadow: none;
-  transition:
-    transform 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.channels-remote-card:hover {
-  transform: translateY(-1px);
-}
-
-.channels-remote-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  opacity: 1;
-}
-
-.channels-remote-card--expanded {
-  border-color: rgba(15, 23, 42, 0.14);
-  box-shadow: 0 18px 38px -30px rgba(15, 23, 42, 0.4);
-}
-
-.channels-remote-card::before {
-  background: rgba(148, 163, 184, 0.4);
-}
-
-.channels-remote-card--connected::before {
-  background: rgba(22, 163, 74, 0.9);
-}
-
-.channels-remote-card--connecting::before {
-  background: rgba(245, 158, 11, 0.92);
-}
-
-.channels-remote-card--error::before {
-  background: rgba(239, 68, 68, 0.92);
-}
-
-.channels-remote-card__header {
-  display: flex;
-  align-items: center;
-  gap: 0.84rem;
-  min-height: 4.6rem;
-  padding: 0.86rem 0.96rem;
-  cursor: pointer;
-  transition: background-color 160ms ease;
-}
-
-.channels-remote-card__header:hover {
-  background: rgba(148, 163, 184, 0.08);
-}
-
-.channels-remote-card__identity {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 0.74rem;
-}
-
-.channels-remote-card__icon-shell {
-  width: 2.32rem;
-  height: 2.32rem;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border-radius: 0.74rem;
-  background: #f8fafc;
-  border: 1px solid rgba(226, 232, 240, 0.96);
-  box-shadow: none;
-}
-
-.channels-remote-card__icon {
-  width: 1.32rem;
-  height: 1.32rem;
-  object-fit: contain;
-}
-
-.channels-remote-card__copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.channels-remote-card__title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.38rem;
-  min-height: 1.2rem;
-}
-
-.channels-remote-card__title {
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
-.channels-remote-card__description {
-  margin-top: 0.22rem;
-  font-size: 0.74rem;
-  line-height: 1.38;
-}
-
-.channels-remote-card__body {
-  border-top: 1px solid rgba(226, 232, 240, 0.96);
-  padding: 0.92rem;
-  background: #f8fafc;
-}
-
-.channels-remote-card__badge {
-  font-size: 0.56rem;
-  line-height: 1.1;
-}
-
 .channels-remote-card__toggle {
-  width: 2.12rem;
-  height: 1.14rem;
+  width: 2.16rem;
+  height: 1.16rem;
   position: relative;
 }
 
 .channels-remote-card__toggle::after {
   top: 2px;
   inset-inline-start: 2px;
-  width: 0.78rem;
-  height: 0.78rem;
-  content: '';
-  position: absolute;
-  border-radius: 9999px;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  transition: transform 150ms ease-in-out;
+  width: 0.82rem;
+  height: 0.82rem;
 }
 
-.peer:checked + .channels-remote-card__toggle::after {
-  transform: translateX(100%);
+.channels-remote-card__toggle-input:checked + .channels-remote-card__toggle::after {
+  inset-inline-start: calc(100% - 0.82rem - 2px);
   border-color: #ffffff;
 }
 
-:global(html[dir='rtl']) .peer:checked + .channels-remote-card__toggle::after {
-  transform: translateX(-100%);
-}
-
 .channels-remote-card__chevron {
-  width: 0.8rem;
-  height: 0.8rem;
+  width: 0.92rem;
+  height: 0.92rem;
   color: #94a3b8;
   transition:
     transform 160ms ease,
@@ -3162,50 +3055,6 @@ onErrorCaptured((error, _instance, info) => {
 .channels-remote-card__chevron--active {
   color: #0f172a;
   transform: translateX(2px);
-}
-
-.channels-remote-card__label {
-  font-size: 0.68rem;
-}
-
-.channels-remote-card__provider-option {
-  padding: 0.56rem 0.66rem;
-}
-
-.channels-remote-card__optional-note {
-  margin-inline-start: 0.25rem;
-}
-
-.channels-remote-card__provider-name {
-  font-size: 0.72rem;
-}
-
-.channels-remote-card__provider-meta {
-  font-size: 0.6rem;
-}
-
-.channels-remote-card__input {
-  min-height: 2.08rem;
-  padding: 0.4rem 0.54rem;
-  border-radius: 0.66rem;
-  font-size: 0.7rem;
-}
-
-.channels-remote-card__helper-link {
-  font-size: 0.6rem;
-}
-
-.channels-remote-card__primary-action,
-.channels-remote-card__secondary-action {
-  min-height: 2.14rem;
-  padding: 0.42rem 0.62rem;
-  border-radius: 0.72rem;
-  font-size: 0.7rem;
-}
-
-.channels-remote-card__note {
-  font-size: 0.58rem;
-  line-height: 1.45;
 }
 
 .channels-load-more {
@@ -3266,19 +3115,6 @@ onErrorCaptured((error, _instance, info) => {
 @media (max-width: 639px) {
   .channels-page {
     padding-inline: 0.58rem;
-  }
-
-  .channels-remote-card__header,
-  .channels-remote-card__identity {
-    align-items: flex-start;
-  }
-
-  .channels-remote-card__header {
-    padding: 0.76rem 0.82rem;
-  }
-
-  .channels-remote-card__body {
-    padding: 0.82rem;
   }
 
   .channels-group-modal {
@@ -3348,33 +3184,22 @@ html.dark .channels-board__detail-empty-copy {
 
 :root.dark .channels-page :deep(.dashboard-card-surface),
 [data-theme='dark'] .channels-page :deep(.dashboard-card-surface),
-html.dark .channels-page :deep(.dashboard-card-surface),
-:root.dark .channels-remote-card,
-[data-theme='dark'] .channels-remote-card,
-html.dark .channels-remote-card {
+html.dark .channels-page :deep(.dashboard-card-surface) {
   background: #111827;
   border-color: rgba(71, 85, 105, 0.46);
   box-shadow: none;
 }
 
-:root.dark .channels-remote-card__body,
-[data-theme='dark'] .channels-remote-card__body,
-html.dark .channels-remote-card__body {
-  border-top-color: rgba(71, 85, 105, 0.46);
-  background: #1e293b;
+:root.dark .channels-remote-card__chevron,
+[data-theme='dark'] .channels-remote-card__chevron,
+html.dark .channels-remote-card__chevron {
+  color: #64748b;
 }
 
-:root.dark .channels-remote-card__icon-shell,
-[data-theme='dark'] .channels-remote-card__icon-shell,
-html.dark .channels-remote-card__icon-shell {
-  background: rgba(15, 23, 42, 0.72);
-  border-color: rgba(71, 85, 105, 0.5);
-}
-
-:root.dark .channels-remote-card__header:hover,
-[data-theme='dark'] .channels-remote-card__header:hover,
-html.dark .channels-remote-card__header:hover {
-  background: rgba(51, 65, 85, 0.28);
+:root.dark .channels-remote-card__chevron--active,
+[data-theme='dark'] .channels-remote-card__chevron--active,
+html.dark .channels-remote-card__chevron--active {
+  color: #f8fafc;
 }
 
 :root.dark .channels-summary-value,

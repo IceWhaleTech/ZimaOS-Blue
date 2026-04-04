@@ -633,9 +633,12 @@ onUnmounted(() => {
   --dashboard-card-surface-bottom: var(--color-bg-base);
   --dashboard-card-subsurface-top: var(--color-bg-surface);
   --dashboard-card-subsurface-bottom: var(--color-bg-elevated);
-  --dashboard-card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--shadow-lg);
+  --dashboard-card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 24px -22px rgba(15, 23, 42, 0.14);
   --dashboard-card-shadow-hover:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 30px -28px rgba(15, 23, 42, 0.28);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 30px -28px rgba(15, 23, 42, 0.18);
+  --dashboard-card-featured-shadow: 0 20px 32px -32px rgba(15, 23, 42, 0.16);
+  --dashboard-control-shadow: 0 14px 24px -24px rgba(15, 23, 42, 0.22);
   --dashboard-card-label-color: var(--color-text-secondary);
   --dashboard-card-subtitle-color: var(--color-text);
   --dashboard-card-footnote-color: var(--color-text-secondary);
@@ -645,6 +648,17 @@ onUnmounted(() => {
   --dashboard-card-divider: var(--color-border);
   --dashboard-details-pill-bg: rgba(16, 185, 129, 0.12);
   --dashboard-details-pill-color: #047857;
+}
+
+:root.dark .home-page,
+[data-theme='dark'] .home-page,
+html.dark .home-page {
+  --dashboard-card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 14px 28px -24px rgba(2, 6, 23, 0.34);
+  --dashboard-card-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 32px -26px rgba(2, 6, 23, 0.42);
+  --dashboard-card-featured-shadow: 0 18px 30px -28px rgba(2, 6, 23, 0.34);
+  --dashboard-control-shadow: 0 14px 26px -22px rgba(2, 6, 23, 0.44);
 }
 
 .dashboard-stage {
@@ -724,7 +738,7 @@ onUnmounted(() => {
   border-radius: 999px;
   color: #6b7280;
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 18px 36px -32px rgba(15, 23, 42, 0.32);
+  box-shadow: var(--dashboard-control-shadow);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-4px);
@@ -766,7 +780,7 @@ onUnmounted(() => {
   border: 0;
   background: rgba(255, 255, 255, 0.92);
   color: #6b7280;
-  box-shadow: 0 18px 36px -32px rgba(15, 23, 42, 0.32);
+  box-shadow: var(--dashboard-control-shadow);
 }
 
 :deep(.dashboard-customizer-compact .dashboard-customize-trigger:hover) {
@@ -1188,7 +1202,7 @@ onUnmounted(() => {
 :deep(.dashboard-shell .dashboard-hero-card-featured) {
   min-height: 10rem;
   padding: 1rem 1.05rem;
-  box-shadow: 0 22px 36px -34px rgba(15, 23, 42, 0.2);
+  box-shadow: var(--dashboard-card-featured-shadow);
 }
 
 :root.dark .dashboard-welcome-title,
@@ -1208,14 +1222,14 @@ html.dark .dashboard-description {
 html.dark .dashboard-refresh-button {
   color: rgb(148 163 184);
   background: rgba(30, 41, 59, 0.88);
-  box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.72);
+  box-shadow: var(--dashboard-control-shadow);
 }
 
 :global(.dark .dashboard-customizer-compact .dashboard-customize-trigger),
 :global([data-theme='dark'] .dashboard-customizer-compact .dashboard-customize-trigger) {
   color: rgb(148 163 184);
   background: rgba(30, 41, 59, 0.88);
-  box-shadow: 0 18px 36px -28px rgba(2, 6, 23, 0.72);
+  box-shadow: var(--dashboard-control-shadow);
 }
 
 :global(.dark .dashboard-customizer-compact .dashboard-customize-trigger:hover),

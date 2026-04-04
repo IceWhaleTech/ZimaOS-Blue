@@ -18,7 +18,7 @@ import (
 
 func TestLiveSkillMarketAvailabilityReport(t *testing.T) {
 	if testing.Short() || getenvTrimmed("LIVE_SKILLMARKET_AVAILABILITY") != "1" {
-		t.Skip("set LIVE_SKILLMARKET_AVAILABILITY=1 to run the live 9-source availability report")
+		t.Skip("set LIVE_SKILLMARKET_AVAILABILITY=1 to run the live source availability report")
 	}
 
 	tempDir := t.TempDir()
@@ -56,8 +56,8 @@ func TestLiveSkillMarketAvailabilityReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(sources) != 9 {
-		t.Fatalf("enabled source count = %d, want 9", len(sources))
+	if len(sources) != 8 {
+		t.Fatalf("enabled source count = %d, want 8", len(sources))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

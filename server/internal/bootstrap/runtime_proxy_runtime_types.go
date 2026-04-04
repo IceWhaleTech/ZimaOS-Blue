@@ -64,7 +64,6 @@ type runtimeProxyFailoverCallbackTarget interface {
 }
 
 type runtimeProxyProviderRegistryTarget interface {
-	SetOnHealthResult(func(providerID string, result *providerpool.HealthCheckResult))
 	SetOnStatusChange(func(providerID string, oldStatus, newStatus providerpool.ProviderStatus))
 	ListEnabled() []*providerpool.Provider
 }

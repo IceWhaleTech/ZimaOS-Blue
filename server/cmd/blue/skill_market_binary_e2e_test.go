@@ -103,9 +103,8 @@ skill_market:
   tencent_skillhub_api_base_url: "%s"
   skillhub_base_url: "%s"
   skillstack_base_url: "%s"
-  skillsmp_base_url: "%s"
   llmskills_base_url: "%s"
-`, port, filepath.Join(homeDir, "missing-curations.yaml"), upstream.URL, upstream.URL, upstream.URL, upstream.URL, upstream.URL)
+`, port, filepath.Join(homeDir, "missing-curations.yaml"), upstream.URL, upstream.URL, upstream.URL, upstream.URL)
 
 	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)

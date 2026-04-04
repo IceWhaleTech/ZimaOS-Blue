@@ -33,6 +33,10 @@ type ToolDefinition struct {
 	Icon                string                 `json:"icon,omitempty"`
 	Parameters          map[string]interface{} `json:"parameters,omitempty"`
 	RiskLevel           string                 `json:"risk_level,omitempty"`
+	Aliases             []string               `json:"aliases,omitempty"`
+	SearchHints         []string               `json:"search_hints,omitempty"`
+	ShouldDefer         bool                   `json:"should_defer,omitempty"`
+	AlwaysLoad          bool                   `json:"always_load,omitempty"`
 	VisibilityAllowlist []string               `json:"visibility_allowlist,omitempty"`
 }
 

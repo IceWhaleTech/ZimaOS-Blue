@@ -42,9 +42,6 @@ var (
 	// ErrQuotaExceeded indicates the usage quota has been exceeded
 	ErrQuotaExceeded = errors.New("quota exceeded")
 
-	// ErrHealthCheckFailed indicates the health check failed
-	ErrHealthCheckFailed = errors.New("health check failed")
-
 	// ErrEncryptionFailed indicates encryption/decryption failed
 	ErrEncryptionFailed = errors.New("encryption failed")
 

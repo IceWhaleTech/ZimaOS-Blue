@@ -44,7 +44,6 @@ func TestPoolStartIsIdempotent(t *testing.T) {
 		PricingManager: nil,
 		Storage:        storage,
 		Config: &PoolConfig{
-			HealthCheckEnabled:   false,
 			UsageTrackingEnabled: false,
 		},
 		readyCh: make(chan struct{}),

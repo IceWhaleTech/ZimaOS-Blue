@@ -151,21 +151,6 @@ func (a *mgmtProviderAdapter) DisableProvider(_ context.Context, id string) erro
 	return a.pool.Registry.Disable(id)
 }
 
-func (a *mgmtProviderAdapter) TestProvider(_ context.Context, id string) (map[string]interface{}, error) {
-	p, err := a.pool.Registry.Get(id)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]interface{}{
-		"id":       p.ID,
-		"name":     p.Name,
-		"enabled":  p.Enabled,
-		"status":   string(p.Status),
-		"base_url": p.BaseURL,
-		"type":     string(p.Type),
-	}, nil
-}
-
 func (a *mgmtProviderAdapter) ListModels(_ context.Context) ([]map[string]interface{}, error) {
 	if a.pool.Discovery == nil {
 		return nil, fmt.Errorf("model discovery not available")

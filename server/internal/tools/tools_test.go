@@ -2769,7 +2769,7 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "web_query", "mcp"}
+	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "tool_search", "web_query", "mcp"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)
@@ -2779,7 +2779,7 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	for _, def := range registry.Definitions() {
 		visible[def.Name] = struct{}{}
 	}
-	for _, name := range []string{"read", "write"} {
+	for _, name := range []string{"read", "write", "tool_search"} {
 		if _, ok := visible[name]; !ok {
 			t.Errorf("expected visible tool definition %q", name)
 		}

@@ -75,6 +75,22 @@ func (h *Handler) GetService() *Service {
 	return h.svc()
 }
 
+// PeekService returns the current service if it has already been initialized.
+// It never triggers lazy initialization.
+func (h *Handler) PeekService() *Service {
+	if h == nil {
+		return nil
+	}
+	if h.service != nil || h.lazy == nil {
+		return h.service
+	}
+	svc, ok := h.lazy.Peek()
+	if !ok {
+		return nil
+	}
+	return svc
+}
+
 // SetIdleReclaim configures idle reclaim for the lazily initialized cron service.
 func (h *Handler) SetIdleReclaim(idleAfter time.Duration) {
 	if h == nil || h.lazy == nil {

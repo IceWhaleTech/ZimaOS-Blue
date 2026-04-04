@@ -60,25 +60,48 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "browser"},
 		{Name: "deep_research"},
 		{Name: "sessions"},
+		{Name: "tool_search"},
 		{Name: "web"},
 		{Name: "apply_patch"},
 		{Name: "write_begin"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != 15 {
-		t.Fatalf("expected 15 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 16 {
+		t.Fatalf("expected 16 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
 	}
 	allowed := map[string]bool{
 		"ask":     true,
 		"bash":    true,
 		"browser": true, "calendar": true, "email": true, "file_read": true, "file_write": true,
 		"image": true, "pdf": true, "plan_append": true, "plan_create": true,
-		"plan_update": true, "deep_research": true, "sessions": true, "web": true,
+		"plan_update": true, "deep_research": true, "sessions": true, "tool_search": true, "web": true,
 	}
 	for _, def := range filtered {
 		if !allowed[def.Name] {
 			t.Fatalf("unexpected tool %q after default chat allowlist", def.Name)
 		}
+	}
+}
+
+func TestToolPolicyResolver_SkipDefaultChatDirectAllowlist(t *testing.T) {
+	cfg := &config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	}
+	resolver := NewToolPolicyResolver(cfg)
+	defs := []ToolDefinition{
+		{Name: "ask"},
+		{Name: "calendar"},
+		{Name: "process"},
+	}
+
+	filtered := resolver.Filter(ToolPolicyRequest{
+		RouteKind:                      ToolRouteKindChat,
+		SkipDefaultChatDirectAllowlist: true,
+	}, defs)
+
+	if len(filtered) != 3 {
+		t.Fatalf("expected skip-default request to keep all policy-visible tools, got %#v", filtered)
 	}
 }
 

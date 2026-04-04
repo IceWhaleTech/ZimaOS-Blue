@@ -267,3 +267,32 @@ func TestLazyHandlerIdleReclaimsAndRecreatesService(t *testing.T) {
 		t.Fatal("expected cron service to be recreated after idle reclaim")
 	}
 }
+
+func TestLazyHandlerPeekServiceDoesNotInitialize(t *testing.T) {
+	var created int
+	h := NewLazyHandler(func() *Service {
+		created++
+		return NewService(DefaultConfig(), zap.NewNop())
+	}, zap.NewNop())
+
+	if got := h.PeekService(); got != nil {
+		t.Fatalf("PeekService() = %v, want nil before initialization", got)
+	}
+	if created != 0 {
+		t.Fatalf("created after PeekService = %d, want 0", created)
+	}
+
+	if got := h.GetService(); got == nil {
+		t.Fatal("GetService() returned nil")
+	}
+	if created != 1 {
+		t.Fatalf("created after GetService = %d, want 1", created)
+	}
+
+	if got := h.PeekService(); got == nil {
+		t.Fatal("PeekService() returned nil after initialization")
+	}
+	if created != 1 {
+		t.Fatalf("created after second PeekService = %d, want 1", created)
+	}
+}

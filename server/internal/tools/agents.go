@@ -35,6 +35,9 @@ func (t *AgentsListTool) Definition() ToolDefinition {
 		Name:        "agents_list",
 		Description: "List configured agents, defaults, and effective tool-policy hints.",
 		Icon:        "agents",
+		Aliases:     []string{"list_agents", "agent_list"},
+		SearchHints: []string{"agents", "workers", "subagents", "delegation"},
+		ShouldDefer: true,
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -51,6 +54,9 @@ func (t *SubagentsTool) Definition() ToolDefinition {
 		Name:        "subagents",
 		Description: "Inspect effective subagent policy, or spawn a harness-backed child agent when action=spawn or action=run. Child agents inherit the current workspace, making them suitable for bounded worker coordination and shared scratchpad workflows.",
 		Icon:        "subagents",
+		Aliases:     []string{"agent_spawn", "spawn_agent"},
+		SearchHints: []string{"subagents", "delegate", "agent", "worker", "parallel"},
+		ShouldDefer: true,
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

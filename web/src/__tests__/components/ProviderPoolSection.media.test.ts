@@ -721,7 +721,61 @@ describe('ProviderPoolSection media verification gating', () => {
 
     const badge = wrapper.find('[data-testid="pinchbench-badge"]')
     expect(badge.exists()).toBe(true)
-    expect(badge.text()).toContain('PinchBench 75.0%')
+    expect(badge.text()).toBe('75.0')
+    expect(badge.attributes('href')).toBe('https://pinchbench.com/model/openai/openai/gpt-4o-mini')
+  })
+
+  it('reuses provider-level PinchBench metadata for key-scoped models via heuristic matching', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      api_keys: [
+        {
+          id: 'key-1',
+          key_hash: 'sk-test-1',
+          usage_count: 0,
+          created_at: '',
+          enabled: true,
+          models: [
+            {
+              id: 'openai/gpt-4o-mini',
+              provider_id: 'openai',
+              name: 'openai/gpt-4o-mini',
+              display_name: 'openai/gpt-4o-mini',
+              enabled: true,
+              capabilities: ['chat'],
+            },
+          ],
+        },
+      ],
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+    mocks.providerPoolStore.models = [
+      {
+        id: 'gpt-4o-mini',
+        provider_id: 'openai',
+        name: 'gpt-4o-mini',
+        display_name: 'GPT-4o Mini',
+        enabled: true,
+        capabilities: ['chat'],
+        pinchbench_score: 75,
+        pinchbench_url: 'https://pinchbench.com/model/openai/openai/gpt-4o-mini',
+      },
+    ]
+
+    const wrapper = mountSection()
+    const setupState = (wrapper.vm.$ as any).setupState
+    setupState.selectedKeyId = 'key-1'
+    await flushPromises()
+
+    const badge = wrapper.find('[data-testid="pinchbench-badge"]')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('75.0')
     expect(badge.attributes('href')).toBe('https://pinchbench.com/model/openai/openai/gpt-4o-mini')
   })
 

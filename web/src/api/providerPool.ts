@@ -58,7 +58,6 @@ export interface Provider {
   beta?: boolean
   created_at?: string
   updated_at?: string
-  last_health_check?: string
   last_error?: string
   models?: Model[]
   oauth?: OAuthConfig
@@ -95,16 +94,6 @@ export interface Model {
   description?: string
   pinchbench_score?: number
   pinchbench_url?: string
-}
-
-export interface HealthCheckResult {
-  provider_id: string
-  key_id?: string
-  key_hash?: string
-  healthy: boolean
-  latency: number
-  error?: string
-  checked_at: string
 }
 
 export interface ProviderVerificationProbe {
@@ -418,8 +407,7 @@ export const providerPoolApi = {
   listProviders: () => api.get<{ providers: Provider[]; total: number }>('/providers'),
   getProviderCatalogStatus: () => api.get<ProviderCatalogStatus>('/providers/catalog/status'),
 
-  getProvider: (id: string) =>
-    api.get<{ provider: Provider; health?: HealthCheckResult }>(`/providers/${id}`),
+  getProvider: (id: string) => api.get<{ provider: Provider }>(`/providers/${id}`),
 
   addProvider: (provider: Partial<Provider>) => api.post<Provider>('/providers', provider),
 
@@ -431,9 +419,6 @@ export const providerPoolApi = {
   enableProvider: (id: string) => api.post<{ status: string }>(`/providers/${id}/enable`),
 
   disableProvider: (id: string) => api.post<{ status: string }>(`/providers/${id}/disable`),
-
-  testProvider: (id: string, keyId?: string) =>
-    api.post<HealthCheckResult>(`/providers/${id}/test`, keyId ? { key_id: keyId } : {}),
 
   clearError: (id: string) => api.post<{ status: string }>(`/providers/${id}/clear-error`),
 

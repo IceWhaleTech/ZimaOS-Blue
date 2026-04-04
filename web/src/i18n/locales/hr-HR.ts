@@ -4603,10 +4603,6 @@ export default mergeHarnessLocale('hr-HR', {
           label: 'SkillStack',
           description: 'Katalog zajednice usmjeren na ponovno upotrebljive kolekcije skillova.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Katalog marketplacea SkillsMP.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Katalog LLMSkills community marketplacea.',

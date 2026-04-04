@@ -16,7 +16,8 @@ const (
 	CanonicalUIReviewer   CanonicalSkillID = "ui_reviewer"
 	CanonicalHimalaya     CanonicalSkillID = "himalaya"
 	CanonicalDeepResearch CanonicalSkillID = "deep_research"
-	CanonicalMgmt         CanonicalSkillID = "mgmt"
+	CanonicalConfig       CanonicalSkillID = "config"
+	CanonicalMgmt         CanonicalSkillID = CanonicalConfig
 	CanonicalExec         CanonicalSkillID = "exec"
 	CanonicalUnknown      CanonicalSkillID = "unknown"
 )
@@ -169,10 +170,10 @@ func init() {
 			CutoverEligible:   true,
 			Description:       "Multi-step cited research",
 		},
-		CanonicalMgmt: {
-			CanonicalID:       CanonicalMgmt,
+		CanonicalConfig: {
+			CanonicalID:       CanonicalConfig,
 			Kind:              "skill",
-			Aliases:           []string{"management", "admin"},
+			Aliases:           []string{"mgmt", "management", "admin"},
 			SearchHints:       []string{"settings", "providers", "config", "runtime", "health", "proxy", "channels", "skills", "tools"},
 			CapabilityTags:    []string{"admin", "settings", "diagnostics"},
 			ExecutionProfile:  ExecutionProfileInline,

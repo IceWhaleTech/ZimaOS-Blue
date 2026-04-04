@@ -1500,7 +1500,7 @@ func runServerOnce() serverRunOutcome {
 
 	// Clean up cron service if it was initialized
 	if cronHandler != nil {
-		if svc := cronHandler.GetService(); svc != nil {
+		if svc := cronHandler.PeekService(); svc != nil {
 			svc.Stop(shutdownCtx)
 			logger.Info().Msg("Cron service stopped")
 		}

@@ -20,7 +20,8 @@ func TestResolveCanonicalSkill(t *testing.T) {
 		{"ui_reviewer", CanonicalUIReviewer, true},
 		{"himalaya", CanonicalHimalaya, true},
 		{"deep_research", CanonicalDeepResearch, true},
-		{"mgmt", CanonicalMgmt, true},
+		{"config", CanonicalConfig, true},
+		{"mgmt", CanonicalConfig, true},
 		{"research", CanonicalDeepResearch, true},
 		{"exec", CanonicalExec, true},
 		{"unknown_skill", CanonicalUnknown, false},
@@ -59,8 +60,8 @@ func TestIsCutoverEligibleCanonical(t *testing.T) {
 	if !IsCutoverEligibleCanonical(CanonicalHimalaya) {
 		t.Error("himalaya should be cutover eligible")
 	}
-	if !IsCutoverEligibleCanonical(CanonicalMgmt) {
-		t.Error("mgmt should be cutover eligible")
+	if !IsCutoverEligibleCanonical(CanonicalConfig) {
+		t.Error("config should be cutover eligible")
 	}
 	if !IsCutoverEligibleCanonical(CanonicalExec) {
 		t.Error("exec should be cutover eligible for workspace/local cutover")
@@ -92,8 +93,8 @@ func TestExecutionProfileForSkill(t *testing.T) {
 	if ExecutionProfileForSkill(CanonicalAsk) != ExecutionProfileInline {
 		t.Error("ask should be inline")
 	}
-	if ExecutionProfileForSkill(CanonicalMgmt) != ExecutionProfileInline {
-		t.Error("mgmt should be inline")
+	if ExecutionProfileForSkill(CanonicalConfig) != ExecutionProfileInline {
+		t.Error("config should be inline")
 	}
 }
 
@@ -113,8 +114,8 @@ func TestNativeSurfaceModeForSkill(t *testing.T) {
 	if NativeSurfaceModeForSkill(CanonicalHimalaya) != NativeSurfaceModeSkillExec {
 		t.Error("himalaya should be skill_exec")
 	}
-	if NativeSurfaceModeForSkill(CanonicalMgmt) != NativeSurfaceModeSkillExec {
-		t.Error("mgmt should be skill_exec")
+	if NativeSurfaceModeForSkill(CanonicalConfig) != NativeSurfaceModeSkillExec {
+		t.Error("config should be skill_exec")
 	}
 	if NativeSurfaceModeForSkill(CanonicalExec) != NativeSurfaceModeSkillExec {
 		t.Error("exec should be skill_exec")
@@ -183,7 +184,7 @@ func TestBuildDiscoveryDecision_UsesCanonicalCutoverOnlyForEligibleDynamicRoutes
 	}
 }
 
-func TestBuildDiscoveryDecision_CutoverCoversAskMgmtAndExecRoutes(t *testing.T) {
+func TestBuildDiscoveryDecision_CutoverCoversAskConfigAndExecRoutes(t *testing.T) {
 	tests := []struct {
 		name        string
 		selected    string
@@ -192,7 +193,8 @@ func TestBuildDiscoveryDecision_CutoverCoversAskMgmtAndExecRoutes(t *testing.T) 
 	}{
 		{name: "ask", selected: "ask", wantTarget: CanonicalAsk, wantProfile: ExecutionProfileInline},
 		{name: "reminder", selected: "reminder", wantTarget: CanonicalReminder, wantProfile: ExecutionProfileInline},
-		{name: "mgmt", selected: "mgmt", wantTarget: CanonicalMgmt, wantProfile: ExecutionProfileInline},
+		{name: "config", selected: "config", wantTarget: CanonicalConfig, wantProfile: ExecutionProfileInline},
+		{name: "mgmt_alias", selected: "mgmt", wantTarget: CanonicalConfig, wantProfile: ExecutionProfileInline},
 		{name: "ui_reviewer", selected: "ui_reviewer", wantTarget: CanonicalUIReviewer, wantProfile: ExecutionProfileInline},
 		{name: "himalaya", selected: "himalaya", wantTarget: CanonicalHimalaya, wantProfile: ExecutionProfileInline},
 		{name: "exec", selected: "exec", wantTarget: CanonicalExec, wantProfile: ExecutionProfileInline},

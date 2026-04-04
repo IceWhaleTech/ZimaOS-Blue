@@ -434,8 +434,8 @@ func TestRuntimeContractBinding_RegistersMgmtToolThroughBoundary(t *testing.T) {
 		version:       "1.2.3",
 		userService:   &user.Service{},
 	})
-	if mgmtTool == nil || registry.Get("mgmt") != mgmtTool {
-		t.Fatalf("expected mgmt tool to be registered through contract, got tool=%#v registered=%#v", mgmtTool, registry.Get("mgmt"))
+	if mgmtTool == nil || registry.Get("config") != mgmtTool {
+		t.Fatalf("expected config tool to be registered through contract, got tool=%#v registered=%#v", mgmtTool, registry.Get("config"))
 	}
 
 	rawSystem, err := mgmtTool.Execute(context.Background(), map[string]any{"action": "system.version"})

@@ -14,6 +14,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/toolschema"
 )
 
 const (
@@ -889,7 +890,7 @@ func (p *OpenAIProvider) convertRequest(req ChatRequest) openAIRequest {
 				Function: openAIFunction{
 					Name:        tool.Name,
 					Description: tool.Description,
-					Parameters:  tool.Parameters,
+					Parameters:  toolschema.NormalizeForOpenAICompat(tool.Parameters),
 				},
 			}
 		}

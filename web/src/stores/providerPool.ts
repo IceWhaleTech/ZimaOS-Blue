@@ -594,44 +594,6 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
-  async function testProvider(id: string, keyId?: string) {
-    try {
-      const provider = providers.value.find((p) => p.id === id)
-      if (provider?.type === 'media') {
-        const response = await mediaProviderApi.test(id)
-        if (provider) {
-          provider.status = response.data.healthy ? 'active' : 'error'
-          if (response.data.error) {
-            provider.last_error = response.data.error
-          }
-        }
-        return response.data
-      }
-      let response
-      try {
-        response = await providerPoolApi.testProvider(id, keyId)
-      } catch (e: any) {
-        // Key-level test can race with key updates; retry once at provider-level.
-        if (keyId && e?.response?.status === 404) {
-          response = await providerPoolApi.testProvider(id)
-        } else {
-          throw e
-        }
-      }
-      if (provider) {
-        provider.status = response.data.healthy ? 'active' : 'error'
-        provider.last_health_check = response.data.checked_at
-        if (response.data.error) {
-          provider.last_error = response.data.error
-        }
-      }
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to test provider'
-      throw e
-    }
-  }
-
   async function updateModelParams(id: string, params: ModelParams) {
     try {
       const response = await providerPoolApi.updateModelParams(id, params)
@@ -1010,7 +972,6 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     clearProviderError,
     verifyProviderCandidate,
     verifyProviderRecommendation,
-    testProvider,
     updateModelParams,
     detectCapabilities,
     updateAllowedModels,

@@ -34,9 +34,6 @@ func (m *mockProviderService) AddKey(_ context.Context, providerID, apiKey strin
 func (m *mockProviderService) RemoveProvider(_ context.Context, id string) error  { return nil }
 func (m *mockProviderService) EnableProvider(_ context.Context, id string) error  { return nil }
 func (m *mockProviderService) DisableProvider(_ context.Context, id string) error { return nil }
-func (m *mockProviderService) TestProvider(_ context.Context, id string) (map[string]interface{}, error) {
-	return map[string]interface{}{"id": id, "status": "active"}, nil
-}
 func (m *mockProviderService) ListModels(_ context.Context) ([]map[string]interface{}, error) {
 	return m.models, nil
 }
@@ -173,8 +170,8 @@ func parseResult(t *testing.T, result interface{}) map[string]interface{} {
 func TestMgmtTool_Definition(t *testing.T) {
 	tool := NewMgmtTool()
 	def := tool.Definition()
-	if def.Name != "mgmt" {
-		t.Errorf("expected name 'mgmt', got %q", def.Name)
+	if def.Name != "config" {
+		t.Errorf("expected name 'config', got %q", def.Name)
 	}
 	if def.Icon != "settings" {
 		t.Errorf("expected icon 'settings', got %q", def.Icon)
@@ -577,35 +574,6 @@ func TestMgmtTool_ProvidersAddKeyNotFound(t *testing.T) {
 	m := parseResult(t, result)
 	if _, ok := m["error"]; !ok {
 		t.Error("expected error for nonexistent provider")
-	}
-}
-
-func TestMgmtTool_ProvidersTest(t *testing.T) {
-	tool := newTestMgmtTool()
-	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "providers.test",
-		"id":     "openai",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	m := parseResult(t, result)
-	if m["status"] != "active" {
-		t.Errorf("expected status 'active', got %v", m["status"])
-	}
-}
-
-func TestMgmtTool_ProvidersTestMissingID(t *testing.T) {
-	tool := newTestMgmtTool()
-	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "providers.test",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	m := parseResult(t, result)
-	if _, ok := m["error"]; !ok {
-		t.Error("expected error for missing id")
 	}
 }
 

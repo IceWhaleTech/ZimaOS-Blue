@@ -4632,10 +4632,6 @@ export default mergeHarnessLocale('hu-HU', {
           description:
             'Közösségi katalógus, amely az újrafelhasználható skillgyűjteményekre összpontosít.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'A SkillsMP piactér katalógusa.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Az LLMSkills közösségi piactér katalógusa.',

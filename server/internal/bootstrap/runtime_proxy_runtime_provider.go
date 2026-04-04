@@ -70,14 +70,6 @@ func bindRuntimeProxyProviderBindings(options runtimeProxyProviderBindingsOption
 		})
 	}
 
-	if options.registry != nil && options.router != nil {
-		options.registry.SetOnHealthResult(func(providerID string, result *providerpool.HealthCheckResult) {
-			if result != nil && result.Healthy && result.Latency > 0 {
-				options.router.UpdateLatency(providerID, result.Latency)
-			}
-		})
-	}
-
 	if options.registry != nil && options.broker != nil {
 		options.registry.SetOnStatusChange(func(providerID string, oldStatus, newStatus providerpool.ProviderStatus) {
 			options.broker.Broadcast("provider_status_changed", map[string]string{

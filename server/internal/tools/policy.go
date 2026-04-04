@@ -9,13 +9,14 @@ import (
 
 // ToolPolicyRequest carries runtime selection hints.
 type ToolPolicyRequest struct {
-	Provider            string
-	ProviderID          string
-	Model               string
-	AgentID             string
-	SessionID           string
-	RouteKind           ToolRouteKind
-	DeepResearchEnabled *bool
+	Provider                       string
+	ProviderID                     string
+	Model                          string
+	AgentID                        string
+	SessionID                      string
+	RouteKind                      ToolRouteKind
+	DeepResearchEnabled            *bool
+	SkipDefaultChatDirectAllowlist bool
 }
 
 // ToolPolicyResolver narrows the visible tool surface before selection/routing.
@@ -50,6 +51,7 @@ var defaultChatDirectToolAllowlist = map[string]struct{}{
 	"read":          {},
 	"deep_research": {},
 	"sessions":      {},
+	"tool_search":   {},
 	"web":           {},
 	"write":         {},
 }
@@ -148,7 +150,7 @@ func (r *ToolPolicyResolver) providerScope(req ToolPolicyRequest) config.ToolPol
 }
 
 func (r *ToolPolicyResolver) shouldApplyDefaultChatDirectToolAllowlist(req ToolPolicyRequest, hasAgent bool, providerScope config.ToolPolicyConfig) bool {
-	if r == nil || hasAgent || req.RouteKind != ToolRouteKindChat {
+	if r == nil || hasAgent || req.RouteKind != ToolRouteKindChat || req.SkipDefaultChatDirectAllowlist {
 		return false
 	}
 	if toolPolicyConfigured(r.globalPolicy) {

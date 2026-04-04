@@ -62,6 +62,10 @@ func candidateCompatAliases(topic string) []string {
 	switch normalizeSkillID(topic) {
 	case "web_search":
 		return []string{"web_query"}
+	case "mgmt":
+		return []string{"config"}
+	case "config":
+		return []string{"mgmt"}
 	default:
 		return nil
 	}

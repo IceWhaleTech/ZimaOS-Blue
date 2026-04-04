@@ -113,6 +113,7 @@ class ComponentPool {
       'browser-progress': () => import('@/components/typeless/CardBrowserProgress.vue'),
       'web-fetch': () => import('@/components/typeless/CardWebFetch.vue'),
       'convert-task': () => import('@/components/typeless/CardConvertTask.vue'),
+      'runner-execution': () => import('@/components/typeless/CardRunnerExecution.vue'),
       exec: () => import('@/components/typeless/CardExec.vue'),
       'model-download-progress': () =>
         import('@/components/typeless/CardModelDownloadProgress.vue'),

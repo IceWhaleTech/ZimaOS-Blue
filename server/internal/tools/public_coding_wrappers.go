@@ -104,6 +104,8 @@ func NewPublicBashTool(registry *Registry) Tool {
 			Name:        "bash",
 			Description: "Execute a real shell command and return the actual stdout, stderr, and exit code. This public shell surface does not auto-forward into tools or skills.",
 			Icon:        "terminal",
+			SearchHints: []string{"shell", "terminal", "command", "workspace"},
+			AlwaysLoad:  true,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

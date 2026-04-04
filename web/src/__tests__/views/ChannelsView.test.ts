@@ -92,6 +92,10 @@ function createTestI18n() {
           subtitle: 'Connect external channels',
           enabledChannels: 'Enabled channels',
           connectedChannels: 'Connected channels',
+          statusConnected: 'Connected',
+          statusConnecting: 'Connecting',
+          statusError: 'Error',
+          statusDisconnected: 'Disconnected',
           groupAccessTitle: 'Group Access',
           groupAccessDesc: 'Set one unified rule for whether Blue accepts inbound group messages.',
           groupAccessPolicyOpen: 'Open',
@@ -241,6 +245,27 @@ describe('ChannelsView', () => {
 
     expect(wrapper.find('.channels-board__detail-empty').exists()).toBe(false)
     expect(wrapper.find('.remote-access-detail-stub').exists()).toBe(true)
+  })
+
+  it('renders the remote access card with the shared status badge pattern', async () => {
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+
+    const wrapper = mount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const statusBadge = wrapper.find('.channels-remote-card__status-badge')
+    expect(statusBadge.exists()).toBe(true)
+    expect(statusBadge.classes()).toContain('channels-remote-card__status-badge--disconnected')
+    expect(statusBadge.text()).toContain('Disconnected')
+    expect(statusBadge.find('.channels-remote-card__status-dot').exists()).toBe(true)
   })
 
   it('updates Feishu session mode locally before saving through the channel config API', async () => {

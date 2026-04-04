@@ -30,6 +30,7 @@ const PREFERRED_TOOL_NAME_MAP: Record<string, string> = {
 }
 
 const TOOL_NAME_ALIASES: Record<string, string[]> = {
+  config: ['mgmt'],
   cron: ['scheduler'],
   image: ['image_generation'],
   message: ['reminder'],

@@ -4625,10 +4625,6 @@ export default mergeHarnessLocale('zh-TW', {
           label: 'SkillStack',
           description: '聚焦可重用技能集合的社群目錄。',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'SkillsMP 技能市集目錄。',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'LLMSkills 社群技能市集目錄。',

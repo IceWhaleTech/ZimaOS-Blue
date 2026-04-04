@@ -24,7 +24,10 @@ import {
   localizeMarketplaceSourceFromCandidates,
   localizeMarketplaceSourceOptionDescription,
   localizeMarketplaceSourceOptionLabel,
+  resolveMarketplaceSourceBrand,
+  resolveMarketplaceSourceBrandFromCandidates,
   trimMarketplaceSourceToken,
+  type MarketplaceSourceBrand,
 } from '@/utils/skillMarketplaceSources'
 import {
   skillStoreSortTranslationPath,
@@ -627,6 +630,10 @@ function sourceDescriptionFromName(value?: string | null): string {
   return localizeMarketplaceSourceFromCandidates([value], 'description', marketplaceText)
 }
 
+function sourceBrandFromName(value?: string | null): MarketplaceSourceBrand | null {
+  return resolveMarketplaceSourceBrand(value)
+}
+
 function sourceOptionLabel(option?: { value?: string; label?: string } | null): string {
   return localizeMarketplaceSourceOptionLabel(
     option,
@@ -637,6 +644,14 @@ function sourceOptionLabel(option?: { value?: string; label?: string } | null): 
 
 function sourceOptionDescription(option?: { value?: string; label?: string } | null): string {
   return localizeMarketplaceSourceOptionDescription(option, marketplaceText)
+}
+
+function sourceOptionBrand(option?: { value?: string; label?: string } | null): MarketplaceSourceBrand | null {
+  return resolveMarketplaceSourceBrandFromCandidates([option?.value, option?.label])
+}
+
+function sourceBrandAssetUrl(brand?: MarketplaceSourceBrand | null): string {
+  return brand?.iconUrl || brand?.logoUrl || brand?.logoDarkUrl || ''
 }
 
 function sortModeLabel(mode: SkillStoreSortMode): string {
@@ -748,25 +763,34 @@ function normalizeTags(skill?: RemoteSkill | null): string[] {
     .filter(Boolean)
 }
 
+function sourceCandidates(skill?: RemoteSkill | null): Array<string | null | undefined> {
+  const baseCandidates = [skill?.source_id, skill?.source_name, skill?.source_group]
+  const isGitHubSkill = baseCandidates.some((candidate) =>
+    (candidate || '').toLowerCase().includes('github')
+  )
+  if (!isGitHubSkill) return baseCandidates
+  return [skill?.author, skill?.homepage, skill?.source_url, skill?.download_url, ...baseCandidates]
+}
+
 function sourceLabel(skill?: RemoteSkill | null): string {
   const localized = localizeMarketplaceSourceFromCandidates(
-    [skill?.source_id, skill?.source_name, skill?.source_group],
+    sourceCandidates(skill),
     'label',
     marketplaceText
   )
   if (localized) return localized
   return (
-    firstMarketplaceSourceCandidate([skill?.source_name, skill?.source_group, skill?.source_id]) ||
+    firstMarketplaceSourceCandidate([skill?.author, skill?.source_name, skill?.source_group, skill?.source_id]) ||
     marketplaceText('defaultSource', 'Marketplace')
   )
 }
 
 function sourceDescription(skill?: RemoteSkill | null): string {
-  return localizeMarketplaceSourceFromCandidates(
-    [skill?.source_id, skill?.source_name, skill?.source_group],
-    'description',
-    marketplaceText
-  )
+  return localizeMarketplaceSourceFromCandidates(sourceCandidates(skill), 'description', marketplaceText)
+}
+
+function sourceBrand(skill?: RemoteSkill | null): MarketplaceSourceBrand | null {
+  return resolveMarketplaceSourceBrandFromCandidates(sourceCandidates(skill))
 }
 
 function badgeLabelByValue(badge?: SecurityBadge | string): string {
@@ -2006,15 +2030,20 @@ const sourceOptions = computed(() =>
     ...option,
     label: sourceOptionLabel(option),
     description: sourceOptionDescription(option),
+    brand: sourceOptionBrand(option),
   }))
 )
 const selectedSourceOption = computed(() =>
   sourceOptions.value.find((option) => option.value === selectedSource.value) || null
 )
+const selectedSourceBrand = computed(() => selectedSourceOption.value?.brand || null)
 const selectedSourceDescription = computed(() => {
   if (selectedSource.value === 'all') return ''
   return selectedSourceOption.value?.description || ''
 })
+const discoverCurrentSourceBrand = computed(() =>
+  sourceBrandFromName(discoverStatus.value?.current_source_name)
+)
 const riskOptions = computed(() => filters.value?.risk_badges || [])
 const activeFilterLabels = computed(() => {
   const labels: string[] = []
@@ -2309,8 +2338,18 @@ onBeforeUnmount(() => {
               {{ option.label }} ({{ option.count }})
             </option>
           </select>
-          <small v-if="selectedSourceDescription" class="filter-field__hint">
-            {{ selectedSourceDescription }}
+          <small
+            v-if="selectedSourceDescription || sourceBrandAssetUrl(selectedSourceBrand)"
+            class="filter-field__hint"
+          >
+            <img
+              v-if="sourceBrandAssetUrl(selectedSourceBrand)"
+              class="source-brand__icon source-brand__icon--hint"
+              :src="sourceBrandAssetUrl(selectedSourceBrand)"
+              alt=""
+              aria-hidden="true"
+            />
+            <span>{{ selectedSourceDescription }}</span>
           </small>
         </label>
 
@@ -2418,7 +2457,16 @@ onBeforeUnmount(() => {
 
               <div class="advisor-skill-card__meta">
                 <span class="meta-chip meta-chip-soft" :title="sourceDescription(skill) || undefined">
-                  {{ sourceLabel(skill) }}
+                  <span class="source-brand">
+                    <img
+                      v-if="sourceBrandAssetUrl(sourceBrand(skill))"
+                      class="source-brand__icon"
+                      :src="sourceBrandAssetUrl(sourceBrand(skill))"
+                      alt=""
+                      aria-hidden="true"
+                    />
+                    <span class="source-brand__label">{{ sourceLabel(skill) }}</span>
+                  </span>
                 </span>
                 <span class="meta-chip meta-chip-soft">{{ categoryLabel(skill.category) }}</span>
               </div>
@@ -2479,8 +2527,18 @@ onBeforeUnmount(() => {
           <div class="discover-progress__header">
             <div class="discover-progress__copy">
               <span class="section-label">{{ discoverProgressLabel }}</span>
-              <strong :title="discoverCurrentSourceDescription || undefined">
-                {{ discoverCurrentSourceLabel }}
+              <strong
+                class="discover-progress__source"
+                :title="discoverCurrentSourceDescription || undefined"
+              >
+                <img
+                  v-if="sourceBrandAssetUrl(discoverCurrentSourceBrand)"
+                  class="source-brand__icon source-brand__icon--prominent"
+                  :src="sourceBrandAssetUrl(discoverCurrentSourceBrand)"
+                  alt=""
+                  aria-hidden="true"
+                />
+                <span>{{ discoverCurrentSourceLabel }}</span>
               </strong>
               <p v-if="discoverCurrentSourceDescription" class="discover-progress__source-note">
                 {{ discoverCurrentSourceDescription }}
@@ -2691,7 +2749,16 @@ onBeforeUnmount(() => {
             <div class="card-topline">
               <div class="card-topline-left">
                 <span class="source-chip" :title="sourceDescription(skill) || undefined">
-                  {{ sourceLabel(skill) }}
+                  <span class="source-brand">
+                    <img
+                      v-if="sourceBrandAssetUrl(sourceBrand(skill))"
+                      class="source-brand__icon"
+                      :src="sourceBrandAssetUrl(sourceBrand(skill))"
+                      alt=""
+                      aria-hidden="true"
+                    />
+                    <span class="source-brand__label">{{ sourceLabel(skill) }}</span>
+                  </span>
                 </span>
                 <span class="meta-chip meta-chip-soft">{{ categoryLabel(skill.category) }}</span>
                 <span v-if="skill.curated_label" class="meta-chip meta-chip-hot">
@@ -2953,9 +3020,6 @@ onBeforeUnmount(() => {
                     <button v-else class="source-button" @click="openSkillSource(detailSkill)">
                       {{ marketplaceText('actions.viewSource', 'View source') }}
                     </button>
-                    <button class="btn-ghost" @click="openSkillSource(detailSkill)">
-                      {{ skillStoreText('detail.openLink', 'Open Link') }}
-                    </button>
                   </div>
                 </section>
               </div>
@@ -2976,8 +3040,15 @@ onBeforeUnmount(() => {
               </div>
               <div class="meta-item">
                 <span>{{ skillStoreText('detail.openLink', 'Open Link') }}</span>
-                <strong :title="sourceDescription(detailSkill) || undefined">
-                  {{ sourceLabel(detailSkill) }}
+                <strong class="source-brand" :title="sourceDescription(detailSkill) || undefined">
+                  <img
+                    v-if="sourceBrandAssetUrl(sourceBrand(detailSkill))"
+                    class="source-brand__icon source-brand__icon--prominent"
+                    :src="sourceBrandAssetUrl(sourceBrand(detailSkill))"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  <span class="source-brand__label">{{ sourceLabel(detailSkill) }}</span>
                 </strong>
               </div>
             </div>
@@ -3213,7 +3284,16 @@ onBeforeUnmount(() => {
                   class="meta-chip meta-chip-soft"
                   :title="sourceDescription(pendingRiskSkill) || undefined"
                 >
-                  {{ sourceLabel(pendingRiskSkill) }}
+                  <span class="source-brand">
+                    <img
+                      v-if="sourceBrandAssetUrl(sourceBrand(pendingRiskSkill))"
+                      class="source-brand__icon"
+                      :src="sourceBrandAssetUrl(sourceBrand(pendingRiskSkill))"
+                      alt=""
+                      aria-hidden="true"
+                    />
+                    <span class="source-brand__label">{{ sourceLabel(pendingRiskSkill) }}</span>
+                  </span>
                 </span>
                 <span class="meta-chip meta-chip-soft">{{
                   skillVersionLabel(pendingRiskSkill)
@@ -3709,6 +3789,9 @@ onBeforeUnmount(() => {
 }
 
 .filter-field__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-secondary);
   font-size: 8.5px;
   line-height: 1.4;
@@ -3772,6 +3855,12 @@ onBeforeUnmount(() => {
   color: var(--text-primary);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.discover-progress__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .discover-progress__copy p {
@@ -4101,6 +4190,35 @@ onBeforeUnmount(() => {
   background: var(--panel-bg);
   color: var(--text-secondary);
   border: 1px solid var(--border);
+}
+
+.source-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.source-brand__label {
+  min-width: 0;
+}
+
+.source-brand__icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.source-brand__icon--hint {
+  width: 13px;
+  height: 13px;
+}
+
+.source-brand__icon--prominent {
+  width: 14px;
+  height: 14px;
 }
 
 .shield-chip {
@@ -4706,11 +4824,16 @@ onBeforeUnmount(() => {
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .detail-install-panel--hero .install-button,
 .detail-install-panel--hero .source-button,
 .detail-install-panel--hero .btn-ghost {
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: 9px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -4924,9 +5047,15 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.security-overview .score-card {
+  gap: 1px;
+  min-height: 38px;
+  padding: 4px 8px;
+}
+
 .score-card-emphasis {
   align-items: flex-start;
-  min-height: 92px;
+  min-height: 46px;
 }
 
 .score-card-emphasis::before {
@@ -4934,7 +5063,7 @@ onBeforeUnmount(() => {
 }
 
 .score-card-emphasis strong {
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
 }
 

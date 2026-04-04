@@ -27,9 +27,6 @@ const showPricingModal = ref(false)
 const showParamsModal = ref(false)
 const showAllowedModelsModal = ref(false)
 const showIDEDiscoveryModal = ref(false)
-const testingProvider = ref<string | null>(null)
-const testingKeyId = ref<string | null>(null)
-const keyTestResults = ref<Record<string, { healthy: boolean; error?: string }>>({})
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const verifyingProvider = ref<string | null>(null)
@@ -157,6 +154,88 @@ function getTabLabel(tab: ProviderTab): string {
 
 function getLocalizedProviderModelName(model: Model): string {
   return getLocalizedMediaModelName(model, t, te)
+}
+
+function pinchBenchTokens(raw?: string): string[] {
+  return (raw || '')
+    .toLowerCase()
+    .trim()
+    .split(/[^a-z0-9]+/g)
+    .filter(Boolean)
+}
+
+function pinchBenchHasPrefix(tokens: string[], prefix: string[]): boolean {
+  if (prefix.length === 0 || tokens.length < prefix.length) return false
+  return prefix.every((token, index) => tokens[index] === token)
+}
+
+function isPinchBenchVersionSuffix(token?: string): boolean {
+  return !!token && /^\d{6,}$/.test(token)
+}
+
+function pinchBenchKeyVariants(providerId: string | undefined, raw?: string): string[] {
+  const tokens = pinchBenchTokens(raw)
+  if (tokens.length === 0) return []
+
+  const variants: string[] = []
+  const add = (parts: string[]) => {
+    if (parts.length > 0) variants.push(parts.join(''))
+  }
+
+  add(tokens)
+
+  const providerTokens = pinchBenchTokens(providerId)
+  if (providerTokens.length > 0 && pinchBenchHasPrefix(tokens, providerTokens)) {
+    add(tokens.slice(providerTokens.length))
+  }
+
+  if (isPinchBenchVersionSuffix(tokens[tokens.length - 1])) {
+    add(tokens.slice(0, -1))
+    if (providerTokens.length > 0 && pinchBenchHasPrefix(tokens.slice(0, -1), providerTokens)) {
+      add(tokens.slice(providerTokens.length, -1))
+    }
+  }
+
+  return [...new Set(variants.filter(Boolean))]
+}
+
+function pinchBenchModelKeys(model: Model, providerId?: string): Set<string> {
+  return new Set([
+    ...pinchBenchKeyVariants(providerId, model.id),
+    ...pinchBenchKeyVariants(providerId, model.name),
+    ...pinchBenchKeyVariants(providerId, model.display_name),
+  ])
+}
+
+function pinchBenchModelsMatch(model: Model, candidate: Model, providerId?: string): boolean {
+  const left = pinchBenchModelKeys(model, providerId)
+  const right = pinchBenchModelKeys(candidate, providerId)
+  for (const key of left) {
+    if (right.has(key)) return true
+  }
+  return false
+}
+
+function resolvedPinchBenchModel(model: Model): Model {
+  if (typeof model.pinchbench_score === 'number' && model.pinchbench_url) {
+    return model
+  }
+
+  const providerId = model.provider_id || displayProvider.value?.id || store.selectedProviderId || ''
+  const fallback = selectedProviderModels.value.find(
+    (candidate) =>
+      candidate !== model &&
+      typeof candidate.pinchbench_score === 'number' &&
+      !!candidate.pinchbench_url &&
+      pinchBenchModelsMatch(model, candidate, providerId)
+  )
+
+  if (!fallback) return model
+  return {
+    ...model,
+    pinchbench_score: fallback.pinchbench_score,
+    pinchbench_url: fallback.pinchbench_url,
+  }
 }
 
 function canEditProviderLocation(provider?: Provider | null): boolean {
@@ -410,14 +489,6 @@ watch(
     if (provider.oauth) {
       fetchOAuthAccounts(providerId)
     }
-    // Auto-test all API keys when entering provider detail
-    if (provider.api_keys?.length) {
-      for (const key of provider.api_keys) {
-        if (!keyTestResults.value[key.id]) {
-          testConnection(providerId, key.id)
-        }
-      }
-    }
   },
   { immediate: true }
 )
@@ -659,25 +730,6 @@ async function updateProviderLocation(providerId: string, location: 'cloud' | 'l
     await store.updateProvider(providerId, { location })
   } catch (e) {
     console.error('Failed to update provider location:', e)
-  }
-}
-
-async function testConnection(providerId: string, keyId?: string) {
-  testingProvider.value = providerId
-  testingKeyId.value = keyId ?? null
-  try {
-    const result = await store.testProvider(providerId, keyId)
-    if (keyId && result) {
-      keyTestResults.value[keyId] = { healthy: result.healthy, error: result.error }
-    }
-  } catch (e) {
-    console.error('Failed to test provider:', e)
-    if (keyId) {
-      keyTestResults.value[keyId] = { healthy: false, error: 'request_failed' }
-    }
-  } finally {
-    testingProvider.value = null
-    testingKeyId.value = null
   }
 }
 
@@ -992,17 +1044,11 @@ async function addAPIKey() {
   const providerId = newKey.value.providerId
   try {
     const trimmedApiKey = newKey.value.key.trim()
-    const apiKey = await store.addAPIKey(providerId, trimmedApiKey, newKey.value.label || undefined)
+    await store.addAPIKey(providerId, trimmedApiKey, newKey.value.label || undefined)
     showKeyModal.value = false
 
     // Clear error when adding new API key
     await store.clearProviderError(providerId)
-
-    // Auto-test the newly added key for all provider types
-    const keyId = apiKey?.id
-    if (keyId) {
-      testConnection(providerId, keyId)
-    }
 
     // Dynamic builtin/platform providers still benefit from a background probe.
     const provider = store.providers.find((p) => p.id === providerId)
@@ -1035,8 +1081,6 @@ async function addAPIKey() {
 async function removeAPIKey(providerId: string, keyId: string) {
   try {
     await store.removeAPIKey(providerId, keyId)
-    // Clear test result for removed key
-    delete keyTestResults.value[keyId]
     const provider = store.providers.find((p) => p.id === providerId)
     if (supportsProviderAccountStatus(provider) && provider?.api_keys?.length) {
       store.fetchAccountStatus(providerId, getProviderAccountStatusKey(provider))
@@ -1555,15 +1599,21 @@ function mediaPricingLabel(model: Model): string {
 }
 
 function hasPinchBenchBadge(model: Model): boolean {
-  return typeof model.pinchbench_score === 'number' && !!model.pinchbench_url
+  const resolved = resolvedPinchBenchModel(model)
+  return typeof resolved.pinchbench_score === 'number' && !!resolved.pinchbench_url
 }
 
 function pinchBenchBadgeLabel(model: Model): string {
-  return `PinchBench ${(model.pinchbench_score ?? 0).toFixed(1)}%`
+  const resolved = resolvedPinchBenchModel(model)
+  return (resolved.pinchbench_score ?? 0).toFixed(1)
+}
+
+function pinchBenchBadgeURL(model: Model): string {
+  return resolvedPinchBenchModel(model).pinchbench_url || ''
 }
 
 function pinchBenchBadgeClass(model: Model): string {
-  const score = model.pinchbench_score ?? 0
+  const score = resolvedPinchBenchModel(model).pinchbench_score ?? 0
   if (score >= 85) {
     return 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30 dark:hover:bg-emerald-500/20'
   }
@@ -2888,20 +2938,6 @@ onMounted(() => {
                     <span v-if="key.usage_count" class="text-gray-500">
                       {{ key.usage_count }}
                     </span>
-                    <!-- Test result indicator -->
-                    <span v-if="testingKeyId === key.id" class="text-gray-400">...</span>
-                    <span
-                      v-else-if="keyTestResults[key.id]?.healthy === true"
-                      class="text-green-500"
-                      title="Healthy"
-                      >✓</span
-                    >
-                    <span
-                      v-else-if="keyTestResults[key.id]?.healthy === false"
-                      class="text-red-400"
-                      :title="keyTestResults[key.id]?.error || 'Failed'"
-                      >✗</span
-                    >
                   </div>
                 </div>
                 <div
@@ -3198,7 +3234,7 @@ onMounted(() => {
                     }}</span>
                     <a
                       v-if="hasPinchBenchBadge(model)"
-                      :href="model.pinchbench_url"
+                      :href="pinchBenchBadgeURL(model)"
                       target="_blank"
                       rel="noopener noreferrer"
                       :class="pinchBenchBadgeClass(model)"
@@ -4106,7 +4142,7 @@ onMounted(() => {
                   }}</span>
                   <a
                     v-if="hasPinchBenchBadge(model)"
-                    :href="model.pinchbench_url"
+                    :href="pinchBenchBadgeURL(model)"
                     target="_blank"
                     rel="noopener noreferrer"
                     :class="pinchBenchBadgeClass(model)"

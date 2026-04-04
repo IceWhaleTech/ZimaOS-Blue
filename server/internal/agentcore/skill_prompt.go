@@ -675,7 +675,7 @@ var pinnedSkills = []string{
 	"deep_research",
 	"analyze",
 	"ui_reviewer",
-	"mgmt",
+	"config",
 	"mediagen",
 	"reminder",
 	"scheduler",

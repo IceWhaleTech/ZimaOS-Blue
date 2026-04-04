@@ -1,9 +1,7 @@
 package providerpool
 
 import (
-	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,30 +12,15 @@ import (
 type Registry struct {
 	storage   Storage
 	providers map[string]*Provider
-	health    map[string]*HealthCheckResult
 	mu        sync.RWMutex
-
-	// Health check
-	healthCheckInterval time.Duration
-	healthCheckTimeout  time.Duration
-	healthCheckCancel   context.CancelFunc
 
 	// Callbacks
 	onProviderChange func(provider *Provider, action string)
-	onHealthResult   func(providerID string, result *HealthCheckResult)           // latency feed
 	onStatusChange   func(providerID string, oldStatus, newStatus ProviderStatus) // status transition
 }
 
 // RegistryOption configures the Registry
 type RegistryOption func(*Registry)
-
-// WithHealthCheck enables periodic health checking
-func WithHealthCheck(interval, timeout time.Duration) RegistryOption {
-	return func(r *Registry) {
-		r.healthCheckInterval = interval
-		r.healthCheckTimeout = timeout
-	}
-}
 
 // WithProviderChangeCallback sets a callback for provider changes
 func WithProviderChangeCallback(cb func(provider *Provider, action string)) RegistryOption {
@@ -62,13 +45,6 @@ func (r *Registry) AddProviderChangeListener(cb func(provider *Provider, action 
 	}
 }
 
-// SetOnHealthResult sets a callback invoked after each health check with latency data.
-func (r *Registry) SetOnHealthResult(cb func(providerID string, result *HealthCheckResult)) {
-	r.mu.Lock()
-	r.onHealthResult = cb
-	r.mu.Unlock()
-}
-
 // SetOnStatusChange sets a callback invoked when a provider's status transitions
 // (e.g. active → error or error → active).
 func (r *Registry) SetOnStatusChange(cb func(providerID string, oldStatus, newStatus ProviderStatus)) {
@@ -80,11 +56,8 @@ func (r *Registry) SetOnStatusChange(cb func(providerID string, oldStatus, newSt
 // NewRegistry creates a new Registry
 func NewRegistry(storage Storage, opts ...RegistryOption) (*Registry, error) {
 	r := &Registry{
-		storage:             storage,
-		providers:           make(map[string]*Provider),
-		health:              make(map[string]*HealthCheckResult),
-		healthCheckInterval: 60 * time.Second,
-		healthCheckTimeout:  10 * time.Second,
+		storage:   storage,
+		providers: make(map[string]*Provider),
 	}
 
 	for _, opt := range opts {
@@ -95,10 +68,6 @@ func NewRegistry(storage Storage, opts ...RegistryOption) (*Registry, error) {
 	if err := r.loadProviders(); err != nil {
 		return nil, err
 	}
-
-	// NOTE: Health status is NOT loaded from storage on startup.
-	// This ensures provider error cooldown does not persist across restarts.
-	// Providers will be re-checked for health on next health check cycle.
 
 	return r, nil
 }
@@ -198,7 +167,6 @@ func (r *Registry) Unregister(id string) error {
 	}
 
 	delete(r.providers, id)
-	delete(r.health, id)
 
 	if r.onProviderChange != nil {
 		r.onProviderChange(provider, "unregister")
@@ -393,64 +361,6 @@ func (r *Registry) UpdateStatus(id string, status ProviderStatus, lastError stri
 	return nil
 }
 
-// GetHealth returns the health status of a provider
-func (r *Registry) GetHealth(id string) (*HealthCheckResult, bool) {
-	validatedID, err := ValidateProviderID(id)
-	if err != nil {
-		return nil, false
-	}
-	id = validatedID
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result, exists := r.health[id]
-	return result, exists
-}
-
-// SetHealth updates the health status of a provider
-func (r *Registry) SetHealth(id string, result *HealthCheckResult) {
-	validatedID, err := ValidateProviderID(id)
-	if err != nil {
-		return
-	}
-	id = validatedID
-
-	var statusChanged bool
-	var oldStatus, newStatus ProviderStatus
-
-	r.mu.Lock()
-	r.health[id] = result
-
-	// Update provider status based on health
-	if provider, exists := r.providers[id]; exists && provider.Enabled {
-		oldStatus = provider.Status
-		if result.Healthy {
-			newStatus = ProviderStatusActive
-		} else {
-			newStatus = ProviderStatusError
-			// Include key info in error message if available
-			if result.KeyHash != "" {
-				provider.LastError = result.Error + " (key: " + result.KeyHash + ")"
-			} else {
-				provider.LastError = result.Error
-			}
-			provider.LastErrorTime = result.CheckedAt
-		}
-		if oldStatus != newStatus {
-			provider.Status = newStatus
-			statusChanged = true
-		}
-		provider.LastHealthCheck = result.CheckedAt
-	}
-	cb := r.onStatusChange
-	r.mu.Unlock()
-
-	if statusChanged && cb != nil {
-		cb(id, oldStatus, newStatus)
-	}
-}
-
 // ClearError clears the error status of a provider, allowing manual retry
 func (r *Registry) ClearError(id string) error {
 	validatedID, err := ValidateProviderID(id)
@@ -472,143 +382,8 @@ func (r *Registry) ClearError(id string) error {
 	provider.LastErrorTime = time.Time{}
 	provider.Status = ProviderStatusActive
 
-	// Also clear from health map
-	r.health[id] = &HealthCheckResult{
-		ProviderID: id,
-		Healthy:    true,
-		CheckedAt:  timeutil.NowTime(),
-	}
-
 	if err := r.storage.SaveProvider(provider); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-// StartHealthCheck starts periodic health checking
-func (r *Registry) StartHealthCheck(ctx context.Context, checker HealthChecker) {
-	if r.healthCheckInterval <= 0 {
-		return
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	r.healthCheckCancel = cancel
-
-	go func() {
-		ticker := time.NewTicker(r.healthCheckInterval)
-		defer ticker.Stop()
-
-		// Run immediately
-		r.runHealthCheck(ctx, checker)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				r.runHealthCheck(ctx, checker)
-			}
-		}
-	}()
-}
-
-// StopHealthCheck stops periodic health checking
-func (r *Registry) StopHealthCheck() {
-	if r.healthCheckCancel != nil {
-		r.healthCheckCancel()
-		r.healthCheckCancel = nil
-	}
-}
-
-// runHealthCheck runs health check for all enabled providers
-func (r *Registry) runHealthCheck(ctx context.Context, checker HealthChecker) {
-	providers := r.ListEnabled()
-
-	for _, provider := range providers {
-		checkCtx, cancel := context.WithTimeout(ctx, r.healthCheckTimeout)
-		result := checkProviderHealthWithAPIKeys(checkCtx, checker, provider)
-		cancel()
-
-		r.SetHealth(provider.ID, result)
-
-		// Feed latency data to router for latency-based routing
-		if r.onHealthResult != nil {
-			r.onHealthResult(provider.ID, result)
-		}
-	}
-}
-
-func checkProviderHealthWithAPIKeys(ctx context.Context, checker HealthChecker, provider *Provider) *HealthCheckResult {
-	keys := enabledHealthCheckKeys(provider)
-	if len(keys) == 0 {
-		result := checker.Check(ctx, provider)
-		if result != nil {
-			result.ProviderID = provider.ID
-		}
-		return result
-	}
-
-	var lastResult *HealthCheckResult
-	for _, key := range keys {
-		if ctx.Err() != nil {
-			break
-		}
-
-		scoped := *provider
-		scoped.APIKeys = []APIKey{key}
-
-		result := checker.Check(ctx, &scoped)
-		if result == nil {
-			continue
-		}
-
-		result.ProviderID = provider.ID
-		result.KeyID = key.ID
-		result.KeyHash = key.KeyHash
-		lastResult = result
-		if result.Healthy {
-			return result
-		}
-	}
-
-	if lastResult != nil {
-		return lastResult
-	}
-
-	return &HealthCheckResult{
-		ProviderID: provider.ID,
-		Healthy:    false,
-		Error:      "health_check_failed",
-		CheckedAt:  timeutil.NowTime(),
-	}
-}
-
-func enabledHealthCheckKeys(provider *Provider) []APIKey {
-	if provider == nil || len(provider.APIKeys) == 0 {
-		return nil
-	}
-
-	keys := make([]APIKey, 0, len(provider.APIKeys))
-	for _, key := range provider.APIKeys {
-		if !key.Enabled {
-			continue
-		}
-		if strings.TrimSpace(key.Key) == "" {
-			continue
-		}
-		keys = append(keys, key)
-	}
-	if len(keys) > 0 {
-		return keys
-	}
-
-	// Backward-compat: if all keys are disabled/missing flags, probe with first non-empty key.
-	for _, key := range provider.APIKeys {
-		if strings.TrimSpace(key.Key) == "" {
-			continue
-		}
-		return []APIKey{key}
 	}
 
 	return nil
@@ -749,35 +524,6 @@ func (r *Registry) GetOAuthConfig(providerID string) (*OAuthConfig, error) {
 	}
 
 	return provider.OAuth, nil
-}
-
-// HealthChecker defines the interface for health checking
-type HealthChecker interface {
-	Check(ctx context.Context, provider *Provider) *HealthCheckResult
-}
-
-// DefaultHealthChecker provides a basic health check implementation
-type DefaultHealthChecker struct{}
-
-// Check performs a basic health check
-func (c *DefaultHealthChecker) Check(ctx context.Context, provider *Provider) *HealthCheckResult {
-	start := timeutil.NowTime()
-	result := &HealthCheckResult{
-		ProviderID: provider.ID,
-		CheckedAt:  start,
-	}
-
-	// For now, just check if provider has API keys configured
-	// Real implementation would make an HTTP request to the provider
-	if len(provider.APIKeys) == 0 && provider.OAuth == nil {
-		result.Healthy = false
-		result.Error = "no credentials configured"
-		return result
-	}
-
-	result.Healthy = true
-	result.Latency = timeutil.SinceTime(start)
-	return result
 }
 
 // PricingManager manages model pricing configuration

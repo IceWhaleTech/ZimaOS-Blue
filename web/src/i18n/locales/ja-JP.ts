@@ -4788,10 +4788,6 @@ export default mergeHarnessLocale('ja-JP', {
           label: 'SkillStack',
           description: '再利用しやすいスキル集に注目したコミュニティカタログです。',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'SkillsMP マーケットプレイスのカタログです。',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'LLMSkills コミュニティマーケットプレイスのカタログです。',

@@ -4645,10 +4645,6 @@ export default mergeHarnessLocale('el-GR', {
           label: 'SkillStack',
           description: 'Κατάλογος κοινότητας με έμφαση σε επαναχρησιμοποιήσιμες συλλογές skill.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Κατάλογος της αγοράς SkillsMP.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Κατάλογος της κοινοτικής αγοράς LLMSkills.',

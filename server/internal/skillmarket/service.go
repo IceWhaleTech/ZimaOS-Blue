@@ -1051,24 +1051,11 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 		{ID: "clawhub", Type: "clawhub", BaseURL: strings.TrimRight(s.cfg.ClawHubBaseURL, "/"), DisplayName: "ClawHub", SourceGroup: "clawhub", AuthMode: "none", Enabled: true, RateLimitPerMinute: 60, Priority: 10},
 		{ID: "skillhub-club", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.SkillHubBaseURL, "/"), DisplayName: "SkillHub Club", SourceGroup: "skillhub", AuthMode: "optional_api_key", Enabled: true, RateLimitPerMinute: 20, Priority: 40},
 		{ID: "skillstack", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.SkillStackBaseURL, "/"), DisplayName: "SkillStack", SourceGroup: "skillstack", AuthMode: "none", Enabled: true, RateLimitPerMinute: 20, Priority: 41},
-		{ID: "skillsmp", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.SkillsMPBaseURL, "/"), DisplayName: "SkillsMP", SourceGroup: "skillsmp", AuthMode: "optional_api_key", Enabled: true, RateLimitPerMinute: 20, Priority: 42},
 		{ID: "llmskills", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.LLMSkillsBaseURL, "/"), DisplayName: "LLMSkills", SourceGroup: "llmskills", AuthMode: "none", Enabled: true, RateLimitPerMinute: 20, Priority: 43},
 	}
 	if token := strings.TrimSpace(s.cfg.SkillHubAPIKey); token != "" {
 		for i := range defaults {
 			if defaults[i].ID != "skillhub-club" {
-				continue
-			}
-			defaults[i].Headers = map[string]string{
-				"Authorization": "Bearer " + token,
-				"X-API-Key":     token,
-			}
-			break
-		}
-	}
-	if token := strings.TrimSpace(s.cfg.SkillsMPAPIKey); token != "" {
-		for i := range defaults {
-			if defaults[i].ID != "skillsmp" {
 				continue
 			}
 			defaults[i].Headers = map[string]string{

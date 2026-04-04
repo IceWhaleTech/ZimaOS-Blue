@@ -38,6 +38,12 @@ type Store struct {
 
 const sqliteSafeMaxBindVars = 900
 
+// Temporary source-bucket denylist for known noisy marketplace imports until
+// source-level curation exists.
+var excludedMarketplaceSourceBuckets = []string{
+	"claude-plugins-claude-plugins",
+}
+
 type SkillUpsertRecord struct {
 	Doc     *SkillDocument
 	Version *SkillVersion
@@ -2290,6 +2296,7 @@ func buildSkillFilters(alias string, query SearchQuery) (string, []interface{}) 
 	prefix := alias + "."
 	where := []string{prefix + "published = 1"}
 	args := []interface{}{}
+	where, args = appendExcludedMarketplaceSourceBucketFilter(where, args, alias)
 
 	categories := append([]string{}, query.Categories...)
 	if strings.TrimSpace(query.Category) != "" {
@@ -2369,6 +2376,45 @@ func buildSkillFilters(alias string, query SearchQuery) (string, []interface{}) 
 		args = append(args, boolToInt(*query.HasDataExfiltration))
 	}
 	return " WHERE " + strings.Join(where, " AND "), args
+}
+
+func marketplaceSourceBucketExpr(alias string) string {
+	trimmed := strings.TrimSpace(alias)
+	prefix := ""
+	if trimmed != "" {
+		prefix = trimmed + "."
+	}
+	return fmt.Sprintf(
+		"COALESCE(NULLIF(%ssource_group, ''), NULLIF(%ssource_id, ''), NULLIF(%ssource_name, ''), '')",
+		prefix,
+		prefix,
+		prefix,
+	)
+}
+
+func appendExcludedMarketplaceSourceBucketFilter(where []string, args []interface{}, alias string) ([]string, []interface{}) {
+	if len(excludedMarketplaceSourceBuckets) == 0 {
+		return where, args
+	}
+	where = append(where, marketplaceSourceBucketExpr(alias)+` NOT IN (`+placeholders(len(excludedMarketplaceSourceBuckets))+`)`)
+	for _, value := range excludedMarketplaceSourceBuckets {
+		args = append(args, value)
+	}
+	return where, args
+}
+
+func excludedMarketplaceSourceBucketExpr(alias string) interface{} {
+	if len(excludedMarketplaceSourceBuckets) == 0 {
+		return nil
+	}
+	args := make([]interface{}, 0, len(excludedMarketplaceSourceBuckets))
+	for _, value := range excludedMarketplaceSourceBuckets {
+		args = append(args, value)
+	}
+	return z.Expr(
+		marketplaceSourceBucketExpr(alias)+` NOT IN (`+placeholders(len(excludedMarketplaceSourceBuckets))+`)`,
+		args...,
+	)
 }
 
 func trimSQLClausePrefix(clause, prefix string) string {
@@ -2902,12 +2948,17 @@ func (s *Store) ListTrending(ctx context.Context, category string, limit int) ([
 	if limit <= 0 {
 		limit = 20
 	}
-	opts := []z.ZormItem{
-		z.OrderBy("CASE WHEN curated_rank > 0 THEN 0 ELSE 1 END ASC", "curated_rank ASC", "(trending_score + curated_boost) DESC"),
-		z.Limit(limit),
+	conds := []interface{}{z.Eq("published", 1)}
+	if excluded := excludedMarketplaceSourceBucketExpr(""); excluded != nil {
+		conds = append(conds, excluded)
 	}
 	if strings.TrimSpace(category) != "" {
-		opts = append([]z.ZormItem{z.Where(z.Eq("category", category))}, opts...)
+		conds = append(conds, z.Eq("category", category))
+	}
+	opts := []z.ZormItem{
+		z.Where(conds...),
+		z.OrderBy("CASE WHEN curated_rank > 0 THEN 0 ELSE 1 END ASC", "curated_rank ASC", "(trending_score + curated_boost) DESC"),
+		z.Limit(limit),
 	}
 	var rows []skillDocumentRow
 	if _, err := s.readTable(ctx, "skills").Select(&rows, opts...); err != nil {
@@ -2927,6 +2978,9 @@ func (s *Store) ListFeatured(ctx context.Context, category string, source string
 	conds := []interface{}{
 		z.Eq("published", 1),
 		z.Or(z.Gt("curated_rank", 0), z.Gt("curated_boost", 0)),
+	}
+	if excluded := excludedMarketplaceSourceBucketExpr(""); excluded != nil {
+		conds = append(conds, excluded)
 	}
 	if strings.TrimSpace(category) != "" {
 		conds = append(conds, z.Eq("category", category))
@@ -2960,6 +3014,9 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 	}
 	buildBuckets := func(valueExpr, groupExpr string, extraConds []interface{}, orders []string, dest *[]FilterOption) error {
 		conds := []interface{}{z.Eq("published", 1)}
+		if excluded := excludedMarketplaceSourceBucketExpr(""); excluded != nil {
+			conds = append(conds, excluded)
+		}
 		conds = append(conds, extraConds...)
 		var rows []z.V
 		opts := []z.ZormItem{
@@ -2994,7 +3051,7 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 		}
 		return result.Categories[i].Value < result.Categories[j].Value
 	})
-	sourceBucketExpr := "COALESCE(NULLIF(source_group, ''), NULLIF(source_id, ''), NULLIF(source_name, ''), '')"
+	sourceBucketExpr := marketplaceSourceBucketExpr("")
 	if err := buildBuckets(sourceBucketExpr, sourceBucketExpr, nil, []string{"COUNT(*) DESC", "value ASC"}, &result.Sources); err != nil {
 		return nil, err
 	}
@@ -3007,6 +3064,10 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 	if err := buildBuckets("artifact_kind", "artifact_kind", nil, []string{"artifact_kind"}, &result.ArtifactKinds); err != nil {
 		return nil, err
 	}
+	signalConds := []interface{}{z.Eq("published", 1)}
+	if excluded := excludedMarketplaceSourceBucketExpr(""); excluded != nil {
+		signalConds = append(signalConds, excluded)
+	}
 	var signalRows []z.V
 	if _, err := s.readTable(ctx, "skills").Select(&signalRows,
 		z.Fields(
@@ -3017,7 +3078,7 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 			"COALESCE(SUM(CASE WHEN has_shell_injection = 1 THEN 1 ELSE 0 END), 0) as shell",
 			"COALESCE(SUM(CASE WHEN has_data_exfiltration = 1 THEN 1 ELSE 0 END), 0) as exfil",
 		),
-		z.Where(z.Eq("published", 1)),
+		z.Where(signalConds...),
 		z.Limit(1),
 	); err != nil {
 		return nil, err

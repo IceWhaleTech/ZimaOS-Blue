@@ -4431,10 +4431,6 @@ export default mergeHarnessLocale('zh-CN', {
           label: 'SkillStack',
           description: '聚焦可复用技能集合的社区目录。',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'SkillsMP 技能市场目录。',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'LLMSkills 社区技能市场目录。',

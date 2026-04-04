@@ -8,6 +8,8 @@ import (
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/toolschema"
 )
 
 // openAIChatRequestForResponses captures the subset of OpenAI chat-completions
@@ -233,7 +235,7 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 					Type:        "function",
 					Name:        t.Function.Name,
 					Description: t.Function.Description,
-					Parameters:  t.Function.Parameters,
+					Parameters:  toolschema.NormalizeForOpenAICompat(t.Function.Parameters),
 					Strict:      t.Function.Strict,
 				})
 			} else {
@@ -242,7 +244,7 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 					Type:        t.Type,
 					Name:        t.Function.Name,
 					Description: t.Function.Description,
-					Parameters:  t.Function.Parameters,
+					Parameters:  toolschema.NormalizeForOpenAICompat(t.Function.Parameters),
 					Strict:      t.Function.Strict,
 				})
 			}

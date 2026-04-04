@@ -6,6 +6,8 @@ import {
   localizeMarketplaceSourceFromCandidates,
   localizeMarketplaceSourceOptionDescription,
   localizeMarketplaceSourceOptionLabel,
+  resolveMarketplaceSourceBrand,
+  resolveMarketplaceSourceBrandFromCandidates,
   trimMarketplaceSourceToken,
 } from '@/utils/skillMarketplaceSources'
 
@@ -69,5 +71,26 @@ describe('skillMarketplaceSources', () => {
     expect(
       localizeMarketplaceSourceOptionLabel({ value: 'custom-source', label: 'Custom Source' }, translate, 'Marketplace')
     ).toBe('Custom Source')
+  })
+
+  it('resolves source brand metadata for current and candidate sources', () => {
+    expect(resolveMarketplaceSourceBrand('skillmd.io')).toMatchObject({
+      iconUrl: 'https://skillmd.io/favicon.png',
+      logoUrl: 'https://skillmd.io/logo.png',
+      logoDarkUrl: 'https://skillmd.io/logo-dark.png',
+    })
+    expect(resolveMarketplaceSourceBrand('MiniMax-AI')).toMatchObject({
+      iconUrl: '/icons/providers/minimax.svg',
+      logoUrl: '/icons/providers/minimax.svg',
+    })
+    expect(resolveMarketplaceSourceBrand('agentskills.to')).toMatchObject({
+      iconUrl: 'https://agentskills.to/favicon.svg',
+    })
+    expect(
+      resolveMarketplaceSourceBrandFromCandidates([undefined, 'Tencent SkillHub', 'skillhub'])
+    ).toMatchObject({
+      iconUrl: 'https://www.skillhub.club/favicon-48x48.png',
+    })
+    expect(resolveMarketplaceSourceBrand('custom-source')).toBeNull()
   })
 })

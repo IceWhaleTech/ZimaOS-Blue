@@ -50,7 +50,7 @@ const (
 	ProviderStatusActive ProviderStatus = "active"
 	// ProviderStatusInactive indicates the provider is disabled
 	ProviderStatusInactive ProviderStatus = "inactive"
-	// ProviderStatusError indicates the provider has connectivity issues
+	// ProviderStatusError indicates the provider recently encountered request/runtime issues
 	ProviderStatusError ProviderStatus = "error"
 )
 
@@ -151,10 +151,9 @@ type Provider struct {
 	// This is persisted and survives restarts. When set, it overrides BaseURL.
 	DetectedEndpoint string `json:"detected_endpoint,omitempty"`
 
-	// Health check
-	LastHealthCheck time.Time `json:"last_health_check,omitempty"`
-	LastError       string    `json:"last_error,omitempty"`
-	LastErrorTime   time.Time `json:"last_error_time,omitempty"`
+	// Runtime error state
+	LastError     string    `json:"last_error,omitempty"`
+	LastErrorTime time.Time `json:"last_error_time,omitempty"`
 
 	// Cached parsed URL — lazily initialized, avoids url.Parse on every request
 	parsedURL     *url.URL  `json:"-"`
@@ -414,17 +413,6 @@ type RouteCandidate struct {
 	Score    float64   `json:"score"` // Routing score (higher = better)
 }
 
-// HealthCheckResult represents the result of a health check
-type HealthCheckResult struct {
-	ProviderID string        `json:"provider_id"`
-	KeyID      string        `json:"key_id,omitempty"`
-	KeyHash    string        `json:"key_hash,omitempty"`
-	Healthy    bool          `json:"healthy"`
-	Latency    time.Duration `json:"latency"`
-	Error      string        `json:"error,omitempty"`
-	CheckedAt  time.Time     `json:"checked_at"`
-}
-
 // IDEProvider represents a provider discovered from a local IDE
 type IDEProvider struct {
 	IDEName      string    `json:"ide_name"` // e.g., "antigravity", "cursor"
@@ -441,11 +429,6 @@ type PoolConfig struct {
 	// Routing
 	DefaultStrategy    RoutingStrategy `json:"default_strategy"`
 	DefaultRoutingMode RoutingMode     `json:"default_routing_mode"` // auto, cloud, local
-
-	// Health check
-	HealthCheckEnabled  bool          `json:"health_check_enabled"`
-	HealthCheckInterval time.Duration `json:"health_check_interval"`
-	HealthCheckTimeout  time.Duration `json:"health_check_timeout"`
 
 	// IDE discovery
 	IDEDiscoveryEnabled      bool          `json:"ide_discovery_enabled"`

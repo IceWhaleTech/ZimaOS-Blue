@@ -46,6 +46,7 @@ export type TypelessCardType =
   | 'web-fetch'
   | 'model-download-progress'
   | 'convert-task'
+  | 'runner-execution'
   | 'exec'
 
 export interface TypelessCardBase {
@@ -995,6 +996,30 @@ export interface TypelessCardConvertTask extends TypelessCardBase {
   transcript_preview?: string
 }
 
+export interface TypelessCardRunnerExecutionTranscriptEntry {
+  direction?: string
+  method?: string
+  text?: string
+}
+
+// Runner Execution Card - Display the latest managed runner execution summary
+export interface TypelessCardRunnerExecution extends TypelessCardBase {
+  type: 'runner-execution'
+  eyebrow?: string
+  title?: string
+  reason?: string
+  candidate_id?: string
+  eval_run_id?: string
+  optimization_surface?: string
+  runner_protocol?: string
+  runner_stop_reason?: string
+  runner_duration_ms?: number
+  runner_response_text?: string
+  runner_stderr?: string
+  runner_error?: string
+  runner_transcript?: TypelessCardRunnerExecutionTranscriptEntry[]
+}
+
 // Exec Card - Display shell command execution results with terminal styling
 export interface TypelessCardExec extends TypelessCardBase {
   type: 'exec'
@@ -1067,6 +1092,7 @@ export type TypelessCard =
   | TypelessCardWebFetch
   | TypelessCardModelDownloadProgress
   | TypelessCardConvertTask
+  | TypelessCardRunnerExecution
   | TypelessCardExec
 
 // Card parsing result

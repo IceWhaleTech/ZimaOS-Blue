@@ -19,6 +19,36 @@ const execCardNoCommandLabels: Partial<Record<LocaleKey, string>> = {
   'sk-SK': 'Bez príkazu',
 }
 
+const commonFilterLabels: Record<LocaleKey, string> = {
+  'ca-ES': 'Filtre',
+  'cs-CZ': 'Filtr',
+  'da-DK': 'Filter',
+  'de-DE': 'Filter',
+  'el-GR': 'Φίλτρο',
+  'en-GB': 'Filter',
+  'en-US': 'Filter',
+  'es-ES': 'Filtro',
+  'fr-FR': 'Filtre',
+  'ga-IE': 'Scagaire',
+  'hr-HR': 'Filtar',
+  'hu-HU': 'Szűrő',
+  'it-IT': 'Filtro',
+  'ja-JP': 'フィルター',
+  'ko-KR': '필터',
+  'ml-IN': 'ഫിൽട്ടർ',
+  'nb-NO': 'Filter',
+  'nl-NL': 'Filter',
+  'pl-PL': 'Filtr',
+  'pt-BR': 'Filtro',
+  'pt-PT': 'Filtro',
+  'ro-RO': 'Filtru',
+  'ru-RU': 'Фильтр',
+  'sk-SK': 'Filter',
+  'sv-SE': 'Filter',
+  'zh-CN': '筛选',
+  'zh-TW': '篩選',
+}
+
 const localePostMergeOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
   'de-DE': {
     skillStore: {
@@ -342,6 +372,7 @@ export function buildLocalePostMergeBackfill(
   messages: Record<string, unknown>
 ): LocaleNode {
   const failoverSource = dashboardCardCopyOverrides[localeKey]
+  const commonPatch: LocaleNode = {}
   const execCardPatch: LocaleNode = {}
   const settingsPatch: LocaleNode = {}
   const failoverPatch: LocaleNode = {}
@@ -393,6 +424,10 @@ export function buildLocalePostMergeBackfill(
   const patch: LocaleNode = {}
   if (hasKeys(settingsPatch)) {
     patch.settings = settingsPatch
+  }
+  commonPatch.filter = commonFilterLabels[localeKey]
+  if (hasKeys(commonPatch)) {
+    patch.common = commonPatch
   }
   if (hasKeys(execCardPatch)) {
     patch.execCard = execCardPatch

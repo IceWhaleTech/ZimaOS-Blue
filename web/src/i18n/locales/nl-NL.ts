@@ -4625,10 +4625,6 @@ export default mergeHarnessLocale('nl-NL', {
           label: 'SkillStack',
           description: 'Communitycatalogus gericht op herbruikbare skillcollecties.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Catalogus van de SkillsMP-marktplaats.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Catalogus van de LLMSkills-communitymarktplaats.',

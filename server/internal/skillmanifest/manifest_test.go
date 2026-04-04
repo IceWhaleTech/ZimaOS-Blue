@@ -444,7 +444,7 @@ func TestPinnedBuiltinSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 		"deep_research",
 		"analyze",
 		"ui_reviewer",
-		"mgmt",
+		"config",
 		"mediagen",
 		"reminder",
 		"scheduler",

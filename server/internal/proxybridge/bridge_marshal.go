@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/toolschema"
 )
 
 // bridgeRequest mirrors the OpenAI chat completion request format.
@@ -267,7 +267,7 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 				Function: bridgeFunction{
 					Name:        t.Name,
 					Description: t.Description,
-					Parameters:  normalizeBridgeToolSchema(t.Parameters),
+					Parameters:  toolschema.NormalizeForOpenAICompat(t.Parameters),
 				},
 			}
 		}
@@ -404,175 +404,12 @@ func MarshalResponsesRequest(req llm.ChatRequest) ([]byte, error) {
 				Type:        "function",
 				Name:        t.Name,
 				Description: t.Description,
-				Parameters:  normalizeBridgeToolSchema(t.Parameters),
+				Parameters:  toolschema.NormalizeForOpenAICompat(t.Parameters),
 			})
 		}
 	}
 
 	return marshalResponsesRequestWithSizeGuard(out)
-}
-
-func normalizeBridgeToolSchema(schema map[string]interface{}) map[string]interface{} {
-	if len(schema) == 0 {
-		return map[string]interface{}{
-			"type":                 "object",
-			"properties":           map[string]interface{}{},
-			"required":             []string{},
-			"additionalProperties": false,
-		}
-	}
-	out := make(map[string]interface{}, len(schema)+3)
-	for key, value := range schema {
-		switch key {
-		case "properties":
-			props, ok := value.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			normalized := make(map[string]interface{}, len(props))
-			for name, child := range props {
-				childMap, _ := child.(map[string]interface{})
-				normalized[name] = normalizeBridgeToolSchema(childMap)
-			}
-			out[key] = normalized
-		case "items":
-			switch typed := value.(type) {
-			case map[string]interface{}:
-				out[key] = normalizeBridgeToolSchema(typed)
-			default:
-				items, ok := bridgeNormalizeArrayValue(typed)
-				if !ok {
-					continue
-				}
-				normalizedItems := make([]interface{}, 0, len(items))
-				for _, child := range items {
-					if childMap, ok := child.(map[string]interface{}); ok {
-						normalizedItems = append(normalizedItems, normalizeBridgeToolSchema(childMap))
-						continue
-					}
-					normalizedItems = append(normalizedItems, cloneBridgeJSONValue(child))
-				}
-				out[key] = normalizedItems
-			}
-		case "oneOf", "anyOf", "allOf":
-			items, ok := bridgeNormalizeArrayValue(value)
-			if !ok {
-				continue
-			}
-			normalized := make([]interface{}, 0, len(items))
-			for _, child := range items {
-				if childMap, ok := child.(map[string]interface{}); ok {
-					normalized = append(normalized, normalizeBridgeToolSchema(childMap))
-					continue
-				}
-				normalized = append(normalized, cloneBridgeJSONValue(child))
-			}
-			out[key] = normalized
-		case "additionalProperties":
-			switch typed := value.(type) {
-			case bool:
-				out[key] = typed
-			case map[string]interface{}:
-				out[key] = normalizeBridgeToolSchema(typed)
-			}
-		case "required":
-			if normalized := bridgeNormalizeStringList(value); normalized != nil {
-				out[key] = normalized
-			}
-		case "nullable":
-			continue
-		default:
-			out[key] = cloneBridgeJSONValue(value)
-		}
-	}
-	if _, ok := out["type"]; !ok {
-		if _, hasProps := out["properties"]; hasProps {
-			out["type"] = "object"
-		} else if _, hasItems := out["items"]; hasItems {
-			out["type"] = "array"
-		}
-	}
-	if typeName, ok := out["type"].(string); ok && typeName == "object" {
-		if _, exists := out["properties"]; !exists {
-			out["properties"] = map[string]interface{}{}
-		}
-		if _, exists := out["required"]; !exists {
-			// Some OpenAI-compatible relays reject object schemas when `required`
-			// is omitted, even though plain JSON Schema treats it as optional.
-			out["required"] = []string{}
-		}
-		if _, exists := out["additionalProperties"]; !exists {
-			out["additionalProperties"] = false
-		}
-	}
-	return out
-}
-
-func cloneBridgeJSONValue(raw interface{}) interface{} {
-	switch typed := raw.(type) {
-	case map[string]interface{}:
-		out := make(map[string]interface{}, len(typed))
-		for key, value := range typed {
-			out[key] = cloneBridgeJSONValue(value)
-		}
-		return out
-	case []interface{}:
-		out := make([]interface{}, len(typed))
-		for i, value := range typed {
-			out[i] = cloneBridgeJSONValue(value)
-		}
-		return out
-	default:
-		return typed
-	}
-}
-
-func bridgeNormalizeStringList(raw interface{}) []string {
-	items, ok := bridgeNormalizeArrayValue(raw)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(items))
-	seen := make(map[string]struct{}, len(items))
-	for _, item := range items {
-		value, ok := item.(string)
-		if !ok {
-			continue
-		}
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		out = append(out, trimmed)
-	}
-	return out
-}
-
-func bridgeNormalizeArrayValue(raw interface{}) ([]interface{}, bool) {
-	switch typed := raw.(type) {
-	case nil:
-		return nil, false
-	case []interface{}:
-		return typed, true
-	}
-	value := reflect.ValueOf(raw)
-	if !value.IsValid() {
-		return nil, false
-	}
-	switch value.Kind() {
-	case reflect.Slice, reflect.Array:
-		out := make([]interface{}, 0, value.Len())
-		for i := 0; i < value.Len(); i++ {
-			out = append(out, value.Index(i).Interface())
-		}
-		return out, true
-	default:
-		return nil, false
-	}
 }
 
 func trimMessagesForResponsesContinuation(messages []llm.Message) []llm.Message {

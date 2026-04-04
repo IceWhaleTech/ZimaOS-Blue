@@ -172,6 +172,78 @@ func TestOpenAIProviderChatWithToolCalls(t *testing.T) {
 	}
 }
 
+func TestOpenAIProviderChat_StripsTopLevelCompositeKeywordsFromToolSchema(t *testing.T) {
+	var receivedRequest map[string]interface{}
+
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedRequest); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		resp := map[string]interface{}{
+			"id":    "chatcmpl-789",
+			"model": "gpt-4",
+			"choices": []map[string]interface{}{
+				{
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": "ok",
+					},
+					"finish_reason": "stop",
+				},
+			},
+			"usage": map[string]interface{}{
+				"prompt_tokens":     10,
+				"completion_tokens": 1,
+				"total_tokens":      11,
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewOpenAIProvider("test-api-key", server.URL)
+	req := ChatRequest{
+		Model: "gpt-4",
+		Messages: []Message{
+			{Role: RoleUser, Content: "hi"},
+		},
+		Tools: []Tool{{
+			Name: "deep_research",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"anyOf": []map[string]interface{}{
+					{"required": []string{"query"}},
+					{"required": []string{"job_id"}},
+				},
+			},
+		}},
+	}
+
+	if _, err := provider.Chat(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	toolsRaw, ok := receivedRequest["tools"].([]interface{})
+	if !ok || len(toolsRaw) != 1 {
+		t.Fatalf("tools type/len = %T/%d, want []interface{}/1", receivedRequest["tools"], len(toolsRaw))
+	}
+	toolFn := toolsRaw[0].(map[string]interface{})["function"].(map[string]interface{})
+	params := toolFn["parameters"].(map[string]interface{})
+	if _, ok := params["anyOf"]; ok {
+		t.Fatalf("top-level anyOf should be stripped for OpenAI-compatible tool schemas, got %v", params["anyOf"])
+	}
+	required, ok := params["required"].([]interface{})
+	if !ok {
+		t.Fatalf("parameters.required type = %T, want []interface{}", params["required"])
+	}
+	if len(required) != 0 {
+		t.Fatalf("len(parameters.required) = %d, want 0", len(required))
+	}
+}
+
 // Test OpenAI provider error handling
 func TestOpenAIProviderChatError(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

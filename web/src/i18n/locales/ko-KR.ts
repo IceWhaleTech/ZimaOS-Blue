@@ -4746,10 +4746,6 @@ export default mergeHarnessLocale('ko-KR', {
           label: 'SkillStack',
           description: '재사용 가능한 스킬 모음에 초점을 맞춘 커뮤니티 카탈로그입니다.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'SkillsMP 마켓플레이스 카탈로그입니다.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'LLMSkills 커뮤니티 마켓플레이스 카탈로그입니다.',

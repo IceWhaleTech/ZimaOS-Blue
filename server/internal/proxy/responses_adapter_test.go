@@ -92,6 +92,28 @@ func TestConvertOpenAIChatCompletionsToResponses(t *testing.T) {
 	}
 }
 
+func TestConvertOpenAIChatCompletionsToResponses_StripsTopLevelCompositeKeywordsFromToolSchema(t *testing.T) {
+	body := []byte(`{
+		"model":"o3",
+		"messages":[{"role":"user","content":"hello"}],
+		"tools":[
+			{"type":"function","function":{"name":"deep_research","parameters":{"type":"object","anyOf":[{"required":["query"]},{"required":["job_id"]}]}}}
+		]
+	}`)
+
+	converted, err := convertOpenAIChatCompletionsToResponses(body)
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+	}
+
+	if gjson.GetBytes(converted, "tools.0.parameters.anyOf").Exists() {
+		t.Fatalf("top-level anyOf should be stripped for OpenAI-compatible tool schemas: %s", string(converted))
+	}
+	if got := gjson.GetBytes(converted, "tools.0.parameters.required.#").Int(); got != 0 {
+		t.Fatalf("len(tools.0.parameters.required) = %d, want 0", got)
+	}
+}
+
 func TestConvertOpenAIChatCompletionsToResponses_ContinuationUsesIncrementalMessages(t *testing.T) {
 	body := []byte(`{
 		"model":"o3",

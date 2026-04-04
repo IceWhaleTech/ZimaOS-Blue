@@ -84,8 +84,12 @@ const mocks = vi.hoisted(() => ({
   settingsStore: {
     agentAutoConfirm: false,
     agentMode: false,
+    experimentalAgentcoreRunnerEnabled: false,
+    agentcoreRunnerStatus: null as null | Record<string, unknown>,
+    agentcoreRunnerLastRun: null as null | Record<string, unknown>,
     showToolDetails: true,
     fetchTools: vi.fn(),
+    fetchAgentcoreRunnerStatus: vi.fn(),
     updateFromPoolProviders: vi.fn(),
     setAgentAutoConfirm: vi.fn(),
     setAgentMode: vi.fn(),
@@ -539,6 +543,34 @@ function makeTypelessBlock(payload: Record<string, unknown>) {
   return ['```typeless', JSON.stringify(payload), '```'].join('\n')
 }
 
+function makeAgentcoreRunnerLastRun(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'runner-run-1',
+    created_at: '2026-04-04T08:00:00.000Z',
+    reason: 'manual_optimize',
+    candidate_id: 'candidate-7',
+    eval_run_id: 'eval-9',
+    optimization_surface: 'skill_revision',
+    runner_protocol: 'agentcore/v1',
+    runner_stop_reason: 'completed',
+    runner_duration_ms: 4200,
+    runner_response_text: 'Runner proposed a cache optimization patch.',
+    runner_transcript: [
+      {
+        direction: 'runner',
+        method: 'response',
+        text: 'Runner proposed a cache optimization patch.',
+      },
+      {
+        direction: 'runner',
+        method: 'note',
+        text: 'Validated the optimization candidate against the latest baseline.',
+      },
+    ],
+    ...overrides,
+  }
+}
+
 async function mountChatViewWithMessages(
   messages: Array<{
     id: string
@@ -691,8 +723,12 @@ describe('ChatView page-level card actions', () => {
 
     mocks.settingsStore.agentAutoConfirm = false
     mocks.settingsStore.agentMode = false
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = false
+    mocks.settingsStore.agentcoreRunnerStatus = null
+    mocks.settingsStore.agentcoreRunnerLastRun = null
     mocks.settingsStore.showToolDetails = true
     mocks.settingsStore.fetchTools.mockReset().mockResolvedValue(undefined)
+    mocks.settingsStore.fetchAgentcoreRunnerStatus.mockReset().mockResolvedValue(undefined)
     mocks.settingsStore.updateFromPoolProviders.mockReset()
     mocks.settingsStore.setAgentAutoConfirm.mockReset()
     mocks.settingsStore.setAgentMode.mockReset()
@@ -907,6 +943,52 @@ describe('ChatView page-level card actions', () => {
 
     expect(panelIndex).toBeGreaterThanOrEqual(0)
     expect(inputIndex).toBeGreaterThan(panelIndex)
+  })
+
+  it('renders the latest runner execution card inside the chat flow when the feature is enabled', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.agentcoreRunnerLastRun = makeAgentcoreRunnerLastRun()
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner', content: 'Show me the latest optimization details.' },
+    ])
+
+    const card = wrapper.get('[data-testid="chat-runner-execution-card"]')
+    expect(card.text()).toContain('Agentcore Runner')
+    expect(card.text()).toContain('Runner proposed a cache optimization patch.')
+    expect(card.text()).toContain('manual_optimize')
+  })
+
+  it('does not render the runner execution card when the feature is disabled', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = false
+    mocks.settingsStore.agentcoreRunnerLastRun = makeAgentcoreRunnerLastRun()
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-no-runner', content: 'No runner card should be visible.' },
+    ])
+
+    expect(wrapper.find('[data-testid="chat-runner-execution-card"]').exists()).toBe(false)
+  })
+
+  it('refreshes runner status in the background when the feature is enabled', async () => {
+    vi.useFakeTimers()
+
+    try {
+      mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+
+      await mountChatViewWithMessages([
+        { id: 'msg-refresh-runner', content: 'Refresh runner state on mount.' },
+      ])
+
+      expect(mocks.settingsStore.fetchAgentcoreRunnerStatus).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1000)
+      await flushPromises()
+
+      expect(mocks.settingsStore.fetchAgentcoreRunnerStatus).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('hides the active todo panel after a completion-style final summary', async () => {

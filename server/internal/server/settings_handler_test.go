@@ -80,7 +80,7 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask the user clarifying questions."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "mgmt", Description: "Manage providers, settings, and diagnostics."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "config", Description: "Manage providers, settings, and diagnostics."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web for latest sources."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files."})
@@ -100,7 +100,7 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
-	writeSettingsSelectorSkill(t, workspaceDir, "mgmt", "manage providers settings channels skills tools health and proxy diagnostics", "blue mgmt.providers.list", "admin", "settings", "providers", "diagnostics")
+	writeSettingsSelectorSkill(t, workspaceDir, "config", "manage providers settings channels skills tools health and proxy diagnostics", "blue config.providers.list", "admin", "settings", "providers", "diagnostics")
 	writeSettingsSelectorSkill(t, workspaceDir, "ui_reviewer", "review screenshots and UI layouts for accessibility and visual issues", `blue ui_reviewer target="screenshot.png"`, "ui", "review", "screenshot")
 
 	chatHandler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
@@ -721,9 +721,14 @@ func TestSelectorDryRun_CriticalPlanRoutes(t *testing.T) {
 			skill: "ask",
 		},
 		{
-			name:  "mgmt_routes_to_mgmt",
+			name:  "mgmt_alias_routes_to_config",
 			query: "mgmt providers.list",
-			skill: "mgmt",
+			skill: "config",
+		},
+		{
+			name:  "config_routes_to_config",
+			query: "config providers.list",
+			skill: "config",
 		},
 		{
 			name:  "reminder_request_goes_to_reminder",
@@ -739,7 +744,7 @@ func TestSelectorDryRun_CriticalPlanRoutes(t *testing.T) {
 	}
 }
 
-func TestSelectorDryRun_DynamicExposureCollapsesAskMgmtAndWorkspaceToExec(t *testing.T) {
+func TestSelectorDryRun_DynamicExposureCollapsesAskConfigAndWorkspaceToExec(t *testing.T) {
 	h := newSelectorDryRunTestHandler(t)
 
 	tests := []struct {
@@ -749,7 +754,8 @@ func TestSelectorDryRun_DynamicExposureCollapsesAskMgmtAndWorkspaceToExec(t *tes
 	}{
 		{name: "workspace", query: "看下 workspace 里的 README", wantCanonical: "exec"},
 		{name: "ask", query: "ask me two clarifying questions before continuing", wantCanonical: "ask"},
-		{name: "mgmt", query: "mgmt providers.list", wantCanonical: "mgmt"},
+		{name: "mgmt_alias", query: "mgmt providers.list", wantCanonical: "config"},
+		{name: "config", query: "config providers.list", wantCanonical: "config"},
 	}
 
 	for _, tc := range tests {

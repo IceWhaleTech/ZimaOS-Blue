@@ -4807,10 +4807,6 @@ export default mergeHarnessLocale('it-IT', {
           label: 'SkillStack',
           description: 'Catalogo della community incentrato su raccolte di skill riutilizzabili.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Catalogo del marketplace SkillsMP.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Catalogo del marketplace community di LLMSkills.',

@@ -23,6 +23,7 @@ import { getLocaleDirection } from '@/i18n'
 import type { FileAttachment } from '@/components/ChatInput.vue'
 import type ChatInputComponent from '@/components/ChatInput.vue'
 import type VirtualScrollComponent from '@/components/VirtualScroll.vue'
+import type { AgentcoreRunnerLastRun } from '@/api/settings'
 import type { UserTaskProjection } from '@/api/tasks'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
@@ -35,6 +36,7 @@ import { rafThrottle } from '@/utils/rafThrottle'
 import { useTaskProjectionActions } from '@/composables/useTaskProjectionActions'
 import { measureChatPerf, recordChatPerfCount } from '@/utils/chatPerf'
 import { scheduleStartupBackgroundTask } from '@/utils/startupBackgroundTask'
+import type { TypelessCardRunnerExecution } from '@/types/typeless'
 
 reportStartupMark('chat_view_setup_enter')
 
@@ -42,6 +44,9 @@ const ChatMessage = defineAsyncComponent(() => import('@/components/ChatMessage.
 const ConversationList = defineAsyncComponent(() => import('@/components/ConversationList.vue'))
 const ChatInput = defineAsyncComponent(() => import('@/components/ChatInput.vue'))
 const VirtualScroll = defineAsyncComponent(() => import('@/components/VirtualScroll.vue'))
+const TypelessCardComponent = defineAsyncComponent(
+  () => import('@/components/typeless/TypelessCard.vue')
+)
 const PresetQuestions = defineAsyncComponent(
   () => import('@/components/onboarding/PresetQuestions.vue')
 )
@@ -187,6 +192,46 @@ const initialPrimaryDataHydrating = ref(false)
 const showInitialThreadSkeleton = computed(
   () => initialPrimaryDataHydrating.value && chatStore.messages.length === 0 && !chatStore.error
 )
+
+function normalizeRunnerExecutionText(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  return value.trim()
+}
+
+function buildRunnerExecutionCard(run: AgentcoreRunnerLastRun): TypelessCardRunnerExecution {
+  return {
+    type: 'runner-execution',
+    id: 'chat-runner-execution-card',
+    eyebrow: t('settings.agentcoreRunner.eyebrow', 'Harness · Beta'),
+    title: t('settings.agentcoreRunner.title', 'Harness Self-Iterating Agentcore Runner'),
+    reason: normalizeRunnerExecutionText(run.reason),
+    candidate_id: normalizeRunnerExecutionText(run.candidate_id),
+    eval_run_id: normalizeRunnerExecutionText(run.eval_run_id),
+    optimization_surface: normalizeRunnerExecutionText(run.optimization_surface),
+    runner_protocol: normalizeRunnerExecutionText(run.runner_protocol),
+    runner_stop_reason: normalizeRunnerExecutionText(run.runner_stop_reason),
+    runner_duration_ms:
+      typeof run.runner_duration_ms === 'number' ? run.runner_duration_ms : undefined,
+    runner_response_text: normalizeRunnerExecutionText(run.runner_response_text),
+    runner_stderr: normalizeRunnerExecutionText(run.runner_stderr),
+    runner_error: normalizeRunnerExecutionText(run.runner_error),
+    runner_transcript: Array.isArray(run.runner_transcript)
+      ? run.runner_transcript.map((entry) => ({
+          direction: normalizeRunnerExecutionText(entry.direction),
+          method: normalizeRunnerExecutionText(entry.method),
+          text: normalizeRunnerExecutionText(entry.text),
+        }))
+      : [],
+  }
+}
+
+const runnerExecutionCard = computed<TypelessCardRunnerExecution | null>(() => {
+  if (!settingsStore.experimentalAgentcoreRunnerEnabled) return null
+  if (chatStore.messages.length === 0) return null
+  const run = settingsStore.agentcoreRunnerLastRun
+  if (!run) return null
+  return buildRunnerExecutionCard(run)
+})
 
 const showRoutingMenu = ref(false)
 const routingMenuAnchorEl = ref<HTMLElement | null>(null)
@@ -2114,6 +2159,9 @@ onMounted(async () => {
     }
     settingsStore.fetchTools().catch(() => {})
     providerPoolStore.fetchRoutingMode().catch(() => {})
+    if (settingsStore.experimentalAgentcoreRunnerEnabled) {
+      settingsStore.fetchAgentcoreRunnerStatus().catch(() => {})
+    }
 
     // Restore pending confirmations after refresh or missed SSE events.
     chatStore.recoverPendingConfirmations(false)
@@ -3398,6 +3446,10 @@ onUnmounted(() => {
 
               <!-- Messages list - Virtual scroll for large lists -->
               <template v-if="chatStore.messages.length > 0">
+                <div v-if="runnerExecutionCard" class="chat-message-shell">
+                  <TypelessCardComponent :card="runnerExecutionCard" />
+                </div>
+
                 <!-- Use virtual scroll for large message lists -->
                 <VirtualScroll
                   v-if="useVirtualScroll"

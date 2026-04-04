@@ -913,4 +913,51 @@ describe('SkillStoreTab', () => {
     wrapper.unmount()
     i18n.global.locale.value = 'en-US'
   })
+
+  it('renders source brand icons in result cards, progress, and source filter hints', async () => {
+    vi.mocked(skillApi.discoverStatus).mockResolvedValue({
+      data: {
+        running: true,
+        total_sources: 2,
+        processed_sources: 0,
+        current_source_name: 'Tencent SkillHub',
+      },
+    } as never)
+
+    const wrapper = await mountSkillStore()
+
+    const sourceChipIcon = wrapper.get('.source-chip img')
+    expect(sourceChipIcon.attributes('src')).toContain('skillhub.club/favicon-48x48.png')
+
+    const progressSourceIcon = wrapper.get('.discover-progress__source img')
+    expect(progressSourceIcon.attributes('src')).toContain('skillhub.club/favicon-48x48.png')
+
+    await wrapper.findAll('select.filter-select')[1]!.setValue('skillhub')
+    await flushPromises()
+
+    const filterHintIcon = wrapper.get('.filter-field__hint img')
+    expect(filterHintIcon.attributes('src')).toContain('skillhub.club/favicon-48x48.png')
+  })
+
+  it('shows MiniMax branding for GitHub MiniMax skills', async () => {
+    const minimaxSkill = makeSkill({
+      source_id: 'github-skill-md',
+      source_name: 'GitHub SKILL.md',
+      source_group: 'github',
+      author: 'MiniMax',
+      homepage: 'https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-pdf',
+      source_url: 'https://github.com/MiniMax-AI/skills/tree/main/skills/minimax-pdf',
+    })
+
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(makeSearchResponse([minimaxSkill]) as never)
+
+    const wrapper = await mountSkillStore()
+
+    const sourceChip = wrapper.get('.source-chip')
+    expect(sourceChip.text()).toContain('MiniMax')
+    expect(sourceChip.text()).not.toContain('GitHub')
+
+    const sourceChipIcon = wrapper.get('.source-chip img')
+    expect(sourceChipIcon.attributes('src')).toContain('/icons/providers/minimax.svg')
+  })
 })

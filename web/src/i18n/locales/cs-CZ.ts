@@ -4594,10 +4594,6 @@ export default mergeHarnessLocale('cs-CZ', {
           label: 'SkillStack',
           description: 'Komunitní katalog zaměřený na znovupoužitelné kolekce skillů.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Katalog tržiště SkillsMP.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Katalog komunitního tržiště LLMSkills.',

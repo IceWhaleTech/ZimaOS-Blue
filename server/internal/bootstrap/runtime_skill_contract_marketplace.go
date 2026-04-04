@@ -38,8 +38,6 @@ func bindRouteRuntimeSkillMarketplace(
 		marketCfg.SkillHubBaseURL = options.appConfig.SkillMarket.SkillHubBaseURL
 		marketCfg.SkillHubAPIKey = strings.TrimSpace(options.appConfig.SkillMarket.SkillHubAPIKey)
 		marketCfg.SkillStackBaseURL = options.appConfig.SkillMarket.SkillStackBaseURL
-		marketCfg.SkillsMPBaseURL = options.appConfig.SkillMarket.SkillsMPBaseURL
-		marketCfg.SkillsMPAPIKey = strings.TrimSpace(options.appConfig.SkillMarket.SkillsMPAPIKey)
 		marketCfg.LLMSkillsBaseURL = options.appConfig.SkillMarket.LLMSkillsBaseURL
 		marketCfg.CuratedConfigPath = options.appConfig.SkillMarket.CuratedConfigPath
 		marketCfg.CuratedConfigURLs = append([]string{}, options.appConfig.SkillMarket.CuratedConfigURLs...)

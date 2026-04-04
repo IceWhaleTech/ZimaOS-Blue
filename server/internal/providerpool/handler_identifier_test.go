@@ -47,6 +47,19 @@ func TestHandlerGetProviderRejectsInvalidProviderID(t *testing.T) {
 	}
 }
 
+func TestHandlerDoesNotRegisterLegacyHealthCheckRoute(t *testing.T) {
+	_, e := newTestProviderHandler(t)
+
+	for _, route := range e.Routes() {
+		if route.Method != http.MethodPost {
+			continue
+		}
+		if route.Path == "/providers/:id/test" {
+			t.Fatalf("unexpected legacy health-check route still registered: %s %s", route.Method, route.Path)
+		}
+	}
+}
+
 func TestHandlerAddProviderRejectsInvalidProviderID(t *testing.T) {
 	_, e := newTestProviderHandler(t)
 

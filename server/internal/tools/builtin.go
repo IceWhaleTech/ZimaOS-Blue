@@ -758,6 +758,7 @@ func RegisterBuiltinTools(registry *Registry) {
 	registry.Register(NewLsTool(nil))
 	registry.Register(NewOfficeTool(nil, nil, nil))
 	registerCanonicalFileSurface(registry)
+	registry.Register(NewToolSearchTool(registry))
 	registerWebTools(registry, WebSearchConfig{}, WebFetchConfig{})
 	registry.Register(NewMCPTool(registry))
 }
@@ -795,6 +796,9 @@ func RegisterBuiltinToolsWithRuntimeConfig(registry *Registry, webSearchConfig W
 	registry.Register(NewLsTool(allowedPaths))
 	registry.Register(NewOfficeTool(allowedPaths, nil, nil))
 	registerCanonicalFileSurface(registry)
+	toolSearch := NewToolSearchTool(registry)
+	toolSearch.SetSkillExposureManager(skillExposure)
+	registry.Register(toolSearch)
 	registerWebTools(registry, webSearchConfig, webFetchConfig)
 	registry.Register(NewMCPTool(registry))
 }
@@ -934,6 +938,18 @@ func GetWebFetchTool(registry *Registry) *WebFetchTool {
 		return nil
 	}
 	if t, ok := tool.(*WebFetchTool); ok {
+		return t
+	}
+	return nil
+}
+
+// GetToolSearchTool retrieves the ToolSearchTool from the registry for dependency injection.
+func GetToolSearchTool(registry *Registry) *ToolSearchTool {
+	tool := registry.Get("tool_search")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*ToolSearchTool); ok {
 		return t
 	}
 	return nil

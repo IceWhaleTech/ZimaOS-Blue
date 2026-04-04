@@ -144,8 +144,8 @@ func TestBindManagementRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 		},
 	})
 
-	if result.mgmtTool == nil || registry.Get("mgmt") != result.mgmtTool {
-		t.Fatalf("expected management runtime to register mgmt tool, got tool=%#v registered=%#v", result.mgmtTool, registry.Get("mgmt"))
+	if result.mgmtTool == nil || registry.Get("config") != result.mgmtTool {
+		t.Fatalf("expected management runtime to register config tool, got tool=%#v registered=%#v", result.mgmtTool, registry.Get("config"))
 	}
 	if result.support.updateHandler == nil || result.support.otaChecker == nil || result.support.providerSettings == nil {
 		t.Fatalf("expected management runtime to aggregate management support, got %#v", result.support)

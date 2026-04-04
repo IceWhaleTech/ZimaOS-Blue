@@ -338,7 +338,12 @@ func (m *Manager) Prepare(ctx context.Context, req PrepareRequest) (Status, erro
 		return m.failStatus(err)
 	}
 
-	goModBytes, err := os.ReadFile(filepath.Join(repoDir, "go.mod"))
+	workspaceRoot, err := resolveRunnerWorkspaceRoot(repoDir)
+	if err != nil {
+		return m.failStatus(err)
+	}
+
+	goModBytes, err := os.ReadFile(filepath.Join(workspaceRoot, "go.mod"))
 	if err != nil {
 		return m.failStatus(err)
 	}
@@ -349,7 +354,7 @@ func (m *Manager) Prepare(ctx context.Context, req PrepareRequest) (Status, erro
 		return m.failStatus(err)
 	}
 
-	binaryPath, binarySHA, err := m.buildRunnerBinary(ctx, repoDir, repo, resolvedCommit, toolchainRoot)
+	binaryPath, binarySHA, err := m.buildRunnerBinary(ctx, workspaceRoot, repo, resolvedCommit, toolchainRoot)
 	if err != nil {
 		return m.failStatus(err)
 	}
@@ -595,6 +600,9 @@ func (m *Manager) prepareRepo(ctx context.Context, repo GitHubRepo, ref string) 
 	}
 	finalDir := filepath.Join(m.layout.ReposDir, repo.Slug, commit)
 	if stat, err := os.Stat(finalDir); err == nil && stat.IsDir() {
+		if err := compactRunnerWorkspaceInPlace(finalDir); err != nil {
+			return "", "", err
+		}
 		return finalDir, commit, nil
 	}
 	parentDir := filepath.Join(m.layout.ReposDir, repo.Slug)
@@ -617,6 +625,9 @@ func (m *Manager) prepareRepo(ctx context.Context, repo GitHubRepo, ref string) 
 	if _, err := runCommand(ctx, repoCloneDir, "git", "checkout", "--detach", "FETCH_HEAD"); err != nil {
 		return "", "", err
 	}
+	if err := compactRunnerWorkspaceInPlace(repoCloneDir); err != nil {
+		return "", "", err
+	}
 	if err := os.MkdirAll(filepath.Dir(finalDir), 0o755); err != nil {
 		return "", "", err
 	}
@@ -627,6 +638,95 @@ func (m *Manager) prepareRepo(ctx context.Context, repo GitHubRepo, ref string) 
 		return "", "", err
 	}
 	return finalDir, commit, nil
+}
+
+func compactRunnerWorkspaceInPlace(repoDir string) error {
+	repoDir = filepath.Clean(strings.TrimSpace(repoDir))
+	if repoDir == "" {
+		return fmt.Errorf("repo dir is required")
+	}
+	workspaceRoot, err := resolveRunnerWorkspaceRoot(repoDir)
+	if err != nil {
+		return err
+	}
+	if workspaceRoot == repoDir {
+		return nil
+	}
+
+	parentDir := filepath.Dir(repoDir)
+	tempDir, err := os.MkdirTemp(parentDir, filepath.Base(repoDir)+"-workspace-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	stagedDir := filepath.Join(tempDir, "repo")
+	if err := os.Rename(workspaceRoot, stagedDir); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(repoDir); err != nil {
+		return err
+	}
+	if err := os.Rename(stagedDir, repoDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+func resolveRunnerWorkspaceRoot(repoDir string) (string, error) {
+	repoDir = filepath.Clean(strings.TrimSpace(repoDir))
+	if repoDir == "" {
+		return "", fmt.Errorf("repo dir is required")
+	}
+	if isRunnerWorkspaceRoot(repoDir) {
+		return repoDir, nil
+	}
+
+	candidates := make([]string, 0, 2)
+	err := filepath.WalkDir(repoDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if name == ".git" {
+			return filepath.SkipDir
+		}
+		if name == "agentcore-runner" && filepath.Base(filepath.Dir(path)) == "cmd" {
+			candidateRoot := filepath.Dir(filepath.Dir(path))
+			if isRunnerWorkspaceRoot(candidateRoot) {
+				candidates = append(candidates, candidateRoot)
+			}
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+	if len(candidates) > 1 {
+		slices.Sort(candidates)
+		return "", fmt.Errorf("multiple agentcore-runner workspaces found under %s: %s", repoDir, strings.Join(candidates, ", "))
+	}
+	return "", fmt.Errorf("agentcore-runner workspace not found under %s", repoDir)
+}
+
+func isRunnerWorkspaceRoot(root string) bool {
+	if root == "" {
+		return false
+	}
+	if stat, err := os.Stat(filepath.Join(root, "go.mod")); err != nil || stat.IsDir() {
+		return false
+	}
+	if stat, err := os.Stat(filepath.Join(root, "cmd", "agentcore-runner")); err != nil || !stat.IsDir() {
+		return false
+	}
+	return true
 }
 
 func resolveGitCommit(ctx context.Context, repoURL string, ref string) (string, error) {
@@ -661,7 +761,11 @@ func (m *Manager) ensureGoToolchain(ctx context.Context, version string, platfor
 	if err != nil {
 		return "", err
 	}
-	tempDir, err := os.MkdirTemp(filepath.Join(m.layout.GoToolchainsDir, version), "install-*")
+	versionDir, err := ensureGoToolchainVersionDir(m.layout, version)
+	if err != nil {
+		return "", err
+	}
+	tempDir, err := os.MkdirTemp(versionDir, "install-*")
 	if err != nil {
 		return "", err
 	}
@@ -688,6 +792,14 @@ func (m *Manager) ensureGoToolchain(ctx context.Context, version string, platfor
 		return "", err
 	}
 	return finalBase, nil
+}
+
+func ensureGoToolchainVersionDir(layout ManagedLayout, version string) (string, error) {
+	versionDir := filepath.Join(layout.GoToolchainsDir, normalizeGoVersion(version))
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		return "", err
+	}
+	return versionDir, nil
 }
 
 func (m *Manager) lookupGoArchive(ctx context.Context, version string, platform Platform) (GoArchive, error) {
@@ -861,7 +973,7 @@ func extractTarGz(archivePath, destDir string) error {
 	}
 }
 
-func (m *Manager) buildRunnerBinary(ctx context.Context, repoDir string, repo GitHubRepo, commit string, toolchainBase string) (string, string, error) {
+func (m *Manager) buildRunnerBinary(ctx context.Context, workspaceRoot string, repo GitHubRepo, commit string, toolchainBase string) (string, string, error) {
 	finalDir := filepath.Join(m.layout.BinDir, repo.Slug, commit)
 	if err := os.MkdirAll(finalDir, 0o755); err != nil {
 		return "", "", err
@@ -881,7 +993,7 @@ func (m *Manager) buildRunnerBinary(ctx context.Context, repoDir string, repo Gi
 	goroot := filepath.Join(toolchainBase, "go")
 	env := buildGoBuildEnv(goroot, m.layout)
 	cmd := exec.CommandContext(ctx, filepath.Join(goroot, "bin", RunnerBinaryNameForGo(runtime.GOOS)), "build", "-trimpath", "-o", tempBinary, "./cmd/agentcore-runner")
-	cmd.Dir = repoDir
+	cmd.Dir = workspaceRoot
 	cmd.Env = env
 	output, err := cmd.CombinedOutput()
 	if err != nil {

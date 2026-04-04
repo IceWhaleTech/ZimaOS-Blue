@@ -93,6 +93,118 @@ func TestRunnerBinaryNameFollowsHostPlatform(t *testing.T) {
 	}
 }
 
+func TestResolveRunnerWorkspaceRootSupportsNestedServerModule(t *testing.T) {
+	repoDir := t.TempDir()
+	workspaceDir := filepath.Join(repoDir, "server")
+	if err := os.MkdirAll(filepath.Join(workspaceDir, "cmd", "agentcore-runner"), 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, "go.mod"), []byte("module example.com/runner\n\ngo 1.24.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+
+	got, err := resolveRunnerWorkspaceRoot(repoDir)
+	if err != nil {
+		t.Fatalf("resolveRunnerWorkspaceRoot error = %v", err)
+	}
+	if got != workspaceDir {
+		t.Fatalf("resolveRunnerWorkspaceRoot = %q, want %q", got, workspaceDir)
+	}
+}
+
+func TestResolveRunnerWorkspaceRootKeepsRepoRootWhenRunnerLivesThere(t *testing.T) {
+	repoDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repoDir, "cmd", "agentcore-runner"), 0o755); err != nil {
+		t.Fatalf("mkdir runner cmd: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "go.mod"), []byte("module example.com/runner\n\ngo 1.24.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+
+	got, err := resolveRunnerWorkspaceRoot(repoDir)
+	if err != nil {
+		t.Fatalf("resolveRunnerWorkspaceRoot error = %v", err)
+	}
+	if got != repoDir {
+		t.Fatalf("resolveRunnerWorkspaceRoot = %q, want %q", got, repoDir)
+	}
+}
+
+func TestCompactRunnerWorkspaceInPlaceFlattensNestedServerWorkspace(t *testing.T) {
+	repoDir := t.TempDir()
+	workspaceDir := filepath.Join(repoDir, "server")
+	if err := os.MkdirAll(filepath.Join(workspaceDir, "cmd", "agentcore-runner"), 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoDir, "web"), 0o755); err != nil {
+		t.Fatalf("mkdir web: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, "go.mod"), []byte("module example.com/runner\n\ngo 1.24.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "web", "index.html"), []byte("unused"), 0o644); err != nil {
+		t.Fatalf("write web file: %v", err)
+	}
+
+	if err := compactRunnerWorkspaceInPlace(repoDir); err != nil {
+		t.Fatalf("compactRunnerWorkspaceInPlace error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "go.mod")); err != nil {
+		t.Fatalf("root go.mod missing after compaction: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "cmd", "agentcore-runner")); err != nil {
+		t.Fatalf("root cmd/agentcore-runner missing after compaction: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "web")); !os.IsNotExist(err) {
+		t.Fatalf("web directory exists after compaction, err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "server")); !os.IsNotExist(err) {
+		t.Fatalf("nested server directory exists after compaction, err = %v", err)
+	}
+}
+
+func TestCompactRunnerWorkspaceInPlaceLeavesRepoRootWorkspaceUntouched(t *testing.T) {
+	repoDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repoDir, "cmd", "agentcore-runner"), 0o755); err != nil {
+		t.Fatalf("mkdir runner cmd: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoDir, "internal"), 0o755); err != nil {
+		t.Fatalf("mkdir internal: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "go.mod"), []byte("module example.com/runner\n\ngo 1.24.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "internal", "keep.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("write keep file: %v", err)
+	}
+
+	if err := compactRunnerWorkspaceInPlace(repoDir); err != nil {
+		t.Fatalf("compactRunnerWorkspaceInPlace error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "internal", "keep.txt")); err != nil {
+		t.Fatalf("repo-root workspace content missing after no-op compaction: %v", err)
+	}
+}
+
+func TestEnsureGoToolchainVersionDirCreatesMissingParent(t *testing.T) {
+	layout := NewManagedLayout(t.TempDir())
+	versionDir := filepath.Join(layout.GoToolchainsDir, "1.24.0")
+	if _, err := os.Stat(versionDir); !os.IsNotExist(err) {
+		t.Fatalf("version dir precondition err = %v, want not exist", err)
+	}
+
+	got, err := ensureGoToolchainVersionDir(layout, "1.24.0")
+	if err != nil {
+		t.Fatalf("ensureGoToolchainVersionDir error = %v", err)
+	}
+	if got != versionDir {
+		t.Fatalf("ensureGoToolchainVersionDir = %q, want %q", got, versionDir)
+	}
+	if stat, err := os.Stat(versionDir); err != nil || !stat.IsDir() {
+		t.Fatalf("version dir stat err = %v isDir=%v", err, err == nil && stat.IsDir())
+	}
+}
+
 func TestExecutePreparedRunnerACPRejectsChecksumMismatch(t *testing.T) {
 	manager, err := NewManager(t.TempDir())
 	if err != nil {

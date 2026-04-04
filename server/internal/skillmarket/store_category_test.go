@@ -165,6 +165,105 @@ func TestStoreGetFiltersMergesSourcesByGroup(t *testing.T) {
 	}
 }
 
+func TestStoreExcludesBlockedMarketplaceSourceBucketEverywhere(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	ctx := context.Background()
+
+	blocked := SkillDocument{
+		ID:            "blocked-market-skill",
+		Slug:          "blocked-market-skill",
+		Name:          "Blocked Market Skill",
+		Description:   "Should never be listed",
+		LatestVersion: "1.0.0",
+		Installable:   true,
+		InstallType:   InstallTypeRawSkill,
+		ArtifactKind:  ArtifactKindOpenSource,
+		Published:     true,
+		SourceID:      "claude-plugins-claude-plugins",
+		SourceName:    "claude-plugins-claude-plugins",
+		SourceType:    "html_catalog",
+		Category:      "development_tools",
+		TrendingScore: 999,
+		CuratedRank:   1,
+		CuratedBoost:  50,
+	}
+	visible := SkillDocument{
+		ID:            "visible-market-skill",
+		Slug:          "visible-market-skill",
+		Name:          "Visible Market Skill",
+		Description:   "Should remain visible",
+		LatestVersion: "1.0.0",
+		Installable:   true,
+		InstallType:   InstallTypeRawSkill,
+		ArtifactKind:  ArtifactKindOpenSource,
+		Published:     true,
+		SourceID:      "skillstack",
+		SourceName:    "SkillStack",
+		SourceGroup:   "skillstack",
+		SourceType:    "html_catalog",
+		Category:      "development_tools",
+		TrendingScore: 10,
+		CuratedRank:   2,
+		CuratedBoost:  5,
+	}
+
+	for _, doc := range []SkillDocument{blocked, visible} {
+		doc := doc
+		if err := store.UpsertSkill(ctx, &doc, nil, nil); err != nil {
+			t.Fatalf("UpsertSkill(%s) error = %v", doc.ID, err)
+		}
+	}
+
+	filters, err := store.GetFilters(ctx)
+	if err != nil {
+		t.Fatalf("GetFilters() error = %v", err)
+	}
+	if len(filters.Sources) != 1 || filters.Sources[0].Value != "skillstack" {
+		t.Fatalf("filters.Sources = %+v, want only skillstack", filters.Sources)
+	}
+
+	browse, err := store.Search(ctx, SearchQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if browse.Total != 1 || len(browse.Skills) != 1 || browse.Skills[0].Skill.ID != visible.ID {
+		t.Fatalf("browse search = %+v, want only %s", browse, visible.ID)
+	}
+
+	filtered, err := store.ListFilteredSkills(ctx, SearchQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListFilteredSkills() error = %v", err)
+	}
+	if len(filtered) != 1 || filtered[0].ID != visible.ID {
+		t.Fatalf("filtered skills = %+v, want only %s", filtered, visible.ID)
+	}
+
+	trending, err := store.ListTrending(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("ListTrending() error = %v", err)
+	}
+	if len(trending) != 1 || trending[0].ID != visible.ID {
+		t.Fatalf("trending = %+v, want only %s", trending, visible.ID)
+	}
+
+	featured, err := store.ListFeatured(ctx, "", "", 10)
+	if err != nil {
+		t.Fatalf("ListFeatured() error = %v", err)
+	}
+	if len(featured) != 1 || featured[0].ID != visible.ID {
+		t.Fatalf("featured = %+v, want only %s", featured, visible.ID)
+	}
+}
+
 func TestStoreKeepsHigherPrioritySourceWhenLowerPriorityDuplicateArrives(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
 	if err != nil {

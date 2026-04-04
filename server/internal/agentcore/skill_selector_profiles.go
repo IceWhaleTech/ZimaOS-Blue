@@ -69,7 +69,7 @@ func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 		profile.Objects = compactSelectorTerms(append(profile.Objects, "email", "mail", "inbox", "folder", "message", "attachment", "account", "imap", "smtp", "notmuch", "maildir", "收件箱", "邮件", "附件", "账户")...)
 		profile.PreferredDomains = []string{sel.DomainProductivity}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
-	case "mgmt":
+	case "config", "mgmt":
 		profile.Actions = compactSelectorTerms("manage", "configure", "set", "update", "enable", "disable", "管理", "配置", "设置", "更新", "启用", "关闭")
 		profile.Objects = compactSelectorTerms(append(profile.Objects, "settings", "providers", "config", "runtime", "设置", "提供商", "配置", "运行时")...)
 	case "mediagen":

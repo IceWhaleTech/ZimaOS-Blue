@@ -4707,10 +4707,6 @@ export default mergeHarnessLocale('ca-ES', {
           label: 'SkillStack',
           description: 'Catàleg comunitari centrat en col·leccions de skills reutilitzables.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Catàleg del mercat SkillsMP.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Catàleg del mercat comunitari LLMSkills.',

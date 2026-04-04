@@ -29,11 +29,12 @@ func newDiscoverFirstSelectionHandler(t *testing.T, dynamicExposure bool) *ChatH
 	t.Helper()
 
 	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask the user clarifying questions"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "mgmt", Description: "Manage runtime settings and providers"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "config", Description: "Manage runtime settings and providers"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
@@ -49,9 +50,13 @@ func newDiscoverFirstSelectionHandler(t *testing.T, dynamicExposure bool) *ChatH
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages after login or click flows", "blue browser.navigate url=https://example.com", "browser", "login", "click", "page")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze multiple links and synthesize a report", `blue analyze topic="multi-link report" --json`, "analysis", "report", "summary", "link", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "deep_research", "perform cited timeline comparisons and deep research", `blue deep_research query="OpenAI vs Anthropic agent runtime"`, "research", "citation", "timeline", "compare")
-	writeSettingsSelectorSkill(t, workspaceDir, "mgmt", "manage providers settings channels skills tools health and proxy diagnostics", "blue mgmt.providers.list", "admin", "settings", "providers", "diagnostics")
+	writeSettingsSelectorSkill(t, workspaceDir, "config", "manage providers settings channels skills tools health and proxy diagnostics", "blue config.providers.list", "admin", "settings", "providers", "diagnostics")
 
 	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+	handler.ConfigureToolSearchRuntime(workspaceDir, &config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	})
 	return handler
 }
 
@@ -87,6 +92,23 @@ func attachTestProviderPool(t *testing.T, handler *ChatHandler, provider *provid
 	}
 
 	handler.SetProviderPool(&providerpool.Pool{Registry: registry})
+}
+
+func bindToolSearchTestRuntime(t *testing.T, handler *ChatHandler, cfg *config.Config, workspaceDir string) *tools.ToolSearchTool {
+	t.Helper()
+	if cfg == nil {
+		cfg = &config.Config{
+			ToolCalling: *config.DefaultToolCallingConfig(),
+			Agents:      *config.DefaultAgentsConfig(),
+		}
+	}
+	handler.SetToolPolicyResolver(tools.NewToolPolicyResolver(cfg))
+	handler.ConfigureToolSearchRuntime(workspaceDir, cfg)
+	searchTool := tools.GetToolSearchTool(handler.toolRegistry)
+	if searchTool == nil {
+		t.Fatal("expected tool_search to be registered")
+	}
+	return searchTool
 }
 
 func TestSelectTools_FirstTurnExposesFullStaticAllowlist(t *testing.T) {
@@ -137,6 +159,7 @@ func TestSelectTools_FirstTurnExposesFullStaticAllowlist(t *testing.T) {
 
 func TestSelectTools_FirstTurnStillExposesToolsForPlainReply(t *testing.T) {
 	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "tool_search", Description: "Search and defer additional tools", AlwaysLoad: true})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_create", Description: "Create a checklist"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
@@ -147,8 +170,140 @@ func TestSelectTools_FirstTurnStillExposesToolsForPlainReply(t *testing.T) {
 		Model:     "claude-3-5-haiku-20241022",
 		RouteKind: tools.ToolRouteKindChat,
 	})
-	if len(got) != 3 {
+	if len(got) != 4 {
 		t.Fatalf("expected full first-turn tool set for plain reply, got=%v", got)
+	}
+	if _, ok := toolNameSet(got)["tool_search"]; !ok {
+		t.Fatalf("expected tool_search to remain exposed for plain reply, got=%v", got)
+	}
+}
+
+func TestSelectChatToolsForRequest_ToolSearchHydratesDeferredTool(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "process", Description: "Inspect long-running processes"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	searchTool := bindToolSearchTestRuntime(t, handler, nil, "")
+
+	ctx := tools.WithSessionID(context.Background(), "conv-tool-hydrate")
+	ctx = tools.WithRouteKind(ctx, tools.ToolRouteKindChat)
+	if _, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:process"}); err != nil {
+		t.Fatalf("tool_search Execute returned error: %v", err)
+	}
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		`Say "Hello, I'm ready!" to confirm you can respond.`,
+		"claude-3-5-haiku-20241022",
+		"conv-tool-hydrate",
+		"",
+		memory.ConversationCommandState{ConversationID: "conv-tool-hydrate"},
+		nil,
+		nil,
+	)
+
+	names := toolNameSet(got)
+	for _, required := range []string{"tool_search", "process"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q after tool_search hydration, got=%v", required, selectedToolNames(got))
+		}
+	}
+}
+
+func TestSelectChatToolsForRequest_ToolSearchHydratesSkillViaExec(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run real shell commands", AlwaysLoad: true})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	writeSettingsSelectorSkill(t, workspaceDir, "demo_skill", "run a demo skill", `blue demo_skill task=demo`, "demo", "task")
+	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+
+	searchTool := bindToolSearchTestRuntime(t, handler, nil, workspaceDir)
+
+	ctx := tools.WithSessionID(context.Background(), "conv-skill-hydrate")
+	ctx = tools.WithRouteKind(ctx, tools.ToolRouteKindChat)
+	if _, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:demo_skill"}); err != nil {
+		t.Fatalf("tool_search Execute returned error: %v", err)
+	}
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		"Review all files under notes/ and write a summary to out.md.",
+		"claude-3-5-haiku-20241022",
+		"conv-skill-hydrate",
+		"",
+		memory.ConversationCommandState{ConversationID: "conv-skill-hydrate"},
+		nil,
+		nil,
+	)
+
+	names := toolNameSet(got)
+	for _, required := range []string{"tool_search", "exec"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q after skill hydration, got=%v", required, selectedToolNames(got))
+		}
+	}
+	if _, ok := names["bash"]; ok {
+		t.Fatalf("expected bash to be replaced by exec after skill hydration, got=%v", selectedToolNames(got))
+	}
+}
+
+func TestSelectChatToolsForRequest_ToolSearchHydratesAgentTools(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "agents_list", Description: "List agents"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "subagents", Description: "Spawn subagents"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	cfg := &config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	}
+	cfg.Agents.List = []config.AgentConfig{
+		{
+			ID:          "worker",
+			Enabled:     true,
+			Description: "Bounded worker agent",
+			Subagents: config.AgentSubagentPolicyConfig{
+				Enabled: true,
+			},
+		},
+	}
+	searchTool := bindToolSearchTestRuntime(t, handler, cfg, "")
+
+	ctx := tools.WithSessionID(context.Background(), "conv-agent-hydrate")
+	ctx = tools.WithRouteKind(ctx, tools.ToolRouteKindChat)
+	if _, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:worker"}); err != nil {
+		t.Fatalf("tool_search Execute returned error: %v", err)
+	}
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		`Say "Hello, I'm ready!" to confirm you can respond.`,
+		"claude-3-5-haiku-20241022",
+		"conv-agent-hydrate",
+		"",
+		memory.ConversationCommandState{ConversationID: "conv-agent-hydrate"},
+		nil,
+		nil,
+	)
+
+	names := toolNameSet(got)
+	for _, required := range []string{"tool_search", "agents_list", "subagents"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q after agent hydration, got=%v", required, selectedToolNames(got))
+		}
 	}
 }
 
@@ -408,9 +563,17 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
 		},
 		{
-			name:              "mgmt_routes_to_mgmt_skill",
+			name:              "mgmt_alias_routes_to_config_skill",
 			query:             "mgmt providers.list",
-			wantCanonical:     agentcore.CanonicalMgmt,
+			wantCanonical:     agentcore.CanonicalConfig,
+			wantProfile:       agentcore.ExecutionProfileInline,
+			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+		},
+		{
+			name:              "config_routes_to_config_skill",
+			query:             "config providers.list",
+			wantCanonical:     agentcore.CanonicalConfig,
 			wantProfile:       agentcore.ExecutionProfileInline,
 			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
 			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
@@ -427,8 +590,8 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			if selection.NativeMode != tc.wantNativeMode {
 				t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, tc.wantNativeMode)
 			}
-			if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "exec" {
-				t.Fatalf("NativeDefs = %v, want [exec]", got)
+			if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
+				t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
 			}
 			if selection.DiscoveryDecision == nil {
 				t.Fatal("expected DiscoveryDecision")
@@ -521,8 +684,8 @@ func TestSelectChatToolSurfacesForRequest_LegacyExecCollapsePersistsWhenDynamicE
 	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
 		t.Fatalf("NativeMode = %q, want skill_exec while dynamic exposure is disabled", selection.NativeMode)
 	}
-	if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "exec" {
-		t.Fatalf("NativeDefs = %v, want [exec]", got)
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
+		t.Fatalf("NativeDefs = %v, want [exec tool_search]", got)
 	}
 	if selection.DiscoveryDecision == nil {
 		t.Fatal("expected DiscoveryDecision")
@@ -633,8 +796,8 @@ func TestSelectChatToolsForRequest_DiscoverFirstCutoverSkipsPromptCacheStickyUni
 		nil,
 	)
 
-	if names := selectedToolNames(got); len(names) != 1 || names[0] != "exec" {
-		t.Fatalf("selectChatToolsForRequest() = %v, want sticky surface reset to [exec]", names)
+	if names := selectedToolNames(got); len(names) != 2 || names[0] != "exec" || names[1] != "tool_search" {
+		t.Fatalf("selectChatToolsForRequest() = %v, want sticky surface reset to [exec tool_search]", names)
 	}
 	if cached := handler.getPromptCacheToolSurface("conv-discover-cutover"); cached != nil {
 		t.Fatalf("prompt cache surface = %#v, want cleared after discover-first cutover", cached)

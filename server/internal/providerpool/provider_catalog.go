@@ -1,6 +1,10 @@
 package providerpool
 
-import "sync"
+import (
+	"strings"
+	"sync"
+	"unicode"
+)
 
 type officialProviderCatalog struct {
 	Providers map[string]officialProviderCatalogProvider `json:"providers"`
@@ -214,6 +218,195 @@ func cloneOptionalFloat64(value *float64) *float64 {
 	}
 	copied := *value
 	return &copied
+}
+
+func effectivePinchBenchMetadata(providerID string, model *Model) (*float64, string) {
+	if model == nil {
+		return nil, ""
+	}
+	if model.PinchBenchScore != nil && model.PinchBenchURL != "" {
+		return cloneOptionalFloat64(model.PinchBenchScore), model.PinchBenchURL
+	}
+
+	score, url := pinchBenchMetadataForModel(providerID, model)
+	if score == nil && url == "" {
+		return cloneOptionalFloat64(model.PinchBenchScore), model.PinchBenchURL
+	}
+
+	if model.PinchBenchScore != nil {
+		score = cloneOptionalFloat64(model.PinchBenchScore)
+	}
+	if model.PinchBenchURL != "" {
+		url = model.PinchBenchURL
+	}
+	return score, url
+}
+
+func pinchBenchMetadataForModel(providerID string, model *Model) (*float64, string) {
+	if model == nil || providerID == "" {
+		return nil, ""
+	}
+
+	officialProviderCatalogState.mu.RLock()
+	catalogModels := append([]officialProviderCatalogModel(nil), officialProviderCatalogState.catalog.Models[providerID]...)
+	officialProviderCatalogState.mu.RUnlock()
+
+	if len(catalogModels) == 0 {
+		return nil, ""
+	}
+
+	modelIDKeys := pinchBenchModelKeySet(providerID, model.ID)
+	modelAllKeys := pinchBenchModelKeySet(providerID, model.ID, model.Name, model.DisplayName)
+
+	bestScore := -1
+	var best officialProviderCatalogModel
+
+	for _, candidate := range catalogModels {
+		if candidate.PinchBenchScore == nil || candidate.PinchBenchURL == "" {
+			continue
+		}
+		candidateIDKeys := pinchBenchModelKeySet(providerID, candidate.ID)
+		candidateAllKeys := pinchBenchModelKeySet(providerID, candidate.ID, candidate.DisplayName)
+
+		matchScore := 0
+		switch {
+		case pinchBenchSetsIntersect(modelIDKeys, candidateIDKeys):
+			matchScore = 100
+		case pinchBenchSetsIntersect(modelAllKeys, candidateIDKeys):
+			matchScore = 90
+		case pinchBenchSetsIntersect(modelAllKeys, candidateAllKeys):
+			matchScore = 80
+		}
+
+		if matchScore > bestScore {
+			bestScore = matchScore
+			best = candidate
+		}
+	}
+
+	if bestScore <= 0 {
+		return nil, ""
+	}
+	return cloneOptionalFloat64(best.PinchBenchScore), best.PinchBenchURL
+}
+
+func pinchBenchSetsIntersect(left, right map[string]struct{}) bool {
+	if len(left) == 0 || len(right) == 0 {
+		return false
+	}
+	for key := range left {
+		if _, ok := right[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func pinchBenchModelKeySet(providerID string, values ...string) map[string]struct{} {
+	keys := make(map[string]struct{})
+	for _, value := range values {
+		for _, variant := range pinchBenchKeyVariants(providerID, value) {
+			if variant == "" {
+				continue
+			}
+			keys[variant] = struct{}{}
+		}
+	}
+	return keys
+}
+
+func pinchBenchKeyVariants(providerID, raw string) []string {
+	tokens := pinchBenchTokens(raw)
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	var variants []string
+	add := func(parts []string) {
+		if len(parts) == 0 {
+			return
+		}
+		variants = append(variants, strings.Join(parts, ""))
+	}
+
+	add(tokens)
+
+	providerTokens := pinchBenchTokens(providerID)
+	if len(providerTokens) > 0 && len(tokens) > len(providerTokens) && pinchBenchHasPrefix(tokens, providerTokens) {
+		trimmed := append([]string(nil), tokens[len(providerTokens):]...)
+		add(trimmed)
+		tokens = append([]string(nil), tokens...)
+	}
+
+	if isPinchBenchVersionSuffix(tokens[len(tokens)-1]) {
+		add(tokens[:len(tokens)-1])
+		if len(providerTokens) > 0 && len(tokens)-1 > len(providerTokens) && pinchBenchHasPrefix(tokens[:len(tokens)-1], providerTokens) {
+			add(tokens[len(providerTokens) : len(tokens)-1])
+		}
+	}
+
+	seen := make(map[string]struct{}, len(variants))
+	deduped := make([]string, 0, len(variants))
+	for _, variant := range variants {
+		if variant == "" {
+			continue
+		}
+		if _, ok := seen[variant]; ok {
+			continue
+		}
+		seen[variant] = struct{}{}
+		deduped = append(deduped, variant)
+	}
+	return deduped
+}
+
+func pinchBenchTokens(raw string) []string {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "" {
+		return nil
+	}
+	var tokens []string
+	var current []rune
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		tokens = append(tokens, string(current))
+		current = current[:0]
+	}
+	for _, r := range raw {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			current = append(current, r)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return tokens
+}
+
+func pinchBenchHasPrefix(tokens, prefix []string) bool {
+	if len(prefix) == 0 || len(tokens) < len(prefix) {
+		return false
+	}
+	for i := range prefix {
+		if tokens[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func isPinchBenchVersionSuffix(token string) bool {
+	if len(token) < 6 {
+		return false
+	}
+	for _, r := range token {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func capabilitiesFromCatalogStrings(values []string) ModelCapabilities {

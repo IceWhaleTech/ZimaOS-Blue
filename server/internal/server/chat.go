@@ -5892,6 +5892,7 @@ type chatToolSurfaceSelection struct {
 	RoutedDefs        []tools.ToolDefinition
 	NativeDefs        []tools.ToolDefinition
 	NativeMode        chatNativeToolSurfaceMode
+	PromptCacheUnsafe bool
 	SkillDecision     *agentcore.Decision
 	DiscoveryDecision *agentcore.CapabilityDiscoveryDecision
 }
@@ -5904,7 +5905,7 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 		DeepResearchEnabled: deepResearchEnabled,
 	}, webSearchEnabled, deepResearchEnabled)
 	selectedTools := selection.NativeDefs
-	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy || selection.PromptCacheUnsafe {
 		h.clearPromptCacheToolSurface(sessionID)
 		return sortToolDefsByName(selectedTools)
 	}
@@ -5928,12 +5929,12 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	// cutover here avoids clarify-only or exec-only surfaces that can block the
 	// end-to-end artifact workflow.
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 
 	decision, ok := h.resolveSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
 	if !ok {
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 	selection.SkillDecision = &decision
 
@@ -5951,18 +5952,18 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	case agentcore.NativeSurfaceModeSkillExec:
 		// Validate capability toggles for cutover-eligible canonical skills
 		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
-			return selection
+			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 		}
 		execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
 		if !ok {
-			return selection
+			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 		}
 		selection.NativeDefs = []tools.ToolDefinition{execDef}
 		selection.NativeMode = chatNativeToolSurfaceModeSkillExec
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	default:
 		// NativeSurfaceModeLegacy: keep routed native defs
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 }
 
@@ -6374,15 +6375,17 @@ type ChatHandler struct {
 	runtimeProvider llm.Provider
 
 	// Smart tool selection: IR-based filtering of tools per query
-	toolSelector       *tools.ToolSelector
-	toolRouter         *tools.ToolRouter
-	toolPolicyResolver *tools.ToolPolicyResolver
-	toolTraceStore     *tools.ToolTraceStore
-	flagEvaluator      chatFlagEvaluator
-	skillSelector      *agentcore.SkillSelector
-	settingsHandler    *SettingsHandler
-	smallModel         smallmodel.Runtime
-	deepResearchExec   interface {
+	toolSelector                 *tools.ToolSelector
+	toolRouter                   *tools.ToolRouter
+	toolPolicyResolver           *tools.ToolPolicyResolver
+	toolTraceStore               *tools.ToolTraceStore
+	deferredToolExposure         *tools.DeferredToolExposureStore
+	toolSearchSkillExposureStamp func() string
+	flagEvaluator                chatFlagEvaluator
+	skillSelector                *agentcore.SkillSelector
+	settingsHandler              *SettingsHandler
+	smallModel                   smallmodel.Runtime
+	deepResearchExec             interface {
 		Execute(context.Context, map[string]interface{}) (interface{}, error)
 	}
 
@@ -6641,10 +6644,17 @@ func keepAlwaysExposedChatTools(allDefs, current []tools.ToolDefinition) []tools
 	if len(allDefs) == 0 || len(current) == 0 {
 		return current
 	}
+	always := make([]tools.ToolDefinition, 0, 4)
+	for _, def := range allDefs {
+		if def.AlwaysLoad {
+			always = append(always, def)
+		}
+	}
 	// Keep the public shell surface visible even when narrow workflow routing
 	// collapses the rest of the tool set. This maps either public `bash` or
 	// legacy/internal `exec` through the compat-name layer.
-	return mergeToolDefsByName(current, filterToolDefsToNames(allDefs, "bash"))
+	always = mergeToolDefsByName(always, filterToolDefsToNames(allDefs, "bash"))
+	return mergeToolDefsByName(current, always)
 }
 
 func (h *ChatHandler) toolDefinitionsForPolicy(policyReq tools.ToolPolicyRequest) []tools.ToolDefinition {
@@ -7774,12 +7784,12 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	}
 
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 
 	decision, ok := h.previewSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
 	if !ok {
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 	selection.SkillDecision = &decision
 
@@ -7793,28 +7803,28 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
 		return selection
 	case agentcore.NativeSurfaceModeLegacy:
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 
 	if skillDynamicExposure {
 		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
-			return selection
+			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 		}
 	} else {
 		selectedSkill := strings.TrimSpace(decision.SelectedSkill)
 		if selectedSkill == "" || !cutoverSkillAllowedByPreferences(selectedSkill, webSearchEnabled, deepResearchEnabled) {
-			return selection
+			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 		}
 	}
 
 	execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
 	if !ok {
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 
 	selection.NativeDefs = []tools.ToolDefinition{execDef}
 	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
-	return selection
+	return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 }
 
 func (h *ChatHandler) resolveSkillSelectionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (string, string) {
@@ -10172,7 +10182,11 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		memoryRatioByConv:              make(map[string]float64),
 		turnHooks:                      NewTurnHookManager(),
 		chatReadLite:                   true,
+		deferredToolExposure:           tools.NewDeferredToolExposureStore(promptCacheToolSurfaceTTL),
 	}
+	h.deferredToolExposure.SetInvalidationCallback(func(sessionID string) {
+		h.clearPromptCacheToolSurface(sessionID)
+	})
 	h.turnHooks.Register(NewMemoryTurnHook(h))
 	// Start async event processor
 	go h.processEventQueue()

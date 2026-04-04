@@ -4622,10 +4622,6 @@ export default mergeHarnessLocale('ga-IE', {
           label: 'SkillStack',
           description: 'Catalóg pobail dírithe ar bhailiúcháin scileanna in-athúsáidte.',
         },
-        skillsmp: {
-          label: 'SkillsMP',
-          description: 'Catalóg mhargadh SkillsMP.',
-        },
         llmskills: {
           label: 'LLMSkills',
           description: 'Catalóg mhargadh pobail LLMSkills.',
