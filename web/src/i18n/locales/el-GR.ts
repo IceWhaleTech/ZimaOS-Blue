@@ -389,6 +389,10 @@ export default mergeHarnessLocale('el-GR', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Εμφάνιση όλων των συνομιλιών',
+    workspaceTreeFocusCurrentConversation: 'Τρέχουσα συνομιλία',
+    workspaceTreeCurrentConversationBadge: 'Τρέχουσα συνομιλία',
+    workspaceTreeRecentGeneratedBadge: 'Νέο',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1811,7 +1815,7 @@ export default mergeHarnessLocale('el-GR', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'Εξωτερικός πράκτορας',
+      eyebrow: 'A2A/ACP',
       title: 'Εξωτερικός πράκτορας',
       newExternalAgent: 'Νέος εξωτερικός πράκτορας',
       newAcp: 'Νέο ACP',
@@ -5381,6 +5385,8 @@ export default mergeHarnessLocale('el-GR', {
     retry: 'Δοκιμάστε ξανά',
     errorCleared: 'Το σφάλμα καθαρίστηκε — μπορείτε να δοκιμάσετε ξανά',
     advancedOptions: 'Προηγμένες επιλογές',
+    collapse: 'Σύμπτυξη',
+    expand: 'Επέκταση',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

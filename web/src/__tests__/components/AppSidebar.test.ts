@@ -8,6 +8,7 @@ import { workspaceApi } from '@/api/workspace'
 import { conversationApi, messageApi } from '@/api/chat'
 import { refreshTauriDetection } from '@/composables/useTauri'
 import { useAuthStore } from '@/stores/auth'
+import { useChatStore } from '@/stores/chat'
 import { usePreviewStore } from '@/stores/preview'
 import { useSystemStore } from '@/stores/system'
 import { prefetchRoute } from '@/utils/prefetch'
@@ -109,6 +110,10 @@ function createTestRouter() {
       { path: '/profile', name: 'Profile', component: { template: '<div>Profile</div>' } },
     ],
   })
+}
+
+function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
+  return wrapper.findAll('button').find((button) => button.text().includes(text))
 }
 
 async function mountSidebar(initialPath = '/home') {
@@ -439,6 +444,117 @@ describe('AppSidebar', () => {
     expect(conversationApi.list).toHaveBeenCalled()
     expect(messageApi.list).toHaveBeenCalledWith('conv-phone-specs', expect.any(Number), 0)
     expect(jumpButtons.length).toBeGreaterThanOrEqual(0)
+  })
+
+  it('refreshes generated workspace data each time the file sources tab is reopened', async () => {
+    const { wrapper } = await mountSidebar('/chat')
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+
+    const generatedTab = findButtonByText(wrapper, 'File Sources')
+    const coreTab = findButtonByText(wrapper, 'Workspace Files')
+
+    expect(generatedTab).toBeTruthy()
+    expect(coreTab).toBeTruthy()
+
+    await generatedTab!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    const getTreeCallsAfterFirstOpen = vi.mocked(workspaceApi.getTree).mock.calls.length
+    const listCallsAfterFirstOpen = vi.mocked(conversationApi.list).mock.calls.length
+
+    await coreTab!.trigger('click')
+    await flushPromises()
+    await generatedTab!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(vi.mocked(workspaceApi.getTree).mock.calls.length).toBeGreaterThan(
+      getTreeCallsAfterFirstOpen
+    )
+    expect(vi.mocked(conversationApi.list).mock.calls.length).toBeGreaterThan(
+      listCallsAfterFirstOpen
+    )
+  })
+
+  it('focuses and highlights files linked to the current conversation', async () => {
+    vi.mocked(workspaceApi.getTree).mockResolvedValue({
+      data: {
+        root: '/tmp/workspace',
+        entries: [
+          {
+            path: 'phone_specs_2026',
+            abs_path: '/tmp/workspace/phone_specs_2026',
+            name: 'phone_specs_2026',
+            type: 'dir',
+            depth: 1,
+          },
+          {
+            path: 'phone_specs_2026/完整报告_含截图证据.md',
+            abs_path: '/tmp/workspace/phone_specs_2026/完整报告_含截图证据.md',
+            name: '完整报告_含截图证据.md',
+            type: 'file',
+            depth: 2,
+            size_bytes: 27690,
+          },
+        ],
+      },
+    } as never)
+    vi.mocked(conversationApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 'conv-phone-specs',
+          title: '2026年1月至今（3月17日）已经发布的新手机',
+          created_at: '2026-03-17T15:54:21Z',
+          updated_at: '2026-03-17T17:18:51Z',
+        },
+      ],
+    } as never)
+    vi.mocked(messageApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 'msg-1',
+          conversation_id: 'conv-phone-specs',
+          role: 'assistant',
+          content:
+            '```typeless\n' +
+            '{"details":[{"label":"path","value":"phone_specs_2026/完整报告_含截图证据.md"},{"label":"success","value":"true"}],"status":"success","title":"write_commit","type":"result"}\n' +
+            '```',
+          created_at: new Date().toISOString(),
+        },
+      ],
+    } as never)
+
+    const { wrapper } = await mountSidebar('/chat')
+    const chatStore = useChatStore()
+    chatStore.currentConversationId = 'conv-phone-specs'
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+
+    const generatedTab = findButtonByText(wrapper, 'File Sources')
+    expect(generatedTab).toBeTruthy()
+
+    await generatedTab!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    const currentConversationFilter = wrapper.get('[data-testid="workspace-current-conversation-filter"]')
+    expect(currentConversationFilter.text()).toContain('1')
+
+    const highlightedRows = wrapper.findAll('[data-current-conversation="true"]')
+    expect(highlightedRows.length).toBeGreaterThan(0)
+    expect(highlightedRows.some((row) => row.text().includes('完整报告_含截图证据.md'))).toBe(true)
+    expect(wrapper.text()).toContain('Current conversation')
   })
 
   it('shows token estimate for visible core workspace files only', async () => {

@@ -773,6 +773,7 @@ export interface TypelessCardDeepResearch extends TypelessCardBase {
   time_windows?: string[]
   report_style?: string
   workflow_phases?: DeepResearchWorkflowPhase[]
+  search_cards?: TypelessCardSearch[]
   object_map?: DeepResearchObjectMapItem[]
   source_inventory?: DeepResearchSourceInventoryItem[]
   coverage_summary?: DeepResearchCoverageSummary

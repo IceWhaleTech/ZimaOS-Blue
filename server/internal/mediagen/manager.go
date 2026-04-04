@@ -194,6 +194,9 @@ func (m *Manager) InitConfigs() {
 				if s.BaseURL != "" {
 					c.BaseURL = s.BaseURL
 				}
+				if s.Priority != nil {
+					c.Priority = *s.Priority
+				}
 			}
 		}
 	}
@@ -233,6 +236,37 @@ func (m *Manager) GetConfig(id string) *MediaProviderConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.configs[id]
+}
+
+// UpdateConfig updates a media provider config and persists the change.
+func (m *Manager) UpdateConfig(id string, baseURL *string, priority *int) (*MediaProviderConfig, error) {
+	m.mu.Lock()
+	c, ok := m.configs[id]
+	if !ok {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("unknown media provider: %s", id)
+	}
+
+	needsRebuild := false
+	if baseURL != nil && strings.TrimSpace(*baseURL) != "" && c.BaseURL != *baseURL {
+		c.BaseURL = *baseURL
+		needsRebuild = true
+	}
+	if priority != nil && c.Priority != *priority {
+		c.Priority = *priority
+		needsRebuild = true
+	}
+	if needsRebuild {
+		m.registerConfiguredProviderLocked(c)
+		m.rebuildProviderOrderLocked()
+	}
+	updated := *c
+	m.mu.Unlock()
+
+	if err := m.saveConfigs(); err != nil {
+		return nil, err
+	}
+	return &updated, nil
 }
 
 // SetAPIKey sets the API key for a media provider and persists.

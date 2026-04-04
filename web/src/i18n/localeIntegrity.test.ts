@@ -181,6 +181,7 @@ describe('locale integrity', () => {
       'settings.agentcoreRunner.repoPlaceholder',
       'settings.agentcoreRunner.ref',
       'settings.agentcoreRunner.refPlaceholder',
+      'settings.agentcoreRunner.refHint',
       'settings.agentcoreRunner.prepareHint',
       'settings.agentcoreRunner.prepare',
       'settings.agentcoreRunner.preparing',

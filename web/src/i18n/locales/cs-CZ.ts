@@ -386,6 +386,10 @@ export default mergeHarnessLocale('cs-CZ', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Zobrazit všechny konverzace',
+    workspaceTreeFocusCurrentConversation: 'Aktuální konverzace',
+    workspaceTreeCurrentConversationBadge: 'Aktuální konverzace',
+    workspaceTreeRecentGeneratedBadge: 'Nové',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1795,7 +1799,7 @@ export default mergeHarnessLocale('cs-CZ', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'Externí agent',
+      eyebrow: 'A2A/ACP',
       title: 'Externí agent',
       newExternalAgent: 'Nový externí agent',
       metadata: 'Metadata',
@@ -5328,6 +5332,8 @@ export default mergeHarnessLocale('cs-CZ', {
     retry: 'Zkusit znovu',
     errorCleared: 'Chyba byla vymazána — můžete to zkusit znovu',
     advancedOptions: 'Pokročilé možnosti',
+    collapse: 'Sbalit',
+    expand: 'Rozbalit',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

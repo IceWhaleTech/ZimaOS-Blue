@@ -331,7 +331,7 @@ func TestFileWriteCardPrefersOriginalPathAndCarriesRevealPath(t *testing.T) {
 }
 
 func TestDeepResearchCard_FieldsPreserved(t *testing.T) {
-	content := `{"job_id":"job-1","query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.87,"evidence_count":3,"citations":[{"title":"Doc","url":"https://example.com"}],"open_questions":["q1"],"support_count":2,"conflict_count":1,"has_conflict":true,"citation_coverage":0.92,"entity_disambiguation":{"enabled":true,"threshold":0.75},"stage_errors":["warn"],"timeline_sections":[{"label":"Recent","highlights":["h1"]}],"time_windows":["30d"],"report_style":"timeline","strict_entity":true,"status":"completed"}`
+	content := `{"job_id":"job-1","query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.87,"evidence_count":3,"citations":[{"title":"Doc","url":"https://example.com"}],"open_questions":["q1"],"support_count":2,"conflict_count":1,"has_conflict":true,"citation_coverage":0.92,"entity_disambiguation":{"enabled":true,"threshold":0.75},"stage_errors":["warn"],"timeline_sections":[{"label":"Recent","highlights":["h1"]}],"search_cards":[{"type":"search","query":"ZimaOS overview","totalCount":1,"results":[{"title":"Official docs","url":"https://example.com/docs","description":"docs"}]}],"time_windows":["30d"],"report_style":"timeline","strict_entity":true,"status":"completed"}`
 	card := ToCard("deep_research", content)
 	if card == nil {
 		t.Fatal("expected non-nil deep-research card")
@@ -365,6 +365,9 @@ func TestDeepResearchCard_FieldsPreserved(t *testing.T) {
 	}
 	if card["timeline_sections"] == nil {
 		t.Fatalf("expected timeline_sections")
+	}
+	if card["search_cards"] == nil {
+		t.Fatalf("expected search_cards")
 	}
 	if card["entity_disambiguation"] == nil {
 		t.Fatalf("expected entity_disambiguation")

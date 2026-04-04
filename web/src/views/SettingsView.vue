@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, defineAsyncComponent, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
@@ -7,7 +7,7 @@ import { type CloseBehavior, type MemoryRecallMode } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore, type Theme } from '@/stores/theme'
 import { backupApi } from '@/api/index'
-import { settingsApi, type AgentcoreRunnerTagList, type ContextCompressionMode } from '@/api/settings'
+import { type ContextCompressionMode } from '@/api/settings'
 import type { LocaleKey } from '@/i18n'
 import type { BackupInfo } from '@/api/index'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
@@ -47,9 +47,6 @@ interface SaveStatusToast {
   message: string
   action?: SaveStatusAction
 }
-
-const DEFAULT_AGENTCORE_RUNNER_REPO_URL = 'https://github.com/IceWhaleTech/ZimaOS-Blue'
-const DEFAULT_AGENTCORE_RUNNER_REF = 'main'
 
 const saveStatus = ref<SaveStatusToast | null>(null)
 let saveStatusTimer: ReturnType<typeof setTimeout> | null = null
@@ -164,40 +161,6 @@ const backupRestoring = ref<string | null>(null)
 const backupDeleting = ref<string | null>(null)
 const generalTabInitialized = ref(false)
 const proxyTabInitialized = ref(false)
-const agentcoreRunnerSaving = ref(false)
-const agentcoreRunnerRepoURL = ref('')
-const agentcoreRunnerRef = ref('')
-const agentcoreRunnerTags = ref<AgentcoreRunnerTagList | null>(null)
-const agentcoreRunnerEnabled = computed(() => settingsStore.experimentalAgentcoreRunnerEnabled)
-const agentcoreRunnerRefOptions = computed(() => {
-  const options: string[] = []
-  const seen = new Set<string>()
-  const push = (value: unknown) => {
-    const normalized = normalizeAgentcoreRunnerRefValue(value)
-    if (seen.has(normalized)) return
-    seen.add(normalized)
-    options.push(normalized)
-  }
-  push(agentcoreRunnerTags.value?.default_ref)
-  push(agentcoreRunnerRef.value)
-  for (const tag of agentcoreRunnerTags.value?.tags ?? []) {
-    push(tag)
-  }
-  return options
-})
-const agentcoreRunnerBusy = computed(() => agentcoreRunnerSaving.value)
-
-watch(
-  [
-    () => settingsStore.experimentalAgentcoreRunnerRepoURL,
-    () => settingsStore.experimentalAgentcoreRunnerRef,
-  ],
-  ([repoURL, refValue]) => {
-    agentcoreRunnerRepoURL.value = repoURL
-    agentcoreRunnerRef.value = normalizeAgentcoreRunnerRefValue(refValue)
-  },
-  { immediate: true }
-)
 
 function clearSaveStatus() {
   if (saveStatusTimer) {
@@ -451,77 +414,6 @@ async function handleSmallModelRouteImageQAEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelRouteImageQAEnabled(next))
 }
 
-function normalizeAgentcoreRunnerRepoURLValue(value: unknown) {
-  if (typeof value === 'string' && value.trim()) {
-    return value.trim()
-  }
-  return DEFAULT_AGENTCORE_RUNNER_REPO_URL
-}
-
-function normalizeAgentcoreRunnerRefValue(value: unknown) {
-  if (typeof value === 'string' && value.trim()) {
-    return value.trim()
-  }
-  return DEFAULT_AGENTCORE_RUNNER_REF
-}
-
-async function fetchAgentcoreRunnerStatus() {
-  try {
-    await settingsStore.fetchAgentcoreRunnerStatus()
-  } catch {
-    // ignore
-  }
-}
-
-async function fetchAgentcoreRunnerTags(repoURL = agentcoreRunnerRepoURL.value) {
-  const resolvedRepoURL = normalizeAgentcoreRunnerRepoURLValue(repoURL)
-  try {
-    const response = await settingsApi.getAgentcoreRunnerTags(resolvedRepoURL)
-    agentcoreRunnerTags.value = response.data
-  } catch {
-    agentcoreRunnerTags.value = {
-      repo_url: resolvedRepoURL,
-      default_ref: DEFAULT_AGENTCORE_RUNNER_REF,
-      tags: [],
-    }
-  }
-}
-
-async function saveAgentcoreRunnerConfig() {
-  if (agentcoreRunnerSaving.value) return
-  const repoURL = normalizeAgentcoreRunnerRepoURLValue(agentcoreRunnerRepoURL.value)
-  const refValue = normalizeAgentcoreRunnerRefValue(agentcoreRunnerRef.value)
-  agentcoreRunnerRepoURL.value = repoURL
-  agentcoreRunnerRef.value = refValue
-  try {
-    agentcoreRunnerSaving.value = true
-    await settingsStore.updateBackendSettings({
-      experimental_agentcore_runner_repo_url: repoURL,
-      experimental_agentcore_runner_ref: refValue,
-    })
-    showSaveStatus(t('settings.saved', 'Saved'))
-    await Promise.allSettled([fetchAgentcoreRunnerStatus(), fetchAgentcoreRunnerTags(repoURL)])
-  } catch {
-    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
-  } finally {
-    agentcoreRunnerSaving.value = false
-  }
-}
-
-async function handleAgentcoreRunnerEnabledChange(next: boolean) {
-  if (agentcoreRunnerSaving.value) return
-  try {
-    agentcoreRunnerSaving.value = true
-    await settingsStore.setExperimentalAgentcoreRunnerEnabled(next)
-    showSaveStatus(t('settings.saved', 'Saved'))
-    await fetchAgentcoreRunnerStatus()
-  } catch {
-    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
-  } finally {
-    agentcoreRunnerSaving.value = false
-  }
-}
-
 function formatFallbackReason(reason: string): string {
   return formatSmallModelFallbackReason(reason, t, te)
 }
@@ -598,12 +490,6 @@ async function ensureProxyTabDataLoaded() {
   }
   if (globalPrunerConfig.value == null) {
     tasks.push(fetchGlobalPrunerState())
-  }
-  if (settingsStore.agentcoreRunnerStatus == null) {
-    tasks.push(fetchAgentcoreRunnerStatus())
-  }
-  if (agentcoreRunnerTags.value == null) {
-    tasks.push(fetchAgentcoreRunnerTags())
   }
 
   if (tasks.length > 0) {
@@ -1112,111 +998,6 @@ onUnmounted(() => {
               </div>
             </div>
             <ApiProxySettings @status-change="showSaveStatus" />
-          </section>
-
-          <section class="settings-module" data-testid="agentcore-runner-card">
-            <div class="settings-module__header">
-              <div class="space-y-1.5">
-                <span class="settings-module__eyebrow inline-flex w-fit">{{
-                  t('settings.agentcoreRunner.eyebrow', 'Harness · Beta')
-                }}</span>
-                <h2 class="settings-module__title">
-                  {{
-                    t(
-                      'settings.agentcoreRunner.title',
-                      'Harness Self-Iterating Agentcore Runner'
-                    )
-                  }}
-                </h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{
-                    t(
-                      'settings.agentcoreRunner.description',
-                      'Use Harness to iterate on an Agentcore runner by preparing a standalone runner from a public GitHub repo for local build, evaluation, and optimisation.'
-                    )
-                  }}
-                </p>
-              </div>
-            </div>
-
-            <div class="dashboard-card-subsurface settings-feature-card p-4 space-y-4">
-              <div class="settings-field-card__row">
-                <div class="settings-card-heading">
-                  <label class="settings-field-label">{{
-                    t('settings.agentcoreRunner.enabled', 'Enable Agentcore Runner')
-                  }}</label>
-                  <p class="settings-field-hint">
-                    {{
-                      t(
-                        'settings.agentcoreRunner.enabledHint',
-                        'Allow Harness beta flows to prepare and reuse a managed local runner for self-iteration.'
-                      )
-                    }}
-                  </p>
-                </div>
-                <button
-                  data-testid="agentcore-runner-enabled-switch"
-                  type="button"
-                  role="switch"
-                  :aria-checked="agentcoreRunnerEnabled"
-                  :disabled="agentcoreRunnerBusy"
-                  class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                  :class="
-                    agentcoreRunnerEnabled
-                      ? 'bg-green-600 dark:bg-green-500'
-                      : 'bg-gray-300 dark:bg-gray-600'
-                  "
-                  @click="handleAgentcoreRunnerEnabledChange(!agentcoreRunnerEnabled)"
-                >
-                  <span
-                    class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                    :class="agentcoreRunnerEnabled ? 'translate-x-5' : 'translate-x-0'"
-                  />
-                </button>
-              </div>
-
-              <div class="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
-                <label class="block">
-                  <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-                    {{ t('settings.agentcoreRunner.repoUrl', 'GitHub Repo URL') }}
-                  </span>
-                  <input
-                    data-testid="agentcore-runner-repo-input"
-                    v-model="agentcoreRunnerRepoURL"
-                    type="text"
-                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
-                    :placeholder="
-                      t(
-                        'settings.agentcoreRunner.repoPlaceholder',
-                        'https://github.com/owner/repo or owner/repo'
-                      )
-                    "
-                    @blur="saveAgentcoreRunnerConfig"
-                  />
-                </label>
-
-                <label class="block">
-                  <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-                    {{ t('settings.agentcoreRunner.ref', 'Ref') }}
-                  </span>
-                  <select
-                    data-testid="agentcore-runner-ref-input"
-                    v-model="agentcoreRunnerRef"
-                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
-                    :disabled="agentcoreRunnerSaving"
-                    @change="saveAgentcoreRunnerConfig"
-                  >
-                    <option
-                      v-for="option in agentcoreRunnerRefOptions"
-                      :key="option"
-                      :value="option"
-                    >
-                      {{ option }}
-                    </option>
-                  </select>
-                </label>
-              </div>
-            </div>
           </section>
 
           <section v-if="globalPrunerConfig" class="settings-module">

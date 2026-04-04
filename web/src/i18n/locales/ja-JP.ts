@@ -397,6 +397,10 @@ export default mergeHarnessLocale('ja-JP', {
     workspaceTreeLinkedCount: 'リンク済み',
     workspaceTreeShowAll: 'すべてのファイルを表示',
     workspaceTreeShowLinkedOnly: 'リンク済みファイルのみ',
+    workspaceTreeShowAllConversations: 'すべての会話を表示',
+    workspaceTreeFocusCurrentConversation: '現在の会話',
+    workspaceTreeCurrentConversationBadge: '現在の会話',
+    workspaceTreeRecentGeneratedBadge: '新規',
     workspaceTreeExpandDir: 'フォルダーを展開',
     workspaceTreeCollapseDir: 'フォルダーを折りたたむ',
     workspaceTreeOpenFailed: 'ワークスペースファイルを開けませんでした',
@@ -1889,7 +1893,7 @@ export default mergeHarnessLocale('ja-JP', {
     availableTools: '利用可能なツール',
     noToolsAvailable: '利用可能なツールがありません',
     externalAgents: {
-      eyebrow: '外部エージェント',
+      eyebrow: 'A2A/ACP',
       title: '外部エージェント',
       newExternalAgent: '新しい外部エージェント',
       newAcp: '新しい ACP',
@@ -5527,6 +5531,8 @@ export default mergeHarnessLocale('ja-JP', {
     retry: '再試行',
     errorCleared: 'エラーがクリアされました。もう一度お試しください',
     advancedOptions: '詳細オプション',
+    collapse: '折りたたむ',
+    expand: '展開',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

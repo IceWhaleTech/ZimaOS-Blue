@@ -1071,19 +1071,24 @@ onMounted(() => {
   padding: 0.68rem 0.72rem;
   text-align: left;
   cursor: pointer;
-  border: 0;
+  border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 0.78rem;
-  background: transparent;
+  background: rgba(248, 250, 252, 0.92);
   transition:
     background-color 160ms ease,
+    border-color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
 }
 
-.external-agents__profile-card:hover,
+.external-agents__profile-card:hover {
+  background: rgba(248, 250, 252, 0.98);
+  border-color: rgba(203, 213, 225, 0.98);
+}
+
 .external-agents__profile-card--active {
   background: rgba(241, 245, 249, 0.88);
-  box-shadow: inset 3px 0 0 rgba(var(--settings-accent, 37, 99, 235), 0.34);
+  border-color: rgba(203, 213, 225, 0.98);
 }
 
 .external-agents__profile-heading {
@@ -1313,15 +1318,23 @@ onMounted(() => {
 
 :global(.dark) .external-agents__button:hover,
 :global(.dark) .external-agents__protocol-switch-button:hover,
-:global(.dark) .external-agents__protocol-switch-button--active,
-:global(.dark) .external-agents__profile-card:hover,
-:global(.dark) .external-agents__profile-card--active {
+:global(.dark) .external-agents__protocol-switch-button--active {
   background: rgba(30, 41, 59, 0.9);
 }
 
-:global(.dark) .external-agents__profile-card:hover,
+:global(.dark) .external-agents__profile-card {
+  background: rgba(15, 23, 42, 0.5);
+  border-color: rgba(51, 65, 85, 0.82);
+}
+
+:global(.dark) .external-agents__profile-card:hover {
+  background: rgba(15, 23, 42, 0.68);
+  border-color: rgba(71, 85, 105, 0.88);
+}
+
 :global(.dark) .external-agents__profile-card--active {
-  box-shadow: inset 3px 0 0 rgba(var(--settings-accent, 37, 99, 235), 0.44);
+  background: rgba(55, 65, 81, 0.2);
+  border-color: rgba(75, 85, 99, 0.88);
 }
 
 :global(.dark) .external-agents__button--primary,

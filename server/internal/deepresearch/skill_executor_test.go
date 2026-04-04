@@ -343,6 +343,63 @@ func TestSkillExecutorExecute_KnowledgeBaseStyleIncludesArtifacts(t *testing.T) 
 	}
 }
 
+func TestSkillExecutorExecute_ResultPreservesSearchCards(t *testing.T) {
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{
+				ID:       "task_1",
+				Question: "topic overview",
+				Priority: 1,
+				Depth:    1,
+				Status:   "pending",
+			}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return []SearchHit{
+				{Title: "Official docs", URL: "https://docs.example.com/official", Description: "official documentation"},
+				{Title: "Release notes", URL: "https://blog.example.com/release", Description: "release summary"},
+			}, nil
+		},
+	})
+	exec := NewSkillExecutor(svc)
+
+	out, err := exec.Execute(context.Background(), map[string]interface{}{
+		"query": "topic",
+		"mode":  "standard",
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	data, ok := out.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result type = %T, want map", out)
+	}
+	searchCards, ok := data["search_cards"].([]map[string]interface{})
+	if !ok || len(searchCards) != 1 {
+		t.Fatalf("expected one preserved search card, got %#v", data["search_cards"])
+	}
+	if got := searchCards[0]["type"]; got != "search" {
+		t.Fatalf("search card type = %v, want search", got)
+	}
+	if got := searchCards[0]["query"]; got != "topic overview" {
+		t.Fatalf("search card query = %v, want topic overview", got)
+	}
+	if got := searchCards[0]["totalCount"]; got != 2 {
+		t.Fatalf("search card totalCount = %v, want 2", got)
+	}
+	results, ok := searchCards[0]["results"].([]map[string]interface{})
+	if !ok || len(results) != 2 {
+		t.Fatalf("expected two preserved search results, got %#v", searchCards[0]["results"])
+	}
+	if got := results[0]["title"]; got != "Official docs" {
+		t.Fatalf("first preserved search title = %v, want Official docs", got)
+	}
+	if got := results[1]["url"]; got != "https://blog.example.com/release" {
+		t.Fatalf("second preserved search url = %v, want release url", got)
+	}
+}
+
 func TestDeepResearchSourceCards_MergesAndDeduplicates(t *testing.T) {
 	payload := map[string]interface{}{
 		"query": "official roadmap",

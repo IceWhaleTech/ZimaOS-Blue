@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { mergeHarnessLocale } from '@/i18n/harnessLocaleAdditions'
+import type { LocaleKey } from '@/i18n/locale-catalog'
 
 type LocaleMessages = Record<string, unknown>
 
@@ -107,6 +109,9 @@ const requiredPaths = [
   'chat.taskHarnessViewDetails',
   'chat.taskHarnessRerun',
   'chat.taskHarnessVerificationPassed',
+  'settings.agentcoreRunner.refPlaceholder',
+  'settings.agentcoreRunner.refHint',
+  'settings.agentcoreRunner.prepareHint',
 ] as const
 
 const localeModules = import.meta.glob('@/i18n/locales/*.ts', { eager: true }) as Record<
@@ -137,6 +142,10 @@ const localeSourceByFile = new Map(
     source,
   ])
 )
+
+function resolveRuntimeMessages(locale: string, messages: LocaleMessages): LocaleMessages {
+  return mergeHarnessLocale(locale as LocaleKey, messages)
+}
 
 function getPathValue(messages: LocaleMessages, path: string): unknown {
   return path.split('.').reduce<unknown>((current, segment) => {
@@ -174,17 +183,24 @@ describe('Harness locale coverage', () => {
     const file = `${locale}.ts`
     const mergedMessages = localeMessagesByFile.get(file)
     expect(mergedMessages, `${file} should be loadable via import.meta.glob`).toBeTruthy()
+    const runtimeMessages = resolveRuntimeMessages(locale, mergedMessages as LocaleMessages)
 
     for (const path of requiredPaths) {
-      const value = getPathValue(mergedMessages as LocaleMessages, path)
+      const value = getPathValue(runtimeMessages, path)
       expect(typeof value).toBe('string')
       expect(String(value).trim().length).toBeGreaterThan(0)
     }
   })
 
   it('preserves the localized automation harness copy for Chinese locales', () => {
-    const zhCN = localeMessagesByFile.get('zh-CN.ts') as LocaleMessages
-    const zhTW = localeMessagesByFile.get('zh-TW.ts') as LocaleMessages
+    const zhCN = resolveRuntimeMessages(
+      'zh-CN',
+      localeMessagesByFile.get('zh-CN.ts') as LocaleMessages
+    )
+    const zhTW = resolveRuntimeMessages(
+      'zh-TW',
+      localeMessagesByFile.get('zh-TW.ts') as LocaleMessages
+    )
 
     expect(getPathValue(zhCN, 'automation.tabs.harness')).toBe('Harness')
     expect(getPathValue(zhCN, 'automation.tabs.harnessDesc')).toBe(

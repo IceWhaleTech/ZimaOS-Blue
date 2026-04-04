@@ -577,7 +577,7 @@ describe('SettingsView small-model controls', () => {
     wrapper.unmount()
   })
 
-  it('shows the proxy tab with both the pruner card and agentcore runner controls', async () => {
+  it('shows the proxy tab with the pruner card and no agentcore runner section', async () => {
     routeTab = 'proxy'
 
     const pinia = createPinia()
@@ -591,7 +591,7 @@ describe('SettingsView small-model controls', () => {
     await settleSettingsAsyncTabComponents()
 
     expect(wrapper.text()).toContain('Global Context Pruner')
-    expect(wrapper.find('[data-testid="agentcore-runner-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="agentcore-runner-card"]').exists()).toBe(false)
 
     wrapper.unmount()
   })

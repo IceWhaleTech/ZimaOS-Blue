@@ -1030,6 +1030,7 @@ func deepResearchCard(content string) map[string]interface{} {
 		"entity_disambiguation",
 		"stage_errors",
 		"timeline_sections",
+		"search_cards",
 		"research_trace",
 		"verification_summary",
 		"strict_entity",

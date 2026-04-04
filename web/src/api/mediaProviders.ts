@@ -5,6 +5,7 @@ export interface MediaProviderConfig {
   id: string
   name: string
   enabled: boolean
+  priority: number
   base_url?: string
   has_api_key: boolean
   key_hash?: string
@@ -38,7 +39,7 @@ export const mediaProviderApi = {
 
   get: (id: string) => api.get<MediaProviderConfig>(`/media/providers/${id}`),
 
-  update: (id: string, data: { base_url?: string }) =>
+  update: (id: string, data: { base_url?: string; priority?: number }) =>
     api.put<MediaProviderConfig>(`/media/providers/${id}`, data),
 
   enable: (id: string) => api.post<{ status: string }>(`/media/providers/${id}/enable`),

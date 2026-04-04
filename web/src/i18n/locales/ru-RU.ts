@@ -398,6 +398,10 @@ export default mergeHarnessLocale('ru-RU', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Показать все диалоги',
+    workspaceTreeFocusCurrentConversation: 'Текущий диалог',
+    workspaceTreeCurrentConversationBadge: 'Текущий диалог',
+    workspaceTreeRecentGeneratedBadge: 'Новое',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1901,7 +1905,7 @@ export default mergeHarnessLocale('ru-RU', {
     availableTools: 'Доступные инструменты',
     noToolsAvailable: 'Нет доступных инструментов',
     externalAgents: {
-      eyebrow: 'Внешний агент',
+      eyebrow: 'A2A/ACP',
       title: 'Внешний агент',
       newExternalAgent: 'Новый внешний агент',
       newAcp: 'Новый ACP',
@@ -5517,6 +5521,8 @@ export default mergeHarnessLocale('ru-RU', {
     retry: 'Повторить',
     errorCleared: 'Ошибка очищена — можно попробовать снова',
     advancedOptions: 'Расширенные параметры',
+    collapse: 'Свернуть',
+    expand: 'Развернуть',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

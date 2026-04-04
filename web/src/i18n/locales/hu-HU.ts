@@ -385,6 +385,10 @@ export default mergeHarnessLocale('hu-HU', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Összes beszélgetés megjelenítése',
+    workspaceTreeFocusCurrentConversation: 'Aktuális beszélgetés',
+    workspaceTreeCurrentConversationBadge: 'Aktuális beszélgetés',
+    workspaceTreeRecentGeneratedBadge: 'Új',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1798,7 +1802,7 @@ export default mergeHarnessLocale('hu-HU', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'Külső ügynök',
+      eyebrow: 'A2A/ACP',
       title: 'Külső ügynök',
       newExternalAgent: 'Új külső ügynök',
       newAcp: 'Új ACP',
@@ -5366,6 +5370,8 @@ export default mergeHarnessLocale('hu-HU', {
     retry: 'Próbálja újra',
     errorCleared: 'A hiba törölve — újra próbálkozhat',
     advancedOptions: 'Speciális beállítások',
+    collapse: 'Összecsukás',
+    expand: 'Kibontás',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

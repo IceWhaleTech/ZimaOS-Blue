@@ -82,9 +82,11 @@ func (s *SQLiteConfigStore) Load() (map[string]*configOnDisk, error) {
 
 	result := make(map[string]*configOnDisk, len(rows))
 	for _, row := range rows {
+		priority := row.Priority
 		c := &configOnDisk{
-			ID:      row.ID,
-			Enabled: row.Enabled == 1,
+			ID:       row.ID,
+			Enabled:  row.Enabled == 1,
+			Priority: &priority,
 		}
 		if row.BaseURL != nil {
 			c.BaseURL = *row.BaseURL
@@ -172,6 +174,17 @@ func (s *SQLiteConfigStore) MigrateFromJSON(dir string) error {
 		if item.Enabled {
 			enabled = 1
 		}
+		priority := 0
+		if item.Priority != nil {
+			priority = *item.Priority
+		} else {
+			for _, builtin := range BuiltinMediaProviders("") {
+				if builtin != nil && builtin.ID == item.ID {
+					priority = builtin.Priority
+					break
+				}
+			}
+		}
 		var baseURL, apiKey *string
 		if item.BaseURL != "" {
 			baseURL = &item.BaseURL
@@ -185,12 +198,12 @@ func (s *SQLiteConfigStore) MigrateFromJSON(dir string) error {
 			"enabled":    enabled,
 			"base_url":   baseURL,
 			"api_key":    apiKey,
-			"priority":   0,
+			"priority":   priority,
 			"data":       "{}",
 			"updated_at": now,
 		}, z.OnConflictDoUpdateSet(
 			[]string{"id"},
-			[]string{"enabled", "base_url", "api_key", "updated_at"},
+			[]string{"enabled", "base_url", "api_key", "priority", "updated_at"},
 		))
 	}
 

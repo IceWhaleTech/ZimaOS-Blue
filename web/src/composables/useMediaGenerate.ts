@@ -59,12 +59,6 @@ function cancelMediaTaskById(taskId: string) {
 
 const MODEL_MEMORY_KEY = 'media-last-model'
 
-// Module-level cache for media provider availability.
-// Shared across all useMediaGenerate() instances.
-let _mediaAvailable: boolean | null = null
-let _mediaAvailableCheckedAt = 0
-const AVAILABILITY_CACHE_TTL = 60_000 // 60s
-
 function loadModelMemory(): Record<string, string> {
   try {
     return JSON.parse(localStorage.getItem(MODEL_MEMORY_KEY) || '{}')
@@ -122,20 +116,6 @@ export function useMediaGenerate() {
     imageFiles: File[] = []
   ): Promise<boolean> {
     reset()
-
-    // Check if any media providers are active (cached, TTL 60s).
-    // If not, skip intent detection entirely so the message goes to chat.
-    const now = Date.now()
-    if (_mediaAvailable === null || now - _mediaAvailableCheckedAt > AVAILABILITY_CACHE_TTL) {
-      try {
-        const allModels = await listMediaModels()
-        _mediaAvailable = allModels.length > 0
-      } catch {
-        _mediaAvailable = false
-      }
-      _mediaAvailableCheckedAt = now
-    }
-    if (!_mediaAvailable) return false
 
     // Store image files for later use in generate()
     pendingImageFiles = imageFiles
@@ -201,17 +181,6 @@ export function useMediaGenerate() {
       if (first) selectedModel.value = first.id
     }
 
-    // Auto-submit when there's exactly one model and no alternative category —
-    // no point making the user confirm when there's nothing to choose.
-    if (
-      models.value.length === 1 &&
-      !intent.value?.alternative_category &&
-      alternativeModels.value.length === 0
-    ) {
-      await generate()
-      return true
-    }
-
     showPanel.value = true
     return true
   }
@@ -257,15 +226,6 @@ export function useMediaGenerate() {
       if (first) selectedModel.value = first.id
     }
 
-    // Auto-submit when there's only one model — nothing to choose
-    if (
-      models.value.length === 1 &&
-      !intent.value?.alternative_category &&
-      alternativeModels.value.length === 0
-    ) {
-      await generate()
-      return
-    }
   }
 
   /**

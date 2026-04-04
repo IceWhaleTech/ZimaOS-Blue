@@ -395,6 +395,10 @@ export default mergeHarnessLocale('ko-KR', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: '모든 대화 표시',
+    workspaceTreeFocusCurrentConversation: '현재 대화',
+    workspaceTreeCurrentConversationBadge: '현재 대화',
+    workspaceTreeRecentGeneratedBadge: '신규',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1877,7 +1881,7 @@ export default mergeHarnessLocale('ko-KR', {
     availableTools: '사용 가능한 도구',
     noToolsAvailable: '사용 가능한 도구가 없습니다',
     externalAgents: {
-      eyebrow: '외부 에이전트',
+      eyebrow: 'A2A/ACP',
       title: '외부 에이전트',
       newExternalAgent: '새 외부 에이전트',
       newAcp: '새로운 ACP',
@@ -5482,6 +5486,8 @@ export default mergeHarnessLocale('ko-KR', {
     retry: '다시 시도',
     errorCleared: '오류가 해제되었습니다. 다시 시도할 수 있습니다',
     advancedOptions: '고급 옵션',
+    collapse: '접기',
+    expand: '펼치기',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

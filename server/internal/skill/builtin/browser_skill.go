@@ -274,11 +274,70 @@ func (b *Browser) Validate(input map[string]any) error {
 
 func normalizeBrowserSkillInput(input map[string]any) {
 	normalizeStringAlias(input, "action", "op", "operation", "command")
+	normalizeBrowserActionKeyAlias(input)
 	normalizeStringAlias(input, "url", "href")
 	normalizeStringAlias(input, "target_id", "targetId")
 	normalizeStringAlias(input, "act_type", "actType")
 	normalizeStringAlias(input, "value", "text")
 	normalizeStringAlias(input, "recipe", "recipe_name", "recipeName")
+}
+
+func normalizeBrowserActionKeyAlias(input map[string]any) {
+	if input == nil || firstTrimmedStringValue(input, "action") != "" {
+		return
+	}
+
+	for _, key := range []string{
+		"navigate", "open", "goto", "go", "visit",
+		"snapshot", "inspect", "tree",
+		"snapshot_interactive", "interactive", "elements",
+		"snapshot_auto", "read", "page",
+		"act", "click", "type", "focus", "hover", "scroll", "select",
+		"screenshot", "shot", "capture", "screen",
+		"tabs", "list", "ls", "tab", "status",
+		"close", "remove", "rm", "delete",
+		"recipe", "run_recipe", "run-recipe",
+		"recipes", "list_recipes", "list-recipes",
+	} {
+		value := firstTrimmedStringValue(input, key)
+		if value == "" {
+			continue
+		}
+		actionRaw := strings.ToLower(strings.TrimSpace(key))
+		mappedAction, ok := tools.NormalizeBrowserActionAlias(actionRaw)
+		if !ok {
+			continue
+		}
+		input["action"] = mappedAction
+		switch mappedAction {
+		case "navigate":
+			if firstTrimmedStringValue(input, "url", "href") == "" {
+				input["url"] = value
+			}
+		case "snapshot", "snapshot_interactive", "snapshot_auto", "close":
+			if firstTrimmedStringValue(input, "target_id", "targetId") == "" {
+				input["target_id"] = value
+			}
+		case "screenshot":
+			if firstTrimmedStringValue(input, "url", "href") == "" && firstTrimmedStringValue(input, "target_id", "targetId") == "" {
+				if tools.LooksLikeBrowserURL(value) {
+					input["url"] = value
+				} else {
+					input["target_id"] = value
+				}
+			}
+		case "recipe":
+			if firstTrimmedStringValue(input, "recipe", "recipe_name", "recipeName") == "" {
+				input["recipe"] = value
+			}
+		case "act", "click", "type", "focus", "hover", "scroll", "select":
+			if firstTrimmedStringValue(input, "ref") == "" {
+				input["ref"] = value
+			}
+		}
+		delete(input, key)
+		return
+	}
 }
 
 func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {

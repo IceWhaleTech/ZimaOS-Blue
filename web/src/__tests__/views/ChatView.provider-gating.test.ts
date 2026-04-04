@@ -367,7 +367,7 @@ describe('ChatView provider gating', () => {
     await flushPromises()
   }
 
-  async function mountChatView() {
+  async function mountChatViewHarness(initialPath = '/chat') {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -376,7 +376,7 @@ describe('ChatView provider gating', () => {
         { path: '/security', name: 'Security', component: { template: '<div />' } },
       ],
     })
-    await router.push('/chat')
+    await router.push(initialPath)
     await router.isReady()
 
     const wrapper = mount(ChatView, {
@@ -401,6 +401,11 @@ describe('ChatView provider gating', () => {
     })
 
     await settleView()
+    return { wrapper, router }
+  }
+
+  async function mountChatView() {
+    const { wrapper } = await mountChatViewHarness()
     return wrapper
   }
 
@@ -409,6 +414,19 @@ describe('ChatView provider gating', () => {
 
     expect(mocks.taskProjectionsStore.setConversation).toHaveBeenCalledWith('')
     expect(mocks.onSSEEvent).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('switches conversations when the route conversationId query changes', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+
+    const { router, wrapper } = await mountChatViewHarness('/chat')
+
+    await router.push({ name: 'Chat', query: { conversationId: 'conv-2' } })
+    await settleView()
+
+    expect(mocks.chatStore.selectConversation).toHaveBeenCalledWith('conv-2')
 
     wrapper.unmount()
   })

@@ -4,10 +4,10 @@ import { createI18n } from 'vue-i18n'
 
 import CardDeepResearchEvent from '@/components/typeless/CardDeepResearchEvent.vue'
 
-function createTestI18n() {
+function createTestI18n(locale = 'en-US') {
   return createI18n({
     legacy: false,
-    locale: 'en-US',
+    locale,
     fallbackLocale: 'en-US',
     messages: {
       'en-US': {
@@ -29,6 +29,12 @@ function createTestI18n() {
           deepResearchActionSynthesizing: 'Synthesizing report',
           deepResearchActionLoopStopped: 'Research loop stopped',
           deepResearchLatestGap: 'Research gap',
+        },
+      },
+      'zh-CN': {
+        chat: {
+          deepResearchMetaOfficial: '官方',
+          deepResearchMetaFinancial: '财务',
         },
       },
     },
@@ -94,5 +100,34 @@ describe('CardDeepResearchEvent', () => {
     expect(wrapper.text()).toContain('Resolved 3')
     expect(wrapper.text()).toContain('Conflicted 1')
     expect(wrapper.text()).toContain('Insufficient 2')
+  })
+
+  it('localizes structured task metadata for zh-CN events', () => {
+    const wrapper = mount(CardDeepResearchEvent, {
+      props: {
+        card: {
+          type: 'deep-research-event',
+          event_kind: 'planning',
+          status: 'info',
+          summary: '规划完成',
+          tasks: [
+            {
+              question: '核对官方披露',
+              axis: 'official',
+              category: 'financial',
+              time_window: '2025',
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('官方')
+    expect(wrapper.text()).toContain('财务')
+    expect(wrapper.text()).not.toContain('official')
+    expect(wrapper.text()).not.toContain('financial')
   })
 })

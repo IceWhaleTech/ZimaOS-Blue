@@ -387,6 +387,10 @@ export default mergeHarnessLocale('hr-HR', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Prikaži sve razgovore',
+    workspaceTreeFocusCurrentConversation: 'Trenutni razgovor',
+    workspaceTreeCurrentConversationBadge: 'Trenutni razgovor',
+    workspaceTreeRecentGeneratedBadge: 'Novo',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1795,7 +1799,7 @@ export default mergeHarnessLocale('hr-HR', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'Vanjski agent',
+      eyebrow: 'A2A/ACP',
       title: 'Vanjski agent',
       newExternalAgent: 'Novi vanjski agent',
       status: { label: 'Status', verified: 'Provjereno' },
@@ -5338,6 +5342,8 @@ export default mergeHarnessLocale('hr-HR', {
     retry: 'Pokušaj ponovno',
     errorCleared: 'Pogreška je uklonjena — možete pokušati ponovno',
     advancedOptions: 'Napredne opcije',
+    collapse: 'Sažmi',
+    expand: 'Proširi',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

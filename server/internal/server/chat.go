@@ -8416,6 +8416,7 @@ func (h *ChatHandler) runDeepResearchFallback(ctx context.Context, query, lang s
 	entityDisambiguation := normalizeDeepResearchObjectMap(data["entity_disambiguation"])
 	objectMap := normalizeDeepResearchObjectList(data["object_map"])
 	sourceInventory := normalizeDeepResearchObjectList(data["source_inventory"])
+	searchCards := normalizeDeepResearchObjectList(data["search_cards"])
 	coverageSummary := normalizeDeepResearchObjectMap(data["coverage_summary"])
 	workflowPhases := normalizeDeepResearchObjectList(data["workflow_phases"])
 	researchTrace := data["research_trace"]
@@ -8535,6 +8536,9 @@ func (h *ChatHandler) runDeepResearchFallback(ctx context.Context, query, lang s
 	}
 	if len(sourceInventory) > 0 {
 		card["source_inventory"] = sourceInventory
+	}
+	if len(searchCards) > 0 {
+		card["search_cards"] = searchCards
 	}
 	if len(coverageSummary) > 0 {
 		card["coverage_summary"] = coverageSummary

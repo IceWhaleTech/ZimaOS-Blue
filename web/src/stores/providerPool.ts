@@ -151,7 +151,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       description: cfg.description,
       website: cfg.website,
       api_key_url: cfg.api_key_url,
-      priority: 0,
+      priority: cfg.priority,
       api_keys: cfg.has_api_key
         ? [
             {
@@ -464,12 +464,19 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   // Batch update priorities to backend (fire and forget)
   async function syncPrioritiesToBackend(updates: Array<{ id: string; priority: number }>) {
-    // Update backend in background without blocking UI
-    for (const { id, priority } of updates) {
-      providerPoolApi.updateProvider(id, { priority }).catch((err) => {
+    const requests = updates.map(({ id, priority }) => {
+      const provider = providers.value.find((p) => p.id === id)
+      const request =
+        provider?.type === 'media'
+          ? mediaProviderApi.update(id, { priority })
+          : providerPoolApi.updateProvider(id, { priority })
+
+      return request.catch((err) => {
         console.error(`Failed to sync priority for ${id}:`, err)
       })
-    }
+    })
+
+    await Promise.allSettled(requests)
   }
 
   async function deleteProvider(id: string) {

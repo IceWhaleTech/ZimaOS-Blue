@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +69,68 @@ func TestHandlerDirectGenerateNoProviderReturnsActionableError(t *testing.T) {
 	}
 	if body["hint"] == "" {
 		t.Fatal("expected hint in response")
+	}
+}
+
+func TestHandlerUpdateProviderPersistsPriorityAndBaseURL(t *testing.T) {
+	store := NewConfigStore(t.TempDir())
+	manager := NewManager(nil, store, "")
+	manager.InitConfigs()
+	h := NewHandler(manager, nil, "")
+	e := echo.New()
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/media/providers/gemini-image",
+		strings.NewReader(`{"base_url":"https://media.example.com/v2","priority":5}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/media/providers/:id")
+	c.SetParamNames("id")
+	c.SetParamValues("gemini-image")
+
+	if err := h.UpdateProvider(c); err != nil {
+		t.Fatalf("UpdateProvider returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var updated MediaProviderConfig
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if updated.BaseURL != "https://media.example.com/v2" {
+		t.Fatalf("base_url = %q, want %q", updated.BaseURL, "https://media.example.com/v2")
+	}
+	if updated.Priority != 5 {
+		t.Fatalf("priority = %d, want %d", updated.Priority, 5)
+	}
+
+	current := manager.GetConfig("gemini-image")
+	if current == nil {
+		t.Fatal("expected manager config for gemini-image")
+	}
+	if current.BaseURL != "https://media.example.com/v2" {
+		t.Fatalf("manager base_url = %q, want %q", current.BaseURL, "https://media.example.com/v2")
+	}
+	if current.Priority != 5 {
+		t.Fatalf("manager priority = %d, want %d", current.Priority, 5)
+	}
+
+	reloaded := NewManager(nil, store, "")
+	reloaded.InitConfigs()
+	reloadedCfg := reloaded.GetConfig("gemini-image")
+	if reloadedCfg == nil {
+		t.Fatal("expected reloaded config for gemini-image")
+	}
+	if reloadedCfg.BaseURL != "https://media.example.com/v2" {
+		t.Fatalf("reloaded base_url = %q, want %q", reloadedCfg.BaseURL, "https://media.example.com/v2")
+	}
+	if reloadedCfg.Priority != 5 {
+		t.Fatalf("reloaded priority = %d, want %d", reloadedCfg.Priority, 5)
 	}
 }
 

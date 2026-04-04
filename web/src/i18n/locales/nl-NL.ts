@@ -385,6 +385,10 @@ export default mergeHarnessLocale('nl-NL', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Alle gesprekken tonen',
+    workspaceTreeFocusCurrentConversation: 'Huidig gesprek',
+    workspaceTreeCurrentConversationBadge: 'Huidig gesprek',
+    workspaceTreeRecentGeneratedBadge: 'Nieuw',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1805,7 +1809,7 @@ export default mergeHarnessLocale('nl-NL', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'Externe agent',
+      eyebrow: 'A2A/ACP',
       title: 'Externe agent',
       newExternalAgent: 'Nieuwe externe agent',
       metadata: 'Metagegevens',
@@ -5361,6 +5365,8 @@ export default mergeHarnessLocale('nl-NL', {
     retry: 'Opnieuw proberen',
     errorCleared: 'Fout gewist — je kunt het opnieuw proberen',
     advancedOptions: 'Geavanceerde opties',
+    collapse: 'Inklappen',
+    expand: 'Uitklappen',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

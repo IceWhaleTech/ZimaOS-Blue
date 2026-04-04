@@ -85,6 +85,13 @@ describe('classifyMediaIntent', () => {
     expect(result?.params?.quality_profile).toBe('ppt')
   })
 
+  it('detects explicit Chinese pet photo prompts', () => {
+    const result = classifyMediaIntent('帮我生成一张灰泰迪的照片', false, 0, 'zh-CN')
+
+    expect(result?.category).toBe('t2i')
+    expect(result?.confidence ?? 0).toBeGreaterThanOrEqual(0.7)
+  })
+
   it('detects German presentation requests with localized cues', () => {
     const result = classifyMediaIntent(
       'Bitte erstelle eine Präsentation für den Quartalsplan',

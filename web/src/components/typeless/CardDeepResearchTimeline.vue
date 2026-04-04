@@ -10,6 +10,7 @@ import type {
 import {
   localizeDeepResearchGap,
   localizeDeepResearchMode,
+  localizeDeepResearchStructuredValue,
   localizeDeepResearchStatus,
   localizeResearchProgressLabel,
   localizeResearchSurfaceTitle,
@@ -219,7 +220,9 @@ function stepDotClass(step: DeepResearchTimelineStep): string {
 }
 
 function taskMeta(task: DeepResearchPlannedTask): string[] {
-  return [task.axis, task.category, task.time_window].filter((value): value is string => !!value)
+  return [task.axis, task.category, task.time_window]
+    .map((value) => localizeDeepResearchStructuredValue(value, resolveLabel))
+    .filter((value): value is string => !!value)
 }
 
 function domainOf(source: DeepResearchLiveSource): string {

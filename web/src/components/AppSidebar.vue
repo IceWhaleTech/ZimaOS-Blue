@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { useAuthStore } from '@/stores/auth'
+import { useChatStore } from '@/stores/chat'
 import { usePreviewStore } from '@/stores/preview'
 import { useThemeStore } from '@/stores/theme'
 import type { WorkspaceFile, WorkspaceStats, WorkspaceTreeEntry } from '@/api/workspace'
@@ -88,11 +89,17 @@ interface GeneratedWorkspaceFile {
 
 interface WorkspaceTreeRow {
   entry: WorkspaceTreeEntry
+  directGeneratedRecord: GeneratedWorkspaceFile | null
   generatedRecord: GeneratedWorkspaceFile | null
+  isCurrentConversation: boolean
+  isCurrentConversationDirectMatch: boolean
+  isRecentCurrentConversationDirectMatch: boolean
 }
 
 const GENERATED_SCAN_CONVERSATION_LIMIT = 20
 const GENERATED_SCAN_MESSAGE_LIMIT = 120
+const GENERATED_REFRESH_DEBOUNCE_MS = 1200
+const GENERATED_RECENT_WINDOW_MS = 2 * 60 * 1000
 
 const coreWorkspaceFileInfo: Record<string, CoreWorkspaceFileInfo> = {
   'SOUL.md': { icon: '🧠', labelKey: 'workspace.label.soul', descKey: 'workspace.desc.soul' },
@@ -114,6 +121,7 @@ const route = useRoute()
 const router = useRouter()
 const systemStore = useSystemStore()
 const authStore = useAuthStore()
+const chatStore = useChatStore()
 const previewStore = usePreviewStore()
 const themeStore = useThemeStore()
 const { isTauri, platform, browserName, openInBrowser, revealInFileManager, startWindowDragging } =
@@ -177,6 +185,8 @@ const workspaceTreeRoot = ref('')
 const workspaceTreeEntries = ref<WorkspaceTreeEntry[]>([])
 const workspaceTreeCollapsedDirs = ref<Set<string>>(new Set())
 const workspaceTreeShowLinkedOnly = ref(false)
+const workspaceTreeFocusCurrentConversation = ref(true)
+let workspaceGeneratedRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
 function getStorageItem(key: string): string | null {
   try {
@@ -241,6 +251,13 @@ function messageTimeMs(value: string): number {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
+function normalizeConversationId(value: unknown): string {
+  if (Array.isArray(value)) {
+    return normalizeConversationId(value[0] ?? '')
+  }
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 function toPathKey(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) return ''
@@ -303,6 +320,14 @@ function toggleWorkspaceTreeDir(entry: WorkspaceTreeEntry): void {
 function toggleWorkspaceTreeLinkedFilter(): void {
   workspaceTreeShowLinkedOnly.value = !workspaceTreeShowLinkedOnly.value
   if (workspaceTreeShowLinkedOnly.value) {
+    workspaceTreeCollapsedDirs.value = new Set()
+  }
+}
+
+function toggleWorkspaceTreeCurrentConversationFocus(): void {
+  if (!workspaceTreeHasCurrentConversationMatches.value) return
+  workspaceTreeFocusCurrentConversation.value = !workspaceTreeFocusCurrentConversation.value
+  if (workspaceTreeFocusCurrentConversation.value) {
     workspaceTreeCollapsedDirs.value = new Set()
   }
 }
@@ -513,6 +538,26 @@ async function ensureGeneratedWorkspaceFiles(force = false) {
   }
 }
 
+async function refreshGeneratedWorkspaceView() {
+  clearWorkspaceGeneratedRefreshTimer()
+  await Promise.all([ensureWorkspaceTree(true), ensureGeneratedWorkspaceFiles(true)])
+}
+
+function clearWorkspaceGeneratedRefreshTimer(): void {
+  if (workspaceGeneratedRefreshTimer === null) return
+  clearTimeout(workspaceGeneratedRefreshTimer)
+  workspaceGeneratedRefreshTimer = null
+}
+
+function scheduleWorkspaceGeneratedRefresh(): void {
+  if (!showWorkspacePanel.value || activeWorkspaceTab.value !== 'generated') return
+  clearWorkspaceGeneratedRefreshTimer()
+  workspaceGeneratedRefreshTimer = setTimeout(() => {
+    workspaceGeneratedRefreshTimer = null
+    void refreshGeneratedWorkspaceView().catch(() => {})
+  }, GENERATED_REFRESH_DEBOUNCE_MS)
+}
+
 function startCoreEdit(file: WorkspaceFile) {
   coreEditingFile.value = file.name
   coreEditDraft.value = file.content || ''
@@ -553,6 +598,7 @@ async function saveCoreEdit(name: string) {
 }
 
 function closeWorkspacePanel() {
+  clearWorkspaceGeneratedRefreshTimer()
   cancelCoreEdit()
   showWorkspacePanel.value = false
   activeWorkspaceTab.value = 'core'
@@ -564,7 +610,7 @@ async function switchWorkspaceTab(tab: 'core' | 'generated') {
     await ensureWorkspaceFiles()
     return
   }
-  await Promise.all([ensureWorkspaceTree(), ensureGeneratedWorkspaceFiles()])
+  await refreshGeneratedWorkspaceView()
 }
 
 async function handleWorkspaceClick() {
@@ -651,6 +697,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearWorkspaceGeneratedRefreshTimer()
   window.removeEventListener('keydown', handleKeydown)
 })
 
@@ -867,6 +914,12 @@ const coreWorkspaceTokenTotal = computed(() => {
   return getWorkspaceVisibleTokenCount(workspaceStats.value, coreWorkspaceFileNames)
 })
 
+const activeConversationId = computed(() => {
+  const storeConversationId = normalizeConversationId(chatStore.currentConversationId)
+  if (storeConversationId) return storeConversationId
+  return normalizeConversationId(route.query.conversationId)
+})
+
 const generatedRecordByAbsPathKey = computed(() => {
   const map = new Map<string, GeneratedWorkspaceFile>()
   for (const record of generatedWorkspaceFiles.value) {
@@ -878,24 +931,30 @@ const generatedRecordByAbsPathKey = computed(() => {
 })
 
 const workspaceTreeRows = computed<WorkspaceTreeRow[]>(() => {
+  const currentConversationId = activeConversationId.value
+  const now = Date.now()
   const baseRows = workspaceTreeEntries.value.map((entry) => {
     const absPathKey = toPathKey(String(entry.abs_path || ''))
-    const generatedRecord = absPathKey
+    const directGeneratedRecord = absPathKey
       ? generatedRecordByAbsPathKey.value.get(absPathKey) || null
       : null
-    return { entry, generatedRecord }
+    return { entry, directGeneratedRecord }
   })
 
   const inheritedRecordByTreePath = new Map<string, GeneratedWorkspaceFile>()
   const linkedRows = [...baseRows]
     .filter(
-      (row): row is WorkspaceTreeRow & { generatedRecord: GeneratedWorkspaceFile } =>
-        row.generatedRecord !== null
+      (
+        row
+      ): row is {
+        entry: WorkspaceTreeEntry
+        directGeneratedRecord: GeneratedWorkspaceFile
+      } => row.directGeneratedRecord !== null
     )
     .sort(
       (a, b) =>
-        messageTimeMs(b.generatedRecord.messageCreatedAt) -
-        messageTimeMs(a.generatedRecord.messageCreatedAt)
+        messageTimeMs(b.directGeneratedRecord.messageCreatedAt) -
+        messageTimeMs(a.directGeneratedRecord.messageCreatedAt)
     )
 
   for (const row of linkedRows) {
@@ -903,20 +962,50 @@ const workspaceTreeRows = computed<WorkspaceTreeRow[]>(() => {
     if (!entryPathKey) continue
     for (const ancestor of getAncestorPathKeys(entryPathKey)) {
       if (!inheritedRecordByTreePath.has(ancestor)) {
-        inheritedRecordByTreePath.set(ancestor, row.generatedRecord)
+        inheritedRecordByTreePath.set(ancestor, row.directGeneratedRecord)
       }
     }
   }
 
   return baseRows.map((row) => {
-    if (row.generatedRecord) return row
     const entryPathKey = toPathKey(String(row.entry.path || ''))
-    if (!entryPathKey) return row
+    const generatedRecord =
+      row.directGeneratedRecord || (entryPathKey ? inheritedRecordByTreePath.get(entryPathKey) : null) || null
+    const isCurrentConversation =
+      !!generatedRecord &&
+      !!currentConversationId &&
+      generatedRecord.conversationId === currentConversationId
+    const isCurrentConversationDirectMatch =
+      !!row.directGeneratedRecord &&
+      !!currentConversationId &&
+      row.directGeneratedRecord.conversationId === currentConversationId
+    const isRecentCurrentConversationDirectMatch =
+      isCurrentConversationDirectMatch &&
+      now - messageTimeMs(row.directGeneratedRecord!.messageCreatedAt) <= GENERATED_RECENT_WINDOW_MS
+
     return {
       entry: row.entry,
-      generatedRecord: inheritedRecordByTreePath.get(entryPathKey) || null,
+      directGeneratedRecord: row.directGeneratedRecord,
+      generatedRecord,
+      isCurrentConversation,
+      isCurrentConversationDirectMatch,
+      isRecentCurrentConversationDirectMatch,
     }
   })
+})
+
+const workspaceTreeCurrentConversationPathKeys = computed(() => {
+  const pathKeys = new Set<string>()
+  for (const row of workspaceTreeRows.value) {
+    if (!row.isCurrentConversation) continue
+    const entryPathKey = toPathKey(String(row.entry.path || ''))
+    if (!entryPathKey) continue
+    pathKeys.add(entryPathKey)
+    for (const ancestor of getAncestorPathKeys(entryPathKey)) {
+      pathKeys.add(ancestor)
+    }
+  }
+  return pathKeys
 })
 
 const workspaceTreeLinkedPathKeys = computed(() => {
@@ -933,13 +1022,28 @@ const workspaceTreeLinkedPathKeys = computed(() => {
   return pathKeys
 })
 
+const workspaceTreeCurrentConversationCount = computed(() => {
+  return workspaceTreeRows.value.filter(
+    (row) => !isWorkspaceTreeDir(row.entry) && row.isCurrentConversationDirectMatch
+  ).length
+})
+
+const workspaceTreeHasCurrentConversationMatches = computed(() => {
+  return !!activeConversationId.value && workspaceTreeCurrentConversationCount.value > 0
+})
+
 const workspaceTreeVisibleRows = computed<WorkspaceTreeRow[]>(() => {
   const collapsed = workspaceTreeCollapsedDirs.value
   const linkedKeys = workspaceTreeShowLinkedOnly.value ? workspaceTreeLinkedPathKeys.value : null
+  const currentConversationKeys =
+    workspaceTreeFocusCurrentConversation.value && workspaceTreeHasCurrentConversationMatches.value
+      ? workspaceTreeCurrentConversationPathKeys.value
+      : null
   return workspaceTreeRows.value.filter((row) => {
     const rowKey = toPathKey(row.entry.path)
     if (!rowKey) return false
     if (linkedKeys && !linkedKeys.has(rowKey)) return false
+    if (currentConversationKeys && !currentConversationKeys.has(rowKey)) return false
     if (isDescendantOfCollapsedDir(rowKey, collapsed)) return false
     return true
   })
@@ -981,6 +1085,46 @@ const workspaceTreeFilterLabel = computed(() => {
   }
   return tr('nav.workspaceTreeShowLinkedOnly', 'Only linked files')
 })
+
+const workspaceTreeCurrentConversationFilterLabel = computed(() => {
+  if (workspaceTreeFocusCurrentConversation.value && workspaceTreeHasCurrentConversationMatches.value) {
+    return tr('nav.workspaceTreeShowAllConversations', 'Show all conversations')
+  }
+  return tr('nav.workspaceTreeFocusCurrentConversation', 'Current conversation')
+})
+
+const workspaceGeneratedRefreshSignal = computed(() => {
+  const conversationId = activeConversationId.value
+  const tail = chatStore.messages
+    .slice(-4)
+    .map((message) => {
+      const contentLength = String(message.content || '').length
+      return `${message.id}:${message.role}:${message.created_at}:${contentLength}`
+    })
+    .join('|')
+  return `${conversationId}::${tail}`
+})
+
+watch(activeConversationId, (next, previous) => {
+  if (!next || next === previous) return
+  workspaceTreeFocusCurrentConversation.value = true
+  if (showWorkspacePanel.value && activeWorkspaceTab.value === 'generated') {
+    workspaceTreeCollapsedDirs.value = new Set()
+  }
+})
+
+watch(workspaceGeneratedRefreshSignal, () => {
+  scheduleWorkspaceGeneratedRefresh()
+})
+
+watch(
+  () => [showWorkspacePanel.value, activeWorkspaceTab.value] as const,
+  ([panelOpen, activeTab]) => {
+    if (!panelOpen || activeTab !== 'generated') {
+      clearWorkspaceGeneratedRefreshTimer()
+    }
+  }
+)
 
 const canRevealWorkspaceDir = computed(() => {
   return isTauri.value && isLocalAbsolutePath(workspaceDir.value)
@@ -1798,7 +1942,34 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                 )
               }}
             </p>
-            <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="workspaceTreeHasCurrentConversationMatches"
+                data-testid="workspace-current-conversation-filter"
+                class="px-2.5 py-1 text-xs rounded-lg border transition-colors inline-flex items-center gap-1.5"
+                :class="
+                  workspaceTreeFocusCurrentConversation
+                    ? 'border-blue-500 bg-blue-600 text-white hover:bg-blue-500'
+                    : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200 dark:hover:bg-blue-900/40'
+                "
+                @click="toggleWorkspaceTreeCurrentConversationFocus"
+              >
+                <span
+                  class="h-1.5 w-1.5 rounded-full"
+                  :class="workspaceTreeFocusCurrentConversation ? 'bg-white animate-pulse' : 'bg-blue-500'"
+                />
+                <span>{{ workspaceTreeCurrentConversationFilterLabel }}</span>
+                <span
+                  class="px-1.5 py-0.5 rounded-full text-[10px]"
+                  :class="
+                    workspaceTreeFocusCurrentConversation
+                      ? 'bg-white/20 text-white'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
+                  "
+                >
+                  {{ workspaceTreeCurrentConversationCount }}
+                </span>
+              </button>
               <button
                 class="px-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 @click="toggleWorkspaceTreeLinkedFilter"
@@ -1843,7 +2014,13 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                 <div
                   v-for="row in workspaceTreeVisibleRows"
                   :key="row.entry.abs_path || row.entry.path"
-                  class="px-3 py-2 border-b last:border-b-0 border-gray-100 dark:border-gray-700/70"
+                  class="px-3 py-2 border-b last:border-b-0 border-gray-100 dark:border-gray-700/70 transition-colors duration-200"
+                  :class="
+                    row.isCurrentConversation
+                      ? 'bg-blue-50/80 dark:bg-blue-950/30'
+                      : 'bg-transparent'
+                  "
+                  :data-current-conversation="row.isCurrentConversation ? 'true' : 'false'"
                 >
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0 flex-1">
@@ -1857,6 +2034,19 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
                           {{ row.entry.name }}
                         </p>
+                        <span
+                          v-if="row.isCurrentConversation"
+                          class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200 flex-shrink-0"
+                        >
+                          {{ tr('nav.workspaceTreeCurrentConversationBadge', 'Current conversation') }}
+                        </span>
+                        <span
+                          v-if="row.isRecentCurrentConversationDirectMatch"
+                          class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200 flex items-center gap-1 flex-shrink-0 animate-pulse"
+                        >
+                          <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          {{ tr('nav.workspaceTreeRecentGeneratedBadge', 'New') }}
+                        </span>
                         <button
                           v-if="isWorkspaceTreeDir(row.entry)"
                           class="h-4 w-4 rounded text-gray-500 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center transition-colors flex-shrink-0"
@@ -1899,7 +2089,12 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                       </p>
                       <p
                         v-if="row.generatedRecord"
-                        class="text-[11px] text-gray-500 dark:text-slate-400 mt-1 truncate"
+                        class="text-[11px] mt-1 truncate"
+                        :class="
+                          row.isCurrentConversation
+                            ? 'text-blue-700 dark:text-blue-200'
+                            : 'text-gray-500 dark:text-slate-400'
+                        "
                         :style="treeIndentStyle(row.entry.depth)"
                       >
                         {{ row.generatedRecord.conversationTitle }} ·

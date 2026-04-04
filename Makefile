@@ -5,6 +5,7 @@
 .PHONY: build-linux build-darwin build-windows build-all
 .PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar tauri-verify-macos-package
 .PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
+.PHONY: provider-catalog provider-catalog-check
 
 # Version info
 VERSION ?= 0.10.38
@@ -55,6 +56,16 @@ copy-skills:
 	@rm -rf $(SKILLS_EMBED)
 	@mkdir -p $(SKILLS_EMBED)
 	@cp -r $(SKILLS_SRC)/* $(SKILLS_EMBED)/
+
+# Regenerate the canonical provider catalog JSON and sync the embedded fallback copy.
+provider-catalog:
+	@echo "Generating provider catalog..."
+	@cd $(SERVER_DIR) && go run ./tools/generate_provider_catalog
+
+# Verify the checked-in provider catalog files match generated output.
+provider-catalog-check:
+	@echo "Checking provider catalog..."
+	@cd $(SERVER_DIR) && go run ./tools/generate_provider_catalog --check
 
 # Build backend only (assumes frontend is already built and copied)
 build-backend:
@@ -233,6 +244,8 @@ help:
 	@echo "  build-windows      Build for Windows (amd64)"
 	@echo "  build-all          Build for all platforms"
 	@echo "  clean              Remove build artifacts"
+	@echo "  provider-catalog   Regenerate docs and embedded provider catalog JSON"
+	@echo "  provider-catalog-check Verify provider catalog files match generated output"
 	@echo ""
 	@echo "Tauri Desktop App Targets:"
 	@echo "  tauri-sidecar      Build Go sidecar for Tauri"

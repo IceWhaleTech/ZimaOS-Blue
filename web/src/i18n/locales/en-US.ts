@@ -385,6 +385,10 @@ export default mergeHarnessLocale('en-US', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Show all conversations',
+    workspaceTreeFocusCurrentConversation: 'Current conversation',
+    workspaceTreeCurrentConversationBadge: 'Current conversation',
+    workspaceTreeRecentGeneratedBadge: 'New',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1416,7 +1420,7 @@ export default mergeHarnessLocale('en-US', {
     saved: 'Saved',
     saveFailed: 'Failed to save configuration',
     externalAgents: {
-      eyebrow: 'External Agent',
+      eyebrow: 'A2A/ACP',
       title: 'External Agent',
       newExternalAgent: 'New External Agent',
       newAcp: 'New ACP',
@@ -5324,6 +5328,8 @@ export default mergeHarnessLocale('en-US', {
     retry: 'Retry',
     errorCleared: 'Error cleared — you can try again',
     advancedOptions: 'Advanced options',
+    collapse: 'Collapse',
+    expand: 'Expand',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

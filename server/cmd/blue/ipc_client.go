@@ -238,6 +238,9 @@ func normalizeBrowserIPCAction(defaultAction string, params map[string]string, p
 			}
 		}
 	}
+	if actionRaw == "" {
+		actionRaw = promoteBrowserActionKeyParam(params)
+	}
 
 	// Keep bare `blue browser url=...` behavior routed through the skill fallback,
 	// where the browser skill can still default url-only input to navigate.
@@ -268,30 +271,67 @@ func normalizeBrowserIPCAction(defaultAction string, params map[string]string, p
 }
 
 func normalizeBrowserActionAlias(action string) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(action)) {
-	case "navigate", "open", "goto", "go", "visit":
-		return "navigate", true
-	case "snapshot", "inspect", "tree":
-		return "snapshot", true
-	case "snapshot_interactive", "interactive", "elements":
-		return "snapshot_interactive", true
-	case "snapshot_auto", "read", "page":
-		return "snapshot_auto", true
-	case "act", "click", "type", "focus", "hover", "scroll", "select":
-		return strings.ToLower(strings.TrimSpace(action)), true
-	case "screenshot", "shot", "capture", "screen":
-		return "screenshot", true
-	case "tabs", "list", "ls", "tab", "status":
-		return "tabs", true
-	case "close", "remove", "rm", "delete":
-		return "close", true
-	case "recipe", "run_recipe", "run-recipe":
-		return "recipe", true
-	case "recipes", "list_recipes", "list-recipes":
-		return "recipes", true
-	default:
-		return "", false
+	return tools.NormalizeBrowserActionAlias(action)
+}
+
+func promoteBrowserActionKeyParam(params map[string]string) string {
+	if params == nil {
+		return ""
 	}
+
+	for _, key := range []string{
+		"navigate", "open", "goto", "go", "visit",
+		"snapshot", "inspect", "tree",
+		"snapshot_interactive", "interactive", "elements",
+		"snapshot_auto", "read", "page",
+		"act", "click", "type", "focus", "hover", "scroll", "select",
+		"screenshot", "shot", "capture", "screen",
+		"tabs", "list", "ls", "tab", "status",
+		"close", "remove", "rm", "delete",
+		"recipe", "run_recipe", "run-recipe",
+		"recipes", "list_recipes", "list-recipes",
+	} {
+		value, ok := params[key]
+		if !ok {
+			continue
+		}
+		actionRaw := strings.ToLower(strings.TrimSpace(key))
+		mappedAction, ok := normalizeBrowserActionAlias(actionRaw)
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		switch mappedAction {
+		case "navigate":
+			if strings.TrimSpace(params["url"]) == "" && value != "" {
+				params["url"] = value
+			}
+		case "snapshot", "snapshot_interactive", "snapshot_auto", "close":
+			if strings.TrimSpace(params["target_id"]) == "" && value != "" {
+				params["target_id"] = value
+			}
+		case "screenshot":
+			if strings.TrimSpace(params["url"]) == "" && strings.TrimSpace(params["target_id"]) == "" && value != "" {
+				if browserPositionalLooksLikeURL(value) {
+					params["url"] = value
+				} else {
+					params["target_id"] = value
+				}
+			}
+		case "recipe":
+			if strings.TrimSpace(params["recipe"]) == "" && value != "" {
+				params["recipe"] = value
+			}
+		case "act", "click", "type", "focus", "hover", "scroll", "select":
+			if strings.TrimSpace(params["ref"]) == "" && value != "" {
+				params["ref"] = value
+			}
+		}
+		delete(params, key)
+		return actionRaw
+	}
+
+	return ""
 }
 
 func normalizeBrowserPositionalArgs(action string, params map[string]string, positional []string) []string {
@@ -349,20 +389,7 @@ func normalizeBrowserIPCRef(params map[string]string) {
 }
 
 func browserPositionalLooksLikeURL(raw string) bool {
-	value := strings.ToLower(strings.TrimSpace(raw))
-	switch {
-	case strings.HasPrefix(value, "http://"),
-		strings.HasPrefix(value, "https://"),
-		strings.HasPrefix(value, "file://"),
-		strings.HasPrefix(value, "ftp://"),
-		strings.HasPrefix(value, "www."),
-		strings.HasPrefix(value, "localhost:"),
-		strings.HasPrefix(value, "127.0.0.1:"),
-		strings.HasPrefix(value, "[::1]:"):
-		return true
-	default:
-		return false
-	}
+	return tools.LooksLikeBrowserURL(raw)
 }
 
 func normalizeReminderIPCCommand(params map[string]string, positional []string) (string, map[string]string, []string) {

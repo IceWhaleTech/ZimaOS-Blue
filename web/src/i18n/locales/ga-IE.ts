@@ -387,6 +387,10 @@ export default mergeHarnessLocale('ga-IE', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Taispeáin gach comhrá',
+    workspaceTreeFocusCurrentConversation: 'Comhrá reatha',
+    workspaceTreeCurrentConversationBadge: 'Comhrá reatha',
+    workspaceTreeRecentGeneratedBadge: 'Nua',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1805,7 +1809,7 @@ export default mergeHarnessLocale('ga-IE', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'Gníomhaire seachtrach',
+      eyebrow: 'A2A/ACP',
       title: 'Gníomhaire seachtrach',
       newExternalAgent: 'Gníomhaire seachtrach nua',
       newAcp: 'Nua _ZIMA_TOKEN_0__',
@@ -5356,6 +5360,8 @@ export default mergeHarnessLocale('ga-IE', {
     retry: 'Bain triail eile as',
     errorCleared: 'Glanadh an earráid — is féidir leat triail eile a bhaint anois',
     advancedOptions: 'Ardroghanna',
+    collapse: 'Laghdaigh',
+    expand: 'Leathnaigh',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

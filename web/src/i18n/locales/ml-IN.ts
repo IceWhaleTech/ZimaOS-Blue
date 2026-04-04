@@ -386,6 +386,10 @@ export default mergeHarnessLocale('ml-IN', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'എല്ലാ സംഭാഷണങ്ങളും കാണിക്കുക',
+    workspaceTreeFocusCurrentConversation: 'നിലവിലെ സംഭാഷണം',
+    workspaceTreeCurrentConversationBadge: 'നിലവിലെ സംഭാഷണം',
+    workspaceTreeRecentGeneratedBadge: 'പുതിയത്',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1805,7 +1809,7 @@ export default mergeHarnessLocale('ml-IN', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'ബാഹ്യ ഏജന്റ്',
+      eyebrow: 'A2A/ACP',
       title: 'ബാഹ്യ ഏജന്റ്',
       newExternalAgent: 'പുതിയ ബാഹ്യ ഏജന്റ്',
       newAcp: 'പുതിയ ACP',
@@ -5379,6 +5383,8 @@ export default mergeHarnessLocale('ml-IN', {
     retry: 'വീണ്ടും ശ്രമിക്കുക',
     errorCleared: 'പിശക് നീക്കി — വീണ്ടും ശ്രമിക്കാം',
     advancedOptions: 'വിപുലമായ ഓപ്ഷനുകൾ',
+    collapse: 'ചുരുക്കുക',
+    expand: 'വിപുലീകരിക്കുക',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

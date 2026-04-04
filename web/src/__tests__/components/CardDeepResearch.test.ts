@@ -93,6 +93,18 @@ function createTestI18n(locale = 'en-US') {
       },
       'zh-CN': {
         chat: {
+          deepResearchWorkflowCompleted: '已完成',
+          deepResearchWorkflowCurrent: '当前',
+          deepResearchWorkflowPending: '待处理',
+          deepResearchSourceTypeLaw: '法规',
+          deepResearchSourceTypeFiling: '备案文件',
+          deepResearchSourceTypePaper: '论文',
+          deepResearchSourceTypeWeb: '网页',
+          deepResearchMetaOfficial: '官方',
+          deepResearchMetaFinancial: '财务',
+          deepResearchWorkflowScope: '范围',
+          deepResearchWorkflowSources: '来源',
+          deepResearchWorkflowExtraction: '提取',
           deepResearchGapNeedEvidenceCoverage: '需要补充证据',
           deepResearchGapNeedPrimaryOrOfficialSources: '需要一手或官方来源',
           deepResearchGapNeedBroaderEvidenceCoverage: '需要更广泛的证据覆盖',
@@ -268,7 +280,60 @@ describe('Deep research cards', () => {
     expect(wrapper.text()).toContain('Object Map')
     expect(wrapper.text()).toContain('Overview')
     expect(wrapper.text()).toContain('Official docs')
-    expect(wrapper.text()).toContain('scope · Completed')
+    expect(wrapper.text()).toContain('Scope · Completed')
+  })
+
+  it('renders retained search cards when present after expansion', async () => {
+    const wrapper = mount(CardDeepResearch, {
+      props: {
+        uiStateKey: 'deep-research:test-retained-searches',
+        card: {
+          type: 'deep-research',
+          query: 'topic',
+          mode: 'standard',
+          answer: 'Answer',
+          evidence_count: 2,
+          support_count: 2,
+          conflict_count: 0,
+          citation_coverage: 0.75,
+          confidence: 0.7,
+          status: 'completed',
+          search_cards: [
+            {
+              type: 'search',
+              id: 'retained-search-1',
+              query: 'topic overview official',
+              totalCount: 2,
+              results: [
+                {
+                  title: 'Official docs',
+                  url: 'https://example.com/docs',
+                  description: 'official documentation',
+                },
+                {
+                  title: 'Release notes',
+                  url: 'https://example.com/release',
+                  description: 'recent updates',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('Retained web searches')
+    expect(wrapper.text()).not.toContain('Official docs')
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('Retained web searches')
+    expect(wrapper.text()).toContain('topic overview official')
+    expect(wrapper.text()).toContain('Official docs')
+    expect(wrapper.text()).toContain('Release notes')
   })
 
   it('localizes known gap text for zh-CN cards', async () => {
@@ -312,6 +377,50 @@ describe('Deep research cards', () => {
 
     expect(wrapper.text()).toContain('需要补充证据')
     expect(wrapper.text()).not.toContain('Need evidence coverage')
+  })
+
+  it('localizes structured workflow and source tokens for zh-CN cards', async () => {
+    const wrapper = mount(CardDeepResearch, {
+      props: {
+        uiStateKey: 'deep-research:test-zh-structured-values',
+        card: {
+          type: 'deep-research',
+          query: 'topic zh structured values',
+          mode: 'standard',
+          report_style: 'knowledge_base',
+          answer: 'Answer',
+          status: 'completed',
+          workflow_phases: [
+            { id: 'scope', label: 'Scope', status: 'completed' },
+            { id: 'sources', label: 'sources', status: 'current' },
+            { id: 'extraction', label: 'Extraction', status: 'pending' },
+          ],
+          source_inventory: [
+            {
+              source_id: 'src-law',
+              title: '法规来源',
+              url: 'https://example.com/law',
+              domain: 'example.com',
+              source_type: 'law',
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('范围 · 已完成')
+    expect(wrapper.text()).toContain('来源 · 当前')
+    expect(wrapper.text()).toContain('提取 · 待处理')
+    expect(wrapper.text()).toContain('example.com · 法规')
+    expect(wrapper.text()).not.toContain('Scope ·')
+    expect(wrapper.text()).not.toContain('sources ·')
+    expect(wrapper.text()).not.toContain('Extraction ·')
+    expect(wrapper.text()).not.toContain('example.com · law')
   })
 
   it('renders verify-stage progress with buttons', () => {

@@ -393,6 +393,10 @@ export default mergeHarnessLocale('zh-TW', {
     workspaceTreeLinkedCount: '已關聯',
     workspaceTreeShowAll: '顯示全部檔案',
     workspaceTreeShowLinkedOnly: '僅顯示可追溯檔案',
+    workspaceTreeShowAllConversations: '顯示全部會話',
+    workspaceTreeFocusCurrentConversation: '當前會話',
+    workspaceTreeCurrentConversationBadge: '當前會話',
+    workspaceTreeRecentGeneratedBadge: '新生成',
     workspaceTreeExpandDir: '展開目錄',
     workspaceTreeCollapseDir: '摺疊目錄',
     workspaceTreeOpenFailed: '無法開啟工作區檔案',
@@ -1449,7 +1453,7 @@ export default mergeHarnessLocale('zh-TW', {
     saved: '已儲存',
     saveFailed: '儲存設定失敗',
     externalAgents: {
-      eyebrow: '外部智慧代理',
+      eyebrow: 'A2A/ACP',
       title: '外部智慧代理',
       newExternalAgent: '新增外部智慧代理',
       newAcp: '新增 ACP',
@@ -5375,6 +5379,8 @@ export default mergeHarnessLocale('zh-TW', {
     retry: '重試',
     errorCleared: '錯誤已清除，您可以再試一次',
     advancedOptions: '進階選項',
+    collapse: '收合',
+    expand: '展開',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

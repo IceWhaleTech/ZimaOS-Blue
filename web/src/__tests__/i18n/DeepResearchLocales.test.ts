@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { mergeHarnessLocale } from '@/i18n/harnessLocaleAdditions'
+import type { LocaleKey } from '@/i18n/locale-catalog'
 
 import {
   localizeDeepResearchAction,
@@ -36,6 +38,10 @@ function translateFor(messages: LocaleMessages) {
     const value = getPathValue(messages, key)
     return typeof value === 'string' && value.trim() ? value : fallback
   }
+}
+
+function resolveRuntimeMessages(locale: string, messages: LocaleMessages): LocaleMessages {
+  return mergeHarnessLocale(locale as LocaleKey, messages)
 }
 
 describe('Deep research locale coverage', () => {
@@ -278,6 +284,35 @@ describe('Deep research locale coverage', () => {
         String(deepResearchFallbacks),
         `${file} should not expose DeepResearch branding`
       ).not.toContain('DeepResearch')
+    }
+  })
+
+  it('provides structured deep research value copy for all 27 locales at runtime', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    expect(entries).toHaveLength(27)
+
+    const requiredPaths = [
+      'chat.deepResearchSourceTypeLaw',
+      'chat.deepResearchSourceTypeFiling',
+      'chat.deepResearchSourceTypePaper',
+      'chat.deepResearchSourceTypeWeb',
+      'chat.deepResearchMetaOfficial',
+      'chat.deepResearchMetaFinancial',
+      'chat.deepResearchWorkflowScope',
+      'chat.deepResearchWorkflowSources',
+      'chat.deepResearchWorkflowExtraction',
+    ] as const
+
+    for (const [modulePath, mod] of entries) {
+      const file = fileNameFromModulePath(modulePath)
+      const locale = file.replace(/\.ts$/, '')
+      const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
+
+      for (const path of requiredPaths) {
+        const value = getPathValue(runtimeMessages, path)
+        expect(typeof value, `${file} missing runtime ${path}`).toBe('string')
+        expect(String(value).trim().length, `${file} empty runtime ${path}`).toBeGreaterThan(0)
+      }
     }
   })
 })

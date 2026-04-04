@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import CardSearch from '@/components/typeless/CardSearch.vue'
 import { usePersistentDisclosureState } from '@/utils/chatCardUiState'
 import type {
   TypelessCardDeepResearch,
+  TypelessCardSearch,
   DeepResearchCitationItem,
   DeepResearchVerificationItem,
   DeepResearchWorkflowPhase,
@@ -16,6 +18,8 @@ import {
   localizeDeepResearchGap,
   localizeDeepResearchMode,
   localizeDeepResearchSegment,
+  localizeDeepResearchSourceType,
+  localizeDeepResearchStructuredValue,
   localizeDeepResearchStatus,
   localizeResearchSurfaceTitle,
 } from '@/utils/deepResearchText'
@@ -46,6 +50,7 @@ const timelineSections = computed(() => props.card.timeline_sections || [])
 const stageErrors = computed(() => props.card.stage_errors || [])
 const modeLabel = computed(() => localizeDeepResearchMode(props.card.mode || 'standard', tr))
 const researchTitle = computed(() => localizeResearchSurfaceTitle(tr))
+const searchCards = computed(() => (props.card.search_cards || []).filter(validSearchCard))
 const reportStyle = computed(() => props.card.report_style || '')
 const isKnowledgeBase = computed(() => reportStyle.value === 'knowledge_base')
 const supportCount = computed(() => props.card.support_count || 0)
@@ -98,6 +103,12 @@ function validCitation(item: unknown): item is DeepResearchCitationItem {
   if (!item || typeof item !== 'object') return false
   const citation = item as Record<string, unknown>
   return typeof citation.url === 'string' && citation.url.length > 0
+}
+
+function validSearchCard(item: unknown): item is TypelessCardSearch {
+  if (!item || typeof item !== 'object') return false
+  const card = item as Record<string, unknown>
+  return card.type === 'search' && typeof card.query === 'string' && Array.isArray(card.results)
 }
 
 function validWorkflowPhase(item: unknown): item is DeepResearchWorkflowPhase {
@@ -199,6 +210,19 @@ function workflowPhaseStatusLabel(status?: string): string {
     default:
       return t('chat.deepResearchWorkflowPending', 'Pending')
   }
+}
+
+function workflowPhaseLabel(phase: DeepResearchWorkflowPhase): string {
+  return (
+    localizeDeepResearchStructuredValue(phase.label || phase.id, tr) ||
+    phase.label ||
+    phase.id ||
+    '--'
+  )
+}
+
+function sourceTypeLabel(sourceType?: string): string {
+  return localizeDeepResearchSourceType(sourceType || 'web', tr) || sourceType || 'web'
 }
 
 function objectStatusBadges(item: DeepResearchObjectMapItem): string[] {
@@ -377,7 +401,7 @@ function conflictRiskLabel(risk?: string): string {
                   class="rounded-full px-2.5 py-0.5 text-xs"
                   :class="verificationStatusClass(phase.status)"
                 >
-                  {{ phase.label || phase.id || '--' }} ·
+                  {{ workflowPhaseLabel(phase) }} ·
                   {{ workflowPhaseStatusLabel(phase.status) }}
                 </span>
               </div>
@@ -408,6 +432,23 @@ function conflictRiskLabel(risk?: string): string {
           </section>
 
           <section
+            v-if="searchCards.length > 0"
+            class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
+          >
+            <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              {{ tr('chat.deepResearchRetainedSearches', 'Retained web searches') }}
+            </div>
+            <div class="mt-2.5 space-y-3">
+              <CardSearch
+                v-for="(searchCard, index) in searchCards"
+                :key="searchCard.id || `${searchCard.query}-${index}`"
+                :card="searchCard"
+                :ui-state-key="`${summaryKey}-search-${index}`"
+              />
+            </div>
+          </section>
+
+          <section
             v-if="sourceInventoryPreview.length"
             class="rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 dark:border-slate-800 dark:bg-slate-950/50"
           >
@@ -433,7 +474,7 @@ function conflictRiskLabel(risk?: string): string {
                 </div>
                 <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {{ source.domain || domainOf(source.url || '') }} ·
-                  {{ source.source_type || 'web' }}
+                  {{ sourceTypeLabel(source.source_type) }}
                 </div>
                 <div
                   class="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400 dark:text-slate-500"
@@ -797,7 +838,7 @@ function conflictRiskLabel(risk?: string): string {
                 </div>
                 <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {{ source.domain || domainOf(source.url || '') }} ·
-                  {{ source.source_type || 'web' }}
+                  {{ sourceTypeLabel(source.source_type) }}
                 </div>
                 <div
                   class="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400 dark:text-slate-500"

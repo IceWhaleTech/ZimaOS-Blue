@@ -482,6 +482,16 @@ func TestBrowserSkill(t *testing.T) {
 		if got, _ := input["url"].(string); got != "https://example.com/page" {
 			t.Errorf("url = %q, want https://example.com/page", got)
 		}
+		legacyInput := map[string]any{"go": "https://example.com/from-go"}
+		if err := br.Validate(legacyInput); err != nil {
+			t.Errorf("unexpected error for go key alias: %v", err)
+		}
+		if got, _ := legacyInput["action"].(string); got != "navigate" {
+			t.Errorf("action = %q, want navigate", got)
+		}
+		if got, _ := legacyInput["url"].(string); got != "https://example.com/from-go" {
+			t.Errorf("url = %q, want https://example.com/from-go", got)
+		}
 	})
 
 	t.Run("navigate", func(t *testing.T) {
@@ -509,6 +519,18 @@ func TestBrowserSkill(t *testing.T) {
 		}
 		if len(mock.tabs) == 0 || mock.tabs[0].URL != "https://example.com/from-href" {
 			t.Errorf("expected browser to navigate to href alias, tabs=%#v", mock.tabs)
+		}
+	})
+
+	t.Run("navigate_go_key_alias", func(t *testing.T) {
+		result, err := br.Execute(context.Background(), map[string]any{
+			"go": "https://example.com/from-go",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("navigate go key alias failed: err=%v success=%v", err, result.Success)
+		}
+		if len(mock.tabs) == 0 || mock.tabs[len(mock.tabs)-1].URL != "https://example.com/from-go" {
+			t.Errorf("expected browser to navigate to go key alias, tabs=%#v", mock.tabs)
 		}
 	})
 

@@ -101,6 +101,57 @@
   "models": {
     "anthropic": [
       {
+        "id": "claude-opus-4-6",
+        "display_name": "Claude Opus 4.6",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "display_name": "Claude Haiku 4.5",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "claude-sonnet-4-6",
+        "display_name": "Claude Sonnet 4.6",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "claude-sonnet-4",
+        "display_name": "Claude Sonnet 4",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
         "id": "claude-opus-4-5-20251101",
         "display_name": "Claude Opus 4.5",
         "context_window": 200000,
@@ -113,9 +164,7 @@
           "thinking",
           "json",
           "system_prompt"
-        ],
-        "pinchbench_score": 87.2,
-        "pinchbench_url": "https://pinchbench.com/model/anthropic/anthropic/claude-opus-4.5"
+        ]
       },
       {
         "id": "claude-sonnet-4-5-20250929",
@@ -130,9 +179,7 @@
           "thinking",
           "json",
           "system_prompt"
-        ],
-        "pinchbench_score": 88.6,
-        "pinchbench_url": "https://pinchbench.com/model/anthropic/anthropic/claude-sonnet-4.5"
+        ]
       },
       {
         "id": "claude-3-5-haiku-20241022",
@@ -236,6 +283,17 @@
     ],
     "deepseek": [
       {
+        "id": "deepseek-v3.2",
+        "display_name": "DeepSeek V3.2",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
         "id": "deepseek-chat",
         "display_name": "DeepSeek Chat (V3)",
         "context_window": 128000,
@@ -264,6 +322,39 @@
       }
     ],
     "glm": [
+      {
+        "id": "glm-5-turbo",
+        "display_name": "GLM-5 Turbo",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "glm-5",
+        "display_name": "GLM-5",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "glm-4.5-air",
+        "display_name": "GLM-4.5 Air",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
       {
         "id": "glm-4-plus",
         "display_name": "GLM-4 Plus",
@@ -346,6 +437,66 @@
     ],
     "google": [
       {
+        "id": "gemini-3.1-pro-preview",
+        "display_name": "Gemini 3.1 Pro Preview",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gemini-3-flash-preview",
+        "display_name": "Gemini 3 Flash Preview",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gemini-3-pro-preview",
+        "display_name": "Gemini 3 Pro Preview",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gemini-2.5-pro",
+        "display_name": "Gemini 2.5 Pro",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gemini-2.5-flash",
+        "display_name": "Gemini 2.5 Flash",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
         "id": "gemini-2.0-flash",
         "display_name": "Gemini 2.0 Flash",
         "context_window": 1000000,
@@ -405,6 +556,17 @@
     ],
     "grok": [
       {
+        "id": "grok-4.1-fast",
+        "display_name": "Grok 4.1 Fast",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
         "id": "grok-beta",
         "display_name": "Grok Beta",
         "context_window": 131072,
@@ -434,8 +596,8 @@
     ],
     "minimax": [
       {
-        "id": "MiniMax-M2.5",
-        "display_name": "MiniMax M2.5",
+        "id": "MiniMax-M2.7",
+        "display_name": "MiniMax M2.7",
         "context_window": 1000000,
         "max_output": 16384,
         "capabilities": [
@@ -447,10 +609,43 @@
         ]
       },
       {
-        "id": "codex-MiniMax-M2.5",
-        "display_name": "MiniMax M2.5 (Codex)",
+        "id": "MiniMax-M2.7-highspeed",
+        "display_name": "MiniMax M2.7 Highspeed",
         "context_window": 1000000,
         "max_output": 16384,
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "minimax-m2.7",
+        "display_name": "MiniMax M2.7",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "minimax-m2.5",
+        "display_name": "MiniMax M2.5",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "minimax-m2.1",
+        "display_name": "MiniMax M2.1",
         "capabilities": [
           "chat",
           "function_call",
@@ -461,6 +656,17 @@
       }
     ],
     "moonshot": [
+      {
+        "id": "kimi-k2.5",
+        "display_name": "Kimi K2.5",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
       {
         "id": "moonshot-v1-8k",
         "display_name": "Moonshot V1 8K",
@@ -545,6 +751,103 @@
     ],
     "openai": [
       {
+        "id": "gpt-5.4",
+        "display_name": "GPT-5.4",
+        "context_window": 1050000,
+        "max_output": 128000,
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "display_name": "GPT-5.4 Mini",
+        "context_window": 1050000,
+        "max_output": 128000,
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gpt-5.4-nano",
+        "display_name": "GPT-5.4 Nano",
+        "context_window": 400000,
+        "max_output": 128000,
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gpt-5.4-pro",
+        "display_name": "GPT-5.4 Pro",
+        "context_window": 1050000,
+        "max_output": 128000,
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gpt-5-mini",
+        "display_name": "GPT-5 Mini",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gpt-5-nano",
+        "display_name": "GPT-5 Nano",
+        "capabilities": [
+          "chat",
+          "vision",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "gpt-oss-120b",
+        "display_name": "GPT-OSS 120B",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
         "id": "gpt-4o",
         "display_name": "GPT-4o",
         "context_window": 128000,
@@ -556,9 +859,7 @@
           "streaming",
           "json",
           "system_prompt"
-        ],
-        "pinchbench_score": 71.1,
-        "pinchbench_url": "https://pinchbench.com/model/openai/openai/gpt-4o"
+        ]
       },
       {
         "id": "gpt-4o-mini",
@@ -572,9 +873,7 @@
           "streaming",
           "json",
           "system_prompt"
-        ],
-        "pinchbench_score": 75.0,
-        "pinchbench_url": "https://pinchbench.com/model/openai/openai/gpt-4o-mini"
+        ]
       },
       {
         "id": "o1",
@@ -635,6 +934,95 @@
       }
     ],
     "qwen": [
+      {
+        "id": "qwen3.6-plus-preview",
+        "display_name": "Qwen 3.6 Plus Preview",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "qwen3.5-plus-02-15",
+        "display_name": "Qwen 3.5 Plus 02-15",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "qwen3.5-397b-a17b",
+        "display_name": "Qwen 3.5 397B A17B",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "qwen3.5-122b-a10b",
+        "display_name": "Qwen 3.5 122B A10B",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "qwen3.5-35b-a3b",
+        "display_name": "Qwen 3.5 35B A3B",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "qwen3.5-27b",
+        "display_name": "Qwen 3.5 27B",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "qwen3-max-thinking",
+        "display_name": "Qwen 3 Max Thinking",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "thinking",
+          "json",
+          "system_prompt"
+        ]
+      },
+      {
+        "id": "qwen3-coder-next",
+        "display_name": "Qwen 3 Coder Next",
+        "capabilities": [
+          "chat",
+          "function_call",
+          "streaming",
+          "json",
+          "system_prompt"
+        ]
+      },
       {
         "id": "qwen-turbo",
         "display_name": "Qwen Turbo",
@@ -718,338 +1106,315 @@
     ]
   },
   "pinchbench_models": {
+    "amazon": [
+      {
+        "id": "amazon/nova-2-lite-v1",
+        "display_name": "nova-2-lite-v1",
+        "pinchbench_score": 75.4
+      }
+    ],
     "anthropic": [
       {
         "id": "anthropic/claude-opus-4.6",
-        "display_name": "Claude Opus 4.6",
+        "display_name": "claude-opus-4.6",
         "pinchbench_score": 93.3,
-        "pinchbench_url": "https://pinchbench.com/submission/claude-opus-4.6"
+        "pinchbench_url": "https://pinchbench.com/submission/1aff7c69-35c5-439e-ba52-4768586cc773"
       },
       {
         "id": "anthropic/claude-haiku-4.5",
-        "display_name": "Claude Haiku 4.5",
+        "display_name": "claude-haiku-4.5",
         "pinchbench_score": 89.5,
-        "pinchbench_url": "https://pinchbench.com/submission/claude-haiku-4.5"
+        "pinchbench_url": "https://pinchbench.com/submission/f29c3e4c-b73c-4fa9-9c8d-2eb0afb050c8"
       },
       {
         "id": "anthropic/claude-sonnet-4.5",
-        "display_name": "Claude Sonnet 4.5",
+        "display_name": "claude-sonnet-4.5",
         "pinchbench_score": 88.6,
-        "pinchbench_url": "https://pinchbench.com/submission/claude-sonnet-4.5"
+        "pinchbench_url": "https://pinchbench.com/submission/99c90752-c44f-440f-a236-05d460d6f986"
       },
       {
         "id": "anthropic/claude-sonnet-4.6",
-        "display_name": "Claude Sonnet 4.6",
-        "pinchbench_score": 88.0,
-        "pinchbench_url": "https://pinchbench.com/submission/claude-sonnet-4.6"
+        "display_name": "claude-sonnet-4.6",
+        "pinchbench_score": 88,
+        "pinchbench_url": "https://pinchbench.com/submission/1935b2ec-6d50-47d6-b2b3-6be233d30aca"
       },
       {
         "id": "anthropic/claude-opus-4.5",
-        "display_name": "Claude Opus 4.5",
+        "display_name": "claude-opus-4.5",
         "pinchbench_score": 87.2,
-        "pinchbench_url": "https://pinchbench.com/submission/claude-opus-4.5"
+        "pinchbench_url": "https://pinchbench.com/submission/7bb7d213-9fd3-42b1-b58b-7827d0414ae8"
       },
       {
         "id": "anthropic/claude-sonnet-4",
-        "display_name": "Claude Sonnet 4",
-        "pinchbench_score": 80.5,
-        "pinchbench_url": "https://pinchbench.com/submission/claude-sonnet-4"
+        "display_name": "claude-sonnet-4",
+        "pinchbench_score": 80.5
       }
     ],
     "arcee-ai": [
       {
         "id": "arcee-ai/trinity-large-thinking",
-        "display_name": "Trinity Large Thinking",
+        "display_name": "trinity-large-thinking",
         "pinchbench_score": 91.9,
-        "pinchbench_url": "https://pinchbench.com/submission/trinity-large-thinking"
+        "pinchbench_url": "https://pinchbench.com/submission/9b7f851c-7ff8-4c0c-be0a-2ac4a0476682"
       },
       {
         "id": "arcee-ai/trinity-large-preview",
-        "display_name": "Trinity Large Preview",
-        "pinchbench_score": 80.6,
-        "pinchbench_url": "https://pinchbench.com/submission/trinity-large-preview"
+        "display_name": "trinity-large-preview",
+        "pinchbench_score": 80.6
       },
       {
         "id": "arcee-ai/trinity-large-preview:free",
-        "display_name": "Trinity Large Preview (Free)",
-        "pinchbench_score": 77.7,
-        "pinchbench_url": "https://pinchbench.com/submission/trinity-large-preview-free"
-      }
-    ],
-    "openai": [
-      {
-        "id": "openai/gpt-5.4",
-        "display_name": "GPT-5.4",
-        "pinchbench_score": 90.5,
-        "pinchbench_url": "https://pinchbench.com/submission/gpt-5.4"
-      },
-      {
-        "id": "openai/gpt-5-mini",
-        "display_name": "GPT-5 Mini",
-        "pinchbench_score": 80.3,
-        "pinchbench_url": "https://pinchbench.com/submission/gpt-5-mini"
-      },
-      {
-        "id": "openai/gpt-4o-mini",
-        "display_name": "GPT-4o Mini",
-        "pinchbench_score": 75.0,
-        "pinchbench_url": "https://pinchbench.com/submission/gpt-4o-mini"
-      },
-      {
-        "id": "openai/gpt-4o",
-        "display_name": "GPT-4o",
-        "pinchbench_score": 71.1,
-        "pinchbench_url": "https://pinchbench.com/submission/gpt-4o"
-      },
-      {
-        "id": "openai/gpt-5-nano",
-        "display_name": "GPT-5 Nano",
-        "pinchbench_score": 68.8,
-        "pinchbench_url": "https://pinchbench.com/submission/gpt-5-nano"
-      },
-      {
-        "id": "openai/gpt-oss-120b",
-        "display_name": "GPT-OSS 120B",
-        "pinchbench_score": 67.1,
-        "pinchbench_url": "https://pinchbench.com/submission/gpt-oss-120b"
-      }
-    ],
-    "qwen": [
-      {
-        "id": "qwen/qwen3.5-27b",
-        "display_name": "Qwen 3.5 27B",
-        "pinchbench_score": 90.0,
-        "pinchbench_url": "https://pinchbench.com/submission/qwen3.5-27b"
-      },
-      {
-        "id": "qwen/qwen3.5-397b-a17b",
-        "display_name": "Qwen 3.5 397B A17B",
-        "pinchbench_score": 89.1,
-        "pinchbench_url": "https://pinchbench.com/submission/qwen3.5-397b-a17b"
-      },
-      {
-        "id": "qwen/qwen3.6-plus-preview",
-        "display_name": "Qwen 3.6 Plus Preview",
-        "pinchbench_score": 88.6,
-        "pinchbench_url": "https://pinchbench.com/submission/qwen3.6-plus-preview"
-      },
-      {
-        "id": "qwen/qwen3.5-plus-02-15",
-        "display_name": "Qwen 3.5 Plus 02-15",
-        "pinchbench_score": 85.8,
-        "pinchbench_url": "https://pinchbench.com/submission/qwen3.5-plus-02-15"
-      },
-      {
-        "id": "qwen/qwen3.5-122b-a10b",
-        "display_name": "Qwen 3.5 122B A10B",
-        "pinchbench_score": 85.5,
-        "pinchbench_url": "https://pinchbench.com/submission/qwen3.5-122b-a10b"
-      },
-      {
-        "id": "qwen/qwen3-max-thinking",
-        "display_name": "Qwen 3 Max Thinking",
-        "pinchbench_score": 80.3,
-        "pinchbench_url": "https://pinchbench.com/submission/qwen3-max-thinking"
-      },
-      {
-        "id": "qwen/qwen3-coder-next",
-        "display_name": "Qwen 3 Coder Next",
-        "pinchbench_score": 79.1,
-        "pinchbench_url": "https://pinchbench.com/submission/qwen3-coder-next"
-      },
-      {
-        "id": "qwen/qwen3.5-35b-a3b",
-        "display_name": "Qwen 3.5 35B A3B",
-        "pinchbench_score": 78.4,
-        "pinchbench_url": "https://pinchbench.com/submission/qwen3.5-35b-a3b"
-      }
-    ],
-    "minimax": [
-      {
-        "id": "minimax/minimax-m2.7",
-        "display_name": "MiniMax M2.7",
-        "pinchbench_score": 89.8,
-        "pinchbench_url": "https://pinchbench.com/submission/minimax-m2.7"
-      },
-      {
-        "id": "minimax/minimax-m2.1",
-        "display_name": "MiniMax M2.1",
-        "pinchbench_score": 88.4,
-        "pinchbench_url": "https://pinchbench.com/submission/minimax-m2.1"
-      },
-      {
-        "id": "minimax/minimax-m2.5",
-        "display_name": "MiniMax M2.5",
-        "pinchbench_score": 87.8,
-        "pinchbench_url": "https://pinchbench.com/submission/minimax-m2.5"
-      }
-    ],
-    "xiaomi": [
-      {
-        "id": "xiaomi/mimo-v2-flash",
-        "display_name": "MiMo V2 Flash",
-        "pinchbench_score": 88.8,
-        "pinchbench_url": "https://pinchbench.com/submission/mimo-v2-flash"
-      },
-      {
-        "id": "xiaomi/mimo-v2-omni",
-        "display_name": "MiMo V2 Omni",
-        "pinchbench_score": 85.6,
-        "pinchbench_url": "https://pinchbench.com/submission/mimo-v2-omni"
-      },
-      {
-        "id": "xiaomi/mimo-v2-pro",
-        "display_name": "MiMo V2 Pro",
-        "pinchbench_score": 84.0,
-        "pinchbench_url": "https://pinchbench.com/submission/mimo-v2-pro"
-      }
-    ],
-    "nvidia": [
-      {
-        "id": "nvidia/nemotron-3-super-120b-a12b",
-        "display_name": "Nemotron 3 Super 120B A12B",
-        "pinchbench_score": 88.6,
-        "pinchbench_url": "https://pinchbench.com/submission/nemotron-3-super-120b-a12b"
-      },
-      {
-        "id": "nvidia/nemotron-3-super-120b-a12b:free",
-        "display_name": "Nemotron 3 Super 120B A12B (Free)",
-        "pinchbench_score": 75.0,
-        "pinchbench_url": "https://pinchbench.com/submission/nemotron-3-super-120b-a12b-free"
-      }
-    ],
-    "z-ai": [
-      {
-        "id": "z-ai/glm-5-turbo",
-        "display_name": "GLM 5 Turbo",
-        "pinchbench_score": 86.5,
-        "pinchbench_url": "https://pinchbench.com/submission/glm-5-turbo"
-      },
-      {
-        "id": "z-ai/glm-5",
-        "display_name": "GLM 5",
-        "pinchbench_score": 86.4,
-        "pinchbench_url": "https://pinchbench.com/submission/glm-5"
-      },
-      {
-        "id": "z-ai/glm-4.5-air",
-        "display_name": "GLM 4.5 Air",
-        "pinchbench_score": 85.7,
-        "pinchbench_url": "https://pinchbench.com/submission/glm-4.5-air"
-      }
-    ],
-    "google": [
-      {
-        "id": "google/gemini-3.1-pro-preview",
-        "display_name": "Gemini 3.1 Pro Preview",
-        "pinchbench_score": 86.7,
-        "pinchbench_url": "https://pinchbench.com/submission/gemini-3.1-pro-preview"
-      },
-      {
-        "id": "google/gemini-3-flash-preview",
-        "display_name": "Gemini 3 Flash Preview",
-        "pinchbench_score": 85.2,
-        "pinchbench_url": "https://pinchbench.com/submission/gemini-3-flash-preview"
-      },
-      {
-        "id": "google/gemini-2.5-pro",
-        "display_name": "Gemini 2.5 Pro",
-        "pinchbench_score": 71.9,
-        "pinchbench_url": "https://pinchbench.com/submission/gemini-2.5-pro"
-      },
-      {
-        "id": "google/gemini-2.5-flash",
-        "display_name": "Gemini 2.5 Flash",
-        "pinchbench_score": 70.7,
-        "pinchbench_url": "https://pinchbench.com/submission/gemini-2.5-flash"
-      },
-      {
-        "id": "google/gemini-3-pro-preview",
-        "display_name": "Gemini 3 Pro Preview",
-        "pinchbench_score": 70.7,
-        "pinchbench_url": "https://pinchbench.com/submission/gemini-3-pro-preview"
-      }
-    ],
-    "stepfun": [
-      {
-        "id": "stepfun/step-3.5-flash",
-        "display_name": "Step 3.5 Flash",
-        "pinchbench_score": 85.3,
-        "pinchbench_url": "https://pinchbench.com/submission/step-3.5-flash"
-      }
-    ],
-    "moonshotai": [
-      {
-        "id": "moonshotai/kimi-k2.5",
-        "display_name": "Kimi K2.5",
-        "pinchbench_score": 84.8,
-        "pinchbench_url": "https://pinchbench.com/submission/kimi-k2.5"
+        "display_name": "trinity-large-preview:free",
+        "pinchbench_score": 77.7
       }
     ],
     "deepseek": [
       {
         "id": "deepseek/deepseek-v3.2",
-        "display_name": "DeepSeek V3.2",
+        "display_name": "deepseek-v3.2",
         "pinchbench_score": 84.3,
-        "pinchbench_url": "https://pinchbench.com/submission/deepseek-v3.2"
+        "pinchbench_url": "https://pinchbench.com/submission/df86a99e-a26a-4785-9408-158577b05d7d"
       },
       {
         "id": "deepseek/deepseek-chat",
-        "display_name": "DeepSeek Chat",
-        "pinchbench_score": 71.7,
-        "pinchbench_url": "https://pinchbench.com/submission/deepseek-chat"
+        "display_name": "deepseek-chat",
+        "pinchbench_score": 71.7
       }
     ],
-    "openrouter": [
+    "google": [
       {
-        "id": "openrouter/hunter-alpha",
-        "display_name": "Hunter Alpha",
-        "pinchbench_score": 83.3,
-        "pinchbench_url": "https://pinchbench.com/submission/hunter-alpha"
+        "id": "google/gemini-3.1-pro-preview",
+        "display_name": "gemini-3.1-pro-preview",
+        "pinchbench_score": 86.7,
+        "pinchbench_url": "https://pinchbench.com/submission/684113a8-8421-4795-a5c9-6134b4b06222"
       },
       {
-        "id": "openrouter/healer-alpha",
-        "display_name": "Healer Alpha",
-        "pinchbench_score": 80.8,
-        "pinchbench_url": "https://pinchbench.com/submission/healer-alpha"
-      }
-    ],
-    "x-ai": [
-      {
-        "id": "x-ai/grok-4.1-fast",
-        "display_name": "Grok 4.1 Fast",
-        "pinchbench_score": 82.4,
-        "pinchbench_url": "https://pinchbench.com/submission/grok-4.1-fast"
-      }
-    ],
-    "mistralai": [
-      {
-        "id": "mistralai/devstral-2512",
-        "display_name": "Devstral 2512",
-        "pinchbench_score": 82.0,
-        "pinchbench_url": "https://pinchbench.com/submission/devstral-2512"
+        "id": "google/gemini-3-flash-preview",
+        "display_name": "gemini-3-flash-preview",
+        "pinchbench_score": 85.2,
+        "pinchbench_url": "https://pinchbench.com/submission/8892d4e7-1ba2-415d-883c-ca7ec30bf7e0"
       },
       {
-        "id": "mistralai/mistral-large-2512",
-        "display_name": "Mistral Large 2512",
-        "pinchbench_score": 72.2,
-        "pinchbench_url": "https://pinchbench.com/submission/mistral-large-2512"
+        "id": "google/gemini-2.5-pro",
+        "display_name": "gemini-2.5-pro",
+        "pinchbench_score": 71.9
+      },
+      {
+        "id": "google/gemini-3-pro-preview",
+        "display_name": "gemini-3-pro-preview",
+        "pinchbench_score": 70.7
+      },
+      {
+        "id": "google/gemini-2.5-flash",
+        "display_name": "gemini-2.5-flash",
+        "pinchbench_score": 70.7
       }
     ],
     "inception": [
       {
         "id": "inception/mercury-2",
-        "display_name": "Mercury 2",
-        "pinchbench_score": 78.0,
-        "pinchbench_url": "https://pinchbench.com/submission/mercury-2"
+        "display_name": "mercury-2",
+        "pinchbench_score": 78
       }
     ],
-    "amazon": [
+    "minimax": [
       {
-        "id": "amazon/nova-2-lite-v1",
-        "display_name": "Nova 2 Lite V1",
-        "pinchbench_score": 75.4,
-        "pinchbench_url": "https://pinchbench.com/submission/nova-2-lite-v1"
+        "id": "minimax/minimax-m2.7",
+        "display_name": "minimax-m2.7",
+        "pinchbench_score": 89.8,
+        "pinchbench_url": "https://pinchbench.com/submission/0e379397-42e2-440e-a466-5e3adcb3eadb"
+      },
+      {
+        "id": "minimax/minimax-m2.1",
+        "display_name": "minimax-m2.1",
+        "pinchbench_score": 88.4,
+        "pinchbench_url": "https://pinchbench.com/submission/9f44be09-3193-4e0a-af5b-769c42f8f3f3"
+      },
+      {
+        "id": "minimax/minimax-m2.5",
+        "display_name": "minimax-m2.5",
+        "pinchbench_score": 87.8,
+        "pinchbench_url": "https://pinchbench.com/submission/e010a739-c548-4808-90a6-7b574731ce49"
+      }
+    ],
+    "mistralai": [
+      {
+        "id": "mistralai/devstral-2512",
+        "display_name": "devstral-2512",
+        "pinchbench_score": 82
+      },
+      {
+        "id": "mistralai/mistral-large-2512",
+        "display_name": "mistral-large-2512",
+        "pinchbench_score": 72.2
+      }
+    ],
+    "moonshotai": [
+      {
+        "id": "moonshotai/kimi-k2.5",
+        "display_name": "kimi-k2.5",
+        "pinchbench_score": 84.8,
+        "pinchbench_url": "https://pinchbench.com/submission/ce9bbcbd-f78b-4655-af1f-c97781320ce6"
+      }
+    ],
+    "nvidia": [
+      {
+        "id": "nvidia/nemotron-3-super-120b-a12b",
+        "display_name": "nemotron-3-super-120b-a12b",
+        "pinchbench_score": 88.6,
+        "pinchbench_url": "https://pinchbench.com/submission/75b0e342-e702-432b-8733-747d547996bc"
+      },
+      {
+        "id": "nvidia/nemotron-3-super-120b-a12b:free",
+        "display_name": "nemotron-3-super-120b-a12b:free",
+        "pinchbench_score": 75
+      }
+    ],
+    "openai": [
+      {
+        "id": "openai/gpt-5.4",
+        "display_name": "gpt-5.4",
+        "pinchbench_score": 90.5,
+        "pinchbench_url": "https://pinchbench.com/submission/5d73c775-fb81-4df1-ac2f-a08434541601"
+      },
+      {
+        "id": "openai/gpt-5-mini",
+        "display_name": "gpt-5-mini",
+        "pinchbench_score": 80.3
+      },
+      {
+        "id": "openai/gpt-4o-mini",
+        "display_name": "gpt-4o-mini",
+        "pinchbench_score": 75
+      },
+      {
+        "id": "openai/gpt-4o",
+        "display_name": "gpt-4o",
+        "pinchbench_score": 71.1
+      },
+      {
+        "id": "openai/gpt-5-nano",
+        "display_name": "gpt-5-nano",
+        "pinchbench_score": 68.8
+      },
+      {
+        "id": "openai/gpt-oss-120b",
+        "display_name": "gpt-oss-120b",
+        "pinchbench_score": 67.1
+      }
+    ],
+    "openrouter": [
+      {
+        "id": "openrouter/hunter-alpha",
+        "display_name": "hunter-alpha",
+        "pinchbench_score": 83.3
+      },
+      {
+        "id": "openrouter/healer-alpha",
+        "display_name": "healer-alpha",
+        "pinchbench_score": 80.8
+      }
+    ],
+    "qwen": [
+      {
+        "id": "qwen/qwen3.5-27b",
+        "display_name": "qwen3.5-27b",
+        "pinchbench_score": 90,
+        "pinchbench_url": "https://pinchbench.com/submission/6769a9a6-825d-4848-af0c-8e7f590dcc7f"
+      },
+      {
+        "id": "qwen/qwen3.5-397b-a17b",
+        "display_name": "qwen3.5-397b-a17b",
+        "pinchbench_score": 89.1,
+        "pinchbench_url": "https://pinchbench.com/submission/3a06230b-8189-44ca-83e1-8111f05552ed"
+      },
+      {
+        "id": "qwen/qwen3.6-plus-preview",
+        "display_name": "qwen3.6-plus-preview",
+        "pinchbench_score": 88.6,
+        "pinchbench_url": "https://pinchbench.com/submission/1561ccd1-3f5a-419d-9b7f-4dd9027b6644"
+      },
+      {
+        "id": "qwen/qwen3.5-plus-02-15",
+        "display_name": "qwen3.5-plus-02-15",
+        "pinchbench_score": 85.8,
+        "pinchbench_url": "https://pinchbench.com/submission/a3f8c8d8-0b0b-4a28-a61e-a8f4c7193c5a"
+      },
+      {
+        "id": "qwen/qwen3.5-122b-a10b",
+        "display_name": "qwen3.5-122b-a10b",
+        "pinchbench_score": 85.5,
+        "pinchbench_url": "https://pinchbench.com/submission/ad4e56aa-e193-4188-a0a0-69d27bdadc71"
+      },
+      {
+        "id": "qwen/qwen3-max-thinking",
+        "display_name": "qwen3-max-thinking",
+        "pinchbench_score": 80.3
+      },
+      {
+        "id": "qwen/qwen3-coder-next",
+        "display_name": "qwen3-coder-next",
+        "pinchbench_score": 79.1
+      },
+      {
+        "id": "qwen/qwen3.5-35b-a3b",
+        "display_name": "qwen3.5-35b-a3b",
+        "pinchbench_score": 78.4
+      }
+    ],
+    "stepfun": [
+      {
+        "id": "stepfun/step-3.5-flash",
+        "display_name": "step-3.5-flash",
+        "pinchbench_score": 85.3,
+        "pinchbench_url": "https://pinchbench.com/submission/7419a7a1-bc80-4df2-9a03-2c6beccc942e"
+      }
+    ],
+    "x-ai": [
+      {
+        "id": "x-ai/grok-4.1-fast",
+        "display_name": "grok-4.1-fast",
+        "pinchbench_score": 82.4
+      }
+    ],
+    "xiaomi": [
+      {
+        "id": "xiaomi/mimo-v2-flash",
+        "display_name": "mimo-v2-flash",
+        "pinchbench_score": 88.8,
+        "pinchbench_url": "https://pinchbench.com/submission/9f510963-d3df-486f-a9a7-ad7a20290088"
+      },
+      {
+        "id": "xiaomi/mimo-v2-omni",
+        "display_name": "mimo-v2-omni",
+        "pinchbench_score": 85.6,
+        "pinchbench_url": "https://pinchbench.com/submission/2ffb5134-7a76-4274-bfde-644ae00f33ff"
+      },
+      {
+        "id": "xiaomi/mimo-v2-pro",
+        "display_name": "mimo-v2-pro",
+        "pinchbench_score": 84,
+        "pinchbench_url": "https://pinchbench.com/submission/6236740b-edec-4725-a3ba-948ca7d7db14"
+      }
+    ],
+    "z-ai": [
+      {
+        "id": "z-ai/glm-5-turbo",
+        "display_name": "glm-5-turbo",
+        "pinchbench_score": 86.5,
+        "pinchbench_url": "https://pinchbench.com/submission/bc57bf80-2020-4a8c-be16-d8be99f94cea"
+      },
+      {
+        "id": "z-ai/glm-5",
+        "display_name": "glm-5",
+        "pinchbench_score": 86.4,
+        "pinchbench_url": "https://pinchbench.com/submission/220a7484-2a99-441f-b101-08ed8fb8870f"
+      },
+      {
+        "id": "z-ai/glm-4.5-air",
+        "display_name": "glm-4.5-air",
+        "pinchbench_score": 85.7,
+        "pinchbench_url": "https://pinchbench.com/submission/048edef1-bb7b-4ee4-8023-8320b019a510"
       }
     ]
   }

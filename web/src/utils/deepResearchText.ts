@@ -75,6 +75,18 @@ const DEEP_RESEARCH_GAP_KEYS: Record<string, [key: string, fallback: string]> = 
   ],
 }
 
+const DEEP_RESEARCH_STRUCTURED_VALUE_KEYS: Record<string, [key: string, fallback: string]> = {
+  law: ['chat.deepResearchSourceTypeLaw', 'Law'],
+  filing: ['chat.deepResearchSourceTypeFiling', 'Filing'],
+  paper: ['chat.deepResearchSourceTypePaper', 'Paper'],
+  web: ['chat.deepResearchSourceTypeWeb', 'Web'],
+  official: ['chat.deepResearchMetaOfficial', 'Official'],
+  financial: ['chat.deepResearchMetaFinancial', 'Financial'],
+  scope: ['chat.deepResearchWorkflowScope', 'Scope'],
+  sources: ['chat.deepResearchWorkflowSources', 'Sources'],
+  extraction: ['chat.deepResearchWorkflowExtraction', 'Extraction'],
+}
+
 function humanizeDeepResearchToken(value: string | null | undefined): string {
   const trimmed = unwrapDeepResearchToken(String(value || ''))
   if (!trimmed) return ''
@@ -227,6 +239,29 @@ export function localizeDeepResearchGap(
   }
   const token = normalizeDeepResearchToken(trimmed)
   return translateKnownToken(token, DEEP_RESEARCH_GAP_KEYS, translate) || trimmed
+}
+
+export function localizeDeepResearchStructuredValue(
+  value: string | null | undefined,
+  translate: Translate
+): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  const token = normalizeDeepResearchToken(trimmed)
+  return (
+    translateKnownToken(token, DEEP_RESEARCH_STRUCTURED_VALUE_KEYS, translate) ||
+    translateKnownToken(token, DEEP_RESEARCH_STAGE_KEYS, translate) ||
+    translateKnownToken(token, DEEP_RESEARCH_ACTION_KEYS, translate) ||
+    translateKnownToken(token, DEEP_RESEARCH_STATUS_KEYS, translate) ||
+    humanizeDeepResearchToken(trimmed)
+  )
+}
+
+export function localizeDeepResearchSourceType(
+  value: string | null | undefined,
+  translate: Translate
+): string {
+  return localizeDeepResearchStructuredValue(value, translate)
 }
 
 export function splitDeepResearchSegments(value: string | null | undefined): string[] {

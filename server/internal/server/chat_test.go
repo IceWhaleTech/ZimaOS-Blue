@@ -7337,6 +7337,20 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearch(t *testing.T) 
 			"citations": []map[string]interface{}{
 				{"title": "Doc A", "url": "https://example.com/a"},
 			},
+			"search_cards": []map[string]interface{}{
+				{
+					"type":       "search",
+					"query":      "zimaos latest updates",
+					"totalCount": 1,
+					"results": []map[string]interface{}{
+						{
+							"title":       "Release notes",
+							"url":         "https://example.com/release",
+							"description": "latest update log",
+						},
+					},
+				},
+			},
 			"confidence":     0.9,
 			"evidence_count": 1,
 			"support_count":  3,
@@ -7382,6 +7396,9 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearch(t *testing.T) 
 	}
 	if got, _ := resp["content"].(string); !strings.Contains(got, "\"has_conflict\":true") {
 		t.Fatalf("content = %q, want conflict fields in typeless card", got)
+	}
+	if got, _ := resp["content"].(string); !strings.Contains(got, "\"search_cards\"") {
+		t.Fatalf("content = %q, want preserved search_cards in typeless card", got)
 	}
 	execMock.mu.Lock()
 	gotLang, _ := execMock.last["lang"].(string)

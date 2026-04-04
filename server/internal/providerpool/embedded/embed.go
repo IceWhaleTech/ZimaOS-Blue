@@ -1,5 +1,5 @@
 // Package embedded provides go:embed access to provider_catalog.json.
-// Build-time copy: Makefile should sync docs/provider_catalog.json → here.
+// Regenerate with `make provider-catalog`.
 package embedded
 
 import "embed"

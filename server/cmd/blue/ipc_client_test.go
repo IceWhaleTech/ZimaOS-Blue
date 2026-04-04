@@ -324,6 +324,23 @@ func TestNormalizeIPCCommand_MapsBrowserOpenAliasToNavigate(t *testing.T) {
 	}
 }
 
+func TestNormalizeIPCCommand_MapsBrowserGoKeyToNavigate(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"go=https://example.com", "timeout=30"})
+
+	if cmd != "browser.navigate" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.navigate")
+	}
+	if got := params["url"]; got != "https://example.com" {
+		t.Fatalf("url = %q, want %q", got, "https://example.com")
+	}
+	if got := params["timeout"]; got != "30" {
+		t.Fatalf("timeout = %q, want %q", got, "30")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
 func TestNormalizeIPCCommand_MapsBrowserDottedNavigatePositionalURL(t *testing.T) {
 	cmd, params, positional := normalizeIPCCommand("browser.navigate", []string{"https://example.com"})
 

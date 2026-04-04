@@ -227,7 +227,7 @@ function pinchBenchModelsMatch(model: Model, candidate: Model, providerId?: stri
 }
 
 function resolvedPinchBenchModel(model: Model): Model {
-  if (typeof model.pinchbench_score === 'number' && model.pinchbench_url) {
+  if (typeof model.pinchbench_score === 'number') {
     return model
   }
 
@@ -236,7 +236,6 @@ function resolvedPinchBenchModel(model: Model): Model {
     (candidate) =>
       candidate !== model &&
       typeof candidate.pinchbench_score === 'number' &&
-      !!candidate.pinchbench_url &&
       pinchBenchModelsMatch(model, candidate, providerId)
   )
 
@@ -609,13 +608,7 @@ const filteredProviders = computed(() => {
     )
   }
 
-  // Sort: enabled first, then by priority (descending)
-  return providers.sort((a, b) => {
-    if (a.enabled !== b.enabled) {
-      return a.enabled ? -1 : 1
-    }
-    return b.priority - a.priority
-  })
+  return providers.sort(compareProvidersForDisplay)
 })
 
 const displayedProviders = computed(() => providerPreviewOrder.value ?? filteredProviders.value)
@@ -1328,6 +1321,38 @@ function selectProvider(providerId: string) {
   store.selectProvider(store.selectedProviderId === providerId ? null : providerId)
 }
 
+function isMediaPriorityProvider(provider: Provider | null | undefined) {
+  return provider?.type === 'media'
+}
+
+function canReorderTogether(a: Provider | null | undefined, b: Provider | null | undefined) {
+  return isMediaPriorityProvider(a) === isMediaPriorityProvider(b)
+}
+
+function compareProvidersForDisplay(a: Provider, b: Provider) {
+  if (a.enabled !== b.enabled) {
+    return a.enabled ? -1 : 1
+  }
+
+  const aIsMedia = isMediaPriorityProvider(a)
+  const bIsMedia = isMediaPriorityProvider(b)
+  if (aIsMedia !== bIsMedia) {
+    return aIsMedia ? 1 : -1
+  }
+
+  if (aIsMedia && bIsMedia) {
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority
+    }
+    return a.name.localeCompare(b.name)
+  }
+
+  if (a.priority !== b.priority) {
+    return b.priority - a.priority
+  }
+  return a.name.localeCompare(b.name)
+}
+
 // Drag and drop handlers
 function resetProviderDragState() {
   draggedProvider.value = null
@@ -1354,15 +1379,26 @@ function reorderProviderList(providers: Provider[], draggedId: string, targetId:
 }
 
 function syncProviderOrder(providers: Provider[]) {
-  // Keep the current priority spacing so persisted order still matches the existing sort rules.
-  const maxPriority = 100
-  const step = Math.floor(maxPriority / (providers.length + 1))
   const updates: Array<{ id: string; priority: number }> = []
 
-  for (let i = 0; i < providers.length; i++) {
-    const provider = providers[i]
+  const llmProviders = providers.filter((provider) => !isMediaPriorityProvider(provider))
+  const mediaProviders = providers.filter((provider) => isMediaPriorityProvider(provider))
+  const llmStep = llmProviders.length > 0 ? Math.max(1, Math.floor(100 / (llmProviders.length + 1))) : 1
+
+  for (let i = 0; i < llmProviders.length; i++) {
+    const provider = llmProviders[i]
     if (!provider) continue
-    const newPriority = maxPriority - i * step
+    const newPriority = 100 - i * llmStep
+    if (provider.priority !== newPriority) {
+      store.updateProviderPriorityLocal(provider.id, newPriority)
+      updates.push({ id: provider.id, priority: newPriority })
+    }
+  }
+
+  for (let i = 0; i < mediaProviders.length; i++) {
+    const provider = mediaProviders[i]
+    if (!provider) continue
+    const newPriority = (i + 1) * 10
     if (provider.priority !== newPriority) {
       store.updateProviderPriorityLocal(provider.id, newPriority)
       updates.push({ id: provider.id, priority: newPriority })
@@ -1395,6 +1431,7 @@ function handleDragOver(e: DragEvent, provider: Provider) {
   if (
     draggedProvider.value &&
     draggedProvider.value.id !== provider.id &&
+    canReorderTogether(draggedProvider.value, provider) &&
     dragOverProvider.value !== provider.id
   ) {
     const baseOrder = providerDragBaseOrder.value ?? filteredProviders.value
@@ -1421,7 +1458,11 @@ async function handleDrop(e: DragEvent, targetProvider: Provider) {
   if (!canReorderProviders.value) return
   e.preventDefault()
 
-  if (!draggedProvider.value || draggedProvider.value.id === targetProvider.id) {
+  if (
+    !draggedProvider.value ||
+    draggedProvider.value.id === targetProvider.id ||
+    !canReorderTogether(draggedProvider.value, targetProvider)
+  ) {
     resetProviderDragState()
     return
   }
@@ -1611,12 +1652,16 @@ function mediaPricingLabel(model: Model): string {
 
 function hasPinchBenchBadge(model: Model): boolean {
   const resolved = resolvedPinchBenchModel(model)
-  return typeof resolved.pinchbench_score === 'number' && !!resolved.pinchbench_url
+  return typeof resolved.pinchbench_score === 'number'
 }
 
 function pinchBenchBadgeLabel(model: Model): string {
   const resolved = resolvedPinchBenchModel(model)
   return (resolved.pinchbench_score ?? 0).toFixed(1)
+}
+
+function pinchBenchBadgeIsClickable(model: Model): boolean {
+  return !!resolvedPinchBenchModel(model).pinchbench_url
 }
 
 function pinchBenchBadgeURL(model: Model): string {
@@ -3244,7 +3289,7 @@ onMounted(() => {
                       getLocalizedProviderModelName(model)
                     }}</span>
                     <a
-                      v-if="hasPinchBenchBadge(model)"
+                      v-if="hasPinchBenchBadge(model) && pinchBenchBadgeIsClickable(model)"
                       :href="pinchBenchBadgeURL(model)"
                       target="_blank"
                       rel="noopener noreferrer"
@@ -3255,6 +3300,14 @@ onMounted(() => {
                     >
                       {{ pinchBenchBadgeLabel(model) }}
                     </a>
+                    <span
+                      v-else-if="hasPinchBenchBadge(model)"
+                      :class="pinchBenchBadgeClass(model)"
+                      class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset"
+                      data-testid="pinchbench-badge"
+                    >
+                      {{ pinchBenchBadgeLabel(model) }}
+                    </span>
                     <span
                       v-if="model.capabilities?.length"
                       class="text-[10px] leading-none text-gray-400 provider-inline-start-0_5"
@@ -3659,8 +3712,8 @@ onMounted(() => {
                           <span>
                             {{
                               showNewProviderAdvanced
-                                ? tr('common.collapse', 'Collapse')
-                                : tr('common.expand', 'Expand')
+                                ? tr('providerPool.collapse', 'Collapse')
+                                : tr('providerPool.expand', 'Expand')
                             }}
                           </span>
                           <svg
@@ -4215,7 +4268,7 @@ onMounted(() => {
                     getLocalizedProviderModelName(model)
                   }}</span>
                   <a
-                    v-if="hasPinchBenchBadge(model)"
+                    v-if="hasPinchBenchBadge(model) && pinchBenchBadgeIsClickable(model)"
                     :href="pinchBenchBadgeURL(model)"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -4226,6 +4279,14 @@ onMounted(() => {
                   >
                     {{ pinchBenchBadgeLabel(model) }}
                   </a>
+                  <span
+                    v-else-if="hasPinchBenchBadge(model)"
+                    :class="pinchBenchBadgeClass(model)"
+                    class="provider-inline-start-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset"
+                    data-testid="pinchbench-badge"
+                  >
+                    {{ pinchBenchBadgeLabel(model) }}
+                  </span>
                   <span
                     v-if="model.capabilities?.length"
                     class="text-[10px] leading-none text-gray-400 provider-inline-start-0_5"

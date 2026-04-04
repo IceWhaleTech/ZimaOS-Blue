@@ -773,6 +773,9 @@ func buildDeepResearchResult(current *Job) map[string]interface{} {
 	if workflowPhases := deepResearchWorkflowPhases(current.Status, current.Stage); len(workflowPhases) > 0 {
 		data["workflow_phases"] = workflowPhases
 	}
+	if searchCards := buildDeepResearchSearchCards(current); len(searchCards) > 0 {
+		data["search_cards"] = searchCards
+	}
 	if sourceInventory := buildKnowledgeBaseSourceInventory(current.Evidence); len(sourceInventory) > 0 {
 		data["source_inventory"] = sourceInventory
 	}
@@ -802,6 +805,78 @@ func buildDeepResearchResult(current *Job) map[string]interface{} {
 		}
 	}
 	return data
+}
+
+func buildDeepResearchSearchCards(current *Job) []map[string]interface{} {
+	if current == nil || len(current.Evidence) == 0 {
+		return nil
+	}
+
+	type searchBucket struct {
+		query   string
+		results []map[string]interface{}
+	}
+
+	buckets := make([]searchBucket, 0, len(current.Evidence))
+	bucketIndexByQuery := make(map[string]int, len(current.Evidence))
+
+	for _, ev := range current.Evidence {
+		query := strings.TrimSpace(ev.Query)
+		if query == "" {
+			query = strings.TrimSpace(current.Query)
+		}
+		if query == "" {
+			continue
+		}
+		idx, ok := bucketIndexByQuery[query]
+		if !ok {
+			idx = len(buckets)
+			bucketIndexByQuery[query] = idx
+			buckets = append(buckets, searchBucket{query: query})
+		}
+
+		title := strings.TrimSpace(ev.Title)
+		url := strings.TrimSpace(ev.URL)
+		if title == "" && url == "" {
+			continue
+		}
+		if title == "" {
+			title = url
+		}
+		result := map[string]interface{}{
+			"title": title,
+			"url":   url,
+		}
+		if description := strings.TrimSpace(ev.Snippet); description != "" {
+			result["description"] = description
+		}
+		if source := strings.TrimSpace(ev.Domain); source != "" {
+			result["source"] = source
+		} else if source := strings.TrimSpace(ev.Source); source != "" {
+			result["source"] = source
+		}
+		buckets[idx].results = append(buckets[idx].results, result)
+	}
+
+	out := make([]map[string]interface{}, 0, len(buckets))
+	for idx, bucket := range buckets {
+		if len(bucket.results) == 0 {
+			continue
+		}
+		card := map[string]interface{}{
+			"type":       "search",
+			"query":      bucket.query,
+			"results":    bucket.results,
+			"totalCount": len(bucket.results),
+			"status":     "success",
+		}
+		if jobID := strings.TrimSpace(current.ID); jobID != "" {
+			card["id"] = fmt.Sprintf("deep-research-search-%s-%d", jobID, idx+1)
+		}
+		out = append(out, card)
+	}
+
+	return out
 }
 
 type deepResearchXMLResult struct {

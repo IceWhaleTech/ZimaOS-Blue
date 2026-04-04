@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   localizeDeepResearchGap,
   localizeDeepResearchSegment,
+  localizeDeepResearchSourceType,
+  localizeDeepResearchStructuredValue,
   localizeDeepResearchStatus,
   localizeResearchProgressLabel,
   localizeResearchRunningElsewhereLabel,
@@ -15,6 +17,9 @@ const zhMessages: Record<string, string> = {
   'chat.deepResearchGapNeedEvidenceCoverage': '需要补充证据',
   'chat.deepResearchGapNeedBroaderSourceDiversity': '需要更广泛的来源多样性',
   'chat.deepResearchGapNeedPrimaryOrOfficialSources': '需要一手或官方来源',
+  'chat.deepResearchSourceTypeLaw': '法规',
+  'chat.deepResearchMetaOfficial': '官方',
+  'chat.deepResearchWorkflowScope': '范围',
 }
 
 function translate(key: string, fallback: string): string {
@@ -39,6 +44,12 @@ describe('deepResearchText', () => {
         translate
       )
     ).toBe('需要补充证据 · 需要更广泛的来源多样性 · 需要一手或官方来源')
+  })
+
+  it('localizes structured deep research values', () => {
+    expect(localizeDeepResearchSourceType('law', translate)).toBe('法规')
+    expect(localizeDeepResearchStructuredValue('official', translate)).toBe('官方')
+    expect(localizeDeepResearchStructuredValue('Scope', translate)).toBe('范围')
   })
 
   it('prefers deep research title and progress labels when available', () => {

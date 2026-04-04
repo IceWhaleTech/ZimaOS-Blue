@@ -386,6 +386,10 @@ export default mergeHarnessLocale('ro-RO', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Afișează toate conversațiile',
+    workspaceTreeFocusCurrentConversation: 'Conversația curentă',
+    workspaceTreeCurrentConversationBadge: 'Conversația curentă',
+    workspaceTreeRecentGeneratedBadge: 'Nou',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1803,7 +1807,7 @@ export default mergeHarnessLocale('ro-RO', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'Agent extern',
+      eyebrow: 'A2A/ACP',
       title: 'Agent extern',
       newExternalAgent: 'Agent extern nou',
       protocol: 'Protocol',
@@ -5366,6 +5370,8 @@ export default mergeHarnessLocale('ro-RO', {
     retry: 'Încearcă din nou',
     errorCleared: 'Eroarea a fost ștearsă — puteți încerca din nou',
     advancedOptions: 'Opțiuni avansate',
+    collapse: 'Restrânge',
+    expand: 'Extinde',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

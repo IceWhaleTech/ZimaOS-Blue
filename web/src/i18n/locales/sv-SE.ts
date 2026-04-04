@@ -385,6 +385,10 @@ export default mergeHarnessLocale('sv-SE', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Visa alla konversationer',
+    workspaceTreeFocusCurrentConversation: 'Aktuell konversation',
+    workspaceTreeCurrentConversationBadge: 'Aktuell konversation',
+    workspaceTreeRecentGeneratedBadge: 'Ny',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1794,7 +1798,7 @@ export default mergeHarnessLocale('sv-SE', {
       noModels: 'No quota information available',
     },
     externalAgents: {
-      eyebrow: 'Extern agent',
+      eyebrow: 'A2A/ACP',
       title: 'Extern agent',
       newExternalAgent: 'Ny extern agent',
       metadata: 'Metadata',
@@ -5327,6 +5331,8 @@ export default mergeHarnessLocale('sv-SE', {
     retry: 'Försök igen',
     errorCleared: 'Felet rensades — du kan försöka igen',
     advancedOptions: 'Avancerade alternativ',
+    collapse: 'Fäll ihop',
+    expand: 'Expandera',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

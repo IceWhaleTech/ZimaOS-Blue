@@ -6,7 +6,11 @@ import type {
   DeepResearchPlannedTask,
   DeepResearchLiveSource,
 } from '@/types/typeless'
-import { localizeDeepResearchGap, localizeDeepResearchStatus } from '@/utils/deepResearchText'
+import {
+  localizeDeepResearchGap,
+  localizeDeepResearchStatus,
+  localizeDeepResearchStructuredValue,
+} from '@/utils/deepResearchText'
 
 const { t, te } = useI18n()
 
@@ -89,7 +93,9 @@ function domainOf(source: DeepResearchLiveSource): string {
 }
 
 function taskMeta(task: DeepResearchPlannedTask): string[] {
-  return [task.axis, task.category, task.time_window].filter((value): value is string => !!value)
+  return [task.axis, task.category, task.time_window]
+    .map((value) => localizeDeepResearchStructuredValue(value, resolveLabel))
+    .filter((value): value is string => !!value)
 }
 </script>
 

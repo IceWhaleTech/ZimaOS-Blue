@@ -175,3 +175,176 @@ func TestToModelResponsesUsesPinchBenchOnlyCatalogEntriesWithoutAddingBuiltinMod
 		t.Fatalf("pinchbench-only heuristic url = %q, want submission page url", got)
 	}
 }
+
+func TestToModelResponsesMatchesCustomProviderModelsByInferredVendor(t *testing.T) {
+	ClearOfficialProviderCatalog()
+	defer ClearOfficialProviderCatalog()
+
+	openAIScore := 80.3
+	grokScore := 82.4
+	SetOfficialProviderCatalog(officialProviderCatalog{
+		PinchBenchModels: map[string][]officialProviderCatalogModel{
+			"openai": {
+				{
+					ID:              "openai/gpt-5-mini",
+					DisplayName:     "GPT-5 Mini",
+					PinchBenchScore: &openAIScore,
+					PinchBenchURL:   "https://pinchbench.com/submission/openai-gpt-5-mini",
+				},
+			},
+			"x-ai": {
+				{
+					ID:              "x-ai/grok-4.1-fast",
+					DisplayName:     "Grok 4.1 Fast",
+					PinchBenchScore: &grokScore,
+					PinchBenchURL:   "https://pinchbench.com/submission/x-ai-grok-4-1-fast",
+				},
+			},
+		},
+	})
+
+	responses := toModelResponses([]*Model{
+		{
+			ID:          "gpt-5-mini",
+			ProviderID:  "custom-openai",
+			Name:        "gpt-5-mini",
+			DisplayName: "GPT-5 Mini",
+			Enabled:     true,
+		},
+		{
+			ID:          "grok-4.1-fast",
+			ProviderID:  "custom-grok",
+			Name:        "grok-4.1-fast",
+			DisplayName: "Grok 4.1 Fast",
+			Enabled:     true,
+		},
+	}, nil, nil)
+
+	if len(responses) != 2 {
+		t.Fatalf("responses len = %d, want 2", len(responses))
+	}
+
+	if responses[0].PinchBenchScore == nil || *responses[0].PinchBenchScore != openAIScore {
+		t.Fatalf("custom openai heuristic score = %#v, want %v", responses[0].PinchBenchScore, openAIScore)
+	}
+	if got := responses[0].PinchBenchURL; got != "https://pinchbench.com/submission/openai-gpt-5-mini" {
+		t.Fatalf("custom openai heuristic url = %q, want submission page url", got)
+	}
+
+	if responses[1].PinchBenchScore == nil || *responses[1].PinchBenchScore != grokScore {
+		t.Fatalf("custom grok heuristic score = %#v, want %v", responses[1].PinchBenchScore, grokScore)
+	}
+	if got := responses[1].PinchBenchURL; got != "https://pinchbench.com/submission/x-ai-grok-4-1-fast" {
+		t.Fatalf("custom grok heuristic url = %q, want submission page url", got)
+	}
+}
+
+func TestToModelResponsesMatchesPinchBenchScoreWithoutURL(t *testing.T) {
+	ClearOfficialProviderCatalog()
+	defer ClearOfficialProviderCatalog()
+
+	openAIScore := 80.3
+	SetOfficialProviderCatalog(officialProviderCatalog{
+		PinchBenchModels: map[string][]officialProviderCatalogModel{
+			"openai": {
+				{
+					ID:              "openai/gpt-5-mini",
+					DisplayName:     "GPT-5 Mini",
+					PinchBenchScore: &openAIScore,
+				},
+			},
+		},
+	})
+
+	responses := toModelResponses([]*Model{
+		{
+			ID:          "gpt-5-mini",
+			ProviderID:  "custom-openai",
+			Name:        "gpt-5-mini",
+			DisplayName: "GPT-5 Mini",
+			Enabled:     true,
+		},
+	}, nil, nil)
+
+	if len(responses) != 1 {
+		t.Fatalf("responses len = %d, want 1", len(responses))
+	}
+	if responses[0].PinchBenchScore == nil || *responses[0].PinchBenchScore != openAIScore {
+		t.Fatalf("custom openai score-only heuristic score = %#v, want %v", responses[0].PinchBenchScore, openAIScore)
+	}
+	if got := responses[0].PinchBenchURL; got != "" {
+		t.Fatalf("custom openai score-only heuristic url = %q, want empty", got)
+	}
+}
+
+func TestToModelResponsesMatchesCustomProviderModelsByExtendedVendorPrefixes(t *testing.T) {
+	ClearOfficialProviderCatalog()
+	defer ClearOfficialProviderCatalog()
+
+	mistralScore := 82.0
+	stepScore := 85.3
+	xiaomiScore := 84.0
+	SetOfficialProviderCatalog(officialProviderCatalog{
+		PinchBenchModels: map[string][]officialProviderCatalogModel{
+			"mistralai": {
+				{
+					ID:              "mistralai/devstral-2512",
+					DisplayName:     "Devstral 2512",
+					PinchBenchScore: &mistralScore,
+				},
+			},
+			"stepfun": {
+				{
+					ID:              "stepfun/step-3.5-flash",
+					DisplayName:     "Step 3.5 Flash",
+					PinchBenchScore: &stepScore,
+				},
+			},
+			"xiaomi": {
+				{
+					ID:              "xiaomi/mimo-v2-pro",
+					DisplayName:     "Mimo V2 Pro",
+					PinchBenchScore: &xiaomiScore,
+				},
+			},
+		},
+	})
+
+	responses := toModelResponses([]*Model{
+		{
+			ID:          "devstral-2512",
+			ProviderID:  "custom-mistral",
+			Name:        "devstral-2512",
+			DisplayName: "Devstral 2512",
+			Enabled:     true,
+		},
+		{
+			ID:          "step-3.5-flash",
+			ProviderID:  "custom-step",
+			Name:        "step-3.5-flash",
+			DisplayName: "Step 3.5 Flash",
+			Enabled:     true,
+		},
+		{
+			ID:          "mimo-v2-pro",
+			ProviderID:  "custom-xiaomi",
+			Name:        "mimo-v2-pro",
+			DisplayName: "Mimo V2 Pro",
+			Enabled:     true,
+		},
+	}, nil, nil)
+
+	if len(responses) != 3 {
+		t.Fatalf("responses len = %d, want 3", len(responses))
+	}
+
+	if responses[0].PinchBenchScore == nil || *responses[0].PinchBenchScore != mistralScore {
+		t.Fatalf("custom mistral heuristic score = %#v, want %v", responses[0].PinchBenchScore, mistralScore)
+	}
+	if responses[1].PinchBenchScore == nil || *responses[1].PinchBenchScore != stepScore {
+		t.Fatalf("custom step heuristic score = %#v, want %v", responses[1].PinchBenchScore, stepScore)
+	}
+	if responses[2].PinchBenchScore == nil || *responses[2].PinchBenchScore != xiaomiScore {
+		t.Fatalf("custom xiaomi heuristic score = %#v, want %v", responses[2].PinchBenchScore, xiaomiScore)
+	}
+}

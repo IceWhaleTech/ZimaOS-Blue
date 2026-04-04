@@ -12,10 +12,11 @@ const configStoreFile = "providers.json"
 
 // configOnDisk is the serialization format that includes the API key.
 type configOnDisk struct {
-	ID      string `json:"id"`
-	Enabled bool   `json:"enabled"`
-	BaseURL string `json:"base_url,omitempty"`
-	APIKey  string `json:"api_key,omitempty"`
+	ID       string `json:"id"`
+	Enabled  bool   `json:"enabled"`
+	BaseURL  string `json:"base_url,omitempty"`
+	APIKey   string `json:"api_key,omitempty"`
+	Priority *int   `json:"priority,omitempty"`
 }
 
 // MediaConfigStore is the interface for media provider config persistence.
@@ -69,11 +70,13 @@ func (s *ConfigStore) Save(configs map[string]*MediaProviderConfig) error {
 
 	var items []configOnDisk
 	for _, c := range configs {
+		priority := c.Priority
 		items = append(items, configOnDisk{
-			ID:      c.ID,
-			Enabled: c.Enabled,
-			BaseURL: c.BaseURL,
-			APIKey:  c.APIKey,
+			ID:       c.ID,
+			Enabled:  c.Enabled,
+			BaseURL:  c.BaseURL,
+			APIKey:   c.APIKey,
+			Priority: &priority,
 		})
 	}
 

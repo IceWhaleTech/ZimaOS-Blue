@@ -493,15 +493,18 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 	}
 
 	var req struct {
-		BaseURL string `json:"base_url"`
+		BaseURL  *string `json:"base_url"`
+		Priority *int    `json:"priority"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	if req.BaseURL != "" {
-		cfg.BaseURL = req.BaseURL
+
+	updated, err := h.manager.UpdateConfig(id, req.BaseURL, req.Priority)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	return c.JSON(http.StatusOK, cfg)
+	return c.JSON(http.StatusOK, updated)
 }
 
 // EnableProvider handles POST /providers/:id/enable.

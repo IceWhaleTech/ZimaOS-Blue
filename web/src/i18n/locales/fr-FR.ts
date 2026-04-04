@@ -397,6 +397,10 @@ export default mergeHarnessLocale('fr-FR', {
     workspaceTreeLinkedCount: 'Linked',
     workspaceTreeShowAll: 'Show all files',
     workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeShowAllConversations: 'Afficher toutes les conversations',
+    workspaceTreeFocusCurrentConversation: 'Conversation actuelle',
+    workspaceTreeCurrentConversationBadge: 'Conversation actuelle',
+    workspaceTreeRecentGeneratedBadge: 'Nouveau',
     workspaceTreeExpandDir: 'Expand folder',
     workspaceTreeCollapseDir: 'Collapse folder',
     workspaceTreeOpenFailed: 'Unable to open workspace file',
@@ -1916,7 +1920,7 @@ export default mergeHarnessLocale('fr-FR', {
     availableTools: 'Outils disponibles',
     noToolsAvailable: 'Aucun outil disponible',
     externalAgents: {
-      eyebrow: 'Agent externe',
+      eyebrow: 'A2A/ACP',
       title: 'Agent externe',
       newExternalAgent: 'Nouvel agent externe',
       newAcp: 'Nouveau ACP',
@@ -5628,6 +5632,8 @@ export default mergeHarnessLocale('fr-FR', {
     retry: 'Réessayer',
     errorCleared: "L'erreur a été effacée — vous pouvez réessayer",
     advancedOptions: 'Options avancées',
+    collapse: 'Réduire',
+    expand: 'Agrandir',
     apiFormatLabel: 'Format Type',
     apiFormatHint:
       'Defaults to auto-detect, but you can pin a specific API format and the change takes effect immediately.',

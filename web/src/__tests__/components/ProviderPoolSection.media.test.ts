@@ -80,6 +80,8 @@ function createTestI18n() {
         providerPool: {
           description: 'LLM 配置',
           advancedOptions: '高级选项',
+          expand: '展开',
+          collapse: '收起',
           location: '位置',
           locationCloud: '云端',
           locationLocal: '本地',
@@ -153,11 +155,11 @@ function createProvider(type: 'media' | 'custom') {
   }
 }
 
-function createRankedProvider(id: string, priority: number) {
+function createRankedProvider(id: string, priority: number, type: 'custom' | 'media' = 'custom') {
   return {
     id,
     name: id.toUpperCase(),
-    type: 'custom',
+    type,
     location: 'cloud',
     enabled: true,
     status: 'active',
@@ -521,6 +523,8 @@ describe('ProviderPoolSection media verification gating', () => {
     const advancedToggle = wrapper.find('[data-testid="new-provider-advanced-toggle"]')
     expect(advancedToggle.exists()).toBe(true)
     expect(advancedToggle.attributes('aria-expanded')).toBe('false')
+    expect(advancedToggle.text()).toContain('展开')
+    expect(advancedToggle.text()).toContain('云端')
     expect(wrapper.find('[data-testid="new-provider-advanced-content"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="new-provider-format-select"]').exists()).toBe(false)
   })
@@ -540,9 +544,12 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(wrapper.find('[data-testid="new-provider-advanced-toggle"]').attributes('aria-expanded')).toBe(
       'true'
     )
+    expect(wrapper.find('[data-testid="new-provider-advanced-toggle"]').text()).toContain('收起')
     expect(wrapper.find('[data-testid="new-provider-advanced-content"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="new-provider-format-select"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="new-provider-location-options"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('云端')
+    expect(wrapper.text()).toContain('本地')
   })
 
   it('fetches provider account status for supported API-key providers', async () => {
@@ -774,6 +781,39 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(badge.attributes('href')).toBe('https://pinchbench.com/model/openai/openai/gpt-4o-mini')
   })
 
+  it('renders a non-clickable PinchBench badge when only a score is available', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+    mocks.providerPoolStore.models = [
+      {
+        id: 'gpt-5-mini',
+        provider_id: 'openai',
+        name: 'gpt-5-mini',
+        display_name: 'GPT-5 Mini',
+        enabled: true,
+        capabilities: ['chat'],
+        pinchbench_score: 80.3,
+      },
+    ]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const badge = wrapper.find('[data-testid="pinchbench-badge"]')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('80.3')
+    expect(badge.element.tagName).toBe('SPAN')
+    expect(badge.attributes('href')).toBeUndefined()
+  })
+
   it('reuses provider-level PinchBench metadata for key-scoped models via heuristic matching', async () => {
     const provider = {
       ...createProvider('custom'),
@@ -826,6 +866,60 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(badge.exists()).toBe(true)
     expect(badge.text()).toBe('75.0')
     expect(badge.attributes('href')).toBe('https://pinchbench.com/model/openai/openai/gpt-4o-mini')
+  })
+
+  it('reuses score-only PinchBench metadata for key-scoped models via heuristic matching', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      api_keys: [
+        {
+          id: 'key-1',
+          key_hash: 'sk-test-1',
+          usage_count: 0,
+          created_at: '',
+          enabled: true,
+          models: [
+            {
+              id: 'openai/gpt-5-mini',
+              provider_id: 'openai',
+              name: 'openai/gpt-5-mini',
+              display_name: 'openai/gpt-5-mini',
+              enabled: true,
+              capabilities: ['chat'],
+            },
+          ],
+        },
+      ],
+    }
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.selectedProviderId = provider.id
+    mocks.providerPoolStore.selectedProvider = provider
+    mocks.providerPoolStore.models = [
+      {
+        id: 'gpt-5-mini',
+        provider_id: 'openai',
+        name: 'gpt-5-mini',
+        display_name: 'GPT-5 Mini',
+        enabled: true,
+        capabilities: ['chat'],
+        pinchbench_score: 80.3,
+      },
+    ]
+
+    const wrapper = mountSection()
+    const setupState = (wrapper.vm.$ as any).setupState
+    setupState.selectedKeyId = 'key-1'
+    await flushPromises()
+
+    const badge = wrapper.find('[data-testid="pinchbench-badge"]')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('80.3')
+    expect(badge.element.tagName).toBe('SPAN')
+    expect(badge.attributes('href')).toBeUndefined()
   })
 
   it('reorders provider cards during dragover before drop', async () => {
@@ -916,6 +1010,51 @@ describe('ProviderPoolSection media verification gating', () => {
       { id: 'gamma', priority: 100 },
       { id: 'alpha', priority: 75 },
       { id: 'beta', priority: 50 },
+    ])
+  })
+
+  it('persists media provider order with ascending backend priorities', async () => {
+    const providerA = createRankedProvider('alpha-media', 10, 'media')
+    const providerB = createRankedProvider('beta-media', 20, 'media')
+    const providerC = createRankedProvider('gamma-media', 30, 'media')
+    mocks.providerPoolStore.providers = [providerA, providerB, providerC]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const providerCards = () => wrapper.findAll('[draggable="true"]')
+    const findProviderCard = (id: string) =>
+      providerCards().find((card) => card.text().includes(id))
+    const dataTransfer = {
+      effectAllowed: '',
+      dropEffect: '',
+      setData: vi.fn(),
+    }
+
+    await findProviderCard('gamma-media')?.trigger('dragstart', { dataTransfer })
+    await findProviderCard('alpha-media')?.trigger('dragover', { dataTransfer })
+    await findProviderCard('alpha-media')?.trigger('drop', { dataTransfer })
+    await flushPromises()
+
+    expect(mocks.providerPoolStore.updateProviderPriorityLocal).toHaveBeenNthCalledWith(
+      1,
+      'gamma-media',
+      10
+    )
+    expect(mocks.providerPoolStore.updateProviderPriorityLocal).toHaveBeenNthCalledWith(
+      2,
+      'alpha-media',
+      20
+    )
+    expect(mocks.providerPoolStore.updateProviderPriorityLocal).toHaveBeenNthCalledWith(
+      3,
+      'beta-media',
+      30
+    )
+    expect(mocks.providerPoolStore.syncPrioritiesToBackend).toHaveBeenCalledWith([
+      { id: 'gamma-media', priority: 10 },
+      { id: 'alpha-media', priority: 20 },
+      { id: 'beta-media', priority: 30 },
     ])
   })
 })

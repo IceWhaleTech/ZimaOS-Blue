@@ -1,4 +1,5 @@
 import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
+import { deepResearchStructuredBackfills } from './deep-research-structured-backfills'
 import type { LocaleKey } from './locale-catalog'
 
 type LocaleLeaf = string | number | boolean | null
@@ -372,12 +373,14 @@ export function buildLocalePostMergeBackfill(
   messages: Record<string, unknown>
 ): LocaleNode {
   const failoverSource = dashboardCardCopyOverrides[localeKey]
+  const deepResearchStructuredCopy = deepResearchStructuredBackfills[localeKey]
   const commonPatch: LocaleNode = {}
   const execCardPatch: LocaleNode = {}
   const settingsPatch: LocaleNode = {}
   const failoverPatch: LocaleNode = {}
   const failoverChipsPatch: LocaleNode = {}
   const failoverErrorTypesPatch: LocaleNode = {}
+  const chatPatch: LocaleNode = {}
 
   const mirrors: Array<[LocaleNode, string, string | null]> = [
     [
@@ -424,6 +427,20 @@ export function buildLocalePostMergeBackfill(
   const patch: LocaleNode = {}
   if (hasKeys(settingsPatch)) {
     patch.settings = settingsPatch
+  }
+  if (deepResearchStructuredCopy) {
+    chatPatch.deepResearchSourceTypeLaw = deepResearchStructuredCopy.sourceTypeLaw
+    chatPatch.deepResearchSourceTypeFiling = deepResearchStructuredCopy.sourceTypeFiling
+    chatPatch.deepResearchSourceTypePaper = deepResearchStructuredCopy.sourceTypePaper
+    chatPatch.deepResearchSourceTypeWeb = deepResearchStructuredCopy.sourceTypeWeb
+    chatPatch.deepResearchMetaOfficial = deepResearchStructuredCopy.metaOfficial
+    chatPatch.deepResearchMetaFinancial = deepResearchStructuredCopy.metaFinancial
+    chatPatch.deepResearchWorkflowScope = deepResearchStructuredCopy.workflowScope
+    chatPatch.deepResearchWorkflowSources = deepResearchStructuredCopy.workflowSources
+    chatPatch.deepResearchWorkflowExtraction = deepResearchStructuredCopy.workflowExtraction
+  }
+  if (hasKeys(chatPatch)) {
+    patch.chat = chatPatch
   }
   commonPatch.filter = commonFilterLabels[localeKey]
   if (hasKeys(commonPatch)) {

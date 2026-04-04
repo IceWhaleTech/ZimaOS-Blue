@@ -11,7 +11,7 @@ import {
   type ComputedRef,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { ComponentPublicInstance } from 'vue'
 import { useChatStore, type ActiveMessageStreamState, type StreamUIState } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
@@ -33,6 +33,10 @@ import { findLatestTodoChecklistSummary } from '@/utils/todoChecklist'
 import { reportStartupMark } from '@/utils/startupTrace'
 import type { Provider } from '@/api/providerPool'
 import { rafThrottle } from '@/utils/rafThrottle'
+import {
+  getCurrentConversationDeepResearchJobs,
+  hasCancelableChatWork,
+} from '@/utils/chatCancelableWork'
 import { useTaskProjectionActions } from '@/composables/useTaskProjectionActions'
 import { measureChatPerf, recordChatPerfCount } from '@/utils/chatPerf'
 import { scheduleStartupBackgroundTask } from '@/utils/startupBackgroundTask'
@@ -66,6 +70,7 @@ const DeepResearchTaskDock = defineAsyncComponent(
 )
 
 const { t, te, locale } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const toggleAppSidebar = inject<() => void>('toggleAppSidebar', () => {})
 const hasGlobalMobileSidebarToggle = inject<ComputedRef<boolean>>(
@@ -239,6 +244,13 @@ const desktopRoutingMenuAnchorEl = ref<HTMLElement | null>(null)
 const routingMenuFloatingRef = ref<HTMLElement | null>(null)
 const routingMenuPosition = ref({ x: 0, y: 0 })
 
+function normalizeConversationRouteParam(value: unknown): string {
+  if (Array.isArray(value)) {
+    return normalizeConversationRouteParam(value[0] ?? '')
+  }
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 // Context trim indicator
 const showContextTrim = ref(false)
 let contextTrimTimer: ReturnType<typeof setTimeout> | null = null
@@ -300,25 +312,21 @@ const hasBackgroundTasks = computed(() => taskProjections.backgroundTasks.length
 const hasActiveDeepResearchJobs = computed(
   () => Array.isArray(deepResearchJobs.activeJobs) && deepResearchJobs.activeJobs.length > 0
 )
+const currentConversationDeepResearchJobs = computed(() =>
+  getCurrentConversationDeepResearchJobs(deepResearchJobs.activeJobs, chatStore.currentConversationId)
+)
 
-const hasCancelableWork = computed(() => {
-  if (
-    chatStore.streaming ||
-    chatStore.sending ||
-    chatStore.isRecovering ||
-    mediaGen.generating.value
-  ) {
-    return true
-  }
-  if (
-    chatStore.streamUIState.phase === 'recovering' ||
-    chatStore.streamUIState.phase === 'awaiting_confirmation' ||
-    chatStore.streamUIState.phase === 'interrupted'
-  ) {
-    return true
-  }
-  return currentConversationActiveTasks.value.length > 0
-})
+const hasCancelableWork = computed(() =>
+  hasCancelableChatWork({
+    streaming: chatStore.streaming,
+    sending: chatStore.sending,
+    isRecovering: chatStore.isRecovering,
+    mediaGenerating: mediaGen.generating.value,
+    streamUIPhase: chatStore.streamUIState.phase,
+    currentConversationTaskCount: currentConversationActiveTasks.value.length,
+    currentConversationResearchJobCount: currentConversationDeepResearchJobs.value.length,
+  })
+)
 
 const streamStatusRailState = computed<StreamUIState>(() => {
   const base = chatStore.streamUIState
@@ -1510,6 +1518,7 @@ function handleCancel() {
   const hadMediaGen = mediaGen.generating.value
   const mediaType = mediaGen.task.value?.type // 'image' | 'video'
   const runningTasks = [...currentConversationActiveTasks.value]
+  const runningDeepResearchJobs = [...currentConversationDeepResearchJobs.value]
 
   // 1. Cancel chat streaming
   chatStore.cancelStreaming()
@@ -1526,14 +1535,24 @@ function handleCancel() {
     ).catch(() => {})
   }
 
-  // 4. Append a stop notification message if any async task was cancelled
-  if (hadMediaGen || runningTasks.length > 0) {
+  // 4. Cancel running deep research jobs in the current conversation
+  if (runningDeepResearchJobs.length > 0) {
+    void Promise.allSettled(
+      runningDeepResearchJobs.map((job) => deepResearchJobs.cancelJob(job.job_id))
+    ).catch(() => {})
+  }
+
+  // 5. Append a stop notification message if any async task was cancelled
+  if (hadMediaGen || runningTasks.length > 0 || runningDeepResearchJobs.length > 0) {
     const parts: string[] = []
     if (hadMediaGen) {
       parts.push(t(mediaType === 'video' ? 'chat.videoGenStopped' : 'chat.imageGenStopped'))
     }
     for (const task of runningTasks) {
       parts.push(t('chat.agentTaskStopped', { goal: task.title }))
+    }
+    if (runningDeepResearchJobs.length > 0) {
+      parts.push(t('chat.deepResearchActionLoopStopped', 'Research loop stopped'))
     }
 
     const cleaned = chatStore.messages.filter((m) => !m.id.startsWith('streaming-'))
@@ -1557,16 +1576,35 @@ function handleInject(message: string) {
 }
 
 async function handleSelectConversation(id: string) {
+  await chatStore.selectConversation(id)
+  chatStore.resetWarmup()
+  chatInputRef.value?.resetWarmup?.()
   if (isMobile.value) {
     mobileAnimationEnabled.value = true
     pageStack.value.push(id)
     // Keep query param for deep-link restore on reload.
     await router.push({ query: { conversationId: id } })
   }
-  await chatStore.selectConversation(id)
-  chatStore.resetWarmup()
-  chatInputRef.value?.resetWarmup?.()
 }
+
+watch(
+  () => route.query.conversationId,
+  async (value, previous) => {
+    const conversationId = normalizeConversationRouteParam(value)
+    const previousConversationId = normalizeConversationRouteParam(previous)
+    if (conversationId === previousConversationId) return
+
+    if (isMobile.value) {
+      mobileAnimationEnabled.value = true
+      pageStack.value = conversationId ? [conversationId] : []
+    }
+
+    if (!conversationId || conversationId === (chatStore.currentConversationId || '')) return
+    await chatStore.selectConversation(conversationId)
+    chatStore.resetWarmup()
+    chatInputRef.value?.resetWarmup?.()
+  }
+)
 
 async function handleCreateConversation() {
   chatStore.resetWarmup()

@@ -271,41 +271,47 @@ func pinchBenchMetadataForModel(providerID string, model *Model) (*float64, stri
 		return nil, ""
 	}
 
-	officialProviderCatalogState.mu.RLock()
-	catalogModels := append([]officialProviderCatalogModel(nil), officialProviderCatalogState.catalog.Models[providerID]...)
-	catalogModels = append(catalogModels, officialProviderCatalogState.catalog.PinchBenchModels[providerID]...)
-	officialProviderCatalogState.mu.RUnlock()
-
-	if len(catalogModels) == 0 {
-		return nil, ""
-	}
-
-	modelIDKeys := pinchBenchModelKeySet(providerID, model.ID)
-	modelAllKeys := pinchBenchModelKeySet(providerID, model.ID, model.Name, model.DisplayName)
-
 	bestScore := -1
 	var best officialProviderCatalogModel
+	for providerRank, candidateProviderID := range pinchBenchProviderCandidates(providerID, model) {
+		officialProviderCatalogState.mu.RLock()
+		catalogModels := append([]officialProviderCatalogModel(nil), officialProviderCatalogState.catalog.Models[candidateProviderID]...)
+		catalogModels = append(catalogModels, officialProviderCatalogState.catalog.PinchBenchModels[candidateProviderID]...)
+		officialProviderCatalogState.mu.RUnlock()
 
-	for _, candidate := range catalogModels {
-		if candidate.PinchBenchScore == nil || candidate.PinchBenchURL == "" {
+		if len(catalogModels) == 0 {
 			continue
 		}
-		candidateIDKeys := pinchBenchModelKeySet(providerID, candidate.ID)
-		candidateAllKeys := pinchBenchModelKeySet(providerID, candidate.ID, candidate.DisplayName)
 
-		matchScore := 0
-		switch {
-		case pinchBenchSetsIntersect(modelIDKeys, candidateIDKeys):
-			matchScore = 100
-		case pinchBenchSetsIntersect(modelAllKeys, candidateIDKeys):
-			matchScore = 90
-		case pinchBenchSetsIntersect(modelAllKeys, candidateAllKeys):
-			matchScore = 80
-		}
+		modelIDKeys := pinchBenchModelKeySet(candidateProviderID, model.ID)
+		modelAllKeys := pinchBenchModelKeySet(candidateProviderID, model.ID, model.Name, model.DisplayName)
 
-		if matchScore > bestScore {
-			bestScore = matchScore
-			best = candidate
+		for _, candidate := range catalogModels {
+			if candidate.PinchBenchScore == nil {
+				continue
+			}
+			candidateIDKeys := pinchBenchModelKeySet(candidateProviderID, candidate.ID)
+			candidateAllKeys := pinchBenchModelKeySet(candidateProviderID, candidate.ID, candidate.DisplayName)
+
+			matchScore := 0
+			switch {
+			case pinchBenchSetsIntersect(modelIDKeys, candidateIDKeys):
+				matchScore = 100
+			case pinchBenchSetsIntersect(modelAllKeys, candidateIDKeys):
+				matchScore = 90
+			case pinchBenchSetsIntersect(modelAllKeys, candidateAllKeys):
+				matchScore = 80
+			}
+
+			if matchScore <= 0 {
+				continue
+			}
+
+			totalScore := matchScore*10 - providerRank
+			if totalScore > bestScore {
+				bestScore = totalScore
+				best = candidate
+			}
 		}
 	}
 
@@ -313,6 +319,124 @@ func pinchBenchMetadataForModel(providerID string, model *Model) (*float64, stri
 		return nil, ""
 	}
 	return cloneOptionalFloat64(best.PinchBenchScore), best.PinchBenchURL
+}
+
+func pinchBenchProviderCandidates(providerID string, model *Model) []string {
+	seen := make(map[string]struct{})
+	var candidates []string
+	addProvider := func(raw string) {
+		for _, provider := range pinchBenchProviderAliases(raw) {
+			if provider == "" {
+				continue
+			}
+			if _, ok := seen[provider]; ok {
+				continue
+			}
+			seen[provider] = struct{}{}
+			candidates = append(candidates, provider)
+		}
+	}
+
+	addProvider(providerID)
+	providerTokens := pinchBenchTokens(providerID)
+	for i := range providerTokens {
+		for _, inferred := range pinchBenchInferredProviders(providerTokens[i:]) {
+			addProvider(inferred)
+		}
+	}
+	if model == nil {
+		return candidates
+	}
+
+	for _, value := range []string{model.ID, model.Name, model.DisplayName} {
+		tokens := pinchBenchTokens(value)
+		if len(tokens) == 0 {
+			continue
+		}
+		if strings.Contains(value, "/") {
+			addProvider(tokens[0])
+		}
+		for _, inferred := range pinchBenchInferredProviders(tokens) {
+			addProvider(inferred)
+		}
+	}
+
+	return candidates
+}
+
+func pinchBenchProviderAliases(providerID string) []string {
+	providerID = strings.TrimSpace(strings.ToLower(providerID))
+	if providerID == "" {
+		return nil
+	}
+
+	aliases := map[string][]string{
+		"amazon":     {"amazon", "bedrock"},
+		"bedrock":    {"bedrock", "amazon"},
+		"glm":        {"glm", "z-ai"},
+		"grok":       {"grok", "x-ai"},
+		"mistral":    {"mistral", "mistralai"},
+		"mistralai":  {"mistral", "mistralai"},
+		"moonshot":   {"moonshot", "moonshotai"},
+		"moonshotai": {"moonshot", "moonshotai"},
+		"x-ai":       {"grok", "x-ai"},
+		"z-ai":       {"glm", "z-ai"},
+	}
+	if mapped, ok := aliases[providerID]; ok {
+		return mapped
+	}
+	return []string{providerID}
+}
+
+func pinchBenchInferredProviders(tokens []string) []string {
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	joined := strings.Join(tokens, "")
+	switch {
+	case strings.HasPrefix(joined, "openai"):
+		return []string{"openai"}
+	case strings.HasPrefix(joined, "gpt") || strings.HasPrefix(joined, "o1") || strings.HasPrefix(joined, "o3"):
+		return []string{"openai"}
+	case strings.HasPrefix(joined, "anthropic"):
+		return []string{"anthropic"}
+	case strings.HasPrefix(joined, "claude"):
+		return []string{"anthropic"}
+	case strings.HasPrefix(joined, "google"):
+		return []string{"google"}
+	case strings.HasPrefix(joined, "gemini"):
+		return []string{"google"}
+	case strings.HasPrefix(joined, "deepseek"):
+		return []string{"deepseek"}
+	case strings.HasPrefix(joined, "qwen"):
+		return []string{"qwen"}
+	case strings.HasPrefix(joined, "xai") || strings.HasPrefix(joined, "grok"):
+		return []string{"grok", "x-ai"}
+	case strings.HasPrefix(joined, "moonshot") || strings.HasPrefix(joined, "moonshotai") || strings.HasPrefix(joined, "kimi"):
+		return []string{"moonshot", "moonshotai"}
+	case strings.HasPrefix(joined, "zai") || strings.HasPrefix(joined, "glm"):
+		return []string{"glm", "z-ai"}
+	case strings.HasPrefix(joined, "minimax") || strings.HasPrefix(joined, "codexminimax"):
+		return []string{"minimax"}
+	case strings.HasPrefix(joined, "amazon") || strings.HasPrefix(joined, "bedrock") || strings.HasPrefix(joined, "nova"):
+		return []string{"bedrock", "amazon"}
+	case strings.HasPrefix(joined, "openrouter") || strings.HasPrefix(joined, "hunter") || strings.HasPrefix(joined, "healer"):
+		return []string{"openrouter"}
+	case strings.HasPrefix(joined, "mimo") || strings.HasPrefix(joined, "xiaomi"):
+		return []string{"xiaomi"}
+	case strings.HasPrefix(joined, "step") || strings.HasPrefix(joined, "stepfun"):
+		return []string{"stepfun"}
+	case strings.HasPrefix(joined, "nemotron") || strings.HasPrefix(joined, "nvidia"):
+		return []string{"nvidia"}
+	case strings.HasPrefix(joined, "trinity") || strings.HasPrefix(joined, "arcee") || strings.HasPrefix(joined, "arceeai"):
+		return []string{"arcee-ai"}
+	case strings.HasPrefix(joined, "devstral") || strings.HasPrefix(joined, "mistral") || strings.HasPrefix(joined, "mistralai"):
+		return []string{"mistral", "mistralai"}
+	case strings.HasPrefix(joined, "mercury") || strings.HasPrefix(joined, "inception"):
+		return []string{"inception"}
+	}
+	return nil
 }
 
 func pinchBenchSetsIntersect(left, right map[string]struct{}) bool {
