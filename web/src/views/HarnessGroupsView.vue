@@ -89,6 +89,11 @@ type QuickEvalFormState = {
   manifestText: string
 }
 
+type EvalRunDisplayRecord = Pick<
+  HarnessEvalRun,
+  'id' | 'title' | 'trigger_kind' | 'metadata'
+>
+
 const { t, te } = useI18n()
 const router = useRouter()
 const notification = useNotificationStore()
@@ -244,6 +249,68 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, unknown>
+}
+
+function normalizedEnumValue(value?: string | null): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+function isQuickEvalRun(run?: Partial<EvalRunDisplayRecord> | null): boolean {
+  if (!run) return false
+  if (normalizedEnumValue(run.trigger_kind) === 'quick_eval') return true
+  const metadata = asRecord(run.metadata)
+  return Boolean(metadata?.quick_eval)
+}
+
+function evalRunDisplayTitle(
+  run?: Partial<EvalRunDisplayRecord> | null,
+  fallback = ''
+): string {
+  const title = firstNonEmpty(run?.title)
+  if (title) return title
+  if (isQuickEvalRun(run)) {
+    return trp('harness.evalRun.autoCreatedBy', 'Auto-created by {name}', {
+      name: tr('harness.quickEval.title', 'Quick Eval'),
+    })
+  }
+  return firstNonEmpty(run?.id, fallback, tr('common.notAvailable', 'Not available'))
+}
+
+function evalRunTriggerKindLabel(triggerKind?: string | null): string {
+  const normalized = normalizedEnumValue(triggerKind)
+  if (!normalized) return tr('common.notAvailable', 'Not available')
+  if (normalized === 'quick_eval') {
+    return tr('harness.quickEval.title', 'Quick Eval')
+  }
+  return humanizeEnum(normalized)
+}
+
+function runKindLabel(runKind?: string | null): string {
+  const normalized = normalizedEnumValue(runKind)
+  if (!normalized) return tr('common.notAvailable', 'Not available')
+  switch (normalized) {
+    case 'agent_task':
+      return tr('harness.terms.agentTask', 'Agent Task')
+    case 'research':
+      return tr('harness.quickEval.researchLabel', 'Research')
+    default:
+      return humanizeEnum(normalized)
+  }
+}
+
+function profileLabel(profile?: string | null): string {
+  const normalized = normalizedEnumValue(profile)
+  if (!normalized) return tr('common.notAvailable', 'Not available')
+  switch (normalized) {
+    case 'smoke':
+      return tr('harness.quickEval.smokeLabel', 'Smoke')
+    case 'regression':
+      return tr('harness.quickEval.regressionLabel', 'Regression')
+    case 'research':
+      return tr('harness.quickEval.researchLabel', 'Research')
+    default:
+      return humanizeEnum(normalized)
+  }
 }
 
 function cloneRecord(value: unknown): Record<string, unknown> | null {
@@ -2100,7 +2167,7 @@ onUnmounted(() => {
                     <span>{{ tr('harness.dataset.runKind', 'Run kind') }}</span>
                     <select v-model="datasetForm.runKind" name="dataset-run-kind">
                       <option v-for="kind in runKindOptions" :key="kind" :value="kind">
-                        {{ humanizeEnum(kind) }}
+                        {{ runKindLabel(kind) }}
                       </option>
                     </select>
                   </label>
@@ -2262,7 +2329,7 @@ onUnmounted(() => {
                     <span>{{ tr('harness.dataset.runKind', 'Run kind') }}</span>
                     <select v-model="evalSpecForm.runKind" name="eval-spec-run-kind">
                       <option v-for="kind in runKindOptions" :key="kind" :value="kind">
-                        {{ humanizeEnum(kind) }}
+                        {{ runKindLabel(kind) }}
                       </option>
                     </select>
                   </label>
@@ -2344,7 +2411,7 @@ onUnmounted(() => {
                     <select v-model="evalRunForm.baselineEvalRunID" name="eval-run-baseline">
                       <option value="">{{ tr('common.notAvailable', 'Not available') }}</option>
                       <option v-for="run in baselineOptions" :key="run.id" :value="run.id">
-                        {{ run.title || run.id }} · {{ statusLabel(run.status) }}
+                        {{ evalRunDisplayTitle(run) }} · {{ statusLabel(run.status) }}
                       </option>
                     </select>
                   </label>
@@ -2425,7 +2492,7 @@ onUnmounted(() => {
                       </p>
                     </div>
                     <span class="kind-chip is-eval">{{
-                      humanizeEnum(dataset.default_run_kind || 'agent_task')
+                      runKindLabel(dataset.default_run_kind || 'agent_task')
                     }}</span>
                   </div>
 
@@ -2433,7 +2500,11 @@ onUnmounted(() => {
                     <div>
                       <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
                       <dd>
-                        {{ dataset.default_profile || tr('common.notAvailable', 'Not available') }}
+                        {{
+                          dataset.default_profile
+                            ? profileLabel(dataset.default_profile)
+                            : tr('common.notAvailable', 'Not available')
+                        }}
                       </dd>
                     </div>
                     <div>
@@ -2544,12 +2615,16 @@ onUnmounted(() => {
                     <dl class="meta-grid compact">
                       <div>
                         <dt>{{ tr('harness.dataset.runKind', 'Run kind') }}</dt>
-                        <dd>{{ humanizeEnum(spec.run_kind) }}</dd>
+                        <dd>{{ runKindLabel(spec.run_kind) }}</dd>
                       </div>
                       <div>
                         <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
                         <dd>
-                          {{ spec.profile || tr('harness.group.unprofiled', 'Unprofiled item') }}
+                          {{
+                            spec.profile
+                              ? profileLabel(spec.profile)
+                              : tr('harness.group.unprofiled', 'Unprofiled item')
+                          }}
                         </dd>
                       </div>
                       <div>
@@ -2627,10 +2702,10 @@ onUnmounted(() => {
                   @keydown.enter.prevent="loadEvalRunReport(run.id)"
                   @keydown.space.prevent="loadEvalRunReport(run.id)"
                 >
-                  <div class="list-card-main eval-run-card-main">
-                    <div class="entity-header compact">
+                    <div class="list-card-main eval-run-card-main">
+                      <div class="entity-header compact">
                       <div>
-                        <h3>{{ run.title || run.id }}</h3>
+                        <h3>{{ evalRunDisplayTitle(run) }}</h3>
                         <p>
                           {{ evalSpecByID[run.eval_spec_id]?.name || run.eval_spec_id }}
                           <span class="dot-separator">·</span>
@@ -2657,9 +2732,7 @@ onUnmounted(() => {
                       </div>
                       <div class="run-metric-pill">
                         <span>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</span>
-                        <strong>{{
-                          run.trigger_kind || tr('common.notAvailable', 'Not available')
-                        }}</strong>
+                        <strong>{{ evalRunTriggerKindLabel(run.trigger_kind) }}</strong>
                       </div>
                       <div class="run-metric-pill">
                         <span>{{ tr('harness.group.linkedRuns', 'Linked runs') }}</span>
@@ -2729,7 +2802,7 @@ onUnmounted(() => {
                         {{ tr('harness.evalRun.report', 'Linked report') }}
                       </p>
                       <h2>
-                        {{ selectedReportRun?.title || selectedReportRun?.id || selectedEvalRunID }}
+                        {{ evalRunDisplayTitle(selectedReportRun, selectedEvalRunID) }}
                       </h2>
                       <p class="section-description">
                         {{
@@ -2753,7 +2826,7 @@ onUnmounted(() => {
                           "
                         >
                           {{
-                            humanizeEnum(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task')
+                            runKindLabel(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task')
                           }}
                         </span>
                         <span class="version-chip">
@@ -2903,12 +2976,7 @@ onUnmounted(() => {
                         </div>
                         <div>
                           <dt>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</dt>
-                          <dd>
-                            {{
-                              selectedReportRun?.trigger_kind ||
-                              tr('common.notAvailable', 'Not available')
-                            }}
-                          </dd>
+                          <dd>{{ evalRunTriggerKindLabel(selectedReportRun?.trigger_kind) }}</dd>
                         </div>
                         <div>
                           <dt>{{ tr('harness.evalRun.triggerRef', 'Trigger ref') }}</dt>
@@ -2937,11 +3005,7 @@ onUnmounted(() => {
                         <div>
                           <dt>{{ tr('harness.dataset.runKind', 'Run kind') }}</dt>
                           <dd>
-                            {{
-                              humanizeEnum(
-                                selectedEvalRunReport.eval_spec?.run_kind || 'agent_task'
-                              )
-                            }}
+                            {{ runKindLabel(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task') }}
                           </dd>
                         </div>
                         <div>
@@ -2967,8 +3031,11 @@ onUnmounted(() => {
                           <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
                           <dd>
                             {{
-                              selectedEvalRunReport.eval_spec?.profile ||
-                              tr('common.notAvailable', 'Not available')
+                              (selectedEvalRunReport.eval_spec?.profile
+                                ? profileLabel(selectedEvalRunReport.eval_spec?.profile)
+                                :
+                                tr('common.notAvailable', 'Not available')
+                              )
                             }}
                           </dd>
                         </div>
@@ -3268,7 +3335,7 @@ onUnmounted(() => {
                               :key="run.id"
                               :value="run.id"
                             >
-                              {{ run.title || run.id }} · {{ statusLabel(run.status) }}
+                              {{ evalRunDisplayTitle(run) }} · {{ statusLabel(run.status) }}
                             </option>
                           </select>
                           <small class="field-hint">

@@ -203,6 +203,14 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Harness kiértékelési folyamat**
+```
+Quick Eval / Harness API → Kiértékelési vezérlő → Futási csoport dispatcher
+  → Agent task vagy eval driver → Eszközök + Workspace + Artifacts
+  → Scorecards / Reports / Budget+Execution+Selector gates
+  → Cutover readiness / jelölti döntés
+```
+
 
 ### Csomagtérkép (`server/internal/`)
 

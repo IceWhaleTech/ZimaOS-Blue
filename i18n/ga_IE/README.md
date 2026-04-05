@@ -203,6 +203,14 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Sreabhadh Meastóireachta Harness**
+```
+Quick Eval / Harness API → Rialtóir meastóireachta → Seoltóir grúpa rithe
+  → Tasc gníomhaire nó eval driver → Uirlisí + Workspace + Artifacts
+  → Scorecards / Reports / Budget+Execution+Selector gates
+  → Cutover readiness / cinneadh iarrthóra
+```
+
 
 ### Mapa Pacáistí (`server/internal/`)
 

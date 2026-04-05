@@ -4,6 +4,18 @@ import type { LocaleKey } from './locale-catalog'
 
 type LocaleLeaf = string | number | boolean | null
 type LocaleNode = { [key: string]: LocaleLeaf | LocaleNode }
+type HarnessTermGlossary = {
+  preset: string
+  dataset: string
+  version: string
+  spec: string
+  run: string
+  baseline: string
+  group: string
+  scorecard: string
+  agentTask: string
+  prepare: string
+}
 
 const execCardNoCommandLabels: Partial<Record<LocaleKey, string>> = {
   'ca-ES': 'Sense ordre',
@@ -339,14 +351,18 @@ function isPlainObject(value: unknown): value is LocaleNode {
 }
 
 function getString(root: unknown, path: string): string | null {
-  const value = path.split('.').reduce<unknown>((current, segment) => {
+  const value = getValue(root, path)
+
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function getValue(root: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, segment) => {
     if (isPlainObject(current)) {
       return current[segment]
     }
     return undefined
   }, root)
-
-  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function hasKeys(node: LocaleNode): boolean {
@@ -368,6 +384,88 @@ function mergeLocaleNodes(base: LocaleNode, patch: LocaleNode): LocaleNode {
   return merged
 }
 
+function buildHarnessTermGlossary(messages: Record<string, unknown>): HarnessTermGlossary | null {
+  const preset = getString(messages, 'harness.terms.preset')
+  const dataset = getString(messages, 'harness.terms.dataset')
+  const version = getString(messages, 'harness.terms.version')
+  const spec = getString(messages, 'harness.terms.spec')
+  const run = getString(messages, 'harness.terms.run')
+  const baseline = getString(messages, 'harness.terms.baseline')
+  const group = getString(messages, 'harness.terms.group')
+  const scorecard = getString(messages, 'harness.terms.scorecard')
+  const agentTask = getString(messages, 'harness.terms.agentTask')
+  const prepare = getString(messages, 'harness.terms.prepare')
+
+  if (
+    !preset ||
+    !dataset ||
+    !version ||
+    !spec ||
+    !run ||
+    !baseline ||
+    !group ||
+    !scorecard ||
+    !agentTask ||
+    !prepare
+  ) {
+    return null
+  }
+
+  return {
+    preset,
+    dataset,
+    version,
+    spec,
+    run,
+    baseline,
+    group,
+    scorecard,
+    agentTask,
+    prepare,
+  }
+}
+
+function replaceHarnessTermsInText(text: string, glossary: HarnessTermGlossary): string {
+  const replacements: Array<[RegExp, string]> = [
+    [/\bAgent Task\b|\bagent_task\b/g, glossary.agentTask],
+    [/\bPrepare\b/g, glossary.prepare],
+    [/\bpresets?\b/gi, glossary.preset],
+    [/\bdatasets?\b/gi, glossary.dataset],
+    [/\bversions?\b/gi, glossary.version],
+    [/\bspecs?\b/gi, glossary.spec],
+    [/\bruns?\b/gi, glossary.run],
+    [/\bbaselines?\b/gi, glossary.baseline],
+    [/\bgroups?\b/gi, glossary.group],
+    [/\bscorecards?\b/gi, glossary.scorecard],
+  ]
+
+  return replacements.reduce(
+    (current, [pattern, replacement]) => current.replace(pattern, replacement),
+    text
+  )
+}
+
+function buildStringReplacementPatch(
+  value: unknown,
+  replace: (text: string) => string
+): LocaleNode | LocaleLeaf | null {
+  if (typeof value === 'string') {
+    const replaced = replace(value)
+    return replaced === value ? null : replaced
+  }
+  if (!isPlainObject(value)) return null
+
+  const patch: LocaleNode = {}
+  for (const [key, child] of Object.entries(value)) {
+    const childPatch = buildStringReplacementPatch(child, replace)
+    if (childPatch !== null) {
+      patch[key] = childPatch
+    }
+  }
+
+  return hasKeys(patch) ? patch : null
+}
+
 export function buildLocalePostMergeBackfill(
   localeKey: LocaleKey,
   messages: Record<string, unknown>
@@ -381,6 +479,7 @@ export function buildLocalePostMergeBackfill(
   const failoverChipsPatch: LocaleNode = {}
   const failoverErrorTypesPatch: LocaleNode = {}
   const chatPatch: LocaleNode = {}
+  const harnessTermGlossary = buildHarnessTermGlossary(messages)
 
   const mirrors: Array<[LocaleNode, string, string | null]> = [
     [
@@ -423,8 +522,25 @@ export function buildLocalePostMergeBackfill(
   if (hasKeys(failoverPatch)) {
     settingsPatch.failover = failoverPatch
   }
+  if (harnessTermGlossary) {
+    const agentcoreRunnerPatch = buildStringReplacementPatch(
+      getValue(messages, 'settings.agentcoreRunner'),
+      (text) => replaceHarnessTermsInText(text, harnessTermGlossary)
+    )
+    if (isPlainObject(agentcoreRunnerPatch) && hasKeys(agentcoreRunnerPatch)) {
+      settingsPatch.agentcoreRunner = agentcoreRunnerPatch
+    }
+  }
 
   const patch: LocaleNode = {}
+  if (harnessTermGlossary) {
+    const harnessPatch = buildStringReplacementPatch(getValue(messages, 'harness'), (text) =>
+      replaceHarnessTermsInText(text, harnessTermGlossary)
+    )
+    if (isPlainObject(harnessPatch) && hasKeys(harnessPatch)) {
+      patch.harness = harnessPatch
+    }
+  }
   if (hasKeys(settingsPatch)) {
     patch.settings = settingsPatch
   }

@@ -753,13 +753,13 @@ async function mountHarnessGroupDetail(width = 1280) {
   return wrapper
 }
 
-async function mountHarnessGroupsView() {
+async function mountHarnessGroupsView(i18n = createTestI18n()) {
   routeMock.path = '/automation/harness'
   routeMock.params = { id: '' }
   const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
   const wrapper = mount(HarnessGroupsView, {
     global: {
-      plugins: [createTestI18n()],
+      plugins: [i18n],
       stubs: {
         AgentcoreRunnerPanel: {
           template: '<div data-testid="agentcore-runner-card" class="agentcore-runner-panel-stub" />',
@@ -995,6 +995,215 @@ describe('Harness views', () => {
     expect(wrapper.text()).toContain('community/forum/contextpack-recipes')
     expect(wrapper.text()).toContain('official')
     expect(wrapper.text()).toContain('web_query')
+  })
+
+  it('localizes quick eval trigger labels and auto-created run titles', async () => {
+    listGroupsMock.mockResolvedValue({ data: [] })
+    listDatasetsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-1',
+          name: 'Quick Eval Dataset',
+          active_version_id: 'dataset-version-1',
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listDatasetVersionsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-version-1',
+          dataset_id: 'dataset-1',
+          version: 'v1',
+          item_count: 3,
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listEvalSpecsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-spec-1',
+          dataset_id: 'dataset-1',
+          dataset_version_id: 'dataset-version-1',
+          name: 'Quick Eval Spec',
+          run_kind: 'agent_task',
+          profile: 'smoke',
+          scoring_config: {
+            mode: 'rule',
+            pass_threshold: 0.7,
+          },
+          created_at: '2026-03-20T09:10:00Z',
+          updated_at: '2026-03-20T09:15:00Z',
+        },
+      ],
+    })
+    listEvalRunsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-run-quick',
+          eval_spec_id: 'eval-spec-1',
+          group_id: 'group-quick',
+          dataset_version_id: 'dataset-version-1',
+          title: '',
+          status: 'running',
+          trigger_kind: 'quick_eval',
+          metadata: {
+            quick_eval: true,
+          },
+          summary: {
+            pass_rate: 1,
+            overall_score: 0.92,
+          },
+          created_at: '2026-03-20T10:00:00Z',
+          updated_at: '2026-03-20T10:05:00Z',
+        },
+      ],
+    })
+    getEvalRunReportMock.mockResolvedValue({
+      data: createEvalRunReport({
+        eval_run: {
+          id: 'eval-run-quick',
+          group_id: 'group-quick',
+          dataset_version_id: 'dataset-version-1',
+          title: '',
+          trigger_kind: 'quick_eval',
+          metadata: {
+            quick_eval: true,
+          },
+        },
+      }),
+    })
+
+    const wrapper = await mountHarnessGroupsView()
+
+    expect(wrapper.text()).toContain('Auto-created by Quick Eval')
+    expect(wrapper.text()).not.toContain('quick_eval')
+
+    await wrapper.get('.eval-run-card').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Auto-created by Quick Eval')
+    expect(wrapper.text()).toContain('Trigger kind')
+    expect(wrapper.text()).not.toContain('quick_eval')
+  })
+
+  it('localizes run kind and profile values instead of rendering raw enums', async () => {
+    const i18n = createTestI18n()
+    i18n.global.mergeLocaleMessage('en-US', {
+      harness: {
+        quickEval: {
+          smokeLabel: 'Localized Smoke',
+          regressionLabel: 'Localized Regression',
+          researchLabel: 'Localized Research',
+        },
+        terms: {
+          agentTask: 'Localized Agent Task',
+        },
+      },
+    })
+
+    listGroupsMock.mockResolvedValue({ data: [] })
+    listDatasetsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-1',
+          name: 'Localized Dataset',
+          default_run_kind: 'agent_task',
+          default_profile: 'smoke',
+          active_version_id: 'dataset-version-1',
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listDatasetVersionsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-version-1',
+          dataset_id: 'dataset-1',
+          version: 'v1',
+          item_count: 3,
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listEvalSpecsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-spec-1',
+          dataset_id: 'dataset-1',
+          dataset_version_id: 'dataset-version-1',
+          name: 'Localized Spec',
+          run_kind: 'agent_task',
+          profile: 'regression',
+          scoring_config: {
+            mode: 'rule',
+            pass_threshold: 0.7,
+          },
+          created_at: '2026-03-20T09:10:00Z',
+          updated_at: '2026-03-20T09:15:00Z',
+        },
+      ],
+    })
+    listEvalRunsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-run-1',
+          eval_spec_id: 'eval-spec-1',
+          group_id: 'group-1',
+          dataset_version_id: 'dataset-version-1',
+          title: 'Localized Eval Run',
+          status: 'running',
+          trigger_kind: 'manual',
+          summary: {
+            pass_rate: 0.75,
+            overall_score: 0.61,
+          },
+          created_at: '2026-03-20T10:00:00Z',
+          updated_at: '2026-03-20T10:05:00Z',
+        },
+      ],
+    })
+    getEvalRunReportMock.mockResolvedValue({
+      data: createEvalRunReport({
+        eval_spec: {
+          id: 'eval-spec-1',
+          name: 'Localized Spec',
+          run_kind: 'agent_task',
+          profile: 'regression',
+        },
+        dataset: {
+          id: 'dataset-1',
+          name: 'Localized Dataset',
+          active_version_id: 'dataset-version-1',
+        },
+        dataset_version: {
+          id: 'dataset-version-1',
+          dataset_id: 'dataset-1',
+          version: 'v1',
+          item_count: 3,
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      }),
+    })
+
+    const wrapper = await mountHarnessGroupsView(i18n)
+
+    expect(wrapper.text()).toContain('Localized Agent Task')
+    expect(wrapper.text()).toContain('Localized Smoke')
+    expect(wrapper.text()).not.toContain('agent_task')
+    expect(wrapper.text()).not.toContain('Profilesmoke')
+
+    await wrapper.get('.eval-run-card').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Localized Regression')
+    expect(wrapper.text()).not.toContain('Profileregression')
   })
 
   it('renders context pack deltas inside the comparison report', async () => {

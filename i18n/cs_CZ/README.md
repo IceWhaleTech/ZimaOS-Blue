@@ -229,6 +229,14 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Tok vyhodnocení Harnessu**
+```
+Quick Eval / Harness API → Řadič vyhodnocení → Dispečer skupin běhů
+  → Agent task nebo eval driver → Nástroje + Workspace + Artifacts
+  → Scorecards / Reports / Budget+Execution+Selector gates
+  → Cutover readiness / rozhodnutí o kandidátovi
+```
+
 
 ## Jak používat
 

@@ -206,6 +206,14 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Harness മൂല്യനിർണയ പ്രവാഹം**
+```
+Quick Eval / Harness API → മൂല്യനിർണയ കണ്ട്രോളർ → റൺ ഗ്രൂപ്പ് ഡിസ്പാച്ചർ
+  → Agent Task അല്ലെങ്കിൽ Eval Driver → Tools + Workspace + Artifacts
+  → Scorecards / Reports / Budget+Execution+Selector Gates
+  → Cutover Readiness / Candidate Decision
+```
+
 
 ### പാക്കേജ് മാപ്പ് (`server/internal/`)
 

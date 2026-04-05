@@ -227,6 +227,14 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Harness-evaluatiestroom**
+```
+Quick Eval / Harness API → Evaluatiecontroller → Dispatcher voor run-groepen
+  → Agenttaak of eval-driver → Tools + Workspace + Artifacts
+  → Scorecards / Reports / Budget+Execution+Selector Gates
+  → Cutover Readiness / Kandidaatbeslissing
+```
+
 
 ## Gebruik
 

@@ -203,6 +203,14 @@ Telegram/Discord/... → Gestor de canals → Comprovació d'autoresposta
 WebSocket àudio → STT (Whisper) → Processament LLM → TTS (eSpeak/Edge) → WebSocket àudio
 ```
 
+**Flux d'avaluació del Harness**
+```
+Quick Eval / Harness API → Controlador d'avaluació → Dispatcher de grups d'execució
+  → Tasca d'agent o controlador d'avaluació → Eines + Workspace + Artifacts
+  → Scorecards / Reports / Gates de pressupost+execució+selector
+  → Cutover Readiness / Decisió del candidat
+```
+
 
 ### Mapa de paquets (`server/internal/`)
 

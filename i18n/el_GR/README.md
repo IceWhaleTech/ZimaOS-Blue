@@ -203,6 +203,14 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Ροή αξιολόγησης Harness**
+```
+Quick Eval / Harness API → Ελεγκτής αξιολόγησης → Dispatcher ομάδων εκτέλεσης
+  → Εργασία agent ή eval driver → Εργαλεία + Workspace + Artifacts
+  → Scorecards / Reports / Gates προϋπολογισμού+εκτέλεσης+selector
+  → Cutover Readiness / Απόφαση υποψηφίου
+```
+
 
 ### Χάρτης Πακέτων (`server/internal/`)
 

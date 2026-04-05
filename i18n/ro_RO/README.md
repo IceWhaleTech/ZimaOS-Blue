@@ -201,6 +201,14 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Flux de evaluare Harness**
+```
+Quick Eval / Harness API → Controler de evaluare → Dispatcher pentru grupuri de rulare
+  → Sarcină agent sau eval driver → Instrumente + Workspace + Artifacts
+  → Scorecards / Reports / Budget+Execution+Selector Gates
+  → Cutover Readiness / Decizia candidatului
+```
+
 
 ### Harta pachetelor (`server/internal/`)
 

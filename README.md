@@ -207,6 +207,14 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Harness Evaluation Flow**
+```
+Quick Eval / Harness API → Eval Controller → Run Group Dispatcher
+  → Agent Task or Eval Driver → Tools + Workspace + Artifacts
+  → Scorecards / Reports / Budget+Execution+Selector Gates
+  → Cutover Readiness / Candidate Decision
+```
+
 ## How to Use
 
 ![](./docs/assets/handcraft.png)
