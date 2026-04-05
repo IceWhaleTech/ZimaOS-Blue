@@ -22596,6 +22596,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var awaitingPostToolSummary bool        // true after a real tool round until a user-facing summary arrives
 	var researchFailureWriteRecoveryPending bool
 	var researchFailureWriteRecoveryRetries int
+	var toolLoopRecoveryUsed bool
+	var workspaceArtifactWriteRecoveryUsed bool
 	var prevToollessAutoContinueSig string // signature of previous toolless auto-continue round
 	var consecutiveToollessAutoContinueDups int
 	var deepSearchForcePending bool
@@ -23946,33 +23948,7 @@ STREAM_LOOP:
 				researchFailureWriteRecoveryPending = false
 				researchFailureWriteRecoveryRetries = 0
 			}
-			if detection := streamLoopDetector.Observe(toolLoopSignature(streamToolCalls), assistantContextContent, toolSummaries, writeTargets...); detection.Abort {
-				h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
-					"mode":        "stream",
-					"reason":      detection.Reason,
-					"provider":    strings.TrimSpace(actualProvider),
-					"provider_id": strings.TrimSpace(actualProviderID),
-					"model":       strings.TrimSpace(actualModel),
-				})
-				abortMsg := buildLocalizedToolLoopAbortMessage(streamLang, detection.Reason, detection.Signature)
-				if !strings.Contains(fullContent, abortMsg) {
-					fullContent += "\n\n" + abortMsg
-					totalDeltaChars += len(abortMsg)
-					emitSSE(map[string]interface{}{
-						"delta":     "\n\n" + abortMsg,
-						"done":      false,
-						"stream_id": streamID,
-					})
-					persistSyntheticStreamingDraft()
-				}
-				logger.Warn().
-					Int("tool_round", toolRound).
-					Str("reason", detection.Reason).
-					Int("streak", detection.Streak).
-					Str("signature", detection.Signature).
-					Msg("[chat] stream: aborting tool loop after repeated no-progress pattern")
-				break STREAM_LOOP
-			}
+			loopDetection := streamLoopDetector.Observe(toolLoopSignature(streamToolCalls), assistantContextContent, toolSummaries, writeTargets...)
 
 			// Build assistant message with compacted tool-call context for follow-up rounds.
 			assistantMsg := compactAssistantToolContextForLLM(llm.Message{
@@ -24057,6 +24033,94 @@ STREAM_LOOP:
 				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
 				researchFailureWriteRecoveryPending = true
 				researchFailureWriteRecoveryRetries = 0
+			}
+			if loopDetection.Abort {
+				if !toolLoopRecoveryUsed {
+					toolLoopRecoveryUsed = true
+					chatReq.Messages = append(chatReq.Messages, llm.Message{
+						Role:    llm.RoleUser,
+						Content: buildLocalizedToolLoopRecoveryNudge(streamLang, loopDetection.Reason, loopDetection.Signature),
+					})
+					if nudge := buildToolLoopArtifactRecoveryNudge(routingMessage, loopDetection.Reason, loopDetection.Signature); nudge != "" {
+						chatReq.Messages = append(chatReq.Messages, llm.Message{
+							Role:    llm.RoleUser,
+							Content: nudge,
+						})
+						chatReq.Tools = buildToolLoopArtifactRecoveryTools(chatReq.Tools, routingMessage, loopDetection.Signature)
+					}
+					logger.Warn().
+						Int("tool_round", toolRound).
+						Str("reason", loopDetection.Reason).
+						Int("streak", loopDetection.Streak).
+						Str("signature", loopDetection.Signature).
+						Msg("[chat] stream: tool loop detected; injecting recovery nudge before abort")
+				} else if !workspaceArtifactWriteRecoveryUsed {
+					if retryMessages := buildWorkspaceArtifactRecoveryRetryMessages(routingMessage, loopDetection.Signature); len(retryMessages) > 0 {
+						workspaceArtifactWriteRecoveryUsed = true
+						chatReq.Messages = retryMessages
+						chatReq.Tools = buildWorkspaceArtifactWriteRecoveryTools(buildToolLoopArtifactRecoveryTools(chatReq.Tools, routingMessage, loopDetection.Signature), routingMessage)
+						chatReq.PreviousResponseID = ""
+						ctx = proxy.WithDisableResponsesContinuation(ctx)
+						logger.Warn().
+							Int("tool_round", toolRound).
+							Str("reason", loopDetection.Reason).
+							Int("streak", loopDetection.Streak).
+							Str("signature", loopDetection.Signature).
+							Msg("[chat] stream: artifact loop repeated; restarting with write-focused recovery round")
+					} else {
+						h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
+							"mode":        "stream",
+							"reason":      loopDetection.Reason,
+							"provider":    strings.TrimSpace(actualProvider),
+							"provider_id": strings.TrimSpace(actualProviderID),
+							"model":       strings.TrimSpace(actualModel),
+						})
+						abortMsg := buildLocalizedToolLoopAbortMessage(streamLang, loopDetection.Reason, loopDetection.Signature)
+						if !strings.Contains(fullContent, abortMsg) {
+							fullContent += "\n\n" + abortMsg
+							totalDeltaChars += len(abortMsg)
+							emitSSE(map[string]interface{}{
+								"delta":     "\n\n" + abortMsg,
+								"done":      false,
+								"stream_id": streamID,
+							})
+							persistSyntheticStreamingDraft()
+						}
+						logger.Warn().
+							Int("tool_round", toolRound).
+							Str("reason", loopDetection.Reason).
+							Int("streak", loopDetection.Streak).
+							Str("signature", loopDetection.Signature).
+							Msg("[chat] stream: aborting tool loop after repeated no-progress pattern")
+						break STREAM_LOOP
+					}
+				} else {
+					h.recordChatRuntimeCounter("tool_loop_aborted_total", map[string]string{
+						"mode":        "stream",
+						"reason":      loopDetection.Reason,
+						"provider":    strings.TrimSpace(actualProvider),
+						"provider_id": strings.TrimSpace(actualProviderID),
+						"model":       strings.TrimSpace(actualModel),
+					})
+					abortMsg := buildLocalizedToolLoopAbortMessage(streamLang, loopDetection.Reason, loopDetection.Signature)
+					if !strings.Contains(fullContent, abortMsg) {
+						fullContent += "\n\n" + abortMsg
+						totalDeltaChars += len(abortMsg)
+						emitSSE(map[string]interface{}{
+							"delta":     "\n\n" + abortMsg,
+							"done":      false,
+							"stream_id": streamID,
+						})
+						persistSyntheticStreamingDraft()
+					}
+					logger.Warn().
+						Int("tool_round", toolRound).
+						Str("reason", loopDetection.Reason).
+						Int("streak", loopDetection.Streak).
+						Str("signature", loopDetection.Signature).
+						Msg("[chat] stream: aborting tool loop after repeated no-progress pattern")
+					break STREAM_LOOP
+				}
 			}
 
 			// Persist this round's content as a separate message and notify frontend.

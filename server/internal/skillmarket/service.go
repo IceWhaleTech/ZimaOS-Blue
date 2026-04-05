@@ -2687,6 +2687,9 @@ func normalizeDiscoveredSkillSource(req ingestRequest) (string, string, string) 
 	if strings.TrimSpace(req.SourceGroup) == GitHubAwesomeSkillsSourceGroup {
 		return GitHubAwesomeSkillsSourceID, GitHubAwesomeSkillsSourceName, GitHubAwesomeSkillsSourceGroup
 	}
+	if strings.TrimSpace(req.OriginSourceID) != "" && isGitHubHostedReference(req.RepoURL, req.Homepage, req.DownloadURL, req.SourceURL) {
+		return "github", "GitHub", "github"
+	}
 	return req.SourceID, req.SourceName, req.SourceGroup
 }
 
@@ -2706,6 +2709,31 @@ func isVercelSkillsReference(values ...string) bool {
 			return true
 		}
 		if strings.Contains(normalized, "cdn.jsdelivr.net/gh/vercel-labs/skills@") {
+			return true
+		}
+	}
+	return false
+}
+
+func isGitHubHostedReference(values ...string) bool {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		normalized := strings.ToLower(trimmed)
+		if normalized == "" {
+			continue
+		}
+		if skillbundle.IsGitHubRepoURL(trimmed) {
+			return true
+		}
+		if githubBlobPattern.MatchString(trimmed) || githubRawPattern.MatchString(trimmed) {
+			return true
+		}
+		if _, _, _, _, ok := skillbundle.ParseGitHubTreeURL(trimmed); ok {
+			return true
+		}
+		if strings.Contains(normalized, "raw.gitmirror.com/") ||
+			strings.Contains(normalized, "cdn.jsdelivr.net/gh/") ||
+			strings.Contains(normalized, "ghproxy.com/https://raw.githubusercontent.com/") {
 			return true
 		}
 	}

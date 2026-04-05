@@ -484,7 +484,7 @@ describe('ChatView provider gating', () => {
     expect(wrapper.find('[data-testid="chat-provider-guidance-routing"]').exists()).toBe(false)
   })
 
-  it('blocks send when configured providers are unavailable and restores the draft', async () => {
+  it('allows send to continue when configured providers are unavailable and keeps inline provider attention guidance', async () => {
     mocks.providerPoolStore.providers = [
       {
         id: 'openai',
@@ -510,8 +510,9 @@ describe('ChatView provider gating', () => {
     await flushPromises()
 
     expect(mocks.providerPoolStore.fetchProviders).not.toHaveBeenCalled()
-    expect(mocks.chatStore.sendMessage).not.toHaveBeenCalled()
-    expect(mocks.chatInputSetInput).toHaveBeenCalledWith('need provider')
+    expect(mocks.mediaGenerate.classify).toHaveBeenCalledWith('need provider', false, 0, 'en-US', [])
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith('need provider', [])
+    expect(mocks.chatInputSetInput).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('No AI provider is available right now')
     expect(wrapper.text()).toContain('Review Providers')
     expect(wrapper.get('[data-testid="chat-provider-guidance-card"]').text()).toContain(
@@ -520,6 +521,32 @@ describe('ChatView provider gating', () => {
     expect(wrapper.text()).toContain('openai')
     expect(wrapper.text()).toContain(
       'Authentication failed. Recheck the API key or OAuth connection.'
+    )
+  })
+
+  it('still reaches media intent classification when configured providers are unavailable', async () => {
+    mocks.providerPoolStore.providers = [
+      {
+        id: 'openai',
+        type: 'builtin',
+        enabled: true,
+        status: 'error',
+        last_error: 'auth_error:invalid_api_key',
+      } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.enabledProviders = [...mocks.providerPoolStore.providers]
+    mocks.providerPoolStore.activeProviders = []
+    mocks.mediaGenerate.classify.mockResolvedValueOnce(true)
+
+    const wrapper = await mountChatView()
+    wrapper.findComponent({ name: 'ChatInput' }).vm.$emit('send', 'make a poster', [])
+    await flushPromises()
+
+    expect(mocks.mediaGenerate.classify).toHaveBeenCalledWith('make a poster', false, 0, 'en-US', [])
+    expect(mocks.chatStore.sendMessage).not.toHaveBeenCalled()
+    expect(mocks.chatInputSetInput).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="chat-provider-guidance-card"]').text()).toContain(
+      'No AI provider is available right now'
     )
   })
 

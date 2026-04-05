@@ -663,6 +663,10 @@ func (j *htmlCatalogDiscoverJob) preparePageRecords(ctx context.Context, page *c
 	if hadInstallable {
 		return records, failures, nil
 	}
+	if looksLikeCatalogPlaceholderPage(page) {
+		j.addWarning(fmt.Sprintf("skipped placeholder catalog page: %s", page.URL))
+		return nil, failures, nil
+	}
 	record, err := j.svc.prepareCatalogOnlySkillRecord(ctx, j.source, page)
 	if err != nil {
 		return nil, failures + 1, nil

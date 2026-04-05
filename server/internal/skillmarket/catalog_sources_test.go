@@ -387,10 +387,82 @@ Write and execute tests for web applications using tools like Playwright.
 		if item.Skill.InstallType != InstallTypeGitRepo {
 			t.Fatalf("install type = %q, want %q", item.Skill.InstallType, InstallTypeGitRepo)
 		}
+		if item.Skill.SourceGroup != "github" {
+			t.Fatalf("source group = %q, want github", item.Skill.SourceGroup)
+		}
 		return
 	}
 
 	t.Fatal("expected Webapp Testing to be indexed as installable")
+}
+
+func TestDiscoverFromHTMLCatalogSkipsMaintenancePlaceholderPages(t *testing.T) {
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/marketplace", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+<html>
+  <head>
+    <title>SkillStack - Under Construction | SkillStack</title>
+    <meta name="description" content="Stop giving away your best agents. Package, validate, and sell your Claude Code skills.">
+  </head>
+  <body>
+    <h1>SkillStack</h1>
+    <h2>We're making things better</h2>
+    <p>SkillStack is currently under construction. We'll be back soon with an improved experience.</p>
+  </body>
+</html>`))
+	})
+
+	tempDir := t.TempDir()
+	db, err := sql.Open("sqlite3", filepath.Join(tempDir, "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	cfg := DefaultConfig(tempDir, filepath.Join(tempDir, "active"))
+	cfg.CacheRoot = filepath.Join(tempDir, "cache")
+	cfg.CuratedConfigPath = filepath.Join(tempDir, "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.DiscoveryPageURLs = nil
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(filepath.Join(tempDir, "active")),
+		Scanner:      NewScanner(nil),
+		HTTPClient:   server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	run := &CrawlRun{}
+	source := Source{
+		ID:          "skillstack",
+		Type:        "html_catalog",
+		BaseURL:     server.URL + "/marketplace",
+		DisplayName: "SkillStack",
+		SourceGroup: "skillstack",
+		Enabled:     true,
+	}
+	if err := svc.discoverFromHTMLCatalog(context.Background(), source, 0, &DiscoverResult{}, run); err != nil {
+		t.Fatalf("discover html catalog: %v", err)
+	}
+	if run.Discovered != 0 {
+		t.Fatalf("run.Discovered = %d, want 0", run.Discovered)
+	}
+
+	result, err := svc.Search(context.Background(), SearchQuery{Page: 1, PageSize: 20})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(result.Skills) != 0 {
+		t.Fatalf("expected no skills to be indexed from maintenance page, got %+v", result.Skills)
+	}
 }
 
 func TestDiscoverFromHTMLCatalogTraversesBeyondLegacyPageCap(t *testing.T) {

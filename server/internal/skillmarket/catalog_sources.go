@@ -650,3 +650,47 @@ func containsString(values []string, target string) bool {
 	}
 	return false
 }
+
+func looksLikeCatalogPlaceholderPage(page *catalogPage) bool {
+	if page == nil {
+		return false
+	}
+
+	title := strings.ToLower(strings.TrimSpace(page.Title))
+	description := strings.ToLower(strings.TrimSpace(page.Description))
+	text := strings.ToLower(strings.TrimSpace(page.Text))
+	combined := title + "\n" + description + "\n" + text
+
+	if title == "" && description == "" && text == "" {
+		return false
+	}
+
+	titleMarkers := []string{
+		"under construction",
+		"page not found",
+		"404",
+		"maintenance",
+	}
+	textMarkers := []string{
+		"we're making things better",
+		"we are making things better",
+		"currently under construction",
+		"we'll be back soon",
+		"we will be back soon",
+		"coming soon",
+		"page not found",
+		"temporarily unavailable",
+	}
+
+	for _, marker := range titleMarkers {
+		if strings.Contains(title, marker) {
+			return true
+		}
+	}
+	for _, marker := range textMarkers {
+		if strings.Contains(combined, marker) {
+			return true
+		}
+	}
+	return false
+}

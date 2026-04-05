@@ -1922,18 +1922,6 @@ function closeProviderConfigDialog() {
   showProviderConfigDialog.value = false
 }
 
-function openProviderConfigDialog(mode: 'unconfigured' | 'unavailable', messageToRestore?: string) {
-  providerConfigDialogMode.value = mode
-  providerConfigDialogHasDraft.value = Boolean(messageToRestore?.trim())
-  showProviderConfigDialog.value = true
-  if (providerConfigDialogHasDraft.value && messageToRestore?.trim()) {
-    nextTick(() => {
-      chatInputRef.value?.setInput?.(messageToRestore)
-      chatInputRef.value?.focus?.()
-    })
-  }
-}
-
 async function handleDeleteSelectedMessages() {
   if (chatStore.selectedMessageIds.size === 0) return
 
@@ -2085,8 +2073,10 @@ async function ensureLlmProviderConfigured(messageToRestore?: string) {
     return true
   }
 
-  openProviderConfigDialog('unavailable', messageToRestore)
-  return false
+  // Configured providers may be unhealthy while chat/media fallbacks remain usable.
+  // Keep inline provider attention guidance visible, but don't hard-block the request here.
+  void messageToRestore
+  return true
 }
 
 // Handle preset question selection
