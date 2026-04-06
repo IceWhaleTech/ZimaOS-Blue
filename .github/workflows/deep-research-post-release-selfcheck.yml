@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload selfcheck report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deep-research-selfcheck
           path: server/${{ github.event.inputs.output_json }}

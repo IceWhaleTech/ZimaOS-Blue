@@ -34,7 +34,7 @@ jobs:
           npm run build
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web/dist/
@@ -59,7 +59,7 @@ jobs:
           VITE_EMBED_DISABLE_MERMAID="${{ env.EMBEDDED_DISABLE_MERMAID }}" npm run build
 
       - name: Upload embedded dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-dist-embedded
           path: web/dist/
@@ -302,7 +302,7 @@ jobs:
           fi
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
@@ -471,7 +471,7 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/build.keychain" 2>/dev/null || true
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: blue-tauri-macos-${{ matrix.arch }}
           path: tauri-app/src-tauri/target/release/bundle/dmg/*.dmg
